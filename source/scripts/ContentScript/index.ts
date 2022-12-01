@@ -20,7 +20,9 @@ const backgroundPort = browser.runtime.connect(undefined, {
 // Add listener for pali events
 const checkForPaliRegisterEvent = (type, id) => {
   if (type === 'EVENT_REG') {
+    console.log('Checking event emission:', type, id);
     emitter.on(id, (result) => {
+      console.log('Checking event emission inside:', id, result);
       if (typeof id === 'string' && id.includes(DAppEvents.accountsChanged)) {
         result[0]
           ? inject(`window.ethereum.selectedAddress = '${result[0]}'`)
@@ -31,11 +33,13 @@ const checkForPaliRegisterEvent = (type, id) => {
       ) {
         inject(`window.ethereum.chainId = '${result.chainId}'`); //TODO: needs testing
       }
-      window.dispatchEvent(
-        new CustomEvent(id, { detail: JSON.stringify(result) })
+      console.log(
+        'windowDispatch response',
+        window.dispatchEvent(
+          new CustomEvent(id, { detail: JSON.stringify(result) })
+        )
       );
     });
-
     return;
   }
 
@@ -63,6 +67,7 @@ const start = () => {
       if (!event.data) return;
 
       const { id, type, data } = event.data;
+      console.log('Check eventData', data);
 
       if (!id || !type) return;
 

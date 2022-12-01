@@ -96,7 +96,7 @@ const on = (eventName, callback) => {
   let host = window.location.host;
 
   const id = `${host}.${eventName}`;
-
+  console.log('checking callback: ', callback);
   window.pali._listeners[id] = ({ detail }) => {
     callback(JSON.parse(detail));
   };
@@ -104,7 +104,8 @@ const on = (eventName, callback) => {
   window.addEventListener(id, window.pali._listeners[id], {
     passive: true,
   });
-
+  fn = callback.toString();
+  console.log('checking callback as str: ', fn);
   window.postMessage(
     {
       id: id,
@@ -112,6 +113,7 @@ const on = (eventName, callback) => {
       data: {
         eventName,
         host,
+        fn,
       },
     },
     '*'
@@ -122,7 +124,7 @@ const on = (eventName, callback) => {
  * Removes a listener from pali events
  * @see `DAppEvents`
  */
-const removeListener = (eventName) => {
+const removeListener = (eventName, callback) => {
   let host = window.location.host;
 
   const id = `${host}.${eventName}`;
@@ -132,6 +134,7 @@ const removeListener = (eventName) => {
 
     delete window.pali._listeners[id];
   }
+  fn = callback.toString();
 
   window.postMessage(
     {
@@ -140,6 +143,7 @@ const removeListener = (eventName) => {
       data: {
         eventName,
         host,
+        fn,
       },
     },
     '*'

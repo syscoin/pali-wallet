@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import { Runtime } from 'webextension-polyfill-ts';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
@@ -14,6 +13,7 @@ import { DAppEvents } from './message-handler/types';
 
 interface IDappsSession {
   [host: string]: {
+    activeAddress: string | null;
     hasWindow: boolean;
     listens: string[];
     port: Runtime.Port;
@@ -28,16 +28,14 @@ interface IDappsSession {
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
 
-  const isConnected = (host: string) => {
-    const { dapps } = store.getState().dapp;
-
-    return Boolean(dapps[host]);
-  };
+  const isConnected = (host: string) => Boolean(_dapps[host].activeAddress);
 
   const setup = (port: Runtime.Port) => {
     const { host } = new URL(port.sender.url);
-
+    const activeAccount = getAccount(host)?.address;
+    console.log('Checking host on setup', host);
     _dapps[host] = {
+      activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
       listens: [],
       port,
@@ -49,7 +47,8 @@ const DAppController = (): IDAppController => {
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
-
+    const { accounts } = store.getState().vault;
+    _dapps[dapp.host].activeAddress = accounts[dapp.accountId].address;
     _dispatchEvent(dapp.host, DAppEvents.connect, {
       connectedAccount: getAccount(dapp.host),
     });
@@ -65,7 +64,6 @@ const DAppController = (): IDAppController => {
 
     if (!account) return null;
     const response: any = [{}];
-
     response[0].caveats = [
       { type: 'restrictReturnedAccounts', value: [account] },
     ];
@@ -74,6 +72,7 @@ const DAppController = (): IDAppController => {
     response[0].invoker = host;
     response[0].parentCapability = 'eth_accounts';
 
+    _dapps[host].activeAddress = account.address;
     _dispatchEvent(host, 'requestPermissions', response);
     _dispatchEvent(host, DAppEvents.accountsChanged, [account.address]);
   };
@@ -82,17 +81,22 @@ const DAppController = (): IDAppController => {
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
+    _dapps[host].activeAddress = accounts[accountId].address;
     isBitcoinBased
-      ? _dispatchEvent(host, DAppEvents.accountsChanged, [accounts[accountId]])
+      ? _dispatchEvent(
+          host,
+          DAppEvents.accountsChanged,
+          removeXprv(accounts[accountId])
+        )
       : _dispatchEvent(host, DAppEvents.accountsChanged, [
-          accounts[accountId].address,
+          _dapps[host].activeAddress,
         ]);
   };
 
   const disconnect = (host: string) => {
     // after disconnecting, the event would not be sent
-    // _dispatchEvent(host, 'disconnect'); //Event only added when there is any rpc error
-    _dispatchEvent(host, 'accountsChanged', [null]);
+    _dapps[host].activeAddress = null;
+    _dispatchEvent(host, 'accountsChanged', [_dapps[host].activeAddress]);
 
     store.dispatch(removeDApp(host));
   };
@@ -111,9 +115,11 @@ const DAppController = (): IDAppController => {
   //* ----- Event listeners -----
   const addListener = (host: string, eventName: string) => {
     if (!DAppEvents[eventName]) return;
+    console.log('Trying to add event to dapp', host, eventName);
     if (_dapps[host].listens.includes(eventName)) return;
-
+    console.log('Event not added yet', _dapps[host]);
     _dapps[host].listens.push(eventName);
+    console.log('Event added', _dapps[host]);
   };
 
   const removeListener = (host: string, eventName: string) => {
@@ -133,17 +139,10 @@ const DAppController = (): IDAppController => {
     if (data?.lockState === '2') {
       const dapps = Object.values(store.getState().dapp.dapps);
       for (const dapp of dapps) {
-        console.error(
-          'Checking event emision on unlock',
-          dapp.host,
-          event,
-          getAccount(dapp.host)?.address ? [getAccount(dapp.host).address] : []
-        );
-        _dispatchEvent(
-          dapp.host,
-          event,
-          getAccount(dapp.host)?.address ? [getAccount(dapp.host).address] : []
-        );
+        console.error('Checking event emision on unlock', dapp.host, event, [
+          _dapps[dapp.host].activeAddress,
+        ]);
+        _dispatchEvent(dapp.host, event, [_dapps[dapp.host].activeAddress]);
       }
       return;
     } else if (data?.lockState === '1') {
@@ -154,9 +153,12 @@ const DAppController = (): IDAppController => {
       }
       return;
     }
-    const dapps = Object.values(store.getState().dapp.dapps);
-    for (const dapp of dapps) {
-      _dispatchEvent(dapp.host, event, data);
+    // const dapps = Object.values(store.getState().dapp.dapps);
+    // const dapps =
+    const hosts = Object.keys(_dapps);
+    for (const host of hosts) {
+      console.log('Iterating over host', event, data);
+      _dispatchEvent(host, event, data);
     }
   };
 
@@ -166,10 +168,12 @@ const DAppController = (): IDAppController => {
     data?: any
   ) => {
     // dispatch the event locally
+    const { isBitcoinBased } = store.getState().vault;
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    window.dispatchEvent(event);
-    if (!hasListener(host, eventName)) return; //TODO: fix event bugs
-    if (!isConnected(host)) return;
+    console.log('Checking event', eventName, host);
+    // window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
+    // if (!hasListener(host, eventName)) return; //TODO: fix event bugs
+    if (!isConnected(host) && isBitcoinBased) return;
 
     // post the event to the DApp
     const id = `${host}.${eventName}`;
