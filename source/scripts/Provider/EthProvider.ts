@@ -113,6 +113,7 @@ export const EthProvider = (host: string) => {
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const resp = await web3Provider.send(method, params);
     if (method === 'eth_getTransactionReceipt') {
@@ -125,6 +126,7 @@ export const EthProvider = (host: string) => {
     blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
+    setProviderNetwork(store.getState().vault.activeNetwork);
     const { account } = getController().wallet; //TODO: when UI is added account object can be inside personal_EcRecover case since it will be only used there
     switch (method) {
       case 'eth_sendTransaction':

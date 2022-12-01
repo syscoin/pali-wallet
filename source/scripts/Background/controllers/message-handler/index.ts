@@ -35,7 +35,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'IS_UNLOCKED':
       return isUnlocked();
     default:
-      throw new Error('Unknown message type');
+      throw { code: -32601, message: 'Unknown method type', data: message };
   }
 };
 

@@ -61,7 +61,7 @@ const EthSign: React.FC<ISign> = () => {
         ) {
           typedData = data[0];
         } else {
-          throw 'Signing for wrong address';
+          throw { message: 'Signing for wrong address' };
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
         if (data.eventName === 'eth_signTypedData') {

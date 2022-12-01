@@ -42,7 +42,11 @@ export const methodRequest = async (
   }
 
   if (!isRequestAllowed && methodName !== 'switchEthereumChain')
-    throw new Error('Restricted method. Connect before requesting');
+    throw {
+      code: 4100,
+      message:
+        'The requested account and/or method has not been authorized by the user.',
+    };
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -109,13 +113,15 @@ export const methodRequest = async (
           url: data.params[0].rpcUrls[0],
           chainId: Number(data.params[0].chainId),
           label: data.params[0].chainName,
-          apiUrl: undefined,
+          apiUrl: data.params[0]?.blockExplorerUrls
+            ? data.params[0].blockExplorerUrls[0]
+            : undefined,
           isSyscoinRpc: false,
+          symbol: data.params[0].nativeCurrency.symbol,
         };
+        console.log('Check Custom RPC data', customRPCData);
         const network = await controller.wallet.getRpc(customRPCData);
-        if (data.params[0].blockExplorerUrls) {
-          customRPCData.apiUrl = data.params[0].blockExplorerUrls;
-        }
+        console.log('Checked Custom RPC data', customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
           return popupPromise({
             host,
@@ -152,7 +158,11 @@ export const methodRequest = async (
         };
 
       default:
-        throw new Error('Unknown method');
+        throw {
+          code: -32601,
+          message: 'Unknown method',
+          data: { method: data.method, params: data.params },
+        };
     }
   }
 
@@ -182,7 +192,11 @@ export const methodRequest = async (
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     if (!wallet.isUnlocked()) return false;
-    if (!resp) throw new Error('Failure on RPC request');
+    if (!resp)
+      throw {
+        code: -32600,
+        message: 'Method not Found',
+      };
 
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased)
@@ -194,7 +208,12 @@ export const methodRequest = async (
   const provider = SysProvider(host);
   const method = provider[methodName];
 
-  if (!method) throw new Error('Unknown method');
+  if (!method)
+    throw {
+      code: -32601,
+      message: 'Unknown method',
+      data: { method: data.method, params: data.params },
+    };
 
   if (data.params) return await method(...data.params);
 
@@ -223,8 +242,7 @@ export const enable = async (
     data: { chain, chainId },
   });
 
-  if (!acceptedRequest)
-    throw new Error('Restricted method. Connect before requesting');
+  if (!acceptedRequest) throw { code: 4001, message: 'User Rejected request' };
 
   return [acceptedRequest.connectedAccount.address];
 };

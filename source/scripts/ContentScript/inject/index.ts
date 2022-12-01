@@ -9,7 +9,6 @@ declare global {
     SUPPORTED_WALLET_METHODS: any;
     ethereum: Readonly<any>;
     pali: Readonly<any>;
-    web3Provider: any;
   }
 }
 
