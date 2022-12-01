@@ -4,10 +4,18 @@
 const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
+<<<<<<< Updated upstream
     window.addEventListener(
       id,
       (event) => {
         console.log('[Pali] EventListener method', data.method, event);
+=======
+
+    window.addEventListener(
+      id,
+      (event) => {
+        // console.log('[Pali] EventListener method', data.method );
+>>>>>>> Stashed changes
         if (event.detail === undefined) {
           resolve(undefined);
 
