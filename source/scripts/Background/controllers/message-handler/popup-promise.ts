@@ -22,8 +22,12 @@ export const popupPromise = async ({
   host: string;
   route: string;
 }) => {
-  const { dapp, createPopup } = window.controller;
+  const { dapp, createPopup, wallet } = window.controller;
+  const currentNetwork = wallet.getNetwork();
+
   if (
+    (eventName === 'wallet_switchEthereumChain' &&
+      data.chainId === currentNetwork.chainId) ||
     (dapp.hasWindow(host) && eventName === 'connect') ||
     (dapp.isConnected(host) && eventName === 'connect') ||
     dapp.hasWindow(host)

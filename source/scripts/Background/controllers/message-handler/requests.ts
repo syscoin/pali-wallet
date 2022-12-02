@@ -135,8 +135,8 @@ export const methodRequest = async (
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
 
-        if (activeNetwork.chainId === chainId) return null;
-        else if (chains.ethereum[chainId]) {
+        // if (activeNetwork.chainId === chainId) return null; THIS LINE IS NOT PREVENT DOUBLE POPUP WHEN SWITCH CHAIN EVENT
+        if (chains.ethereum[chainId]) {
           return popupPromise({
             host,
             route: 'switch-EthChain',
