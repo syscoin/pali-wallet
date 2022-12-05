@@ -1,3 +1,4 @@
+import { ethErrors } from 'source/helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
 import {
@@ -288,11 +289,7 @@ const MainController = (): IMainController => {
       console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
-      throw {
-        code: -32603,
-        message: `${data.url} failed to respond`,
-        data: error,
-      };
+      throw ethErrors.rpc.internal(error.error.data);
     }
   };
 

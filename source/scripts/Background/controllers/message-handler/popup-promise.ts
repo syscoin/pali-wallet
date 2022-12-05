@@ -1,3 +1,4 @@
+import { ethErrors } from 'source/helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
 /**
@@ -57,7 +58,7 @@ export const popupPromise = async ({
           route === 'add-EthChain' ||
           route === 'change-account'
         ) {
-          resolve({ code: 4001, message: 'Pali: User rejected transaction' });
+          resolve(ethErrors.provider.userRejectedRequest());
         }
         dapp.setHasWindow(host, false);
         resolve({ success: false });

@@ -1,6 +1,7 @@
 import { RightOutlined } from '@ant-design/icons';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
+import { ethErrors } from 'source/helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
@@ -38,10 +39,7 @@ const SwitchChain: React.FC = () => {
           }
         });
     } catch (networkError) {
-      return {
-        code: -32603,
-        message: `Error switching network ${networkError}`,
-      };
+      return ethErrors.rpc.internal();
     }
     setConfirmed(true);
     setLoading(false);

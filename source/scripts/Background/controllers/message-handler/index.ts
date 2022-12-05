@@ -1,3 +1,4 @@
+import { ethErrors } from 'source/helpers/errors';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import store from 'state/store';
@@ -35,7 +36,7 @@ const _messageHandler = async (host: string, message: Message) => {
     case 'IS_UNLOCKED':
       return isUnlocked();
     default:
-      throw { code: -32601, message: 'Unknown method type', data: message };
+      throw ethErrors.rpc.methodNotFound(message);
   }
 };
 
