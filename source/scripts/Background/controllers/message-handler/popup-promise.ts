@@ -1,6 +1,8 @@
 import { ethErrors } from 'source/helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
+import cleanErrorStack from 'utils/cleanErrorStack';
+
 /**
  * Opens a popup and adds events listener to resolve a promise.
  *
@@ -58,7 +60,7 @@ export const popupPromise = async ({
           route === 'add-EthChain' ||
           route === 'change-account'
         ) {
-          resolve(ethErrors.provider.userRejectedRequest());
+          resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }
         dapp.setHasWindow(host, false);
         resolve({ success: false });

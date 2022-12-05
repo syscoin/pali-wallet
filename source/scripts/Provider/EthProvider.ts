@@ -14,6 +14,7 @@ import {
 import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
@@ -154,7 +155,7 @@ export const EthProvider = (host: string) => {
         try {
           return await web3Provider.send(method, params);
         } catch (error) {
-          throw ethErrors.rpc.internal(error.error.data);
+          throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
         }
     }
   };

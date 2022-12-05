@@ -4,6 +4,7 @@ import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -44,12 +45,12 @@ export const methodRequest = async (
   }
 
   if (!isRequestAllowed && methodName !== 'switchEthereumChain')
-    throw ethErrors.provider.userRejectedRequest();
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   if (prefix === 'eth' && methodName === 'accounts') {
     return isBitcoinBased
-      ? ethErrors.rpc.internal()
+      ? cleanErrorStack(ethErrors.rpc.internal())
       : wallet.isUnlocked()
       ? [dapp.getAccount(host).address]
       : [];
@@ -127,7 +128,7 @@ export const methodRequest = async (
         }
         tryingToAdd = true;
       case 'switchEthereumChain':
-        if (isBitcoinBased) return ethErrors.rpc.internal();
+        if (isBitcoinBased) return cleanErrorStack(ethErrors.rpc.internal());
         const chainId = tryingToAdd
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
@@ -141,10 +142,10 @@ export const methodRequest = async (
             data: { chainId: chainId },
           });
         }
-        return ethErrors.rpc.internal();
+        return cleanErrorStack(ethErrors.rpc.internal());
 
       default:
-        throw ethErrors.rpc.methodNotFound();
+        throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
   }
 
@@ -160,7 +161,7 @@ export const methodRequest = async (
       data: { connectedAccount: dapp.getAccount(host) },
     });
     if (!response) {
-      return ethErrors.rpc.internal();
+      return cleanErrorStack(ethErrors.rpc.internal());
     }
     // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
@@ -169,16 +170,16 @@ export const methodRequest = async (
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     if (!wallet.isUnlocked()) return false;
-    if (!resp) throw ethErrors.rpc.invalidRequest();
+    if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased)
-    return ethErrors.rpc.internal();
+    return cleanErrorStack(ethErrors.rpc.internal());
 
   const provider = SysProvider(host);
   const method = provider[methodName];
 
-  if (!method) throw ethErrors.rpc.methodNotFound();
+  if (!method) throw cleanErrorStack(ethErrors.rpc.methodNotFound());
 
   if (data.params) return await method(...data.params);
 
@@ -193,7 +194,7 @@ export const enable = async (
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
-    return ethErrors.provider.userRejectedRequest();
+    return cleanErrorStack(ethErrors.provider.userRejectedRequest());
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
@@ -204,7 +205,8 @@ export const enable = async (
     data: { chain, chainId },
   });
 
-  if (!acceptedRequest) throw ethErrors.provider.userRejectedRequest();
+  if (!acceptedRequest)
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
 
   return [acceptedRequest.connectedAccount.address];
 };

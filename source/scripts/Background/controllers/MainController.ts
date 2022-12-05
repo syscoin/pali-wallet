@@ -35,6 +35,7 @@ import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 import { removeXprv } from 'utils/account';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
@@ -289,7 +290,7 @@ const MainController = (): IMainController => {
       console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
-      throw ethErrors.rpc.internal(error.error.data);
+      throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
     }
   };
 

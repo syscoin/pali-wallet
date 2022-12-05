@@ -8,6 +8,7 @@ import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 
 const SwitchChain: React.FC = () => {
   const { host, ...data } = useQueryData();
@@ -39,7 +40,7 @@ const SwitchChain: React.FC = () => {
           }
         });
     } catch (networkError) {
-      return ethErrors.rpc.internal();
+      return cleanErrorStack(ethErrors.rpc.internal());
     }
     setConfirmed(true);
     setLoading(false);
