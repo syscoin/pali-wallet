@@ -154,6 +154,7 @@ const MainController = (): IMainController => {
             newConnectedAccount: accounts[id],
           })
         );
+        return;
       }
     }
 
