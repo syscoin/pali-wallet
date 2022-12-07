@@ -126,7 +126,7 @@ const documentElementCheck = () => {
 };
 
 const blockedDomainCheck = () => {
-  const blockedDomains = ['dropbox.com'];
+  const blockedDomains = ['dropbox.com', 'app.clickup.com'];
 
   const currentUrl = window.location.href;
   let currentRegex;
@@ -153,40 +153,17 @@ export const shouldInjectProvider = () =>
   documentElementCheck() &&
   !blockedDomainCheck();
 
-const injectScript = (content: string) => {
-  try {
-    const container = document.head || document.documentElement;
-    const scriptTag = document.createElement('script');
-    scriptTag.textContent = content;
-
-    container.insertBefore(scriptTag, container.children[0]);
-  } catch (error) {
-    console.error('Pali Wallet: Provider injection failed.', error);
-  }
-};
 const injectScriptFile = (file: string) => {
-  console.log('Trying to load injectScriptFile');
   try {
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
     scriptTag.src = browser.runtime.getURL(file);
-    console.log('Done it', file, scriptTag);
     container.insertBefore(scriptTag, container.children[0]);
-    console.log('Ueba');
   } catch (error) {
     console.error('Pali Wallet: Provider injection failed.', error);
   }
 };
-console.log('Should we inject provider albert', shouldInjectProvider());
 if (shouldInjectProvider()) {
-  injectScript("window.SyscoinWallet = 'Pali Wallet is installed! :)'");
-
-  window.dispatchEvent(
-    new CustomEvent('SyscoinStatus', {
-      detail: { SyscoinInstalled: true, ConnectionsController: false },
-    })
-  );
-
   injectScriptFile('js/inpage.bundle.js');
 }
 start();
