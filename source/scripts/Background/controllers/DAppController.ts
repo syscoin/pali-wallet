@@ -118,7 +118,6 @@ const DAppController = (): IDAppController => {
     if (!DAppEvents[eventName]) return;
     console.log('Trying to add event to dapp', host, eventName);
     if (_dapps[host].listens.includes(eventName)) return;
-    console.log('Event not added yet', _dapps[host]);
     _dapps[host].listens.push(eventName);
     console.log('Event added', _dapps[host]);
   };
@@ -170,11 +169,11 @@ const DAppController = (): IDAppController => {
   ) => {
     // dispatch the event locally
     const { isBitcoinBased } = store.getState().vault;
-    // const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    // console.log('Checking event', eventName, host);
-    // window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
-    if (!hasListener(host, eventName)) return; //TODO: fix event bugs
-    if (!isConnected(host) && isBitcoinBased) return;
+    const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
+    console.log('Checking event', eventName, host, isBitcoinBased, data);
+    window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
+    // if (!hasListener(host, eventName)) return; //TODO: fix event bugs
+    // if (!isConnected(host) && isBitcoinBased) return;
 
     // post the event to the DApp
     const id = `${host}.${eventName}`;

@@ -1,21 +1,28 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+// Read files in as strings
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  interface Window {
+    ConnectionsController: any;
+    SUPPORTED_WALLET_METHODS: any;
+    SyscoinInstalled: any;
+    ethereum: Readonly<any>;
+    myobject: Readonly<any>;
+    pali: Readonly<any>;
+  }
+}
 /**
  * Sends a message to pali and add a listerner for the response
  */
 const proxy = (type, data) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
-<<<<<<< Updated upstream
-    window.addEventListener(
-      id,
-      (event) => {
-        console.log('[Pali] EventListener method', data.method, event);
-=======
 
     window.addEventListener(
       id,
       (event) => {
         // console.log('[Pali] EventListener method', data.method );
->>>>>>> Stashed changes
         if (event.detail === undefined) {
           resolve(undefined);
 
@@ -79,7 +86,7 @@ const request = async (req) => {
  * Check if wallet is unlocked as metamask api exposes it
  */
 const isUnlocked = () => {
-  let host = window.location.host;
+  const host = window.location.host;
   const id = `${host}.isUnlocked`;
   window.postMessage(
     {
@@ -101,7 +108,7 @@ const isUnlocked = () => {
  * @see `DAppEvents`
  */
 const on = (eventName, callback) => {
-  let host = window.location.host;
+  const host = window.location.host;
 
   const id = `${host}.${eventName}`;
   console.log('checking callback: ', callback);
@@ -112,8 +119,6 @@ const on = (eventName, callback) => {
   window.addEventListener(id, window.pali._listeners[id], {
     passive: true,
   });
-  fn = callback.toString();
-  console.log('checking callback as str: ', fn);
   window.postMessage(
     {
       id: id,
@@ -121,7 +126,6 @@ const on = (eventName, callback) => {
       data: {
         eventName,
         host,
-        fn,
       },
     },
     '*'
@@ -132,8 +136,8 @@ const on = (eventName, callback) => {
  * Removes a listener from pali events
  * @see `DAppEvents`
  */
-const removeListener = (eventName, callback) => {
-  let host = window.location.host;
+const removeListener = (eventName) => {
+  const host = window.location.host;
 
   const id = `${host}.${eventName}`;
 
@@ -142,7 +146,6 @@ const removeListener = (eventName, callback) => {
 
     delete window.pali._listeners[id];
   }
-  fn = callback.toString();
 
   window.postMessage(
     {
@@ -151,7 +154,6 @@ const removeListener = (eventName, callback) => {
       data: {
         eventName,
         host,
-        fn,
       },
     },
     '*'
@@ -186,3 +188,5 @@ window.ethereum = {
   disable: () => proxy('DISABLE'),
   _listeners: {},
 };
+
+export const { SUPPORTED_WALLET_METHODS } = window;
