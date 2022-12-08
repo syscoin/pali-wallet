@@ -35,7 +35,11 @@
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": "eslint --fix",
-    "ignore": "node_modules"
+    "!(node_modules)*.ts": [
+      "eslint --fix",
+      "prettier --write",
+      "git add"
+    ]
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
