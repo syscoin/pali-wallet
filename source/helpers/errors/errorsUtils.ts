@@ -16,12 +16,6 @@ export const JSON_RPC_SERVER_ERROR_MESSAGE = 'Unspecified server error.';
 type ErrorValueKey = keyof typeof errorValues;
 
 type PlainObject = Record<number | string | symbol, unknown>;
-type RuntimeObject = Record<number | string | symbol, unknown>;
-
-export const hasProperty = (
-  object: RuntimeObject,
-  name: string | number | symbol
-): boolean => Object.hasOwnProperty.call(object, name);
 
 /**
  * Check if the value is plain object.
@@ -64,7 +58,7 @@ export function getMessageFromCode(
   if (Number.isInteger(code)) {
     const codeString = code.toString();
 
-    if (hasProperty(errorValues, codeString)) {
+    if (Object.hasOwnProperty.call(errorValues, codeString)) {
       return errorValues[codeString as ErrorValueKey].message;
     }
 
@@ -136,7 +130,7 @@ export function serializeError(
   if (
     error &&
     isPlainObject(error) &&
-    hasProperty(error, 'code') &&
+    Object.hasOwnProperty.call(error, 'code') &&
     isValidCode((error as IEthereumRpcErrorHandlerSerialized).code)
   ) {
     const _error = error as Partial<IEthereumRpcErrorHandlerSerialized>;
@@ -145,7 +139,7 @@ export function serializeError(
     if (_error.message && typeof _error.message === 'string') {
       serialized.message = _error.message;
 
-      if (hasProperty(_error, 'data')) {
+      if (Object.hasOwnProperty.call(_error, 'data')) {
         serialized.data = _error.data ?? null;
       }
     } else {
