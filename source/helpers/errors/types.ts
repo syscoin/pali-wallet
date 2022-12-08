@@ -1,4 +1,12 @@
-import { Json } from '@metamask/utils';
+export declare type Json =
+  | null
+  | boolean
+  | number
+  | string
+  | Json[]
+  | {
+      [prop: string]: Json;
+    };
 
 export type IEthereumRpcErrorHandlerSerialized = {
   code: number;

@@ -1,11 +1,10 @@
-import { Json } from '@metamask/utils';
-
 import {
   EthereumRpcErrorHandler,
   EthereumProviderErrorHandler,
 } from './errorClassesHandlers';
 import { errorCodes } from './errorConstants';
 import { getMessageFromCode } from './errorsUtils';
+import { Json } from './types';
 
 type EthereumErrorOptions<T extends Json> = {
   data?: T;

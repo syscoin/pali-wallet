@@ -1,4 +1,4 @@
-import { ethErrors } from 'source/helpers/errors';
+import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
 import {

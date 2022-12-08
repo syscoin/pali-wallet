@@ -1,4 +1,4 @@
-import { ethErrors } from '..';
+import { ethErrors } from '../errorsHandlers';
 
 export const dummyData = { foo: 'bar' };
 export const dummyMessage = 'baz';

@@ -1,7 +1,6 @@
-import { hasProperty, isPlainObject, Json } from '@metamask/utils';
-
 import { EthereumRpcErrorHandler } from './errorClassesHandlers';
 import { errorCodes, errorValues } from './errorConstants';
+import { Json } from './types';
 import { IEthereumRpcErrorHandlerSerialized } from './types';
 
 const FALLBACK_ERROR_CODE = errorCodes.rpc.internal;
@@ -15,6 +14,38 @@ const FALLBACK_ERROR: IEthereumRpcErrorHandlerSerialized = {
 export const JSON_RPC_SERVER_ERROR_MESSAGE = 'Unspecified server error.';
 
 type ErrorValueKey = keyof typeof errorValues;
+
+type PlainObject = Record<number | string | symbol, unknown>;
+type RuntimeObject = Record<number | string | symbol, unknown>;
+
+export const hasProperty = (
+  object: RuntimeObject,
+  name: string | number | symbol
+): boolean => Object.hasOwnProperty.call(object, name);
+
+/**
+ * Check if the value is plain object.
+ *
+ * @param value - Value to be checked.
+ * @returns True if an object is the plain JavaScript object,
+ * false if the object is not plain (e.g. function).
+ */
+export function isPlainObject(value: unknown): value is PlainObject {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  try {
+    let proto = value;
+    while (Object.getPrototypeOf(proto) !== null) {
+      proto = Object.getPrototypeOf(proto);
+    }
+
+    return Object.getPrototypeOf(value) === proto;
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Gets the message for a given code, or a fallback message if the code has

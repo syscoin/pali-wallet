@@ -1,6 +1,6 @@
-import { Json } from '@metamask/utils';
 import safeStringify from 'fast-safe-stringify';
 
+import { Json } from './types';
 import { IEthereumRpcErrorHandlerSerialized } from './types';
 
 /**

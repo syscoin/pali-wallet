@@ -45,7 +45,6 @@
     "@babel/runtime": "^7.14.0",
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
-    "@metamask/utils": "^3.3.1",
     "@pollum-io/sysweb3-core": "^1.0.18",
     "@pollum-io/sysweb3-keyring": "^1.0.421",
     "@pollum-io/sysweb3-network": "^1.0.72",

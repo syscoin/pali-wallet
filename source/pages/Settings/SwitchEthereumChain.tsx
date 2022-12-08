@@ -1,7 +1,7 @@
 import { RightOutlined } from '@ant-design/icons';
+import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { ethErrors } from 'source/helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, PrimaryButton, SecondaryButton } from 'components/index';

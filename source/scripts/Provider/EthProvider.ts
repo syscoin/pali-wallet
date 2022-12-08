@@ -1,5 +1,5 @@
 import { TypedData } from 'ethers-eip712';
-import { errorCodes, ethErrors } from 'source/helpers/errors';
+import { ethErrors } from 'helpers/errors';
 
 import {
   web3Provider,

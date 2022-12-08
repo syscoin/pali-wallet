@@ -1,4 +1,4 @@
-import { ethErrors } from 'source/helpers/errors';
+import { ethErrors } from 'helpers/errors';
 
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
