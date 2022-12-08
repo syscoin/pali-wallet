@@ -34,12 +34,7 @@
     "test-all": "yarn lint && yarn test:unit"
   },
   "lint-staged": {
-    "*.@(ts|tsx|js|jsx)": "eslint --fix",
-    "!(node_modules)*.ts": [
-      "eslint --fix",
-      "prettier --write",
-      "git add"
-    ]
+    "*.@(ts|tsx|js|jsx)": "eslint --fix"
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
