@@ -60,7 +60,18 @@ export const popupPromise = async ({
           route === 'add-EthChain' ||
           route === 'change-account'
         ) {
-          resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
+          eventName.includes('requestPermission')
+            ? resolve([
+                {
+                  parentCapability:
+                    ethErrors.provider.userRejectedRequest().message,
+                },
+              ])
+            : resolve({
+                error: {
+                  message: ethErrors.provider.userRejectedRequest().message,
+                },
+              });
         }
         dapp.setHasWindow(host, false);
         resolve({ success: false });

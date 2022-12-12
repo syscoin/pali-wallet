@@ -195,6 +195,7 @@ export const enable = async (
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
     return cleanErrorStack(ethErrors.provider.userRejectedRequest());
+
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
