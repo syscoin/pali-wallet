@@ -5,7 +5,8 @@
  * @returns {Error} Error with clean stack trace.
  */
 export default function cleanErrorStack(err: Error) {
-  let { name } = err;
+  // eslint-disable-next-line
+  let { name, message, stack } = err;
   name = name === undefined ? 'Error' : String(name);
 
   let msg = err.message;
@@ -19,5 +20,5 @@ export default function cleanErrorStack(err: Error) {
     err.stack = `${err.name}: ${err.message}`;
   }
 
-  return err;
+  return { error: { name, message, stack } };
 }
