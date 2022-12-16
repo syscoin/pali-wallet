@@ -1,7 +1,7 @@
 import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
@@ -17,6 +17,7 @@ const CustomRPCView = () => {
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   const [loading, setLoading] = useState(false);
   const [isUrlValid, setIsUrlValid] = useState(false);
+  const [urlFieldValue, setUrlFieldValue] = useState('');
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
 
   const { alert, navigate } = useUtils();
@@ -69,6 +70,14 @@ const CustomRPCView = () => {
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
   };
+
+  useEffect(() => {
+    const fieldErrors = form.getFieldError('url');
+    if (urlFieldValue && fieldErrors.length > 0) {
+      alert.removeAll();
+      alert.error('Invalid RPC URL. Try again.');
+    }
+  }, [urlFieldValue]);
 
   return (
     <Layout title="CUSTOM RPC">
@@ -145,6 +154,7 @@ const CustomRPCView = () => {
             },
             () => ({
               async validator(_, value) {
+                setUrlFieldValue(value);
                 if (isSyscoinRpc) {
                   const { valid, coin } = await validateSysRpc(value);
 

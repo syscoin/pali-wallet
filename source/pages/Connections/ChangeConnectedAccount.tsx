@@ -32,18 +32,18 @@ export const ChangeConnectedAccount = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="text-sm">PALI WALLET</h1>
         <div className="relative top-20 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-          <h2 className="text-center text-lg">
-            The {host} is connected to account {connectedAccount.label} of
-            address {ellipsis(connectedAccount.address)}. Your current account
-            is {activeAccount.label} of address
-            {ellipsis(activeAccount.address)}. Do you want to change to the
-            {host} connected account ?
+          <h2 className="text-center text-sm">
+            The website <b className="text-gray-400">{host}</b> is connected to{' '}
+            {connectedAccount.label} ({ellipsis(connectedAccount.address)}).
+            Your active account is {activeAccount.label} (
+            {ellipsis(activeAccount.address)}). With which account do you want
+            to proceed?
           </h2>
           <div className="mt-1 px-4 w-full text-center text-xs">
             <span>
-              If you don't accept changing account pali will automatically
-              change the connected account of {host} to: {activeAccount.label}{' '}
-              of address {ellipsis(activeAccount.address)}
+              If you continue with the active account, Pali will change the
+              connected account for <b className="text-gray-400">{host}</b> to{' '}
+              {activeAccount.label}.
             </span>
           </div>
         </div>
@@ -52,7 +52,7 @@ export const ChangeConnectedAccount = () => {
             type="button"
             onClick={() => handleConnectedAccount()}
           >
-            Connected Account
+            Connected
           </SecondaryButton>
 
           <PrimaryButton
@@ -60,7 +60,7 @@ export const ChangeConnectedAccount = () => {
             width="40"
             onClick={() => handleActiveAccount()}
           >
-            Active Account
+            Active
           </PrimaryButton>
         </div>
       </div>
