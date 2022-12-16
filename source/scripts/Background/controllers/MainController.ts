@@ -290,7 +290,7 @@ const MainController = (): IMainController => {
       console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
-      throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
+      throw cleanErrorStack(ethErrors.rpc.internal());
     }
   };
 

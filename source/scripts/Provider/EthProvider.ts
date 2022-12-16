@@ -25,6 +25,8 @@ export const EthProvider = (host: string) => {
 
     const decodedTx = decodeTransactionData(tx) as IDecodedTx;
 
+    if (!decodedTx) return cleanErrorStack(ethErrors.rpc.internal());
+
     if (decodedTx.method === 'approve') {
       const resp = await popupPromise({
         host,
@@ -47,6 +49,8 @@ export const EthProvider = (host: string) => {
   const ethSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -59,6 +63,8 @@ export const EthProvider = (host: string) => {
   const personalSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
+    if (!data.length || data.length < 3 || !data[0] || !data[1] || !data[2])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -67,30 +73,40 @@ export const EthProvider = (host: string) => {
     });
     return resp;
   };
-  const signTypedData = (data: TypedData) =>
-    popupPromise({
+  const signTypedData = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData',
     });
+  };
 
-  const signTypedDataV3 = (data: TypedData) =>
-    popupPromise({
+  const signTypedDataV3 = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData_v3',
     });
+  };
 
-  const signTypedDataV4 = (data: TypedData) =>
-    popupPromise({
+  const signTypedDataV4 = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData_v4',
     });
+  };
   const getEncryptionPubKey = (address: string) => {
+    if (!address) return cleanErrorStack(ethErrors.rpc.invalidParams());
     const data = { address: address };
     return popupPromise({
       host,
@@ -100,13 +116,16 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const decryptMessage = (data: string[]) =>
-    popupPromise({
+  const decryptMessage = (data: string[]) => {
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/decrypt',
       eventName: 'eth_decrypt',
     });
+  };
 
   const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
