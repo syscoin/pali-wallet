@@ -1,3 +1,4 @@
+import { PaliInpageProvider } from './paliProvider';
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 // Read files in as strings
@@ -7,21 +8,52 @@ declare global {
     ConnectionsController: any;
     SUPPORTED_WALLET_METHODS: any;
     SyscoinInstalled: any;
+    beterraba: Readonly<PaliInpageProvider>;
     ethereum: Readonly<any>;
-    myobject: Readonly<any>;
     pali: Readonly<any>;
   }
 }
+
+// const paliListener = () => {
+//   window.addEventListener(
+//     'notification',
+//     (event) => {
+//       // console.log('[Pali] EventListener method', data.method );
+//       if (event.detail === undefined) {
+//         resolve(undefined);
+
+//         return;
+//       } else if (event.detail === null) {
+//         resolve(null);
+
+//         return;
+//       }
+
+//       const response = JSON.parse(event.detail);
+//       if (response.error) {
+//         reject(response.error); //TODO all the errors function needs to be refactored this part should not add new Error on response rejection
+
+//         return;
+//       }
+//       resolve(response);
+
+//       return response;
+//     },
+//     {
+//       passive: true,
+//     }
+//   );
+// };
 /**
  * Sends a message to pali and add a listerner for the response
  */
-const proxy = (type, data) =>
+const Oldproxy = (type, data?) =>
   new Promise((resolve, reject) => {
     const id = Date.now() + '.' + Math.random();
 
     window.addEventListener(
       id,
-      (event) => {
+      (event: any) => {
         // console.log('[Pali] EventListener method', data.method );
         if (event.detail === undefined) {
           resolve(undefined);
@@ -44,16 +76,16 @@ const proxy = (type, data) =>
           return;
         }
 
-        if (
-          data.method === 'eth_requestAccounts' ||
-          data.method === 'eth_accounts'
-        ) {
-          //TODO: enhance this implementation
-          let addr = event.detail.replace('[', '');
-          addr = addr.replace(']', '');
-          addr = addr.replaceAll('"', '');
-          window.ethereum.selectedAddress = addr;
-        }
+        // if (
+        //   data.method === 'eth_requestAccounts' ||
+        //   data.method === 'eth_accounts'
+        // ) {
+        //   //TODO: enhance this implementation
+        //   let addr = event.detail.replace('[', '');
+        //   addr = addr.replace(']', '');
+        //   addr = addr.replaceAll('"', '');
+        //   // window.ethereum.selectedAddress = addr;
+        // }
         resolve(response);
 
         return response;
@@ -79,7 +111,7 @@ const proxy = (type, data) =>
  * @returns the result of the method execution
  */
 const request = async (req) => {
-  const response = await proxy('METHOD_REQUEST', req);
+  const response = await Oldproxy('METHOD_REQUEST', req);
   return response;
 };
 /**
@@ -96,7 +128,7 @@ const isUnlocked = () => {
     '*'
   );
   return new Promise((resolve) => {
-    window.addEventListener(id, (event) => {
+    window.addEventListener(id, (event: any) => {
       const response = JSON.parse(event.detail);
       resolve(response);
     });
@@ -166,8 +198,8 @@ window.pali = Object.freeze({
   on,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => proxy('ENABLE', { chain: 'syscoin', chainId: '0x39' }),
-  disable: () => proxy('DISABLE'),
+  enable: () => Oldproxy('ENABLE', { chain: 'syscoin', chainId: '0x39' }),
+  disable: () => Oldproxy('DISABLE'),
   _listeners: {},
 });
 
@@ -184,9 +216,11 @@ window.ethereum = {
   selectedAddress: null,
   removeListener,
   isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => proxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
-  disable: () => proxy('DISABLE'),
+  enable: () => Oldproxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
+  disable: () => Oldproxy('DISABLE'),
   _listeners: {},
 };
+
+window.beterraba = new PaliInpageProvider('ethereum');
 
 export const { SUPPORTED_WALLET_METHODS } = window;
