@@ -1,4 +1,5 @@
 import { RightOutlined } from '@ant-design/icons';
+import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
@@ -7,6 +8,7 @@ import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 
 const SwitchChain: React.FC = () => {
   const { host, ...data } = useQueryData();
@@ -38,10 +40,7 @@ const SwitchChain: React.FC = () => {
           }
         });
     } catch (networkError) {
-      return {
-        code: -32603,
-        message: `Error switching network ${networkError}`,
-      };
+      return cleanErrorStack(ethErrors.rpc.internal());
     }
     setConfirmed(true);
     setLoading(false);

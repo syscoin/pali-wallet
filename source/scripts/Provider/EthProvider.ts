@@ -1,4 +1,5 @@
 import { TypedData } from 'ethers-eip712';
+import { ethErrors } from 'helpers/errors';
 
 import {
   web3Provider,
@@ -13,6 +14,7 @@ import {
 import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
@@ -22,6 +24,8 @@ export const EthProvider = (host: string) => {
     const tx = params;
 
     const decodedTx = decodeTransactionData(tx) as IDecodedTx;
+
+    if (!decodedTx) return cleanErrorStack(ethErrors.rpc.internal());
 
     if (decodedTx.method === 'approve') {
       const resp = await popupPromise({
@@ -45,6 +49,8 @@ export const EthProvider = (host: string) => {
   const ethSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -57,6 +63,8 @@ export const EthProvider = (host: string) => {
   const personalSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
+    if (!data.length || data.length < 3 || !data[0] || !data[1] || !data[2])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -65,30 +73,40 @@ export const EthProvider = (host: string) => {
     });
     return resp;
   };
-  const signTypedData = (data: TypedData) =>
-    popupPromise({
+  const signTypedData = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData',
     });
+  };
 
-  const signTypedDataV3 = (data: TypedData) =>
-    popupPromise({
+  const signTypedDataV3 = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData_v3',
     });
+  };
 
-  const signTypedDataV4 = (data: TypedData) =>
-    popupPromise({
+  const signTypedDataV4 = (data: TypedData[]) => {
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/ethSign',
       eventName: 'eth_signTypedData_v4',
     });
+  };
   const getEncryptionPubKey = (address: string) => {
+    if (!address) return cleanErrorStack(ethErrors.rpc.invalidParams());
     const data = { address: address };
     return popupPromise({
       host,
@@ -98,13 +116,16 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const decryptMessage = (data: string[]) =>
-    popupPromise({
+  const decryptMessage = (data: string[]) => {
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
+    return popupPromise({
       host,
       data,
       route: 'tx/decrypt',
       eventName: 'eth_decrypt',
     });
+  };
 
   const send = async (args: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
@@ -153,18 +174,7 @@ export const EthProvider = (host: string) => {
         try {
           return await web3Provider.send(method, params);
         } catch (error) {
-          const errorMsg = {
-            code: -32603,
-            message: 'Internal JSON-RPC error',
-            data: {
-              code: error?.error?.code ? error.error.code : 'No code',
-              data: error?.error?.data ? error.error.data : 'No data',
-              message: error?.error?.message
-                ? error.error.message
-                : 'Invalid Transaction',
-            },
-          };
-          throw errorMsg;
+          throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
         }
     }
   };

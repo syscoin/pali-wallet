@@ -1,7 +1,10 @@
+import { ethErrors } from 'helpers/errors';
+
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { getController } from 'utils/browser';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -45,19 +48,17 @@ export const methodRequest = async (
     methodName !== 'switchEthereumChain' &&
     methodName !== 'getProviderState'
   )
-    throw {
-      code: 4100,
-      message:
-        'The requested account and/or method has not been authorized by the user.',
-    };
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+    //throw {
+      //code: 4100,
+      //message:
+        //'The requested account and/or method has not been authorized by the user.',
+    //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   if (prefix === 'eth' && methodName === 'accounts') {
     return isBitcoinBased
-      ? {
-          code: -32603,
-          message: `Connected to Bitcoin based chain`,
-        }
+      ? cleanErrorStack(ethErrors.rpc.internal())
       : wallet.isUnlocked()
       ? [dapp.getAccount(host).address]
       : [];
@@ -135,11 +136,7 @@ export const methodRequest = async (
         }
         tryingToAdd = true;
       case 'switchEthereumChain':
-        if (isBitcoinBased)
-          return {
-            code: -32603,
-            message: `Connected to Bitcoin based chain`,
-          };
+        if (isBitcoinBased) return cleanErrorStack(ethErrors.rpc.internal());
         const chainId = tryingToAdd
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
@@ -153,12 +150,13 @@ export const methodRequest = async (
             data: { chainId: chainId },
           });
         }
-        return {
-          code: -32603,
-          message: `Unrecognized chain ID 0x${chainId.toString(
-            16
-          )}. Try adding the chain using wallet_addEthereumChain first.`,
-        };
+        return cleanErrorStack(ethErrors.rpc.internal());
+        //return {
+          //code: -32603,
+          //message: `Unrecognized chain ID 0x${chainId.toString(
+            //16
+          //)}. Try adding the chain using wallet_addEthereumChain first.`,
+        //};
       case 'getProviderState':
         const providerState = {
           accounts: dapp.getAccount(host)
@@ -171,11 +169,7 @@ export const methodRequest = async (
         return providerState;
 
       default:
-        throw {
-          code: -32601,
-          message: 'Unknown method',
-          data: { method: data.method, params: data.params },
-        };
+        throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
   }
 
@@ -191,42 +185,25 @@ export const methodRequest = async (
       data: { connectedAccount: dapp.getAccount(host) },
     });
     if (!response) {
-      return {
-        code: -32603,
-        message: `Eth connected account changed, new account ${
-          dapp.getAccount(host).address
-        }`,
-      };
+      return cleanErrorStack(ethErrors.rpc.internal());
     }
-    dapp.setHasWindow(host, false);
+    // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     if (!wallet.isUnlocked()) return false;
-    if (!resp)
-      throw {
-        code: -32600,
-        message: 'Method not Found',
-      };
+    if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased)
-    return {
-      code: -32603,
-      message: `Connected to Bitcoin based chain`,
-    };
+    return cleanErrorStack(ethErrors.rpc.internal());
 
   const provider = SysProvider(host);
   const method = provider[methodName];
 
-  if (!method)
-    throw {
-      code: -32601,
-      message: 'Unknown method',
-      data: { method: data.method, params: data.params },
-    };
+  if (!method) throw cleanErrorStack(ethErrors.rpc.methodNotFound());
 
   if (data.params) return await method(...data.params);
 
@@ -241,10 +218,8 @@ export const enable = async (
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
-    return {
-      code: 4001,
-      message: `Connected to Bitcoin based chain`,
-    };
+    return cleanErrorStack(ethErrors.provider.userRejectedRequest());
+
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
@@ -255,7 +230,8 @@ export const enable = async (
     data: { chain, chainId },
   });
 
-  if (!acceptedRequest) throw { code: 4001, message: 'User Rejected request' };
+  if (!acceptedRequest)
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
 
   return [acceptedRequest.connectedAccount.address];
 };

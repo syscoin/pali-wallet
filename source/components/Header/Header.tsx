@@ -95,18 +95,20 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
               <div className="mt-4">
                 <p className="text-brand-white text-sm">
-                  {` ${
-                    newConnectedAccount ? newConnectedAccount.label : ''
-                  } is not connected.
-                    \
-                    Do you want to switch connection for: ${host} 
-                    \
-                    to current account
-
-                    If you don't switch ${
-                      activeAccount.label
-                    }  will be disconnected`}
+                  <b className="text-gray-400">{host}</b> is connected to{' '}
+                  {newConnectedAccount ? newConnectedAccount.label : ''}. Your
+                  active account is {activeAccount.label}. Would you like to
+                  continue with the active account?
                 </p>
+              </div>
+
+              <div className="mt-4">
+                <span className="text-brand-white text-xs">
+                  If you continue with the active account, Pali will change the
+                  connected account for <b className="text-gray-400">{host}</b>{' '}
+                  to {newConnectedAccount ? newConnectedAccount.label : ''} and
+                  you will need to start the transaction again.
+                </span>
               </div>
 
               <div className="flex gap-5 items-center justify-between mt-8">
@@ -116,7 +118,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   type="button"
                   onClick={() => hanldeDisconnectFromDapp()}
                 >
-                  Disconnect
+                  No, cancel
                 </SecondaryButton>
 
                 <PrimaryButton
@@ -125,7 +127,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   type="button"
                   onClick={() => handleChangeConnectedAccount()}
                 >
-                  Connect account
+                  Yes, continue
                 </PrimaryButton>
               </div>
             </div>
