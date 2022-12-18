@@ -34,7 +34,10 @@ export const isValidChainId = (chainId: unknown): chainId is string =>
  */
 export const isValidNetworkVersion = (
   networkVersion: unknown
-): networkVersion is string =>
-  Boolean(networkVersion) && typeof networkVersion === 'string';
+): networkVersion is number =>
+  Boolean(networkVersion) && typeof networkVersion === 'number';
 
 export const NOOP = () => undefined;
+export const EMITTED_NOTIFICATIONS = Object.freeze([
+  'eth_subscription', // per eth-json-rpc-filters/subscriptionManager
+]);

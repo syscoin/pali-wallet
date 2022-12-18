@@ -3,6 +3,7 @@ import dequal from 'fast-deep-equal';
 
 import messages from './messages';
 import {
+  EMITTED_NOTIFICATIONS,
   getRpcPromiseCallback,
   isValidChainId,
   isValidNetworkVersion,
@@ -129,6 +130,38 @@ export class PaliInpageProvider extends EventEmitter {
           error
         )
       );
+
+    window.addEventListener(
+      'notification',
+      (event: any) => {
+        const { method, params } = event.detail;
+        switch (method) {
+          case 'pali_accountsChanged':
+            this._handleAccountsChanged(params);
+            break;
+          case 'pali_unlockStateChanged':
+            this._handleUnlockStateChanged(params);
+            break;
+          case 'pali_chainChanged':
+            this._handleChainChanged(params);
+            break;
+          case EMITTED_NOTIFICATIONS.includes(method):
+            //TODO: implement subscription messages
+            throw {
+              code: 69,
+              message: 'Pali: Does not yet have subscription to rpc methods',
+            };
+          default:
+            this._handleDisconnect(
+              false,
+              messages.errors.permanentlyDisconnected()
+            );
+        }
+      },
+      {
+        passive: true,
+      }
+    );
   }
 
   //====================

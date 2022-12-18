@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
+import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
 const emitter = new EventEmitter();
 
 // Connect to pali
@@ -73,20 +74,16 @@ const start = () => {
   });
 };
 
-const setDappNetworkProvider = (networkVersion?: any, chainId?: any) => {
-  if (networkVersion && chainId) {
-    return;
+const startEventEmitter = () => {
+  for (const ev in PaliEvents) {
+    emitter.on(ev, (result) => {
+      console.log('Checking event emission PaliEmitter:', ev, result);
+      window.dispatchEvent(
+        new CustomEvent('notification', { detail: JSON.stringify(result) })
+      );
+    });
   }
-  throw {
-    code: 500,
-    message: 'Couldnt fetch chainId and networkVersion',
-  };
 };
-
-browser.runtime.onMessage.addListener(({ type, data }) => {
-  if (type === 'CHAIN_CHANGED')
-    setDappNetworkProvider(data.networkVersion, data.chainId);
-});
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
@@ -167,3 +164,4 @@ if (shouldInjectProvider()) {
   injectScriptFile('js/inpage.bundle.js');
 }
 start();
+startEventEmitter();
