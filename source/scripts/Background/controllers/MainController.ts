@@ -80,9 +80,10 @@ const MainController = (): IMainController => {
 
     store.dispatch(setLastLogin());
     store.dispatch(setActiveAccount(mainAccount));
-    window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
-      lockState: '2',
-    });
+    //TODO: Find better solution to handle state unlock
+    // window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
+    //   lockState: '2',
+    // });
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -112,9 +113,10 @@ const MainController = (): IMainController => {
     keyringManager.logout();
 
     store.dispatch(setLastLogin());
-    window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
-      lockState: '1',
-    });
+    //TODO: Find better solution to handle state lock
+    // window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
+    //   lockState: '1',
+    // });
   };
 
   const createAccount = async (

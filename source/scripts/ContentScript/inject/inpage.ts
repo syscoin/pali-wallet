@@ -9,7 +9,7 @@ declare global {
     SUPPORTED_WALLET_METHODS: any;
     SyscoinInstalled: any;
     beterraba: Readonly<PaliInpageProvider>;
-    ethereum: Readonly<any>;
+    ethereum: any;
     pali: Readonly<any>;
   }
 }
@@ -76,16 +76,16 @@ const Oldproxy = (type, data?) =>
           return;
         }
 
-        // if (
-        //   data.method === 'eth_requestAccounts' ||
-        //   data.method === 'eth_accounts'
-        // ) {
-        //   //TODO: enhance this implementation
-        //   let addr = event.detail.replace('[', '');
-        //   addr = addr.replace(']', '');
-        //   addr = addr.replaceAll('"', '');
-        //   // window.ethereum.selectedAddress = addr;
-        // }
+        if (
+          data.method === 'eth_requestAccounts' ||
+          data.method === 'eth_accounts'
+        ) {
+          //TODO: enhance this implementation
+          let addr = event.detail.replace('[', '');
+          addr = addr.replace(']', '');
+          addr = addr.replaceAll('"', '');
+          window.ethereum.selectedAddress = addr;
+        }
         resolve(response);
 
         return response;

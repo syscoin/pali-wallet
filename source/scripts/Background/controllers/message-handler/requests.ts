@@ -23,7 +23,6 @@ export const methodRequest = async (
 
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-
   if (data.method) {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
@@ -41,7 +40,11 @@ export const methodRequest = async (
     return await enable(host, undefined, undefined);
   }
 
-  if (!isRequestAllowed && methodName !== 'switchEthereumChain')
+  if (
+    !isRequestAllowed &&
+    methodName !== 'switchEthereumChain' &&
+    methodName !== 'getProviderState'
+  )
     throw {
       code: 4100,
       message:
@@ -156,6 +159,16 @@ export const methodRequest = async (
             16
           )}. Try adding the chain using wallet_addEthereumChain first.`,
         };
+      case 'getProviderState':
+        const providerState = {
+          accounts: dapp.getAccount(host)
+            ? [dapp.getAccount(host).address]
+            : [],
+          chainId: activeNetwork.chainId.toString(16),
+          isUnlocked: wallet.isUnlocked(),
+          networkVersion: activeNetwork.chainId,
+        };
+        return providerState;
 
       default:
         throw {
