@@ -68,7 +68,7 @@ module.exports = {
       'lib/index.js'
     ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
-    inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/index.ts'),
+    inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
     external: path.join(sourcePath, 'pages/External', 'index.tsx'),

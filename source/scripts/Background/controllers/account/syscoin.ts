@@ -109,10 +109,11 @@ const SysAccountController = (): ISysAccountController => {
       })
     );
 
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountUpdate,
-      removeXprv(accounts[accountId])
-    );
+    if (isBitcoinBased)
+      window.controller.dapp.dispatchEvent(
+        DAppEvents.accountUpdate,
+        removeXprv(accounts[accountId])
+      );
   };
 
   /** check if there is no pending transaction in mempool

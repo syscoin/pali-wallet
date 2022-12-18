@@ -4,7 +4,7 @@ export type Message = {
   id: string;
   type: string;
 };
-
+//TODO: after refactor is complete completely remove DAppEvents
 export enum DAppEvents {
   /**
    * The active account received an update
@@ -17,6 +17,12 @@ export enum DAppEvents {
   chainChanged = 'chainChanged',
   connect = 'connect',
   disconnect = 'disconnect',
+}
+//TODO: addtype for rpc subscription notifications here
+export enum PaliEvents {
+  accountsChanged = 'pali_accountsChanged',
+  chainChanged = 'pali_chainChanged',
+  lockStateChanged = 'pali_unlockStateChanged',
 }
 
 // TODO review dapp methods

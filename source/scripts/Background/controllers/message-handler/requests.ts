@@ -26,7 +26,6 @@ export const methodRequest = async (
 
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-
   if (data.method) {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
@@ -44,8 +43,17 @@ export const methodRequest = async (
     return await enable(host, undefined, undefined);
   }
 
-  if (!isRequestAllowed && methodName !== 'switchEthereumChain')
+  if (
+    !isRequestAllowed &&
+    methodName !== 'switchEthereumChain' &&
+    methodName !== 'getProviderState'
+  )
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+    //throw {
+      //code: 4100,
+      //message:
+        //'The requested account and/or method has not been authorized by the user.',
+    //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -143,6 +151,22 @@ export const methodRequest = async (
           });
         }
         return cleanErrorStack(ethErrors.rpc.internal());
+        //return {
+          //code: -32603,
+          //message: `Unrecognized chain ID 0x${chainId.toString(
+            //16
+          //)}. Try adding the chain using wallet_addEthereumChain first.`,
+        //};
+      case 'getProviderState':
+        const providerState = {
+          accounts: dapp.getAccount(host)
+            ? [dapp.getAccount(host).address]
+            : [],
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          isUnlocked: wallet.isUnlocked(),
+          networkVersion: activeNetwork.chainId,
+        };
+        return providerState;
 
       default:
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
