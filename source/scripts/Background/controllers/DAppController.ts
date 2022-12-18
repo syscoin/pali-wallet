@@ -50,9 +50,10 @@ const DAppController = (): IDAppController => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts } = store.getState().vault;
     _dapps[dapp.host].activeAddress = accounts[dapp.accountId].address;
-    _dispatchEvent(dapp.host, DAppEvents.connect, {
-      connectedAccount: getAccount(dapp.host),
-    });
+    //TODO: check further connect function, ethereum EIP1193 asks only to dispatch connect event when provider becomes available not when wallet connects to dapp
+    // _dispatchEvent(dapp.host, DAppEvents.connect, {
+    //   connectedAccount: getAccount(dapp.host),
+    // });
   };
 
   const requestPermissions = (host: string, accountId: number) => {

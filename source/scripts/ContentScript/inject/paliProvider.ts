@@ -4,8 +4,8 @@ import dequal from 'fast-deep-equal';
 import messages from './messages';
 import {
   getRpcPromiseCallback,
-  // isValidChainId,
-  // isValidNetworkVersion,
+  isValidChainId,
+  isValidNetworkVersion,
 } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -69,10 +69,10 @@ export class PaliInpageProvider {
     this.chainType = chainType;
     this._metamask = this._getExperimentalApi();
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
-    // this._handleConnect = this._handleConnect.bind(this);
-    // this._handleChainChanged = this._handleChainChanged.bind(this);
-    // this._handleDisconnect = this._handleDisconnect.bind(this);
-    // this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
+    this._handleConnect = this._handleConnect.bind(this);
+    this._handleChainChanged = this._handleChainChanged.bind(this);
+    this._handleDisconnect = this._handleDisconnect.bind(this);
+    this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
     this.request({ method: 'wallet_getProviderState' })
@@ -166,13 +166,9 @@ export class PaliInpageProvider {
   //====================
 
   /**
-   * **MUST** be called by child classes.
    *
    * Sets initial state if provided and marks this provider as initialized.
    * Throws if called more than once.
-   *
-   * Permits the `networkVersion` field in the parameter object for
-   * compatibility with child classes that use this value.
    *
    * @param initialState - The provider's initial state.
    * @emits BaseProvider#_initialized
@@ -192,9 +188,9 @@ export class PaliInpageProvider {
       const { accounts, chainId, isUnlocked, networkVersion } = initialState;
 
       // EIP-1193 connect
-      // this._handleConnect(chainId);
-      // this._handleChainChanged({ chainId, networkVersion });
-      // this._handleUnlockStateChanged({ accounts, isUnlocked });
+      this._handleConnect(chainId);
+      this._handleChainChanged({ chainId, networkVersion });
+      this._handleUnlockStateChanged({ accounts, isUnlocked });
       this._handleAccountsChanged(accounts);
     }
 
@@ -342,14 +338,139 @@ export class PaliInpageProvider {
       }
     }
   }
+  /**
+   * When the provider becomes connected, updates internal state and emits
+   * required events. Idempotent.
+   *
+   * @param chainId - The ID of the newly connected chain.
+   * @emits PaliInpageProvider#connect
+   */
+  private _handleConnect(chainId: string) {
+    if (!this._state.isConnected) {
+      this._state.isConnected = true;
+      this.emitter.emit('connect', { chainId });
+      console.debug(messages.info.connected(chainId));
+    }
+  }
 
-  protected _getExperimentalApi() {
+  /**
+   * Upon receipt of a new `chainId`, emits the corresponding event and sets
+   * and sets relevant public state. Does nothing if the given `chainId` is
+   * equivalent to the existing value.
+   *
+   * Permits the `networkVersion` field in the parameter object for
+   * compatibility with child classes that use this value.
+   *
+   * @emits BaseProvider#chainChanged
+   * @param networkInfo - An object with network info.
+   * @param networkInfo.chainId - The latest chain ID.
+   */
+  private _handleChainChanged({
+    chainId,
+    networkVersion,
+  }: { chainId?: string; networkVersion?: string } = {}) {
+    if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
+      console.error(messages.errors.invalidNetworkParams(), {
+        chainId,
+        networkVersion,
+      });
+      return;
+    }
+    if (networkVersion === 'loading') {
+      this._handleDisconnect(true);
+      return;
+    }
+
+    this._handleConnect(chainId);
+
+    if (chainId !== this.chainId) {
+      this.chainId = chainId;
+      this.networkVersion = networkVersion;
+      if (this._state.initialized) {
+        this.emitter.emit('chainChanged', this.chainId);
+      }
+    }
+  }
+
+  /**
+   * When the provider becomes disconnected, updates internal state and emits
+   * required events. Idempotent with respect to the isRecoverable parameter.
+   *
+   * Error codes per the CloseEvent status codes as required by EIP-1193:
+   * https://developer.mozilla.org/en-US/docs/Web/API/CloseEvent#Status_codes
+   *
+   * @param isRecoverable - Whether the disconnection is recoverable.
+   * @param errorMessage - A custom error message.
+   * @emits BaseProvider#disconnect
+   */
+  private _handleDisconnect(isRecoverable: boolean, errorMessage?: string) {
+    if (
+      this._state.isConnected ||
+      (!this._state.isPermanentlyDisconnected && !isRecoverable)
+    ) {
+      this._state.isConnected = false;
+
+      let error;
+      if (isRecoverable) {
+        //TODO: refactor error messages to use EthereumRpcError
+        error = {
+          code: 1013, // Try again later
+          message: errorMessage || messages.errors.disconnected(),
+        };
+        console.debug(error);
+      } else {
+        error = {
+          code: 1011, // Internal error
+          message: errorMessage || messages.errors.permanentlyDisconnected(),
+        };
+        console.error(error);
+        this.chainId = null;
+        this.networkVersion = null;
+        this._state.accounts = null;
+        this.selectedAddress = null;
+        this._state.isUnlocked = false;
+        this._state.isPermanentlyDisconnected = true;
+      }
+
+      this.emitter.emit('disconnect', error);
+    }
+  }
+  /**
+   * Upon receipt of a new isUnlocked state, sets relevant public state.
+   * Calls the accounts changed handler with the received accounts, or an empty
+   * array.
+   *
+   * Does nothing if the received value is equal to the existing value.
+   * There are no lock/unlock events.
+   *
+   * @param opts - Options bag.
+   * @param opts.accounts - The exposed accounts, if any.
+   * @param opts.isUnlocked - The latest isUnlocked value.
+   */
+  private _handleUnlockStateChanged({
+    accounts,
+    isUnlocked,
+  }: { accounts?: string[]; isUnlocked?: boolean } = {}) {
+    if (typeof isUnlocked !== 'boolean') {
+      console.error(
+        'Pali: Received invalid isUnlocked parameter. Please report this bug.'
+      );
+      return;
+    }
+
+    if (isUnlocked !== this._state.isUnlocked) {
+      this._state.isUnlocked = isUnlocked;
+      this._handleAccountsChanged(accounts || []);
+    }
+  }
+
+  private _getExperimentalApi() {
     return new Proxy(
       {
         /**
-         * Determines if MetaMask is unlocked by the user.
+         * Determines if Pali is unlocked by the user.
          *
-         * @returns Promise resolving to true if MetaMask is currently unlocked
+         * @returns Promise resolving to true if Pali is currently unlocked
          */
         isUnlocked: async () => {
           if (!this._state.initialized) {
