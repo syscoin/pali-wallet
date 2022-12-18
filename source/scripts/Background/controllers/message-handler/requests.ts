@@ -160,7 +160,6 @@ export const methodRequest = async (
           )}. Try adding the chain using wallet_addEthereumChain first.`,
         };
       case 'getProviderState':
-        console.log('ProviderState', `0x${activeNetwork.chainId.toString(16)}`);
         const providerState = {
           accounts: dapp.getAccount(host)
             ? [dapp.getAccount(host).address]

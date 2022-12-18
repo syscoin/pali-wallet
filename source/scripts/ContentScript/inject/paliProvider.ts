@@ -8,6 +8,23 @@ import {
   isValidNetworkVersion,
 } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
+type WarningEventName = keyof SentWarningsState['events'];
+// eslint-disable-next-line @typescript-eslint/naming-convention
+interface SentWarningsState {
+  // methods
+  disable: boolean;
+  enable: boolean;
+  // events
+  events: {
+    close: boolean;
+    data: boolean;
+    networkChanged: boolean;
+    notification: boolean;
+  };
+  // methods
+  experimentalMethods: boolean;
+  send: boolean;
+}
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface BaseProviderState {
   accounts: null | string[];
@@ -30,9 +47,13 @@ export interface UnvalidatedJsonRpcRequest {
   method: string;
   params?: unknown;
 }
-
-export class PaliInpageProvider {
-  emitter: EventEmitter;
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export interface EnableLegacyPali {
+  chain: string;
+  chainId?: unknown;
+}
+//TODO: switch to SafeEventEmitter
+export class PaliInpageProvider extends EventEmitter {
   public readonly _metamask: ReturnType<
     PaliInpageProvider['_getExperimentalApi']
   >;
@@ -41,26 +62,46 @@ export class PaliInpageProvider {
   public chainId: string | null;
   public selectedAddress: string | null;
   public wallet: string;
-  protected static _defaultState: BaseProviderState = {
+  private static _defaultState: BaseProviderState = {
     accounts: null,
     isConnected: false,
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
   };
-  protected _state: BaseProviderState;
+  private _state: BaseProviderState;
+  private _sentWarnings: SentWarningsState = {
+    // methods
+    enable: false,
+    disable: false,
+    experimentalMethods: false,
+    send: false,
+    // events
+    events: {
+      close: false,
+      data: false,
+      networkChanged: false,
+      notification: false,
+    },
+  };
 
   /**
    * Indicating that this provider is a MetaMask provider.
    */
-  public readonly isMetaMask: true;
+  public readonly isMetaMask: boolean = true;
+  public readonly version: number | null = null;
   constructor(chainType, maxEventListeners = 100, wallet = 'pali-v2') {
-    this.emitter = new EventEmitter();
-    this.emitter.setMaxListeners(maxEventListeners);
+    super();
+    this.setMaxListeners(maxEventListeners);
     // Private state
     this._state = {
       ...PaliInpageProvider._defaultState,
     };
+    if (chainType === 'syscoin') {
+      //TODO: in case of syscoin chain nulify ethereum variables
+      this.isMetaMask = false;
+      this.version = 2;
+    }
     // Public state
     this.selectedAddress = null;
     this.chainId = null;
@@ -160,7 +201,88 @@ export class PaliInpageProvider {
       );
     });
   }
+  /**
+   * We override the following event methods so that we can warn consumers
+   * about deprecated events:
+   *   addListener, on, once, prependListener, prependOnceListener
+   */
+  public addListener(
+    eventName: string,
+    listener: (...args: unknown[]) => void
+  ) {
+    this._warnOfDeprecation(eventName);
+    return this.addListener(eventName, listener);
+  }
 
+  public on(eventName: string, listener: (...args: unknown[]) => void) {
+    this._warnOfDeprecation(eventName);
+    return this.on(eventName, listener);
+  }
+
+  public once(eventName: string, listener: (...args: unknown[]) => void) {
+    this._warnOfDeprecation(eventName);
+    return this.once(eventName, listener);
+  }
+
+  public prependListener(
+    eventName: string,
+    listener: (...args: unknown[]) => void
+  ) {
+    this._warnOfDeprecation(eventName);
+    return this.prependListener(eventName, listener);
+  }
+
+  public prependOnceListener(
+    eventName: string,
+    listener: (...args: unknown[]) => void
+  ) {
+    this._warnOfDeprecation(eventName);
+    return this.prependOnceListener(eventName, listener);
+  }
+
+  /**
+   * Equivalent to: ethereum.request('eth_requestAccounts')
+   *
+   * @deprecated Use request({ method: 'eth_requestAccounts' }) instead.
+   * @returns A promise that resolves to an array of addresses.
+   */
+  //TODO: properly deprecate enable and change implementation on background of it
+  public async enable(): Promise<string[]> {
+    if (!this._sentWarnings.enable) {
+      console.warn(messages.warnings.enableDeprecation);
+      this._sentWarnings.enable = true;
+    }
+
+    return new Promise<string[]>(async (resolve, reject) => {
+      try {
+        const acc: string[] = (await this.proxy('ENABLE', {
+          chain: this.chainType,
+          chainId: this.chainType === 'ethereum' ? '0x01' : '0x57',
+        })) as string[];
+        resolve(acc);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+  //TODO: properly deprecate disable and change implementation on background of it
+  public async disable(): Promise<string[]> {
+    if (!this._sentWarnings.disable) {
+      console.warn(messages.warnings.enableDeprecation);
+      this._sentWarnings.enable = true;
+    }
+    return new Promise<string[]>(async (resolve, reject) => {
+      try {
+        const acc: string[] = (await this.proxy('DISABLE', {
+          chain: this.chainType,
+          chainId: this.chainType === 'ethereum' ? '0x01' : '0x57',
+        })) as string[];
+        resolve(acc);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
   //====================
   // Private Methods
   //====================
@@ -197,7 +319,7 @@ export class PaliInpageProvider {
     // Mark provider as initialized regardless of whether initial state was
     // retrieved.
     this._state.initialized = true;
-    this.emitter.emit('_initialized');
+    this.emit('_initialized');
   }
   private async _rpcRequest(
     payload: UnvalidatedJsonRpcRequest | UnvalidatedJsonRpcRequest[], //TODO: refactor to accept incoming batched requests
@@ -237,7 +359,10 @@ export class PaliInpageProvider {
     };
     return callback(error, result);
   }
-  private proxy = (type: string, data: UnvalidatedJsonRpcRequest) =>
+  private proxy = (
+    type: string,
+    data: UnvalidatedJsonRpcRequest | EnableLegacyPali
+  ) =>
     new Promise((resolve, reject) => {
       const id = Date.now() + '.' + Math.random();
 
@@ -245,7 +370,7 @@ export class PaliInpageProvider {
         id,
         (event: any) => {
           //TODO: Add proper event for our event handling methods
-          console.log('[Pali] EventListener method', data.method, event.detail);
+          console.log('[Pali] EventListener method', data, event.detail);
           if (event.detail === undefined) {
             resolve(undefined);
           } else if (event.detail === null) {
@@ -260,17 +385,6 @@ export class PaliInpageProvider {
           }
           if (response.error) {
             reject(response.error); //TODO all the errors function needs to be refactored this part should not add new Error on response rejection
-          }
-
-          if (
-            data.method === 'eth_requestAccounts' ||
-            data.method === 'eth_accounts'
-          ) {
-            //TODO: enhance this implementation
-            let addr = event.detail.replace('[', '');
-            addr = addr.replace(']', '');
-            addr = addr.replaceAll('"', '');
-            this.selectedAddress = addr;
           }
           resolve(response);
         },
@@ -334,7 +448,7 @@ export class PaliInpageProvider {
 
       // finally, after all state has been updated, emit the event
       if (this._state.initialized) {
-        this.emitter.emit('accountsChanged', _accounts);
+        this.emit('accountsChanged', _accounts);
       }
     }
   }
@@ -348,7 +462,7 @@ export class PaliInpageProvider {
   private _handleConnect(chainId: string) {
     if (!this._state.isConnected) {
       this._state.isConnected = true;
-      this.emitter.emit('connect', { chainId });
+      this.emit('connect', { chainId });
       console.debug(messages.info.connected(chainId));
     }
   }
@@ -387,7 +501,7 @@ export class PaliInpageProvider {
       this.chainId = chainId;
       this.networkVersion = networkVersion;
       if (this._state.initialized) {
-        this.emitter.emit('chainChanged', this.chainId);
+        this.emit('chainChanged', this.chainId);
       }
     }
   }
@@ -432,7 +546,7 @@ export class PaliInpageProvider {
         this._state.isPermanentlyDisconnected = true;
       }
 
-      this.emitter.emit('disconnect', error);
+      this.emit('disconnect', error);
     }
   }
   /**
@@ -463,6 +577,12 @@ export class PaliInpageProvider {
       this._handleAccountsChanged(accounts || []);
     }
   }
+  private _warnOfDeprecation(eventName: string): void {
+    if (this._sentWarnings?.events[eventName as WarningEventName] === false) {
+      console.warn(messages.warnings.events[eventName as WarningEventName]);
+      this._sentWarnings.events[eventName as WarningEventName] = true;
+    }
+  }
 
   private _getExperimentalApi() {
     return new Proxy(
@@ -475,7 +595,7 @@ export class PaliInpageProvider {
         isUnlocked: async () => {
           if (!this._state.initialized) {
             await new Promise<void>((resolve) => {
-              this.emitter.on('_initialized', () => resolve());
+              this.on('_initialized', () => resolve());
             });
           }
           return this._state.isUnlocked;

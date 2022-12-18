@@ -96,11 +96,10 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (host: string) => {
-    // after disconnecting, the event would not be sent
     _dapps[host].activeAddress = null;
-    _dispatchEvent(host, 'accountsChanged', [_dapps[host].activeAddress]);
-
+    // _dispatchEvent(host, 'accountsChanged', [_dapps[host].activeAddress]);
     store.dispatch(removeDApp(host));
+    return [] as string[];
   };
 
   const changeNetwork = (chainId: number) => {
