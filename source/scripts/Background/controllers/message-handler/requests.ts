@@ -49,11 +49,11 @@ export const methodRequest = async (
     methodName !== 'getProviderState'
   )
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-    //throw {
-      //code: 4100,
-      //message:
-        //'The requested account and/or method has not been authorized by the user.',
-    //};
+  //throw {
+  //code: 4100,
+  //message:
+  //'The requested account and/or method has not been authorized by the user.',
+  //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -151,12 +151,12 @@ export const methodRequest = async (
           });
         }
         return cleanErrorStack(ethErrors.rpc.internal());
-        //return {
-          //code: -32603,
-          //message: `Unrecognized chain ID 0x${chainId.toString(
-            //16
-          //)}. Try adding the chain using wallet_addEthereumChain first.`,
-        //};
+      //return {
+      //code: -32603,
+      //message: `Unrecognized chain ID 0x${chainId.toString(
+      //16
+      //)}. Try adding the chain using wallet_addEthereumChain first.`,
+      //};
       case 'getProviderState':
         const providerState = {
           accounts: dapp.getAccount(host)
