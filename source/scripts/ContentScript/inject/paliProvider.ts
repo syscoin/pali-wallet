@@ -239,39 +239,39 @@ export class PaliInpageProvider extends EventEmitter {
    * about deprecated events:
    *   addListener, on, once, prependListener, prependOnceListener
    */
-  public addListener(
-    eventName: string,
-    listener: (...args: unknown[]) => void
-  ) {
-    this._warnOfDeprecation(eventName);
-    return this.addListener(eventName, listener);
-  }
+  // public addListener(
+  //   eventName: string,
+  //   listener: (...args: unknown[]) => void
+  // ) {
+  //   this._warnOfDeprecation(eventName);
+  //   return this.addListener(eventName, listener);
+  // }
 
-  public on(eventName: string, listener: (...args: unknown[]) => void) {
-    this._warnOfDeprecation(eventName);
-    return this.on(eventName, listener);
-  }
+  // public on(eventName: string, listener: (...args: unknown[]) => void) {
+  //   this._warnOfDeprecation(eventName);
+  //   return this.on(eventName, listener);
+  // }
 
-  public once(eventName: string, listener: (...args: unknown[]) => void) {
-    this._warnOfDeprecation(eventName);
-    return this.once(eventName, listener);
-  }
+  // public once(eventName: string, listener: (...args: unknown[]) => void) {
+  //   this._warnOfDeprecation(eventName);
+  //   return this.once(eventName, listener);
+  // }
 
-  public prependListener(
-    eventName: string,
-    listener: (...args: unknown[]) => void
-  ) {
-    this._warnOfDeprecation(eventName);
-    return this.prependListener(eventName, listener);
-  }
+  // public prependListener(
+  //   eventName: string,
+  //   listener: (...args: unknown[]) => void
+  // ) {
+  //   this._warnOfDeprecation(eventName);
+  //   return this.prependListener(eventName, listener);
+  // }
 
-  public prependOnceListener(
-    eventName: string,
-    listener: (...args: unknown[]) => void
-  ) {
-    this._warnOfDeprecation(eventName);
-    return this.prependOnceListener(eventName, listener);
-  }
+  // public prependOnceListener(
+  //   eventName: string,
+  //   listener: (...args: unknown[]) => void
+  // ) {
+  //   this._warnOfDeprecation(eventName);
+  //   return this.prependOnceListener(eventName, listener);
+  // }
 
   /**
    * Equivalent to: ethereum.request('eth_requestAccounts')

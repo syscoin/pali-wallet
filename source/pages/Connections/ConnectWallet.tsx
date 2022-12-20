@@ -12,12 +12,12 @@ import {
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
   const { dapp, wallet } = getController();
-  const { host, chain, chainId } = useQueryData();
+  const { host, chain, chainId, eventName } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const currentAccountId = dapp.get(host)?.accountId;
@@ -30,6 +30,10 @@ export const ConnectWallet = () => {
     const date = Date.now();
     dapp.connect({ host, chain, chainId, accountId, date });
     wallet.setAccount(accountId);
+    dispatchBackgroundEvent(
+      `${eventName}.${host}`,
+      dapp.getAccount(host).address
+    );
     window.close();
   };
 
@@ -42,6 +46,10 @@ export const ConnectWallet = () => {
   useEffect(() => {
     if (dapp.isConnected(host) && isUnlocked) {
       dapp.connect({ host, chain, chainId, accountId, date: 0 }, true);
+      dispatchBackgroundEvent(
+        `${eventName}.${host}`,
+        dapp.getAccount(host).address
+      );
       window.close();
     }
   }, [isUnlocked]);

@@ -202,25 +202,27 @@ window.pali = Object.freeze({
   disable: () => Oldproxy('DISABLE'),
   _listeners: {},
 });
+// Uncomment this section for the oldProvider style:
 
-window.ethereum = {
-  isMetaMask: true, //Provisory just for make testing easier
-  _metamask: {
-    isUnlocked: () => isUnlocked(),
-  },
-  wallet: 'pali-v2',
-  request,
-  on,
-  chainId: undefined,
-  networkVersion: undefined,
-  selectedAddress: null,
-  removeListener,
-  isConnected: () => request({ method: 'wallet_isConnected' }),
-  enable: () => Oldproxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
-  disable: () => Oldproxy('DISABLE'),
-  _listeners: {},
-};
+// window.ethereum = {
+//   isMetaMask: true, //Provisory just for make testing easier
+//   _metamask: {
+//     isUnlocked: () => isUnlocked(),
+//   },
+//   wallet: 'pali-v2',
+//   request,
+//   on,
+//   chainId: undefined,
+//   networkVersion: undefined,
+//   selectedAddress: null,
+//   removeListener,
+//   isConnected: () => request({ method: 'wallet_isConnected' }),
+//   enable: () => Oldproxy('ENABLE', { chain: 'ethereum', chainId: '0x01' }),
+//   disable: () => Oldproxy('DISABLE'),
+//   _listeners: {},
+// };
 
-window.beterraba = new PaliInpageProvider('ethereum');
+window.ethereum = new PaliInpageProvider('ethereum');
+// window.beterraba = new PaliInpageProvider('ethereum');
 
 export const { SUPPORTED_WALLET_METHODS } = window;
