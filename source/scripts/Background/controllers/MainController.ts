@@ -8,7 +8,13 @@ import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc, web3Provider } from '@pollum-io/sysweb3-network';
+import {
+  getSysRpc,
+  getEthRpc,
+  web3Provider,
+  validateSysRpc,
+  validateEthRpc,
+} from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -251,11 +257,11 @@ const MainController = (): IMainController => {
   const resolveError = () => store.dispatch(setStoreError(false));
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const { formattedNetwork } = data.isSyscoinRpc
+    const response = data.isSyscoinRpc
       ? await getSysRpc(data)
       : await getEthRpc(data);
 
-    return formattedNetwork;
+    return response.formattedNetwork;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
@@ -263,31 +269,67 @@ const MainController = (): IMainController => {
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
-    store.dispatch(setNetworks({ chain, network }));
+    delete data.isSyscoinRpc;
 
-    return network;
+    const newNetwork = {
+      ...network,
+      ...data,
+    };
+
+    store.dispatch(setNetworks({ chain, network: newNetwork }));
+
+    return newNetwork;
   };
 
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
-    const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await getRpc(newRpc);
-
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    const { chainId } = await getRpc(newRpc);
 
-    if (changedChainId) {
-      store.dispatch(
-        removeNetwork({
-          chainId: oldRpc.chainId,
-          prefix: chain,
-        })
-      );
+    if (chainId !== newRpc.chainId)
+      throw new Error('RPC invalid. Endpoint returned a different Chain ID.');
+
+    try {
+      newRpc.isSyscoinRpc
+        ? await validateSysRpc(newRpc.url)
+        : await validateEthRpc(newRpc.url);
+
+      if (oldRpc.chainId !== newRpc.chainId) {
+        store.dispatch(
+          removeNetwork({
+            chainId: oldRpc.chainId,
+            prefix: chain,
+          })
+        );
+
+        return await addCustomRpc(newRpc);
+      }
+
+      delete newRpc.isSyscoinRpc;
+
+      const { networks } = store.getState().vault;
+
+      const existentRpc = networks[chain][Number(newRpc.chainId)];
+
+      if (existentRpc) {
+        const edited = {
+          ...existentRpc,
+          ...newRpc,
+        };
+
+        store.dispatch(setNetwork(edited));
+
+        return edited;
+      }
+
+      store.dispatch(setNetworks({ chain, network: newRpc }));
+
+      return newRpc;
+    } catch (error) {
+      throw new Error('RPC URL is not valid for this Chain ID.');
     }
-    store.dispatch(setNetworks({ chain, network }));
-
-    return network;
   };
 
   const removeKeyringNetwork = (chain: string, chainId: number) => {
