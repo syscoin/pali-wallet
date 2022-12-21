@@ -212,4 +212,32 @@ describe('main controller tests', () => {
     // assert MOCK_XPRV
     // use MOCK_SEED_PHRASE
   });
+
+  it('should create a new wallet and login using a different seed', () => {
+    // todo
+  });
+
+  it('should import a new wallet and login using a different seed', () => {
+    // todo
+  });
+
+  it('should create a new wallet, forget it and create a new one using a different seed', () => {
+    // todo
+  });
+
+  it('should create a new wallet, forget it and import a new one using a different seed', () => {
+    // todo
+  });
+
+  it('should create a new wallet, forget it and import a new one using the same seed', () => {
+    // todo
+  });
+
+  it('should unlock the wallet', () => {
+    // todo
+  });
+
+  it('should set the active account', () => {
+    // todo
+  });
 });
