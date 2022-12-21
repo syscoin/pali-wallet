@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV === 'test') {
+  chrome.runtime.id = 'testid';
+}
+
 import { browser } from 'webextension-polyfill-ts';
 
 import {
@@ -64,7 +68,7 @@ const MainController = (): IMainController => {
     const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
     const { assets: currentAssets } = activeAccount;
 
-    const { assets, ...keyringAccount } = account;
+    const keyringAccount = account;
 
     const mainAccount = { ...keyringAccount, assets: currentAssets };
 
@@ -320,6 +324,7 @@ const MainController = (): IMainController => {
     resolveError,
     getRecommendedFee,
     getNetworkData,
+    getRpc,
     ...keyringManager,
   };
 };
