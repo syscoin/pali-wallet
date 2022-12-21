@@ -143,12 +143,8 @@ const DAppController = (): IDAppController => {
     if (!hasListener(host, eventName)) return;
     if (!isConnected(host)) return;
 
-    console.log({ host, eventName, data, event });
-
     // post the event to the DApp
     const id = `${host}.${eventName}`;
-
-    console.log({ id });
 
     _dapps[host].port.postMessage({ id, data });
   };

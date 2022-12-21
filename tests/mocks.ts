@@ -59,3 +59,75 @@ export const STATE_W_ACCOUNT: IVaultState = {
   ...initialState,
   accounts: { [MOCK_ACCOUNT.id]: MOCK_ACCOUNT },
 };
+
+export const VALID_GET_NETWORK_DATA_RESPONSE = {
+  chainId: '0x39',
+  networkVersion: '57',
+};
+
+export const CUSTOM_UTXO_RPC_VALID_PAYLOAD = {
+  label: 'test custom litecoin rpc',
+  chainId: 2,
+  isSyscoinRpc: true,
+  url: 'https://blockbook-litecoin.binancechain.io/',
+};
+
+export const VALID_GET_UTXO_RPC_RESPONSE = {
+  url: 'https://blockbook-litecoin.binancechain.io/',
+  apiUrl: 'https://blockbook-litecoin.binancechain.io/',
+  explorer: 'https://blockbook-litecoin.binancechain.io/',
+  currency: 'ltc',
+  label: 'Litecoin',
+  default: false,
+  chainId: 2,
+};
+
+export const VALID_GET_WEB3_RPC_RESPONSE = {
+  url: 'https://mainnet.optimism.io',
+  apiUrl: undefined,
+  explorer: 'https://optimistic.etherscan.io',
+  currency: 'ETH',
+  label: 'test custom optimism rpc',
+  default: false,
+  chainId: 10,
+};
+
+export const CUSTOM_WEB3_RPC_VALID_PAYLOAD = {
+  label: 'test custom optimism rpc',
+  chainId: 10,
+  isSyscoinRpc: false,
+  url: 'https://mainnet.optimism.io',
+};
+
+export const CUSTOM_WEB3_ID_INVALID_PAYLOAD = {
+  label: 'custom web3 rpc payload with invalid chain id',
+  chainId: 10,
+  isSyscoinRpc: false,
+  url: 'https://arb1.arbitrum.io/rpc',
+};
+
+export const CUSTOM_WEB3_URL_INVALID_PAYLOAD = {
+  label: 'custom web3 rpc payload with invalid url',
+  chainId: 42161,
+  isSyscoinRpc: false,
+  url: 'https://arb1.arbitrum.io',
+};
+
+export const VALID_INITIAL_CUSTOM_RPC = {
+  label: 'initial custom rpc',
+  chainId: 10,
+  isSyscoinRpc: false,
+  url: 'https://mainnet.optimism.io',
+};
+
+export const VALID_EDITED_CUSTOM_RPC = {
+  label: 'edited custom arbitrum rpc',
+  chainId: 42161,
+  isSyscoinRpc: false,
+  url: 'https://arb1.arbitrum.io/rpc',
+};
+
+const { chainId: initialId } = VALID_INITIAL_CUSTOM_RPC;
+const { chainId: editedId } = VALID_EDITED_CUSTOM_RPC;
+
+export const NEW_VALID_CHAIN_ID = editedId !== initialId ? initialId : editedId;

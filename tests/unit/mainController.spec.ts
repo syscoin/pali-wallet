@@ -8,6 +8,17 @@
 //   validateEthRpc,
 // } from '@pollum-io/sysweb3-network';
 
+import {
+  CUSTOM_UTXO_RPC_VALID_PAYLOAD,
+  CUSTOM_WEB3_ID_INVALID_PAYLOAD,
+  VALID_INITIAL_CUSTOM_RPC,
+  VALID_GET_NETWORK_DATA_RESPONSE,
+  CUSTOM_WEB3_URL_INVALID_PAYLOAD,
+  NEW_VALID_CHAIN_ID,
+  CUSTOM_WEB3_RPC_VALID_PAYLOAD,
+  VALID_GET_WEB3_RPC_RESPONSE,
+  VALID_GET_UTXO_RPC_RESPONSE,
+} from '../mocks';
 import MainController from 'scripts/Background/controllers/MainController';
 import store from 'state/store';
 
@@ -34,156 +45,73 @@ describe('main controller tests', () => {
   it('should return network data', async () => {
     const data = await controller.getNetworkData();
 
-    const response = { chainId: '0x39', networkVersion: '57' };
-
-    expect(data).toStrictEqual(response);
+    expect(data).toStrictEqual(VALID_GET_NETWORK_DATA_RESPONSE);
   });
 
-  // it('should get rpc', async () => {
-  // const payload = {
-  //   label: 'test custom litecoin rpc',
-  //   chainId: 2,
-  //   isSyscoinRpc: true,
-  //   url: 'https://blockbook-litecoin.binancechain.io/',
-  // };
+  it('should get utxo rpc', async () => {
+    const data = await controller.getRpc(CUSTOM_UTXO_RPC_VALID_PAYLOAD);
 
-  //   const valid = {
-  //     url: 'https://blockbook-litecoin.binancechain.io/',
-  //     apiUrl: 'https://blockbook-litecoin.binancechain.io/',
-  //     explorer: 'https://blockbook-litecoin.binancechain.io/',
-  //     currency: 'ltc',
-  //     label: 'Litecoin',
-  //     default: false,
-  //     chainId: 2,
-  //   };
+    expect(data).toStrictEqual(VALID_GET_UTXO_RPC_RESPONSE);
+  });
 
-  //   const data = await controller.getRpc(payload);
+  it('should get eth rpc', async () => {
+    const data = await controller.getRpc(CUSTOM_WEB3_RPC_VALID_PAYLOAD);
 
-  //   expect(data).toStrictEqual(valid);
+    expect(data).toStrictEqual(VALID_GET_WEB3_RPC_RESPONSE);
+  });
 
-  // const data = await validateSysRpc(
-  //   'https://blockbook-litecoin.binancechain.io/'
-  // );
-  // const bip44 = getBip44Chain(data.coin, false);
-  // console.log({ data, bip44 });
-  // const network = getFormattedBitcoinLikeNetwork(
-  //   bip44.chainId,
-  //   bip44.nativeCurrency.name
-  // );
+  it('should add a custom sys rpc', async () => {
+    const { chainId } = CUSTOM_UTXO_RPC_VALID_PAYLOAD;
 
-  // network
-  // formattedNetwork: {
-  //   url: 'https://blockbook-litecoin.binancechain.io/',
-  //     apiUrl: 'https://blockbook-litecoin.binancechain.io/',
-  //       explorer: 'https://blockbook-litecoin.binancechain.io/',
-  //         currency: 'ltc',
-  //           label: 'Litecoin',
-  //       default: false,
-  //     chainId: 2;
-  // },
-  // formattedBitcoinLikeNetwork: { networks: [Object], types: [Object]; }
-
-  // data: { valid: true, coin: 'Litecoin', chain: 'main'; },
-  // bip44: {
-  //   nativeCurrency: { name: 'Litecoin', symbol: 'ltc', decimals: 8; },
-  //   coinType: 2147483650,
-  //     chainId: 2;
-  // },
-  // network: {
-  //   networks: { mainnet: [Object], testnet: [Object]; },
-  //   types: { xPubType: [Object], zPubType: [Object]; }
-  // },
-
-  // const data2 = await getSysRpc(payload);
-
-  // console.log({ data, bip44, network, data2 });
-  // });
-
-  it('should add a custom rpc', async () => {
-    // const payload2 = {
-    //   label: 'test custom litecoin rpc',
-    //   chainId: 2,
-    //   isSyscoinRpc: true,
-    //   url: 'https://blockbook-litecoin.binancechain.io/',
-    // };
-
-    const payload = {
-      label: 'test custom optimism rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: ' https://mainnet.optimism.io',
-    };
-
-    const data = await controller.addCustomRpc(payload);
+    const data = await controller.addCustomRpc(CUSTOM_UTXO_RPC_VALID_PAYLOAD);
 
     const { networks } = store.getState().vault;
 
-    expect(networks.ethereum[payload.chainId]).toBeDefined();
-    expect(networks.ethereum[payload.chainId]).toStrictEqual(data);
+    expect(networks.syscoin[chainId]).toBeDefined();
+    expect(networks.syscoin[chainId]).toStrictEqual(data);
+  });
+
+  it('should add a custom eth rpc', async () => {
+    const { chainId } = CUSTOM_WEB3_RPC_VALID_PAYLOAD;
+
+    const data = await controller.addCustomRpc(CUSTOM_WEB3_RPC_VALID_PAYLOAD);
+
+    const { networks } = store.getState().vault;
+
+    expect(networks.ethereum[chainId]).toBeDefined();
+    expect(networks.ethereum[chainId]).toStrictEqual(data);
   });
 
   it('should throw an error if chain id is invalid for given url', async () => {
-    const payload = {
-      label: 'edited test custom arbitrum rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: 'https://arb1.arbitrum.io/rpc',
-    };
-
-    const old = {
-      label: 'test custom optimism rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: ' https://mainnet.optimism.io',
-    };
-
-    await expect(controller.editCustomRpc(payload, old)).rejects.toThrow(
+    await expect(
+      controller.editCustomRpc(
+        CUSTOM_WEB3_ID_INVALID_PAYLOAD,
+        VALID_INITIAL_CUSTOM_RPC
+      )
+    ).rejects.toThrow(
       new Error('RPC invalid. Endpoint returned a different Chain ID.')
     );
   });
 
   it('should throw an error if url is invalid for given chain id', async () => {
-    const payload = {
-      label: 'edited test custom arbitrum rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: 'https://arb1.arbitrum.io/rpc',
-    };
-
-    const old = {
-      label: 'test custom optimism rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: ' https://mainnet.optimism.io',
-    };
-
     // this can take some time because it is trying to fetch an invalid rpc, but this should not exceed timeout of 10000 ms
-    await expect(controller.editCustomRpc(payload, old)).rejects.toThrowError();
+    await expect(
+      controller.editCustomRpc(
+        CUSTOM_WEB3_URL_INVALID_PAYLOAD,
+        VALID_INITIAL_CUSTOM_RPC
+      )
+    ).rejects.toThrowError();
   });
 
   it('should edit a custom rpc', async () => {
-    const payload = {
-      label: 'edited test custom arbitrum rpc',
-      chainId: 42161,
-      isSyscoinRpc: false,
-      url: 'https://arb1.arbitrum.io/rpc',
-    };
-
-    const old = {
-      label: 'test custom optimism rpc',
-      chainId: 10,
-      isSyscoinRpc: false,
-      url: ' https://mainnet.optimism.io',
-    };
-
-    const newChainId =
-      old.chainId !== payload.chainId ? payload.chainId : old.chainId;
-
-    const edited = await controller.editCustomRpc(payload, old);
+    const edited = await controller.editCustomRpc(
+      CUSTOM_WEB3_RPC_VALID_PAYLOAD,
+      VALID_INITIAL_CUSTOM_RPC
+    );
 
     const { networks } = store.getState().vault;
 
-    expect(networks.ethereum[newChainId]).toStrictEqual(edited);
+    expect(networks.ethereum[NEW_VALID_CHAIN_ID]).toStrictEqual(edited);
   });
 
   it('should return the recommended gas fee according to utxo network', async () => {
@@ -192,7 +120,7 @@ describe('main controller tests', () => {
     expect(fee).toBeCloseTo(0.00002);
     expect(typeof fee).toBe('number');
     expect(fee).toBeLessThan(1);
-    expect(fee).toBe(0.00001);
+    expect(fee).toBeGreaterThanOrEqual(0);
   });
 
   /** wallet */

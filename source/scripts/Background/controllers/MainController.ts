@@ -244,9 +244,7 @@ const MainController = (): IMainController => {
         const account = { ...networkAccount, assets: generalAssets };
 
         store.dispatch(setNetwork(activeNetwork));
-
         store.dispatch(setIsPendingBalances(false));
-
         store.dispatch(setActiveAccount(account));
       }
 
@@ -345,9 +343,11 @@ const MainController = (): IMainController => {
       ? walletController.account.sys
       : walletController.account.eth;
 
-    if (isBitcoinBased) return tx.getRecommendedFee(activeNetwork.url);
+    const fee = isBitcoinBased
+      ? tx.getRecommendedFee(activeNetwork.url)
+      : tx.getRecommendedGasPrice(true).gwei;
 
-    return tx.getRecommendedGasPrice(true).gwei;
+    return fee && fee > 1 ? fee : 0;
   };
 
   return {
