@@ -8,12 +8,16 @@ import {
   CUSTOM_WEB3_RPC_VALID_PAYLOAD,
   VALID_GET_WEB3_RPC_RESPONSE,
   VALID_GET_UTXO_RPC_RESPONSE,
+  MOCK_PASSWORD,
+  MOCK_SEED_PHRASE,
 } from '../mocks';
 import MainController from 'scripts/Background/controllers/MainController';
 import store from 'state/store';
+import { initialState } from 'state/vault';
 
 jest.useFakeTimers('legacy');
 
+// todo: refactor
 describe('main controller tests', () => {
   beforeAll((done) => {
     done();
@@ -21,7 +25,7 @@ describe('main controller tests', () => {
 
   const controller = MainController();
 
-  // //* setPrices
+  // // //* setPrices
   it('should set autolock timer', () => {
     const payload = 8;
 
@@ -44,6 +48,7 @@ describe('main controller tests', () => {
     expect(data).toStrictEqual(VALID_GET_UTXO_RPC_RESPONSE);
   });
 
+  // will be removed after we publish the new sysweb3 network version
   it('should get eth rpc', async () => {
     const data = await controller.getRpc(CUSTOM_WEB3_RPC_VALID_PAYLOAD);
 
@@ -113,13 +118,98 @@ describe('main controller tests', () => {
     expect(fee).toBeGreaterThanOrEqual(0);
   });
 
-  /** wallet */
-  // it('should forget wallet', () => {
-  //   controller.forgetWallet('a@123');
+  /** wallet methods */
+  it('should check password', () => {
+    controller.createSeed();
+    controller.setWalletPassword(MOCK_PASSWORD);
 
-  //   const { accounts, lastLogin } = store.getState().vault;
+    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
+    controller.forgetWallet(MOCK_PASSWORD);
+  });
 
-  //   expect(accounts).toBe({});
-  //   expect(lastLogin).toBe(0);
-  // });
+  it('should replace the created mnemonic for an imported mnemonic', () => {
+    controller.forgetWallet(MOCK_PASSWORD);
+    controller.createSeed();
+
+    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    controller.setWalletPassword(MOCK_PASSWORD);
+    controller.validateSeed(MOCK_SEED_PHRASE);
+
+    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
+    expect(oldEncryptedMnemonic).not.toBe(newEncryptedMnemonic);
+  });
+
+  it('should set a created mnemonic', () => {
+    controller.forgetWallet(MOCK_PASSWORD);
+    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(oldEncryptedMnemonic).toBe('');
+
+    controller.createSeed();
+    controller.setWalletPassword(MOCK_PASSWORD);
+
+    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(newEncryptedMnemonic).toBeDefined();
+  });
+
+  it('should create a new wallet', async () => {
+    controller.forgetWallet(MOCK_PASSWORD);
+    controller.createSeed();
+
+    const newAccount = await controller.createWallet(MOCK_PASSWORD);
+
+    const {
+      accounts,
+      activeAccount,
+      isPendingBalances,
+      lastLogin,
+      encryptedMnemonic,
+    } = store.getState().vault;
+
+    expect(accounts).toStrictEqual({
+      [newAccount.id]: newAccount,
+    });
+    expect(activeAccount).toStrictEqual(newAccount);
+    expect(isPendingBalances).toBeFalsy();
+    expect(lastLogin).toBeGreaterThan(0);
+    expect(encryptedMnemonic).toBeDefined();
+  });
+
+  it('should forget wallet', async () => {
+    controller.forgetWallet(MOCK_PASSWORD);
+
+    expect(store.getState().vault).toStrictEqual(initialState);
+  });
+
+  it('should lock the wallet', () => {
+    controller.lock();
+
+    expect(store.getState().vault.lastLogin).toBeGreaterThan(0);
+  });
+
+  it('should add a new account', async () => {
+    // todo assert MOCK_ACCOUNT.label
+  });
+
+  it('should set new infos for an account', async () => {
+    // todo
+  });
+
+  it('should set an active network', async () => {
+    // todo
+  });
+
+  it('should remove a network', () => {
+    // todo
+  });
+
+  it('should import wallet', async () => {
+    // todo assert MOCK_ACCOUNT
+    // assert MOCK_XPRV
+    // use MOCK_SEED_PHRASE
+  });
 });

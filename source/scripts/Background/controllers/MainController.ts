@@ -65,7 +65,6 @@ const MainController = (): IMainController => {
     keyringManager.forgetMainWallet(pwd);
 
     store.dispatch(forgetWalletState());
-    store.dispatch(setLastLogin());
   };
 
   const unlock = async (pwd: string): Promise<void> => {
@@ -82,14 +81,18 @@ const MainController = (): IMainController => {
     store.dispatch(setActiveAccount(mainAccount));
   };
 
-  const createWallet = async (password: string): Promise<void> => {
+  // todo: add import wallet test
+  const createWallet = async (password: string): Promise<any> => {
     store.dispatch(setIsPendingBalances(true));
 
+    console.log({ password });
     keyringManager.setWalletPassword(password);
 
+    console.log({ password2: password });
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
+    console.log({ account });
     const newAccountWithAssets = {
       ...account,
       assets: {
@@ -103,6 +106,8 @@ const MainController = (): IMainController => {
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(newAccountWithAssets));
     store.dispatch(setLastLogin());
+
+    return newAccountWithAssets;
   };
 
   const lock = () => {
