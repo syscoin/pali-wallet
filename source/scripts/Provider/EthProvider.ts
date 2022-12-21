@@ -49,7 +49,8 @@ export const EthProvider = (host: string) => {
   const ethSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
-    if (!data.length) return cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -62,7 +63,8 @@ export const EthProvider = (host: string) => {
   const personalSign = async (params: string[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
-    if (!data.length) return cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     const resp = await popupPromise({
       host,
       data,
@@ -82,7 +84,8 @@ export const EthProvider = (host: string) => {
   };
 
   const signTypedDataV3 = (data: TypedData[]) => {
-    if (!data.length) return cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     return popupPromise({
       host,
       data,
@@ -92,7 +95,8 @@ export const EthProvider = (host: string) => {
   };
 
   const signTypedDataV4 = (data: TypedData[]) => {
-    if (!data.length) return cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data.length || data.length < 2)
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     return popupPromise({
       host,
       data,
@@ -112,7 +116,8 @@ export const EthProvider = (host: string) => {
   };
 
   const decryptMessage = (data: string[]) => {
-    if (!data.length) return cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data.length || data.length < 2 || !data[0] || !data[1])
+      return cleanErrorStack(ethErrors.rpc.invalidParams());
     return popupPromise({
       host,
       data,
