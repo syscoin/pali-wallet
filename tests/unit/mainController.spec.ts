@@ -1,13 +1,3 @@
-// import {
-//   getSysRpc,
-//   getEthRpc,
-//   web3Provider,
-//   validateSysRpc,
-//   getBip44Chain,
-//   getFormattedBitcoinLikeNetwork,
-//   validateEthRpc,
-// } from '@pollum-io/sysweb3-network';
-
 import {
   CUSTOM_UTXO_RPC_VALID_PAYLOAD,
   CUSTOM_WEB3_ID_INVALID_PAYLOAD,
@@ -94,7 +84,7 @@ describe('main controller tests', () => {
   });
 
   it('should throw an error if url is invalid for given chain id', async () => {
-    // this can take some time because it is trying to fetch an invalid rpc, but this should not exceed timeout of 10000 ms
+    // this can take some time because it is trying to fetch an invalid rpc, but this should not exceed timeout of 5000 ms
     await expect(
       controller.editCustomRpc(
         CUSTOM_WEB3_URL_INVALID_PAYLOAD,
