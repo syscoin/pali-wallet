@@ -80,6 +80,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
+      //TODO: we should cleanUP dapp on port disconnection case and invalidade contentscripts through calling handledisconnected
       log('pali disconnecting port', 'System');
     });
   }

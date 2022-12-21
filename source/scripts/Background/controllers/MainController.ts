@@ -1,5 +1,4 @@
 import { ethErrors } from 'helpers/errors';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   KeyringManager,
@@ -39,7 +38,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
-import { DAppEvents } from './message-handler/types';
+import { DAppEvents, PaliEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -72,20 +71,30 @@ const MainController = (): IMainController => {
 
   const unlock = async (pwd: string): Promise<void> => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
-    const { activeAccount } = store.getState().vault;
-    const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-    const { assets: currentAssets } = activeAccount;
+    await new Promise<void>(async (resolve) => {
+      const { activeAccount } = store.getState().vault;
+      const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+      resolve();
+      const { assets: currentAssets } = activeAccount;
+      //TODO: find better implementation;
+      const { assets, ...keyringAccount } = account;
 
-    const { assets, ...keyringAccount } = account;
+      const mainAccount = { ...keyringAccount, assets: currentAssets };
 
-    const mainAccount = { ...keyringAccount, assets: currentAssets };
-
-    store.dispatch(setLastLogin());
-    store.dispatch(setActiveAccount(mainAccount));
-    //TODO: Find better solution to handle state unlock
-    // window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
-    //   lockState: '2',
-    // });
+      store.dispatch(setLastLogin());
+      store.dispatch(setActiveAccount(mainAccount));
+      window.controller.dapp
+        .handleStateChange(PaliEvents.lockStateChanged, {
+          method: PaliEvents.lockStateChanged,
+          params: {
+            accounts: [],
+            isUnlocked: keyringManager.isUnlocked(),
+          },
+        })
+        .then(() => console.log('Successfully update all Dapps Unlock'))
+        .catch((error) => console.error('Unlock', error));
+    });
+    return;
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -115,10 +124,17 @@ const MainController = (): IMainController => {
     keyringManager.logout();
 
     store.dispatch(setLastLogin());
-    //TODO: Find better solution to handle state lock
-    // window.controller.dapp.dispatchEvent(DAppEvents.accountsChanged, {
-    //   lockState: '1',
-    // });
+    window.controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          accounts: [],
+          isUnlocked: keyringManager.isUnlocked(),
+        },
+      })
+      .then(() => console.log('Successfully update all Dapps'))
+      .catch((error) => console.error(error));
+    return;
   };
 
   const createAccount = async (
@@ -172,7 +188,10 @@ const MainController = (): IMainController => {
     }
   };
 
-  const setActiveNetwork = async (network: INetwork, chain: string) => {
+  const setActiveNetwork = async (
+    network: INetwork,
+    chain: string
+  ): Promise<{ chainId: string; networkVersion: number }> => {
     store.dispatch(setIsPendingBalances(true));
 
     const { activeNetwork, activeAccount } = store.getState().vault;
@@ -182,96 +201,108 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
-    try {
-      const networkAccount = await keyringManager.setSignerNetwork(
-        network,
-        chain
-      );
+    return new Promise<{ chainId: string; networkVersion: number }>(
+      async (resolve, reject) => {
+        try {
+          const networkAccount = await keyringManager.setSignerNetwork(
+            network,
+            chain
+          );
 
-      const { assets } = activeAccount;
+          const { assets } = activeAccount;
 
-      const generalAssets = isBitcoinBased
-        ? {
-            ethereum: activeAccount.assets?.ethereum,
-            syscoin: networkAccount.assets,
+          const generalAssets = isBitcoinBased
+            ? {
+                ethereum: activeAccount.assets?.ethereum,
+                syscoin: networkAccount.assets,
+              }
+            : assets;
+
+          const account = { ...networkAccount, assets: generalAssets };
+
+          if (isBitcoinBased) {
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'xpub',
+                value: keyringManager.getAccountXpub(),
+              })
+            );
+
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'xprv',
+                value: keyringManager.getEncryptedXprv(),
+              })
+            );
+
+            walletController.account.sys.setAddress();
           }
-        : assets;
 
-      const account = { ...networkAccount, assets: generalAssets };
+          walletController.account.sys.getLatestUpdate(true);
 
-      if (isBitcoinBased) {
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xpub',
-            value: keyringManager.getAccountXpub(),
-          })
-        );
+          const chainId = network.chainId.toString(16);
+          const networkVersion = network.chainId;
 
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xprv',
-            value: keyringManager.getEncryptedXprv(),
-          })
-        );
+          store.dispatch(setNetwork(network));
+          store.dispatch(setIsPendingBalances(false));
+          store.dispatch(setActiveAccount(account));
+          resolve({ chainId: chainId, networkVersion: networkVersion });
+          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+            method: PaliEvents.chainChanged,
+            params: {
+              chainId: `0x${network.chainId.toString(16)}`,
+              networkVersion: network.chainId,
+            },
+          });
 
-        walletController.account.sys.setAddress();
+          return;
+        } catch (error) {
+          console.error(
+            'Pali: fail on setActiveNetwork due to the following reason',
+            error
+          );
+          reject();
+          const statusCodeInError = ['401', '429', '500'];
+
+          const errorMessageValidate = statusCodeInError.some((message) =>
+            error.message.includes(message)
+          );
+
+          if (errorMessageValidate) {
+            const networkAccount = await keyringManager.setSignerNetwork(
+              activeNetwork,
+              networkChain()
+            );
+            window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+              method: PaliEvents.chainChanged,
+              params: {
+                chainId: `0x${activeNetwork.chainId.toString(16)}`,
+                networkVersion: activeNetwork.chainId,
+              },
+            });
+
+            const { assets } = activeAccount;
+
+            const generalAssets = isBitcoinBased
+              ? {
+                  ethereum: activeAccount.assets?.ethereum,
+                  syscoin: networkAccount.assets,
+                }
+              : assets;
+
+            const account = { ...networkAccount, assets: generalAssets };
+
+            store.dispatch(setNetwork(activeNetwork));
+
+            store.dispatch(setIsPendingBalances(false));
+
+            store.dispatch(setActiveAccount(account));
+          }
+
+          store.dispatch(setStoreError(true));
+        }
       }
-
-      walletController.account.sys.getLatestUpdate(true);
-
-      const chainId = network.chainId.toString(16);
-      const networkVersion = network.chainId;
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, chainId);
-
-      const tabs = await browser.tabs.query({
-        windowType: 'normal',
-      });
-
-      for (const tab of tabs) {
-        browser.tabs.sendMessage(Number(tab.id), {
-          type: 'CHAIN_CHANGED',
-          data: { networkVersion, chainId },
-        });
-      }
-
-      store.dispatch(setNetwork(network));
-      store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
-
-      return { chainId, networkVersion };
-    } catch (error) {
-      const statusCodeInError = ['401', '429', '500'];
-
-      const errorMessageValidate = statusCodeInError.some((message) =>
-        error.message.includes(message)
-      );
-
-      if (errorMessageValidate) {
-        const networkAccount = await keyringManager.setSignerNetwork(
-          activeNetwork,
-          networkChain()
-        );
-
-        const { assets } = activeAccount;
-
-        const generalAssets = isBitcoinBased
-          ? {
-              ethereum: activeAccount.assets?.ethereum,
-              syscoin: networkAccount.assets,
-            }
-          : assets;
-
-        const account = { ...networkAccount, assets: generalAssets };
-
-        store.dispatch(setNetwork(activeNetwork));
-
-        store.dispatch(setIsPendingBalances(false));
-
-        store.dispatch(setActiveAccount(account));
-      }
-
-      store.dispatch(setStoreError(true));
-    }
+    );
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));

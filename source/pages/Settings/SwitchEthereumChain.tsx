@@ -25,20 +25,7 @@ const SwitchChain: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      wallet
-        .setActiveNetwork(network, 'ethereum')
-        .then(async ({ networkVersion }: any) => {
-          const tabs = await browser.tabs.query({
-            windowType: 'normal',
-          });
-
-          for (const tab of tabs) {
-            browser.tabs.sendMessage(Number(tab.id), {
-              type: 'CHAIN_CHANGED',
-              data: { networkVersion, chainId },
-            });
-          }
-        });
+      wallet.setActiveNetwork(network, 'ethereum');
     } catch (networkError) {
       return cleanErrorStack(ethErrors.rpc.internal());
     }

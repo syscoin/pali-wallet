@@ -25,20 +25,7 @@ const CustomRPCExternal = () => {
         setLoading(false);
         const type = data.eventName;
         dispatchBackgroundEvent(`${type}.${host}`, null);
-        wallet
-          .setActiveNetwork(network, 'ethereum')
-          .then(async ({ networkVersion, chain }: any) => {
-            const tabs = await browser.tabs.query({
-              windowType: 'normal',
-            });
-
-            for (const tab of tabs) {
-              browser.tabs.sendMessage(Number(tab.id), {
-                type: 'CHAIN_CHANGED',
-                data: { networkVersion, chain },
-              });
-            }
-          });
+        wallet.setActiveNetwork(network, 'ethereum');
       });
     } catch (error: any) {
       alert.removeAll();

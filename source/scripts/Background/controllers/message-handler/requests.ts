@@ -218,22 +218,27 @@ export const enable = async (
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
-    return cleanErrorStack(ethErrors.provider.userRejectedRequest());
+    throw {
+      code: 4001,
+      message: `Connected to Bitcoin based chain`,
+    };
+  //TODO: add proper pali error rejection
+  // return cleanErrorStack(ethErrors.provider.userRejectedRequest());
 
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
-  const acceptedRequest: any = await popupPromise({
+  const dAppActiveAddress: any = await popupPromise({
     host,
     route: 'connect-wallet',
     eventName: 'connect',
     data: { chain, chainId },
   });
 
-  if (!acceptedRequest)
+  if (!dAppActiveAddress)
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
 
-  return [acceptedRequest.connectedAccount.address];
+  return [dAppActiveAddress];
 };
 
 export const isUnlocked = () => {

@@ -27,20 +27,7 @@ export const NetworkMenu: React.FC = () => {
 
   const handleChangeNetwork = (network: INetwork, chain: string) => {
     try {
-      wallet
-        .setActiveNetwork(network, chain)
-        .then(async ({ networkVersion, chainId }: any) => {
-          const tabs = await browser.tabs.query({
-            windowType: 'normal',
-          });
-
-          for (const tab of tabs) {
-            browser.tabs.sendMessage(Number(tab.id), {
-              type: 'CHAIN_CHANGED',
-              data: { networkVersion, chainId },
-            });
-          }
-        });
+      wallet.setActiveNetwork(network, chain);
     } catch (networkError) {
       navigate('/home');
     }

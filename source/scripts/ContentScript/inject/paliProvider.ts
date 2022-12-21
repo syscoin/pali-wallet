@@ -134,7 +134,7 @@ export class PaliInpageProvider extends EventEmitter {
     window.addEventListener(
       'notification',
       (event: any) => {
-        const { method, params } = event.detail;
+        const { method, params } = JSON.parse(event.detail);
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);
@@ -451,7 +451,7 @@ export class PaliInpageProvider extends EventEmitter {
     }
 
     for (const account of accounts) {
-      if (typeof account !== 'string') {
+      if (typeof account !== 'string' && account !== null) {
         console.error(
           'Pali: Received non-string account. Please report this bug.',
           accounts

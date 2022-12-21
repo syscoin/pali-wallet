@@ -4,13 +4,12 @@ import { Runtime } from 'webextension-polyfill-ts';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
-import { setActiveNetwork } from 'state/vault';
 import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
 import { onDisconnect, onMessage } from './message-handler';
-import { DAppEvents } from './message-handler/types';
+import { DAppEvents, PaliEvents } from './message-handler/types';
 
 interface IDappsSession {
   [host: string]: {
@@ -76,41 +75,88 @@ const DAppController = (): IDAppController => {
 
     _dapps[host].activeAddress = account.address;
     _dispatchEvent(host, 'requestPermissions', response);
-    _dispatchEvent(host, DAppEvents.accountsChanged, [account.address]);
+    // _dispatchEvent(host, DAppEvents.accountsChanged, [account.address]);
+    _dispatchPaliEvent(
+      host,
+      {
+        method: PaliEvents.accountsChanged,
+        params: [_dapps[host].activeAddress],
+      },
+      PaliEvents.accountsChanged
+    );
   };
 
   const changeAccount = (host: string, accountId: number) => {
     const date = Date.now();
-    const { accounts, isBitcoinBased } = store.getState().vault;
+    // const { accounts, isBitcoinBased } = store.getState().vault;
+    const { accounts } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
     _dapps[host].activeAddress = accounts[accountId].address;
-    isBitcoinBased
-      ? _dispatchEvent(
-          host,
-          DAppEvents.accountsChanged,
-          removeXprv(accounts[accountId])
-        )
-      : _dispatchEvent(host, DAppEvents.accountsChanged, [
-          _dapps[host].activeAddress,
-        ]);
+    _dispatchPaliEvent(
+      host,
+      {
+        method: PaliEvents.accountsChanged,
+        params: [_dapps[host].activeAddress],
+      },
+      PaliEvents.accountsChanged
+    );
+    // isBitcoinBased
+    //   ? _dispatchEvent(
+    //       host,
+    //       DAppEvents.accountsChanged,
+    //       removeXprv(accounts[accountId])
+    //     )
+    //   : _dispatchEvent(host, DAppEvents.accountsChanged, [
+    //       _dapps[host].activeAddress,
+    //     ]);
   };
 
   const disconnect = (host: string) => {
     _dapps[host].activeAddress = null;
     // _dispatchEvent(host, 'accountsChanged', [_dapps[host].activeAddress]);
+    console.log(
+      'Disconnecting dapp from pali',
+      host,
+      _dapps[host].activeAddress,
+      PaliEvents.accountsChanged
+    );
     store.dispatch(removeDApp(host));
+    _dispatchPaliEvent(
+      host,
+      {
+        method: PaliEvents.accountsChanged,
+        params: [],
+      },
+      PaliEvents.accountsChanged
+    );
     return [] as string[];
   };
 
-  const changeNetwork = (chainId: number) => {
-    const { isBitcoinBased, networks } = store.getState().vault;
-    const network = isBitcoinBased
-      ? networks.syscoin[chainId]
-      : networks.ethereum[chainId];
-
-    store.dispatch(setActiveNetwork(network));
-
-    dispatchEvent(DAppEvents.chainChanged, chainId);
+  const handleStateChange = async (
+    id: PaliEvents,
+    data: { method: string; params: any }
+  ): Promise<void> => {
+    new Promise<void>((resolve, reject) => {
+      try {
+        const dapps = Object.values(store.getState().dapp.dapps);
+        for (const dapp of dapps) {
+          if (id === PaliEvents.lockStateChanged && _dapps[dapp.host]) {
+            console.log(
+              'Checking dapps connections',
+              _dapps[dapp.host],
+              dapp.host
+            );
+            data.params.accounts = data.params.isUnlocked
+              ? [_dapps[dapp.host].activeAddress]
+              : [];
+          }
+          _dispatchPaliEvent(dapp.host, data, id);
+        }
+        resolve();
+      } catch (error) {
+        reject(`Error: ${error}`);
+      }
+    });
   };
 
   //* ----- Event listeners -----
@@ -159,6 +205,16 @@ const DAppController = (): IDAppController => {
     for (const host of hosts) {
       console.log('Iterating over host', event, data);
       _dispatchEvent(host, event, data);
+    }
+  };
+
+  const _dispatchPaliEvent = async (
+    host: string,
+    data?: { method: string; params: any },
+    id = 'notification'
+  ) => {
+    if (_dapps[host] && _dapps[host].port) {
+      _dapps[host].port.postMessage({ id, data });
     }
   };
 
@@ -231,10 +287,10 @@ const DAppController = (): IDAppController => {
     dispatchEvent,
     hasListener,
     hasWindow,
+    handleStateChange,
     getState,
     getNetwork,
     setHasWindow,
-    changeNetwork,
   };
 };
 

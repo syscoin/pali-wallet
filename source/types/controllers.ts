@@ -13,7 +13,10 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { DAppEvents } from 'scripts/Background/controllers/message-handler/types';
+import {
+  DAppEvents,
+  PaliEvents,
+} from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -123,10 +126,6 @@ export interface IDAppController {
    */
   changeAccount: (host: string, accountId: number) => void;
   /**
-   * Changes the active network
-   */
-  changeNetwork: (chainId: number) => void;
-  /**
    * Completes a connection with a DApp
    * @emits connect
    */
@@ -151,6 +150,18 @@ export interface IDAppController {
   getAll: () => { [host: string]: IDApp };
   getNetwork: () => INetwork;
   getState: () => any;
+  /**
+   * Changes the active network
+   */
+  // changeNetwork: (chainId: number) => void;
+  /**
+   * Update state and emit events to all connected dApps
+   * @emits PaliEvents
+   */
+  handleStateChange: (
+    id: PaliEvents,
+    data: { method: string; params: any }
+  ) => Promise<void>;
   /**
    * Checks if listener exists
    */
