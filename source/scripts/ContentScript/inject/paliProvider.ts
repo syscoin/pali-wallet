@@ -444,7 +444,11 @@ export class PaliInpageProvider extends EventEmitter {
     if (!dequal(this._state.accounts, _accounts)) {
       // we should always have the correct accounts even before eth_accounts
       // returns
-      if (isEthAccounts && this._state.accounts !== null) {
+      if (
+        isEthAccounts &&
+        this._state.accounts !== null &&
+        this._state.accounts.length !== 0
+      ) {
         console.error(
           `Pali: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
           _accounts
