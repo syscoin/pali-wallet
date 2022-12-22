@@ -548,8 +548,6 @@ export class PaliInpageProvider extends EventEmitter {
           message: errorMessage || messages.errors.disconnected(),
         };
         console.debug(error);
-
-        throw cleanErrorStack(ethErrors.provider.disconnected());
       } else {
         error = {
           code: 1011, // Internal error
@@ -562,10 +560,6 @@ export class PaliInpageProvider extends EventEmitter {
         this.selectedAddress = null;
         this._state.isUnlocked = false;
         this._state.isPermanentlyDisconnected = true;
-
-        cleanErrorStack(
-          ethErrors.rpc.internal(messages.errors.permanentlyDisconnected())
-        );
       }
 
       this.emit('disconnect', error);
