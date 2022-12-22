@@ -150,7 +150,13 @@ export const methodRequest = async (
             data: { chainId: chainId },
           });
         }
-        return cleanErrorStack(ethErrors.rpc.internal());
+        throw cleanErrorStack(
+          ethErrors.rpc.internal(
+            `Unrecognized chain ID 0x${chainId.toString(
+              16
+            )}. Try adding the chain using wallet_addEthereumChain first.`
+          )
+        );
       //return {
       //code: -32603,
       //message: `Unrecognized chain ID 0x${chainId.toString(
@@ -218,10 +224,13 @@ export const enable = async (
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
-    throw {
-      code: 4001,
-      message: `Connected to Bitcoin based chain`,
-    };
+    throw cleanErrorStack(
+      ethErrors.provider.userRejectedRequest('Connected to Bitcoin based chain')
+    );
+  // throw {
+  //   code: 4001,
+  //   message: `Connected to Bitcoin based chain`,
+  // };
   //TODO: add proper pali error rejection
   // return cleanErrorStack(ethErrors.provider.userRejectedRequest());
 

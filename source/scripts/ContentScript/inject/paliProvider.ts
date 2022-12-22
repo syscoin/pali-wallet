@@ -1,5 +1,8 @@
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
+import { ethErrors } from 'helpers/errors';
+
+import cleanErrorStack from 'utils/cleanErrorStack';
 
 import messages from './messages';
 import {
@@ -186,29 +189,13 @@ export class PaliInpageProvider extends EventEmitter {
    */
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (!args || typeof args !== 'object' || Array.isArray(args)) {
-      throw {
-        code: 420,
-        message: messages.errors.invalidRequestArgs(),
-        data: args,
-      };
-      //   throw ethErrors.rpc.invalidRequest({
-      //     message: messages.errors.invalidRequestArgs(),
-      //     data: args,
-      //   });
+      throw messages.errors.invalidRequestArgs();
     }
 
     const { method, params } = args;
 
     if (typeof method !== 'string' || method.length === 0) {
-      throw {
-        code: 69,
-        message: messages.errors.invalidRequestMethod(),
-        data: args,
-      };
-      //   throw ethErrors.rpc.invalidRequest({
-      //     message: messages.errors.invalidRequestMethod(),
-      //     data: args,
-      //   });
+      throw messages.errors.invalidRequestMethod();
     }
 
     if (
@@ -216,15 +203,7 @@ export class PaliInpageProvider extends EventEmitter {
       !Array.isArray(params) &&
       (typeof params !== 'object' || params === null)
     ) {
-      throw {
-        code: 42069,
-        message: messages.errors.invalidRequestParams(),
-        data: args,
-      };
-      //   throw ethErrors.rpc.invalidRequest({
-      //     message: messages.errors.invalidRequestParams(),
-      //     data: args,
-      //   });
+      throw messages.errors.invalidRequestParams();
     }
 
     return new Promise<T>((resolve, reject) => {
@@ -565,6 +544,8 @@ export class PaliInpageProvider extends EventEmitter {
           message: errorMessage || messages.errors.disconnected(),
         };
         console.debug(error);
+
+        throw cleanErrorStack(ethErrors.provider.disconnected());
       } else {
         error = {
           code: 1011, // Internal error
@@ -577,6 +558,10 @@ export class PaliInpageProvider extends EventEmitter {
         this.selectedAddress = null;
         this._state.isUnlocked = false;
         this._state.isPermanentlyDisconnected = true;
+
+        cleanErrorStack(
+          ethErrors.rpc.internal(messages.errors.permanentlyDisconnected())
+        );
       }
 
       this.emit('disconnect', error);
