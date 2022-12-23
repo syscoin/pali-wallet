@@ -1,8 +1,5 @@
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
-import { ethErrors } from 'helpers/errors';
-
-import cleanErrorStack from 'utils/cleanErrorStack';
 
 import messages from './messages';
 import {
@@ -214,45 +211,6 @@ export class PaliInpageProvider extends EventEmitter {
     });
   }
   /**
-   * We override the following event methods so that we can warn consumers
-   * about deprecated events:
-   *   addListener, on, once, prependListener, prependOnceListener
-   */
-  // public addListener(
-  //   eventName: string,
-  //   listener: (...args: unknown[]) => void
-  // ) {
-  //   this._warnOfDeprecation(eventName);
-  //   return this.addListener(eventName, listener);
-  // }
-
-  // public on(eventName: string, listener: (...args: unknown[]) => void) {
-  //   this._warnOfDeprecation(eventName);
-  //   return this.on(eventName, listener);
-  // }
-
-  // public once(eventName: string, listener: (...args: unknown[]) => void) {
-  //   this._warnOfDeprecation(eventName);
-  //   return this.once(eventName, listener);
-  // }
-
-  // public prependListener(
-  //   eventName: string,
-  //   listener: (...args: unknown[]) => void
-  // ) {
-  //   this._warnOfDeprecation(eventName);
-  //   return this.prependListener(eventName, listener);
-  // }
-
-  // public prependOnceListener(
-  //   eventName: string,
-  //   listener: (...args: unknown[]) => void
-  // ) {
-  //   this._warnOfDeprecation(eventName);
-  //   return this.prependOnceListener(eventName, listener);
-  // }
-
-  /**
    * Equivalent to: ethereum.request('eth_requestAccounts')
    *
    * @deprecated Use request({ method: 'eth_requestAccounts' }) instead.
@@ -390,11 +348,6 @@ export class PaliInpageProvider extends EventEmitter {
           }
 
           const response = JSON.parse(event.detail);
-          if (response?.code === 4001 || response?.code === -32603) {
-            //TODO: refactor so all reject cases go through response.error if condition
-            console.log('Check response that triggered this situation');
-            reject(response);
-          }
           if (response.error) {
             reject(response.error); //TODO all the errors function needs to be refactored this part should not add new Error on response rejection
           }

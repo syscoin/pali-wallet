@@ -13,10 +13,7 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import {
-  DAppEvents,
-  PaliEvents,
-} from 'scripts/Background/controllers/message-handler/types';
+import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -117,10 +114,6 @@ export interface IControllerUtils {
 
 export interface IDAppController {
   /**
-   * Adds an event listener
-   */
-  addListener: (host: string, eventName: string) => void;
-  /**
    * Changes the account
    * @emits accountsChanged
    */
@@ -135,10 +128,6 @@ export interface IDAppController {
    * @emits disconnect
    */
   disconnect: (host: string) => void;
-  /**
-   * Dispatch an event to all dapps
-   */
-  dispatchEvent: (event: DAppEvents, data: any) => void;
   /**
    * Retrieves a DApp
    */
@@ -163,10 +152,6 @@ export interface IDAppController {
     data: { method: string; params: any }
   ) => Promise<void>;
   /**
-   * Checks if listener exists
-   */
-  hasListener: (host: string, eventName: string) => boolean;
-  /**
    * Checks if DApp has an open popup
    */
   hasWindow: (host: string) => boolean;
@@ -174,14 +159,6 @@ export interface IDAppController {
    * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;
-  /**
-   * Removes an event listener
-   */
-  removeListener: (host: string, eventName: string) => void;
-  /**
-   * Removes all listeners from a DApp
-   */
-  removeListeners: (host: string) => void;
   /**
    * If connected changes account granting permissions by EIP2255 reference
    * @emits requestPermissions

@@ -11,20 +11,6 @@ const backgroundPort = browser.runtime.connect(undefined, {
 
 // Add listener for pali events
 const checkForPaliRegisterEvent = (type, id) => {
-  if (type === 'EVENT_REG') {
-    console.log('Checking event emission:', type, id);
-    emitter.on(id, (result) => {
-      console.log('Checking event emission inside:', id, result);
-      console.log(
-        'windowDispatch response',
-        window.dispatchEvent(
-          new CustomEvent(id, { detail: JSON.stringify(result) })
-        )
-      );
-    });
-    return;
-  }
-
   emitter.once(id, (result) => {
     if (typeof id === 'string') {
       if (String(id).includes('isUnlocked'))
@@ -64,14 +50,6 @@ const start = () => {
     },
     false
   );
-  const id = 'General';
-  const type = 'CHAIN_NET_REQUEST';
-  const data = {};
-  backgroundPort.postMessage({
-    id,
-    type,
-    data,
-  });
 };
 
 const startEventEmitter = () => {

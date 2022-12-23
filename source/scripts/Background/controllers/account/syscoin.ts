@@ -7,7 +7,7 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
-import { DAppEvents, PaliEvents } from '../message-handler/types';
+import { PaliEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -111,20 +111,27 @@ const SysAccountController = (): ISysAccountController => {
     );
     resolve();
 
-    if (isBitcoinBased)
-      window.controller.dapp.dispatchEvent(
-        DAppEvents.accountUpdate,
-        removeXprv(accounts[accountId])
-      );
-    else {
-      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-        method: PaliEvents.chainChanged,
-        params: {
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
-          networkVersion: activeNetwork.chainId,
-        },
-      });
-    }
+    // if (isBitcoinBased)
+    //   window.controller.dapp.dispatchEvent(
+    //     DAppEvents.accountUpdate,
+    //     removeXprv(accounts[accountId])
+    //   );
+    // else {
+    // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+    //   method: PaliEvents.chainChanged,
+    //   params: {
+    //     chainId: `0x${activeNetwork.chainId.toString(16)}`,
+    //     networkVersion: activeNetwork.chainId,
+    //   },
+    // });
+    // } //This flow would consider the need for syscoin UTXO events of accountUpdate, if possible remove it. If not refactor to use paliEvents
+    window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+      method: PaliEvents.chainChanged,
+      params: {
+        chainId: `0x${activeNetwork.chainId.toString(16)}`,
+        networkVersion: activeNetwork.chainId,
+      },
+    });
   };
 
   /** check if there is no pending transaction in mempool

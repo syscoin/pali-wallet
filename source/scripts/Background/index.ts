@@ -43,17 +43,8 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
-browser.runtime.onMessage.addListener(async ({ type, target, data }) => {
+browser.runtime.onMessage.addListener(async ({ type, target }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
-  if (type === 'CHAIN_CHANGED') {
-    const tabs = await browser.tabs.query({
-      windowType: 'normal',
-    });
-
-    for (const tab of tabs) {
-      browser.tabs.sendMessage(Number(tab.id), { type, data });
-    }
-  }
 });
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {

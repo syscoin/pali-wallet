@@ -33,12 +33,11 @@ import {
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
-import { removeXprv } from 'utils/account';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
-import { DAppEvents, PaliEvents } from './message-handler/types';
+import { PaliEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -161,7 +160,7 @@ const MainController = (): IMainController => {
     host?: string,
     connectedAccount?: IOmmitedAccount
   ): void => {
-    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const { accounts, activeAccount } = store.getState().vault;
     if (
       connectedAccount &&
       connectedAccount.address === activeAccount.address
@@ -180,12 +179,12 @@ const MainController = (): IMainController => {
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-    if (isBitcoinBased) {
-      window.controller.dapp.dispatchEvent(
-        DAppEvents.accountsChanged,
-        removeXprv(accounts[id])
-      );
-    }
+    // if (isBitcoinBased) {
+    //   window.controller.dapp.dispatchEvent(
+    //     DAppEvents.accountsChanged,
+    //     removeXprv(accounts[id])
+    //   );
+    // } // TODO: check if this is relevant in any form to syscoin events
   };
 
   const setActiveNetwork = async (

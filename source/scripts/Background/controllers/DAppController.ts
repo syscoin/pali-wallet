@@ -8,14 +8,13 @@ import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
-import { onDisconnect, onMessage } from './message-handler';
-import { DAppEvents, PaliEvents } from './message-handler/types';
+import { onMessage } from './message-handler';
+import { PaliEvents } from './message-handler/types';
 
 interface IDappsSession {
   [host: string]: {
     activeAddress: string | null;
     hasWindow: boolean;
-    listens: string[];
     port: Runtime.Port;
   };
 }
@@ -37,22 +36,17 @@ const DAppController = (): IDAppController => {
     _dapps[host] = {
       activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
-      listens: [],
       port,
     };
 
     port.onMessage.addListener(onMessage);
-    port.onDisconnect.addListener(onDisconnect);
+    // port.onDisconnect.addListener(onDisconnect); //TODO: make contentScript unavailable to Dapp on disconnection of port
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts } = store.getState().vault;
     _dapps[dapp.host].activeAddress = accounts[dapp.accountId].address;
-    //TODO: check further connect function, ethereum EIP1193 asks only to dispatch connect event when provider becomes available not when wallet connects to dapp
-    // _dispatchEvent(dapp.host, DAppEvents.connect, {
-    //   connectedAccount: getAccount(dapp.host),
-    // });
   };
 
   const requestPermissions = (host: string, accountId: number) => {
@@ -75,7 +69,6 @@ const DAppController = (): IDAppController => {
 
     _dapps[host].activeAddress = account.address;
     _dispatchEvent(host, 'requestPermissions', response);
-    // _dispatchEvent(host, DAppEvents.accountsChanged, [account.address]);
     _dispatchPaliEvent(
       host,
       {
@@ -100,26 +93,10 @@ const DAppController = (): IDAppController => {
       },
       PaliEvents.accountsChanged
     );
-    // isBitcoinBased
-    //   ? _dispatchEvent(
-    //       host,
-    //       DAppEvents.accountsChanged,
-    //       removeXprv(accounts[accountId])
-    //     )
-    //   : _dispatchEvent(host, DAppEvents.accountsChanged, [
-    //       _dapps[host].activeAddress,
-    //     ]);
   };
 
   const disconnect = (host: string) => {
     _dapps[host].activeAddress = null;
-    // _dispatchEvent(host, 'accountsChanged', [_dapps[host].activeAddress]);
-    console.log(
-      'Disconnecting dapp from pali',
-      host,
-      _dapps[host].activeAddress,
-      PaliEvents.accountsChanged
-    );
     store.dispatch(removeDApp(host));
     _dispatchPaliEvent(
       host,
@@ -159,55 +136,6 @@ const DAppController = (): IDAppController => {
     });
   };
 
-  //* ----- Event listeners -----
-  const addListener = (host: string, eventName: string) => {
-    if (!DAppEvents[eventName]) return;
-    console.log('Trying to add event to dapp', host, eventName);
-    if (_dapps[host].listens.includes(eventName)) return;
-    _dapps[host].listens.push(eventName);
-    console.log('Event added', _dapps[host]);
-  };
-
-  const removeListener = (host: string, eventName: string) => {
-    if (!DAppEvents[eventName]) return;
-
-    _.remove(_dapps[host].listens, (e) => e === eventName);
-  };
-
-  const removeListeners = (host: string) => {
-    _dapps[host].listens = [];
-  };
-
-  const hasListener = (host: string, eventName: string) =>
-    _dapps[host] && _dapps[host].listens.includes(eventName);
-
-  const dispatchEvent = (event: DAppEvents, data: any) => {
-    if (data?.lockState === '2') {
-      const dapps = Object.values(store.getState().dapp.dapps);
-      for (const dapp of dapps) {
-        console.error('Checking event emision on unlock', dapp.host, event, [
-          _dapps[dapp.host].activeAddress,
-        ]);
-        _dispatchEvent(dapp.host, event, [_dapps[dapp.host].activeAddress]);
-      }
-      return;
-    } else if (data?.lockState === '1') {
-      const dapps = Object.values(store.getState().dapp.dapps);
-      for (const dapp of dapps) {
-        console.error('Checking event emision on lock', dapp.host, event, []);
-        _dispatchEvent(dapp.host, event, []);
-      }
-      return;
-    }
-    // const dapps = Object.values(store.getState().dapp.dapps);
-    // const dapps =
-    const hosts = Object.keys(_dapps);
-    for (const host of hosts) {
-      console.log('Iterating over host', event, data);
-      _dispatchEvent(host, event, data);
-    }
-  };
-
   const _dispatchPaliEvent = async (
     host: string,
     data?: { method: string; params: any },
@@ -224,17 +152,8 @@ const DAppController = (): IDAppController => {
     data?: any
   ) => {
     // dispatch the event locally
-    const { isBitcoinBased } = store.getState().vault;
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    console.log('Checking event', eventName, host, isBitcoinBased, data);
     window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
-    // if (!hasListener(host, eventName)) return; //TODO: fix event bugs
-    // if (!isConnected(host) && isBitcoinBased) return;
-
-    // post the event to the DApp
-    const id = `${host}.${eventName}`;
-
-    _dapps[host].port.postMessage({ id, data });
   };
 
   //* ----- Getters/Setters -----
@@ -280,12 +199,7 @@ const DAppController = (): IDAppController => {
     connect,
     changeAccount,
     disconnect,
-    addListener,
     requestPermissions,
-    removeListener,
-    removeListeners,
-    dispatchEvent,
-    hasListener,
     hasWindow,
     handleStateChange,
     getState,
