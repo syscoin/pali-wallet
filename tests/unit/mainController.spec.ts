@@ -381,10 +381,16 @@ describe('main controller tests', () => {
     expect(activeNetwork).toStrictEqual(currentActiveNetwork);
   });
 
+  // todo: check performance
   it('should import wallet', async () => {
-    // todo assert MOCK_ACCOUNT
-    // assert MOCK_XPRV
-    // use MOCK_SEED_PHRASE
+    controller.forgetWallet(MOCK_PASSWORD);
+    controller.validateSeed(MOCK_SEED_PHRASE);
+
+    const account = await controller.createWallet(MOCK_PASSWORD);
+
+    expect(Object.values(store.getState().vault.accounts).length).toBe(1);
+    expect(account.xpub).toStrictEqual(MOCK_ACCOUNT.xpub);
+    expect(account.address).toStrictEqual(MOCK_ACCOUNT.address);
   });
 
   it('should create a new wallet and login using a different seed', () => {
