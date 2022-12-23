@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import { Runtime } from 'webextension-polyfill-ts';
+import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
@@ -147,6 +147,19 @@ const DAppController = (): IDAppController => {
     const id = `${host}.${eventName}`;
 
     _dapps[host].port.postMessage({ id, data });
+
+    const tabs = await browser.tabs.query({
+      windowType: 'normal',
+    });
+
+    for (const tab of tabs) {
+      browser.tabs
+        .sendMessage(Number(tab.id), {
+          type: 'CHAIN_CHANGED',
+          data,
+        })
+        .then(() => console.log('done'));
+    }
   };
 
   //* ----- Getters/Setters -----

@@ -2,8 +2,6 @@ if (process.env.NODE_ENV === 'test') {
   chrome.runtime.id = 'testid';
 }
 
-import { browser } from 'webextension-polyfill-ts';
-
 import {
   KeyringManager,
   IKeyringAccountState,
@@ -26,7 +24,6 @@ import {
   setTimer,
   createAccount as addAccountToStore,
   setActiveNetwork as setNetwork,
-  setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
@@ -40,6 +37,7 @@ import { removeXprv } from 'utils/account';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import DAppController from './DAppController';
 import { DAppEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
@@ -85,14 +83,13 @@ const MainController = (): IMainController => {
   const createWallet = async (password: string): Promise<any> => {
     store.dispatch(setIsPendingBalances(true));
 
-    console.log({ password });
     keyringManager.setWalletPassword(password);
 
-    console.log({ password2: password });
-    const account =
-      (await keyringManager.createKeyringVault()) as IKeyringAccountState;
+    const account = await keyringManager.createKeyringVault();
 
-    console.log({ account });
+    if (!account || !account.address)
+      throw new Error('Could not create wallet.');
+
     const newAccountWithAssets = {
       ...account,
       assets: {
@@ -132,7 +129,7 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setActiveAccount(newAccountWithAssets));
 
-    window.controller.dapp.dispatchEvent(
+    DAppController().dispatchEvent(
       DAppEvents.accountsChanged,
       removeXprv(newAccount)
     );
@@ -146,23 +143,29 @@ const MainController = (): IMainController => {
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
 
-    window.controller.dapp.dispatchEvent(
+    DAppController().dispatchEvent(
       DAppEvents.accountsChanged,
       removeXprv(accounts[id])
     );
   };
 
   const setActiveNetwork = async (network: INetwork, chain: string) => {
-    store.dispatch(setIsPendingBalances(true));
-
-    const { activeNetwork, activeAccount } = store.getState().vault;
-
-    const isBitcoinBased =
-      chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
-
-    store.dispatch(setIsBitcoinBased(isBitcoinBased));
-
     try {
+      if (!network) throw new Error('Missing required network info.');
+
+      if (chain === 'ethereum') {
+        await validateEthRpc(network.url);
+      }
+
+      store.dispatch(setIsPendingBalances(true));
+
+      const { activeAccount } = store.getState().vault;
+
+      const isBitcoinBased =
+        chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
+
+      store.dispatch(setIsBitcoinBased(isBitcoinBased));
+
       const networkAccount = await keyringManager.setSignerNetwork(
         network,
         chain
@@ -184,52 +187,28 @@ const MainController = (): IMainController => {
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
 
-      if (isBitcoinBased) {
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xpub',
-            value: keyringManager.getAccountXpub(),
-          })
-        );
-
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xprv',
-            value: keyringManager.getEncryptedXprv(),
-          })
-        );
-
-        walletController.account.sys.setAddress();
-      }
-
       walletController.account.sys.getLatestUpdate(true);
 
       const chainId = await web3Provider.send('eth_chainId', []);
       const networkVersion = await web3Provider.send('net_version', []);
 
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
+      // todo: test dispatch event
+      DAppController().dispatchEvent(DAppEvents.chainChanged, {
         chainId,
         networkVersion,
       });
 
-      const tabs = await browser.tabs.query({
-        windowType: 'normal',
-      });
-
-      for (const tab of tabs) {
-        browser.tabs.sendMessage(Number(tab.id), {
-          type: 'CHAIN_CHANGED',
-          data: { networkVersion, chainId },
-        });
-      }
-
       return { chainId, networkVersion };
     } catch (error) {
+      store.dispatch(setStoreError(true));
       const statusCodeInError = ['401', '429', '500'];
 
       const errorMessageValidate = statusCodeInError.some((message) =>
         error.message.includes(message)
       );
+
+      const { activeAccount, activeNetwork, isBitcoinBased } =
+        store.getState().vault;
 
       if (errorMessageValidate) {
         const networkAccount = await keyringManager.setSignerNetwork(
@@ -253,16 +232,19 @@ const MainController = (): IMainController => {
         store.dispatch(setActiveAccount(account));
       }
 
-      store.dispatch(setStoreError(true));
+      throw new Error(error);
     }
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const response = data.isSyscoinRpc
-      ? await getSysRpc(data)
-      : await getEthRpc(data);
+    const method = data.isSyscoinRpc ? getSysRpc : getEthRpc;
+
+    const response = await method(data);
+
+    if (!response.formattedNetwork)
+      throw new Error('Could not find network info.');
 
     return response.formattedNetwork;
   };
@@ -295,9 +277,11 @@ const MainController = (): IMainController => {
       throw new Error('RPC invalid. Endpoint returned a different Chain ID.');
 
     try {
-      newRpc.isSyscoinRpc
-        ? await validateSysRpc(newRpc.url)
-        : await validateEthRpc(newRpc.url);
+      if (newRpc.isSyscoinRpc) {
+        await validateSysRpc(newRpc.url);
+      }
+
+      await validateEthRpc(newRpc.url);
 
       if (oldRpc.chainId !== newRpc.chainId) {
         store.dispatch(
@@ -348,11 +332,11 @@ const MainController = (): IMainController => {
       ? walletController.account.sys
       : walletController.account.eth;
 
-    const fee = isBitcoinBased
-      ? tx.getRecommendedFee(activeNetwork.url)
-      : tx.getRecommendedGasPrice(true).gwei;
+    if (isBitcoinBased) {
+      return Number(tx.getRecommendedFee(activeNetwork.url)) || 0;
+    }
 
-    return fee && fee > 1 ? fee : 0;
+    return Number(tx.getRecommendedGasPrice(true).gwei) || 0;
   };
 
   return {

@@ -25,7 +25,7 @@
     "prepare": "husky install",
     "format": "prettier --single-quote --write .",
     "type-check": "tsc --pretty --noEmit",
-    "test": "NODE_ENV=test jest",
+    "test": "NODE_ENV=test jest --forceExit",
     "test:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test",
     "test:unit": "NODE_ENV=test jest source/ tests/unit",
     "test:e2e": "NODE_ENV=test jest tests/e2e",

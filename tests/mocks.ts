@@ -60,9 +60,14 @@ export const STATE_W_ACCOUNT: IVaultState = {
   accounts: { [MOCK_ACCOUNT.id]: MOCK_ACCOUNT },
 };
 
-export const VALID_GET_NETWORK_DATA_RESPONSE = {
+export const VALID_NETWORK_VERSION_UTXO_RESPONSE = {
   chainId: '0x39',
   networkVersion: '57',
+};
+
+export const VALID_NETWORK_VERSION_WEB3_RESPONSE = {
+  chainId: '0x1',
+  networkVersion: '1',
 };
 
 export const CUSTOM_UTXO_RPC_VALID_PAYLOAD = {
