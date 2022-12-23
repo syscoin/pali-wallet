@@ -135,7 +135,6 @@ export const methodRequest = async (
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
 
-        // if (activeNetwork.chainId === chainId) return null; THIS LINE IS NOT PREVENT DOUBLE POPUP WHEN SWITCH CHAIN EVENT
         if (chains.ethereum[chainId]) {
           return popupPromise({
             host,
@@ -175,7 +174,6 @@ export const methodRequest = async (
         }`,
       };
     }
-    // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {

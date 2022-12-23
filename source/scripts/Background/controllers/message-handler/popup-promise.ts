@@ -32,7 +32,7 @@ export const popupPromise = async ({
     (dapp.isConnected(host) && eventName === 'connect') ||
     dapp.hasWindow(host)
   )
-    return;
+    return null;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   const popup = await createPopup(route, { ...data, host, eventName });
