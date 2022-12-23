@@ -382,7 +382,7 @@ export class PaliInpageProvider extends EventEmitter {
         id,
         (event: any) => {
           //TODO: Add proper event for our event handling methods
-          console.log('[Pali] EventListener method', data, event.detail);
+          // console.log('[Pali] EventListener method', data, event.detail);
           if (event.detail === undefined) {
             resolve(undefined);
           } else if (event.detail === null) {

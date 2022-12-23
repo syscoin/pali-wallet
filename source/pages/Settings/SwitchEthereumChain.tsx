@@ -27,7 +27,7 @@ const SwitchChain: React.FC = () => {
     try {
       wallet.setActiveNetwork(network, 'ethereum');
     } catch (networkError) {
-      return cleanErrorStack(ethErrors.rpc.internal());
+      throw cleanErrorStack(ethErrors.rpc.internal());
     }
     setConfirmed(true);
     setLoading(false);

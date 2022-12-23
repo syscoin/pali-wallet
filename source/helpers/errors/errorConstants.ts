@@ -41,7 +41,8 @@ export const errorValues = {
   },
   '-32603': {
     standard: 'JSON RPC 2.0',
-    message: 'Internal JSON-RPC error.',
+    message:
+      'Internal JSON-RPC error. Verify if chain ID is already added, if is not try adding the chain using wallet_addEthereumChain first.',
   },
   '-32000': {
     standard: 'EIP-1474',

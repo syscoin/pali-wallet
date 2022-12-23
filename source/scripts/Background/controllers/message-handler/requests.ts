@@ -48,7 +48,7 @@ export const methodRequest = async (
     methodName !== 'switchEthereumChain' &&
     methodName !== 'getProviderState'
   )
-    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+    throw cleanErrorStack(ethErrors.provider.unauthorized());
   //throw {
   //code: 4100,
   //message:
@@ -136,7 +136,7 @@ export const methodRequest = async (
         }
         tryingToAdd = true;
       case 'switchEthereumChain':
-        if (isBitcoinBased) return cleanErrorStack(ethErrors.rpc.internal());
+        if (isBitcoinBased) throw cleanErrorStack(ethErrors.rpc.internal());
         const chainId = tryingToAdd
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
@@ -150,13 +150,7 @@ export const methodRequest = async (
             data: { chainId: chainId },
           });
         }
-        throw cleanErrorStack(
-          ethErrors.rpc.internal(
-            `Unrecognized chain ID 0x${chainId.toString(
-              16
-            )}. Try adding the chain using wallet_addEthereumChain first.`
-          )
-        );
+        throw cleanErrorStack(ethErrors.rpc.internal());
       //return {
       //code: -32603,
       //message: `Unrecognized chain ID 0x${chainId.toString(
@@ -191,7 +185,7 @@ export const methodRequest = async (
       data: { connectedAccount: dapp.getAccount(host) },
     });
     if (!response) {
-      return cleanErrorStack(ethErrors.rpc.internal());
+      throw cleanErrorStack(ethErrors.rpc.internal());
     }
     // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
@@ -204,7 +198,7 @@ export const methodRequest = async (
 
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased)
-    return cleanErrorStack(ethErrors.rpc.internal());
+    throw cleanErrorStack(ethErrors.rpc.internal());
 
   const provider = SysProvider(host);
   const method = provider[methodName];
