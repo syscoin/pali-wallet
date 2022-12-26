@@ -41,7 +41,7 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
       </div>
 
       <div
-        className="mb-3 mt-2 p-3 w-full text-xs rounded-xl"
+        className="scrollbar-styled mb-3 mt-2 p-3 w-full max-h-32 text-xs rounded-xl overflow-y-auto"
         style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
       >
         <p
