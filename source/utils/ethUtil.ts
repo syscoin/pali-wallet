@@ -28,12 +28,13 @@ export const decodeTransactionData = (params: ITransactionParams) => {
     }
 
     if (!data && value) {
-      return {
+      const emptyDecoderObject = {
         method: 'Contract Interaction',
         types: [],
         inputs: [],
         names: [],
       };
+      return emptyDecoderObject;
     }
 
     return;
