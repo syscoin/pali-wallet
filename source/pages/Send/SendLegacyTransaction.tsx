@@ -1,3 +1,4 @@
+import { ethers } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -51,15 +52,38 @@ export const SendLegacyTransaction = () => {
       setLoading(true);
 
       try {
-        const response = await txs.sendFormattedTransaction(tx);
+        if (isLegacyTransaction) {
+          const response = await txs.sendFormattedTransaction(tx);
 
-        setConfirmed(true);
-        setLoading(false);
+          setConfirmed(true);
+          setLoading(false);
 
-        if (isExternal)
-          dispatchBackgroundEvent(`legacyTxSend.${host}`, response);
+          if (isExternal)
+            dispatchBackgroundEvent(`legacyTxSend.${host}`, response);
 
-        return response;
+          return response;
+        } else {
+          const response = await txs.sendFormattedTransaction({
+            ...tx,
+            maxPriorityFeePerGas: ethers.utils.parseUnits(
+              String(fee.maxPriorityFeePerGas.toFixed(9)),
+              9
+            ),
+            maxFeePerGas: ethers.utils.parseUnits(
+              String(fee.maxFeePerGas.toFixed(9)),
+              9
+            ),
+            gasLimit: txs.toBigNumber(fee.gasLimit),
+          });
+
+          setConfirmed(true);
+          setLoading(false);
+
+          if (isExternal)
+            dispatchBackgroundEvent(`legacyTxSend.${host}`, response);
+
+          return response;
+        }
       } catch (error: any) {
         logError('error', 'Transaction', error);
 
@@ -111,65 +135,66 @@ export const SendLegacyTransaction = () => {
           else navigate('/home');
         }}
       />
-      {isLegacyTransaction && fee ? (
-        <div className="flex flex-col items-center justify-center w-full">
-          <p className="flex flex-col items-center justify-center text-center font-rubik">
-            <span className="text-brand-royalblue font-poppins font-thin">
-              Send
-            </span>
+      <div className="flex flex-col items-center justify-center w-full">
+        <p className="flex flex-col items-center justify-center text-center font-rubik">
+          <span className="text-brand-royalblue font-poppins font-thin">
+            Send
+          </span>
 
-            <span>
-              {`${
-                Number(tx.value) / 10 ** 18
-              } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
-            </span>
-          </p>
+          <span>
+            {`${
+              Number(tx.value) / 10 ** 18
+            } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+          </span>
+        </p>
+        {fee ? (
+          <>
+            <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                From
+                <span className="text-brand-royalblue text-xs">
+                  {ellipsis(tx.from, 7, 15)}
+                </span>
+              </p>
 
-          <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              From
-              <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.from, 7, 15)}
-              </span>
-            </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                To
+                <span className="text-brand-royalblue text-xs">
+                  {ellipsis(tx.to, 7, 15)}
+                </span>
+              </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              To
-              <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.to, 7, 15)}
-              </span>
-            </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Estimated GasFee
+                <span className="text-brand-royalblue text-xs">
+                  Max Fee: {removeScientificNotation(fee?.maxFeePerGas)}{' '}
+                  {activeNetwork.currency?.toUpperCase()}
+                </span>
+              </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Estimated GasFee
-              <span className="text-brand-royalblue text-xs">
-                Max Fee: {removeScientificNotation(fee?.maxFeePerGas)}{' '}
-                {activeNetwork.currency?.toUpperCase()}
-              </span>
-            </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Total (Amount + gas fee)
+                <span className="text-brand-royalblue text-xs">
+                  {`${
+                    Number(tx.value) / 10 ** 18 + fee?.maxFeePerGas
+                  } ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                </span>
+              </p>
+            </div>
+          </>
+        ) : null}
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Total (Amount + gas fee)
-              <span className="text-brand-royalblue text-xs">
-                {`${Number(tx.value) / 10 ** 18 + fee?.maxFeePerGas} ${
-                  activeNetwork.currency
-                }`}
-              </span>
-            </p>
-          </div>
-
-          <div className="absolute bottom-12 md:static md:mt-10">
-            <NeutralButton
-              loading={loading}
-              onClick={handleConfirm}
-              type="button"
-              id="confirm-btn"
-            >
-              Confirm
-            </NeutralButton>
-          </div>
+        <div className="absolute bottom-12 md:static md:mt-10">
+          <NeutralButton
+            loading={loading}
+            onClick={handleConfirm}
+            type="button"
+            id="confirm-btn"
+          >
+            Confirm
+          </NeutralButton>
         </div>
-      ) : null}
+      </div>
     </Layout>
   );
 };
