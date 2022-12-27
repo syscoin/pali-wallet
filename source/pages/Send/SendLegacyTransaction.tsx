@@ -2,7 +2,13 @@ import { ethers } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import {
+  Layout,
+  DefaultModal,
+  NeutralButton,
+  Button,
+  Icon,
+} from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IFeeState } from 'types/transactions';
@@ -184,15 +190,40 @@ export const SendLegacyTransaction = () => {
           </>
         ) : null}
 
-        <div className="absolute bottom-12 md:static md:mt-10">
-          <NeutralButton
+        <div className="flex items-center justify-around py-8 w-full">
+          <Button
+            type="button"
+            className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+            id="send-btn"
+            onClick={() => {
+              refresh(false);
+              if (isExternal) window.close();
+              else navigate('/home');
+            }}
+          >
+            <Icon
+              name="arrow-up"
+              className="w-4"
+              wrapperClassname="mb-2 mr-2"
+              rotate={45}
+            />
+            Cancel
+          </Button>
+
+          <Button
+            type="button"
+            className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+            id="receive-btn"
             loading={loading}
             onClick={handleConfirm}
-            type="button"
-            id="confirm-btn"
           >
+            <Icon
+              name="arrow-down"
+              className="w-4"
+              wrapperClassname="mb-2 mr-2"
+            />
             Confirm
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </Layout>
