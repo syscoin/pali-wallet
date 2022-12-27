@@ -1,22 +1,21 @@
 import { ethers } from 'ethers';
 
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { INetwork, isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
+import { getWalletMockState } from '../../initializeWalletTests';
 import {
   CUSTOM_UTXO_RPC_VALID_PAYLOAD,
   CUSTOM_WEB3_ID_INVALID_PAYLOAD,
   VALID_INITIAL_CUSTOM_RPC,
-  VALID_NETWORK_VERSION_UTXO_RESPONSE,
   VALID_NETWORK_VERSION_WEB3_RESPONSE,
   CUSTOM_WEB3_URL_INVALID_PAYLOAD,
   NEW_VALID_CHAIN_ID,
   CUSTOM_WEB3_RPC_VALID_PAYLOAD,
-  VALID_GET_WEB3_RPC_RESPONSE,
-  VALID_GET_UTXO_RPC_RESPONSE,
   MOCK_PASSWORD,
   MOCK_SEED_PHRASE,
   MOCK_ACCOUNT,
-} from '../mocks';
+} from '../../mocks';
 import MainController from 'scripts/Background/controllers/MainController';
 import store from 'state/store';
 import reducer, { forgetWallet } from 'state/vault';
@@ -24,45 +23,64 @@ import { initialState } from 'state/vault';
 
 jest.useFakeTimers('legacy');
 
-// todo: refactor
 // todo: close open handles and remove --forceExit
-// todo: create initialize methods for wallet creation
-describe('main controller tests', () => {
+describe('general, mnemonic and wallet not related tests', () => {
   const controller = MainController();
 
-  beforeAll((done) => {
+  beforeEach(() => {
     reducer(initialState, forgetWallet());
-    done();
   });
 
-  //* setPrices
-  it('should set autolock timer', () => {
-    const payload = 8;
+  it('should return the recommended gas fee according to utxo network', () => {
+    const fee = controller.getRecommendedFee();
 
-    controller.setAutolockTimer(payload);
-
-    const { timer } = store.getState().vault;
-
-    expect(timer).toEqual(payload);
+    expect(fee).toBeCloseTo(0.00002);
+    expect(typeof fee).toBe('number');
+    expect(fee).toBeLessThan(1);
+    expect(fee).toBeGreaterThanOrEqual(0);
   });
 
-  it('should return network data', async () => {
-    const data = await controller.getNetworkData();
+  it('should remove a network', () => {
+    controller.removeKeyringNetwork('ethereum', 10);
 
-    expect(data).toStrictEqual(VALID_NETWORK_VERSION_UTXO_RESPONSE);
+    expect(store.getState().vault.networks[10]).toBeUndefined();
   });
 
-  it('should get utxo rpc', async () => {
-    const data = await controller.getRpc(CUSTOM_UTXO_RPC_VALID_PAYLOAD);
+  /** wallet methods */
+  it('should check password', () => {
+    controller.createSeed();
+    controller.setWalletPassword(MOCK_PASSWORD);
 
-    expect(data).toStrictEqual(VALID_GET_UTXO_RPC_RESPONSE);
+    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
   });
 
-  // will be removed after we publish the new sysweb3 network version
-  it('should get eth rpc', async () => {
-    const data = await controller.getRpc(CUSTOM_WEB3_RPC_VALID_PAYLOAD);
+  it('should replace the created mnemonic for an imported mnemonic', () => {
+    controller.createSeed();
 
-    expect(data).toStrictEqual(VALID_GET_WEB3_RPC_RESPONSE);
+    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    controller.setWalletPassword(MOCK_PASSWORD);
+    controller.validateSeed(MOCK_SEED_PHRASE);
+
+    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
+    expect(oldEncryptedMnemonic).not.toBe(newEncryptedMnemonic);
+  });
+
+  it('should set a created mnemonic', () => {
+    controller.forgetWallet(MOCK_PASSWORD);
+
+    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(oldEncryptedMnemonic).toBe('');
+
+    controller.createSeed();
+    controller.setWalletPassword(MOCK_PASSWORD);
+
+    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
+
+    expect(newEncryptedMnemonic).toBeDefined();
   });
 
   it('should add a custom sys rpc', async () => {
@@ -119,60 +137,21 @@ describe('main controller tests', () => {
 
     expect(networks.ethereum[NEW_VALID_CHAIN_ID]).toStrictEqual(edited);
   });
+});
 
-  it('should return the recommended gas fee according to utxo network', () => {
-    const fee = controller.getRecommendedFee();
+let createdAccount = {} as IKeyringAccountState;
 
-    expect(fee).toBeCloseTo(0.00002);
-    expect(typeof fee).toBe('number');
-    expect(fee).toBeLessThan(1);
-    expect(fee).toBeGreaterThanOrEqual(0);
-  });
+describe('wallet creation tests', () => {
+  const { initializeWallet } = getWalletMockState();
+  const controller = MainController();
 
-  /** wallet methods */
-  it('should check password', () => {
-    controller.createSeed();
-    controller.setWalletPassword(MOCK_PASSWORD);
+  beforeEach(async () => {
+    const account = await initializeWallet();
 
-    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
-    controller.forgetWallet(MOCK_PASSWORD);
-  });
-
-  it('should replace the created mnemonic for an imported mnemonic', () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
-
-    controller.setWalletPassword(MOCK_PASSWORD);
-    controller.validateSeed(MOCK_SEED_PHRASE);
-
-    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
-
-    expect(controller.checkPassword(MOCK_PASSWORD)).toBeTruthy();
-    expect(oldEncryptedMnemonic).not.toBe(newEncryptedMnemonic);
-  });
-
-  it('should set a created mnemonic', () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    const oldEncryptedMnemonic = controller.getEncryptedMnemonic();
-
-    expect(oldEncryptedMnemonic).toBe('');
-
-    controller.createSeed();
-    controller.setWalletPassword(MOCK_PASSWORD);
-
-    const newEncryptedMnemonic = controller.getEncryptedMnemonic();
-
-    expect(newEncryptedMnemonic).toBeDefined();
+    createdAccount = account;
   });
 
   it('should create a new wallet', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    const newAccount = await controller.createWallet(MOCK_PASSWORD);
-
     const {
       accounts,
       activeAccount,
@@ -182,9 +161,9 @@ describe('main controller tests', () => {
     } = store.getState().vault;
 
     expect(accounts).toStrictEqual({
-      [newAccount.id]: newAccount,
+      [createdAccount.id]: createdAccount,
     });
-    expect(activeAccount).toStrictEqual(newAccount);
+    expect(activeAccount).toStrictEqual(createdAccount);
     expect(isPendingBalances).toBeFalsy();
     expect(lastLogin).toBeGreaterThan(0);
     expect(encryptedMnemonic).toBeDefined();
@@ -201,15 +180,11 @@ describe('main controller tests', () => {
     controller.lock();
 
     expect(store.getState().vault.lastLogin).toBeGreaterThan(0);
+    expect(controller.isUnlocked()).toBeFalsy();
   });
 
   // todo: check performance
   it('should add a new account and set it as the active one', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    await controller.createWallet(MOCK_PASSWORD);
-
     const { accounts: accountsBeforeAccountCreation, activeAccount } =
       store.getState().vault;
     const { length: lengthBeforeAccountCreation } = Object.values(
@@ -233,24 +208,19 @@ describe('main controller tests', () => {
   it('should set the active account', () => {
     const { activeAccount: currentActiveAccount } = store.getState().vault;
 
-    expect(currentActiveAccount.id).toStrictEqual(1);
+    expect(currentActiveAccount.id).toStrictEqual(0);
 
-    controller.setAccount(0);
+    controller.setAccount(1);
 
     const { activeAccount } = store.getState().vault;
 
-    expect(activeAccount.id).toStrictEqual(0);
-    expect(activeAccount.id).not.toBe(1);
+    expect(activeAccount.id).toStrictEqual(1);
+    expect(activeAccount.id).not.toBe(0);
     controller.forgetWallet(MOCK_PASSWORD);
   });
 
   // todo: check performance
   it('should throw an error if switch network fails', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    await controller.createWallet(MOCK_PASSWORD);
-
     const { activeNetwork: currentActiveNetwork } = store.getState().vault;
 
     expect(currentActiveNetwork.chainId).toBe(
@@ -290,11 +260,6 @@ describe('main controller tests', () => {
 
   // todo: check performance
   it('should set an eth network as the active network and update the active account', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    await controller.createWallet(MOCK_PASSWORD);
-
     const { activeNetwork: currentActiveNetwork, networks } =
       store.getState().vault;
 
@@ -322,11 +287,6 @@ describe('main controller tests', () => {
 
   // todo: check performance
   it('should set an utxo network as the active network and update the active account', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
-    controller.createSeed();
-
-    await controller.createWallet(MOCK_PASSWORD);
-
     const { activeNetwork: currentActiveNetwork, networks } =
       store.getState().vault;
 
@@ -359,12 +319,6 @@ describe('main controller tests', () => {
     controller.forgetWallet(MOCK_PASSWORD);
   });
 
-  it('should remove a network', () => {
-    controller.removeKeyringNetwork('ethereum', 10);
-
-    expect(store.getState().vault.networks[10]).toBeUndefined();
-  });
-
   it('should unlock the wallet', async () => {
     const {
       lastLogin: currentLastLogin,
@@ -376,14 +330,37 @@ describe('main controller tests', () => {
 
     const { lastLogin, activeAccount, activeNetwork } = store.getState().vault;
 
+    expect(controller.isUnlocked()).toBeTruthy();
     expect(currentLastLogin).toBeLessThan(lastLogin);
     expect(activeAccount).toStrictEqual(currentActiveAccount);
     expect(activeNetwork).toStrictEqual(currentActiveNetwork);
   });
 
+  it('should unlock using a different seed', async () => {
+    controller.lock();
+
+    expect(controller.isUnlocked()).toBeFalsy();
+    expect(store.getState().vault.lastLogin).toBeGreaterThan(0);
+
+    const { activeNetwork: currentActiveNetwork } = store.getState().vault;
+
+    controller.forgetWallet(MOCK_PASSWORD);
+    controller.validateSeed(MOCK_SEED_PHRASE);
+
+    const acc = await controller.createWallet(MOCK_PASSWORD);
+
+    const { activeAccount, activeNetwork } = store.getState().vault;
+
+    expect(activeAccount.address).toStrictEqual(acc.address);
+    expect(activeNetwork).toStrictEqual(currentActiveNetwork);
+  });
+});
+
+describe('wallet related tests', () => {
+  const controller = MainController();
+
   // todo: check performance
   it('should import wallet', async () => {
-    controller.forgetWallet(MOCK_PASSWORD);
     controller.validateSeed(MOCK_SEED_PHRASE);
 
     const account = await controller.createWallet(MOCK_PASSWORD);
@@ -393,23 +370,22 @@ describe('main controller tests', () => {
     expect(account.address).toStrictEqual(MOCK_ACCOUNT.address);
   });
 
-  it('should create a new wallet and login using a different seed', () => {
-    // todo
-  });
+  it('should import a new wallet and login using a different seed', async () => {
+    controller.lock();
 
-  it('should import a new wallet and login using a different seed', () => {
-    // todo
-  });
+    expect(controller.isUnlocked()).toBeFalsy();
+    expect(store.getState().vault.lastLogin).toBeGreaterThan(0);
 
-  it('should create a new wallet, forget it and create a new one using a different seed', () => {
-    // todo
-  });
+    const { activeNetwork: currentActiveNetwork } = store.getState().vault;
 
-  it('should create a new wallet, forget it and import a new one using a different seed', () => {
-    // todo
-  });
+    controller.forgetWallet(MOCK_PASSWORD);
+    controller.validateSeed(MOCK_SEED_PHRASE);
 
-  it('should create a new wallet, forget it and import a new one using the same seed', () => {
-    // todo
+    const acc = await controller.createWallet(MOCK_PASSWORD);
+
+    const { activeAccount, activeNetwork } = store.getState().vault;
+
+    expect(activeAccount.address).toStrictEqual(acc.address);
+    expect(activeNetwork).toStrictEqual(currentActiveNetwork);
   });
 });
