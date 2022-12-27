@@ -26,6 +26,16 @@ export const decodeTransactionData = (params: ITransactionParams) => {
 
       return decoderValue;
     }
+
+    if (!data && value) {
+      return {
+        method: 'Contract Interaction',
+        types: [],
+        inputs: [],
+        names: [],
+      };
+    }
+
     return;
   } catch (error) {
     console.log('error decode', error);

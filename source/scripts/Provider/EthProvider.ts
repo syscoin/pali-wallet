@@ -27,6 +27,19 @@ export const EthProvider = (host: string) => {
 
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
 
+    console.log('params', params);
+
+    if ((tx.type && tx.type === '0x0') || (!tx.type && !tx.data)) {
+      const resp = await popupPromise({
+        host,
+        data: { tx, external: true },
+        route: 'tx/send/legacyTx',
+        eventName: 'legacyTxSend',
+      });
+
+      return resp;
+    }
+
     if (decodedTx.method === 'approve') {
       const resp = await popupPromise({
         host,

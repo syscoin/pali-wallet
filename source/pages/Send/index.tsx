@@ -6,3 +6,4 @@ export { EditPriorityFee } from './EditPriority';
 export { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 export { ApproveTransactionComponent } from './Approve';
 export { EditPriorityModal } from './EditPriorityModal';
+export { SendLegacyTransaction } from './SendLegacyTransaction';

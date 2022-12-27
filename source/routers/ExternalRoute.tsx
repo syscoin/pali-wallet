@@ -26,6 +26,7 @@ import {
   CustomRPCExternal,
   SwitchChain,
   ChangeConnectedAccount,
+  SendLegacyTransaction,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -115,6 +116,10 @@ export const ExternalRoute = () => {
           <Route
             path="send/ethTx"
             element={<ProtectedRoute element={<SendTransaction />} />}
+          />
+          <Route
+            path="send/legacyTx"
+            element={<ProtectedRoute element={<SendLegacyTransaction />} />}
           />
           <Route
             path="send/approve"
