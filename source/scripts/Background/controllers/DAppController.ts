@@ -115,7 +115,9 @@ const DAppController = (): IDAppController => {
   ): Promise<void> => {
     new Promise<void>((resolve, reject) => {
       try {
-        const dapps = Object.values(store.getState().dapp.dapps);
+        const dapps = Object.values(
+          store.getState().dapp.dapps
+        ) as unknown as IDApp[];
         for (const dapp of dapps) {
           if (id === PaliEvents.lockStateChanged && _dapps[dapp.host]) {
             console.log(

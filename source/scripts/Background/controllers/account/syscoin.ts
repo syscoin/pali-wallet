@@ -13,6 +13,7 @@ import store from 'state/store';
 import {
   setAccounts,
   setActiveAccountProperty,
+  setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
 import { removeXprv } from 'utils/account';
@@ -125,13 +126,16 @@ const SysAccountController = (): ISysAccountController => {
     //   },
     // });
     // } //This flow would consider the need for syscoin UTXO events of accountUpdate, if possible remove it. If not refactor to use paliEvents
-    window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-      method: PaliEvents.chainChanged,
-      params: {
-        chainId: `0x${activeNetwork.chainId.toString(16)}`,
-        networkVersion: activeNetwork.chainId,
-      },
-    });
+    const isUpdating = store.getState().vault.isNetworkChanging;
+    if (!isUpdating)
+      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          networkVersion: activeNetwork.chainId,
+        },
+      });
+    else store.dispatch(setIsNetworkChanging(false));
   };
 
   /** check if there is no pending transaction in mempool

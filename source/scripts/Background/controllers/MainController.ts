@@ -29,6 +29,7 @@ import {
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
+  setIsNetworkChanging,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -191,6 +192,7 @@ const MainController = (): IMainController => {
     network: INetwork,
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> => {
+    store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
     const { activeNetwork, activeAccount } = store.getState().vault;
@@ -253,7 +255,6 @@ const MainController = (): IMainController => {
               networkVersion: network.chainId,
             },
           });
-
           return;
         } catch (error) {
           console.error(
@@ -299,6 +300,7 @@ const MainController = (): IMainController => {
           }
 
           store.dispatch(setStoreError(true));
+          store.dispatch(setIsNetworkChanging(false));
         }
       }
     );
