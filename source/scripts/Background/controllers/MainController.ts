@@ -1,10 +1,15 @@
-import { browser } from 'webextension-polyfill-ts';
+import { ethErrors } from 'helpers/errors';
 
 import {
   KeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc, web3Provider } from '@pollum-io/sysweb3-network';
+import {
+  getSysRpc,
+  getEthRpc,
+  web3Provider,
+  setActiveNetwork as _sysweb3SetActiveNetwork,
+} from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -23,14 +28,16 @@ import {
   removeNetwork,
   setStoreError,
   setIsBitcoinBased,
+  setChangingConnectedAccount,
 } from 'state/vault';
+import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
-import { removeXprv } from 'utils/account';
+import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
-import { DAppEvents } from './message-handler/types';
+import { PaliEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -41,6 +48,9 @@ const MainController = (): IMainController => {
   };
 
   const getNetworkData = async () => {
+    const { activeNetwork } = store.getState().vault;
+    if (web3Provider.connection.url !== activeNetwork.url)
+      _sysweb3SetActiveNetwork(activeNetwork);
     const networkVersion = await web3Provider.send('net_version', []);
     const chainId = await web3Provider.send('eth_chainId', []);
 
@@ -60,16 +70,30 @@ const MainController = (): IMainController => {
 
   const unlock = async (pwd: string): Promise<void> => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
-    const { activeAccount } = store.getState().vault;
-    const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-    const { assets: currentAssets } = activeAccount;
+    await new Promise<void>(async (resolve) => {
+      const { activeAccount } = store.getState().vault;
+      const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+      resolve();
+      const { assets: currentAssets } = activeAccount;
+      //TODO: find better implementation;
+      const { assets, ...keyringAccount } = account;
 
-    const { assets, ...keyringAccount } = account;
+      const mainAccount = { ...keyringAccount, assets: currentAssets };
 
-    const mainAccount = { ...keyringAccount, assets: currentAssets };
-
-    store.dispatch(setLastLogin());
-    store.dispatch(setActiveAccount(mainAccount));
+      store.dispatch(setLastLogin());
+      store.dispatch(setActiveAccount(mainAccount));
+      window.controller.dapp
+        .handleStateChange(PaliEvents.lockStateChanged, {
+          method: PaliEvents.lockStateChanged,
+          params: {
+            accounts: [],
+            isUnlocked: keyringManager.isUnlocked(),
+          },
+        })
+        .then(() => console.log('Successfully update all Dapps Unlock'))
+        .catch((error) => console.error('Unlock', error));
+    });
+    return;
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -99,6 +123,17 @@ const MainController = (): IMainController => {
     keyringManager.logout();
 
     store.dispatch(setLastLogin());
+    window.controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          accounts: [],
+          isUnlocked: keyringManager.isUnlocked(),
+        },
+      })
+      .then(() => console.log('Successfully update all Dapps'))
+      .catch((error) => console.error(error));
+    return;
   };
 
   const createAccount = async (
@@ -117,27 +152,45 @@ const MainController = (): IMainController => {
     store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setActiveAccount(newAccountWithAssets));
 
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountsChanged,
-      removeXprv(newAccount)
-    );
-
     return newAccountWithAssets;
   };
 
-  const setAccount = (id: number): void => {
-    const { accounts } = store.getState().vault;
+  const setAccount = (
+    id: number,
+    host?: string,
+    connectedAccount?: IOmmitedAccount
+  ): void => {
+    const { accounts, activeAccount } = store.getState().vault;
+    if (
+      connectedAccount &&
+      connectedAccount.address === activeAccount.address
+    ) {
+      if (connectedAccount.address !== accounts[id].address) {
+        store.dispatch(
+          setChangingConnectedAccount({
+            host,
+            isChangingConnectedAccount: true,
+            newConnectedAccount: accounts[id],
+          })
+        );
+        return;
+      }
+    }
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountsChanged,
-      removeXprv(accounts[id])
-    );
+    // if (isBitcoinBased) {
+    //   window.controller.dapp.dispatchEvent(
+    //     DAppEvents.accountsChanged,
+    //     removeXprv(accounts[id])
+    //   );
+    // } // TODO: check if this is relevant in any form to syscoin events
   };
 
-  const setActiveNetwork = async (network: INetwork, chain: string) => {
+  const setActiveNetwork = async (
+    network: INetwork,
+    chain: string
+  ): Promise<{ chainId: string; networkVersion: number }> => {
     store.dispatch(setIsPendingBalances(true));
 
     const { activeNetwork, activeAccount } = store.getState().vault;
@@ -147,111 +200,131 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
-    try {
-      const networkAccount = await keyringManager.setSignerNetwork(
-        network,
-        chain
-      );
+    return new Promise<{ chainId: string; networkVersion: number }>(
+      async (resolve, reject) => {
+        try {
+          const networkAccount = await keyringManager.setSignerNetwork(
+            network,
+            chain
+          );
 
-      const { assets } = activeAccount;
+          const { assets } = activeAccount;
 
-      const generalAssets = isBitcoinBased
-        ? {
-            ethereum: activeAccount.assets?.ethereum,
-            syscoin: networkAccount.assets,
+          const generalAssets = isBitcoinBased
+            ? {
+                ethereum: activeAccount.assets?.ethereum,
+                syscoin: networkAccount.assets,
+              }
+            : assets;
+
+          const account = { ...networkAccount, assets: generalAssets };
+
+          if (isBitcoinBased) {
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'xpub',
+                value: keyringManager.getAccountXpub(),
+              })
+            );
+
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'xprv',
+                value: keyringManager.getEncryptedXprv(),
+              })
+            );
+
+            walletController.account.sys.setAddress();
           }
-        : assets;
 
-      const account = { ...networkAccount, assets: generalAssets };
+          walletController.account.sys.getLatestUpdate(true);
 
-      store.dispatch(setNetwork(network));
+          const chainId = network.chainId.toString(16);
+          const networkVersion = network.chainId;
 
-      store.dispatch(setIsPendingBalances(false));
-      store.dispatch(setActiveAccount(account));
+          store.dispatch(setNetwork(network));
+          store.dispatch(setIsPendingBalances(false));
+          store.dispatch(setActiveAccount(account));
+          resolve({ chainId: chainId, networkVersion: networkVersion });
+          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+            method: PaliEvents.chainChanged,
+            params: {
+              chainId: `0x${network.chainId.toString(16)}`,
+              networkVersion: network.chainId,
+            },
+          });
 
-      if (isBitcoinBased) {
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xpub',
-            value: keyringManager.getAccountXpub(),
-          })
-        );
+          return;
+        } catch (error) {
+          console.error(
+            'Pali: fail on setActiveNetwork due to the following reason',
+            error
+          );
+          reject();
+          const statusCodeInError = ['401', '429', '500'];
 
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'xprv',
-            value: keyringManager.getEncryptedXprv(),
-          })
-        );
+          const errorMessageValidate = statusCodeInError.some((message) =>
+            error.message.includes(message)
+          );
 
-        walletController.account.sys.setAddress();
+          if (errorMessageValidate) {
+            const networkAccount = await keyringManager.setSignerNetwork(
+              activeNetwork,
+              networkChain()
+            );
+            window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+              method: PaliEvents.chainChanged,
+              params: {
+                chainId: `0x${activeNetwork.chainId.toString(16)}`,
+                networkVersion: activeNetwork.chainId,
+              },
+            });
+
+            const { assets } = activeAccount;
+
+            const generalAssets = isBitcoinBased
+              ? {
+                  ethereum: activeAccount.assets?.ethereum,
+                  syscoin: networkAccount.assets,
+                }
+              : assets;
+
+            const account = { ...networkAccount, assets: generalAssets };
+
+            store.dispatch(setNetwork(activeNetwork));
+
+            store.dispatch(setIsPendingBalances(false));
+
+            store.dispatch(setActiveAccount(account));
+          }
+
+          store.dispatch(setStoreError(true));
+        }
       }
-
-      walletController.account.sys.getLatestUpdate(true);
-
-      const chainId = await web3Provider.send('eth_chainId', []);
-      const networkVersion = await web3Provider.send('net_version', []);
-
-      window.controller.dapp.dispatchEvent(DAppEvents.chainChanged, {
-        chainId,
-        networkVersion,
-      });
-
-      const tabs = await browser.tabs.query({
-        windowType: 'normal',
-      });
-
-      for (const tab of tabs) {
-        browser.tabs.sendMessage(Number(tab.id), {
-          type: 'CHAIN_CHANGED',
-          data: { networkVersion, chainId },
-        });
-      }
-
-      return { chainId, networkVersion };
-    } catch (error) {
-      const statusCodeInError = ['401', '429', '500'];
-
-      const errorMessageValidate = statusCodeInError.some((message) =>
-        error.message.includes(message)
-      );
-
-      if (errorMessageValidate) {
-        const networkAccount = await keyringManager.setSignerNetwork(
-          activeNetwork,
-          networkChain()
-        );
-
-        const { assets } = activeAccount;
-
-        const generalAssets = isBitcoinBased
-          ? {
-              ethereum: activeAccount.assets?.ethereum,
-              syscoin: networkAccount.assets,
-            }
-          : assets;
-
-        const account = { ...networkAccount, assets: generalAssets };
-
-        store.dispatch(setNetwork(activeNetwork));
-
-        store.dispatch(setIsPendingBalances(false));
-
-        store.dispatch(setActiveAccount(account));
-      }
-
-      store.dispatch(setStoreError(true));
-    }
+    );
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));
+  const resolveAccountConflict = () => {
+    store.dispatch(
+      setChangingConnectedAccount({
+        newConnectedAccount: undefined,
+        host: undefined,
+        isChangingConnectedAccount: false,
+      })
+    );
+  };
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const { formattedNetwork } = data.isSyscoinRpc
-      ? await getSysRpc(data)
-      : await getEthRpc(data);
-
-    return formattedNetwork;
+    try {
+      const { formattedNetwork } = data.isSyscoinRpc
+        ? await getSysRpc(data)
+        : await getEthRpc(data);
+      console.log('Response', formattedNetwork);
+      return formattedNetwork;
+    } catch (error) {
+      throw cleanErrorStack(ethErrors.rpc.internal());
+    }
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
@@ -315,8 +388,10 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    getRpc,
     editCustomRpc,
     removeKeyringNetwork,
+    resolveAccountConflict,
     resolveError,
     getRecommendedFee,
     getNetworkData,

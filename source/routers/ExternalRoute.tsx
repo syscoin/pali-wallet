@@ -7,17 +7,25 @@ import {
   CreateToken,
   CreateNFT,
   CreatePass,
+  EthSign,
+  EncryptPubKey,
   Import,
   MintNFT,
   MintToken,
   SendToken,
   SendConfirm,
+  SendTransaction,
   SignAndSend,
   Sign,
   Start,
   TransferToken,
   UpdateToken,
   SeedConfirm,
+  ApproveTransactionComponent,
+  Decrypt,
+  CustomRPCExternal,
+  SwitchChain,
+  ChangeConnectedAccount,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -54,7 +62,15 @@ export const ExternalRoute = () => {
 
   return (
     <Routes>
-      <Route path="/" element={<Start />} />
+      <Route
+        path="/"
+        element={
+          <Start
+            isExternal={true}
+            externalRoute={`/external/${defaultRoute}`}
+          />
+        }
+      />
       <Route path="create-password" element={<CreatePass />} />
       <Route path="import" element={<Import />} />
       <Route path="phrase" element={<SeedConfirm />} />
@@ -73,6 +89,19 @@ export const ExternalRoute = () => {
           element={<ProtectedRoute element={<ChangeAccount />} />}
         />
 
+        <Route
+          path="change-active-connected-account"
+          element={<ProtectedRoute element={<ChangeConnectedAccount />} />}
+        />
+
+        <Route
+          path="add-EthChain"
+          element={<ProtectedRoute element={<CustomRPCExternal />} />}
+        />
+        <Route
+          path="switch-EthChain"
+          element={<ProtectedRoute element={<SwitchChain />} />}
+        />
         {/* /tx/ */}
         <Route path="tx">
           <Route
@@ -84,8 +113,30 @@ export const ExternalRoute = () => {
             element={<ProtectedRoute element={<SendConfirm />} />}
           />
           <Route
+            path="send/ethTx"
+            element={<ProtectedRoute element={<SendTransaction />} />}
+          />
+          <Route
+            path="send/approve"
+            element={
+              <ProtectedRoute element={<ApproveTransactionComponent />} />
+            }
+          />
+          <Route
             path="sign"
             element={<ProtectedRoute element={<SignAndSend />} />}
+          />
+          <Route
+            path="ethSign"
+            element={<ProtectedRoute element={<EthSign />} />}
+          />
+          <Route
+            path="encryptKey"
+            element={<ProtectedRoute element={<EncryptPubKey />} />}
+          />
+          <Route
+            path="decrypt"
+            element={<ProtectedRoute element={<Decrypt />} />}
           />
           <Route
             path="sign-psbt"

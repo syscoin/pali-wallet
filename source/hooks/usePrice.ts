@@ -8,6 +8,7 @@ export type IGetFiatAmount = (
   amount: number,
   precision?: number,
   currency?: string,
+  withCurrency?: boolean,
   withSymbol?: boolean
 ) => string;
 
@@ -18,6 +19,7 @@ export const usePrice = () => {
     amount: number,
     precision = 4,
     currency = 'usd',
+    withCurrency = true,
     withSymbol?: boolean
   ): string => {
     const value = amount * fiat.price;
@@ -26,11 +28,15 @@ export const usePrice = () => {
 
     const currencySymbol = getSymbolFromCurrency(currency);
 
-    const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
-
     const symbol = withSymbol ? currencySymbol : '';
 
-    return `${symbol}${formattedValue}  ${currency}`;
+    const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
+
+    if (formattedValue === undefined || formattedValue === 'undefined') {
+      return `${symbol}0  ${currency}`;
+    }
+
+    return `${symbol}${formattedValue}  ${withCurrency ? currency : ''}`;
   };
 
   return { getFiatAmount };

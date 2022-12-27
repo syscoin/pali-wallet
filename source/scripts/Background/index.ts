@@ -43,25 +43,20 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
-browser.runtime.onMessage.addListener(async ({ type, target, data }) => {
+browser.runtime.onMessage.addListener(async ({ type, target }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
-  if (type === 'CHAIN_CHANGED') {
-    const tabs = await browser.tabs.query({
-      windowType: 'normal',
-    });
-
-    for (const tab of tabs) {
-      browser.tabs.sendMessage(Number(tab.id), { type, data });
-    }
-  }
 });
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
+  console.log('Checking portName', port);
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
     return;
   }
+  const { changingConnectedAccount } = store.getState().vault;
+  if (changingConnectedAccount.isChangingConnectedAccount)
+    window.controller.wallet.resolveAccountConflict();
 
   const senderUrl = port.sender.url;
 
@@ -76,6 +71,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
+      //TODO: we should cleanUP dapp on port disconnection case and invalidade contentscripts through calling handledisconnected
       log('pali disconnecting port', 'System');
     });
   }

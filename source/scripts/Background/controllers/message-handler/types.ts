@@ -4,19 +4,11 @@ export type Message = {
   id: string;
   type: string;
 };
-
-export enum DAppEvents {
-  /**
-   * The active account received an update
-   */
-  accountUpdate = 'accountUpdate',
-  /**
-   * A new account was selected
-   */
-  accountsChanged = 'accountsChanged',
-  chainChanged = 'chainChanged',
-  connect = 'connect',
-  disconnect = 'disconnect',
+//TODO: addtype for rpc subscription notifications here
+export enum PaliEvents {
+  accountsChanged = 'pali_accountsChanged',
+  chainChanged = 'pali_chainChanged',
+  lockStateChanged = 'pali_unlockStateChanged',
 }
 
 // TODO review dapp methods
@@ -36,22 +28,50 @@ export enum DAppMethods {
 
 export const SUPPORTED_CHAINS = ['syscoin', 'ethereum'];
 
+export const blockingRestrictedMethods = Object.freeze([
+  'eth_sendRawTransaction',
+  'eth_sendTransaction',
+  'eth_sign',
+  'eth_signTypedData',
+  'eth_signTypedData_v1',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
+  'personal_sign',
+  'eth_getEncryptionPublicKey',
+  'eth_decrypt',
+]);
+
+export const restrictedMethods = Object.freeze([
+  'eth_sendRawTransaction',
+  'eth_sendTransaction',
+  'eth_sign',
+  'eth_signTypedData',
+  'eth_signTypedData_v1',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
+  'personal_ecRecover',
+  'personal_sign',
+  'eth_getTransactionCount',
+  'eth_uninstallFilter',
+  'eth_gasPrice',
+  'eth_getBalance',
+  'eth_estimateGas',
+  'eth_feeHistory',
+  'eth_getEncryptionPublicKey',
+  'eth_mining',
+  'wallet_watchAsset',
+]);
+
 export const unrestrictedMethods = Object.freeze([
   'eth_blockNumber',
   'eth_call',
   'eth_chainId',
   'eth_coinbase',
-  'eth_decrypt',
-  'eth_estimateGas',
-  'eth_feeHistory',
-  'eth_gasPrice',
-  'eth_getBalance',
   'eth_getBlockByHash',
   'eth_getBlockByNumber',
   'eth_getBlockTransactionCountByHash',
   'eth_getBlockTransactionCountByNumber',
   'eth_getCode',
-  'eth_getEncryptionPublicKey',
   'eth_getFilterChanges',
   'eth_getFilterLogs',
   'eth_getLogs',
@@ -60,7 +80,6 @@ export const unrestrictedMethods = Object.freeze([
   'eth_getTransactionByBlockHashAndIndex',
   'eth_getTransactionByBlockNumberAndIndex',
   'eth_getTransactionByHash',
-  'eth_getTransactionCount',
   'eth_getTransactionReceipt',
   'eth_getUncleByBlockHashAndIndex',
   'eth_getUncleByBlockNumberAndIndex',
@@ -68,30 +87,18 @@ export const unrestrictedMethods = Object.freeze([
   'eth_getUncleCountByBlockNumber',
   'eth_getWork',
   'eth_hashrate',
-  'eth_mining',
   'eth_newBlockFilter',
   'eth_newFilter',
   'eth_newPendingTransactionFilter',
   'eth_protocolVersion',
-  'eth_sendRawTransaction',
-  'eth_sendTransaction',
-  'eth_sign',
-  'eth_signTypedData',
-  'eth_signTypedData_v1',
-  'eth_signTypedData_v3',
-  'eth_signTypedData_v4',
   'eth_submitHashrate',
   'eth_submitWork',
   'eth_syncing',
-  'eth_uninstallFilter',
   'metamask_getProviderState',
   'metamask_watchAsset',
   'net_listening',
   'net_peerCount',
   'net_version',
-  'personal_ecRecover',
-  'personal_sign',
-  'wallet_watchAsset',
   'web3_clientVersion',
   'web3_sha3',
 ]);

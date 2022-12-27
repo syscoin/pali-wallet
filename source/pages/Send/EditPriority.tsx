@@ -1,13 +1,14 @@
 import { Disclosure } from '@headlessui/react';
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components/PriorityBar';
 
@@ -22,35 +23,62 @@ export const EditPriorityFee = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
-  const { ...externalTx } = useQueryData();
-  const isExternal = Boolean(externalTx.amount);
-  const tx = isExternal ? externalTx : state.tx;
+  const isExternal = state.external;
+  const tx = state.tx;
+  const fee = state.fee;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [priority, setPriority] = useState<number>(0);
+  const [customFee, setCustomFee] = useState({
+    gasLimit: '0',
+    maxPriorityFeePerGas: '0',
+    maxFee: '0',
+    feeByPriorityBar: '0',
+  });
+
+  const getFees = useCallback(async () => {
+    const { suggestBaseFee } =
+      await controller.wallet.account.eth.tx.getGasOracle();
+
+    const availableFees = [
+      await controller.wallet.account.eth.tx.getFeeByType('low'),
+      suggestBaseFee,
+      await controller.wallet.account.eth.tx.getFeeByType('high'),
+    ];
+
+    const selectedFee = availableFees[priority];
+
+    setCustomFee((prevState) => ({
+      ...prevState,
+      feeByPriorityBar: selectedFee,
+    }));
+  }, [controller.wallet.account, priority]);
+
+  useEffect(() => {
+    getFees();
+  }, [getFees]);
 
   return (
-    <Layout title="EDIT PRIORITY">
+    <Layout title="EDIT PRIORITY" canGoBack={!isExternal}>
       <DefaultModal
         show={confirmed}
         title="New priority fee set"
         description="Your priority fee has been successfully set."
         onClose={() => {
           controller.refresh(false);
-          if (isExternal) window.close();
-          else navigate('/send/eth', { state: { priority } });
+          navigate('/send/eth', { state: { priority } });
         }}
       />
-
       <p className="flex flex-col items-center justify-center text-center font-poppins text-xs">
         <span className="font-rubik text-base">
-          {`${tx.amount} ${' '} ${
+          {`${isExternal ? Number(tx.value) / 10 ** 18 : tx.amount} ${' '} ${
             tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
           }`}
         </span>
 
         <span className="text-brand-royalblue">
-          <b>Max fee</b>: {tx.fee}
+          <b>Max fee</b>:{' '}
+          {isExternal ? removeScientificNotation(fee.maxFeePerGas) : tx.fee}
         </span>
 
         <span className="mt-4">Likely in 30 seconds</span>
@@ -114,6 +142,12 @@ export const EditPriorityFee = () => {
                     type="number"
                     placeholder="Gas limit"
                     className="input-extra-small relative"
+                    onChange={(e) =>
+                      setCustomFee((prevState) => ({
+                        ...prevState,
+                        gasLimit: e.target.value,
+                      }))
+                    }
                   />
                 </Form.Item>
 
@@ -140,6 +174,12 @@ export const EditPriorityFee = () => {
                     type="number"
                     placeholder="Max priority fee (GWEI)"
                     className="input-extra-small relative"
+                    onChange={(e) =>
+                      setCustomFee((prevState) => ({
+                        ...prevState,
+                        maxPriorityFeePerGas: e.target.value,
+                      }))
+                    }
                   />
                 </Form.Item>
 
@@ -167,6 +207,12 @@ export const EditPriorityFee = () => {
                     type="number"
                     placeholder="Max fee (GWEI)"
                     className="input-extra-small relative"
+                    onChange={(e) =>
+                      setCustomFee((prevState) => ({
+                        ...prevState,
+                        maxFee: e.target.value,
+                      }))
+                    }
                   />
                 </Form.Item>
               </Form>

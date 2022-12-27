@@ -1,5 +1,5 @@
 import { Dialog } from '@headlessui/react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -12,12 +12,12 @@ import {
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
-  const { dapp } = getController();
-  const { host, chain, chainId } = useQueryData();
+  const { dapp, wallet } = getController();
+  const { host, chain, chainId, eventName } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const currentAccountId = dapp.get(host)?.accountId;
@@ -25,9 +25,15 @@ export const ConnectWallet = () => {
   const [accountId, setAccountId] = useState(currentAccountId);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
+  const isUnlocked = wallet.isUnlocked();
   const handleConnect = () => {
     const date = Date.now();
     dapp.connect({ host, chain, chainId, accountId, date });
+    wallet.setAccount(accountId);
+    dispatchBackgroundEvent(
+      `${eventName}.${host}`,
+      dapp.getAccount(host).address
+    );
     window.close();
   };
 
@@ -36,6 +42,17 @@ export const ConnectWallet = () => {
     if (isTrusted) handleConnect();
     else setConfirmUntrusted(true);
   };
+
+  useEffect(() => {
+    if (dapp.isConnected(host) && isUnlocked) {
+      dapp.connect({ host, chain, chainId, accountId, date: 0 }, true);
+      dispatchBackgroundEvent(
+        `${eventName}.${host}`,
+        dapp.getAccount(host).address
+      );
+      window.close();
+    }
+  }, [isUnlocked]);
 
   return (
     <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>

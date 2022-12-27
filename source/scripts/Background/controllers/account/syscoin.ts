@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { resolve } from 'path';
 
 import {
   KeyringManager,
@@ -6,7 +7,7 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
-import { DAppEvents } from '../message-handler/types';
+import { PaliEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -32,8 +33,8 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
-
+    const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
+      store.getState().vault;
     const { id: accountId } = activeAccount;
     if (!accounts[accountId].address) return;
 
@@ -108,11 +109,29 @@ const SysAccountController = (): ISysAccountController => {
         ...formattedWalletAccountsLatestUpdates,
       })
     );
+    resolve();
 
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountUpdate,
-      removeXprv(accounts[accountId])
-    );
+    // if (isBitcoinBased)
+    //   window.controller.dapp.dispatchEvent(
+    //     DAppEvents.accountUpdate,
+    //     removeXprv(accounts[accountId])
+    //   );
+    // else {
+    // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+    //   method: PaliEvents.chainChanged,
+    //   params: {
+    //     chainId: `0x${activeNetwork.chainId.toString(16)}`,
+    //     networkVersion: activeNetwork.chainId,
+    //   },
+    // });
+    // } //This flow would consider the need for syscoin UTXO events of accountUpdate, if possible remove it. If not refactor to use paliEvents
+    window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+      method: PaliEvents.chainChanged,
+      params: {
+        chainId: `0x${activeNetwork.chainId.toString(16)}`,
+        networkVersion: activeNetwork.chainId,
+      },
+    });
   };
 
   /** check if there is no pending transaction in mempool
@@ -120,7 +139,7 @@ const SysAccountController = (): ISysAccountController => {
    */
   const watchMemPool = () => {
     if (intervalId) clearInterval(intervalId);
-
+    //TODO: this should be enhanced and its only being set after user refresh the wallet
     // 30 seconds - 3000 milliseconds
     const interval = 30 * 1000;
 

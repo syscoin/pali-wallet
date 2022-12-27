@@ -13,7 +13,7 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { DAppEvents } from 'scripts/Background/controllers/message-handler/types';
+import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -34,10 +34,16 @@ export interface IMainController extends IKeyringManager {
   forgetWallet: (pwd: string) => void;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
+  getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number) => void;
+  resolveAccountConflict: () => void;
   resolveError: () => void;
-  setAccount: (id: number) => void;
+  setAccount: (
+    id: number,
+    host?: string,
+    connectedAccount?: IOmmitedAccount
+  ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
@@ -108,32 +114,20 @@ export interface IControllerUtils {
 
 export interface IDAppController {
   /**
-   * Adds an event listener
-   */
-  addListener: (host: string, eventName: string) => void;
-  /**
    * Changes the account
    * @emits accountsChanged
    */
   changeAccount: (host: string, accountId: number) => void;
   /**
-   * Changes the active network
-   */
-  changeNetwork: (chainId: number) => void;
-  /**
    * Completes a connection with a DApp
    * @emits connect
    */
-  connect: (dapp: IDApp) => void;
+  connect: (dapp: IDApp, isDappConnected?: boolean) => void;
   /**
    * Removes a connection with a DApp
    * @emits disconnect
    */
   disconnect: (host: string) => void;
-  /**
-   * Dispatch an event to all dapps
-   */
-  dispatchEvent: (event: DAppEvents, data: any) => void;
   /**
    * Retrieves a DApp
    */
@@ -146,9 +140,17 @@ export interface IDAppController {
   getNetwork: () => INetwork;
   getState: () => any;
   /**
-   * Checks if listener exists
+   * Changes the active network
    */
-  hasListener: (host: string, eventName: string) => boolean;
+  // changeNetwork: (chainId: number) => void;
+  /**
+   * Update state and emit events to all connected dApps
+   * @emits PaliEvents
+   */
+  handleStateChange: (
+    id: PaliEvents,
+    data: { method: string; params: any }
+  ) => Promise<void>;
   /**
    * Checks if DApp has an open popup
    */
@@ -157,14 +159,6 @@ export interface IDAppController {
    * Checks if DApp is listed
    */
   isConnected: (host: string) => boolean;
-  /**
-   * Removes an event listener
-   */
-  removeListener: (host: string, eventName: string) => void;
-  /**
-   * Removes all listeners from a DApp
-   */
-  removeListeners: (host: string) => void;
   /**
    * If connected changes account granting permissions by EIP2255 reference
    * @emits requestPermissions

@@ -46,7 +46,7 @@
     "camelcase": "warn",
     "eol-last": "warn",
     "eqeqeq": "warn",
-    "no-nested-ternary": "warn",
+    "no-nested-ternary": "off",
     "no-undef-init": "warn",
     "no-unneeded-ternary": "error",
     "no-unused-vars": "warn",

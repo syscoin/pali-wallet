@@ -30,6 +30,7 @@
       "hooks/*": ["source/hooks/*"],
       "types/*": ["source/types/*"],
       "utils/*": ["source/utils/*"],
+      "helpers/*": ["source/helpers/*"],
       "tests/*": ["tests/*"]
     }
   },

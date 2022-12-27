@@ -7,7 +7,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import { IVaultState } from './types';
+import { IChangingConnectedAccount, IVaultState } from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
@@ -26,6 +26,11 @@ export const initialState: IVaultState = {
   },
   isBitcoinBased: true,
   isPendingBalances: false,
+  changingConnectedAccount: {
+    host: undefined,
+    isChangingConnectedAccount: false,
+    newConnectedAccount: undefined,
+  },
   timer: 5,
   networks: initialNetworksState,
   encryptedMnemonic: '',
@@ -135,7 +140,13 @@ const VaultState = createSlice({
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
-      state.activeAccount.transactions = [];
+      state.activeAccount.transactions = []; // TODO: check a better way to handle network transaction
+    },
+    setChangingConnectedAccount(
+      state: IVaultState,
+      action: PayloadAction<IChangingConnectedAccount>
+    ) {
+      state.changingConnectedAccount = action.payload;
     },
     setActiveAccountProperty(
       state: IVaultState,
@@ -195,6 +206,7 @@ export const {
   setActiveAccountProperty,
   setActiveNetwork,
   setIsPendingBalances,
+  setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
   setTimer,

@@ -23,6 +23,7 @@ const icons = {
   down: AntIcons.DownOutlined,
   edit: AntIcons.EditOutlined,
   export: AntIcons.ExportOutlined,
+  file: AntIcons.FileFilled,
   'file-protect': AntIcons.FileProtectOutlined,
   forget: ForgetWalletIcon,
   globe: AntIcons.GlobalOutlined,
@@ -47,6 +48,7 @@ const icons = {
   warning: AntIcons.WarningOutlined,
   trash: AntIcons.DeleteOutlined,
   'external-link': ExternalLinkIcon,
+  tag: AntIcons.TagFilled,
 };
 
 interface IIcon {

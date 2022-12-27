@@ -1,4 +1,7 @@
+import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
+
+import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
  * Opens a popup and adds events listener to resolve a promise.
@@ -27,24 +30,38 @@ export const popupPromise = async ({
   if (dapp.hasWindow(host)) return;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-
   const popup = await createPopup(route, { ...data, host, eventName });
   dapp.setHasWindow(host, true);
-
   return new Promise((resolve) => {
     window.addEventListener(
       `${eventName}.${host}`,
       (event: CustomEvent) => {
+        if (route === 'tx/send/ethTx') {
+          console.log('Verifying response', event);
+        }
         if (event.detail !== undefined && event.detail !== null) {
           resolve(event.detail);
         }
-        resolve({ success: true });
+        if (route === 'switch-EthChain' || route === 'add-EthChain')
+          resolve(null);
       },
       { once: true, passive: true }
     );
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
+        if (
+          route === 'tx/send/ethTx' ||
+          route === 'tx/send/approve' ||
+          route === 'tx/ethSign' ||
+          route === 'tx/encryptKey' ||
+          route === 'switch-EthChain' ||
+          route === 'add-EthChain' ||
+          route === 'add-EthChain' ||
+          route === 'change-account'
+        ) {
+          resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
+        }
         dapp.setHasWindow(host, false);
         resolve({ success: false });
       }

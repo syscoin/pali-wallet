@@ -64,6 +64,7 @@ export const Home = () => {
       actualBalance || 0,
       4,
       String(fiatAsset).toUpperCase(),
+      true,
       true
     );
 
