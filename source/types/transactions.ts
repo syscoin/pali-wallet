@@ -181,6 +181,9 @@ export interface ITransactionParams {
   data: string;
   from: string;
   gas?: string;
+  gasLimit?: string | number;
+  maxFeePerGas?: string | number;
+  maxPriorityFeePerGas?: string | number;
   to: string;
   type?: string;
   value?: number;

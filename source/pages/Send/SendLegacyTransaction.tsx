@@ -2,20 +2,13 @@ import { ethers } from 'ethers';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  Layout,
-  DefaultModal,
-  NeutralButton,
-  Button,
-  Icon,
-} from 'components/index';
+import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError, ellipsis, removeScientificNotation } from 'utils/index';
-
+//TODO: add fee change modal option for the user
 export const SendLegacyTransaction = () => {
   const {
     refresh,
@@ -109,12 +102,18 @@ export const SendLegacyTransaction = () => {
     const getFeeRecomendation = async () => {
       const { maxFeePerGas, maxPriorityFeePerGas } =
         await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
-
+      //TODO: substitute txs.toBigNumber(0).toNumber to proper gasLimit calculation
+      //TODO: add option for gas as well and gasPrice (in legacy transactions case) as it wont show it yet
+      //TODO: in case fee comes in hexadecimal format it properly to number (the value on e2e test dapp after converted is 0.000315)
       const feeDetails = {
-        maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
+        maxFeePerGas: tx?.maxFeePerGas
+          ? tx.maxFeePerGas
+          : maxFeePerGas.toNumber() / 10 ** 9,
         baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-        maxPriorityFeePerGas: maxPriorityFeePerGas.toNumber() / 10 ** 9,
-        gasLimit: txs.toBigNumber(0).toNumber(),
+        maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
+          ? tx.maxPriorityFeePerGas
+          : maxPriorityFeePerGas.toNumber() / 10 ** 9,
+        gasLimit: tx?.gasLimit ? tx.gasLimit : txs.toBigNumber(0).toNumber(),
       };
 
       setFee(feeDetails);
