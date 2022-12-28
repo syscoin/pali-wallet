@@ -313,9 +313,6 @@ describe('wallet creation tests', () => {
     expect(controller.isUnlocked()).toBeFalsy();
     expect(store.getState().vault.lastLogin).toBeGreaterThan(0);
 
-    const { activeNetwork: currentActiveNetwork } = store.getState().vault;
-
-    console.log({ currentActiveNetwork });
     controller.forgetWallet(MOCK_PASSWORD);
     controller.validateSeed(MOCK_SEED_PHRASE);
 
@@ -323,7 +320,6 @@ describe('wallet creation tests', () => {
 
     const { activeAccount, activeNetwork } = store.getState().vault;
 
-    console.log({ activeNetwork });
     expect(activeAccount.address).toStrictEqual(acc.address);
     expect(activeNetwork).toStrictEqual(initialState.activeNetwork);
   });
