@@ -34,7 +34,6 @@ export interface IMainController extends IKeyringManager {
   forgetWallet: (pwd: string) => void;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => number;
-  getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number) => void;
   resolveError: () => void;

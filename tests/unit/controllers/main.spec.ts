@@ -6,15 +6,13 @@ import { INetwork, isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 import { getWalletMockState } from '../../initializeWalletTests';
 import {
   CUSTOM_UTXO_RPC_VALID_PAYLOAD,
-  CUSTOM_WEB3_ID_INVALID_PAYLOAD,
   VALID_INITIAL_CUSTOM_RPC,
-  VALID_NETWORK_VERSION_WEB3_RESPONSE,
-  CUSTOM_WEB3_URL_INVALID_PAYLOAD,
   NEW_VALID_CHAIN_ID,
   CUSTOM_WEB3_RPC_VALID_PAYLOAD,
   MOCK_PASSWORD,
   MOCK_SEED_PHRASE,
   MOCK_ACCOUNT,
+  VALID_NETWORK_VERSION_UTXO_RESPONSE,
 } from '../../mocks';
 import MainController from 'scripts/Background/controllers/MainController';
 import store from 'state/store';
@@ -103,27 +101,6 @@ describe('general, mnemonic and wallet not related tests', () => {
 
     expect(networks.ethereum[chainId]).toBeDefined();
     expect(networks.ethereum[chainId]).toStrictEqual(data);
-  });
-
-  it('should throw an error if chain id is invalid for given url', async () => {
-    await expect(
-      controller.editCustomRpc(
-        CUSTOM_WEB3_ID_INVALID_PAYLOAD,
-        VALID_INITIAL_CUSTOM_RPC
-      )
-    ).rejects.toThrow(
-      new Error('RPC invalid. Endpoint returned a different Chain ID.')
-    );
-  });
-
-  it('should throw an error if url is invalid for given chain id', async () => {
-    // this can take some time because it is trying to fetch an invalid rpc, but this should not exceed timeout of 5000 ms
-    await expect(
-      controller.editCustomRpc(
-        CUSTOM_WEB3_URL_INVALID_PAYLOAD,
-        VALID_INITIAL_CUSTOM_RPC
-      )
-    ).rejects.toThrowError();
   });
 
   // todo: check performance
@@ -255,7 +232,6 @@ describe('wallet creation tests', () => {
     expect(isBitcoinBased).toBeTruthy();
     expect(error).toBeTruthy();
     expect(isPendingBalances).toBeFalsy();
-    controller.forgetWallet(MOCK_PASSWORD);
   });
 
   // todo: check performance
@@ -267,11 +243,9 @@ describe('wallet creation tests', () => {
       initialState.activeNetwork.chainId
     );
 
-    const payload = networks.ethereum[1];
+    const payload = networks.ethereum[137];
 
-    const response = await controller.setActiveNetwork(payload, 'ethereum');
-
-    expect(response).toStrictEqual(VALID_NETWORK_VERSION_WEB3_RESPONSE);
+    await controller.setActiveNetwork(payload, 'ethereum');
 
     const { activeNetwork, activeAccount, isBitcoinBased, isPendingBalances } =
       store.getState().vault;
@@ -282,7 +256,6 @@ describe('wallet creation tests', () => {
     expect(addressIsValid).toBeTruthy();
     expect(isBitcoinBased).toBeFalsy();
     expect(isPendingBalances).toBeFalsy();
-    controller.forgetWallet(MOCK_PASSWORD);
   });
 
   // todo: check performance
@@ -290,16 +263,15 @@ describe('wallet creation tests', () => {
     const { activeNetwork: currentActiveNetwork, networks } =
       store.getState().vault;
 
-    expect(currentActiveNetwork.chainId).toBe(
+    const payload = networks.syscoin[5700];
+
+    expect(currentActiveNetwork.chainId).not.toBe(
       initialState.activeNetwork.chainId
     );
 
-    const payload = networks.syscoin[5700];
-
     const response = await controller.setActiveNetwork(payload, 'syscoin');
 
-    // network version and chain id of the provider will keep the same since we are using an utxo network and not a web3 one
-    expect(response).toStrictEqual(VALID_NETWORK_VERSION_WEB3_RESPONSE);
+    expect(response).toStrictEqual(VALID_NETWORK_VERSION_UTXO_RESPONSE);
 
     const { activeNetwork, activeAccount, isBitcoinBased, isPendingBalances } =
       store.getState().vault;
@@ -316,7 +288,6 @@ describe('wallet creation tests', () => {
     expect(isValidUtxoAddress).toBeTruthy();
     expect(isBitcoinBased).toBeTruthy();
     expect(isPendingBalances).toBeFalsy();
-    controller.forgetWallet(MOCK_PASSWORD);
   });
 
   it('should unlock the wallet', async () => {
@@ -336,7 +307,7 @@ describe('wallet creation tests', () => {
     expect(activeNetwork).toStrictEqual(currentActiveNetwork);
   });
 
-  it('should unlock using a different seed', async () => {
+  it('should unlock / forget / import using a different seed', async () => {
     controller.lock();
 
     expect(controller.isUnlocked()).toBeFalsy();
@@ -344,6 +315,7 @@ describe('wallet creation tests', () => {
 
     const { activeNetwork: currentActiveNetwork } = store.getState().vault;
 
+    console.log({ currentActiveNetwork });
     controller.forgetWallet(MOCK_PASSWORD);
     controller.validateSeed(MOCK_SEED_PHRASE);
 
@@ -351,8 +323,9 @@ describe('wallet creation tests', () => {
 
     const { activeAccount, activeNetwork } = store.getState().vault;
 
+    console.log({ activeNetwork });
     expect(activeAccount.address).toStrictEqual(acc.address);
-    expect(activeNetwork).toStrictEqual(currentActiveNetwork);
+    expect(activeNetwork).toStrictEqual(initialState.activeNetwork);
   });
 });
 

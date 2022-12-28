@@ -7,8 +7,6 @@ import {
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import {
-  getSysRpc,
-  getEthRpc,
   web3Provider,
   validateSysRpc,
   validateEthRpc,
@@ -238,28 +236,22 @@ const MainController = (): IMainController => {
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const method = data.isSyscoinRpc ? getSysRpc : getEthRpc;
-
-    const response = await method(data);
-
-    if (!response.formattedNetwork)
-      throw new Error('Could not find network info.');
-
-    return response.formattedNetwork;
-  };
-
-  const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const network = await getRpc(data);
-
-    const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
-
-    delete data.isSyscoinRpc;
+  const addCustomRpc = async ({
+    isSyscoinRpc,
+    ...data
+  }: ICustomRpcParams): Promise<INetwork> => {
+    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
 
     const newNetwork = {
-      ...network,
       ...data,
+      default: false,
+      currency: isSyscoinRpc ? 'SYS' : 'ETH',
+      explorer: data.url,
     };
+
+    const validate = isSyscoinRpc ? validateSysRpc : validateEthRpc;
+
+    await validate(data.url);
 
     store.dispatch(setNetworks({ chain, network: newNetwork }));
 
@@ -271,10 +263,6 @@ const MainController = (): IMainController => {
     oldRpc: ICustomRpcParams
   ): Promise<INetwork> => {
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
-    const { chainId } = await getRpc(newRpc);
-
-    if (chainId !== newRpc.chainId)
-      throw new Error('RPC invalid. Endpoint returned a different Chain ID.');
 
     try {
       if (newRpc.isSyscoinRpc) {
@@ -355,7 +343,6 @@ const MainController = (): IMainController => {
     resolveError,
     getRecommendedFee,
     getNetworkData,
-    getRpc,
     ...keyringManager,
   };
 };
