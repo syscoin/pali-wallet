@@ -6,7 +6,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
-  getEthRpc,
+  // getEthRpc,
   web3Provider,
   setActiveNetwork as _sysweb3SetActiveNetwork,
 } from '@pollum-io/sysweb3-network';
@@ -319,9 +319,11 @@ const MainController = (): IMainController => {
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     try {
-      const { formattedNetwork } = data.isSyscoinRpc
-        ? await getSysRpc(data)
-        : await getEthRpc(data);
+      const { formattedNetwork } = await getSysRpc(data);
+      // const { formattedNetwork } = data.isSyscoinRpc
+      // ? await getSysRpc(data)
+      // : await getEthRpc(data);
+
       console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
