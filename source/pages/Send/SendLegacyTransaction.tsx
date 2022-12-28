@@ -141,91 +141,91 @@ export const SendLegacyTransaction = () => {
           else navigate('/home');
         }}
       />
-      <div className="flex flex-col items-center justify-center w-full">
-        <p className="flex flex-col items-center justify-center text-center font-rubik">
-          <span className="text-brand-royalblue font-poppins font-thin">
-            Send
-          </span>
 
-          <span>
-            {`${
-              Number(tx.value) / 10 ** 18
-            } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
-          </span>
-        </p>
-        {fee ? (
-          <>
-            <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                From
-                <span className="text-brand-royalblue text-xs">
-                  {ellipsis(tx.from, 7, 15)}
-                </span>
-              </p>
+      {tx.from && fee ? (
+        <div className="flex flex-col items-center justify-center w-full">
+          <p className="flex flex-col items-center justify-center text-center font-rubik">
+            <span className="text-brand-royalblue font-poppins font-thin">
+              Send
+            </span>
 
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                To
-                <span className="text-brand-royalblue text-xs">
-                  {ellipsis(tx.to, 7, 15)}
-                </span>
-              </p>
+            <span>
+              {`${
+                Number(tx.value) / 10 ** 18
+              } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+            </span>
+          </p>
 
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Estimated GasFee
-                <span className="text-brand-royalblue text-xs">
-                  Max Fee: {removeScientificNotation(fee?.maxFeePerGas)}{' '}
-                  {activeNetwork.currency?.toUpperCase()}
-                </span>
-              </p>
+          <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              From
+              <span className="text-brand-royalblue text-xs">
+                {ellipsis(tx.from, 7, 15)}
+              </span>
+            </p>
 
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Total (Amount + gas fee)
-                <span className="text-brand-royalblue text-xs">
-                  {`${
-                    Number(tx.value) / 10 ** 18 + fee?.maxFeePerGas
-                  } ${activeNetwork.currency?.toLocaleUpperCase()}`}
-                </span>
-              </p>
-            </div>
-          </>
-        ) : null}
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              To
+              <span className="text-brand-royalblue text-xs">
+                {ellipsis(tx.to, 7, 15)}
+              </span>
+            </p>
 
-        <div className="flex items-center justify-around py-8 w-full">
-          <Button
-            type="button"
-            className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
-            id="send-btn"
-            onClick={() => {
-              refresh(false);
-              if (isExternal) window.close();
-              else navigate('/home');
-            }}
-          >
-            <Icon
-              name="arrow-up"
-              className="w-4"
-              wrapperClassname="mb-2 mr-2"
-              rotate={45}
-            />
-            Cancel
-          </Button>
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              Estimated GasFee
+              <span className="text-brand-royalblue text-xs">
+                Max Fee: {removeScientificNotation(fee?.maxFeePerGas)}{' '}
+                {activeNetwork.currency?.toUpperCase()}
+              </span>
+            </p>
 
-          <Button
-            type="button"
-            className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
-            id="receive-btn"
-            loading={loading}
-            onClick={handleConfirm}
-          >
-            <Icon
-              name="arrow-down"
-              className="w-4"
-              wrapperClassname="mb-2 mr-2"
-            />
-            Confirm
-          </Button>
+            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              Total (Amount + gas fee)
+              <span className="text-brand-royalblue text-xs">
+                {`${
+                  Number(tx.value) / 10 ** 18 + fee?.maxFeePerGas
+                } ${activeNetwork.currency?.toLocaleUpperCase()}`}
+              </span>
+            </p>
+          </div>
+
+          <div className="flex items-center justify-around py-8 w-full">
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              id="send-btn"
+              onClick={() => {
+                refresh(false);
+                if (isExternal) window.close();
+                else navigate('/home');
+              }}
+            >
+              <Icon
+                name="arrow-up"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+                rotate={45}
+              />
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              id="receive-btn"
+              loading={loading}
+              onClick={handleConfirm}
+            >
+              <Icon
+                name="arrow-down"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+              />
+              Confirm
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : null}
     </Layout>
   );
 };
