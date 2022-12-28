@@ -31,12 +31,12 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     const { account } = getController().wallet;
     const sign = isBitcoinBased
       ? account.sys.tx.signTransaction
-      : account.eth.tx.signTypedDataV4;
+      : account.eth.tx.signTypedData;
 
     setLoading(true);
 
     try {
-      const response = await sign(data, send);
+      const response = await sign(data, send, false);
 
       setConfirmed(true);
       setLoading(false);
