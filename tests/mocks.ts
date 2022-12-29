@@ -122,7 +122,6 @@ export const CUSTOM_UTXO_RPC_VALID_PAYLOAD = {
 
 export const VALID_GET_UTXO_RPC_RESPONSE = {
   url: 'https://blockbook-litecoin.binancechain.io/',
-  apiUrl: 'https://blockbook-litecoin.binancechain.io/',
   explorer: 'https://blockbook-litecoin.binancechain.io/',
   currency: 'ltc',
   label: 'Litecoin',
@@ -132,7 +131,6 @@ export const VALID_GET_UTXO_RPC_RESPONSE = {
 
 export const VALID_GET_WEB3_RPC_RESPONSE = {
   url: 'https://mainnet.optimism.io',
-  apiUrl: undefined,
   explorer: 'https://optimistic.etherscan.io',
   currency: 'ETH',
   label: 'test custom optimism rpc',

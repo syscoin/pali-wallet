@@ -201,24 +201,6 @@ const CustomRPCView = () => {
           />
         </Form.Item>
 
-        <Form.Item
-          hasFeedback
-          className="md:w-full"
-          name="apiUrl"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="API URL (optional)"
-            className={`${isSyscoinRpc ? 'hidden' : 'block'} input-small`}
-          />
-        </Form.Item>
-
         <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
           You can edit this later if you need on network settings menu.
         </p>
