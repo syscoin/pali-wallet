@@ -173,6 +173,7 @@ export interface ITxState {
 export interface IFeeState {
   baseFee: number;
   gasLimit: number;
+  gasPrice?: number;
   maxFeePerGas: number;
   maxPriorityFeePerGas: number;
 }

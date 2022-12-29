@@ -10,7 +10,7 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { logError, ellipsis, removeScientificNotation } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
-//TODO: add fee change modal option for the user
+
 export const SendNTokenTransaction = () => {
   const {
     refresh,
@@ -51,6 +51,10 @@ export const SendNTokenTransaction = () => {
 
   const isLegacyTransaction = Boolean(tx.type);
 
+  const validateCustomGasLimit = Boolean(
+    customFee.isCustom && customFee.gasLimit > 0
+  );
+
   const handleConfirm = async () => {
     const {
       balances: { ethereum },
@@ -63,7 +67,20 @@ export const SendNTokenTransaction = () => {
 
       try {
         if (isLegacyTransaction) {
-          const response = await txs.sendFormattedTransaction(tx);
+          const response = await txs.sendFormattedTransaction({
+            ...tx,
+            type: Number(tx?.type),
+            gasPrice: ethers.utils.parseUnits(
+              String(
+                Boolean(customFee.isCustom && customFee.gasPrice > 0)
+                  ? customFee.gasPrice.toFixed(9)
+                  : fee.gasPrice.toFixed(9)
+              )
+            ),
+            gasLimit: txs.toBigNumber(
+              validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+            ),
+          });
 
           setConfirmed(true);
           setLoading(false);
@@ -75,14 +92,26 @@ export const SendNTokenTransaction = () => {
           const response = await txs.sendFormattedTransaction({
             ...tx,
             maxPriorityFeePerGas: ethers.utils.parseUnits(
-              String(fee.maxPriorityFeePerGas.toFixed(9)),
+              String(
+                Boolean(
+                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                )
+                  ? customFee.maxPriorityFeePerGas.toFixed(9)
+                  : fee.maxPriorityFeePerGas.toFixed(9)
+              ),
               9
             ),
             maxFeePerGas: ethers.utils.parseUnits(
-              String(fee.maxFeePerGas.toFixed(9)),
+              String(
+                Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                  ? customFee.maxFeePerGas.toFixed(9)
+                  : fee.maxFeePerGas.toFixed(9)
+              ),
               9
             ),
-            gasLimit: txs.toBigNumber(fee.gasLimit),
+            gasLimit: txs.toBigNumber(
+              validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+            ),
           });
 
           setConfirmed(true);
@@ -111,9 +140,6 @@ export const SendNTokenTransaction = () => {
     const getFeeRecomendation = async () => {
       const { maxFeePerGas, maxPriorityFeePerGas } =
         await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
-      //TODO: substitute txs.toBigNumber(0).toNumber to proper gasLimit calculation
-      //TODO: add option for gas as well and gasPrice (in legacy transactions case) as it wont show it yet
-      //TODO: in case fee comes in hexadecimal format it properly to number (the value on e2e test dapp after converted is 0.000315)
 
       const getTxGasLimitResult = await txs.getTxGasLimit(tx);
 
@@ -136,6 +162,7 @@ export const SendNTokenTransaction = () => {
           ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
           : maxPriorityFeePerGas.toNumber() / 10 ** 9,
         gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
+        gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
       };
 
       setFee(feeDetails);
@@ -152,11 +179,19 @@ export const SendNTokenTransaction = () => {
     if (!tx.gasPrice && !fee?.gasLimit && !fee?.maxFeePerGas) return;
 
     return isLegacyTransaction
-      ? (Number(tx?.gasPrice / 10 ** 9) * Number(fee?.gasLimit)) / 10 ** 9
-      : (Number(fee?.maxFeePerGas) * Number(fee?.gasLimit)) / 10 ** 9;
-  }, [tx?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas]);
+      ? (Number(customFee.isCustom ? customFee.gasPrice : fee?.gasPrice) *
+          Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
+          10 ** 9
+      : (Number(
+          customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas
+        ) *
+          Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
+          10 ** 9;
+  }, [fee?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas, customFee]);
 
-  console.log('fee', fee);
+  console.log('customFee', customFee);
+
+  console.log('getCalculatedFee', getCalculatedFee);
 
   return (
     <Layout title="SEND" canGoBack={!isExternal}>
@@ -185,7 +220,7 @@ export const SendNTokenTransaction = () => {
         setCustomFee={setCustomFee}
         setHaveError={setHaveError}
         fee={fee}
-        isLegacyTransaction={isLegacyTransaction}
+        isSendLegacyTransaction={isLegacyTransaction}
       />
 
       {tx.from && fee ? (

@@ -3,11 +3,22 @@ import _ from 'lodash';
 import React, { useEffect, useState } from 'react';
 
 import { Modal, NeutralButton } from 'components/index';
+import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
 import { PriorityBar } from './components';
 
-export const EditPriorityModal = (props: any) => {
+interface IEditPriorityModalProps {
+  customFee: ICustomFeeParams;
+  fee: IFeeState;
+  isSendLegacyTransaction?: boolean;
+  setCustomFee: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
+  setHaveError: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  showModal: boolean;
+}
+
+export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const {
     showModal,
     setIsOpen,
@@ -22,6 +33,7 @@ export const EditPriorityModal = (props: any) => {
   const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
+  const gasPrice = fee?.gasPrice;
 
   const handleSubmit = () => {
     const gasLimitField = form.getFieldValue('gasLimit');
@@ -34,7 +46,16 @@ export const EditPriorityModal = (props: any) => {
       Number(maxPriorityFeePerGasField) < Number(maxFeePerGasField),
     ];
 
-    if (validations.every((item) => item === true)) {
+    if (
+      !isSendLegacyTransaction &&
+      validations.every((item) => item === true)
+    ) {
+      setIsOpen(false);
+      setHaveError(false);
+      return;
+    }
+
+    if (isSendLegacyTransaction && Number(gasLimitField) > 1000) {
       setIsOpen(false);
       setHaveError(false);
       return;
@@ -45,52 +66,91 @@ export const EditPriorityModal = (props: any) => {
   useEffect(() => {
     if (showModal) {
       if (priority === 0) {
-        form.setFieldValue(
-          'maxPriorityFeePerGas',
-          removeScientificNotation(0.8 * maxPriorityFeePerGas)
-        );
-        form.setFieldValue(
-          'maxFeePerGas',
-          removeScientificNotation(0.8 * maxFeePerGas)
-        );
-        setCustomFee((prevState) => ({
-          ...prevState,
-          isCustom: true,
-          maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
-          maxFeePerGas: 0.8 * maxFeePerGas,
-        }));
+        if (!isSendLegacyTransaction) {
+          form.setFieldValue(
+            'maxPriorityFeePerGas',
+            removeScientificNotation(0.8 * maxPriorityFeePerGas)
+          );
+          form.setFieldValue(
+            'maxFeePerGas',
+            removeScientificNotation(0.8 * maxFeePerGas)
+          );
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: true,
+            maxPriorityFeePerGas: 0.8 * maxPriorityFeePerGas,
+            maxFeePerGas: 0.8 * maxFeePerGas,
+          }));
+        } else {
+          form.setFieldValue(
+            'gasPrice',
+            removeScientificNotation(0.8 * gasPrice)
+          );
+
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: true,
+            gasPrice: 0.8 * gasPrice,
+          }));
+        }
       }
       if (priority === 1) {
-        form.setFieldValue(
-          'maxPriorityFeePerGas',
-          removeScientificNotation(1 * maxPriorityFeePerGas)
-        );
-        form.setFieldValue(
-          'maxFeePerGas',
-          removeScientificNotation(1 * maxFeePerGas)
-        );
-        setCustomFee((prevState) => ({
-          ...prevState,
-          isCustom: false,
-          maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
-          maxFeePerGas: 1 * maxFeePerGas,
-        }));
+        if (!isSendLegacyTransaction) {
+          form.setFieldValue(
+            'maxPriorityFeePerGas',
+            removeScientificNotation(1 * maxPriorityFeePerGas)
+          );
+          form.setFieldValue(
+            'maxFeePerGas',
+            removeScientificNotation(1 * maxFeePerGas)
+          );
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: false,
+            maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+            maxFeePerGas: 1 * maxFeePerGas,
+          }));
+        } else {
+          form.setFieldValue(
+            'gasPrice',
+            removeScientificNotation(1 * gasPrice)
+          );
+
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: false,
+            gasPrice: 1 * gasPrice,
+          }));
+        }
       }
       if (priority === 2) {
-        form.setFieldValue(
-          'maxPriorityFeePerGas',
-          removeScientificNotation(1.2 * maxPriorityFeePerGas)
-        );
-        form.setFieldValue(
-          'maxFeePerGas',
-          removeScientificNotation(1.2 * maxFeePerGas)
-        );
-        setCustomFee((prevState) => ({
-          ...prevState,
-          isCustom: true,
-          maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
-          maxFeePerGas: 1.2 * maxFeePerGas,
-        }));
+        if (!isSendLegacyTransaction) {
+          form.setFieldValue(
+            'maxPriorityFeePerGas',
+            removeScientificNotation(1.2 * maxPriorityFeePerGas)
+          );
+          form.setFieldValue(
+            'maxFeePerGas',
+            removeScientificNotation(1.2 * maxFeePerGas)
+          );
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: true,
+            maxPriorityFeePerGas: 1.2 * maxPriorityFeePerGas,
+            maxFeePerGas: 1.2 * maxFeePerGas,
+          }));
+        } else {
+          form.setFieldValue(
+            'gasPrice',
+            removeScientificNotation(1.2 * gasPrice)
+          );
+
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: true,
+            gasPrice: 1.2 * gasPrice,
+          }));
+        }
       }
     }
   }, [priority, fee, showModal]);
@@ -104,6 +164,7 @@ export const EditPriorityModal = (props: any) => {
           isCustom: false,
           maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
           maxFeePerGas: 1 * maxFeePerGas,
+          gasPrice: 1 * gasPrice,
         }));
         setIsOpen(false);
       }}
@@ -167,80 +228,123 @@ export const EditPriorityModal = (props: any) => {
               </Form.Item>
             </div>
 
-            <div className="flex flex-col items-start justify-center">
-              <span className="mb-1 ml-2.5 font-bold">Max Priority (GWEI)</span>
-              <Form.Item
-                name="maxPriorityFeePerGas"
-                className="text-left"
-                hasFeedback
-                rules={[
-                  {
-                    required: false,
-                    message: '',
-                  },
-                  () => ({
-                    validator(_, value) {
-                      if (value < customFee.maxFeePerGas) {
-                        return Promise.resolve();
+            {!isSendLegacyTransaction ? (
+              <>
+                <div className="flex flex-col items-start justify-center">
+                  <span className="mb-1 ml-2.5 font-bold">
+                    Max Priority (GWEI)
+                  </span>
+                  <Form.Item
+                    name="maxPriorityFeePerGas"
+                    className="text-left"
+                    hasFeedback
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                      () => ({
+                        validator(_, value) {
+                          if (value < customFee.maxFeePerGas) {
+                            return Promise.resolve();
+                          }
+
+                          return Promise.reject();
+                        },
+                      }),
+                    ]}
+                  >
+                    <Input
+                      type="number"
+                      placeholder="Max priority fee (GWEI)"
+                      className="input-extra-small relative"
+                      onChange={(e) =>
+                        setCustomFee((prevState) => ({
+                          ...prevState,
+                          isCustom: true,
+                          maxPriorityFeePerGas: +e.target.value,
+                        }))
                       }
+                    />
+                  </Form.Item>
+                </div>
 
-                      return Promise.reject();
-                    },
-                  }),
-                ]}
-              >
-                <Input
-                  type="number"
-                  placeholder="Max priority fee (GWEI)"
-                  className="input-extra-small relative"
-                  onChange={(e) =>
-                    setCustomFee((prevState) => ({
-                      ...prevState,
-                      isCustom: true,
-                      maxPriorityFeePerGas: +e.target.value,
-                    }))
-                  }
-                />
-              </Form.Item>
-            </div>
+                <div className="flex flex-col items-start justify-center">
+                  <span className="mb-1 ml-2.5 font-bold">Max Fee (GWEI)</span>
+                  <Form.Item
+                    name="maxFeePerGas"
+                    className="text-left"
+                    hasFeedback
+                    rules={[
+                      {
+                        required: false,
+                        message: '',
+                      },
+                      () => ({
+                        validator(_, value) {
+                          if (value <= 30 && value >= 1) {
+                            return Promise.resolve();
+                          }
 
-            <div className="flex flex-col items-start justify-center">
-              <span className="mb-1 ml-2.5 font-bold">Max Fee (GWEI)</span>
-              <Form.Item
-                name="maxFeePerGas"
-                className="text-left"
-                hasFeedback
-                rules={[
-                  {
-                    required: false,
-                    message: '',
-                  },
-                  () => ({
-                    validator(_, value) {
-                      if (value <= 30 && value >= 1) {
-                        return Promise.resolve();
+                          return Promise.reject();
+                        },
+                      }),
+                    ]}
+                  >
+                    {/* // taxa de base + taxa de prioridade */}
+                    <Input
+                      type="number"
+                      placeholder="Max fee (GWEI)"
+                      className="input-extra-small relative"
+                      onChange={(e) =>
+                        setCustomFee((prevState) => ({
+                          ...prevState,
+                          isCustom: true,
+                          maxFeePerGas: +e.target.value,
+                        }))
                       }
-
-                      return Promise.reject();
+                    />
+                  </Form.Item>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-start justify-center">
+                <span className="mb-1 ml-2.5 font-bold">Gas Price (GWEI)</span>
+                <Form.Item
+                  name="gasPrice"
+                  className="text-left"
+                  hasFeedback
+                  rules={[
+                    {
+                      required: false,
+                      message: '',
                     },
-                  }),
-                ]}
-              >
-                {/* // taxa de base + taxa de prioridade */}
-                <Input
-                  type="number"
-                  placeholder="Max fee (GWEI)"
-                  className="input-extra-small relative"
-                  onChange={(e) =>
-                    setCustomFee((prevState) => ({
-                      ...prevState,
-                      isCustom: true,
-                      maxFeePerGas: +e.target.value,
-                    }))
-                  }
-                />
-              </Form.Item>
-            </div>
+                    () => ({
+                      validator(_, value) {
+                        if (value < customFee.gasPrice) {
+                          return Promise.resolve();
+                        }
+
+                        return Promise.reject();
+                      },
+                    }),
+                  ]}
+                >
+                  <Input
+                    type="number"
+                    placeholder="Max priority fee (GWEI)"
+                    className="input-extra-small relative"
+                    onChange={(e) =>
+                      setCustomFee((prevState) => ({
+                        ...prevState,
+                        isCustom: true,
+                        gasPrice: +e.target.value,
+                      }))
+                    }
+                  />
+                </Form.Item>
+              </div>
+            )}
           </Form>
 
           <div className="flex items-center justify-center mt-5">
