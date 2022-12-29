@@ -33,8 +33,9 @@ export const fetchGasAndDecodeFunction = async (
   };
   const getTxGasLimitResult = await txs.getTxGasLimit(formTx);
   formTx.gasLimit =
-    dataTx.gas && Number(dataTx.gas) > Number(getTxGasLimitResult)
-      ? txs.toBigNumber(dataTx.gas)
+    (dataTx?.gas && Number(dataTx?.gas) > Number(getTxGasLimitResult)) ||
+    (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(getTxGasLimitResult))
+      ? txs.toBigNumber(dataTx.gas || dataTx.gasLimit)
       : getTxGasLimitResult;
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,

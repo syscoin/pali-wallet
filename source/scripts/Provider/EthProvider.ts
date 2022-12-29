@@ -29,12 +29,12 @@ export const EthProvider = (host: string) => {
 
     console.log('params', params);
 
-    if ((tx.type && tx.type === '0x0') || (!tx.type && !tx.data)) {
+    if (!tx.data) {
       const resp = await popupPromise({
         host,
         data: { tx, external: true },
-        route: 'tx/send/legacyTx',
-        eventName: 'legacyTxSend',
+        route: 'tx/send/nTokenTx',
+        eventName: 'nTokenTx',
       });
 
       return resp;

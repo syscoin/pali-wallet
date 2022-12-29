@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
@@ -9,7 +9,7 @@ import { IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { logError, ellipsis, removeScientificNotation } from 'utils/index';
 //TODO: add fee change modal option for the user
-export const SendLegacyTransaction = () => {
+export const SendNTokenTransaction = () => {
   const {
     refresh,
     wallet: { account },
@@ -57,8 +57,7 @@ export const SendLegacyTransaction = () => {
           setConfirmed(true);
           setLoading(false);
 
-          if (isExternal)
-            dispatchBackgroundEvent(`legacyTxSend.${host}`, response);
+          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
 
           return response;
         } else {
@@ -78,8 +77,7 @@ export const SendLegacyTransaction = () => {
           setConfirmed(true);
           setLoading(false);
 
-          if (isExternal)
-            dispatchBackgroundEvent(`legacyTxSend.${host}`, response);
+          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
 
           return response;
         }
@@ -105,15 +103,28 @@ export const SendLegacyTransaction = () => {
       //TODO: substitute txs.toBigNumber(0).toNumber to proper gasLimit calculation
       //TODO: add option for gas as well and gasPrice (in legacy transactions case) as it wont show it yet
       //TODO: in case fee comes in hexadecimal format it properly to number (the value on e2e test dapp after converted is 0.000315)
+
+      const getTxGasLimitResult = await txs.getTxGasLimit(tx);
+
+      tx.gasLimit =
+        (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
+        (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
+          ? txs.toBigNumber(tx.gas || tx.gasLimit)
+          : getTxGasLimitResult;
+
       const feeDetails = {
         maxFeePerGas: tx?.maxFeePerGas
-          ? tx.maxFeePerGas
+          ? Number(tx?.maxFeePerGas) / 10 ** 9
           : maxFeePerGas.toNumber() / 10 ** 9,
-        baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+        baseFee:
+          tx?.maxFeePerGas && tx?.maxPriorityFeePerGas
+            ? (Number(tx.maxFeePerGas) - Number(tx.maxPriorityFeePerGas)) /
+              10 ** 9
+            : maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
         maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
-          ? tx.maxPriorityFeePerGas
+          ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
           : maxPriorityFeePerGas.toNumber() / 10 ** 9,
-        gasLimit: tx?.gasLimit ? tx.gasLimit : txs.toBigNumber(0).toNumber(),
+        gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
       };
 
       setFee(feeDetails);
@@ -125,6 +136,14 @@ export const SendLegacyTransaction = () => {
       abortController.abort();
     };
   }, [tx]);
+
+  const getCalculatedFee = useMemo(() => {
+    if (!tx.gasPrice || !fee?.gasLimit || !fee?.maxFeePerGas) return;
+
+    return isLegacyTransaction
+      ? (Number(tx?.gasPrice / 10 ** 9) * Number(fee?.gasLimit)) / 10 ** 9
+      : (Number(fee?.maxFeePerGas) * Number(fee?.gasLimit)) / 10 ** 9;
+  }, [tx?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas]);
 
   console.log('fee', fee);
 
@@ -173,7 +192,7 @@ export const SendLegacyTransaction = () => {
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Estimated GasFee
               <span className="text-brand-royalblue text-xs">
-                Max Fee: {removeScientificNotation(fee?.maxFeePerGas)}{' '}
+                Max Fee: {removeScientificNotation(getCalculatedFee)}{' '}
                 {activeNetwork.currency?.toUpperCase()}
               </span>
             </p>
@@ -182,7 +201,7 @@ export const SendLegacyTransaction = () => {
               Total (Amount + gas fee)
               <span className="text-brand-royalblue text-xs">
                 {`${
-                  Number(tx.value) / 10 ** 18 + fee?.maxFeePerGas
+                  Number(tx.value) / 10 ** 18 + getCalculatedFee
                 } ${activeNetwork.currency?.toLocaleUpperCase()}`}
               </span>
             </p>

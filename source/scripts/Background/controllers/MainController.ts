@@ -320,11 +320,13 @@ const MainController = (): IMainController => {
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     //TODO: Fix sysweb3 so we can have this functionallity back again
     try {
-      const { formattedNetwork } = data.isSyscoinRpc
-        ? await getSysRpc(data)
-        : null;
-      if (formattedNetwork) return formattedNetwork;
-      throw 'Error';
+      const { formattedNetwork } = await getSysRpc(data);
+      // const { formattedNetwork } = data.isSyscoinRpc
+      // ? await getSysRpc(data)
+      // : await getEthRpc(data);
+
+      console.log('Response', formattedNetwork);
+      return formattedNetwork;
     } catch (error) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
