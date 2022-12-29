@@ -8,8 +8,15 @@ import removeScientificNotation from 'utils/removeScientificNotation';
 import { PriorityBar } from './components';
 
 export const EditPriorityModal = (props: any) => {
-  const { showModal, setIsOpen, customFee, setCustomFee, fee, setHaveError } =
-    props;
+  const {
+    showModal,
+    setIsOpen,
+    customFee,
+    setCustomFee,
+    fee,
+    setHaveError,
+    isSendLegacyTransaction,
+  } = props;
   const [priority, setPriority] = useState<number>(1);
 
   const [form] = Form.useForm();

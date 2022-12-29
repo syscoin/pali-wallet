@@ -5,9 +5,11 @@ import { useSelector } from 'react-redux';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IFeeState } from 'types/transactions';
+import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { logError, ellipsis, removeScientificNotation } from 'utils/index';
+
+import { EditPriorityModal } from './EditPriorityModal';
 //TODO: add fee change modal option for the user
 export const SendNTokenTransaction = () => {
   const {
@@ -33,6 +35,15 @@ export const SendNTokenTransaction = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState<IFeeState>();
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [haveError, setHaveError] = useState<boolean>(false);
+  const [customFee, setCustomFee] = useState<ICustomFeeParams>({
+    isCustom: false,
+    gasLimit: 0,
+    maxPriorityFeePerGas: 0,
+    maxFeePerGas: 0,
+    gasPrice: 0,
+  });
 
   const isExternal = Boolean(externalTx.external);
 
@@ -138,7 +149,7 @@ export const SendNTokenTransaction = () => {
   }, [tx]);
 
   const getCalculatedFee = useMemo(() => {
-    if (!tx.gasPrice || !fee?.gasLimit || !fee?.maxFeePerGas) return;
+    if (!tx.gasPrice && !fee?.gasLimit && !fee?.maxFeePerGas) return;
 
     return isLegacyTransaction
       ? (Number(tx?.gasPrice / 10 ** 9) * Number(fee?.gasLimit)) / 10 ** 9
@@ -158,6 +169,23 @@ export const SendNTokenTransaction = () => {
           if (isExternal) window.close();
           else navigate('/home');
         }}
+      />
+
+      <DefaultModal
+        show={haveError}
+        title="Verify Fields"
+        description="Change fields values and try again."
+        onClose={() => setHaveError(false)}
+      />
+
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+        isLegacyTransaction={isLegacyTransaction}
       />
 
       {tx.from && fee ? (
@@ -189,13 +217,21 @@ export const SendNTokenTransaction = () => {
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Estimated GasFee
-              <span className="text-brand-royalblue text-xs">
-                Max Fee: {removeScientificNotation(getCalculatedFee)}{' '}
-                {activeNetwork.currency?.toUpperCase()}
+            <div className="flex flex-row items-center justify-between w-full">
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Estimated GasFee
+                <span className="text-brand-royalblue text-xs">
+                  Max Fee: {removeScientificNotation(getCalculatedFee)}{' '}
+                  {activeNetwork.currency?.toUpperCase()}
+                </span>
+              </p>
+              <span
+                className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
+                onClick={() => setIsOpen(true)}
+              >
+                EDIT
               </span>
-            </p>
+            </div>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Total (Amount + gas fee)

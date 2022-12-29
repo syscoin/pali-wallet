@@ -205,3 +205,11 @@ export interface IApprovedTokenInfos {
   tokenDecimals: number;
   tokenSymbol: string;
 }
+
+export interface ICustomFeeParams {
+  gasLimit: number;
+  gasPrice?: number;
+  isCustom: boolean;
+  maxFeePerGas: number;
+  maxPriorityFeePerGas: number;
+}
