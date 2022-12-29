@@ -236,10 +236,7 @@ const MainController = (): IMainController => {
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const addCustomRpc = async ({
-    isSyscoinRpc,
-    ...data
-  }: ICustomRpcParams): Promise<INetwork> => {
+  const addCustomRpc = async ({ isSyscoinRpc, ...data }: any): Promise<any> => {
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
 
     const newNetwork = {
@@ -258,10 +255,7 @@ const MainController = (): IMainController => {
     return newNetwork;
   };
 
-  const editCustomRpc = async (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
-  ): Promise<INetwork> => {
+  const editCustomRpc = async (newRpc: any, oldRpc: any): Promise<any> => {
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
     try {
