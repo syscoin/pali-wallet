@@ -13,6 +13,7 @@ import {
   MOCK_SEED_PHRASE,
   MOCK_ACCOUNT,
   VALID_NETWORK_VERSION_UTXO_RESPONSE,
+  VALID_NETWORK_VERSION_WEB3_RESPONSE,
 } from '../../mocks';
 import MainController from 'scripts/Background/controllers/MainController';
 import store from 'state/store';
@@ -271,7 +272,7 @@ describe('wallet creation tests', () => {
 
     const response = await controller.setActiveNetwork(payload, 'syscoin');
 
-    expect(response).toStrictEqual(VALID_NETWORK_VERSION_UTXO_RESPONSE);
+    expect(response).toStrictEqual(VALID_NETWORK_VERSION_WEB3_RESPONSE);
 
     const { activeNetwork, activeAccount, isBitcoinBased, isPendingBalances } =
       store.getState().vault;

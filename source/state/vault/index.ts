@@ -75,11 +75,7 @@ const VaultState = createSlice({
       if (alreadyExist) {
         const verifyIfRpcOrNameExists = Object.values(
           state.networks[chain]
-        ).find(
-          (networkState: INetwork) =>
-            networkState.url === network.url ||
-            networkState.key === replaceNetworkName
-        );
+        ).find((networkState: INetwork) => networkState.url === network.url);
 
         if (verifyIfRpcOrNameExists)
           throw new Error(

@@ -109,8 +109,8 @@ export const VALID_NETWORK_VERSION_UTXO_RESPONSE = {
 };
 
 export const VALID_NETWORK_VERSION_WEB3_RESPONSE = {
-  chainId: '0x1',
-  networkVersion: '1',
+  chainId: '0x89',
+  networkVersion: '137',
 };
 
 export const CUSTOM_UTXO_RPC_VALID_PAYLOAD = {
