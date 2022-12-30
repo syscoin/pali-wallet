@@ -27,8 +27,6 @@ export const EthProvider = (host: string) => {
 
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
 
-    console.log('params', params);
-
     if (!tx.data) {
       const resp = await popupPromise({
         host,

@@ -192,10 +192,6 @@ export const SendNTokenTransaction = () => {
           10 ** 9;
   }, [fee?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas, customFee]);
 
-  console.log('customFee', customFee);
-
-  console.log('getCalculatedFee', getCalculatedFee);
-
   return (
     <Layout title="SEND" canGoBack={!isExternal}>
       <DefaultModal
