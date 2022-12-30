@@ -43,18 +43,17 @@ const SysAccountController = (): ISysAccountController => {
 
     const response = await keyringManager.getLatestUpdateForAccount();
 
-    if (!response.accountLatestUpdate)
+    if (!response.activeAccount.address)
       throw new Error('Could not get account info.');
 
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
 
-    const { address, balances, xpub, xprv, assets } =
-      response.accountLatestUpdate;
+    const { address, balances, xpub, xprv, assets } = response.activeAccount;
 
     const transactions = [
-      ...response.accountLatestUpdate.transactions,
+      ...response.activeAccount.transactions,
       ...accounts[accountId].transactions,
     ];
 
@@ -79,12 +78,10 @@ const SysAccountController = (): ISysAccountController => {
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(response.walleAccountstLatestUpdate).map(
-        (account: any, index) => ({
-          ...account,
-          assets: accounts[index].assets,
-        })
-      )
+      Object.values(response.accounts).map((account: any, index) => ({
+        ...account,
+        assets: accounts[index].assets,
+      }))
     );
 
     store.dispatch(
@@ -123,7 +120,7 @@ const SysAccountController = (): ISysAccountController => {
 
   const setAddress = async (): Promise<string> => {
     const {
-      accountLatestUpdate: { address },
+      activeAccount: { address },
     } = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
