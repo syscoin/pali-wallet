@@ -2,6 +2,8 @@ import { ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { toHexFromNumber } from '@pollum-io/sysweb3-network';
+
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -67,16 +69,17 @@ export const SendNTokenTransaction = () => {
 
       try {
         if (isLegacyTransaction) {
+          const getGasCorrectlyGasPrice = Boolean(
+            customFee.isCustom && customFee.gasPrice > 0
+          )
+            ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
+            : await txs.getRecommendedGasPrice();
+
+          const { type, ...restTx } = tx; // REMOVE TYPE TO PREVENT TRANSACTION TYPE ERROR
+
           const response = await txs.sendFormattedTransaction({
-            ...tx,
-            type: Number(tx?.type),
-            gasPrice: ethers.utils.parseUnits(
-              String(
-                Boolean(customFee.isCustom && customFee.gasPrice > 0)
-                  ? customFee.gasPrice.toFixed(9)
-                  : fee.gasPrice.toFixed(9)
-              )
-            ),
+            ...restTx,
+            gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
             gasLimit: txs.toBigNumber(
               validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
             ),
