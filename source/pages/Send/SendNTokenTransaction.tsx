@@ -113,7 +113,9 @@ export const SendNTokenTransaction = () => {
               9
             ),
             gasLimit: txs.toBigNumber(
-              validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+              validateCustomGasLimit
+                ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                : fee.gasLimit
             ),
           });
 
