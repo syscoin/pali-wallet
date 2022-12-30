@@ -77,8 +77,6 @@ const SysAccountController = (): ISysAccountController => {
       })
     );
 
-    // setAddress(); review
-
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
       Object.values(response.walleAccountstLatestUpdate).map(

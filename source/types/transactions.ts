@@ -150,6 +150,6 @@ export interface ICustomRpcParams {
   chainId: number;
   explorer?: string;
   isSyscoinRpc?: boolean;
-  label?: string;
+  label: string;
   url: string;
 }

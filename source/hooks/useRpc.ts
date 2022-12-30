@@ -29,8 +29,6 @@ export const useRpcChainId = ({ isUtxo, rpcUrl }) => {
     () => validateRpc(rpcUrl, isUtxo)
   );
 
-  console.log({ isUtxo, rpcUrl, chainId });
-
   return {
     chainId: parseInt(chainId, 16),
     ...response,

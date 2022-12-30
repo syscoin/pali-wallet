@@ -151,10 +151,6 @@ const MainController = (): IMainController => {
     try {
       if (!network) throw new Error('Missing required network info.');
 
-      if (chain === 'ethereum') {
-        await validateEthRpc(network.url);
-      }
-
       store.dispatch(setIsPendingBalances(true));
 
       const { activeAccount } = store.getState().vault;
@@ -185,7 +181,7 @@ const MainController = (): IMainController => {
       store.dispatch(setIsPendingBalances(false));
       store.dispatch(setActiveAccount(account));
 
-      walletController.account.sys.getLatestUpdate(true);
+      await walletController.account.sys.getLatestUpdate(true);
 
       const chainId = await web3Provider.send('eth_chainId', []);
       const networkVersion = await web3Provider.send('net_version', []);
@@ -236,7 +232,10 @@ const MainController = (): IMainController => {
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const addCustomRpc = async ({ isSyscoinRpc, ...data }: any): Promise<any> => {
+  const addCustomRpc = async ({
+    isSyscoinRpc,
+    ...data
+  }: ICustomRpcParams): Promise<INetwork> => {
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
 
     const newNetwork = {
@@ -255,7 +254,10 @@ const MainController = (): IMainController => {
     return newNetwork;
   };
 
-  const editCustomRpc = async (newRpc: any, oldRpc: any): Promise<any> => {
+  const editCustomRpc = async (
+    newRpc: ICustomRpcParams,
+    oldRpc: ICustomRpcParams
+  ): Promise<INetwork> => {
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
     try {
@@ -282,20 +284,13 @@ const MainController = (): IMainController => {
 
       const existentRpc = networks[chain][Number(newRpc.chainId)];
 
-      if (existentRpc) {
-        const edited = {
-          ...existentRpc,
-          ...newRpc,
-        };
+      const edited = existentRpc
+        ? { ...existentRpc, ...newRpc }
+        : { ...newRpc, default: false };
 
-        store.dispatch(setNetwork(edited));
+      store.dispatch(setNetworks({ chain, network: edited }));
 
-        return edited;
-      }
-
-      store.dispatch(setNetworks({ chain, network: newRpc }));
-
-      return newRpc;
+      return edited;
     } catch (error) {
       throw new Error('RPC URL is not valid for this Chain ID.');
     }

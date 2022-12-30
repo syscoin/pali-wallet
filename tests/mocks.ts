@@ -143,7 +143,7 @@ export const CUSTOM_WEB3_RPC_VALID_PAYLOAD = {
   chainId: 10,
   isSyscoinRpc: false,
   url: 'https://mainnet.optimism.io',
-  explorer: '',
+  explorer: 'https://optimistic.etherscan.io',
 };
 
 export const CUSTOM_WEB3_ID_INVALID_PAYLOAD = {
