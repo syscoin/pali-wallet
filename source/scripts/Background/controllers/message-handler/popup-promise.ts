@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
+import { saveTransaction } from '../account/evm';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -40,6 +41,10 @@ export const popupPromise = async ({
           console.log('Verifying response', event);
         }
         if (event.detail !== undefined && event.detail !== null) {
+          if (route === 'tx/send/ethTx') {
+            saveTransaction(event.detail);
+            resolve(event.detail?.hash);
+          }
           resolve(event.detail);
         }
         if (route === 'switch-EthChain' || route === 'add-EthChain')

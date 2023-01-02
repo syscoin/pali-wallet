@@ -143,8 +143,7 @@ export const SendTransaction = () => {
         setConfirmed(true);
         setLoading(false);
 
-        if (isExternal)
-          dispatchBackgroundEvent(`txSend.${host}`, response.hash);
+        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
