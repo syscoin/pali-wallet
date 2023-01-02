@@ -16,7 +16,6 @@ import {
   setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
-import { removeXprv } from 'utils/account';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;

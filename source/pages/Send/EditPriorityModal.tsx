@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import _ from 'lodash';
 import React, { useEffect, useState } from 'react';
 
 import { Modal, NeutralButton } from 'components/index';
@@ -64,8 +63,10 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   };
 
   useEffect(() => {
-    if (showModal) {
-      if (priority === 0) {
+    if (!showModal) return;
+
+    switch (priority) {
+      case 0:
         if (!isSendLegacyTransaction) {
           form.setFieldValue(
             'maxPriorityFeePerGas',
@@ -93,8 +94,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
             gasPrice: 0.8 * gasPrice,
           }));
         }
-      }
-      if (priority === 1) {
+        break;
+
+      case 1:
         if (!isSendLegacyTransaction) {
           form.setFieldValue(
             'maxPriorityFeePerGas',
@@ -122,8 +124,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
             gasPrice: 1 * gasPrice,
           }));
         }
-      }
-      if (priority === 2) {
+        break;
+
+      case 2:
         if (!isSendLegacyTransaction) {
           form.setFieldValue(
             'maxPriorityFeePerGas',
@@ -151,9 +154,38 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
             gasPrice: 1.2 * gasPrice,
           }));
         }
-      }
+        break;
+
+      default:
+        if (!isSendLegacyTransaction) {
+          form.setFieldValue(
+            'maxPriorityFeePerGas',
+            removeScientificNotation(1 * maxPriorityFeePerGas)
+          );
+          form.setFieldValue(
+            'maxFeePerGas',
+            removeScientificNotation(1 * maxFeePerGas)
+          );
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: false,
+            maxPriorityFeePerGas: 1 * maxPriorityFeePerGas,
+            maxFeePerGas: 1 * maxFeePerGas,
+          }));
+        } else {
+          form.setFieldValue(
+            'gasPrice',
+            removeScientificNotation(1 * gasPrice)
+          );
+
+          setCustomFee((prevState) => ({
+            ...prevState,
+            isCustom: false,
+            gasPrice: 1 * gasPrice,
+          }));
+        }
     }
-  }, [priority, fee, showModal]);
+  }, [priority, fee, showModal, gasPrice, isSendLegacyTransaction]);
 
   return (
     <Modal

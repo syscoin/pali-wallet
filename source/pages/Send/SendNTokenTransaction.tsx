@@ -2,8 +2,6 @@ import { ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { toHexFromNumber } from '@pollum-io/sysweb3-network';
-
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';

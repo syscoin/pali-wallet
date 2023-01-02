@@ -214,3 +214,14 @@ export interface ICustomFeeParams {
   maxFeePerGas: number;
   maxPriorityFeePerGas: number;
 }
+
+export interface IIsEditedAllowanceModalProps {
+  approvedTokenInfos: IApprovedTokenInfos;
+  customApprovedAllowanceAmount: ICustomApprovedAllowanceAmount;
+  host: string;
+  setCustomApprovedAllowanceAmount: React.Dispatch<
+    React.SetStateAction<ICustomApprovedAllowanceAmount>
+  >;
+  setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
+  showModal: boolean;
+}
