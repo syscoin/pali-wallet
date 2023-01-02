@@ -1,5 +1,5 @@
-import { Form, Input } from 'antd';
 import React from 'react';
+import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -17,6 +17,10 @@ export const Start = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+
+  const { handleSubmit, register } = useForm({
+    reValidateMode: 'onChange',
+  });
 
   const getStarted = (
     <>
@@ -38,50 +42,36 @@ export const Start = () => {
     await unlock(password);
 
     navigate('/home');
+
+    return true;
   };
 
   const unLock = (
     <>
-      <Form
-        validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
-        name="basic"
-        onFinish={onSubmit}
-        autoComplete="off"
-        id="login"
+      <form
+        className="flex flex-col gap-6 items-center justify-center text-center"
+        onSubmit={handleSubmit(onSubmit)}
       >
-        <Form.Item
-          name="password"
-          hasFeedback
-          className="w-full"
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                if (checkPassword(value)) {
-                  return Promise.resolve().then(
-                    async () => await onSubmit({ password: value })
-                  );
-                }
+        <input
+          placeholder="Enter your password"
+          className="input-small relative md:w-full"
+          {...register('password', {
+            required: true,
+            validate: {
+              checkPwd: async (value) => {
+                const isValid = checkPassword(value);
 
-                return Promise.reject();
+                if (!isValid) return false;
+
+                return await onSubmit({ password: value });
               },
-            }),
-          ]}
-        >
-          <Input.Password
-            className="input-small relative"
-            placeholder="Enter your password"
-          />
-        </Form.Item>
+            },
+          })}
+        />
 
-        <PrimaryButton type="submit" id="unlock-btn">
-          Unlock
-        </PrimaryButton>
-      </Form>
+        <PrimaryButton type="submit">Unlock</PrimaryButton>
+      </form>
+
       <Link
         className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
         to="/import"
