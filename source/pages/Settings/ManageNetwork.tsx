@@ -17,15 +17,9 @@ const ManageNetworkView = () => {
   const removeNetwork = (chain: string, chainId: number) =>
     wallet.removeKeyringNetwork(chain, chainId);
 
-  const editNetwork = ({
-    selected,
-    chain,
-  }: {
-    chain: string;
-    selected: INetwork;
-  }) => {
+  const editNetwork = (chainId: number, chain: string) => {
     navigate('/settings/networks/custom-rpc', {
-      state: { selected, chain },
+      state: { chainId, chain },
     });
   };
 
@@ -58,9 +52,7 @@ const ManageNetworkView = () => {
             {!network.default && (
               <div className="flex gap-x-3 items-center justify-between">
                 <IconButton
-                  onClick={() =>
-                    editNetwork({ selected: network, chain: 'syscoin' })
-                  }
+                  onClick={() => editNetwork(network.chainId, 'syscoin')}
                   type="primary"
                   shape="circle"
                 >
@@ -111,9 +103,7 @@ const ManageNetworkView = () => {
             {!network.default && (
               <div className="flex flex-col gap-y-3 items-end justify-end">
                 <IconButton
-                  onClick={() =>
-                    editNetwork({ selected: network, chain: 'ethereum' })
-                  }
+                  onClick={() => editNetwork(network.chainId, 'ethereum')}
                   type="primary"
                   shape="circle"
                 >

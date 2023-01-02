@@ -11,3 +11,4 @@ export * from './formatTransactionValue';
 export * from './transactions';
 export * from './removeScientificNotation';
 export * from './verifyZerosInValueAndFormat';
+export * from './image';

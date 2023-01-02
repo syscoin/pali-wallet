@@ -153,3 +153,10 @@ export interface ICustomRpcParams {
   label: string;
   url: string;
 }
+
+export interface IRpcParams {
+  chainId: number;
+  explorerUrl?: string;
+  label: string;
+  url: string;
+}

@@ -17,20 +17,17 @@ import { DAppEvents } from 'scripts/Background/controllers/message-handler/types
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
-import { ICustomRpcParams } from './transactions';
+import { IRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
   account: {
     eth: IEthAccountController;
     sys: ISysAccountController;
   };
-  addCustomRpc: (rpc: any) => Promise<any>;
+  addCustomRpc: (chain: string, data: IRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: (password: string) => Promise<any>;
-  editCustomRpc: (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
-  ) => Promise<INetwork>;
+  editCustomRpc: (chain: string, data: IRpcParams) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => number;

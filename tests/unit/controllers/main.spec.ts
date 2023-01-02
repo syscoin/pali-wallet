@@ -6,7 +6,6 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 import { getWalletMockState } from '../../initializeWalletTests';
 import {
   CUSTOM_UTXO_RPC_VALID_PAYLOAD,
-  VALID_INITIAL_CUSTOM_RPC,
   NEW_VALID_CHAIN_ID,
   CUSTOM_WEB3_RPC_VALID_PAYLOAD,
   MOCK_PASSWORD,
@@ -79,7 +78,10 @@ describe('general, mnemonic and wallet not related tests', () => {
   it('should add a custom sys rpc', async () => {
     const { chainId } = CUSTOM_UTXO_RPC_VALID_PAYLOAD;
 
-    const data = await controller.addCustomRpc(CUSTOM_UTXO_RPC_VALID_PAYLOAD);
+    const data = await controller.addCustomRpc(
+      'syscoin',
+      CUSTOM_UTXO_RPC_VALID_PAYLOAD
+    );
 
     const { networks } = store.getState().vault;
 
@@ -90,7 +92,10 @@ describe('general, mnemonic and wallet not related tests', () => {
   it('should add a custom eth rpc', async () => {
     const { chainId } = CUSTOM_WEB3_RPC_VALID_PAYLOAD;
 
-    const data = await controller.addCustomRpc(CUSTOM_WEB3_RPC_VALID_PAYLOAD);
+    const data = await controller.addCustomRpc(
+      'ethereum',
+      CUSTOM_WEB3_RPC_VALID_PAYLOAD
+    );
 
     const { networks } = store.getState().vault;
 
@@ -100,8 +105,8 @@ describe('general, mnemonic and wallet not related tests', () => {
 
   it('should edit a custom rpc', async () => {
     const edited = await controller.editCustomRpc(
-      CUSTOM_WEB3_RPC_VALID_PAYLOAD,
-      VALID_INITIAL_CUSTOM_RPC
+      'ethereum',
+      CUSTOM_WEB3_RPC_VALID_PAYLOAD
     );
 
     const { networks } = store.getState().vault;
@@ -217,12 +222,15 @@ describe('wallet creation tests', () => {
   it('should set an eth network as the active network and update the active account', async () => {
     const { activeNetwork, networks } = store.getState().vault;
 
+    console.log({ activeNetwork, networks });
     expect(activeNetwork.chainId).toBe(initialState.activeNetwork.chainId);
 
     const payload = networks.ethereum[137];
+    console.log({ payload });
 
     const response = await controller.setActiveNetwork(payload, 'ethereum');
 
+    console.log({ response });
     expect(response).toStrictEqual(VALID_NETWORK_VERSION_WEB3_RESPONSE);
 
     const {
@@ -232,6 +240,7 @@ describe('wallet creation tests', () => {
       isPendingBalances,
     } = store.getState().vault;
 
+    console.log({ newActiveNetwork, networks, activeAccount });
     const addressIsValid = ethers.utils.isAddress(activeAccount.address);
 
     expect(newActiveNetwork).toStrictEqual(payload);

@@ -1,3 +1,4 @@
+import { chains } from 'eth-chains';
 import useSWR from 'swr';
 
 import {
@@ -5,6 +6,7 @@ import {
   jsonRpcRequest,
   validateSysRpc,
 } from '@pollum-io/sysweb3-network';
+import { getSearch } from '@pollum-io/sysweb3-utils';
 
 // move to sysweb3
 const getUtxoRpc = async (url: string) => {
@@ -17,20 +19,8 @@ const getUtxoRpc = async (url: string) => {
   return chainId;
 };
 
-const validateRpc = async (url: string, isUtxo?: boolean) => {
+export const validateRpc = async (url: string, isUtxo?: boolean) => {
   if (isUtxo) return await getUtxoRpc(url);
 
   return await jsonRpcRequest(url, 'eth_chainId');
-};
-
-export const useRpcChainId = ({ isUtxo, rpcUrl }) => {
-  const { data: chainId, ...response } = useSWR(
-    () => rpcUrl ?? null,
-    () => validateRpc(rpcUrl, isUtxo)
-  );
-
-  return {
-    chainId: parseInt(chainId, 16),
-    ...response,
-  };
 };

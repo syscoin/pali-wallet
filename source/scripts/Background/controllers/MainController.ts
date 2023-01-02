@@ -2,6 +2,8 @@ if (process.env.NODE_ENV === 'test') {
   chrome.runtime.id = 'testid';
 }
 
+import { chains } from 'eth-chains';
+
 import {
   KeyringManager,
   IKeyringAccountState,
@@ -10,6 +12,8 @@ import {
   web3Provider,
   validateSysRpc,
   validateEthRpc,
+  getBip44Chain,
+  coins,
 } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -30,7 +34,7 @@ import {
   setIsBitcoinBased,
 } from 'state/vault';
 import { IMainController } from 'types/controllers';
-import { ICustomRpcParams } from 'types/transactions';
+import { IRpcParams } from 'types/transactions';
 import { removeXprv } from 'utils/account';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
@@ -232,61 +236,107 @@ const MainController = (): IMainController => {
 
   const resolveError = () => store.dispatch(setStoreError(false));
 
-  const addCustomRpc = async ({
-    isSyscoinRpc,
-    ...data
-  }: ICustomRpcParams): Promise<INetwork> => {
-    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
+  const getCustomUtxoRpc = async ({
+    chainId,
+    explorerUrl,
+    url,
+    label,
+  }: IRpcParams) => {
+    const { coin, chain } = await validateSysRpc(url);
 
-    const newNetwork = {
-      ...data,
+    const {
+      nativeCurrency: { name, symbol },
+    } = getBip44Chain(coin, chain === 'test');
+
+    const rpcByCoins = coins.filter((data: any) => data.name === name);
+
+    const slip44ByCoins = rpcByCoins && rpcByCoins[0] && rpcByCoins[0].slip44;
+
+    const formatted = {
+      explorer: explorerUrl ?? url,
       default: false,
-      currency: isSyscoinRpc ? 'SYS' : 'ETH',
-      explorer: data.url,
+      currency: symbol,
+      chainId: chainId ?? slip44ByCoins,
+      url,
+      label,
     };
 
-    const validate = isSyscoinRpc ? validateSysRpc : validateEthRpc;
+    return formatted;
+  };
 
-    await validate(data.url);
+  const getCustomWeb3Rpc = async ({
+    chainId,
+    explorerUrl,
+    url,
+    label,
+  }: IRpcParams) => {
+    const detailsByChains = chains.getById(chainId);
 
-    store.dispatch(setNetworks({ chain, network: newNetwork }));
+    const explorerByChains =
+      detailsByChains.explorers && detailsByChains.explorers[0].url;
 
-    return newNetwork;
+    const explorer = explorerUrl ?? explorerByChains;
+
+    const formatted = {
+      explorer: explorerUrl ?? explorer,
+      default: false,
+      currency: detailsByChains.nativeCurrency.symbol,
+      chainId,
+      url,
+      label,
+    };
+
+    return formatted;
+  };
+
+  const addCustomRpc = async (
+    chain: string,
+    data: IRpcParams
+  ): Promise<INetwork> => {
+    const method = chain === 'syscoin' ? getCustomUtxoRpc : getCustomWeb3Rpc;
+
+    const formatted = await method(data);
+
+    const { networks } = store.getState().vault;
+
+    if (networks[chain][data.chainId] === formatted)
+      throw new Error(
+        'RPC already exists. Try with a new one or go to Manage Networks to edit this one.'
+      );
+
+    store.dispatch(setNetworks({ chain, network: formatted }));
+
+    return formatted;
   };
 
   const editCustomRpc = async (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
+    chain: string,
+    data: IRpcParams
   ): Promise<INetwork> => {
-    const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
-
     try {
-      if (newRpc.isSyscoinRpc) {
-        await validateSysRpc(newRpc.url);
-      }
+      const validate = chain === 'syscoin' ? validateSysRpc : validateEthRpc;
 
-      await validateEthRpc(newRpc.url);
+      await validate(data.url);
 
-      if (oldRpc.chainId !== newRpc.chainId) {
+      const { networks } = store.getState().vault;
+
+      const existentNetwork = networks[chain][data.chainId];
+      const isAddMode =
+        existentNetwork && existentNetwork.chainId !== data.chainId;
+
+      //* remove the existent network and replace for the new rpc
+      if (isAddMode) {
         store.dispatch(
           removeNetwork({
-            chainId: oldRpc.chainId,
+            chainId: existentNetwork.chainId,
             prefix: chain,
           })
         );
 
-        return await addCustomRpc(newRpc);
+        return await addCustomRpc(chain, data);
       }
 
-      delete newRpc.isSyscoinRpc;
-
-      const { networks } = store.getState().vault;
-
-      const existentRpc = networks[chain][Number(newRpc.chainId)];
-
-      const edited = existentRpc
-        ? { ...existentRpc, ...newRpc }
-        : { ...newRpc, default: false };
+      const edited = existentNetwork ? { ...existentNetwork, ...data } : data;
 
       store.dispatch(setNetworks({ chain, network: edited }));
 

@@ -116,8 +116,8 @@ export const VALID_NETWORK_VERSION_WEB3_RESPONSE = {
 export const CUSTOM_UTXO_RPC_VALID_PAYLOAD = {
   label: 'test custom litecoin rpc',
   chainId: 2,
-  isSyscoinRpc: true,
   url: 'https://blockbook-litecoin.binancechain.io/',
+  explorerUrl: '',
 };
 
 export const VALID_GET_UTXO_RPC_RESPONSE = {
@@ -131,7 +131,7 @@ export const VALID_GET_UTXO_RPC_RESPONSE = {
 
 export const VALID_GET_WEB3_RPC_RESPONSE = {
   url: 'https://mainnet.optimism.io',
-  explorer: 'https://optimistic.etherscan.io',
+  explorerUrl: 'https://optimistic.etherscan.io',
   currency: 'ETH',
   label: 'test custom optimism rpc',
   default: false,
@@ -141,36 +141,33 @@ export const VALID_GET_WEB3_RPC_RESPONSE = {
 export const CUSTOM_WEB3_RPC_VALID_PAYLOAD = {
   label: 'test custom optimism rpc',
   chainId: 10,
-  isSyscoinRpc: false,
   url: 'https://mainnet.optimism.io',
-  explorer: 'https://optimistic.etherscan.io',
+  explorerUrl: 'https://optimistic.etherscan.io',
 };
 
 export const CUSTOM_WEB3_ID_INVALID_PAYLOAD = {
   label: 'custom web3 rpc payload with invalid chain id',
   chainId: 10,
-  isSyscoinRpc: false,
+  explorerUrl: '',
   url: 'https://arb1.arbitrum.io/rpc',
 };
 
 export const CUSTOM_WEB3_URL_INVALID_PAYLOAD = {
   label: 'custom web3 rpc payload with invalid url',
   chainId: 42161,
-  isSyscoinRpc: false,
+  explorerUrl: '',
   url: 'https://arb1.arbitrum.io',
 };
 
 export const VALID_INITIAL_CUSTOM_RPC = {
   label: 'initial custom rpc',
   chainId: 10,
-  isSyscoinRpc: false,
   url: 'https://mainnet.optimism.io',
 };
 
 export const VALID_EDITED_CUSTOM_RPC = {
   label: 'edited custom arbitrum rpc',
   chainId: 42161,
-  isSyscoinRpc: false,
   url: 'https://arb1.arbitrum.io/rpc',
 };
 

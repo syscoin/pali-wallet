@@ -37,6 +37,7 @@ const SysAccountController = (): ISysAccountController => {
     const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
 
     const { id: accountId } = activeAccount;
+
     if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
