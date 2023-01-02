@@ -53,6 +53,7 @@ export const Start = () => {
         onSubmit={handleSubmit(onSubmit)}
       >
         <input
+          type="password"
           placeholder="Enter your password"
           className="input-small relative md:w-full"
           {...register('password', {
