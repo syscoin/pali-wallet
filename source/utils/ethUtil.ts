@@ -26,6 +26,26 @@ export const decodeTransactionData = (params: ITransactionParams) => {
 
       return decoderValue;
     }
+
+    const transactionValueValidation = [
+      value === 0,
+      value > 0,
+      String(value) === '0x0',
+    ];
+
+    if (
+      !data &&
+      transactionValueValidation.some((validation) => validation === true)
+    ) {
+      const emptyDecoderObject = {
+        method: 'Send',
+        types: [],
+        inputs: [],
+        names: [],
+      };
+      return emptyDecoderObject;
+    }
+
     return;
   } catch (error) {
     console.log('error decode', error);

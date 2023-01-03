@@ -221,12 +221,6 @@ export const enable = async (
     throw cleanErrorStack(
       ethErrors.provider.userRejectedRequest('Connected to Bitcoin based chain')
     );
-  // throw {
-  //   code: 4001,
-  //   message: `Connected to Bitcoin based chain`,
-  // };
-  //TODO: add proper pali error rejection
-  // return cleanErrorStack(ethErrors.provider.userRejectedRequest());
 
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())

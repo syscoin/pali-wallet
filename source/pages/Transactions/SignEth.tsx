@@ -14,8 +14,6 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 interface ISign {
   send?: boolean;
 }
-//TODO: enhance the UI
-// TODO: display warning for eth_sign users show the decoded Personal Message
 const EthSign: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
 

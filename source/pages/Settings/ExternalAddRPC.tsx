@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
