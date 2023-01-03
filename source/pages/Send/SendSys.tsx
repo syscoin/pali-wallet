@@ -8,7 +8,12 @@ import { useSelector } from 'react-redux';
 
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
-import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
+import {
+  Tooltip,
+  FeeInputWithPrefix,
+  NeutralButton,
+  Layout,
+} from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
@@ -278,14 +283,11 @@ export const SendSys = () => {
                   },
                 ]}
               >
-                <Tooltip
-                  childrenClassName="text-brand-white h-4"
-                  content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
-                >
+                <Tooltip content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing.">
                   <p
                     className={`${
                       !hasAccountAssets && ' absolute top-0 left-8'
-                    } text-10px cursor-default text-brand-white`}
+                    } h-4 text-10px cursor-default text-brand-white`}
                   >
                     Verify address
                   </p>
@@ -317,14 +319,11 @@ export const SendSys = () => {
                   },
                 ]}
               >
-                <Tooltip
-                  childrenClassName="text-brand-white h-4"
-                  content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
-                >
+                <Tooltip content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts.">
                   <p
                     className={`${
                       !hasAccountAssets && 'absolute top-0 right-14'
-                    } text-10px cursor-default text-brand-white`}
+                    } h-4 text-10px cursor-default text-brand-white`}
                   >
                     Z-DAG
                   </p>
@@ -379,7 +378,7 @@ export const SendSys = () => {
             />
           </Form.Item>
 
-          <Fee disabled={true} recommend={recommend} form={form} />
+          <FeeInputWithPrefix disabled={true} />
 
           <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
             <span className="text-xs">

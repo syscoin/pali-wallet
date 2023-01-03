@@ -55,7 +55,7 @@ div[role='alert'] {
 /** BUTTONS **/
 
 .button-disabled {
-  @apply cursor-not-allowed font-light opacity-60 bg-transparent text-brand-gray border-2 border-brand-gray;
+  @apply cursor-not-allowed font-light opacity-50 bg-transparent text-brand-gray border-2 border-brand-gray;
 }
 
 /** INPUTS **/
@@ -111,11 +111,7 @@ div[role='alert'] {
 
 /** Mixed rounded border inputs **/
 .mixed-border-input {
-  @apply relative;
-}
-
-.mixed-border-input .ant-input {
-  @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus outline-none rounded-r-full;
+  @apply relative block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus outline-none rounded-r-full;
 }
 
 /* Firefox */
