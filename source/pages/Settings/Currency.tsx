@@ -1,5 +1,4 @@
 import { Menu, Transition } from '@headlessui/react';
-import { Input, Form } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -211,34 +210,17 @@ const CurrencyView = () => {
           Check your balance in different currencies
         </p>
 
-        <Form
-          validateMessages={{ default: '' }}
-          id="currency-form"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-          onFinish={() => undefined}
-          autoComplete="off"
-          className="flex flex-col gap-3 items-center justify-center mt-4 text-center text-base md:w-full"
-        >
-          <Form.Item
-            name="receiver"
-            className="relative md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-            ]}
-          >
-            <Input
+        <div className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left text-sm md:max-w-md">
+          <div className="relative md:w-full md:max-w-md">
+            <input
               type="number"
+              placeholder="Enter your password"
+              className="input-small relative md:w-full"
               onChange={(event) =>
                 handleConvert(Number(event.target.value), checkValueCoin)
               }
               maxLength={20}
               value={Number(conversorValues.crypto)}
-              className="input-small"
             />
 
             <div className="absolute bottom-2 right-4 flex gap-x-3 items-center justify-center">
@@ -259,29 +241,10 @@ const CurrencyView = () => {
                 <p>SYS</p>
               </div>
             </div>
-          </Form.Item>
+          </div>
 
-          <Form.Item
-            name="receiver"
-            className="relative md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  if (!value) {
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                },
-              }),
-            ]}
-          >
-            <Input
+          <div className="relative md:w-full md:max-w-md">
+            <input
               type="number"
               maxLength={20}
               onChange={(event) => {
@@ -345,8 +308,8 @@ const CurrencyView = () => {
                 </Transition>
               </Menu>
             </div>
-          </Form.Item>
-        </Form>
+          </div>
+        </div>
       </div>
     </Layout>
   );

@@ -1,4 +1,3 @@
-import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 
 import { Layout, NeutralButton } from 'components/index';
@@ -11,13 +10,11 @@ const TrustedSitesView = () => {
 
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
-  const handleSearch = (typed) => {
-    let newList: string[] = [];
-
-    if (typed && typed.length >= 2) {
-      newList = trustedApps.filter((item: string) => {
+  const onSearch = (search: string) => {
+    if (search && search.length >= 2) {
+      const newList = trustedApps.filter((item: string) => {
         const url = item.toLowerCase();
-        const typedValue = typed.toLowerCase();
+        const typedValue = search.toLowerCase();
 
         return url.includes(typedValue);
       });
@@ -32,42 +29,12 @@ const TrustedSitesView = () => {
 
   return (
     <Layout title="TRUSTED WEBSITES">
-      <Form
-        validateMessages={{ default: '' }}
-        id="trusted"
-        name="trusted"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        autoComplete="off"
-      >
-        <Form.Item
-          name="search"
-          className="md:w-full"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              validator(_, value) {
-                if (!value || value.length <= 2) {
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <Input
-            onChange={(event) => handleSearch(event.target.value)}
-            type="text"
-            className="input-small relative"
-            placeholder="Search"
-          />
-        </Form.Item>
-      </Form>
+      <input
+        onChange={(event) => onSearch(event.target.value)}
+        type="text"
+        placeholder="Enter your search and press Enter"
+        className="input-small relative md:w-full"
+      />
 
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled mb-2 mt-6 w-full h-60 overflow-auto">

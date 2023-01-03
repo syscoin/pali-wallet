@@ -138,7 +138,7 @@ const SysAccountController = (): ISysAccountController => {
     try {
       const { activeAccount } = store.getState().vault;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = activeAccount.assets.syscoin.find(
         (asset: any) => asset.assetGuid === token.assetGuid
       );
 
@@ -165,7 +165,12 @@ const SysAccountController = (): ISysAccountController => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, asset],
+          value: [
+            {
+              ...activeAccount.assets,
+              syscoin: [...activeAccount.assets.syscoin, asset],
+            },
+          ],
         })
       );
     } catch (error) {

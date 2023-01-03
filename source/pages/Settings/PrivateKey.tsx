@@ -1,5 +1,5 @@
-import { Input, Form } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useForm, FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
@@ -10,6 +10,13 @@ import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
+
+  const {
+    handleSubmit,
+    register,
+    formState: { isValid },
+    getValues,
+  } = useForm();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -24,11 +31,9 @@ const PrivateKeyView = () => {
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copyText] = useCopyClipboard();
-  const [valid, setValid] = useState<boolean>(false);
-  const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) =>
-    controller.wallet.getDecryptedPrivateKey(key);
+  const onSubmit = (data: FieldValues) =>
+    controller.wallet.getDecryptedPrivateKey(data.password);
 
   useEffect(() => {
     if (!copied) return;
@@ -66,72 +71,40 @@ const PrivateKeyView = () => {
         </CopyCard>
       )}
 
-      <Form
-        validateMessages={{ default: '' }}
-        name="phraseview"
-        form={form}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        autoComplete="off"
+      <form
+        className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-center md:max-w-md"
+        onSubmit={handleSubmit(onSubmit)}
       >
-        <Form.Item
-          name="password"
-          hasFeedback
-          className="my-4 md:w-full"
-          rules={[
-            {
-              required: true,
-              message: '',
+        <input
+          type="password"
+          placeholder="Enter your password"
+          className="input-small relative md:w-full"
+          {...register('password', {
+            validate: {
+              checkPwd: (pwd: string) => controller.wallet.checkPassword(pwd),
             },
-            () => ({
-              validator(_, pwd) {
-                if (controller.wallet.checkPassword(pwd)) {
-                  setValid(true);
+          })}
+        />
 
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
+        <CopyCard
+          onClick={isValid ? () => copyText(onSubmit(getValues())) : undefined}
+          label="Your private key"
         >
-          <Input.Password
-            className="input-small relative"
-            placeholder="Enter your password"
-          />
-        </Form.Item>
-      </Form>
+          <p>
+            {isValid && activeAccount.xpub
+              ? ellipsis(onSubmit(getValues()), 4, 16)
+              : '********...************'}
+          </p>
+        </CopyCard>
 
-      <CopyCard
-        onClick={
-          valid
-            ? () =>
-                copyText(getDecryptedPrivateKey(form.getFieldValue('password')))
-            : undefined
-        }
-        label="Your private key"
-      >
-        <p>
-          {valid && activeAccount.xpub
-            ? ellipsis(
-                getDecryptedPrivateKey(form.getFieldValue('password')),
-                4,
-                16
-              )
-            : '********...************'}
-        </p>
-      </CopyCard>
-
-      <div className="absolute bottom-8 md:static">
         <NeutralButton
-          width="56 px-8"
+          className="absolute bottom-12 px-8 w-56 md:static"
           type="button"
           onClick={() => window.open(explorerLink)}
         >
           See on explorer
         </NeutralButton>
-      </div>
+      </form>
     </Layout>
   );
 };

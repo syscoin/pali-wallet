@@ -1,6 +1,6 @@
 import { Disclosure } from '@headlessui/react';
-import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -18,6 +18,8 @@ export const EditPriorityFee = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
+  const { register } = useForm();
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -82,94 +84,34 @@ export const EditPriorityFee = () => {
               as="div"
               className="scrollbar-styled h-24 overflow-auto"
             >
-              <Form
-                validateMessages={{ default: '' }}
-                className="flex flex-col gap-3 items-center justify-center py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300 md:w-full md:max-w-md"
-                name="priority-form"
-                id="priority-form"
-                labelCol={{ span: 8 }}
-                wrapperCol={{ span: 16 }}
-                autoComplete="off"
-              >
-                <Form.Item
-                  name="gas-limit"
-                  hasFeedback
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                    () => ({
-                      validator(_, value) {
-                        if (value <= 30 && value >= 1) {
-                          return Promise.resolve();
-                        }
+              <form className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left md:max-w-md">
+                <input
+                  type="text"
+                  placeholder="Gas Limit"
+                  className="input-extra-small relative md:w-full"
+                  {...register('gasLimit', {
+                    required: false,
+                  })}
+                />
 
-                        return Promise.reject();
-                      },
-                    }),
-                  ]}
-                >
-                  <Input
-                    type="number"
-                    placeholder="Gas limit"
-                    className="input-extra-small relative"
-                  />
-                </Form.Item>
+                <input
+                  type="text"
+                  placeholder="Max Priority Fee (GWEI)"
+                  className="input-extra-small relative md:w-full"
+                  {...register('maxPriorityFee', {
+                    required: false,
+                  })}
+                />
 
-                <Form.Item
-                  name="max-priority-fee"
-                  hasFeedback
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                    () => ({
-                      validator(_, value) {
-                        if (value <= 30 && value >= 1) {
-                          return Promise.resolve();
-                        }
-
-                        return Promise.reject();
-                      },
-                    }),
-                  ]}
-                >
-                  <Input
-                    type="number"
-                    placeholder="Max priority fee (GWEI)"
-                    className="input-extra-small relative"
-                  />
-                </Form.Item>
-
-                <Form.Item
-                  name="max-fee"
-                  hasFeedback
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                    () => ({
-                      validator(_, value) {
-                        if (value <= 30 && value >= 1) {
-                          return Promise.resolve();
-                        }
-
-                        return Promise.reject();
-                      },
-                    }),
-                  ]}
-                >
-                  {/* // taxa de base + taxa de prioridade */}
-                  <Input
-                    type="number"
-                    placeholder="Max fee (GWEI)"
-                    className="input-extra-small relative"
-                  />
-                </Form.Item>
-              </Form>
+                <input
+                  type="text"
+                  placeholder="Max Fee (GWEI)"
+                  className="input-extra-small relative md:w-full"
+                  {...register('maxFee', {
+                    required: false,
+                  })}
+                />
+              </form>
             </Disclosure.Panel>
           </>
         )}
@@ -179,15 +121,13 @@ export const EditPriorityFee = () => {
         How should I choose
       </p>
 
-      <div className="absolute bottom-12 md:static md:mt-10">
-        <NeutralButton
-          onClick={() => setConfirmed(true)}
-          type="button"
-          id="confirm-btn"
-        >
-          Confirm
-        </NeutralButton>
-      </div>
+      <NeutralButton
+        onClick={() => setConfirmed(true)}
+        type="button"
+        className="absolute bottom-12 md:static md:mt-10"
+      >
+        Confirm
+      </NeutralButton>
     </Layout>
   );
 };

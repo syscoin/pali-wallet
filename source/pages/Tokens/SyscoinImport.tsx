@@ -1,6 +1,5 @@
-import { Form, Input } from 'antd';
 import * as React from 'react';
-import { useState } from 'react';
+import { useForm, FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
@@ -11,134 +10,87 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 export const SyscoinImportToken = () => {
-  const controller = getController();
+  const {
+    wallet: {
+      account: {
+        sys: { saveTokenInfo },
+      },
+    },
+  } = getController();
 
-  const [form] = Form.useForm();
   const { navigate } = useUtils();
-
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const nextStep = async ({ assetGuid }: { assetGuid: string }) => {
-    try {
-      setIsLoading(true);
+  const {
+    register,
+    handleSubmit,
+    setError,
+    reset,
+    formState: { isValid, isSubmitting, errors, isSubmitSuccessful },
+  } = useForm();
 
+  const onSubmit = async ({ assetGuid }: FieldValues) => {
+    try {
       const metadata = await getAsset(activeNetwork.url, assetGuid);
 
-      if (metadata && metadata.symbol) {
-        await controller.wallet.account.sys.saveTokenInfo({
-          ...metadata,
-          symbol: metadata.symbol ? atob(String(metadata.symbol)) : '',
-        });
+      if (!metadata || !metadata.symbol)
+        throw new Error('Could not find token metadata.');
 
-        setAdded(true);
-        setIsLoading(false);
-
-        return;
-      }
-    } catch (_error) {
-      setError(Boolean(_error));
-      setIsLoading(false);
+      await saveTokenInfo({
+        ...metadata,
+        symbol: metadata.symbol ? atob(String(metadata.symbol)) : '',
+      });
+    } catch (error) {
+      console.log({ isValid });
+      setError('assetGuid', {
+        message: JSON.stringify(error),
+      });
     }
   };
 
   return (
-    <>
-      <Form
-        validateMessages={{ default: '' }}
-        form={form}
-        id="token-form"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        onFinish={nextStep}
-        autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left md:max-w-md"
+    >
+      <input
+        type="number"
+        placeholder="Token Guid"
+        className="input-small relative md:w-full"
+        {...register('assetGuid', {
+          required: true,
+        })}
+      />
+
+      <NeutralButton
+        loading={isSubmitting}
+        className="absolute bottom-12 md:static"
+        type="submit"
       >
-        <Form.Item
-          name="assetGuid"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                const data = await getAsset(activeNetwork.url, value);
+        Add token
+      </NeutralButton>
 
-                if (!value || data) {
-                  if (data && data.symbol) {
-                    form.setFieldValue('symbol', atob(String(data.symbol)));
-                  }
-
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            className="input-small relative"
-            placeholder="Token Guid"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="symbol"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            className="input-small relative"
-            placeholder="Token symbol"
-          />
-        </Form.Item>
-
-        <div className="flex flex-col items-center justify-center w-full">
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton loading={isLoading} type="submit">
-              Next
-            </NeutralButton>
-          </div>
-        </div>
-      </Form>
-
-      {added && (
+      {isSubmitSuccessful && (
         <DefaultModal
-          show={added}
+          show={isSubmitSuccessful}
           title="Token successfully added"
-          description={`${form.getFieldValue(
-            'symbol'
-          )} was successfully added to your wallet.`}
+          description="Token successfully added to your wallet."
           onClose={() => navigate('/home')}
         />
       )}
 
-      {error && (
+      {errors.assetGuid && errors.assetGuid.message && (
         <ErrorModal
-          show={Boolean(error)}
+          show={Boolean(errors.assetGuid.message)}
           title="Could not add token"
           description="Could not add token to your wallet. Check the network and the asset guid and try again later."
           log="Token not found in your XPUB or token is already imported."
-          onClose={() => setError(false)}
+          onClose={reset}
         />
       )}
-    </>
+    </form>
   );
 };

@@ -1,5 +1,5 @@
-import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,7 +16,13 @@ const AutolockView = () => {
 
   const timer = useSelector((state: RootState) => state.vault.timer);
 
-  const onSubmit = (data: any) => {
+  const { register, handleSubmit } = useForm({
+    defaultValues: {
+      minutes: timer,
+    },
+  });
+
+  const onSubmit = (data: { minutes: number }) => {
     setLoading(true);
 
     controller.wallet.setAutolockTimer(data.minutes);
@@ -26,68 +32,45 @@ const AutolockView = () => {
   };
 
   return (
-    <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
-      <p className="mb-8 text-white text-sm">
-        You can set auto lock timer. Default is 5 minutes after no activity.
-        Maximum is 30 minutes.
-      </p>
-
-      <DefaultModal
-        show={confirmed}
-        onClose={() => {
-          setConfirmed(false);
-          navigate('/home');
-        }}
-        title="Time set successfully"
-        description="Your auto lock was configured successfully. You can change it at any time."
-      />
-
-      <Form
-        validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center text-center"
-        name="autolock"
-        id="autolock"
-        onFinish={onSubmit}
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 16 }}
-        initialValues={{ minutes: timer }}
-        autoComplete="off"
+    <Layout title="AUTO LOCK TIMER">
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left md:max-w-md"
       >
-        <Form.Item
-          name="minutes"
-          className="w-full"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-              min: 1,
-              max: 30,
+        <p className="text-white text-sm">
+          Default timer is 5 minutes after no activity. Maximum is 30 minutes.
+        </p>
+
+        <DefaultModal
+          show={confirmed}
+          onClose={() => {
+            setConfirmed(false);
+            navigate('/home');
+          }}
+          title="Time set successfully"
+          description="Your auto lock was configured successfully. You can change it at any time."
+        />
+
+        <input
+          type="number"
+          placeholder="Minutes"
+          className="input-small relative md:w-full"
+          {...register('minutes', {
+            validate: {
+              lessThanThirty: (value) => value <= 30,
+              greaterThanOne: (value) => value > 1,
             },
-            () => ({
-              validator(_, value) {
-                if (value <= 30 && value >= 1) {
-                  return Promise.resolve();
-                }
+          })}
+        />
 
-                return Promise.reject();
-              },
-            }),
-          ]}
+        <NeutralButton
+          className="absolute bottom-12 md:static"
+          type="submit"
+          loading={loading}
         >
-          <Input
-            type="number"
-            placeholder="Minutes"
-            className="input-small relative"
-          />
-        </Form.Item>
-
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
-            Save
-          </NeutralButton>
-        </div>
-      </Form>
+          Save
+        </NeutralButton>
+      </form>
     </Layout>
   );
 };

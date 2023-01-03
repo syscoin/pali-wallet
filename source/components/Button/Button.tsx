@@ -104,6 +104,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type,
+  className = '',
 }) => {
   const closeIcon = (
     <Icon
@@ -121,7 +122,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:bg-button-secondaryhover'
-      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5`}
+      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5 ${className}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -150,6 +151,7 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type = 'button',
+  className = '',
 }) => (
   <button
     className={`
@@ -158,7 +160,7 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:opacity-90'
-      } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5`}
+      } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5 ${className}`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}

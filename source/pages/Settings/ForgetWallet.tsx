@@ -1,12 +1,12 @@
-import { Form, Input } from 'antd';
-import TextArea from 'antd/lib/input/TextArea';
-import React, { useState } from 'react';
+import React from 'react';
+import { useForm, FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { formatSeedPhrase } from 'utils/format';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
@@ -21,22 +21,22 @@ const ForgetWalletView = () => {
 
   if (!activeAccount) throw new Error('No active account');
 
+  const {
+    register,
+    handleSubmit,
+    formState: { isSubmitting, isValid },
+  } = useForm();
+
   const hasAccountFunds =
     (isBitcoinBased
       ? activeAccount.balances.syscoin
       : activeAccount.balances.ethereum) > 0;
 
-  // if account has no funds, no need to input the seed
-  const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
-  const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
-
-  const onSubmit = ({ password }: { password: string }) => {
+  const onSubmit = ({ password }: FieldValues) => {
     controller.wallet.forgetWallet(password);
 
     navigate('/');
   };
-
-  const [form] = Form.useForm();
 
   return (
     <Layout title="FORGET WALLET">
@@ -49,111 +49,59 @@ const ForgetWalletView = () => {
         </p>
       </Card>
 
-      <div className="flex flex-col items-center justify-center w-full">
-        <Form
-          validateMessages={{ default: '' }}
-          form={form}
-          onFinish={onSubmit}
-          className="password flex flex-col gap-5 items-center justify-center my-5 w-full max-w-xs text-center md:max-w-md"
-          name="forget"
-          autoComplete="off"
-        >
-          <Form.Item
-            name="password"
-            hasFeedback
-            className="w-full"
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  const seed = controller.wallet.getSeed(value);
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex flex-col gap-4 items-center justify-start mt-4 w-full max-w-xs h-full text-left md:max-w-md"
+      >
+        <input
+          type="password"
+          placeholder="Enter your password"
+          className="input-small relative md:w-full"
+          {...register('password', {
+            required: true,
+            validate: {
+              checkPwd: (value) => controller.wallet.checkPassword(value),
+            },
+          })}
+        />
 
-                  if (seed) {
-                    setIsPasswordValid(true);
+        {hasAccountFunds && (
+          <>
+            <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
+              You still have funds in your wallet. Paste your seed phrase below
+              to forget wallet.
+            </p>
 
-                    return Promise.resolve();
-                  }
-
-                  setIsPasswordValid(false);
-
-                  return Promise.reject();
+            <textarea
+              placeholder="Paste your wallet seed phrase"
+              className="p-2 pl-4 w-full h-20 text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none"
+              {...register('phrase', {
+                required: hasAccountFunds,
+                deps: ['password'],
+                setValueAs: (value) => formatSeedPhrase(value),
+                validate: {
+                  checkSeedPhrase: (value) =>
+                    controller.wallet.validateSeed(value),
                 },
-              }),
-            ]}
-          >
-            <Input.Password
-              className="input-small relative"
-              placeholder="Enter your password"
-              id="forget_password"
+              })}
             />
-          </Form.Item>
+          </>
+        )}
 
-          {hasAccountFunds && (
-            <>
-              <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
-                You still have funds in your wallet. Paste your seed phrase
-                below to forget wallet.
-              </p>
+        <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
+          <PrimaryButton type="button" onClick={() => navigate('/home')}>
+            Cancel
+          </PrimaryButton>
 
-              <Form.Item
-                name="seed"
-                className="w-full"
-                dependencies={['password']}
-                rules={[
-                  {
-                    required: true,
-                    message: '',
-                  },
-                  ({ getFieldValue }) => ({
-                    validator(_, value) {
-                      const seed = controller.wallet.getSeed(
-                        getFieldValue('password')
-                      );
-
-                      if (seed === value) {
-                        setIsSeedValid(true);
-
-                        return Promise.resolve();
-                      }
-
-                      setIsSeedValid(false);
-
-                      return Promise.reject();
-                    },
-                  }),
-                ]}
-              >
-                <TextArea
-                  className={`${
-                    !isSeedValid && form.getFieldValue('seed')
-                      ? 'border-warning-error'
-                      : 'border-fields-input-border'
-                  } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
-                  placeholder="Paste your wallet seed phrase"
-                  id="forget_seed"
-                />
-              </Form.Item>
-            </>
-          )}
-
-          <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
-            <PrimaryButton type="button" onClick={() => navigate('/home')}>
-              Cancel
-            </PrimaryButton>
-
-            <SecondaryButton
-              type="submit"
-              disabled={!isPasswordValid || !isSeedValid}
-              id="forget-btn"
-            >
-              Forget
-            </SecondaryButton>
-          </div>
-        </Form>
-      </div>
+          <SecondaryButton
+            type="submit"
+            disabled={!isValid}
+            loading={isSubmitting}
+          >
+            Forget
+          </SecondaryButton>
+        </div>
+      </form>
     </Layout>
   );
 };
