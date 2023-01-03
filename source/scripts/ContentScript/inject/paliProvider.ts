@@ -339,7 +339,6 @@ export class PaliInpageProvider extends EventEmitter {
       window.addEventListener(
         id,
         (event: any) => {
-          //TODO: Add proper event for our event handling methods
           // console.log('[Pali] EventListener method', data, event.detail);
           if (event.detail === undefined) {
             resolve(undefined);
@@ -349,7 +348,7 @@ export class PaliInpageProvider extends EventEmitter {
 
           const response = JSON.parse(event.detail);
           if (response.error) {
-            reject(response.error); //TODO all the errors function needs to be refactored this part should not add new Error on response rejection
+            reject(response.error);
           }
           resolve(response);
         },
@@ -495,7 +494,6 @@ export class PaliInpageProvider extends EventEmitter {
 
       let error;
       if (isRecoverable) {
-        //TODO: refactor error messages to use EthereumRpcError
         error = {
           code: 1013, // Try again later
           message: errorMessage || messages.errors.disconnected(),

@@ -158,7 +158,7 @@ export const EthProvider = (host: string) => {
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
-    const { account } = getController().wallet; //TODO: when UI is added account object can be inside personal_EcRecover case since it will be only used there
+    const { account } = getController().wallet;
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
