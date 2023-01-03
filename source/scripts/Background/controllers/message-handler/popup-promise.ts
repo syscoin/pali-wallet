@@ -41,7 +41,7 @@ export const popupPromise = async ({
           console.log('Verifying response', event);
         }
         if (event.detail !== undefined && event.detail !== null) {
-          if (route === 'tx/send/ethTx') {
+          if (route === 'tx/send/ethTx' || route === 'tx/send/approve') {
             saveTransaction(event.detail);
             resolve(event.detail?.hash);
           }
