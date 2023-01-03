@@ -43,7 +43,7 @@ export const popupPromise = async ({
         if (event.detail !== undefined && event.detail !== null) {
           if (route === 'tx/send/ethTx' || route === 'tx/send/approve') {
             saveTransaction(event.detail);
-            resolve(event.detail?.hash);
+            resolve(event.detail.hash);
           }
           resolve(event.detail);
         }
