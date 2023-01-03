@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import { Runtime } from 'webextension-polyfill-ts';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';

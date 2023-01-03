@@ -173,6 +173,7 @@ export interface ITxState {
 export interface IFeeState {
   baseFee: number;
   gasLimit: number;
+  gasPrice?: number;
   maxFeePerGas: number;
   maxPriorityFeePerGas: number;
 }
@@ -181,7 +182,11 @@ export interface ITransactionParams {
   data: string;
   from: string;
   gas?: string;
+  gasLimit?: string | number;
+  maxFeePerGas?: string | number;
+  maxPriorityFeePerGas?: string | number;
   to: string;
+  type?: string;
   value?: number;
 }
 export interface IDecodedTx {
@@ -200,4 +205,23 @@ export interface ICustomApprovedAllowanceAmount {
 export interface IApprovedTokenInfos {
   tokenDecimals: number;
   tokenSymbol: string;
+}
+
+export interface ICustomFeeParams {
+  gasLimit: number;
+  gasPrice?: number;
+  isCustom: boolean;
+  maxFeePerGas: number;
+  maxPriorityFeePerGas: number;
+}
+
+export interface IIsEditedAllowanceModalProps {
+  approvedTokenInfos: IApprovedTokenInfos;
+  customApprovedAllowanceAmount: ICustomApprovedAllowanceAmount;
+  host: string;
+  setCustomApprovedAllowanceAmount: React.Dispatch<
+    React.SetStateAction<ICustomApprovedAllowanceAmount>
+  >;
+  setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
+  showModal: boolean;
 }
