@@ -21,7 +21,6 @@ import {
   Receive,
   SendEth,
   SendSys,
-  EditPriorityFee,
   SendConfirm,
   Start,
   TrustedSites,
@@ -42,9 +41,6 @@ export const Router = () => {
 
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
@@ -110,10 +106,6 @@ export const Router = () => {
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
-      />
-      <Route
-        path="send/edit/priority"
-        element={<ProtectedRoute element={<EditPriorityFee />} />}
       />
       <Route
         path="send/edit/gas"

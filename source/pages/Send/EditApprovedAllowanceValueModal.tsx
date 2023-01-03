@@ -4,23 +4,12 @@ import React, { useState } from 'react';
 
 import { NeutralButton, Modal } from 'components/index';
 import {
-  IApprovedTokenInfos,
   ICustomApprovedAllowanceAmount,
+  IIsEditedAllowanceModalProps,
 } from 'types/transactions';
 
-interface isEditedAllowanceModalProps {
-  approvedTokenInfos: IApprovedTokenInfos;
-  customApprovedAllowanceAmount: ICustomApprovedAllowanceAmount;
-  host: string;
-  setCustomApprovedAllowanceAmount: React.Dispatch<
-    React.SetStateAction<ICustomApprovedAllowanceAmount>
-  >;
-  setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
-  showModal: boolean;
-}
-
 export const EditApprovedAllowanceValueModal = (
-  props: isEditedAllowanceModalProps
+  props: IIsEditedAllowanceModalProps
 ) => {
   const {
     host,

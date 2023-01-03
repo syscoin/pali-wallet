@@ -8,6 +8,7 @@ import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import {
+  ICustomFeeParams,
   IDecodedTx,
   IFeeState,
   ITransactionParams,
@@ -69,7 +70,7 @@ export const SendTransaction = () => {
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [customFee, setCustomFee] = useState({
+  const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
     maxPriorityFeePerGas: 0,
