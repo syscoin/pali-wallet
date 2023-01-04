@@ -86,5 +86,6 @@ const EthAccountController = (): IEthAccountController => {
 export default EthAccountController;
 
 export const saveTransaction = (tx: any) => {
-  store.dispatch(setAccountTransactions(tx));
+  const finalTx = { ...tx, timestamp: Math.floor(Date.now() / 1000) };
+  store.dispatch(setAccountTransactions(finalTx));
 };
