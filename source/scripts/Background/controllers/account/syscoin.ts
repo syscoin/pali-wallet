@@ -62,7 +62,7 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(
       setActiveAccountProperty({
         property: 'transactions',
-        value: [...accounts[accountId].transactions, ...filteredTxs],
+        value: [...filteredTxs],
       })
     );
 
@@ -98,10 +98,20 @@ const SysAccountController = (): ISysAccountController => {
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
-        ...account,
-        assets: accounts[index].assets,
-      }))
+      Object.values(walleAccountstLatestUpdate).map((account: any, index) => {
+        const { transactions: updatedTxs } = account;
+
+        const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
+          (value, i, self) =>
+            i === self.findIndex((tx) => tx[hash] === value[hash])
+        ); // to get array with unique txs.
+
+        return {
+          ...account,
+          assets: accounts[index].assets,
+          transactions: [...allTxs],
+        };
+      })
     );
 
     store.dispatch(
