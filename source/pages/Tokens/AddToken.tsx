@@ -34,13 +34,15 @@ export const AddToken: FC = () => {
     setTestnet();
   }, [network]);
 
+  const searchTokenValidation = Boolean(network.chainId === 137); // Later change the chainId to 1 to only allow Ethereum Mainnet, at the moment add it is not working
+
   return (
     <Layout title="IMPORT TOKEN">
       {isBitcoinBased ? (
         <SyscoinImportToken />
       ) : (
         <>
-          {!isTestnet ? (
+          {!isTestnet && searchTokenValidation ? (
             <>
               <Form
                 form={form}
