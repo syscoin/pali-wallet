@@ -13,7 +13,7 @@ import {
   validateSysRpc,
   validateEthRpc,
   getBip44Chain,
-  coins,
+  // coins,
 } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -245,18 +245,19 @@ const MainController = (): IMainController => {
     const { coin, chain } = await validateSysRpc(url);
 
     const {
-      nativeCurrency: { name, symbol },
+      nativeCurrency: { symbol },
     } = getBip44Chain(coin, chain === 'test');
 
-    const rpcByCoins = coins.filter((data: any) => data.name === name);
+    //* needs sysweb3 updates
+    // const rpcByCoins = coins.filter((data: any) => data.name === name);
 
-    const slip44ByCoins = rpcByCoins && rpcByCoins[0] && rpcByCoins[0].slip44;
+    // const slip44ByCoins = rpcByCoins && rpcByCoins[0] && rpcByCoins[0].slip44;
 
     const formatted = {
       explorer: explorerUrl ?? url,
       default: false,
       currency: symbol,
-      chainId: chainId ?? slip44ByCoins,
+      chainId: chainId,
       url,
       label,
     };
