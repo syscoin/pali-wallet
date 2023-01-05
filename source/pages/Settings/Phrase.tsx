@@ -1,22 +1,24 @@
-import { Form, Input } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { useForm, FieldValues } from 'react-hook-form';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const PhraseView = () => {
-  const [phrase, setPhrase] = useState<string>(
-    '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
-  );
+  const {
+    handleSubmit,
+    register,
+    formState: { isValid },
+    getValues,
+  } = useForm();
 
   const { useCopyClipboard, navigate, alert } = useUtils();
   const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
-  const handleCopySeed = () => {
-    copyText(phrase);
-  };
+  const onSubmit = (data: FieldValues) =>
+    controller.wallet.getSeed(data.password);
 
   useEffect(() => {
     if (!copied) return;
@@ -26,60 +28,27 @@ const PhraseView = () => {
   }, [copied]);
 
   return (
-    <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
-      <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
-        <Form
-          validateMessages={{ default: '' }}
-          className="password flex flex-col gap-8 items-center justify-center mb-4 w-full max-w-xs text-center md:max-w-md"
-          name="phraseview"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 16 }}
-          autoComplete="off"
-        >
-          <Form.Item
-            name="password"
-            hasFeedback
-            className="w-full md:max-w-md"
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  const seed = controller.wallet.getSeed(value);
-
-                  if (seed) {
-                    setPhrase(seed);
-
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                },
-              }),
-            ]}
-          >
-            <Input.Password
-              className="input-small relative"
-              placeholder="Enter your password"
-              id="phraseview_password"
-            />
-          </Form.Item>
-        </Form>
+    <Layout title="WALLET SEED PHRASE">
+      <form
+        className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left md:max-w-md"
+        onSubmit={handleSubmit(onSubmit)}
+      >
+        <input
+          type="password"
+          placeholder="Enter your password"
+          className="input-small relative md:w-full"
+          {...register('password', {
+            validate: {
+              checkPwd: (pwd: string) => controller.wallet.checkPassword(pwd),
+            },
+          })}
+        />
 
         <CopyCard
-          className="my-4"
-          onClick={() =>
-            phrase !==
-              '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
-            handleCopySeed()
-          }
-          label="Seed Phrase: (click to copy)"
+          onClick={isValid ? () => copyText(onSubmit(getValues())) : undefined}
+          label="Your seed phrase"
         >
-          <p className="mt-3 text-xs" id="user-phrase">
-            {phrase}
-          </p>
+          <p>{isValid ? onSubmit(getValues()) : '********...************'}</p>
         </CopyCard>
 
         <Card type="info">
@@ -90,12 +59,14 @@ const PhraseView = () => {
           </p>
         </Card>
 
-        <div className="absolute bottom-12 md:static md:mt-10">
-          <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
-          </NeutralButton>
-        </div>
-      </div>
+        <NeutralButton
+          className="absolute bottom-12 md:static md:mt-10"
+          type="button"
+          onClick={() => navigate('/home')}
+        >
+          Close
+        </NeutralButton>
+      </form>
     </Layout>
   );
 };

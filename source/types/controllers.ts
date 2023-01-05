@@ -17,24 +17,21 @@ import { PaliEvents } from 'scripts/Background/controllers/message-handler/types
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
-import { ICustomRpcParams } from './transactions';
+import { IRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
   account: {
     eth: IEthAccountController;
     sys: ISysAccountController;
   };
-  addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
+  addCustomRpc: (chain: string, data: IRpcParams) => Promise<INetwork>;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
-  createWallet: (password: string) => Promise<void>;
-  editCustomRpc: (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
-  ) => Promise<INetwork>;
+  createWallet: (password: string) => Promise<any>;
+  editCustomRpc: (chain: string, data: IRpcParams) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
+  getCustomWeb3Rpc: (data: IRpcParams) => Promise<INetwork>;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
-  getRecommendedFee: (data?: string | boolean) => Promise<number>;
-  getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  getRecommendedFee: (data?: string | boolean) => number;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number) => void;
   resolveAccountConflict: () => void;

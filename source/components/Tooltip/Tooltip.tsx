@@ -1,11 +1,10 @@
 import Tippy from '@tippyjs/react';
-import React, { ReactNode } from 'react';
+import React, { ReactElement, ReactNode } from 'react';
 import 'tippy.js/animations/scale.css';
 import { Placement } from 'tippy.js';
 
 interface ITooltip {
-  children?: ReactNode;
-  childrenClassName?: string;
+  children: ReactElement;
   className?: string;
   content: ReactNode;
   placement?: Placement | undefined;
@@ -13,7 +12,6 @@ interface ITooltip {
 
 export const Tooltip: React.FC<ITooltip> = ({
   children,
-  childrenClassName,
   className,
   content,
   placement = 'top',
@@ -33,10 +31,8 @@ export const Tooltip: React.FC<ITooltip> = ({
         </div>
       }
     >
-      <div className={`outline-none focus:outline-none ${childrenClassName}`}>
-        {children}
-      </div>
+      {children}
     </Tippy>
   ) : (
-    <>{children}</>
+    children
   );

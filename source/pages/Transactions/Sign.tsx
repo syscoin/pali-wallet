@@ -29,13 +29,14 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
   const onSubmit = async () => {
     const { account } = getController().wallet;
+    // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
     const sign = account.sys.tx.signTransaction;
     // : account.eth.tx.signTypedDataV4;
 
     setLoading(true);
 
     try {
-      const response = await sign(data, send);
+      const response = await account.sys.tx.signTransaction(data, send);
 
       setConfirmed(true);
       setLoading(false);
@@ -77,7 +78,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
             <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
           </ul>
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <div className="absolute bottom-12 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
               Cancel
             </SecondaryButton>

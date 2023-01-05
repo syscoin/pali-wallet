@@ -149,8 +149,8 @@ export interface ITemporaryTransaction {
 }
 
 export interface ICustomRpcParams {
-  apiUrl?: string;
   chainId: number;
+  explorer?: string;
   isSyscoinRpc?: boolean;
   label: string;
   symbol?: string;
@@ -224,4 +224,11 @@ export interface IIsEditedAllowanceModalProps {
   >;
   setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
+}
+
+export interface IRpcParams {
+  chainId: number;
+  explorerUrl?: string;
+  label: string;
+  url: string;
 }

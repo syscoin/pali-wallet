@@ -1,4 +1,8 @@
-import { validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  getBip44Chain,
+  jsonRpcRequest,
+  validateSysRpc,
+} from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 
@@ -41,4 +45,21 @@ export const isBitcoinBasedNetwork = async ({
   } catch (error) {
     return false;
   }
+};
+
+// move to sysweb3
+export const getUtxoRpc = async (url: string) => {
+  const { valid, coin, chain } = await validateSysRpc(url);
+
+  if (!valid) throw new Error('Invalid RPC');
+
+  const { chainId } = getBip44Chain(coin, chain === 'test');
+
+  return chainId;
+};
+
+export const validateRpc = async (url: string, isUtxo?: boolean) => {
+  if (isUtxo) return await getUtxoRpc(url);
+
+  return await jsonRpcRequest(url, 'eth_chainId');
 };

@@ -5,6 +5,7 @@ import { Icon } from '..';
 interface IPrimaryButton {
   action?: boolean;
   children?: React.ReactNode;
+  className?: string;
   disabled?: boolean;
   id?: string;
   loading?: boolean;
@@ -56,6 +57,7 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   onClick,
   type = 'submit',
   width = '36',
+  className = '',
 }) => {
   const checkIcon = (
     <Icon
@@ -67,12 +69,12 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
 
   return (
     <button
-      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
         ${
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
             : 'opacity-100 hover:bg-button-primaryhover'
-        } border-button-primary bg-button-primary  text-brand-white w-${width}`}
+        } border-button-primary bg-button-primary  text-brand-white w-${width} ${className}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -102,6 +104,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type,
+  className = '',
 }) => {
   const closeIcon = (
     <Icon
@@ -119,7 +122,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:bg-button-secondaryhover'
-      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5`}
+      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5 ${className}`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -148,6 +151,7 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type = 'button',
+  className = '',
 }) => (
   <button
     className={`
@@ -156,7 +160,7 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:opacity-90'
-      } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5`}
+      } border-button-neutral transition-all duration-300 bg-button-neutral w-36 py-2.5 ${className}`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}

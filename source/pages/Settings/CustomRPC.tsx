@@ -1,269 +1,234 @@
 import { Switch } from '@headlessui/react';
-import { Form, Input } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
+import { chains } from 'eth-chains';
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { useSelector } from 'react-redux';
+import { Location, useLocation } from 'react-router-dom';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
-
-import { Layout, NeutralButton } from 'components/index';
+import { DefaultModal, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { ICustomRpcParams } from 'types/transactions';
+import { RootState } from 'state/store';
+import { IRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
+import { validateRpc } from 'utils/network';
 
 const CustomRPCView = () => {
-  const { state }: { state: any } = useLocation();
+  const { networks } = useSelector((state: RootState) => state.vault);
+  const { state }: Location = useLocation();
 
-  const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
-  const [loading, setLoading] = useState(false);
-  const [isUrlValid, setIsUrlValid] = useState(false);
-  const [urlFieldValue, setUrlFieldValue] = useState('');
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
+  const rpcEditState = state as { chain: string; chainId: number };
 
-  const { alert, navigate } = useUtils();
-  const controller = getController();
+  const isUtxoChain =
+    rpcEditState &&
+    rpcEditState.chain &&
+    Boolean(rpcEditState.chain === 'syscoin');
 
-  const [form] = useForm();
+  const [isUtxo, setIsUtxo] = useState(isUtxoChain);
+  const [feedback, setFeedback] = useState({
+    success: false,
+    error: '',
+  });
 
-  const populateForm = (field: string, value: number | string) => {
-    if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
-  };
+  const { navigate } = useUtils();
 
-  const onSubmit = async (data: ICustomRpcParams) => {
-    setLoading(true);
+  const {
+    wallet: { addCustomRpc, editCustomRpc },
+  } = getController();
 
-    const customRpc = {
-      ...data,
-      isSyscoinRpc,
-    };
+  const {
+    handleSubmit,
+    register,
+    setValue,
+    reset,
+    getValues,
+    formState: { errors },
+  } = useForm({
+    reValidateMode: 'onChange',
+  });
 
+  const onSubmit = async (data: IRpcParams) => {
     try {
-      if (!state) {
-        await controller.wallet.addCustomRpc(customRpc);
+      const chain = isUtxo ? 'syscoin' : 'ethereum';
+      const method = state ? editCustomRpc : addCustomRpc;
 
-        alert.success('RPC successfully added.');
+      await method(chain, { ...data, chainId: getValues().chainId });
 
-        setLoading(false);
-
-        navigate('/settings/networks/edit');
-
-        return;
-      }
-
-      await controller.wallet.editCustomRpc(customRpc, state.selected);
-
-      alert.success('RPC successfully edited.');
-
-      setLoading(false);
-
-      navigate('/settings/networks/edit');
-    } catch (error: any) {
-      alert.removeAll();
-      alert.error(error.message);
-
-      setLoading(false);
+      setFeedback({
+        ...feedback,
+        success: true,
+      });
+    } catch (error) {
+      setFeedback({
+        ...feedback,
+        error: JSON.stringify(error),
+      });
     }
   };
 
-  const initialValues = {
-    label: (state && state.selected && state.selected.label) ?? '',
-    url: (state && state.selected && state.selected.url) ?? '',
-    chainId: (state && state.selected && state.selected.chainId) ?? '',
+  const populate = () => {
+    if (!state || !rpcEditState || !rpcEditState.chainId) return;
+
+    const network = networks[rpcEditState.chain][rpcEditState.chainId];
+
+    const fieldsByNetwork = {
+      ...network,
+      explorerUrl: network.explorer,
+    };
+
+    const formFields = ['label', 'url', 'chainId', 'explorerUrl'];
+
+    const values: any = {};
+
+    for (const field of formFields) {
+      const value = fieldsByNetwork[field];
+
+      values[field] = value;
+    }
+
+    reset({ ...values });
   };
 
   useEffect(() => {
-    const fieldErrors = form.getFieldError('url');
-    if (urlFieldValue && fieldErrors.length > 0) {
-      alert.removeAll();
-      alert.error('Invalid RPC URL. Try again.');
-    }
-  }, [urlFieldValue]);
+    populate();
+  }, [state]);
+
+  useEffect(() => {
+    reset();
+  }, [isUtxo]);
 
   return (
     <Layout title="CUSTOM RPC">
-      <Form
-        form={form}
-        validateMessages={{ default: '' }}
-        id="rpc"
-        name="rpc"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        initialValues={initialValues}
-        onFinish={onSubmit}
-        autoComplete="off"
+      <form
         className="flex flex-col gap-3 items-center justify-center text-center"
+        onSubmit={handleSubmit(onSubmit)}
       >
-        <Form.Item
-          id="network-switch"
-          name="network-switch"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <div className="flex gap-x-2 mb-4 text-xs">
-            <p className="text-brand-royalblue text-xs">Ethereum</p>
+        <div className="flex gap-x-2 mb-4 text-xs">
+          <p className="text-brand-royalblue text-xs">Ethereum</p>
 
-            <Switch
-              checked={isSyscoinRpc}
-              onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-              className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
-            >
-              <span className="sr-only">Syscoin Network</span>
-              <span
-                className={`${
-                  isSyscoinRpc
-                    ? 'translate-x-6 bg-brand-royalblue'
-                    : 'translate-x-1 bg-brand-deepPink100'
-                } inline-block w-2 h-2 transform rounded-full`}
-              />
-            </Switch>
+          <Switch
+            checked={isUtxo}
+            onChange={() => setIsUtxo(!isUtxo)}
+            className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+          >
+            <span className="sr-only">Syscoin Network</span>
+            <span
+              className={`${
+                isUtxo
+                  ? 'translate-x-6 bg-brand-deepPink100'
+                  : 'translate-x-1 bg-brand-royalblue'
+              } inline-block w-2 h-2 transform rounded-full`}
+            />
+          </Switch>
 
-            <p className="text-brand-deepPink100 text-xs">Syscoin</p>
-          </div>
-        </Form.Item>
+          <p className="text-brand-deepPink100 text-xs">Syscoin</p>
+        </div>
 
-        <Form.Item
-          name="label"
-          className="md:w-full"
-          hasFeedback
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="Label (optional)"
-            className="input-small relative"
-          />
-        </Form.Item>
+        <input
+          placeholder="Name of the network"
+          className="input-small relative md:w-full"
+          {...register('label', { required: true })}
+        />
 
-        <Form.Item
-          name="url"
-          className="md:w-full"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                setUrlFieldValue(value);
-                if (isSyscoinRpc) {
-                  const { valid, coin } = await validateSysRpc(value);
+        <input
+          placeholder="RPC URL"
+          className="input-small relative border-warning-error md:w-full"
+          {...register('url', {
+            required: true,
+            validate: {
+              checkUrl: async (value) => {
+                try {
+                  const chainId = await validateRpc(value, isUtxo);
 
-                  if (valid || !value) {
-                    populateForm('label', String(coin));
+                  setValue('chainId', parseInt(chainId, 16));
 
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
+                  return !!chainId;
+                } catch (error) {
+                  return 'Invalid RPC URL.';
                 }
+              },
+            },
+          })}
+        />
 
-                const { valid, details, hexChainId } = await validateEthRpc(
-                  value
+        {errors.url && errors.url.message && (
+          <span className="text-brand-deepPink100 text-xs">
+            Invalid RPC URL. Try checking the RPC URL on{' '}
+            <a
+              target="_blank"
+              className="text-brand-royalbluemedium"
+              href="https://chainlist.org/"
+              rel="noreferrer"
+            >
+              ChainList.
+            </a>
+          </span>
+        )}
+
+        <input
+          placeholder="Chain ID"
+          className="input-small relative md:w-full"
+          {...register('chainId', {
+            required: true,
+            disabled: true,
+          })}
+        />
+
+        <input
+          placeholder="Block Explorer URL (optional)"
+          className="input-small relative md:w-full"
+          {...register('explorerUrl', {
+            required: false,
+            validate: {
+              checkExplorerUrl: (value) => {
+                if (!value) return true;
+
+                const { chainId, url } = getValues();
+
+                if (!chainId || !url) return false;
+
+                const details = chains.getById(chainId);
+
+                const hasExplorers =
+                  details && details.explorers && details.explorers[0];
+
+                if (!hasExplorers) return false;
+
+                const isValid = details.explorers.filter(
+                  (explorer) =>
+                    value &&
+                    new URL(explorer.url).origin === new URL(value).origin
                 );
 
-                setIsUrlValid(valid);
-
-                if ((valid && details) || !value) {
-                  populateForm('label', String(details.name));
-                  populateForm('chainId', String(details.chainId));
-
-                  return Promise.resolve();
-                } else if (valid || !value) {
-                  populateForm('chainId', String(parseInt(hexChainId, 16)));
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
+                return Boolean(isValid[0]);
               },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder={`${
-              isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
-            }`}
-            className="input-small relative"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="chainId"
-          hasFeedback
-          className="md:w-full"
-          rules={[
-            {
-              required: !isSyscoinRpc,
-              message: '',
             },
-          ]}
-        >
-          <Input
-            type="text"
-            disabled={!form.getFieldValue('url') || isUrlValid}
-            placeholder="Chain ID"
-            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
-          />
-        </Form.Item>
+          })}
+        />
 
-        <Form.Item
-          name="symbol"
-          hasFeedback
-          className="md:w-full"
-          rules={[
-            {
-              required: !isSyscoinRpc,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="Symbol"
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'block'
-            } input-small relative`}
-          />
-        </Form.Item>
-
-        <Form.Item
-          hasFeedback
-          className="md:w-full"
-          name="apiUrl"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="API URL (optional)"
-            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
-          />
-        </Form.Item>
-
-        <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-          You can edit this later if you need on network settings menu.
-        </p>
+        {errors.explorerUrl && (
+          <span className="text-brand-deepPink100 text-xs">
+            Invalid Block Explorer URL.
+          </span>
+        )}
 
         <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
-            Save
-          </NeutralButton>
+          <NeutralButton type="submit">Save</NeutralButton>
         </div>
-      </Form>
+      </form>
+
+      <DefaultModal
+        show={feedback.success && !feedback.error}
+        onClose={() => {
+          setFeedback({
+            success: false,
+            error: '',
+          });
+
+          navigate('/settings/networks/edit');
+        }}
+        title="RPC added successfully"
+        description="Now you can set the active network to your added RPC and edit it at Manage Networks page."
+      />
     </Layout>
   );
 };

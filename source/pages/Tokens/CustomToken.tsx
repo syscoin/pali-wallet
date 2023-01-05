@@ -1,7 +1,6 @@
-import { Form, Input } from 'antd';
 import loadsh from 'lodash';
 import * as React from 'react';
-import { useState } from 'react';
+import { useForm } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 
 import { setActiveNetwork, web3Provider } from '@pollum-io/sysweb3-network';
@@ -18,11 +17,7 @@ import { getController } from 'utils/browser';
 export const CustomToken = () => {
   const controller = getController();
 
-  const [form] = Form.useForm();
   const { navigate } = useUtils();
-
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
 
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
@@ -32,7 +27,16 @@ export const CustomToken = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const nextStep = async ({
+  const {
+    reset,
+    register,
+    handleSubmit,
+    setValue,
+    setError,
+    formState: { isSubmitting, errors, isSubmitSuccessful },
+  } = useForm();
+
+  const onSubmit = async ({
     contractAddress,
     decimals,
   }: {
@@ -51,127 +55,82 @@ export const CustomToken = () => {
       const balance = `${metadata.balance / 10 ** metadata.decimals}`;
       const formattedBalance = loadsh.floor(parseFloat(balance), 4);
 
-      if (metadata) {
-        form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
+      if (!metadata) throw new Error('Could not find token metadata.');
 
-        await controller.wallet.account.eth.saveTokenInfo({
-          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
-          contractAddress,
-          decimals,
-          balance: formattedBalance,
-        });
+      setValue('symbol', metadata.tokenSymbol.toUpperCase());
 
-        setAdded(true);
-
-        return;
-      }
-    } catch (_error) {
-      setError(Boolean(_error));
+      await controller.wallet.account.eth.saveTokenInfo({
+        tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+        contractAddress,
+        decimals,
+        balance: formattedBalance,
+      });
+    } catch (error) {
+      setError('contractAddress', { message: JSON.stringify(error) });
     }
   };
 
   return (
-    <>
-      <Form
-        validateMessages={{ default: '' }}
-        form={form}
-        id="token-form"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        onFinish={nextStep}
-        autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-left md:max-w-md"
+    >
+      <input
+        type="text"
+        placeholder="Contract Address"
+        className="input-small relative md:w-full"
+        {...register('contractAddress', {
+          required: true,
+          validate: {
+            isValid: (value) => isValidEthereumAddress(value),
+          },
+        })}
+      />
+
+      <input
+        type="text"
+        placeholder="Symbol"
+        className="input-small relative md:w-full"
+        {...register('symbol', {
+          required: false,
+        })}
+      />
+
+      <input
+        type="number"
+        placeholder="Decimals"
+        className="input-small relative md:w-full"
+        {...register('decimals', {
+          required: true,
+        })}
+      />
+
+      <NeutralButton
+        loading={isSubmitting}
+        className="absolute bottom-12 md:static"
+        type="submit"
       >
-        <Form.Item
-          name="contractAddress"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              validator(_, value) {
-                if (!value || isValidEthereumAddress(value)) {
-                  return Promise.resolve();
-                }
+        Import
+      </NeutralButton>
 
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            className="input-small relative"
-            placeholder="Contract address"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="symbol"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            className="input-small relative"
-            placeholder="Token symbol"
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="decimals"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="number"
-            className="input-small relative"
-            placeholder="Token decimal"
-          />
-        </Form.Item>
-
-        <div className="flex flex-col items-center justify-center w-full">
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton type="submit">Next</NeutralButton>
-          </div>
-        </div>
-      </Form>
-
-      {added && (
+      {isSubmitSuccessful && (
         <DefaultModal
-          show={added}
+          show={isSubmitSuccessful}
           title="Token successfully added"
-          description={`${form.getFieldValue(
-            'symbol'
-          )} was successfully added to your wallet.`}
+          description="Token successfully added to your wallet."
           onClose={() => navigate('/home')}
         />
       )}
 
-      {error && (
+      {errors.contractAddress && errors.contractAddress.message && (
         <ErrorModal
-          show={error}
+          show={Boolean(errors.contractAddress.message)}
           title="Verify the current network"
           description="This token probably is not available in the current network. Verify the token network and try again."
           log="Token network probably is different from current network."
-          onClose={() => setError(false)}
+          onClose={reset}
         />
       )}
-    </>
+    </form>
   );
 };

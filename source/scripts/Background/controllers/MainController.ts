@@ -1,3 +1,8 @@
+if (process.env.NODE_ENV === 'test') {
+  chrome.runtime.id = 'testid';
+}
+
+import { chains } from 'eth-chains';
 import { ethErrors } from 'helpers/errors';
 
 import {
@@ -5,10 +10,12 @@ import {
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import {
-  getSysRpc,
-  // getEthRpc,
   web3Provider,
   setActiveNetwork as _sysweb3SetActiveNetwork,
+  validateSysRpc,
+  validateEthRpc,
+  getBip44Chain,
+  // coins,
 } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -21,7 +28,6 @@ import {
   setTimer,
   createAccount as addAccountToStore,
   setActiveNetwork as setNetwork,
-  setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
@@ -30,10 +36,11 @@ import {
   setIsBitcoinBased,
   setChangingConnectedAccount,
   setIsNetworkChanging,
+  setActiveAccountProperty,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
-import { ICustomRpcParams } from 'types/transactions';
+import { IRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
@@ -66,7 +73,6 @@ const MainController = (): IMainController => {
     keyringManager.forgetMainWallet(pwd);
 
     store.dispatch(forgetWalletState());
-    store.dispatch(setLastLogin());
   };
 
   const unlock = async (pwd: string): Promise<void> => {
@@ -77,6 +83,7 @@ const MainController = (): IMainController => {
       resolve();
       const { assets: currentAssets } = activeAccount;
       //TODO: find better implementation;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
       const { assets, ...keyringAccount } = account;
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
@@ -94,16 +101,20 @@ const MainController = (): IMainController => {
         .then(() => console.log('Successfully update all Dapps Unlock'))
         .catch((error) => console.error('Unlock', error));
     });
+
     return;
   };
 
-  const createWallet = async (password: string): Promise<void> => {
+  // todo: add import wallet test
+  const createWallet = async (password: string): Promise<any> => {
     store.dispatch(setIsPendingBalances(true));
 
     keyringManager.setWalletPassword(password);
 
-    const account =
-      (await keyringManager.createKeyringVault()) as IKeyringAccountState;
+    const account = await keyringManager.createKeyringVault();
+
+    if (!account || !account.address)
+      throw new Error('Could not create wallet.');
 
     const newAccountWithAssets = {
       ...account,
@@ -118,6 +129,8 @@ const MainController = (): IMainController => {
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(newAccountWithAssets));
     store.dispatch(setLastLogin());
+
+    return newAccountWithAssets;
   };
 
   const lock = () => {
@@ -188,14 +201,13 @@ const MainController = (): IMainController => {
     // } // TODO: check if this is relevant in any form to syscoin events
   };
 
-  const setActiveNetwork = async (
-    network: INetwork,
-    chain: string
-  ): Promise<{ chainId: string; networkVersion: number }> => {
+  const setActiveNetwork = async (network: INetwork, chain: string) => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork, activeAccount } = store.getState().vault;
+    store.dispatch(setIsPendingBalances(true));
+
+    const { activeAccount, activeNetwork } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -205,6 +217,8 @@ const MainController = (): IMainController => {
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
         try {
+          if (!network) throw new Error('Missing required network info.');
+
           const networkAccount = await keyringManager.setSignerNetwork(
             network,
             chain
@@ -239,7 +253,7 @@ const MainController = (): IMainController => {
             walletController.account.sys.setAddress();
           }
 
-          walletController.account.sys.getLatestUpdate(true);
+          await walletController.account.sys.getLatestUpdate(true);
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
@@ -317,60 +331,123 @@ const MainController = (): IMainController => {
     );
   };
 
-  const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    //TODO: Fix sysweb3 so we can have this functionallity back again
+  const getCustomUtxoRpc = async ({
+    chainId,
+    explorerUrl,
+    url,
+    label,
+  }: IRpcParams) => {
     try {
-      const { formattedNetwork } = await getSysRpc(data);
-      // const { formattedNetwork } = data.isSyscoinRpc
-      // ? await getSysRpc(data)
-      // : await getEthRpc(data);
+      const { coin, chain } = await validateSysRpc(url);
 
-      console.log('Response', formattedNetwork);
-      return formattedNetwork;
+      const {
+        nativeCurrency: { symbol },
+      } = getBip44Chain(coin, chain === 'test');
+
+      //* needs sysweb3 updates
+      // const rpcByCoins = coins.filter((data: any) => data.name === name);
+
+      // const slip44ByCoins = rpcByCoins && rpcByCoins[0] && rpcByCoins[0].slip44;
+
+      const formatted = {
+        explorer: explorerUrl ?? url,
+        default: false,
+        currency: symbol,
+        chainId: chainId,
+        url,
+        label,
+      };
+
+      return formatted;
     } catch (error) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
-    // try {
-    //   const { formattedNetwork } = data.isSyscoinRpc
-    //     ? await getSysRpc(data)
-    //     : await getEthRpc(data);
-    //   console.log('Response', formattedNetwork);
-    //   return formattedNetwork;
-    // } catch (error) {
-    //   throw cleanErrorStack(ethErrors.rpc.internal());
-    // }
   };
 
-  const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const network = await getRpc(data);
+  const getCustomWeb3Rpc = async ({
+    chainId,
+    explorerUrl,
+    url,
+    label,
+  }: IRpcParams) => {
+    try {
+      const detailsByChains = chains.getById(chainId);
 
-    const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
+      const explorerByChains =
+        detailsByChains.explorers && detailsByChains.explorers[0].url;
 
-    store.dispatch(setNetworks({ chain, network }));
+      const explorer = explorerUrl ?? explorerByChains;
 
-    return network;
+      const formatted = {
+        explorer: explorerUrl ?? explorer,
+        default: false,
+        currency: detailsByChains.nativeCurrency.symbol,
+        chainId,
+        url,
+        label,
+      };
+
+      return formatted;
+    } catch (error) {
+      throw cleanErrorStack(ethErrors.rpc.internal());
+    }
+  };
+
+  const addCustomRpc = async (
+    chain: string,
+    data: IRpcParams
+  ): Promise<INetwork> => {
+    const method = chain === 'syscoin' ? getCustomUtxoRpc : getCustomWeb3Rpc;
+
+    const formatted = await method(data);
+
+    const { networks } = store.getState().vault;
+
+    if (networks[chain][data.chainId] === formatted)
+      throw new Error(
+        'RPC already exists. Try with a new one or go to Manage Networks to edit this one.'
+      );
+
+    store.dispatch(setNetworks({ chain, network: formatted }));
+
+    return formatted;
   };
 
   const editCustomRpc = async (
-    newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
+    chain: string,
+    data: IRpcParams
   ): Promise<INetwork> => {
-    const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await getRpc(newRpc);
+    try {
+      const validate = chain === 'syscoin' ? validateSysRpc : validateEthRpc;
 
-    const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
+      await validate(data.url);
 
-    if (changedChainId) {
-      store.dispatch(
-        removeNetwork({
-          chainId: oldRpc.chainId,
-          prefix: chain,
-        })
-      );
+      const { networks } = store.getState().vault;
+
+      const existentNetwork = networks[chain][data.chainId];
+      const isAddMode =
+        existentNetwork && existentNetwork.chainId !== data.chainId;
+
+      //* remove the existent network and replace for the new rpc
+      if (isAddMode) {
+        store.dispatch(
+          removeNetwork({
+            chainId: existentNetwork.chainId,
+            prefix: chain,
+          })
+        );
+
+        return await addCustomRpc(chain, data);
+      }
+
+      const edited = existentNetwork ? { ...existentNetwork, ...data } : data;
+
+      store.dispatch(setNetworks({ chain, network: edited }));
+
+      return edited;
+    } catch (error) {
+      throw new Error('RPC URL is not valid for this Chain ID.');
     }
-    store.dispatch(setNetworks({ chain, network }));
-
-    return network;
   };
 
   const removeKeyringNetwork = (chain: string, chainId: number) => {
@@ -386,9 +463,11 @@ const MainController = (): IMainController => {
       ? walletController.account.sys
       : walletController.account.eth;
 
-    if (isBitcoinBased) return tx.getRecommendedFee(activeNetwork.url);
+    if (isBitcoinBased) {
+      return Number(tx.getRecommendedFee(activeNetwork.url)) || 0;
+    }
 
-    return tx.getRecommendedGasPrice(true).gwei;
+    return Number(tx.getRecommendedGasPrice(true).gwei) || 0;
   };
 
   return {
@@ -402,7 +481,7 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
-    getRpc,
+    getCustomWeb3Rpc,
     editCustomRpc,
     removeKeyringNetwork,
     resolveAccountConflict,

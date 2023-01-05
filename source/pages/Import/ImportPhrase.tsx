@@ -1,7 +1,5 @@
-import { Form } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
-import TextArea from 'antd/lib/input/TextArea';
-import React, { FC, useState } from 'react';
+import React, { FC } from 'react';
+import { useForm } from 'react-hook-form';
 
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
@@ -14,83 +12,50 @@ interface IImportPhrase {
 const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const controller = getController();
 
-  const [seedIsValid, setSeedIsValid] = useState<boolean>();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
 
-  const onSubmit = ({ phrase }: { phrase: string }) => {
-    if (controller.wallet.validateSeed(phrase)) {
-      onRegister();
-    }
-  };
-  const [form] = useForm();
-
-  const handleKeypress = (event) => {
+  const handleKeypress = (event: any) => {
     if (event.key === 'Enter') {
-      form.submit();
+      handleSubmit(onRegister);
     }
   };
 
   return (
     <OnboardingLayout title="Import wallet">
-      <Form
-        validateMessages={{ default: '' }}
-        form={form}
-        name="import"
-        onFinish={onSubmit}
-        autoComplete="off"
-        className="flex flex-col gap-4 items-center w-full max-w-xs"
+      <form
+        className="flex flex-col gap-4 items-center justify-start w-full max-w-xs h-full text-center md:max-w-md"
+        onSubmit={handleSubmit(onRegister)}
       >
-        <Form.Item
-          name="phrase"
-          className="w-full"
-          rules={[
-            {
-              required: true,
-              message: '',
+        <textarea
+          onKeyUp={handleKeypress}
+          placeholder="Paste your wallet seed phrase"
+          className="p-2 pl-4 w-full h-20 text-brand-graylight text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none"
+          {...register('phrase', {
+            required: true,
+            setValueAs: (value) => formatSeedPhrase(value),
+            validate: {
+              checkSeedPhrase: (value) => controller.wallet.validateSeed(value),
             },
-            () => ({
-              validator(_, value) {
-                value = formatSeedPhrase(value);
-
-                form.setFieldsValue({ phrase: value });
-
-                setSeedIsValid(controller.wallet.validateSeed(value) && value);
-
-                if (controller.wallet.validateSeed(value)) {
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
-          <TextArea
-            className={`${
-              !seedIsValid && form.getFieldValue('phrase')
-                ? 'border-warning-error'
-                : 'border-fields-input-border'
-            } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
-            placeholder="Paste your wallet seed phrase"
-            id="import-wallet-input"
-            onKeyPress={handleKeypress}
-          />
-        </Form.Item>
+          })}
+        />
 
         <span className="text-left text-brand-royalblue text-xs font-light">
           Importing your wallet seed automatically import a wallet associated
           with this seed phrase.
         </span>
 
-        <div className="absolute bottom-12 md:bottom-80">
-          <PrimaryButton
-            type="submit"
-            disabled={!seedIsValid || !form.getFieldValue('phrase')}
-            id="import-wallet-action"
-          >
-            Import
-          </PrimaryButton>
-        </div>
-      </Form>
+        <PrimaryButton
+          className="absolute bottom-12 md:bottom-80"
+          type="submit"
+          disabled={Boolean(errors.phrase)}
+        >
+          Import
+        </PrimaryButton>
+      </form>
     </OnboardingLayout>
   );
 };

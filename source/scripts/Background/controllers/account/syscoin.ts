@@ -12,6 +12,7 @@ import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setAccounts,
+  setActiveAccount,
   setActiveAccountProperty,
   setIsNetworkChanging,
   setIsPendingBalances,
@@ -36,21 +37,24 @@ const SysAccountController = (): ISysAccountController => {
     const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
       store.getState().vault;
     const { id: accountId } = activeAccount;
+
     if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { accountLatestUpdate, walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount();
+    const response = await keyringManager.getLatestUpdateForAccount();
+
+    if (!response.activeAccount.address)
+      throw new Error('Could not get account info.');
 
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
 
-    const { address, balances, xpub, assets } = accountLatestUpdate;
+    const { address, balances, xpub, xprv, assets } = response.activeAccount;
 
     const transactions = [
-      ...accountLatestUpdate.transactions,
+      ...response.activeAccount.transactions,
       ...accounts[accountId].transactions,
     ];
 
@@ -60,45 +64,22 @@ const SysAccountController = (): ISysAccountController => {
     );
 
     store.dispatch(
-      setActiveAccountProperty({
-        property: 'transactions',
-        value: [...accounts[accountId].transactions, ...filteredTxs],
+      setActiveAccount({
+        ...activeAccount,
+        transactions: [...accounts[accountId].transactions, ...filteredTxs],
+        address,
+        balances,
+        xpub,
+        xprv,
+        assets: isBitcoinBased
+          ? { ...accounts[accountId].assets, syscoin: assets }
+          : assets,
       })
     );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'address',
-        value: address,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'balances',
-        value: balances,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xpub',
-        value: xpub,
-      })
-    );
-
-    if (isBitcoinBased) {
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: { ...accounts[accountId].assets, syscoin: assets },
-        })
-      );
-    }
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
+      Object.values(response.accounts).map((account: any, index) => ({
         ...account,
         assets: accounts[index].assets,
       }))
@@ -161,7 +142,7 @@ const SysAccountController = (): ISysAccountController => {
 
   const setAddress = async (): Promise<string> => {
     const {
-      accountLatestUpdate: { address },
+      activeAccount: { address },
     } = await keyringManager.getLatestUpdateForAccount();
 
     store.dispatch(
@@ -178,7 +159,7 @@ const SysAccountController = (): ISysAccountController => {
     try {
       const { activeAccount } = store.getState().vault;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = activeAccount.assets.syscoin.find(
         (asset: any) => asset.assetGuid === token.assetGuid
       );
 
@@ -205,7 +186,12 @@ const SysAccountController = (): ISysAccountController => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, asset],
+          value: [
+            {
+              ...activeAccount.assets,
+              syscoin: [...activeAccount.assets.syscoin, asset],
+            },
+          ],
         })
       );
     } catch (error) {

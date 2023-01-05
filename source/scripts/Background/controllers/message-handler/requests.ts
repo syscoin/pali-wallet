@@ -124,7 +124,7 @@ export const methodRequest = async (
           symbol: data.params[0].nativeCurrency.symbol,
         };
         console.log('Check Custom RPC data', customRPCData);
-        const network = await controller.wallet.getRpc(customRPCData);
+        const network = await controller.wallet.getCustomWeb3Rpc(customRPCData);
         console.log('Checked Custom RPC data', customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
           return popupPromise({
