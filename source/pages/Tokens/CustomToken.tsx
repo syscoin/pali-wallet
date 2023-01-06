@@ -8,6 +8,7 @@ import { setActiveNetwork, web3Provider } from '@pollum-io/sysweb3-network';
 import {
   getTokenStandardMetadata,
   isValidEthereumAddress,
+  getERC721StandardBalance,
 } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
@@ -32,41 +33,102 @@ export const CustomToken = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const nextStep = async ({
+  const handleERC721NFTs = async (contractAddress: string) => {
+    const getBalance = await getERC721StandardBalance(
+      contractAddress,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balanceToNumber = Number(getBalance);
+
+    return {
+      defaultFetchValue: getBalance,
+      balanceToNumber,
+    };
+  };
+
+  const handleERC20Tokens = async (
+    contractAddress: string,
+    decimals: number
+  ) => {
+    const metadata = await getTokenStandardMetadata(
+      contractAddress,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+    const formattedBalance = loadsh.floor(parseFloat(balance), 4);
+
+    if (metadata) {
+      form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
+
+      await controller.wallet.account.eth.saveTokenInfo({
+        tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+        contractAddress,
+        decimals,
+        balance: formattedBalance,
+      });
+
+      setAdded(true);
+
+      return;
+    }
+  };
+
+  const handleSubmit = async ({
     contractAddress,
+    symbol,
     decimals,
   }: {
     contractAddress: string;
     decimals: number;
+    symbol: string;
   }) => {
-    try {
-      setActiveNetwork(activeNetwork);
+    const setDecimalsInNumber = Number(decimals);
 
-      const metadata = await getTokenStandardMetadata(
-        contractAddress,
-        activeAccount.address,
-        web3Provider
-      );
+    setActiveNetwork(activeNetwork);
+    switch (setDecimalsInNumber) {
+      case 0:
+        try {
+          const { defaultFetchValue, balanceToNumber } = await handleERC721NFTs(
+            contractAddress
+          );
 
-      const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-      const formattedBalance = loadsh.floor(parseFloat(balance), 4);
+          if (
+            typeof balanceToNumber !== 'number' ||
+            Number.isNaN(balanceToNumber) ||
+            Boolean(String(defaultFetchValue).includes('Error'))
+          ) {
+            await handleERC20Tokens(contractAddress, decimals);
 
-      if (metadata) {
-        form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
+            return;
+          }
 
-        await controller.wallet.account.eth.saveTokenInfo({
-          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
-          contractAddress,
-          decimals,
-          balance: formattedBalance,
-        });
+          const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
 
-        setAdded(true);
+          await controller.wallet.account.eth.saveTokenInfo({
+            tokenSymbol: treatedSymbol,
+            contractAddress,
+            decimals,
+            balance: balanceToNumber,
+          });
 
-        return;
-      }
-    } catch (_error) {
-      setError(Boolean(_error));
+          setAdded(true);
+
+          return;
+        } catch (_error) {
+          setError(Boolean(_error));
+        }
+        break;
+      default:
+        try {
+          return await handleERC20Tokens(contractAddress, decimals);
+        } catch (_error) {
+          setError(Boolean(_error));
+        }
+        break;
     }
   };
 
@@ -78,7 +140,7 @@ export const CustomToken = () => {
         id="token-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
-        onFinish={nextStep}
+        onFinish={handleSubmit}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
@@ -89,7 +151,7 @@ export const CustomToken = () => {
           rules={[
             {
               required: true,
-              message: '',
+              message: 'Please, type token contract address!',
             },
             () => ({
               validator(_, value) {
@@ -116,7 +178,7 @@ export const CustomToken = () => {
           rules={[
             {
               required: true,
-              message: '',
+              message: 'Please, type token symbol!',
             },
           ]}
         >
@@ -134,7 +196,7 @@ export const CustomToken = () => {
           rules={[
             {
               required: true,
-              message: '',
+              message: 'Please, type token decimals!',
             },
           ]}
         >
