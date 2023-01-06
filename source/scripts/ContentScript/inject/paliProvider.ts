@@ -1,3 +1,4 @@
+import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 
@@ -7,9 +8,11 @@ import {
   getRpcPromiseCallback,
   isValidChainId,
   isValidNetworkVersion,
+  NOOP,
 } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
 type WarningEventName = keyof SentWarningsState['events'];
+export declare type JsonRpcVersion = '2.0';
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SentWarningsState {
   // methods
@@ -35,7 +38,7 @@ export interface BaseProviderState {
   isUnlocked: boolean;
 }
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export interface RequestArguments {
+interface RequestArguments {
   /** The RPC method to request. */
   method: string;
 
@@ -43,8 +46,28 @@ export interface RequestArguments {
   params?: unknown[] | Record<string, unknown>;
 }
 
+interface SendSyncJsonRpcRequest {
+  id: any;
+  jsonrpc: any;
+  method:
+    | 'eth_accounts'
+    | 'eth_coinbase'
+    | 'eth_uninstallFilter'
+    | 'net_version';
+}
+interface JsonRpcSuccessStruct {
+  id: number;
+  jsonrpc: JsonRpcVersion;
+  result: any;
+}
+
+/**
+ * A successful JSON-RPC response object.
+ */
+
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface UnvalidatedJsonRpcRequest {
+  id?: number;
   method: string;
   params?: unknown;
 }
@@ -117,6 +140,9 @@ export class PaliInpageProvider extends EventEmitter {
     this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
+    this._sendSync = this._sendSync.bind(this);
+    this.send = this.send.bind(this);
+    this.sendAsync = this.sendAsync.bind(this);
     this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
@@ -210,6 +236,83 @@ export class PaliInpageProvider extends EventEmitter {
       );
     });
   }
+
+  sendAsync(
+    payload: any,
+    callback: (error: Error | null, result?: any) => void
+  ): void {
+    this._rpcRequest(payload, callback);
+  }
+
+  send(methodOrPayload: unknown, callbackOrArgs?: unknown): unknown {
+    if (!this._sentWarnings.send) {
+      console.warn(messages.warnings.sendDeprecation);
+      this._sentWarnings.send = true;
+    }
+
+    if (
+      typeof methodOrPayload === 'string' &&
+      (!callbackOrArgs || Array.isArray(callbackOrArgs))
+    ) {
+      return new Promise((resolve, reject) => {
+        try {
+          this._rpcRequest(
+            { method: methodOrPayload, params: callbackOrArgs },
+            getRpcPromiseCallback(resolve, reject, false)
+          );
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } else if (
+      methodOrPayload &&
+      typeof methodOrPayload === 'object' &&
+      typeof callbackOrArgs === 'function'
+    ) {
+      return this._rpcRequest(
+        methodOrPayload as UnvalidatedJsonRpcRequest,
+        callbackOrArgs as (...args: unknown[]) => void
+      );
+    }
+    return this._sendSync(methodOrPayload as SendSyncJsonRpcRequest);
+  }
+
+  /**
+   * Internal backwards compatibility method, used in send.
+   *
+   * @deprecated
+   */
+  private _sendSync(payload: SendSyncJsonRpcRequest) {
+    let result;
+    switch (payload.method) {
+      case 'eth_accounts':
+        result = this.selectedAddress ? [this.selectedAddress] : [];
+        break;
+
+      case 'eth_coinbase':
+        result = this.selectedAddress || null;
+        break;
+
+      case 'eth_uninstallFilter':
+        this._rpcRequest(payload, NOOP);
+        result = true;
+        break;
+
+      case 'net_version':
+        result = this.networkVersion || null;
+        break;
+
+      default:
+        throw new Error(messages.errors.unsupportedSync(payload.method));
+    }
+
+    return {
+      id: payload.id,
+      jsonrpc: payload.jsonrpc,
+      result,
+    };
+  }
+
   /**
    * Equivalent to: ethereum.request('eth_requestAccounts')
    *
@@ -298,15 +401,16 @@ export class PaliInpageProvider extends EventEmitter {
     let cb = callback;
     let error = null;
     let result = null;
+    let formatedResult = null;
     if (!Array.isArray(payload)) {
       if (
         payload.method === 'eth_requestAccounts' ||
         payload.method === 'eth_accounts'
       ) {
         // handle accounts changing
-        cb = (err: Error, res: string[]) => {
+        cb = (err: Error, res: JsonRpcSuccessStruct) => {
           this._handleAccountsChanged(
-            res || [],
+            res.result || [],
             payload.method === 'eth_accounts'
           );
           callback(err, res);
@@ -315,12 +419,17 @@ export class PaliInpageProvider extends EventEmitter {
 
       try {
         result = await this.proxy('METHOD_REQUEST', payload);
+        formatedResult = {
+          id: payload.id || 1,
+          jsonrpc: '2.0' as JsonRpcVersion,
+          result: result,
+        };
       } catch (_error) {
         // A request handler error, a re-thrown middleware error, or something
         // unexpected.
         error = _error;
       }
-      return cb(error, result);
+      return cb(error, formatedResult);
     }
     error = {
       code: 123,
@@ -339,11 +448,12 @@ export class PaliInpageProvider extends EventEmitter {
       window.addEventListener(
         id,
         (event: any) => {
-          // console.log('[Pali] EventListener method', data, event.detail);
           if (event.detail === undefined) {
             resolve(undefined);
+            return;
           } else if (event.detail === null) {
             resolve(null);
+            return;
           }
 
           const response = JSON.parse(event.detail);

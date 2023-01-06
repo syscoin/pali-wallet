@@ -16,7 +16,10 @@
     "*://connect.trezor.io/8/*",
     "tabs",
     "storage",
-    "notifications"
+    "notifications",
+    "activeTab",
+    "webRequest",
+    "*://*.eth/"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
@@ -48,6 +51,7 @@
   },
   "content_scripts": [
     {
+      "all_frames": true,
       "matches": ["http://*/*", "https://*/*"],
       "run_at": "document_start",
       "js": ["js/webextension.bundle.js", "js/contentScript.bundle.js"]
