@@ -52,8 +52,8 @@ const VaultState = createSlice({
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id } = state.activeAccount;
-      state.accounts[id].transactions.push(action.payload);
-      state.activeAccount.transactions.push(action.payload);
+      state.accounts[id].transactions.unshift(action.payload);
+      state.activeAccount.transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,

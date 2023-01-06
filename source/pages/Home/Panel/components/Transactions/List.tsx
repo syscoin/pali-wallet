@@ -9,8 +9,12 @@ import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
+  const { id } = useSelector((state: RootState) => state.vault.activeAccount);
+  const { chainId } = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const transactions = useSelector(
-    (state: RootState) => state.vault.activeAccount.transactions
+    (state: RootState) => state.vault.accounts[id].transactions
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -51,11 +55,12 @@ export const TransactionsList = () => {
   return (
     <ul className="pb-14 md:pb-4">
       {transactions
-        .filter(
-          (item: any, index: number) =>
-            transactions.map((tx: any) => tx[txid]).indexOf(item[txid]) ===
-            index
-        )
+        .filter((item: any) => {
+          if (!isBitcoinBased) {
+            return item.chainId === chainId;
+          }
+          return item !== undefined;
+        })
         .sort((a: any, b: any) => {
           if (a[blocktime] > b[blocktime]) {
             return -1;
