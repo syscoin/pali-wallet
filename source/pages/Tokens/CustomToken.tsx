@@ -1,3 +1,5 @@
+/* eslint-disable */
+// @ts-nocheck LATER REMOVE IT WHEN UPDATE SYSWEB3-UTILS PACKAGES
 import { Form, Input } from 'antd';
 import loadsh from 'lodash';
 import * as React from 'react';
@@ -5,6 +7,7 @@ import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { setActiveNetwork, web3Provider } from '@pollum-io/sysweb3-network';
+
 import {
   getTokenStandardMetadata,
   isValidEthereumAddress,
