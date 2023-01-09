@@ -13,6 +13,7 @@ import store from 'state/store';
 import {
   setAccounts,
   setActiveAccountProperty,
+  setIsLoadingTxs,
   setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
@@ -40,6 +41,8 @@ const SysAccountController = (): ISysAccountController => {
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
+    store.dispatch(setIsLoadingTxs(true));
+
     const { accountLatestUpdate, walleAccountstLatestUpdate } =
       await keyringManager.getLatestUpdateForAccount();
 
@@ -65,6 +68,8 @@ const SysAccountController = (): ISysAccountController => {
         value: [...filteredTxs],
       })
     );
+
+    store.dispatch(setIsLoadingTxs(false));
 
     store.dispatch(
       setActiveAccountProperty({
