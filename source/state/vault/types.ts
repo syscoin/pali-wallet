@@ -11,6 +11,7 @@ export interface IVaultState {
   encryptedMnemonic: string;
   error: boolean;
   isBitcoinBased: boolean;
+  isLoadingTxs: boolean;
   isNetworkChanging: boolean;
   isPendingBalances: boolean;
   lastLogin: number;

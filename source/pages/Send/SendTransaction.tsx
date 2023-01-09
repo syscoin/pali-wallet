@@ -144,8 +144,7 @@ export const SendTransaction = () => {
         setConfirmed(true);
         setLoading(false);
 
-        if (isExternal)
-          dispatchBackgroundEvent(`txSend.${host}`, response.hash);
+        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
@@ -188,9 +187,13 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
-          if (isExternal) window.close();
-          else navigate('/home');
+          if (isExternal) {
+            refresh(true);
+            window.close();
+          } else {
+            refresh(false);
+            navigate('/home');
+          }
         }}
       />
 
@@ -305,9 +308,13 @@ export const SendTransaction = () => {
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                refresh(false);
-                if (isExternal) window.close();
-                else navigate('/home');
+                if (isExternal) {
+                  refresh(true);
+                  window.close();
+                } else {
+                  refresh(false);
+                  navigate('/home');
+                }
               }}
             >
               <Icon

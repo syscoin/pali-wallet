@@ -27,6 +27,7 @@ export const initialState: IVaultState = {
   isBitcoinBased: true,
   isPendingBalances: false,
   isNetworkChanging: false,
+  isLoadingTxs: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -52,8 +53,8 @@ const VaultState = createSlice({
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id } = state.activeAccount;
-      state.accounts[id].transactions.push(action.payload);
-      state.activeAccount.transactions.push(action.payload);
+      state.accounts[id].transactions.unshift(action.payload);
+      state.activeAccount.transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,
@@ -143,6 +144,9 @@ const VaultState = createSlice({
       state.isPendingBalances = action.payload;
       state.activeAccount.transactions = []; // TODO: check a better way to handle network transaction
     },
+    setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingTxs = action.payload;
+    },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
     },
@@ -211,6 +215,7 @@ export const {
   setActiveNetwork,
   setIsNetworkChanging,
   setIsPendingBalances,
+  setIsLoadingTxs,
   setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
