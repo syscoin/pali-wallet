@@ -410,7 +410,7 @@ export class PaliInpageProvider extends EventEmitter {
         // handle accounts changing
         cb = (err: Error, res: JsonRpcSuccessStruct) => {
           this._handleAccountsChanged(
-            res.result || [],
+            res?.result || [],
             payload.method === 'eth_accounts'
           );
           callback(err, res);
