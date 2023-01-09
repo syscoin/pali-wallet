@@ -10,6 +10,7 @@ import store from 'state/store';
 import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
 
 export interface IEthTransactions extends IEthereumTransactions {
+  saveTransaction: (tx: any) => void;
   sendAndSaveTransaction: (tx: any) => Promise<void>;
 }
 
@@ -65,8 +66,13 @@ const EthAccountController = (): IEthAccountController => {
     store.dispatch(setAccountTransactions(await txs.sendTransaction(tx)));
   };
 
+  const saveTransaction = (tx: any) => {
+    store.dispatch(setAccountTransactions(tx));
+  };
+
   const tx: IEthTransactions = {
     sendAndSaveTransaction,
+    saveTransaction,
     ...txs,
   };
 
@@ -78,3 +84,8 @@ const EthAccountController = (): IEthAccountController => {
 };
 
 export default EthAccountController;
+
+export const saveTransaction = (tx: any) => {
+  const finalTx = { ...tx, timestamp: Math.floor(Date.now() / 1000) };
+  store.dispatch(setAccountTransactions(finalTx));
+};

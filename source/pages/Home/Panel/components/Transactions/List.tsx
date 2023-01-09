@@ -9,8 +9,12 @@ import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
+  const { id } = useSelector((state: RootState) => state.vault.activeAccount);
+  const { chainId } = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const transactions = useSelector(
-    (state: RootState) => state.vault.activeAccount.transactions
+    (state: RootState) => state.vault.accounts[id].transactions
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -50,72 +54,90 @@ export const TransactionsList = () => {
 
   return (
     <ul className="pb-14 md:pb-4">
-      {transactions.map((tx: any, idx: number) => {
-        const isConfirmed = tx.confirmations > 0;
-        const timestamp =
-          blocktime &&
-          new Date(tx[blocktime] * 1000).toLocaleTimeString(
-            navigator.language,
-            {
-              hour: '2-digit',
-              minute: '2-digit',
-            }
-          );
+      {transactions
+        .filter((item: any) => {
+          if (!isBitcoinBased) {
+            return item.chainId === chainId;
+          }
+          return item !== undefined;
+        })
+        .sort((a: any, b: any) => {
+          if (a[blocktime] > b[blocktime]) {
+            return -1;
+          }
+          if (a[blocktime] < b[blocktime]) {
+            return 1;
+          }
+          return 0;
+        })
+        .map((tx: any, idx: number) => {
+          const isConfirmed = tx.confirmations > 0;
+          const timestamp =
+            blocktime &&
+            new Date(tx[blocktime] * 1000).toLocaleTimeString(
+              navigator.language,
+              {
+                hour: '2-digit',
+                minute: '2-digit',
+              }
+            );
 
-        return (
-          tx[blocktime] && (
-            <Fragment key={uniqueId(tx[txid])}>
-              {isShowedGroupBar(tx, idx) && (
-                <li className="my-3 text-center text-sm bg-bkg-1">
-                  {formatDate(new Date(tx[blocktime] * 1000).toDateString())}
-                </li>
-              )}
+          return (
+            tx[blocktime] && (
+              <Fragment key={uniqueId(tx[txid])}>
+                {isShowedGroupBar(tx, idx) && (
+                  <li className="my-3 text-center text-sm bg-bkg-1">
+                    {formatDate(new Date(tx[blocktime] * 1000).toDateString())}
+                  </li>
+                )}
 
-              <li className="py-2 border-b border-dashed border-dashed-dark">
-                <div className="relative flex items-center justify-between text-xs">
-                  <div>
-                    <p>{ellipsis(tx[txid], 4, 14)}</p>
+                <li className="py-2 border-b border-dashed border-dashed-dark">
+                  <div className="relative flex items-center justify-between text-xs">
+                    <div>
+                      <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                    <p
-                      className={
-                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
+                      <p
+                        className={
+                          isConfirmed
+                            ? 'text-warning-success'
+                            : 'text-yellow-300'
+                        }
+                      >
+                        {isConfirmed ? 'Confirmed' : 'Pending'}
+                      </p>
+                    </div>
+
+                    <div
+                      className={`absolute flex ${
+                        isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
+                      }`}
+                    >
+                      <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
+                        <p className="text-blue-300">{timestamp}</p>
+
+                        <p>{getTxType(tx)}</p>
+                      </div>
+                    </div>
+
+                    <IconButton
+                      className="w-5"
+                      onClick={() =>
+                        navigate('/home/details', {
+                          state: {
+                            id: null,
+                            hash: tx[txid],
+                          },
+                        })
                       }
                     >
-                      {isConfirmed ? 'Confirmed' : 'Pending'}
-                    </p>
+                      <Icon name="select" className="text-base" />
+                    </IconButton>
                   </div>
-
-                  <div
-                    className={`absolute flex ${
-                      isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
-                    }`}
-                  >
-                    <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
-                      <p className="text-blue-300">{timestamp}</p>
-
-                      <p>{getTxType(tx)}</p>
-                    </div>
-                  </div>
-
-                  <IconButton
-                    className="w-5"
-                    onClick={() =>
-                      navigate('/home/details', {
-                        state: {
-                          id: null,
-                          hash: tx[txid],
-                        },
-                      })
-                    }
-                  >
-                    <Icon name="select" className="text-base" />
-                  </IconButton>
-                </div>
-              </li>
-            </Fragment>
-          )
-        );
-      })}
+                </li>
+              </Fragment>
+            )
+          );
+        })}
     </ul>
   );
 };

@@ -188,8 +188,7 @@ export const ApproveTransactionComponent = () => {
         const response = await txs.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
-        if (isExternal)
-          dispatchBackgroundEvent(`txApprove.${host}`, response.hash);
+        if (isExternal) dispatchBackgroundEvent(`txApprove.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
