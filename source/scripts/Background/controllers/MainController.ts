@@ -300,7 +300,7 @@ const MainController = (): IMainController => {
           }
 
           store.dispatch(setStoreError(true));
-          store.dispatch(setIsNetworkChanging(false));
+          // store.dispatch(setIsNetworkChanging(false));
         }
       }
     );
