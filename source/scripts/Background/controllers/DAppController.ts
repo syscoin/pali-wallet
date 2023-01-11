@@ -107,28 +107,24 @@ const DAppController = (): IDAppController => {
     );
     return [] as string[];
   };
-
+  //HandleStateChange purpose is to dispatch notifications that are meant to be globally
+  //broadcasted to all Dapps on browser being them connected or not
+  //The lockStateChanged and chainChanged events, that should be globally updated
+  //So that's why it is fetching all hosts
   const handleStateChange = async (
     id: PaliEvents,
     data: { method: string; params: any }
   ): Promise<void> => {
     new Promise<void>((resolve, reject) => {
       try {
-        const dapps = Object.values(
-          store.getState().dapp.dapps
-        ) as unknown as IDApp[];
-        for (const dapp of dapps) {
-          if (id === PaliEvents.lockStateChanged && _dapps[dapp.host]) {
-            console.log(
-              'Checking dapps connections',
-              _dapps[dapp.host],
-              dapp.host
-            );
+        const hosts = Object.keys(_dapps) as unknown as string;
+        for (const host of hosts) {
+          if (id === PaliEvents.lockStateChanged && _dapps[host]) {
             data.params.accounts = data.params.isUnlocked
-              ? [_dapps[dapp.host].activeAddress]
+              ? [_dapps[host].activeAddress]
               : [];
           }
-          _dispatchPaliEvent(dapp.host, data, id);
+          _dispatchPaliEvent(host, data, id);
         }
         resolve();
       } catch (error) {
@@ -154,7 +150,7 @@ const DAppController = (): IDAppController => {
   ) => {
     // dispatch the event locally
     const event = new CustomEvent(`${eventName}.${host}`, { detail: data });
-    window.dispatchEvent(event); // Why adding this dispatch of event by window here ?
+    window.dispatchEvent(event);
   };
 
   //* ----- Getters/Setters -----

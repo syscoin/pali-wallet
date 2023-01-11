@@ -132,7 +132,8 @@ export class PaliInpageProvider extends EventEmitter {
     this.wallet = wallet;
     this._state;
     this.chainType = chainType;
-    this._metamask = this._getExperimentalApi();
+    if (chainType !== 'syscoin') this._metamask = this._getExperimentalApi();
+    this.isUnlocked = this.isUnlocked.bind(this);
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
     this._handleConnect = this._handleConnect.bind(this);
     this._handleChainChanged = this._handleChainChanged.bind(this);
@@ -355,6 +356,15 @@ export class PaliInpageProvider extends EventEmitter {
         reject(error);
       }
     });
+  }
+
+  public async isUnlocked(): Promise<boolean> {
+    if (!this._state.initialized) {
+      await new Promise<void>((resolve) => {
+        this.on('_initialized', () => resolve());
+      });
+    }
+    return this._state.isUnlocked;
   }
   //====================
   // Private Methods
