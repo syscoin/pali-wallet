@@ -42,6 +42,9 @@ export const methodRequest = async (
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     return await enable(host, undefined, undefined);
   }
+  if (prefix === 'sys' && methodName === 'requestAccounts') {
+    return await enable(host, undefined, undefined, true);
+  }
 
   if (prefix === 'eth' && methodName === 'accounts') {
     return isBitcoinBased
@@ -53,7 +56,8 @@ export const methodRequest = async (
   if (
     !isRequestAllowed &&
     methodName !== 'switchEthereumChain' &&
-    methodName !== 'getProviderState'
+    methodName !== 'getProviderState' &&
+    methodName !== 'getAccount'
   )
     throw cleanErrorStack(ethErrors.provider.unauthorized());
   //throw {

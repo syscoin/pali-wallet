@@ -2,6 +2,8 @@ import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 
+import { isNFT as _isNFT } from '@pollum-io/sysweb3-utils';
+
 import messages from './messages';
 import {
   EMITTED_NOTIFICATIONS,
@@ -81,6 +83,7 @@ export class PaliInpageProvider extends EventEmitter {
   public readonly _metamask: ReturnType<
     PaliInpageProvider['_getExperimentalApi']
   >;
+  public readonly _sys: ReturnType<PaliInpageProvider['_getSysAPI']>;
   public chainType: string;
   public networkVersion: string | null;
   public chainId: string | null;
@@ -133,6 +136,7 @@ export class PaliInpageProvider extends EventEmitter {
     this._state;
     this.chainType = chainType;
     if (chainType !== 'syscoin') this._metamask = this._getExperimentalApi();
+    if (chainType === 'syscoin') this._sys = this._getSysAPI();
     this.isUnlocked = this.isUnlocked.bind(this);
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
     this._handleConnect = this._handleConnect.bind(this);
@@ -314,13 +318,13 @@ export class PaliInpageProvider extends EventEmitter {
     };
   }
 
+  //TODO: properly deprecate enable and change implementation on background of it
   /**
    * Equivalent to: ethereum.request('eth_requestAccounts')
    *
-   * @deprecated Use request({ method: 'eth_requestAccounts' }) instead.
+   * @deprecated
    * @returns A promise that resolves to an array of addresses.
    */
-  //TODO: properly deprecate enable and change implementation on background of it
   public async enable(): Promise<string[]> {
     if (!this._sentWarnings.enable) {
       console.warn(messages.warnings.enableDeprecation);
@@ -339,7 +343,11 @@ export class PaliInpageProvider extends EventEmitter {
       }
     });
   }
-  //TODO: properly deprecate disable and change implementation on background of it
+  /**
+   * TODO: properly deprecate disable and change implementation on background of it
+   * @deprecated
+   * @returns A promise that resolves to an array of addresses.
+   */
   public async disable(): Promise<string[]> {
     if (!this._sentWarnings.disable) {
       console.warn(messages.warnings.enableDeprecation);
@@ -686,6 +694,25 @@ export class PaliInpageProvider extends EventEmitter {
             });
           }
           return this._state.isUnlocked;
+        },
+      },
+      {
+        get: (obj, prop, ...args) => Reflect.get(obj, prop, ...args),
+      }
+    );
+  }
+
+  private _getSysAPI() {
+    return new Proxy(
+      {
+        /**
+         * Determines if Pali is unlocked by the user.
+         *
+         * @returns Promise resolving to true if Pali is currently unlocked
+         */
+        isNFT: (guid: number) => {
+          const validated = _isNFT(guid);
+          return validated;
         },
       },
       {
