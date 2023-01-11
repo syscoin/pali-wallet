@@ -166,11 +166,13 @@ export class PaliInpageProvider extends EventEmitter {
       'notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
+        console.log('Received new message', method, params);
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);
             break;
           case 'pali_unlockStateChanged':
+            console.log('Received event');
             this._handleUnlockStateChanged(params);
             break;
           case 'pali_chainChanged':
@@ -660,6 +662,7 @@ export class PaliInpageProvider extends EventEmitter {
     accounts,
     isUnlocked,
   }: { accounts?: string[]; isUnlocked?: boolean } = {}) {
+    console.log('Oh bracket jesus', isUnlocked);
     if (typeof isUnlocked !== 'boolean') {
       console.error(
         'Pali: Received invalid isUnlocked parameter. Please report this bug.'
@@ -668,7 +671,9 @@ export class PaliInpageProvider extends EventEmitter {
     }
 
     if (isUnlocked !== this._state.isUnlocked) {
+      console.log('Changing lockState', isUnlocked);
       this._state.isUnlocked = isUnlocked;
+      console.log('Changing lockState', this._state.isUnlocked);
       this._handleAccountsChanged(accounts || []);
     }
   }

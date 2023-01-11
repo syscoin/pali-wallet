@@ -75,6 +75,12 @@ export const methodRequest = async (
       case 'isLocked':
         return !wallet.isUnlocked();
       case 'getAccount':
+        if (!isBitcoinBased)
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'Method only available for syscoin UTXO chains'
+            )
+          );
         return account;
       case 'getBalance':
         return Boolean(account) && account.balances[networkChain()];
@@ -222,7 +228,7 @@ export const enable = async (
   const { isBitcoinBased } = store.getState().vault;
   if (!isSyscoinDapp && isBitcoinBased)
     throw cleanErrorStack(
-      ethErrors.provider.userRejectedRequest('Connected to Bitcoin based chain')
+      ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
     );
 
   const { dapp, wallet } = window.controller;

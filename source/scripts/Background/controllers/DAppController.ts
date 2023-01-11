@@ -118,6 +118,7 @@ const DAppController = (): IDAppController => {
     new Promise<void>((resolve, reject) => {
       try {
         const hosts = Object.keys(_dapps) as unknown as string;
+        console.log('Hosts', hosts);
         for (const host of hosts) {
           if (id === PaliEvents.lockStateChanged && _dapps[host]) {
             data.params.accounts = data.params.isUnlocked
@@ -138,7 +139,9 @@ const DAppController = (): IDAppController => {
     data?: { method: string; params: any },
     id = 'notification'
   ) => {
+    console.log('Checking on host', _dapps[host]);
     if (_dapps[host] && _dapps[host].port) {
+      console.log('Dispatching it', id, data);
       _dapps[host].port.postMessage({ id, data });
     }
   };

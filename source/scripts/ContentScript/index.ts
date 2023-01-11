@@ -54,6 +54,7 @@ const start = () => {
 
 const startEventEmitter = () => {
   for (const ev in PaliEvents) {
+    console.log('Subscribing to event', PaliEvents[ev]);
     emitter.on(PaliEvents[ev], (result) => {
       console.log('Checking event emission PaliEmitter:', ev, result);
       window.dispatchEvent(
@@ -65,6 +66,7 @@ const startEventEmitter = () => {
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
+  console.log('Received message from backgroung', id, data);
   emitter.emit(id, data);
 });
 
