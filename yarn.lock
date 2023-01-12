@@ -1842,17 +1842,10 @@
     read-package-json-fast "^2.0.3"
     which "^2.0.2"
 
-"@pollum-io/sysweb3-core@^1.0.19":
+"@pollum-io/sysweb3-core@1.0.19", "@pollum-io/sysweb3-core@^1.0.19":
   version "1.0.19"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.19.tgz#353b72fc774f1521c77471ae9260a20e9b3d9425"
   integrity sha512-GT25l81YJxH3lGU5ov1kAv77be4nnYOy21WKwzt6mSraNcL+TM2Zlgf/Zd9Wa1m79cL7MozDpZYE1K89+oBjXg==
-  dependencies:
-    rimraf "^3.0.2"
-
-"@pollum-io/sysweb3-core@^1.0.21":
-  version "1.0.21"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.21.tgz#9f395fdbdf903b250fc5fcf5e7e9d7f510c2af3e"
-  integrity sha512-M/fuHw53wl++f3pMIVSz14NUrx76qnyFMfQJgRtZcQ9AgP2rqvKF0Ak2WeiPujO+MpJva7h582gOmVsiJp0tSA==
   dependencies:
     rimraf "^3.0.2"
 
