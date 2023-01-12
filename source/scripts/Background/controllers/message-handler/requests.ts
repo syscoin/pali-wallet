@@ -43,6 +43,13 @@ export const methodRequest = async (
     return await enable(host, undefined, undefined);
   }
 
+  if (prefix === 'eth' && methodName === 'accounts') {
+    return isBitcoinBased
+      ? cleanErrorStack(ethErrors.rpc.internal())
+      : wallet.isUnlocked()
+      ? [dapp.getAccount(host).address]
+      : [];
+  }
   if (
     !isRequestAllowed &&
     methodName !== 'switchEthereumChain' &&
@@ -55,14 +62,6 @@ export const methodRequest = async (
   //'The requested account and/or method has not been authorized by the user.',
   //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
-
-  if (prefix === 'eth' && methodName === 'accounts') {
-    return isBitcoinBased
-      ? cleanErrorStack(ethErrors.rpc.internal())
-      : wallet.isUnlocked()
-      ? [dapp.getAccount(host).address]
-      : [];
-  }
 
   //* Wallet methods
   if (prefix === 'wallet') {

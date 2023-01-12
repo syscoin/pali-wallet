@@ -2,6 +2,7 @@ import React from 'react';
 import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
+import { LoadingComponent } from 'components/Loading';
 import { RootState } from 'state/store';
 
 import { TransactionsList } from './components/Transactions';
@@ -10,6 +11,7 @@ export const TransactionsPanel = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const { isLoadingTxs } = useSelector((state: RootState) => state.vault);
   const transactions = Object.values(activeAccount.transactions);
 
   const NoTransactionsComponent = () => (
@@ -26,7 +28,7 @@ export const TransactionsPanel = () => {
   ) : (
     <>
       <div className="p-4 w-full text-white text-base bg-bkg-3">
-        <TransactionsList />
+        {isLoadingTxs ? <LoadingComponent /> : <TransactionsList />}
       </div>
 
       <Fullscreen />

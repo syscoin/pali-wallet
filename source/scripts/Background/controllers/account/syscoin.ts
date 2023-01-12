@@ -13,6 +13,7 @@ import store from 'state/store';
 import {
   setAccounts,
   setActiveAccountProperty,
+  setIsLoadingTxs,
   setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
@@ -40,6 +41,8 @@ const SysAccountController = (): ISysAccountController => {
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
+    store.dispatch(setIsLoadingTxs(true));
+
     const { accountLatestUpdate, walleAccountstLatestUpdate } =
       await keyringManager.getLatestUpdateForAccount();
 
@@ -62,9 +65,11 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(
       setActiveAccountProperty({
         property: 'transactions',
-        value: [...accounts[accountId].transactions, ...filteredTxs],
+        value: [...filteredTxs],
       })
     );
+
+    store.dispatch(setIsLoadingTxs(false));
 
     store.dispatch(
       setActiveAccountProperty({
@@ -98,10 +103,20 @@ const SysAccountController = (): ISysAccountController => {
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
-        ...account,
-        assets: accounts[index].assets,
-      }))
+      Object.values(walleAccountstLatestUpdate).map((account: any, index) => {
+        const { transactions: updatedTxs } = account;
+
+        const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
+          (value, i, self) =>
+            i === self.findIndex((tx) => tx[hash] === value[hash])
+        ); // to get array with unique txs.
+
+        return {
+          ...account,
+          assets: accounts[index].assets,
+          transactions: [...allTxs],
+        };
+      })
     );
 
     store.dispatch(

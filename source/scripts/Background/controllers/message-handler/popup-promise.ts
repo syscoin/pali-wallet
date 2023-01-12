@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
+import { saveTransaction } from '../account/evm';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -26,7 +27,13 @@ export const popupPromise = async ({
   route: string;
 }) => {
   const { dapp, createPopup } = window.controller;
-  if (eventName !== 'connect' && !dapp.isConnected(host)) return;
+  if (
+    eventName !== 'connect' &&
+    eventName !== 'wallet_switchEthereumChain' &&
+    eventName !== 'wallet_addEthereumChain' &&
+    !dapp.isConnected(host)
+  )
+    return;
   if (dapp.hasWindow(host)) return;
 
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
@@ -36,14 +43,22 @@ export const popupPromise = async ({
     window.addEventListener(
       `${eventName}.${host}`,
       (event: CustomEvent) => {
-        if (route === 'tx/send/ethTx') {
-          console.log('Verifying response', event);
-        }
         if (event.detail !== undefined && event.detail !== null) {
+          if (
+            route === 'tx/send/ethTx' ||
+            route === 'tx/send/approve' ||
+            route === 'tx/send/nTokenTx'
+          ) {
+            saveTransaction(event.detail);
+            resolve(event.detail.hash);
+          }
           resolve(event.detail);
         }
-        if (route === 'switch-EthChain' || route === 'add-EthChain')
+        if (route === 'switch-EthChain' || route === 'add-EthChain') {
           resolve(null);
+          dapp.setHasWindow(host, false);
+          return null;
+        }
       },
       { once: true, passive: true }
     );
@@ -56,7 +71,6 @@ export const popupPromise = async ({
           route === 'tx/ethSign' ||
           route === 'tx/encryptKey' ||
           route === 'switch-EthChain' ||
-          route === 'add-EthChain' ||
           route === 'add-EthChain' ||
           route === 'change-account'
         ) {

@@ -5,7 +5,14 @@ export const getRpcPromiseCallback =
     reject: (error?: Error) => void,
     unwrapResult = true
   ) =>
-  (error: Error, response: any): void => {
+  (error: Error, response: any, unwrapResult = true): void => {
+    if (response === undefined && (error === undefined || error === null)) {
+      resolve(undefined);
+      return;
+    } else if (response === null && (error === undefined || error === null)) {
+      resolve(null);
+      return;
+    }
     if (error || response.error) {
       reject(error || response.error);
     } else {
