@@ -2,7 +2,8 @@ import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, NeutralButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
+import { LoadingComponent } from 'components/Loading';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -25,21 +26,28 @@ export const Receive = () => {
   const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
+    const abortController = new AbortController();
+
     const setNewAddress = async () => {
-      if (
-        (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) &&
-        (await controller.wallet.account.sys.setAddress())
-      ) {
+      if (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) {
+        await controller.wallet.account.sys.setAddress();
+
         setLoaded(true);
 
         return;
       }
 
-      if (activeAccount.address && networks.ethereum[activeNetwork.chainId])
+      if (activeAccount.address && networks.ethereum[activeNetwork.chainId]) {
         setLoaded(true);
+        return;
+      }
     };
 
     setNewAddress();
+
+    return () => {
+      abortController.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -54,7 +62,7 @@ export const Receive = () => {
       title={`RECEIVE ${activeNetwork.currency?.toUpperCase()}`}
       id="receiveSYS-title"
     >
-      {loaded && activeAccount ? (
+      {loaded && activeAccount.address ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div id="qr-code">
             <QRCodeSVG
@@ -87,11 +95,9 @@ export const Receive = () => {
           </div>
         </div>
       ) : (
-        <Icon
-          name="loading"
-          wrapperClassname="flex justify-center items-center w-screen h-80 animate-spin-slow"
-          className="w-12 text-brand-white"
-        />
+        <div className="flex items-center h-80">
+          <LoadingComponent />
+        </div>
       )}
     </Layout>
   );
