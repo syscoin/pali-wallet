@@ -12,6 +12,7 @@ import {
   getTokenStandardMetadata,
   isValidEthereumAddress,
   getERC721StandardBalance,
+  contractChecker,
 } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
@@ -27,6 +28,10 @@ export const CustomToken = () => {
 
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
+  const [erc1155Error, setErc1155Error] = useState({
+    error: false,
+    message: '',
+  });
 
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
@@ -89,11 +94,13 @@ export const CustomToken = () => {
     decimals: number;
     symbol: string;
   }) => {
-    const setDecimalsInNumber = Number(decimals);
-
     setActiveNetwork(activeNetwork);
-    switch (setDecimalsInNumber) {
-      case 0:
+
+    const { type: contractType, message: contractMessage } =
+      await contractChecker(contractAddress, activeNetwork.url);
+
+    switch (contractType) {
+      case 'ERC-721':
         try {
           const { defaultFetchValue, balanceToNumber } = await handleERC721NFTs(
             contractAddress
@@ -125,7 +132,15 @@ export const CustomToken = () => {
           setError(Boolean(_error));
         }
         break;
+      case 'ERC-1155':
+        setErc1155Error({
+          error: true,
+          message: contractMessage,
+        });
+        break;
       default:
+        // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
+        // has not been founded
         try {
           return await handleERC20Tokens(contractAddress, decimals);
         } catch (_error) {
@@ -235,6 +250,21 @@ export const CustomToken = () => {
           description="This token probably is not available in the current network. Verify the token network and try again."
           log="Token network probably is different from current network."
           onClose={() => setError(false)}
+        />
+      )}
+
+      {erc1155Error.error && (
+        <ErrorModal
+          show={erc1155Error.error}
+          title="No support for ERC-1155"
+          description="At the moment we don't support this type of contracts, but we are working to support ERC-1155 as soon as possible."
+          log={erc1155Error.message}
+          onClose={() =>
+            setErc1155Error({
+              error: false,
+              message: '',
+            })
+          }
         />
       )}
     </>
