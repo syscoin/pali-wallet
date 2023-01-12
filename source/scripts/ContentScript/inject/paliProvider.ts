@@ -1,8 +1,7 @@
-import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 
-import { isNFT as _isNFT } from '@pollum-io/sysweb3-utils';
+import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import messages from './messages';
 import {
@@ -84,6 +83,10 @@ export class PaliInpageProvider extends EventEmitter {
     PaliInpageProvider['_getExperimentalApi']
   >;
   public readonly _sys: ReturnType<PaliInpageProvider['_getSysAPI']>;
+  private _sysState: {
+    blockExplorerURL: string;
+    initialized: boolean;
+  };
   public chainType: string;
   public networkVersion: string | null;
   public chainId: string | null;
@@ -136,7 +139,10 @@ export class PaliInpageProvider extends EventEmitter {
     this._state;
     this.chainType = chainType;
     if (chainType !== 'syscoin') this._metamask = this._getExperimentalApi();
-    if (chainType === 'syscoin') this._sys = this._getSysAPI();
+    if (chainType === 'syscoin') {
+      this.initializesysState();
+      this._sys = this._getSysAPI();
+    }
     this.isUnlocked = this.isUnlocked.bind(this);
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
     this._handleConnect = this._handleConnect.bind(this);
@@ -707,17 +713,50 @@ export class PaliInpageProvider extends EventEmitter {
     );
   }
 
+  private initializesysState() {
+    //TODO: create sysInitialized event, fetch actual active blockexplorer and create state updates only for sys
+    const blockExplorerURL = 'https://blockbook.elint.services/'; //Hardcoded to mainnet just for testing porpuses
+    this._sysState = {
+      blockExplorerURL,
+      initialized: true,
+    };
+  }
+
   private _getSysAPI() {
     return new Proxy(
       {
         /**
-         * Determines if Pali is unlocked by the user.
+         * Determines if asset is a NFT on syscoin UTXO.
          *
-         * @returns Promise resolving to true if Pali is currently unlocked
+         * @returns Promise resolving to true if asset isNFT
          */
         isNFT: (guid: number) => {
           const validated = _isNFT(guid);
           return validated;
+        },
+        /**
+         * Get the minted tokens by the current connected Xpub on UTXO chain.
+         *
+         * @returns Promise send back tokens data
+         */
+        getUserMintedTokens: async () => {
+          //TODO: update sysweb3 to support this functionallity
+          console.log('returning null for now');
+          return null;
+        },
+        /**
+         * Get the minted tokens by the current connected Xpub on UTXO chain.
+         *
+         * @returns Promise send back tokens data
+         */
+        getDataAsset: async (assetGuid: any) => {
+          if (this._sysState) {
+            //TODO: create sysInitialized event
+            await new Promise<void>((resolve) => {
+              this.on('_sysInitialized', () => resolve());
+            });
+          }
+          return getAsset(this._sysState.blockExplorerURL, assetGuid);
         },
       },
       {
