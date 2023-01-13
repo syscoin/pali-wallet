@@ -23,13 +23,17 @@ export const Receive = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+
   const [loaded, setLoaded] = useState<boolean>(false);
 
   useEffect(() => {
     const abortController = new AbortController();
 
     const setNewAddress = async () => {
-      if (activeNetwork.chainId === 57 || activeNetwork.chainId === 5700) {
+      if (isBitcoinBased) {
         await controller.wallet.account.sys.setAddress();
 
         setLoaded(true);
@@ -37,7 +41,11 @@ export const Receive = () => {
         return;
       }
 
-      if (activeAccount.address && networks.ethereum[activeNetwork.chainId]) {
+      if (
+        !isBitcoinBased &&
+        activeAccount.address &&
+        networks.ethereum[activeNetwork.chainId]
+      ) {
         setLoaded(true);
         return;
       }
