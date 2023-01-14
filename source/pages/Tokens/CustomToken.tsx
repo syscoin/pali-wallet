@@ -158,7 +158,6 @@ export const CustomToken = () => {
         try {
           return await handleERC20Tokens(contractAddress, decimals);
         } catch (_ercUndefinedError) {
-          console.log('_ercUndefinedError', _ercUndefinedError);
           setErcError({
             errorType: 'Undefined',
             message: '',
