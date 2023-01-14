@@ -110,8 +110,6 @@ export const CustomToken = () => {
       return;
     }
 
-    console.log('contractResponse', contractResponse);
-
     switch (contractResponse.type) {
       case 'ERC-721':
         try {
