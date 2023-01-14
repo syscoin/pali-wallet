@@ -13,10 +13,12 @@ import {
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
+import { DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+
+import { CustomTokenErrorModal } from './CustomTokenErrorModal';
 
 export const CustomToken = () => {
   const controller = getController();
@@ -25,9 +27,8 @@ export const CustomToken = () => {
   const { navigate } = useUtils();
 
   const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
-  const [erc1155Error, setErc1155Error] = useState({
-    error: false,
+  const [ercError, setErcError] = useState({
+    errorType: '',
     message: '',
   });
 
@@ -94,13 +95,24 @@ export const CustomToken = () => {
   }) => {
     setActiveNetwork(activeNetwork);
 
-    const { type: contractType, message: contractMessage } =
-      (await contractChecker(
-        contractAddress,
-        activeNetwork.url
-      )) as ISupportsInterfaceProps;
+    const contractResponse = (await contractChecker(
+      contractAddress,
+      activeNetwork.url
+    )) as ISupportsInterfaceProps;
 
-    switch (contractType) {
+    if (String(contractResponse).includes('Invalid contract address')) {
+      setErcError({
+        errorType: 'Invalid',
+        message:
+          'Invalid contract address. Verify the current contract address or the current network!',
+      });
+
+      return;
+    }
+
+    console.log('contractResponse', contractResponse);
+
+    switch (contractResponse.type) {
       case 'ERC-721':
         try {
           const { defaultFetchValue, balanceToNumber } = await handleERC721NFTs(
@@ -129,14 +141,17 @@ export const CustomToken = () => {
           setAdded(true);
 
           return;
-        } catch (_error) {
-          setError(Boolean(_error));
+        } catch (_erc721Error) {
+          setErcError({
+            errorType: 'Undefined',
+            message: '',
+          });
         }
         break;
       case 'ERC-1155':
-        setErc1155Error({
-          error: true,
-          message: contractMessage,
+        setErcError({
+          errorType: 'ERC-1155',
+          message: contractResponse.message,
         });
         break;
       default:
@@ -144,11 +159,22 @@ export const CustomToken = () => {
         // has not been founded
         try {
           return await handleERC20Tokens(contractAddress, decimals);
-        } catch (_error) {
-          setError(Boolean(_error));
+        } catch (_ercUndefinedError) {
+          console.log('_ercUndefinedError', _ercUndefinedError);
+          setErcError({
+            errorType: 'Undefined',
+            message: '',
+          });
         }
         break;
     }
+  };
+
+  const resetErcErrorState = () => {
+    setErcError({
+      errorType: '',
+      message: '',
+    });
   };
 
   return (
@@ -244,30 +270,13 @@ export const CustomToken = () => {
         />
       )}
 
-      {error && (
-        <ErrorModal
-          show={error}
-          title="Verify the current network"
-          description="This token probably is not available in the current network. Verify the token network and try again."
-          log="Token network probably is different from current network."
-          onClose={() => setError(false)}
+      {ercError.errorType !== '' ? (
+        <CustomTokenErrorModal
+          errorType={ercError.errorType}
+          message={ercError.message}
+          resetErcErrorState={resetErcErrorState}
         />
-      )}
-
-      {erc1155Error.error && (
-        <ErrorModal
-          show={erc1155Error.error}
-          title="No support for ERC-1155"
-          description="At the moment we don't support this type of contracts, but we are working to support ERC-1155 as soon as possible."
-          log={erc1155Error.message}
-          onClose={() =>
-            setErc1155Error({
-              error: false,
-              message: '',
-            })
-          }
-        />
-      )}
+      ) : null}
     </>
   );
 };
