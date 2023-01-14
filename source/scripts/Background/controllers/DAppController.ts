@@ -26,7 +26,7 @@ interface IDappsSession {
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
 
-  const isConnected = (host: string) => Boolean(_dapps[host].activeAddress);
+  const isConnected = (host: string) => Boolean(_dapps[host]?.activeAddress);
 
   const setup = (port: Runtime.Port) => {
     const { host } = new URL(port.sender.url);

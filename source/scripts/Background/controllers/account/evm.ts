@@ -6,6 +6,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
+import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
 
@@ -34,19 +35,33 @@ const EthAccountController = (): IEthAccountController => {
 
       if (tokenExists) throw new Error('Token already exists');
 
+      let web3Token: any;
+
       const { coins } = await getSearch(token.tokenSymbol);
 
-      const { name, thumb } = coins[0];
+      if (coins && coins[0]) {
+        const { name, thumb } = coins[0];
 
-      const web3Token = {
-        ...token,
-        balance: token.balance,
-        name,
-        id: token.contractAddress,
-        logo: thumb,
-        isNft: false,
-        chainId,
-      };
+        web3Token = {
+          ...token,
+          balance: token.balance,
+          name,
+          id: token.contractAddress,
+          logo: thumb,
+          isNft: false,
+          chainId,
+        };
+      } else {
+        web3Token = {
+          ...token,
+          balance: token.balance,
+          name: token.tokenSymbol,
+          id: token.contractAddress,
+          logo: PaliLogo,
+          isNft: false,
+          chainId,
+        };
+      }
 
       store.dispatch(
         setActiveAccountProperty({
