@@ -1,12 +1,18 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 
 import { ErrorModal } from 'components/Modal';
+import { RootState } from 'state/store';
 
 export const CustomTokenErrorModal = ({
   errorType,
   message,
   resetErcErrorState,
 }) => {
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
   const returnCorrectModal = () => {
     switch (errorType) {
       case 'Undefined':
@@ -15,7 +21,7 @@ export const CustomTokenErrorModal = ({
             show={Boolean(errorType)}
             title="Verify the current network"
             description="This token probably is not available in the current network. Verify the token network and try again."
-            log="Token network probably is different from current network."
+            log="Invalid contract address. Verify the current contract address."
             onClose={() => resetErcErrorState()}
           />
         );
@@ -35,8 +41,8 @@ export const CustomTokenErrorModal = ({
           <ErrorModal
             show={Boolean(errorType)}
             title="Invalid Contract Address"
-            description="This contract address is not a token contract or is not in the correct network."
-            log={message}
+            description="This contract address is not a token contract."
+            log={`This contract is not from a  valid token on ${activeNetwork.label} , verify it further and in case you sure is a token contact us through our support channels `}
             onClose={() => resetErcErrorState()}
           />
         );
