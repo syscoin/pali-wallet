@@ -35,7 +35,6 @@ export const Home = () => {
   );
 
   //* States
-  // const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants

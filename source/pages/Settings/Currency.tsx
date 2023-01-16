@@ -1,13 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, {
-  useEffect,
-  Fragment,
-  useState,
-  useMemo,
-  useCallback,
-} from 'react';
+import React, { useEffect, Fragment, useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
@@ -81,7 +75,6 @@ const CurrencyView = () => {
   const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
   const [checkValueCoin, setCheckValueCoin] = useState('usd');
   const [confirmed, setConfirmed] = useState(false);
-  const [chain, setChain] = useState('syscoin');
   const [conversorValues, setConversorValues] = useState({
     crypto: actualBalance,
     fiat: convertCurrency(actualBalance, checkValueCoin),
@@ -96,7 +89,10 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (selectedCoin) {
-      controller.utils.setFiat(selectedCoin, chain);
+      controller.utils.setFiat(
+        selectedCoin,
+        isBitcoinBased ? 'syscoin' : 'ethereum'
+      );
     }
   }, [selectedCoin]);
 
