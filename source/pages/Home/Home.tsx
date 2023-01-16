@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
@@ -35,7 +35,7 @@ export const Home = () => {
   );
 
   //* States
-  const [fiatPriceValue, setFiatPriceValue] = useState('');
+  // const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants
@@ -59,25 +59,34 @@ export const Home = () => {
     setIsTestnet(chain === 'test' || chain === 'testnet');
   };
 
-  const setFiatPrice = () => {
-    const amount = getFiatAmount(
-      actualBalance || 0,
+  //* Effect for set Testnet or not
+  useEffect(() => {
+    if (!isUnlocked) return;
+
+    setMainOrTestNetwork();
+  }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
+
+  //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
+  const fiatPriceValue = useMemo(() => {
+    const getAmount = getFiatAmount(
+      actualBalance > 0 ? actualBalance : 0,
       4,
       String(fiatAsset).toUpperCase(),
       true,
       true
     );
 
-    setFiatPriceValue(String(amount));
-  };
-
-  //* Effect
-  useEffect(() => {
-    if (!isUnlocked) return;
-
-    setFiatPrice();
-    setMainOrTestNetwork();
-  }, [isUnlocked, activeAccount.address, activeNetwork.chainId, fiatPrice]);
+    return getAmount;
+  }, [
+    isUnlocked,
+    activeAccount,
+    activeAccount.address,
+    activeNetwork,
+    activeNetwork.chainId,
+    fiatAsset,
+    fiatPrice,
+    actualBalance,
+  ]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">

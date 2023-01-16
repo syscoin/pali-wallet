@@ -48,7 +48,6 @@ browser.runtime.onMessage.addListener(async ({ type, target }) => {
 });
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-  console.log('Checking portName', port);
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 

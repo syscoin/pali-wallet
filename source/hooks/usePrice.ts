@@ -28,15 +28,24 @@ export const usePrice = () => {
 
     const currencySymbol = getSymbolFromCurrency(currency);
 
-    const symbol = withSymbol ? currencySymbol : '';
+    const arrayValidationSymbol = [
+      withSymbol,
+      currencySymbol !== undefined,
+      currencySymbol !== 'undefined',
+    ];
+
+    const validateSymbol = arrayValidationSymbol.every(
+      (validation) => validation === true
+    );
+
+    const symbol = validateSymbol ? currencySymbol : '';
 
     const formattedValue = verifyZerosInBalanceAndFormat(value, precision);
 
     if (formattedValue === undefined || formattedValue === 'undefined') {
       return `${symbol}0  ${currency}`;
     }
-
-    return `${symbol}${formattedValue}  ${withCurrency ? currency : ''}`;
+    return `${symbol} ${formattedValue}  ${withCurrency ? currency : ''}`;
   };
 
   return { getFiatAmount };

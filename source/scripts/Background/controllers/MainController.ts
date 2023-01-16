@@ -91,7 +91,7 @@ const MainController = (): IMainController => {
             isUnlocked: keyringManager.isUnlocked(),
           },
         })
-        .then(() => console.log('Successfully update all Dapps Unlock'))
+        // .then(() => console.log('Successfully update all Dapps Unlock'))
         .catch((error) => console.error('Unlock', error));
     });
     return;
@@ -132,7 +132,7 @@ const MainController = (): IMainController => {
           isUnlocked: keyringManager.isUnlocked(),
         },
       })
-      .then(() => console.log('Successfully update all Dapps'))
+      // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
   };
@@ -324,7 +324,6 @@ const MainController = (): IMainController => {
         ? await getSysRpc(data)
         : await getEthRpc(data);
 
-      console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
       throw cleanErrorStack(ethErrors.rpc.internal());

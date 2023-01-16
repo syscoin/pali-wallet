@@ -48,8 +48,6 @@ export const decodeTransactionData = (params: ITransactionParams) => {
 
     return;
   } catch (error) {
-    console.log('error decode', error);
-
     return;
   }
 };
