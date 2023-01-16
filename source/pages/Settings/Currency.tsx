@@ -94,7 +94,7 @@ const CurrencyView = () => {
         isBitcoinBased ? 'syscoin' : 'ethereum'
       );
     }
-  }, [selectedCoin]);
+  }, [selectedCoin, isBitcoinBased]);
 
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
