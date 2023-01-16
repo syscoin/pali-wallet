@@ -113,6 +113,7 @@ const SysAccountController = (): ISysAccountController => {
 
         return {
           ...account,
+          label: accounts[index].label,
           assets: accounts[index].assets,
           transactions: [...allTxs],
         };
