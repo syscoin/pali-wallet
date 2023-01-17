@@ -1,8 +1,6 @@
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 
-// import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
-
 import messages from './messages';
 import {
   EMITTED_NOTIFICATIONS,
@@ -11,8 +9,8 @@ import {
   isValidNetworkVersion,
 } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
-// type WarningEventName = keyof SentWarningsState['events'];
 export declare type JsonRpcVersion = '2.0';
+export type WarningEventName = keyof SentWarningsState['events'];
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SentWarningsState {
   // methods
@@ -46,15 +44,6 @@ interface RequestArguments {
   params?: unknown[] | Record<string, unknown>;
 }
 
-// interface SendSyncJsonRpcRequest {
-//   id: any;
-//   jsonrpc: any;
-//   method:
-//     | 'eth_accounts'
-//     | 'eth_coinbase'
-//     | 'eth_uninstallFilter'
-//     | 'net_version';
-// }
 interface JsonRpcSuccessStruct {
   id: number;
   jsonrpc: JsonRpcVersion;
@@ -77,13 +66,7 @@ export interface EnableLegacyPali {
   chainId?: unknown;
 }
 //TODO: switch to SafeEventEmitter
-export class NewPaliProvider extends EventEmitter {
-  //   public readonly _metamask: ReturnType<NewPaliProvider['_getExperimentalApi']>;
-  //   public readonly _sys: ReturnType<NewPaliProvider['_getSysAPI']>;
-  //   private _sysState: {
-  //     blockExplorerURL: string;
-  //     initialized: boolean;
-  //   };
+export class BaseProvider extends EventEmitter {
   public chainType: string;
   public networkVersion: string | null;
   public chainId: string | null;
@@ -96,8 +79,8 @@ export class NewPaliProvider extends EventEmitter {
     initialized: false,
     isPermanentlyDisconnected: false,
   };
-  private _state: BaseProviderState;
-  private _sentWarnings: SentWarningsState = {
+  protected _state: BaseProviderState;
+  protected _sentWarnings: SentWarningsState = {
     // methods
     enable: false,
     disable: false,
@@ -122,7 +105,7 @@ export class NewPaliProvider extends EventEmitter {
     this.setMaxListeners(maxEventListeners);
     // Private state
     this._state = {
-      ...NewPaliProvider._defaultState,
+      ...BaseProvider._defaultState,
     };
     if (chainType === 'syscoin') {
       //TODO: in case of syscoin chain nulify ethereum variables
@@ -135,11 +118,6 @@ export class NewPaliProvider extends EventEmitter {
     this.wallet = wallet;
     this._state;
     this.chainType = chainType;
-    // if (chainType !== 'syscoin') this._metamask = this._getExperimentalApi();
-    // if (chainType === 'syscoin') {
-    //   this.initializesysState();
-    //   this._sys = this._getSysAPI();
-    // }
     this.isUnlocked = this.isUnlocked.bind(this);
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
     this._handleConnect = this._handleConnect.bind(this);
@@ -148,13 +126,10 @@ export class NewPaliProvider extends EventEmitter {
     this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
-    // this._sendSync = this._sendSync.bind(this);
-    // this.send = this.send.bind(this);
-    // this.sendAsync = this.sendAsync.bind(this);
     this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
-          NewPaliProvider['_initializeState']
+          BaseProvider['_initializeState']
         >[0];
         this._initializeState(initialState);
       })
@@ -246,92 +221,6 @@ export class NewPaliProvider extends EventEmitter {
       );
     });
   }
-  /**
-   * Internal backwards compatibility method, used in send.
-   *
-   * @deprecated
-   */
-  //   sendAsync(
-  //     payload: any,
-  //     callback: (error: Error | null, result?: any) => void
-  //   ): void {
-  //     this._rpcRequest(payload, callback);
-  //   }
-
-  /**
-   * Internal backwards compatibility method, used in send.
-   *
-   * @deprecated
-   */
-  //   send(methodOrPayload: unknown, callbackOrArgs?: unknown): unknown {
-  //     if (!this._sentWarnings.send) {
-  //       console.warn(messages.warnings.sendDeprecation);
-  //       this._sentWarnings.send = true;
-  //     }
-
-  //     if (
-  //       typeof methodOrPayload === 'string' &&
-  //       (!callbackOrArgs || Array.isArray(callbackOrArgs))
-  //     ) {
-  //       return new Promise((resolve, reject) => {
-  //         try {
-  //           this._rpcRequest(
-  //             { method: methodOrPayload, params: callbackOrArgs },
-  //             getRpcPromiseCallback(resolve, reject, false)
-  //           );
-  //         } catch (error) {
-  //           reject(error);
-  //         }
-  //       });
-  //     } else if (
-  //       methodOrPayload &&
-  //       typeof methodOrPayload === 'object' &&
-  //       typeof callbackOrArgs === 'function'
-  //     ) {
-  //       return this._rpcRequest(
-  //         methodOrPayload as UnvalidatedJsonRpcRequest,
-  //         callbackOrArgs as (...args: unknown[]) => void
-  //       );
-  //     }
-  //     return this._sendSync(methodOrPayload as SendSyncJsonRpcRequest);
-  //   }
-
-  /**
-   * Internal backwards compatibility method, used in send.
-   *
-   * @deprecated
-   */
-  //   private _sendSync(payload: SendSyncJsonRpcRequest) {
-  //     let result;
-  //     switch (payload.method) {
-  //       case 'eth_accounts':
-  //         result = this.selectedAddress ? [this.selectedAddress] : [];
-  //         break;
-
-  //       case 'eth_coinbase':
-  //         result = this.selectedAddress || null;
-  //         break;
-
-  //       case 'eth_uninstallFilter':
-  //         this._rpcRequest(payload, NOOP);
-  //         result = true;
-  //         break;
-
-  //       case 'net_version':
-  //         result = this.networkVersion || null;
-  //         break;
-
-  //       default:
-  //         throw new Error(messages.errors.unsupportedSync(payload.method));
-  //     }
-
-  //     return {
-  //       id: payload.id,
-  //       jsonrpc: payload.jsonrpc,
-  //       result,
-  //     };
-  //   }
-
   //TODO: properly deprecate enable and change implementation on background of it
   /**
    * Equivalent to: ethereum.request('eth_requestAccounts')
@@ -426,7 +315,7 @@ export class NewPaliProvider extends EventEmitter {
     this._state.initialized = true;
     this.emit('_initialized');
   }
-  private async _rpcRequest(
+  protected async _rpcRequest(
     payload: UnvalidatedJsonRpcRequest | UnvalidatedJsonRpcRequest[], //TODO: refactor to accept incoming batched requests
     callback: (...args: any[]) => void
   ) {
@@ -689,85 +578,4 @@ export class NewPaliProvider extends EventEmitter {
       this._handleAccountsChanged(accounts || []);
     }
   }
-  //   private _warnOfDeprecation(eventName: string): void {
-  //     if (this._sentWarnings?.events[eventName as WarningEventName] === false) {
-  //       console.warn(messages.warnings.events[eventName as WarningEventName]);
-  //       this._sentWarnings.events[eventName as WarningEventName] = true;
-  //     }
-  //   }
-
-  //   private _getExperimentalApi() {
-  //     return new Proxy(
-  //       {
-  //         /**
-  //          * Determines if Pali is unlocked by the user.
-  //          *
-  //          * @returns Promise resolving to true if Pali is currently unlocked
-  //          */
-  //         isUnlocked: async () => {
-  //           if (!this._state.initialized) {
-  //             await new Promise<void>((resolve) => {
-  //               this.on('_initialized', () => resolve());
-  //             });
-  //           }
-  //           return this._state.isUnlocked;
-  //         },
-  //       },
-  //       {
-  //         get: (obj, prop, ...args) => Reflect.get(obj, prop, ...args),
-  //       }
-  //     );
-  //   }
-
-  //   private initializesysState() {
-  //     //TODO: create sysInitialized event, fetch actual active blockexplorer and create state updates only for sys
-  //     const blockExplorerURL = 'https://blockbook.elint.services/'; //Hardcoded to mainnet just for testing porpuses
-  //     this._sysState = {
-  //       blockExplorerURL,
-  //       initialized: true,
-  //     };
-  //   }
-
-  //   private _getSysAPI() {
-  //     return new Proxy(
-  //       {
-  //         /**
-  //          * Determines if asset is a NFT on syscoin UTXO.
-  //          *
-  //          * @returns Promise resolving to true if asset isNFT
-  //          */
-  //         isNFT: (guid: number) => {
-  //           const validated = _isNFT(guid);
-  //           return validated;
-  //         },
-  //         /**
-  //          * Get the minted tokens by the current connected Xpub on UTXO chain.
-  //          *
-  //          * @returns Promise send back tokens data
-  //          */
-  //         getUserMintedTokens: async () => {
-  //           //TODO: update sysweb3 to support this functionallity
-  //           console.log('returning null for now');
-  //           return null;
-  //         },
-  //         /**
-  //          * Get the minted tokens by the current connected Xpub on UTXO chain.
-  //          *
-  //          * @returns Promise send back tokens data
-  //          */
-  //         getDataAsset: async (assetGuid: any) => {
-  //           if (this._sysState) {
-  //             //TODO: create sysInitialized event
-  //             await new Promise<void>((resolve) => {
-  //               this.on('_sysInitialized', () => resolve());
-  //             });
-  //           }
-  //           return getAsset(this._sysState.blockExplorerURL, assetGuid);
-  //         },
-  //       },
-  //       {
-  //         get: (obj, prop, ...args) => Reflect.get(obj, prop, ...args),
-  //       }
-  //     );
-  //   }
 }
