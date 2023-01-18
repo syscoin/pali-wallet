@@ -15,7 +15,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   }
   private initializesysState() {
     //TODO: create sysInitialized event, fetch actual active blockexplorer and create state updates only for sys
-    const blockExplorerURL = 'https://blockbook.elint.services/'; //Hardcoded to mainnet just for testing porpuses
+    const blockExplorerURL = 'https://blockbook-dev.elint.services/'; //Hardcoded to mainnet just for testing porpuses
     this._sysState = {
       blockExplorerURL,
       initialized: true,
@@ -40,12 +40,23 @@ export class PaliInpageProviderSys extends BaseProvider {
          * @returns Promise send back tokens data
          */
         getUserMintedTokens: async () => {
-          const tokens = await this.request({ method: 'wallet_getTokens' });
-          if (tokens) {
-            const { syscoin } = tokens as any;
-            return syscoin?.filter(
-              (token: any) => token?.type === 'SPTAssetActivate'
+          const account = await this.request({ method: 'wallet_getAccount' });
+          if (account) {
+            const { transactions } = account as any;
+
+            const txs = await Promise.all(
+              transactions
+                ?.filter((tx: any) => tx.tokenType === 'SPTAssetActivate')
+                ?.map(async (tx: any) => {
+                  const assetInfo = await getAsset(
+                    this._sysState.blockExplorerURL,
+                    tx.tokenTransfers[0].token
+                  );
+                  if (assetInfo.assetGuid) return assetInfo;
+                })
             );
+
+            return txs.filter((item) => item !== undefined);
           }
           return [];
         },
