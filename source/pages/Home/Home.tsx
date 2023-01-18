@@ -51,11 +51,19 @@ export const Home = () => {
   const setMainOrTestNetwork = async () => {
     const { url } = activeNetwork;
 
-    const { chain } = isBitcoinBased
+    const { chain, chainId }: any = isBitcoinBased
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
-    setIsTestnet(chain === 'test' || chain === 'testnet');
+    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
+
+    setIsTestnet(
+      chain === 'test' ||
+        chain === 'testnet' ||
+        ethTestnetsChainsIds.some(
+          (validationChain) => validationChain === chainId
+        )
+    );
   };
 
   //* Effect for set Testnet or not
