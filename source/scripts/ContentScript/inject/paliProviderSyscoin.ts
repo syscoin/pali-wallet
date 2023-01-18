@@ -43,7 +43,9 @@ export class PaliInpageProviderSys extends BaseProvider {
           const tokens = await this.request({ method: 'wallet_getTokens' });
           if (tokens) {
             const { syscoin } = tokens as any;
-            return syscoin;
+            return syscoin?.filter(
+              (token: any) => token?.type === 'SPTAssetActivate'
+            );
           }
           return [];
         },
