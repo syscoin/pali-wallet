@@ -40,9 +40,12 @@ export class PaliInpageProviderSys extends BaseProvider {
          * @returns Promise send back tokens data
          */
         getUserMintedTokens: async () => {
-          //TODO: update sysweb3 to support this functionallity
-          console.log('returning null for now');
-          return null;
+          const tokens = await this.request({ method: 'wallet_getTokens' });
+          if (tokens) {
+            const { syscoin } = tokens as any;
+            return syscoin;
+          }
+          return [];
         },
         /**
          * Get the minted tokens by the current connected Xpub on UTXO chain.
