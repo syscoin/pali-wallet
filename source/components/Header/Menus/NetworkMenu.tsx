@@ -24,9 +24,9 @@ export const NetworkMenu: React.FC = () => {
 
   const { navigate } = useUtils();
 
-  const handleChangeNetwork = (network: INetwork, chain: string) => {
+  const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
-      wallet.setActiveNetwork(network, chain);
+      await wallet.setActiveNetwork(network, chain);
     } catch (networkError) {
       navigate('/home');
     }

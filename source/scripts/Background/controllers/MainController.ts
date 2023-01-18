@@ -38,11 +38,13 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import ControllerUtils from './ControllerUtils';
 import { PaliEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
+  const utilsController = Object.freeze(ControllerUtils());
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -247,6 +249,7 @@ const MainController = (): IMainController => {
           store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
           store.dispatch(setActiveAccount(account));
+          await utilsController.setFiat();
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
@@ -297,6 +300,8 @@ const MainController = (): IMainController => {
             store.dispatch(setIsPendingBalances(false));
 
             store.dispatch(setActiveAccount(account));
+
+            await utilsController.setFiat();
           }
 
           store.dispatch(setStoreError(true));
