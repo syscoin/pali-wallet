@@ -119,10 +119,14 @@ const ControllerUtils = (): IControllerUtils => {
             return;
           }
 
+          const lastCoinsPrices = store.getState().price.coins;
+
+          const findLastCurrencyValue = lastCoinsPrices[currency];
+
           store.dispatch(
             setPrices({
               asset: currency,
-              price: 0,
+              price: findLastCurrencyValue,
             })
           );
 
