@@ -52,7 +52,14 @@ export class PaliInpageProviderSys extends BaseProvider {
                     this._sysState.blockExplorerURL,
                     tx.tokenTransfers[0].token
                   );
-                  if (assetInfo.assetGuid) return assetInfo;
+                  const formattedAssetInfo = {
+                    ...assetInfo,
+                    symbol: Buffer.from(
+                      String(assetInfo.symbol),
+                      'base64'
+                    ).toString('utf-8'),
+                  };
+                  if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
                 })
             );
 
