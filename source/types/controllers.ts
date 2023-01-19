@@ -13,7 +13,10 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
+import {
+  PaliEvents,
+  PaliSyscoinEvents,
+} from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -139,6 +142,19 @@ export interface IDAppController {
   getAll: () => { [host: string]: IDApp };
   getNetwork: () => INetwork;
   getState: () => any;
+  /**
+   * Changes the active network
+   */
+  // changeActiveBlockExplorer: (blockExplorer: string) => void;
+  /**
+   * Update state and emit events to all connected dApps
+   * @emits PaliSyscoinEvents
+   */
+  handleBlockExplorerChange: (
+    id: PaliSyscoinEvents,
+    data: { method: string; params: any }
+  ) => Promise<void>;
+
   /**
    * Changes the active network
    */

@@ -38,7 +38,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
-import { PaliEvents } from './message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -180,12 +180,6 @@ const MainController = (): IMainController => {
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-    // if (isBitcoinBased) {
-    //   window.controller.dapp.dispatchEvent(
-    //     DAppEvents.accountsChanged,
-    //     removeXprv(accounts[id])
-    //   );
-    // } // TODO: check if this is relevant in any form to syscoin events
   };
 
   const setActiveNetwork = async (
@@ -255,6 +249,13 @@ const MainController = (): IMainController => {
               networkVersion: network.chainId,
             },
           });
+          window.controller.dapp.handleBlockExplorerChange(
+            PaliSyscoinEvents.blockExplorerChanged,
+            {
+              method: PaliSyscoinEvents.blockExplorerChanged,
+              params: isBitcoinBased ? network.url : null,
+            }
+          );
           return;
         } catch (error) {
           console.error(
@@ -280,6 +281,13 @@ const MainController = (): IMainController => {
                 networkVersion: activeNetwork.chainId,
               },
             });
+            window.controller.dapp.handleBlockExplorerChange(
+              PaliSyscoinEvents.blockExplorerChanged,
+              {
+                method: PaliSyscoinEvents.blockExplorerChanged,
+                params: isBitcoinBased ? network.url : null,
+              }
+            );
 
             const { assets } = activeAccount;
 

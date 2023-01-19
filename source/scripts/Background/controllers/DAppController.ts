@@ -8,7 +8,7 @@ import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
 import { onMessage } from './message-handler';
-import { PaliEvents } from './message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 interface IDappsSession {
   [host: string]: {
@@ -44,8 +44,11 @@ const DAppController = (): IDAppController => {
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
-    const { accounts } = store.getState().vault;
-    _dapps[dapp.host].activeAddress = accounts[dapp.accountId].address;
+    const { accounts, isBitcoinBased } = store.getState().vault;
+
+    _dapps[dapp.host].activeAddress = isBitcoinBased
+      ? accounts[dapp.accountId].xpub
+      : accounts[dapp.accountId].address;
   };
 
   const requestPermissions = (host: string, accountId: number) => {
@@ -80,18 +83,26 @@ const DAppController = (): IDAppController => {
 
   const changeAccount = (host: string, accountId: number) => {
     const date = Date.now();
-    // const { accounts, isBitcoinBased } = store.getState().vault;
-    const { accounts } = store.getState().vault;
+    const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
     _dapps[host].activeAddress = accounts[accountId].address;
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliEvents.accountsChanged,
-        params: [_dapps[host].activeAddress],
-      },
-      PaliEvents.accountsChanged
-    );
+    isBitcoinBased
+      ? _dispatchPaliEvent(
+          host,
+          {
+            method: PaliSyscoinEvents.xpubChanged,
+            params: accounts[accountId].xpub,
+          },
+          PaliSyscoinEvents.xpubChanged
+        )
+      : _dispatchPaliEvent(
+          host,
+          {
+            method: PaliEvents.accountsChanged,
+            params: [_dapps[host].activeAddress],
+          },
+          PaliEvents.accountsChanged
+        );
   };
 
   const disconnect = (host: string) => {
@@ -104,6 +115,14 @@ const DAppController = (): IDAppController => {
         params: [],
       },
       PaliEvents.accountsChanged
+    );
+    _dispatchPaliEvent(
+      host,
+      {
+        method: PaliSyscoinEvents.xpubChanged,
+        params: null,
+      },
+      PaliSyscoinEvents.xpubChanged
     );
     return [] as string[];
   };
@@ -118,12 +137,19 @@ const DAppController = (): IDAppController => {
     new Promise<void>((resolve, reject) => {
       try {
         const hosts = Object.keys(_dapps) as unknown as string;
-        console.log('Hosts', hosts);
+        const paliData = data;
+        // console.log('Hosts', hosts);
         for (const host of hosts) {
           if (id === PaliEvents.lockStateChanged && _dapps[host]) {
+            paliData.method = PaliSyscoinEvents.lockStateChanged;
+            delete paliData.params.accounts;
+            paliData.params.xpub = data.params.isUnlocked
+              ? _dapps[host].activeAddress
+              : null;
             data.params.accounts = data.params.isUnlocked
               ? [_dapps[host].activeAddress]
               : [];
+            _dispatchPaliEvent(host, data, PaliSyscoinEvents.lockStateChanged);
           }
           _dispatchPaliEvent(host, data, id);
         }
@@ -134,12 +160,25 @@ const DAppController = (): IDAppController => {
     });
   };
 
+  const handleBlockExplorerChange = async (
+    id: PaliSyscoinEvents,
+    data: { method: string; params: any }
+  ): Promise<void> => {
+    new Promise<void>((resolve) => {
+      const hosts = Object.keys(_dapps) as unknown as string;
+      // console.log('Hosts', hosts);
+      for (const host of hosts) {
+        _dispatchPaliEvent(host, data, id);
+      }
+      resolve();
+    });
+  };
+
   const _dispatchPaliEvent = async (
     host: string,
     data?: { method: string; params: any },
     id = 'notification'
   ) => {
-    console.log('Checking on host', _dapps[host]);
     if (_dapps[host] && _dapps[host].port) {
       console.log('Dispatching it', id, data);
       _dapps[host].port.postMessage({ id, data });
@@ -202,6 +241,7 @@ const DAppController = (): IDAppController => {
     requestPermissions,
     hasWindow,
     handleStateChange,
+    handleBlockExplorerChange,
     getState,
     getNetwork,
     setHasWindow,

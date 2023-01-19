@@ -57,6 +57,7 @@ export const methodRequest = async (
     !isRequestAllowed &&
     methodName !== 'switchEthereumChain' &&
     methodName !== 'getProviderState' &&
+    methodName !== 'getSysProviderState' &&
     methodName !== 'getAccount'
   )
     throw cleanErrorStack(ethErrors.provider.unauthorized());
@@ -103,6 +104,12 @@ export const methodRequest = async (
           data: { network: data.network },
         });
       case 'requestPermissions':
+        if (isBitcoinBased)
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'Method only available for EVM chains'
+            )
+          );
         if (!wallet.isUnlocked()) return false;
         return popupPromise({
           host,
@@ -122,6 +129,12 @@ export const methodRequest = async (
 
         return response;
       case 'addEthereumChain':
+        if (isBitcoinBased)
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'Method only available for EVM chains'
+            )
+          );
         const customRPCData = {
           url: data.params[0].rpcUrls[0],
           chainId: Number(data.params[0].chainId),
@@ -132,9 +145,7 @@ export const methodRequest = async (
           isSyscoinRpc: false,
           symbol: data.params[0].nativeCurrency.symbol,
         };
-        console.log('Check Custom RPC data', customRPCData);
         const network = await controller.wallet.getRpc(customRPCData);
-        console.log('Checked Custom RPC data', customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
           return popupPromise({
             host,
@@ -176,7 +187,16 @@ export const methodRequest = async (
           networkVersion: activeNetwork.chainId,
         };
         return providerState;
-
+      case 'getSysProviderState':
+        const blockExplorerURL = isBitcoinBased ? activeNetwork.url : null;
+        const sysProviderState = {
+          connectedAccountXpub: dapp.getAccount(host)
+            ? dapp.getAccount(host)
+            : null,
+          blockExplorerURL: blockExplorerURL,
+          isUnlocked: wallet.isUnlocked(),
+        };
+        return sysProviderState;
       default:
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
@@ -230,6 +250,10 @@ export const enable = async (
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
     );
+  else if (isSyscoinDapp && !isBitcoinBased)
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized('Connected to EVM based chain')
+    );
 
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
@@ -249,6 +273,5 @@ export const enable = async (
 
 export const isUnlocked = () => {
   const { wallet } = window.controller;
-  console.log('Test it', wallet.isUnlocked());
   return wallet.isUnlocked();
 };
