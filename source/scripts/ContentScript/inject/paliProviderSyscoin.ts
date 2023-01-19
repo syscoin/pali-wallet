@@ -217,23 +217,35 @@ export class PaliInpageProviderSys extends BaseProvider {
           if (account) {
             const { transactions } = account as any;
 
+            const filteredTxs = transactions?.filter(
+              (tx: any) => tx.tokenType === 'SPTAssetActivate'
+            );
+
+            const allTokens = [];
+
+            for (const txs of filteredTxs) {
+              for (const tokens of txs.tokenTransfers) {
+                if (tokens) {
+                  allTokens.push(tokens);
+                }
+              }
+            }
+
             const txs = await Promise.all(
-              transactions
-                ?.filter((tx: any) => tx.tokenType === 'SPTAssetActivate')
-                ?.map(async (tx: any) => {
-                  const assetInfo = await getAsset(
-                    this._sysState.blockExplorerURL,
-                    tx.tokenTransfers[0].token
-                  );
-                  const formattedAssetInfo = {
-                    ...assetInfo,
-                    symbol: Buffer.from(
-                      String(assetInfo.symbol),
-                      'base64'
-                    ).toString('utf-8'),
-                  };
-                  if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
-                })
+              allTokens.map(async (t: any) => {
+                const assetInfo = await getAsset(
+                  this._sysState.blockExplorerURL,
+                  t.token
+                );
+                const formattedAssetInfo = {
+                  ...assetInfo,
+                  symbol: Buffer.from(
+                    String(assetInfo.symbol),
+                    'base64'
+                  ).toString('utf-8'),
+                };
+                if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
+              })
             );
 
             return txs.filter((item) => item !== undefined);
