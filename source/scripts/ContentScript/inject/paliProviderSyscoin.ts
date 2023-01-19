@@ -253,6 +253,22 @@ export class PaliInpageProviderSys extends BaseProvider {
           return [];
         },
         /**
+         * Get held assets by current connected account on UTXO chain.
+         *
+         * @returns Promise send back tokens data
+         */
+        getHoldingsData: async () => {
+          const { syscoin }: { syscoin: any[] } = (await this.request({
+            method: 'wallet_getTokens',
+          })) as any;
+
+          if (syscoin.length) {
+            return syscoin;
+          }
+
+          return [];
+        },
+        /**
          * Get the minted tokens by the current connected Xpub on UTXO chain.
          *
          * @returns Promise send back tokens data
