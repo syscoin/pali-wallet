@@ -32,6 +32,13 @@ export const SysProvider = (host: string) => {
       route: 'tx/asset/create',
       eventName: 'txCreateToken',
     });
+  const transferAssetOwnership = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/transfer',
+      eventName: 'txTransferAssetOwnership',
+    });
 
   const updateToken = (data) =>
     popupPromise({
@@ -100,6 +107,7 @@ export const SysProvider = (host: string) => {
     createToken,
     updateToken,
     mintToken,
+    transferAssetOwnership,
     createNft,
     mintNft,
     sign,
