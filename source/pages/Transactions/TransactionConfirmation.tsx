@@ -41,7 +41,7 @@ const callbackResolver = (txType: string) => {
       break;
 
     case 'MintNft':
-      callbackName = 'confirmMintNFT';
+      callbackName = 'confirmTokenMint';
       break;
 
     case 'UpdateToken':
