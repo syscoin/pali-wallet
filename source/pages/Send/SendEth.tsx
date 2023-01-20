@@ -3,27 +3,16 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import {
-  Icon,
-  IconButton,
-  Layout,
-  NeutralButton,
-  Tooltip,
-} from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import { getController } from 'utils/browser';
-import {
-  truncate,
-  getAssetBalance,
-  removeScientificNotation,
-} from 'utils/index';
+import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const controller = getController();
@@ -36,65 +25,12 @@ export const SendEth = () => {
     (state: RootState) => state.vault.activeAccount
   );
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
-  const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
-  const [feeValue, setFeeValue] = useState(0);
-  const [customFee, setCustomFee] = useState<ICustomFeeParams>({
-    isCustom: false,
-    gasLimit: 0,
-    maxPriorityFeePerGas: 0,
-    maxFeePerGas: 0,
-    gasPrice: 0,
-  });
-  const [fee, setFee] = useState<IFeeState>();
   const [form] = Form.useForm();
 
-  const txs = controller.wallet.account.eth.tx;
-
-  const validateCustomGasLimit = Boolean(
-    customFee.isCustom && customFee.gasLimit > 0
-  );
-
-  useEffect(() => {
-    const abortController = new AbortController();
-
-    const getFeeRecomendation = async () => {
-      const { maxFeePerGas, maxPriorityFeePerGas } =
-        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
-
-      const getGasLimitResult = await txs.getGasLimit(
-        form.getFieldValue('receiver')
-      );
-
-      const getGasPrice = (await txs.getRecommendedGasPrice(true)) as {
-        ethers: string;
-        gwei: string;
-      };
-
-      const feeDetails = {
-        maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
-        baseFee:
-          (Number(maxFeePerGas) - Number(maxPriorityFeePerGas)) / 10 ** 9,
-        maxPriorityFeePerGas: Number(maxPriorityFeePerGas) / 10 ** 9,
-        gasLimit: Number(getGasLimitResult),
-        gasPrice: Number(getGasPrice.gwei),
-      };
-
-      setFee(feeDetails as IFeeState);
-
-      // form.setFieldsValue({
-      //   fee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-      //   gasLimit: getTxGasLimitResult,
-      //   gasPrice: gasPrice.gwei,
-      // });
-    };
-
-    getFeeRecomendation();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [form.getFieldValue('receiver'), controller.wallet.account]);
+  useEffect(() => {}, [
+    form.getFieldValue('receiver'),
+    controller.wallet.account,
+  ]);
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
@@ -115,7 +51,7 @@ export const SendEth = () => {
     }
   };
 
-  const nextStep = ({ receiver, amount, gasPrice, gasLimit }: any) => {
+  const nextStep = ({ receiver, amount }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
@@ -123,9 +59,6 @@ export const SendEth = () => {
             sender: activeAccount.address,
             receivingAddress: receiver,
             amount,
-            gasPrice,
-            gasLimit,
-            fee: String(feeValue),
             token: selectedAsset
               ? {
                   ...selectedAsset,
@@ -141,29 +74,6 @@ export const SendEth = () => {
     }
   };
 
-  const getCalculatedFee = useMemo(() => {
-    if (!fee?.gasPrice || (!fee?.gasLimit && !fee?.maxFeePerGas)) return;
-
-    return (
-      (Number(customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas) *
-        Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
-      10 ** 9
-    );
-  }, [fee?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas, customFee]);
-
-  const totalCalculated = useMemo(() => {
-    const amount = Number(form.getFieldValue('amount'));
-
-    console.log('form.getFieldValue', amount);
-
-    return amount + getCalculatedFee;
-  }, [form, getCalculatedFee]);
-
-  console.log('fee', fee);
-
-  console.log('getCalculatedFee', getCalculatedFee);
-  console.log('form', form);
-
   return (
     <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
       <div>
@@ -174,7 +84,9 @@ export const SendEth = () => {
 
           {selectedAsset
             ? getAssetBalance(selectedAsset, activeAccount, false)
-            : `${activeAccount.balances.ethereum} ${activeNetwork.currency}`}
+            : `${
+                activeAccount.balances.ethereum
+              } ${activeNetwork.currency?.toUpperCase()}`}
         </p>
 
         <Form
@@ -184,9 +96,6 @@ export const SendEth = () => {
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 8 }}
           initialValues={{
-            // fee: recommendedGasPrice,
-            // gasLimit: recommendedGasLimit,
-            // gasPrice: recommendedGasPrice,
             amount: 0,
           }}
           onFinish={nextStep}
@@ -203,8 +112,8 @@ export const SendEth = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
-                  if (!value || isValidEthereumAddress(value)) {
+                async validator(_, value) {
+                  if (isValidEthereumAddress(value)) {
                     return Promise.resolve();
                   }
 
@@ -214,9 +123,10 @@ export const SendEth = () => {
             ]}
           >
             <Input
+              id="receiver"
               type="text"
               placeholder="Receiver"
-              className="input-medium"
+              className="input-medium flex items-center"
             />
           </Form.Item>
 
@@ -226,7 +136,7 @@ export const SendEth = () => {
                 hasAccountAssets ? 'inline-flex' : 'hidden'
               } items-center px-5 bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border rounded-l-full`}
             >
-              {hasAccountAssets && (
+              {hasAccountAssets ? (
                 <Form.Item
                   name="asset"
                   className=""
@@ -308,7 +218,7 @@ export const SendEth = () => {
                     </div>
                   </Menu>
                 </Form.Item>
-              )}
+              ) : null}
             </span>
 
             <Form.Item
@@ -321,12 +231,12 @@ export const SendEth = () => {
                   message: '',
                 },
                 () => ({
-                  validator(_, value) {
+                  async validator(_, value) {
                     const balance = selectedAsset
                       ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (value <= balance) {
+                    if (parseFloat(value) <= parseFloat(balance)) {
                       return Promise.resolve();
                     }
 
@@ -336,66 +246,16 @@ export const SendEth = () => {
               ]}
             >
               <Input
-                className={
-                  hasAccountAssets ? 'mixed-border-input' : 'input-medium'
-                }
+                id="amount"
+                className={`
+                  ${
+                    hasAccountAssets ? 'mixed-border-input' : 'input-medium'
+                  } flex items-center`}
                 type="number"
                 placeholder="Amount"
               />
             </Form.Item>
           </div>
-          {fee ? (
-            <div className="flex-2 flex gap-3 items-center justify-center mt-4 px-4 py-2 w-full max-w-xs text-left text-brand-white font-poppins text-xs font-thin bg-bkg-3 bg-opacity-60 border border-t border-dashed border-brand-royalblue rounded-lg md:max-w-md">
-              <div className="flex flex-col w-full">
-                <div className="flex gap-1.5 items-center justify-start">
-                  <p>Estimated GasFee</p>
-
-                  <Tooltip content="Gas fees are paid to crypto miners who process transactions on the network. Pali does not profit from gas fees. Gas fees are set by the network and fluctuate based on network traffic and transaction complexity.">
-                    <Icon className="mb-1" name="question" />
-                  </Tooltip>
-                </div>
-
-                <span className="text-brand-royalblue">
-                  Max Fee: {removeScientificNotation(getCalculatedFee)}{' '}
-                  {activeNetwork.currency?.toUpperCase()}
-                </span>
-              </div>
-
-              <div className="flex flex-col justify-end w-full text-right">
-                <span>Total (Amount + gas fee)</span>
-
-                <span className="text-brand-royalblue">
-                  {`${totalCalculated} ${activeNetwork.currency?.toLocaleUpperCase()}`}
-                </span>
-              </div>
-
-              <IconButton
-                className="flex flex-1 flex-col justify-end text-right hover:text-brand-royalbluemedium"
-                onClick={() =>
-                  navigate('/send/edit/priority', {
-                    state: { tx: { ...form.getFieldsValue() } },
-                  })
-                }
-              >
-                <Icon name="edit" />
-              </IconButton>
-            </div>
-          ) : null}
-
-          {/* <div className="flex items-center justify-around my-2 w-full max-w-xs text-xs md:max-w-md">
-            <p className="text-brand-royalblue">Total</p>
-
-            <p className="text-brand-white">Amount + Gas fee</p>
-
-            <span className="text-brand-deepPink100 font-rubik">
-              -
-              {Number(
-                Number(feeValue) + Number(form.getFieldValue('amount'))
-              ).toFixed(5) || 0}
-              {`${activeNetwork.currency?.toUpperCase()}`}
-            </span>
-          </div> */}
-
           <div className="absolute bottom-12 md:static md:mt-3">
             <NeutralButton type="submit">Next</NeutralButton>
           </div>

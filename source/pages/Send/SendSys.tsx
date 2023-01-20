@@ -182,7 +182,7 @@ export const SendSys = () => {
           </Form.Item>
 
           <div className="flex items-center justify-center w-full md:max-w-md">
-            {hasAccountAssets && (
+            {hasAccountAssets ? (
               <Form.Item
                 name="asset"
                 className=""
@@ -263,7 +263,7 @@ export const SendSys = () => {
                   </div>
                 </Menu>
               </Form.Item>
-            )}
+            ) : null}
 
             <div className="flex gap-x-0.5 items-center justify-center w-full">
               <Form.Item
