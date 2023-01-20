@@ -27,11 +27,6 @@ export const SendEth = () => {
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [form] = Form.useForm();
 
-  useEffect(() => {}, [
-    form.getFieldValue('receiver'),
-    controller.wallet.account,
-  ]);
-
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
 

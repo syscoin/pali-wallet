@@ -6,7 +6,6 @@ import { useLocation } from 'react-router-dom';
 import {
   Layout,
   DefaultModal,
-  NeutralButton,
   Button,
   Icon,
   LoadingComponent,
@@ -122,44 +121,11 @@ export const SendConfirm = () => {
           try {
             const { chainId, ...restTx } = txObjectState;
 
-            console.log('CONFIRM ETHEREUM OBJECT', {
-              ...restTx,
-              value: ethereumTxsController.toBigNumber(
-                Number(ethers.utils.parseEther(basicTxValues.amount))
-              ),
-
-              maxPriorityFeePerGas: ethers.utils.parseUnits(
-                String(
-                  Boolean(
-                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                  )
-                    ? customFee.maxPriorityFeePerGas.toFixed(9)
-                    : fee.maxPriorityFeePerGas.toFixed(9)
-                ),
-                9
-              ),
-              maxFeePerGas: ethers.utils.parseUnits(
-                String(
-                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? customFee.maxFeePerGas.toFixed(9)
-                    : fee.maxFeePerGas.toFixed(9)
-                ),
-                9
-              ),
-              gasLimit: ethereumTxsController.toBigNumber(
-                validateCustomGasLimit
-                  ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                  : fee.gasLimit
-              ),
-            });
-
             const response =
               await ethereumTxsController.sendFormattedTransaction({
                 ...restTx,
-                value: ethers.utils.hexlify(
-                  ethereumTxsController.toBigNumber(
-                    Number(ethers.utils.parseEther(basicTxValues.amount))
-                  )
+                value: ethereumTxsController.toBigNumber(
+                  Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
                 ),
                 maxPriorityFeePerGas: ethers.utils.parseUnits(
                   String(
@@ -245,7 +211,7 @@ export const SendConfirm = () => {
 
         setFee(finalFeeDetails as any);
       } catch (error) {
-        console.log('ERROR', error);
+        logError('error getting fees', 'Transaction', error);
       }
     };
 

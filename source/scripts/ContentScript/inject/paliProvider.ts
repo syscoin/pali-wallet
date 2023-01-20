@@ -1,4 +1,3 @@
-import { ConsoleSqlOutlined } from '@ant-design/icons';
 import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 

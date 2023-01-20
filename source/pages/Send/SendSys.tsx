@@ -3,7 +3,7 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment, useCallback } from 'react';
+import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
@@ -30,19 +30,18 @@ export const SendSys = () => {
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [recommend, setRecommend] = useState(0.00001);
-  const [fiatValueToShow, setFiatValueToShow] = useState('');
+  const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const recommendFee =
+    const getRecommendedFee =
       await controller.wallet.account.sys.tx.getRecommendedFee(
         activeNetwork.url
       );
 
-    setRecommend(recommendFee || Number(0.00001));
+    setRecommendedFee(getRecommendedFee || Number(0.00001));
 
-    form.setFieldsValue({ fee: recommendFee || Number(0.00001) });
+    form.setFieldsValue({ fee: getRecommendedFee || Number(0.00001) });
   }, [controller.wallet.account, form]);
 
   useEffect(() => {
@@ -51,7 +50,7 @@ export const SendSys = () => {
     form.setFieldsValue({
       verify: true,
       ZDAG: false,
-      fee: recommend,
+      fee: recommendedFee,
     });
   }, [form, handleGetFee]);
 
@@ -110,18 +109,19 @@ export const SendSys = () => {
     }
   };
 
-  const returnFiatAmount = () => {
-    const value = selectedAsset
-      ? Number(recommend) + Number(recommend)
-      : Number(recommend);
-    const amount = getFiatAmount(value, 6, String(fiat.asset));
+  const fiatValueToShow = useMemo(() => {
+    const valueToUse = selectedAsset
+      ? Number(recommendedFee) + Number(recommendedFee)
+      : Number(recommendedFee);
 
-    setFiatValueToShow(amount);
-  };
+    const getAmount = getFiatAmount(
+      valueToUse,
+      6,
+      String(fiat.asset).toUpperCase()
+    );
 
-  useEffect(() => {
-    returnFiatAmount();
-  }, [selectedAsset]);
+    return getAmount;
+  }, [selectedAsset, recommendedFee]);
 
   return (
     <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
@@ -145,7 +145,7 @@ export const SendSys = () => {
           initialValues={{
             verify: true,
             ZDAG: false,
-            fee: recommend,
+            fee: recommendedFee,
           }}
           onFinish={nextStep}
           autoComplete="off"
@@ -240,21 +240,28 @@ export const SendSys = () => {
 
                           {activeAccount.assets.syscoin.length > 0
                             ? activeAccount.assets.syscoin.map((item: any) => (
-                                <Menu.Item as="div" key={uniqueId()}>
-                                  <Menu.Item>
-                                    <button
-                                      onClick={() =>
-                                        handleSelectedAsset(item.assetGuid)
-                                      }
-                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                    >
-                                      <p>{item?.symbol}</p>
-                                      <small>
-                                        {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
-                                      </small>
-                                    </button>
-                                  </Menu.Item>
-                                </Menu.Item>
+                                <>
+                                  {item?.assetGuid ? (
+                                    <Menu.Item as="div" key={uniqueId()}>
+                                      <Menu.Item>
+                                        <button
+                                          onClick={() =>
+                                            handleSelectedAsset(item.assetGuid)
+                                          }
+                                          className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                        >
+                                          <p>{item?.symbol}</p>
+
+                                          <small>
+                                            {isNFT(item.assetGuid)
+                                              ? 'NFT'
+                                              : 'SPT'}
+                                          </small>
+                                        </button>
+                                      </Menu.Item>
+                                    </Menu.Item>
+                                  ) : null}
+                                </>
                               ))
                             : null}
                         </Menu.Items>
@@ -378,11 +385,11 @@ export const SendSys = () => {
             />
           </Form.Item>
 
-          <Fee disabled={true} recommend={recommend} form={form} />
+          <Fee disabled={true} recommend={recommendedFee} form={form} />
 
           <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
             <span className="text-xs">
-              {`With current network conditions we recommend a fee of ${recommend} SYS`}
+              {`With current network conditions we recommendedFee a fee of ${recommendedFee} SYS`}
             </span>
 
             <span className="mt-0.5 text-brand-white font-rubik text-xs">
