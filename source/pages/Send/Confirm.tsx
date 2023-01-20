@@ -3,7 +3,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import {
+  Layout,
+  DefaultModal,
+  NeutralButton,
+  Button,
+  Icon,
+  LoadingComponent,
+} from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
@@ -58,6 +65,7 @@ export const SendConfirm = () => {
   const basicTxValues = isExternal ? externalTx : state.tx;
 
   const ethereumTxsController = account.eth.tx;
+  const sysTxsController = account.sys.tx;
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
@@ -73,71 +81,134 @@ export const SendConfirm = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      // const txs = isBitcoinBased ? account.sys.tx : account.eth.tx;
+      //Handle with Syscoin and Ethereum transactions with differentes fee values.
+      switch (isBitcoinBased) {
+        //SYSCOIN TRANSACTIONS
+        case true:
+          try {
+            const response = await sysTxsController.sendTransaction(
+              basicTxValues
+            );
 
-      try {
-        const response = await ethereumTxsController.sendFormattedTransaction({
-          ...txObjectState,
-          value: ethereumTxsController.toBigNumber(basicTxValues.amount),
-          nonce: ethereumTxsController.toBigNumber(
-            await ethereumTxsController.getTransactionCount('pending')
-          ),
-          maxPriorityFeePerGas: ethers.utils.parseUnits(
-            String(
-              Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
-                ? customFee.maxPriorityFeePerGas.toFixed(9)
-                : fee.maxPriorityFeePerGas.toFixed(9)
-            ),
-            9
-          ),
-          maxFeePerGas: ethers.utils.parseUnits(
-            String(
-              Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                ? customFee.maxFeePerGas.toFixed(9)
-                : fee.maxFeePerGas.toFixed(9)
-            ),
-            9
-          ),
-          gasLimit: ethereumTxsController.toBigNumber(
-            validateCustomGasLimit
-              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-              : fee.gasLimit
-          ),
-        });
+            setConfirmed(true);
+            setLoading(false);
 
-        //INCLUDE VALUE AND NONCE AT TX OBJECT
+            if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
 
-        setConfirmed(true);
-        setLoading(false);
+            return response;
+          } catch (error) {
+            logError('error SYS', 'Transaction', error);
 
-        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+            if (error && basicTxValues.fee > 0.00001) {
+              alert.removeAll();
+              alert.error(
+                `${truncate(
+                  String(error.message),
+                  166
+                )} Please, reduce fees to send transaction.`
+              );
+            }
 
-        return response;
-      } catch (error: any) {
-        logError('error', 'Transaction', error);
+            alert.removeAll();
+            alert.error("Can't complete transaction. Try again later.");
 
-        if (isBitcoinBased && error && basicTxValues.fee > 0.00001) {
-          alert.removeAll();
-          alert.error(
-            `${truncate(
-              String(error.message),
-              166
-            )} Please, reduce fees to send transaction.`
-          );
-        }
+            if (isExternal) setTimeout(window.close, 4000);
+            else setLoading(false);
+          }
+          break;
 
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
+        // ETHEREUM TRANSACTIONS
+        case false:
+          try {
+            const { chainId, ...restTx } = txObjectState;
 
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
+            console.log('CONFIRM ETHEREUM OBJECT', {
+              ...restTx,
+              value: ethereumTxsController.toBigNumber(
+                Number(ethers.utils.parseEther(basicTxValues.amount))
+              ),
+
+              maxPriorityFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(
+                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  )
+                    ? customFee.maxPriorityFeePerGas.toFixed(9)
+                    : fee.maxPriorityFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              maxFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? customFee.maxFeePerGas.toFixed(9)
+                    : fee.maxFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              gasLimit: ethereumTxsController.toBigNumber(
+                validateCustomGasLimit
+                  ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                  : fee.gasLimit
+              ),
+            });
+
+            const response =
+              await ethereumTxsController.sendFormattedTransaction({
+                ...restTx,
+                value: ethers.utils.hexlify(
+                  ethereumTxsController.toBigNumber(
+                    Number(ethers.utils.parseEther(basicTxValues.amount))
+                  )
+                ),
+                maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? customFee.maxPriorityFeePerGas.toFixed(9)
+                      : fee.maxPriorityFeePerGas.toFixed(9)
+                  ),
+                  9
+                ),
+                maxFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? customFee.maxFeePerGas.toFixed(9)
+                      : fee.maxFeePerGas.toFixed(9)
+                  ),
+                  9
+                ),
+                gasLimit: ethereumTxsController.toBigNumber(
+                  validateCustomGasLimit
+                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                    : fee.gasLimit
+                ),
+              });
+
+            setConfirmed(true);
+            setLoading(false);
+
+            if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+
+            return response;
+          } catch (error: any) {
+            logError('error ETH', 'Transaction', error);
+
+            alert.removeAll();
+            alert.error("Can't complete transaction. Try again later.");
+
+            if (isExternal) setTimeout(window.close, 4000);
+            else setLoading(false);
+          }
+
+          break;
       }
     }
   };
 
-  console.log('basicTx', basicTxValues);
-
   useEffect(() => {
+    if (isBitcoinBased) return;
     const abortController = new AbortController();
 
     const getFeeRecomendation = async () => {
@@ -156,13 +227,10 @@ export const SendConfirm = () => {
         const formattedTxObject = {
           from: basicTxValues.sender,
           to: basicTxValues.receivingAddress,
-
           chainId: activeNetwork.chainId,
           maxFeePerGas,
           maxPriorityFeePerGas,
         };
-
-        console.log('formattedTxObject', formattedTxObject);
 
         setTxObjectState(formattedTxObject);
 
@@ -172,12 +240,10 @@ export const SendConfirm = () => {
 
         const finalFeeDetails = {
           ...initialFeeDetails,
-          gasLimit: Number(getGasLimit),
+          gasLimit: getGasLimit,
         };
 
-        console.log('finalFeeDetails', finalFeeDetails);
-
-        setFee(finalFeeDetails);
+        setFee(finalFeeDetails as any);
       } catch (error) {
         console.log('ERROR', error);
       }
@@ -188,17 +254,31 @@ export const SendConfirm = () => {
     return () => {
       abortController.abort();
     };
-  }, [basicTxValues]);
+  }, [basicTxValues, isBitcoinBased]);
 
   const getCalculatedFee = useMemo(() => {
-    if (!fee?.gasLimit || !fee?.maxFeePerGas || !fee?.baseFee) return;
+    const arrayValidation = [
+      !fee?.gasLimit,
+      !fee?.maxFeePerGas,
+      !fee?.baseFee,
+      !fee?.maxPriorityFeePerGas,
+      isBitcoinBased,
+    ];
+
+    if (arrayValidation.some((validation) => validation === true)) return;
 
     return (
       (Number(customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas) *
         Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
       10 ** 9
     );
-  }, [fee?.maxPriorityFeePerGas, fee?.gasLimit, fee?.maxFeePerGas, customFee]);
+  }, [
+    fee?.maxPriorityFeePerGas,
+    fee?.gasLimit,
+    fee?.maxFeePerGas,
+    customFee,
+    isBitcoinBased,
+  ]);
 
   return (
     <Layout title="CONFIRM" canGoBack={!isExternal}>
@@ -228,7 +308,8 @@ export const SendConfirm = () => {
         setHaveError={setHaveError}
         fee={fee}
       />
-      {basicTxValues && fee ? (
+      {Boolean(!isBitcoinBased && basicTxValues && fee) ||
+      Boolean(isBitcoinBased && basicTxValues) ? (
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
@@ -263,49 +344,76 @@ export const SendConfirm = () => {
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 Estimated GasFee
                 <span className="text-brand-royalblue text-xs">
-                  Max Fee: {removeScientificNotation(getCalculatedFee)}{' '}
-                  {activeNetwork.currency?.toUpperCase()}
+                  {isBitcoinBased
+                    ? `${basicTxValues.fee * 10 ** 9} GWEI`
+                    : `${removeScientificNotation(
+                        getCalculatedFee
+                      )} ${activeNetwork.currency?.toUpperCase()}`}
                 </span>
               </p>
-              <span
-                className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
-                onClick={() => setIsOpenEditFeeModal(true)}
-              >
-                EDIT
-              </span>
+              {!isBitcoinBased ? (
+                <span
+                  className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
+                  onClick={() => setIsOpenEditFeeModal(true)}
+                >
+                  EDIT
+                </span>
+              ) : null}
             </div>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Total (Amount + gas fee)
               <span className="text-brand-royalblue text-xs">
-                {`${
-                  Number(basicTxValues.amount) + getCalculatedFee
-                } ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                {isBitcoinBased
+                  ? `${
+                      Number(basicTxValues.fee) + Number(basicTxValues.amount)
+                    }`
+                  : `${Number(basicTxValues.amount) + getCalculatedFee}`}
+                &nbsp;{`${activeNetwork.currency?.toUpperCase()}`}
               </span>
             </p>
-
-            {/* <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Fee
-              <span className="text-brand-royalblue text-xs">
-                {!isBitcoinBased
-                  ? `${basicTxValues.fee * 10 ** 9} GWEI`
-                  : `${getCalculatedFee} GWEI ${activeNetwork.currency.toUpperCase()}`}
-              </span>
-            </p> */}
           </div>
 
-          <div className="absolute bottom-12 md:static md:mt-10">
-            <NeutralButton
+          <div className="flex items-center justify-around py-8 w-full">
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              id="send-btn"
+              onClick={() => {
+                if (isExternal) {
+                  refresh(false);
+                  window.close();
+                } else navigate('/home');
+              }}
+            >
+              <Icon
+                name="arrow-up"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+                rotate={45}
+              />
+              Cancel
+            </Button>
+
+            <Button
+              type="button"
+              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
-              type="button"
-              id="confirm-btn"
             >
+              <Icon
+                name="arrow-down"
+                className="w-4"
+                wrapperClassname="mb-2 mr-2"
+              />
               Confirm
-            </NeutralButton>
+            </Button>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <LoadingComponent />
+      )}
     </Layout>
   );
 };
