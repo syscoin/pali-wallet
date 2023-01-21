@@ -111,6 +111,15 @@ const SysAccountController = (): ISysAccountController => {
             i === self.findIndex((tx) => tx[hash] === value[hash])
         ); // to get array with unique txs.
 
+        if (index === accountId) {
+          return {
+            ...account,
+            label: accounts[index].label,
+            assets: accounts[index].assets,
+            transactions: [...filteredTxs],
+          };
+        }
+
         return {
           ...account,
           label: accounts[index].label,
