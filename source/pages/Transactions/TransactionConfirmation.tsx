@@ -47,6 +47,9 @@ const callbackResolver = (txType: string) => {
     case 'UpdateToken':
       callbackName = 'confirmUpdateToken';
       break;
+    case 'TransferToken':
+      callbackName = 'transferAssetOwnership';
+      break;
 
     default:
       throw new Error('Unknown transaction type');
