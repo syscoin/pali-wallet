@@ -75,6 +75,7 @@ export const CustomToken = () => {
         tokenSymbol: metadata.tokenSymbol.toUpperCase(),
         contractAddress,
         decimals,
+        isNft: false,
         balance: formattedBalance,
       });
 
@@ -133,6 +134,7 @@ export const CustomToken = () => {
             tokenSymbol: treatedSymbol,
             contractAddress,
             decimals,
+            isNft: true,
             balance: balanceToNumber,
           });
 

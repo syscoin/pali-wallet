@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { getErc20Abi } from '@pollum-io/sysweb3-utils';
+
 import {
   Layout,
   DefaultModal,
@@ -41,6 +43,10 @@ export const SendConfirm = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
+  const mnemonic = useSelector(
+    (state: RootState) => state.vault.encryptedMnemonic
+  );
+
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
@@ -70,6 +76,8 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit > 0
   );
 
+  console.log('basicTx', basicTxValues);
+
   const handleConfirm = async () => {
     const {
       balances: { syscoin, ethereum },
@@ -80,10 +88,12 @@ export const SendConfirm = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      //Handle with Syscoin and Ethereum transactions with differentes fee values.
-      switch (isBitcoinBased) {
-        //SYSCOIN TRANSACTIONS
-        case true:
+      // Handle with Syscoin and Ethereum transactions with differentes fee values.
+      // First switch parameter has to be true because we can't isBitcoinBased prop directly to validate all this conditions,
+      // we just need to enter and validate it inside
+      switch (true) {
+        // SYSCOIN TRANSACTIONS
+        case isBitcoinBased === true:
           try {
             const response = await sysTxsController.sendTransaction(
               basicTxValues
@@ -116,8 +126,8 @@ export const SendConfirm = () => {
           }
           break;
 
-        // ETHEREUM TRANSACTIONS
-        case false:
+        // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
+        case isBitcoinBased === false && basicTxValues.token === null:
           try {
             const { chainId, ...restTx } = txObjectState;
 
@@ -166,6 +176,29 @@ export const SendConfirm = () => {
 
             if (isExternal) setTimeout(window.close, 4000);
             else setLoading(false);
+          }
+          break;
+
+        // ETHEREUM TRANSACTIONS FOR ERC20 & ERC721 TOKENS
+        case isBitcoinBased === false && basicTxValues.token !== null:
+          //SWITCH CASE TO HANDLE DIFFERENT TOKENS TRANSACTION
+          switch (basicTxValues.token.isNft) {
+            //HANDLE ERC20 TRANSACTION
+            case false:
+              try {
+              } catch (_erc20Error) {
+                console.log('_erc20Error', _erc20Error);
+              }
+              break;
+
+            //HANDLE ERC721 NFTS TRANSACTIONS
+            case true:
+              try {
+              } catch (_erc721Error) {
+                console.log('_erc721Error', _erc721Error);
+              }
+
+              break;
           }
 
           break;

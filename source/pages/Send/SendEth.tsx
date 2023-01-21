@@ -11,6 +11,7 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 import { truncate, getAssetBalance } from 'utils/index';
 
@@ -31,8 +32,8 @@ export const SendEth = () => {
     activeAccount && activeAccount.assets.ethereum?.length > 0;
 
   const handleSelectedAsset = (item: string) => {
-    if (activeAccount.assets) {
-      const getAsset = activeAccount.assets.find(
+    if (activeAccount.assets.ethereum?.length > 0) {
+      const getAsset = activeAccount.assets.ethereum.find(
         (asset: any) => asset.contractAddress === item
       );
 
@@ -172,7 +173,7 @@ export const SendEth = () => {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
-                        {hasAccountAssets && (
+                        {hasAccountAssets ? (
                           <Menu.Items
                             as="div"
                             className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
@@ -188,27 +189,33 @@ export const SendEth = () => {
                             </Menu.Item>
 
                             {hasAccountAssets &&
-                              Object.values(activeAccount.assets).map(
-                                (item: any) => (
-                                  <Menu.Item as="div" key={uniqueId()}>
-                                    <Menu.Item>
-                                      <button
-                                        onClick={() =>
-                                          handleSelectedAsset(item.assetGuid)
-                                        }
-                                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                      >
-                                        <p>{item.tokenSymbol}</p>
-                                        <small>
-                                          {item.isNft ? 'NFT' : 'Token'}
-                                        </small>
-                                      </button>
-                                    </Menu.Item>
-                                  </Menu.Item>
+                              Object.values(activeAccount.assets.ethereum).map(
+                                (item: ITokenEthProps) => (
+                                  <>
+                                    {item.chainId === activeNetwork.chainId ? (
+                                      <Menu.Item as="div" key={uniqueId()}>
+                                        <Menu.Item>
+                                          <button
+                                            onClick={() =>
+                                              handleSelectedAsset(
+                                                item.contractAddress
+                                              )
+                                            }
+                                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                          >
+                                            <p>{item.tokenSymbol}</p>
+                                            <small>
+                                              {item.isNft ? 'NFT' : 'Token'}
+                                            </small>
+                                          </button>
+                                        </Menu.Item>
+                                      </Menu.Item>
+                                    ) : null}
+                                  </>
                                 )
                               )}
                           </Menu.Items>
-                        )}
+                        ) : null}
                       </Transition>
                     </div>
                   </Menu>

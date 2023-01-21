@@ -9,6 +9,7 @@ import { getSearch } from '@pollum-io/sysweb3-utils';
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthTransactions extends IEthereumTransactions {
   saveTransaction: (tx: any) => void;
@@ -16,7 +17,7 @@ export interface IEthTransactions extends IEthereumTransactions {
 }
 
 export interface IEthAccountController extends IWeb3Accounts {
-  saveTokenInfo: (token: any) => Promise<void>;
+  saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
   tx: IEthTransactions;
 }
 
@@ -24,18 +25,19 @@ const EthAccountController = (): IEthAccountController => {
   const txs = EthereumTransactions();
   const web3Accounts = Web3Accounts();
 
-  const saveTokenInfo = async (token: any) => {
+  const saveTokenInfo = async (token: ITokenEthProps) => {
     try {
       const { activeAccount, activeNetwork } = store.getState().vault;
       const { chainId } = activeNetwork;
 
       const tokenExists = activeAccount.assets.ethereum?.find(
-        (asset: any) => asset.contractAddress === token.contractAddress
+        (asset: ITokenEthProps) =>
+          asset.contractAddress === token.contractAddress
       );
 
       if (tokenExists) throw new Error('Token already exists');
 
-      let web3Token: any;
+      let web3Token: ITokenEthProps;
 
       const { coins } = await getSearch(token.tokenSymbol);
 
@@ -48,7 +50,7 @@ const EthAccountController = (): IEthAccountController => {
           name,
           id: token.contractAddress,
           logo: thumb,
-          isNft: false,
+          isNft: token.isNft,
           chainId,
         };
       } else {
@@ -58,7 +60,7 @@ const EthAccountController = (): IEthAccountController => {
           name: token.tokenSymbol,
           id: token.contractAddress,
           logo: PaliLogo,
-          isNft: false,
+          isNft: token.isNft,
           chainId,
         };
       }

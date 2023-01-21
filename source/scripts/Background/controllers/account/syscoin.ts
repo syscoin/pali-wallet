@@ -17,10 +17,11 @@ import {
   setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
+import { ITokenSysProps } from 'types/tokens';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
-  saveTokenInfo: (token: any) => Promise<void>;
+  saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
   tx: ISyscoinTransactions;
@@ -190,12 +191,12 @@ const SysAccountController = (): ISysAccountController => {
     return address;
   };
 
-  const saveTokenInfo = async (token: any) => {
+  const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
       const { activeAccount } = store.getState().vault;
 
       const tokenExists = activeAccount.assets.find(
-        (asset: any) => asset.assetGuid === token.assetGuid
+        (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
       if (tokenExists) throw new Error('Token already exists');
