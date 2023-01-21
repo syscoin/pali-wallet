@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { getErc20Abi } from '@pollum-io/sysweb3-utils';
-
 import {
   Layout,
   DefaultModal,
@@ -43,10 +41,6 @@ export const SendConfirm = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
-  const mnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
-
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
@@ -75,8 +69,6 @@ export const SendConfirm = () => {
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
   );
-
-  console.log('basicTx', basicTxValues);
 
   const handleConfirm = async () => {
     const {
