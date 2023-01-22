@@ -40,7 +40,7 @@ export interface IMainController extends IKeyringManager {
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   lock: () => void;
-  removeKeyringNetwork: (chain: string, chainId: number) => void;
+  removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;
   setAccount: (

@@ -14,8 +14,8 @@ const ManageNetworkView = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
 
-  const removeNetwork = (chain: string, chainId: number) =>
-    wallet.removeKeyringNetwork(chain, chainId);
+  const removeNetwork = (chain: string, chainId: number, key?: string) =>
+    wallet.removeKeyringNetwork(chain, chainId, key);
 
   const editNetwork = ({
     selected,
@@ -71,7 +71,9 @@ const ManageNetworkView = () => {
                 </IconButton>
 
                 <IconButton
-                  onClick={() => removeNetwork('syscoin', network.chainId)}
+                  onClick={() =>
+                    removeNetwork('syscoin', network.chainId, network?.key)
+                  }
                   type="primary"
                   shape="circle"
                 >
