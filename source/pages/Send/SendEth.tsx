@@ -188,9 +188,9 @@ export const SendEth = () => {
                             {hasAccountAssets &&
                               Object.values(activeAccount.assets.ethereum).map(
                                 (item: ITokenEthProps) => (
-                                  <>
+                                  <div key={uniqueId()}>
                                     {item.chainId === activeNetwork.chainId ? (
-                                      <Menu.Item as="div" key={uniqueId()}>
+                                      <Menu.Item as="div">
                                         <Menu.Item>
                                           <button
                                             onClick={() =>
@@ -208,7 +208,7 @@ export const SendEth = () => {
                                         </Menu.Item>
                                       </Menu.Item>
                                     ) : null}
-                                  </>
+                                  </div>
                                 )
                               )}
                           </Menu.Items>
