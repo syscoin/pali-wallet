@@ -29,9 +29,11 @@ const DAppController = (): IDAppController => {
   const isConnected = (host: string) => Boolean(_dapps[host]?.activeAddress);
 
   const setup = (port: Runtime.Port) => {
+    const { isBitcoinBased } = store.getState().vault;
     const { host } = new URL(port.sender.url);
-    const activeAccount = getAccount(host)?.address;
-    console.log('Checking host on setup', host);
+    const activeAccount = isBitcoinBased
+      ? getAccount(host)?.xpub
+      : getAccount(host)?.address;
     _dapps[host] = {
       activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
@@ -45,7 +47,6 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
-
     _dapps[dapp.host].activeAddress = isBitcoinBased
       ? accounts[dapp.accountId].xpub
       : accounts[dapp.accountId].address;
@@ -85,7 +86,9 @@ const DAppController = (): IDAppController => {
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date }));
-    _dapps[host].activeAddress = accounts[accountId].address;
+    _dapps[host].activeAddress = isBitcoinBased
+      ? accounts[accountId].xpub
+      : accounts[accountId].address;
     isBitcoinBased
       ? _dispatchPaliEvent(
           host,
@@ -180,7 +183,6 @@ const DAppController = (): IDAppController => {
     id = 'notification'
   ) => {
     if (_dapps[host] && _dapps[host].port) {
-      console.log('Dispatching it', id, data);
       _dapps[host].port.postMessage({ id, data });
     }
   };

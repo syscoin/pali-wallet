@@ -7,7 +7,7 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
-import { PaliEvents } from '../message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -112,20 +112,41 @@ const SysAccountController = (): ISysAccountController => {
         ); // to get array with unique txs.
 
         if (index === accountId) {
+          if (isBitcoinBased)
+            return {
+              ...account,
+              label: accounts[index].label,
+              transactions: [...filteredTxs],
+              assets: {
+                ethereum: accounts[index].assets.ethereum,
+                syscoin: account.assets,
+              },
+            };
+          else
+            return {
+              ...account,
+              label: accounts[index].label,
+              assets: accounts[index].assets,
+              transactions: [...filteredTxs],
+            };
+        }
+        if (isBitcoinBased)
+          return {
+            ...account,
+            label: accounts[index].label,
+            transactions: [...filteredTxs],
+            assets: {
+              ethereum: accounts[index].assets.ethereum,
+              syscoin: account.assets,
+            },
+          };
+        else
           return {
             ...account,
             label: accounts[index].label,
             assets: accounts[index].assets,
-            transactions: [...filteredTxs],
+            transactions: [...allTxs],
           };
-        }
-
-        return {
-          ...account,
-          label: accounts[index].label,
-          assets: accounts[index].assets,
-          transactions: [...allTxs],
-        };
       })
     );
 
@@ -137,6 +158,13 @@ const SysAccountController = (): ISysAccountController => {
     resolve();
 
     const isUpdating = store.getState().vault.isNetworkChanging;
+    window.controller.dapp.handleBlockExplorerChange(
+      PaliSyscoinEvents.blockExplorerChanged,
+      {
+        method: PaliSyscoinEvents.blockExplorerChanged,
+        params: isBitcoinBased ? activeNetwork.url : null,
+      }
+    );
     if (!isUpdating)
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
         method: PaliEvents.chainChanged,

@@ -1,6 +1,6 @@
 import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
-import { BaseProvider } from './BaseProvider';
+import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -30,7 +30,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     this._sysState = {
       ...PaliInpageProviderSys._defaultState,
     };
-    console.log('Pali SyscoinProvider: Initializing SysProvider');
     this.request({ method: 'wallet_getSysProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
@@ -48,13 +47,12 @@ export class PaliInpageProviderSys extends BaseProvider {
       'sys_notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
-        console.log('SysProvider: Received new message', method, params);
+        this.emit('walletUpdate');
         switch (method) {
           case 'pali_xpubChanged':
             this._handleConnectedXpub(params);
             break;
           case 'pali_unlockStateChanged':
-            console.log('SysProvider: Received event');
             this._handleUnlockStateChanged(params);
             break;
           case 'pali_blockExplorerChanged':
@@ -77,7 +75,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     isUnlocked: boolean;
     xpub: string;
   }) {
-    console.log('Pali SyscoinProvider: Initializing State Function');
     if (this._sysState.initialized === true) {
       throw new Error('Pali SyscoinProvider: Provider already initialized.');
     }
@@ -113,6 +110,18 @@ export class PaliInpageProviderSys extends BaseProvider {
     return this._sysState.isUnlocked;
   }
 
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+  public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
+    if (args.method !== 'wallet_getSysProviderState') {
+      const isSyscoinChain = await this._isSyscoinChain;
+      if (!isSyscoinChain)
+        throw new Error(
+          'UTXO Content only are valid for syscoin chain for now'
+        );
+    }
+    return super.request(args);
+  }
+
   /**
    * Upon receipt of a new isUnlocked state, sets relevant public state.
    * Calls the accounts changed handler with the received accounts, or an empty
@@ -137,9 +146,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     }
 
     if (isUnlocked !== this._sysState.isUnlocked) {
-      console.log('Changing lockState', isUnlocked);
       this._sysState.isUnlocked = isUnlocked;
-      console.log('Changing lockState', this._sysState.isUnlocked);
       this._handleConnectedXpub(xpub);
     }
   }
@@ -158,6 +165,22 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
+  }
+  private async _isSyscoinChain(): Promise<boolean> {
+    let checkExplorer = false;
+    try {
+      //Only trezor blockbooks are accepted as endpoint for UTXO chains for now
+      const rpcoutput = await (
+        await fetch(this._sysState.blockExplorerURL + 'api/v2')
+      ).json();
+      checkExplorer = rpcoutput.blockbook.coin
+        .toLowerCase()
+        .includes('syscoin');
+    } catch (e) {
+      //Its not a blockbook, so it might be a ethereum RPC
+      checkExplorer = false;
+    }
+    return checkExplorer;
   }
 
   /**
@@ -268,6 +291,12 @@ export class PaliInpageProviderSys extends BaseProvider {
 
           return [];
         },
+        //Get current connected Xpub
+        getConnectedAccountXpub: () => this._sysState.xpub,
+
+        //Get changeAddress
+        getChangeAddress: async () =>
+          this.request({ method: 'wallet_getChangeAddress' }),
         /**
          * Get the minted tokens by the current connected Xpub on UTXO chain.
          *

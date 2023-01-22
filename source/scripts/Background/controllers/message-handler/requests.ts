@@ -23,10 +23,10 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
   const controller = getController();
   const [prefix, methodName] = data.method.split('_');
-
+  const { activeAccount, isBitcoinBased } = store.getState().vault;
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-  if (data.method) {
+  if (data.method && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
@@ -37,7 +37,6 @@ export const methodRequest = async (
     }
   }
   const account = dapp.getAccount(host);
-  const { activeAccount, isBitcoinBased } = store.getState().vault;
   const isRequestAllowed = dapp.isConnected(host) && account;
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     return await enable(host, undefined, undefined);
@@ -75,6 +74,14 @@ export const methodRequest = async (
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
+      case 'getChangeAddress':
+        if (!isBitcoinBased)
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'Method only available for syscoin UTXO chains'
+            )
+          );
+        return controller.wallet.getChangeAddress(dapp.getAccount(host).id);
       case 'getAccount':
         if (!isBitcoinBased)
           throw cleanErrorStack(
@@ -171,12 +178,6 @@ export const methodRequest = async (
           });
         }
         throw cleanErrorStack(ethErrors.rpc.internal());
-      //return {
-      //code: -32603,
-      //message: `Unrecognized chain ID 0x${chainId.toString(
-      //16
-      //)}. Try adding the chain using wallet_addEthereumChain first.`,
-      //};
       case 'getProviderState':
         const providerState = {
           accounts: dapp.getAccount(host)
@@ -190,9 +191,7 @@ export const methodRequest = async (
       case 'getSysProviderState':
         const blockExplorerURL = isBitcoinBased ? activeNetwork.url : null;
         const sysProviderState = {
-          connectedAccountXpub: dapp.getAccount(host)
-            ? dapp.getAccount(host)
-            : null,
+          xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
           isUnlocked: wallet.isUnlocked(),
         };
@@ -228,6 +227,12 @@ export const methodRequest = async (
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased)
     throw cleanErrorStack(ethErrors.rpc.internal());
+  else if (prefix === 'eth' && isBitcoinBased)
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Method only available when connected on EVM chains'
+      )
+    );
 
   const provider = SysProvider(host);
   const method = provider[methodName];

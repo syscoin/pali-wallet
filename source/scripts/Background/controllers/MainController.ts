@@ -249,13 +249,6 @@ const MainController = (): IMainController => {
               networkVersion: network.chainId,
             },
           });
-          window.controller.dapp.handleBlockExplorerChange(
-            PaliSyscoinEvents.blockExplorerChanged,
-            {
-              method: PaliSyscoinEvents.blockExplorerChanged,
-              params: isBitcoinBased ? network.url : null,
-            }
-          );
           return;
         } catch (error) {
           console.error(
@@ -377,6 +370,9 @@ const MainController = (): IMainController => {
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
 
+  const getChangeAddress = (accountId: number) =>
+    keyringManager.getChangeAddress(accountId);
+
   const getRecommendedFee = () => {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
@@ -405,6 +401,7 @@ const MainController = (): IMainController => {
     removeKeyringNetwork,
     resolveAccountConflict,
     resolveError,
+    getChangeAddress,
     getRecommendedFee,
     getNetworkData,
     ...keyringManager,

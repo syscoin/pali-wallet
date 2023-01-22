@@ -58,11 +58,6 @@ const start = () => {
 const startEventEmitter = () => {
   for (const ev in PaliEvents) {
     emitter.on(PaliEvents[ev], (result) => {
-      // console.log(
-      //   'Checking event emission PaliEmitter event OnlyEth for now:',
-      //   ev,
-      //   result
-      // );
       window.dispatchEvent(
         new CustomEvent('notification', { detail: JSON.stringify(result) })
       );
@@ -72,11 +67,6 @@ const startEventEmitter = () => {
   for (const ev in PaliSyscoinEvents) {
     console.log('Subscribing to Syscoin event ', PaliSyscoinEvents[ev]);
     emitter.on(PaliSyscoinEvents[ev], (result) => {
-      console.log(
-        'Checking event emission PaliEmitterSyscoin event:',
-        ev,
-        result
-      );
       window.dispatchEvent(
         new CustomEvent('sys_notification', { detail: JSON.stringify(result) })
       );

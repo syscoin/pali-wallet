@@ -22,7 +22,7 @@ interface SentWarningsState {
   send: boolean;
 }
 // eslint-disable-next-line @typescript-eslint/naming-convention
-interface RequestArguments {
+export interface RequestArguments {
   /** The RPC method to request. */
   method: string;
 
