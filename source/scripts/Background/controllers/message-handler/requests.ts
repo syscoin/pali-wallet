@@ -122,9 +122,7 @@ export const methodRequest = async (
           isSyscoinRpc: false,
           symbol: data.params[0].nativeCurrency.symbol,
         };
-        console.log('Check Custom RPC data', customRPCData);
         const network = await controller.wallet.getRpc(customRPCData);
-        console.log('Checked Custom RPC data', customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
           return popupPromise({
             host,
@@ -239,6 +237,5 @@ export const enable = async (
 
 export const isUnlocked = () => {
   const { wallet } = window.controller;
-  console.log('Test it', wallet.isUnlocked());
   return wallet.isUnlocked();
 };

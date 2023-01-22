@@ -1,7 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, Fragment, useState } from 'react';
+import React, { useEffect, Fragment, useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
@@ -41,55 +41,6 @@ const CurrencyView = () => {
   const convertToCrypto = (value: number, fromCoin: string) =>
     value / coins[fromCoin];
 
-  const getFiatAmountValue = () => {
-    const value = getFiatAmount(balance || 0, 4, String(selectedCoin));
-    setFiatAmountValue(value);
-  };
-
-  //* States
-  const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
-  const [checkValueCoin, setCheckValueCoin] = useState('usd');
-  const [confirmed, setConfirmed] = useState(false);
-  const [fiatAmountValue, setFiatAmountValue] = useState('');
-  const [balance, setBalance] = useState(0);
-  const [chain, setChain] = useState('syscoin');
-  const [conversorValues, setConversorValues] = useState({
-    crypto: balance,
-    fiat: convertCurrency(balance, checkValueCoin),
-  });
-
-  //* Constants
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-  const fiatCurrency = fiat.asset ? String(fiat.asset).toUpperCase() : 'USD';
-
-  //* Effects
-  useEffect(() => {
-    setChain(isBitcoinBased ? 'syscoin' : 'ethereum');
-
-    const { syscoin, ethereum } = activeAccount.balances;
-
-    setBalance(isBitcoinBased ? syscoin : ethereum);
-  }, [activeNetwork]);
-
-  useEffect(() => {
-    if (isUnlocked && accounts && accounts[activeAccountId]) {
-      controller.refresh(true);
-    }
-  }, [isUnlocked, activeAccountId]);
-
-  useEffect(() => {
-    if (selectedCoin) {
-      controller.utils.setFiat(selectedCoin, chain);
-
-      getFiatAmountValue();
-    }
-  }, [selectedCoin]);
-
-  useEffect(() => {
-    getFiatAmountValue();
-  }, [selectedCoin, getFiatAmountValue]);
-
   //* Handlers
   const handleConvert = (value: number, toCoin: string) => {
     setConversorValues({
@@ -108,6 +59,63 @@ const CurrencyView = () => {
   const handleConfirmCurrencyChange = () => {
     setConfirmed(true);
   };
+
+  //* Constants
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
+
+  const fiatCurrency = fiat.asset ? String(fiat.asset).toUpperCase() : 'USD';
+
+  const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
+    activeAccount.balances;
+
+  const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
+
+  //* States
+  const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
+  const [checkValueCoin, setCheckValueCoin] = useState('usd');
+  const [confirmed, setConfirmed] = useState(false);
+  const [conversorValues, setConversorValues] = useState({
+    crypto: actualBalance,
+    fiat: convertCurrency(actualBalance, checkValueCoin),
+  });
+
+  //* Effects
+  useEffect(() => {
+    if (isUnlocked && accounts && accounts[activeAccountId]) {
+      controller.refresh(true);
+    }
+  }, [isUnlocked, activeAccountId]);
+
+  useEffect(() => {
+    if (selectedCoin) {
+      controller.utils.setFiat(
+        selectedCoin,
+        isBitcoinBased ? 'syscoin' : 'ethereum'
+      );
+    }
+  }, [selectedCoin, isBitcoinBased]);
+
+  const fiatPriceValue = useMemo(() => {
+    const getAmount = getFiatAmount(
+      actualBalance > 0 ? actualBalance : 0,
+      4,
+      String(selectedCoin).toUpperCase(),
+      true,
+      true
+    );
+
+    return getAmount;
+  }, [
+    isUnlocked,
+    activeAccount,
+    activeAccount.address,
+    activeNetwork,
+    activeNetwork.chainId,
+    selectedCoin,
+    fiat.asset,
+    fiat.price,
+  ]);
 
   return (
     <Layout title="FIAT CURRENCY" id="fiat-currency-title">
@@ -177,7 +185,7 @@ const CurrencyView = () => {
           {activeNetwork.chainId === 5700 ? (
             <div className="flex gap-x-0.5 items-center justify-center">
               <p className="font-rubik text-5xl font-medium">
-                {formatNumber(Number(balance) || 0)}{' '}
+                {formatNumber(Number(actualBalance) || 0)}{' '}
               </p>
 
               <p className="font-poppins md:mt-4">TSYS</p>
@@ -186,7 +194,7 @@ const CurrencyView = () => {
             <>
               <div className="flex gap-x-0.5 items-center justify-center">
                 <p className="font-rubik text-5xl font-medium">
-                  {formatNumber(balance || 0)}{' '}
+                  {formatNumber(actualBalance || 0)}{' '}
                 </p>
 
                 <p className="font-poppins md:mt-4">
@@ -196,7 +204,7 @@ const CurrencyView = () => {
                 </p>
               </div>
 
-              <p>{fiatAmountValue ?? 0}</p>
+              <p>{fiatPriceValue || 0}</p>
             </>
           )}
         </div>
@@ -244,7 +252,9 @@ const CurrencyView = () => {
             <div className="absolute bottom-2 right-4 flex gap-x-3 items-center justify-center">
               <p
                 className="cursor-pointer"
-                onClick={() => handleConvert(Number(balance), checkValueCoin)}
+                onClick={() =>
+                  handleConvert(Number(actualBalance), checkValueCoin)
+                }
               >
                 MAX
               </p>

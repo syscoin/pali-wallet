@@ -55,7 +55,7 @@ const start = () => {
 const startEventEmitter = () => {
   for (const ev in PaliEvents) {
     emitter.on(PaliEvents[ev], (result) => {
-      console.log('Checking event emission PaliEmitter:', ev, result);
+      // console.log('Checking event emission PaliEmitter:', ev, result);
       window.dispatchEvent(
         new CustomEvent('notification', { detail: JSON.stringify(result) })
       );
