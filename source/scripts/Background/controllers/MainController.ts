@@ -38,11 +38,13 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
+  const utilsController = Object.freeze(ControllerUtils());
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -91,7 +93,7 @@ const MainController = (): IMainController => {
             isUnlocked: keyringManager.isUnlocked(),
           },
         })
-        .then(() => console.log('Successfully update all Dapps Unlock'))
+        // .then(() => console.log('Successfully update all Dapps Unlock'))
         .catch((error) => console.error('Unlock', error));
     });
     return;
@@ -132,7 +134,7 @@ const MainController = (): IMainController => {
           isUnlocked: keyringManager.isUnlocked(),
         },
       })
-      .then(() => console.log('Successfully update all Dapps'))
+      // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
   };
@@ -241,6 +243,7 @@ const MainController = (): IMainController => {
           store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
           store.dispatch(setActiveAccount(account));
+          await utilsController.setFiat();
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
@@ -298,6 +301,8 @@ const MainController = (): IMainController => {
             store.dispatch(setIsPendingBalances(false));
 
             store.dispatch(setActiveAccount(account));
+
+            await utilsController.setFiat();
           }
 
           store.dispatch(setStoreError(true));
@@ -325,7 +330,6 @@ const MainController = (): IMainController => {
         ? await getSysRpc(data)
         : await getEthRpc(data);
 
-      console.log('Response', formattedNetwork);
       return formattedNetwork;
     } catch (error) {
       throw cleanErrorStack(ethErrors.rpc.internal());
