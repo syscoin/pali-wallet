@@ -3,8 +3,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { EthereumTransactions } from '@pollum-io/sysweb3-keyring';
-
 import {
   Layout,
   DefaultModal,
@@ -14,8 +12,7 @@ import {
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { saveTransaction } from 'scripts/Background/controllers/account/evm';
-import store, { RootState } from 'state/store';
-import { setUpdatedTokenBalace } from 'state/vault';
+import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import {
@@ -30,11 +27,8 @@ import { EditPriorityModal } from './EditPriorityModal';
 export const SendConfirm = () => {
   const {
     refresh,
-    wallet: { account },
+    wallet: { account, updateErcTokenBalances },
   } = getController();
-
-  const { sendSignedErc20Transaction, sendSignedErc721Transaction } =
-    EthereumTransactions();
 
   const { alert, navigate } = useUtils();
 
@@ -188,45 +182,76 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case false:
               try {
-                const responseSendErc20 = await sendSignedErc20Transaction({
-                  networkUrl: activeNetwork.url,
-                  receiver: txObjectState.to,
-                  tokenAddress: basicTxValues.token.contractAddress,
-                  tokenAmount: basicTxValues.amount,
-                  // maxPriorityFeePerGas: ethers.utils.parseUnits(
-                  //   String(
-                  //     Boolean(
-                  //       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                  //     )
-                  //       ? customFee.maxPriorityFeePerGas.toFixed(9)
-                  //       : fee.maxPriorityFeePerGas.toFixed(9)
-                  //   ),
-                  //   9
-                  // ),
-                  // maxFeePerGas: ethers.utils.parseUnits(
-                  //   String(
-                  //     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                  //       ? customFee.maxFeePerGas.toFixed(9)
-                  //       : fee.maxFeePerGas.toFixed(9)
-                  //   ),
-                  //   9
-                  // ),
-                  // gasLimit: ethereumTxsController.toBigNumber(
-                  //   validateCustomGasLimit
-                  //     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                  //     : fee.gasLimit
-                  // ),
-                });
+                const responseSendErc20 = ethereumTxsController
+                  .sendSignedErc20Transaction({
+                    networkUrl: activeNetwork.url,
+                    receiver: txObjectState.to,
+                    tokenAddress: basicTxValues.token.contractAddress,
+                    tokenAmount: basicTxValues.amount,
+                    maxPriorityFeePerGas: ethers.utils.parseUnits(
+                      String(
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? customFee.maxPriorityFeePerGas.toFixed(9)
+                          : fee.maxPriorityFeePerGas.toFixed(9)
+                      ),
+                      9
+                    ),
+                    maxFeePerGas: ethers.utils.parseUnits(
+                      String(
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? customFee.maxFeePerGas.toFixed(9)
+                          : fee.maxFeePerGas.toFixed(9)
+                      ),
+                      9
+                    ),
+                    gasLimit: ethereumTxsController.toBigNumber(
+                      validateCustomGasLimit
+                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                        : fee.gasLimit * 4
+                    ),
+                  })
+                  .then(async (response) => {
+                    if (isExternal)
+                      dispatchBackgroundEvent(
+                        `txSend.${host}`,
+                        responseSendErc20
+                      );
+
+                    const provider = new ethers.providers.JsonRpcProvider(
+                      activeNetwork.url
+                    );
+
+                    let receipt = await provider.getTransactionReceipt(
+                      response.hash
+                    );
+
+                    while (!receipt) {
+                      receipt = await provider.getTransactionReceipt(
+                        response.hash
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, 5000));
+                    }
+
+                    if (receipt) {
+                      updateErcTokenBalances(
+                        activeAccount.id,
+                        basicTxValues.token.contractAddress,
+                        basicTxValues.token.chainId,
+                        basicTxValues.token.isNft,
+                        basicTxValues.token.decimals
+                      );
+                    }
+                  });
 
                 setConfirmed(true);
                 setLoading(false);
 
-                if (isExternal)
-                  dispatchBackgroundEvent(`txSend.${host}`, responseSendErc20);
-
-                console.log('responseSendErc20', responseSendErc20);
-
-                return responseSendErc20;
+                return;
               } catch (_erc20Error) {
                 logError('error send ERC20', 'Transaction', _erc20Error);
 
@@ -241,52 +266,46 @@ export const SendConfirm = () => {
             //HANDLE ERC721 NFTS TRANSACTIONS
             case true:
               try {
-                const responseSendErc721 = await sendSignedErc20Transaction({
-                  networkUrl: activeNetwork.url,
-                  receiver: txObjectState.to,
-                  tokenAddress: basicTxValues.token.contractAddress,
-                  tokenAmount: basicTxValues.amount,
-                  // maxPriorityFeePerGas: ethers.utils.parseUnits(
-                  //   String(
-                  //     Boolean(
-                  //       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                  //     )
-                  //       ? customFee.maxPriorityFeePerGas.toFixed(9)
-                  //       : fee.maxPriorityFeePerGas.toFixed(9)
-                  //   ),
-                  //   9
-                  // ),
-                  // maxFeePerGas: ethers.utils.parseUnits(
-                  //   String(
-                  //     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                  //       ? customFee.maxFeePerGas.toFixed(9)
-                  //       : fee.maxFeePerGas.toFixed(9)
-                  //   ),
-                  //   9
-                  // ),
-                  // gasLimit: ethereumTxsController.toBigNumber(
-                  //   validateCustomGasLimit
-                  //     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                  //     : fee.gasLimit
-                  // ),
-                });
+                ethereumTxsController
+                  .sendSignedErc721Transaction({
+                    networkUrl: activeNetwork.url,
+                    receiver: txObjectState.to,
+                    tokenAddress: basicTxValues.token.contractAddress,
+                    tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component
+                  })
+                  .then(async (response) => {
+                    if (isExternal)
+                      dispatchBackgroundEvent(`txSend.${host}`, response);
+
+                    const provider = new ethers.providers.JsonRpcProvider(
+                      activeNetwork.url
+                    );
+
+                    let receipt = await provider.getTransactionReceipt(
+                      response.hash
+                    );
+
+                    while (!receipt) {
+                      receipt = await provider.getTransactionReceipt(
+                        response.hash
+                      );
+                      await new Promise((resolve) => setTimeout(resolve, 5000));
+                    }
+
+                    if (receipt) {
+                      updateErcTokenBalances(
+                        activeAccount.id,
+                        basicTxValues.token.contractAddress,
+                        basicTxValues.token.chainId,
+                        basicTxValues.token.isNft
+                      );
+                    }
+                  });
 
                 setConfirmed(true);
                 setLoading(false);
 
-                if (isExternal)
-                  dispatchBackgroundEvent(`txSend.${host}`, responseSendErc721);
-
-                console.log('responseSendErc721', responseSendErc721);
-
-                store.dispatch(
-                  setUpdatedTokenBalace({
-                    accountId: activeAccount.id,
-                    tokenAddress: basicTxValues.token.contractAddress,
-                  })
-                );
-
-                return responseSendErc721;
+                return;
               } catch (_erc721Error) {
                 logError('error send ERC721', 'Transaction', _erc721Error);
 
@@ -414,15 +433,21 @@ export const SendConfirm = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
-              Send
+              {`${basicTxValues.token?.isNft ? 'TokenID' : 'Send'}`}
             </span>
 
             <span>
-              {`${basicTxValues.amount} ${' '} ${
-                basicTxValues.token
-                  ? basicTxValues.token.symbol
-                  : activeNetwork.currency?.toUpperCase()
-              }`}
+              {!basicTxValues.token.isNft ? (
+                <>
+                  {`${basicTxValues.amount} ${' '} ${
+                    basicTxValues.token
+                      ? basicTxValues.token.symbol
+                      : activeNetwork.currency?.toUpperCase()
+                  }`}
+                </>
+              ) : (
+                <>{basicTxValues.amount}</>
+              )}
             </span>
           </p>
 
@@ -452,7 +477,7 @@ export const SendConfirm = () => {
                       )} ${activeNetwork.currency?.toUpperCase()}`}
                 </span>
               </p>
-              {!isBitcoinBased ? (
+              {!isBitcoinBased && !basicTxValues.token.isNft ? (
                 <span
                   className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                   onClick={() => setIsOpenEditFeeModal(true)}
@@ -463,15 +488,27 @@ export const SendConfirm = () => {
             </div>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Total (Amount + gas fee)
-              <span className="text-brand-royalblue text-xs">
-                {isBitcoinBased
-                  ? `${
-                      Number(basicTxValues.fee) + Number(basicTxValues.amount)
-                    }`
-                  : `${Number(basicTxValues.amount) + getCalculatedFee}`}
-                &nbsp;{`${activeNetwork.currency?.toUpperCase()}`}
-              </span>
+              {!basicTxValues.token?.isNft ? (
+                <>
+                  Total (Amount + gas fee)
+                  <span className="text-brand-royalblue text-xs">
+                    {isBitcoinBased
+                      ? `${
+                          Number(basicTxValues.fee) +
+                          Number(basicTxValues.amount)
+                        }`
+                      : `${Number(basicTxValues.amount) + getCalculatedFee}`}
+                    &nbsp;{`${activeNetwork.currency?.toUpperCase()}`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Token ID
+                  <span className="text-brand-royalblue text-xs">
+                    {basicTxValues.amount}
+                  </span>
+                </>
+              )}
             </p>
           </div>
 

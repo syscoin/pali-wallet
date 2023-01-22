@@ -91,9 +91,6 @@ export const SendEth = () => {
           id="send-form"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 8 }}
-          initialValues={{
-            amount: 0,
-          }}
           onFinish={nextStep}
           autoComplete="off"
           className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
@@ -238,7 +235,15 @@ export const SendEth = () => {
                       ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (parseFloat(value) <= parseFloat(balance)) {
+                    if (
+                      selectedAsset &&
+                      !selectedAsset.isNft &&
+                      parseFloat(value) <= parseFloat(balance)
+                    ) {
+                      return Promise.resolve();
+                    }
+
+                    if (selectedAsset && selectedAsset.isNft && value >= 0) {
                       return Promise.resolve();
                     }
 
@@ -254,7 +259,9 @@ export const SendEth = () => {
                     hasAccountAssets ? 'mixed-border-input' : 'input-medium'
                   } flex items-center`}
                 type="number"
-                placeholder="Amount"
+                placeholder={`${
+                  selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
+                }`}
               />
             </Form.Item>
           </div>

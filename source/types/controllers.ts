@@ -47,6 +47,13 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   unlock: (pwd: string) => Promise<void>;
+  updateErcTokenBalances: (
+    accountId: number,
+    tokenAddress: string,
+    tokenChain: number,
+    isNft: boolean,
+    decimals?: number
+  ) => Promise<void>;
 }
 
 export interface IEthTokenDetails {

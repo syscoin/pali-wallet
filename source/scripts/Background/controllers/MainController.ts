@@ -1,4 +1,6 @@
+import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
+import lodash from 'lodash';
 
 import {
   KeyringManager,
@@ -10,7 +12,7 @@ import {
   web3Provider,
   setActiveNetwork as _sysweb3SetActiveNetwork,
 } from '@pollum-io/sysweb3-network';
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork, getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -30,9 +32,11 @@ import {
   setIsBitcoinBased,
   setChangingConnectedAccount,
   setIsNetworkChanging,
+  setUpdatedTokenBalace,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
+import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
@@ -385,6 +389,70 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
+  const updateErcTokenBalances = async (
+    accountId: number,
+    tokenAddress: string,
+    tokenChain: number,
+    isNft: boolean,
+    decimals?: number
+  ) => {
+    const { activeNetwork, accounts, activeAccount } = store.getState().vault;
+    const findAccount = accounts[accountId];
+
+    if (!Boolean(findAccount.address === activeAccount.address)) return;
+
+    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+
+    const _contract = new ethers.Contract(
+      tokenAddress,
+      isNft ? getErc21Abi() : getErc20Abi(),
+      provider
+    );
+
+    const balanceMethodCall = await _contract.balanceOf(findAccount.address);
+
+    const balance = !isNft
+      ? `${balanceMethodCall / 10 ** Number(decimals)}`
+      : Number(balanceMethodCall);
+
+    const formattedBalance = !isNft
+      ? lodash.floor(parseFloat(balance as string), 4)
+      : balance;
+
+    const newAccountsAssets = accounts[accountId].assets.ethereum.map(
+      (vaultAssets: ITokenEthProps) => {
+        if (
+          Number(vaultAssets.chainId) === tokenChain &&
+          vaultAssets.contractAddress === tokenAddress
+        ) {
+          return { ...vaultAssets, balance: formattedBalance };
+        }
+
+        return vaultAssets;
+      }
+    );
+
+    const newActiveAccountAssets = activeAccount.assets.ethereum.map(
+      (activeAssets: ITokenEthProps) => {
+        if (
+          Number(activeAssets.chainId) === tokenChain &&
+          activeAssets.contractAddress === tokenAddress
+        ) {
+          return { ...activeAssets, balance: formattedBalance };
+        }
+        return activeAssets;
+      }
+    );
+
+    store.dispatch(
+      setUpdatedTokenBalace({
+        accountId: findAccount.id,
+        newAccountsAssets,
+        newActiveAccountAssets,
+      })
+    );
+  };
+
   return {
     createWallet,
     forgetWallet,
@@ -403,6 +471,7 @@ const MainController = (): IMainController => {
     resolveError,
     getRecommendedFee,
     getNetworkData,
+    updateErcTokenBalances,
     ...keyringManager,
   };
 };

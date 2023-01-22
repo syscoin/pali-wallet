@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
+import loadsh from 'lodash';
 
 import {
   initialNetworksState,
@@ -209,34 +210,17 @@ const VaultState = createSlice({
     },
     setUpdatedTokenBalace(
       state: IVaultState,
-      action: PayloadAction<{ accountId: number; tokenAddress: string }>
+      action: PayloadAction<{
+        accountId: number;
+        newAccountsAssets: any;
+        newActiveAccountAssets: any;
+      }>
     ) {
-      const { accountId, tokenAddress } = action.payload;
-      const { activeNetwork, accounts, activeAccount } = state;
+      const { newAccountsAssets, newActiveAccountAssets, accountId } =
+        action.payload;
 
-      const findAccount = accounts[accountId];
-
-      if (findAccount.address === activeAccount.address) {
-        const getCurrentToken: ITokenEthProps =
-          activeAccount.assets.ethereum.find(
-            (token: ITokenEthProps) => token.contractAddress === tokenAddress
-          );
-
-        const provider = new ethers.providers.JsonRpcProvider(
-          activeNetwork.url
-        );
-
-        const _contract = new ethers.Contract(
-          tokenAddress,
-          getCurrentToken.isNft ? getErc21Abi() : getErc20Abi(),
-          provider
-        );
-
-        _contract
-          .balanceOf(findAccount.address)
-          .then((response) => console.log('response balance', response))
-          .catch((error) => console.log('error balance', error));
-      }
+      state.accounts[accountId].assets.ethereum = newAccountsAssets;
+      state.activeAccount.assets.ethereum = newActiveAccountAssets;
     },
   },
 });
