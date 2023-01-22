@@ -11,6 +11,7 @@ import {
   LoadingComponent,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
+import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -59,6 +60,7 @@ export const SendConfirm = () => {
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
+  const [confirmedTx, setConfirmedTx] = useState<any>();
 
   const isExternal = Boolean(externalTx.amount);
   const basicTxValues = isExternal ? externalTx : state.tx;
@@ -153,6 +155,8 @@ export const SendConfirm = () => {
                     : fee.gasLimit
                 ),
               });
+
+            setConfirmedTx(response);
 
             setConfirmed(true);
             setLoading(false);
@@ -280,7 +284,10 @@ export const SendConfirm = () => {
         onClose={() => {
           refresh(false);
           if (isExternal) window.close();
-          else navigate('/home');
+          else {
+            saveTransaction(confirmedTx);
+            navigate('/home');
+          }
         }}
       />
 
