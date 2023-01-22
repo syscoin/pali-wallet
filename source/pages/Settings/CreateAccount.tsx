@@ -59,7 +59,7 @@ const CreateAccount = () => {
           >
             <Input
               type="text"
-              className="input-small"
+              className="input-small relative"
               placeholder="Name your new account (optional)"
               id="account-name-input"
             />

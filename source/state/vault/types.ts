@@ -7,9 +7,12 @@ export interface IVaultState {
   };
   activeAccount: IKeyringAccountState;
   activeNetwork: INetwork;
+  changingConnectedAccount: IChangingConnectedAccount;
   encryptedMnemonic: string;
   error: boolean;
   isBitcoinBased: boolean;
+  isLoadingTxs: boolean;
+  isNetworkChanging: boolean;
   isPendingBalances: boolean;
   lastLogin: number;
   networks: {
@@ -21,6 +24,12 @@ export interface IVaultState {
     };
   };
   timer: number;
+}
+
+export interface IChangingConnectedAccount {
+  host: string | undefined;
+  isChangingConnectedAccount: boolean;
+  newConnectedAccount: IKeyringAccountState | undefined;
 }
 
 export interface IHolding {

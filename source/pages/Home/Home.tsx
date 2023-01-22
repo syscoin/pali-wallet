@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
@@ -35,7 +35,6 @@ export const Home = () => {
   );
 
   //* States
-  const [fiatPriceValue, setFiatPriceValue] = useState('');
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants
@@ -52,31 +51,49 @@ export const Home = () => {
   const setMainOrTestNetwork = async () => {
     const { url } = activeNetwork;
 
-    const { chain } = isBitcoinBased
+    const { chain, chainId }: any = isBitcoinBased
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
-    setIsTestnet(chain === 'test' || chain === 'testnet');
-  };
+    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
-  const setFiatPrice = () => {
-    const amount = getFiatAmount(
-      actualBalance || 0,
-      4,
-      String(fiatAsset).toUpperCase(),
-      true
+    setIsTestnet(
+      chain === 'test' ||
+        chain === 'testnet' ||
+        ethTestnetsChainsIds.some(
+          (validationChain) => validationChain === chainId
+        )
     );
-
-    setFiatPriceValue(String(amount));
   };
 
-  //* Effect
+  //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
-    setFiatPrice();
     setMainOrTestNetwork();
-  }, [isUnlocked, activeAccount.address, activeNetwork.chainId, fiatPrice]);
+  }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
+
+  //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
+  const fiatPriceValue = useMemo(() => {
+    const getAmount = getFiatAmount(
+      actualBalance > 0 ? actualBalance : 0,
+      4,
+      String(fiatAsset).toUpperCase(),
+      true,
+      true
+    );
+
+    return getAmount;
+  }, [
+    isUnlocked,
+    activeAccount,
+    activeAccount.address,
+    activeNetwork,
+    activeNetwork.chainId,
+    fiatAsset,
+    fiatPrice,
+    actualBalance,
+  ]);
 
   return (
     <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">

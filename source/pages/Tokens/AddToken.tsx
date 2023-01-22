@@ -34,13 +34,15 @@ export const AddToken: FC = () => {
     setTestnet();
   }, [network]);
 
+  const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
+
   return (
     <Layout title="IMPORT TOKEN">
       {isBitcoinBased ? (
         <SyscoinImportToken />
       ) : (
         <>
-          {!isTestnet ? (
+          {!isTestnet && searchTokenValidation ? (
             <>
               <Form
                 form={form}

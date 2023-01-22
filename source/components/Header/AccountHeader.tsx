@@ -2,6 +2,7 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -11,9 +12,11 @@ import { ellipsis } from 'utils/index';
 
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
-  const { wallet } = getController();
+  const { wallet, dapp } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -38,7 +41,17 @@ const AccountMenu: React.FC = () => {
   }
 
   const setActiveAccount = async (id: number) => {
-    await wallet.setAccount(Number(id));
+    if (!isBitcoinBased) {
+      const tabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      const host = new URL(tabs[0].url).hostname;
+      const connectedAccount = dapp.getAccount(host);
+      wallet.setAccount(Number(id), host, connectedAccount);
+      return;
+    }
+    wallet.setAccount(Number(id));
   };
 
   const handleLogout = () => {

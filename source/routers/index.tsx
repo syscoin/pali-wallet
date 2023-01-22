@@ -21,7 +21,6 @@ import {
   Receive,
   SendEth,
   SendSys,
-  EditPriorityFee,
   SendConfirm,
   Start,
   TrustedSites,
@@ -36,15 +35,12 @@ import { getController } from 'utils/browser';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const { wallet, appRoute, refresh } = getController();
+  const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
 
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
@@ -57,24 +53,6 @@ export const Router = () => {
           type: 'autolock',
           target: 'background',
         });
-      });
-
-      wallet.getNetworkData().then((data) => {
-        if (!isBitcoinBased) {
-          const dispatchChainMessage = async () => {
-            const tabs = await browser.tabs.query({
-              windowType: 'normal',
-            });
-
-            for (const tab of tabs) {
-              browser.tabs.sendMessage(Number(tab.id), {
-                type: 'CHAIN_CHANGED',
-                data,
-              });
-            }
-          };
-          dispatchChainMessage();
-        }
       });
     }
   }, [isUnlocked]);
@@ -90,10 +68,6 @@ export const Router = () => {
 
     const route = appRoute();
     if (route !== '/') navigate(route);
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    if (isUnlocked) refresh(true);
   }, [isUnlocked]);
 
   useEffect(() => {
@@ -132,10 +106,6 @@ export const Router = () => {
       <Route
         path="send/confirm"
         element={<ProtectedRoute element={<SendConfirm />} />}
-      />
-      <Route
-        path="send/edit/priority"
-        element={<ProtectedRoute element={<EditPriorityFee />} />}
       />
       <Route
         path="send/edit/gas"

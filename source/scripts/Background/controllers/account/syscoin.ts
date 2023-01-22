@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { resolve } from 'path';
 
 import {
   KeyringManager,
@@ -6,15 +7,16 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
-import { DAppEvents } from '../message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
   setAccounts,
   setActiveAccountProperty,
+  setIsLoadingTxs,
+  setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
-import { removeXprv } from 'utils/account';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
@@ -32,16 +34,18 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
-
+    const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
+      store.getState().vault;
     const { id: accountId } = activeAccount;
     if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
-    const { accountLatestUpdate, walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount();
+    store.dispatch(setIsLoadingTxs(true));
 
+    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+      await keyringManager.getLatestUpdateForAccount(); //TODO: validate whats breaking on this function
+    //TODO: after calling createToken from syscoin UTXO getLatestUpdate breaks and gets to a infinite loop with setPendingTxs
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
@@ -61,9 +65,11 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(
       setActiveAccountProperty({
         property: 'transactions',
-        value: [...accounts[accountId].transactions, ...filteredTxs],
+        value: [...filteredTxs],
       })
     );
+
+    store.dispatch(setIsLoadingTxs(false));
 
     store.dispatch(
       setActiveAccountProperty({
@@ -97,10 +103,51 @@ const SysAccountController = (): ISysAccountController => {
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => ({
-        ...account,
-        assets: accounts[index].assets,
-      }))
+      Object.values(walleAccountstLatestUpdate).map((account: any, index) => {
+        const { transactions: updatedTxs } = account;
+
+        const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
+          (value, i, self) =>
+            i === self.findIndex((tx) => tx[hash] === value[hash])
+        ); // to get array with unique txs.
+
+        if (index === accountId) {
+          if (isBitcoinBased)
+            return {
+              ...account,
+              label: accounts[index].label,
+              transactions: [...filteredTxs],
+              assets: {
+                ethereum: accounts[index].assets.ethereum,
+                syscoin: account.assets,
+              },
+            };
+          else
+            return {
+              ...account,
+              label: accounts[index].label,
+              assets: accounts[index].assets,
+              transactions: [...filteredTxs],
+            };
+        }
+        if (isBitcoinBased)
+          return {
+            ...account,
+            label: accounts[index].label,
+            transactions: [...filteredTxs],
+            assets: {
+              ethereum: accounts[index].assets.ethereum,
+              syscoin: account.assets,
+            },
+          };
+        else
+          return {
+            ...account,
+            label: accounts[index].label,
+            assets: accounts[index].assets,
+            transactions: [...allTxs],
+          };
+      })
     );
 
     store.dispatch(
@@ -108,11 +155,25 @@ const SysAccountController = (): ISysAccountController => {
         ...formattedWalletAccountsLatestUpdates,
       })
     );
+    resolve();
 
-    window.controller.dapp.dispatchEvent(
-      DAppEvents.accountUpdate,
-      removeXprv(accounts[accountId])
+    const isUpdating = store.getState().vault.isNetworkChanging;
+    window.controller.dapp.handleBlockExplorerChange(
+      PaliSyscoinEvents.blockExplorerChanged,
+      {
+        method: PaliSyscoinEvents.blockExplorerChanged,
+        params: isBitcoinBased ? activeNetwork.url : null,
+      }
     );
+    if (!isUpdating)
+      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          networkVersion: activeNetwork.chainId,
+        },
+      });
+    else store.dispatch(setIsNetworkChanging(false));
   };
 
   /** check if there is no pending transaction in mempool
@@ -120,7 +181,7 @@ const SysAccountController = (): ISysAccountController => {
    */
   const watchMemPool = () => {
     if (intervalId) clearInterval(intervalId);
-
+    //TODO: this should be enhanced and its only being set after user refresh the wallet
     // 30 seconds - 3000 milliseconds
     const interval = 30 * 1000;
 

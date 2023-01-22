@@ -1,8 +1,10 @@
 import React from 'react';
 
+import Decrypt_ from './Decrypt';
+import EncryptPubKey_ from './EncryptPubKey';
 import Sign_ from './Sign';
+import EthSign_ from './SignEth';
 import Transaction from './Transaction';
-
 export const SendToken = () => <Transaction type="Send" />;
 
 //* Token
@@ -17,4 +19,11 @@ export const MintNFT = () => <Transaction type="MintNft" />;
 
 //* Sign
 export const Sign = () => <Sign_ />;
+export const EthSign = () => <EthSign_ />;
 export const SignAndSend = () => <Sign_ send />;
+
+//* PubKey for encryption
+export const EncryptPubKey = () => <EncryptPubKey_ />;
+
+//* Decrypt
+export const Decrypt = () => <Decrypt_ />;

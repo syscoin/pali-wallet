@@ -17,6 +17,8 @@ export const verifyZerosInBalanceAndFormat = (
   balance: number,
   precision: number
 ): string => {
+  if (!balance) return;
+
   const fullValue = removeScientificNotation(balance);
 
   const quantityOfZerosAfterDot = -Math.floor(
@@ -44,7 +46,9 @@ export const verifyZerosInBalanceAndFormat = (
 
   const formattedAndTruncatedValue = truncateNumberWithoutRound(
     fullValue,
-    fractionValidation ? quantityOfZerosAfterDot + 1 : defaultPrecisionValidated
+    fractionValidation
+      ? quantityOfZerosAfterDot + precision
+      : defaultPrecisionValidated
   );
 
   return formattedAndTruncatedValue;

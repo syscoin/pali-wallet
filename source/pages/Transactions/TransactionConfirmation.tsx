@@ -41,11 +41,14 @@ const callbackResolver = (txType: string) => {
       break;
 
     case 'MintNft':
-      callbackName = 'confirmMintNFT';
+      callbackName = 'confirmTokenMint';
       break;
 
     case 'UpdateToken':
       callbackName = 'confirmUpdateToken';
+      break;
+    case 'TransferToken':
+      callbackName = 'transferAssetOwnership';
       break;
 
     default:
@@ -61,7 +64,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   type,
   title,
 }) => {
-  if (!transaction) throw new Error('No transaction');
+  if (!transaction) throw { message: 'No transaction' };
 
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount

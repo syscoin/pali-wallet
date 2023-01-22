@@ -14,11 +14,15 @@
     "http://*/*",
     "https://*/*",
     "*://connect.trezor.io/8/*",
-    "https://localhost:8088/",
     "tabs",
     "storage",
     "notifications",
-    "https://sysmint.paliwallet.com/"
+    "activeTab",
+    "webRequest",
+    "*://*.eth/",
+    "clipboardWrite",
+    "unlimitedStorage",
+    "http://localhost:8545/"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
@@ -50,7 +54,8 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "all_frames": true,
+      "matches": ["file://*/*", "http://*/*", "https://*/*"],
       "run_at": "document_start",
       "js": ["js/webextension.bundle.js", "js/contentScript.bundle.js"]
     },
@@ -62,7 +67,7 @@
       "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]
     }
   ],
-  "web_accessible_resources": ["app.html"],
+  "web_accessible_resources": ["app.html", "js/inpage.bundle.js"],
   "commands": {
     "_execute_browser_action": {
       "suggested_key": {

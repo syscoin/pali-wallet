@@ -2,9 +2,7 @@ const palette = require('./palette.js');
 
 module.exports = {
   purge: false,
-  content: [
-    './source/*/.{html,js,jsx,ts,tsx}',
-  ],
+  content: ['./source/*/.{html,js,jsx,ts,tsx}'],
   darkMode: false, // or 'media' or 'class'
   theme: {
     extend: {
@@ -33,8 +31,11 @@ module.exports = {
         70: '70%',
         95: '95%',
       },
+      maxHeight: {
+        popup: '620px',
+      },
       minWidth: {
-        popup: '385px',
+        popup: '400px',
         xs: '1rem',
       },
       minHeight: {
@@ -73,7 +74,19 @@ module.exports = {
       },
       animation: {
         'spin-slow': 'spin 3s linear infinite',
-      }
+        'drop-up': 'dropFadeInUp 1.5s linear',
+        'drop-down': 'dropFadeInDown 1.5s linear',
+      },
+      keyframes: {
+        dropFadeInDown: {
+          '0%': { opacity: '0', transform: 'translateY(40px)' },
+          '100%': { opacity: '1', transform: 'none' },
+        },
+        dropFadeInUp: {
+          '0%': { opacity: '1', transform: 'translateY(-40px)' },
+          '100%': { opacity: '0', transform: 'none' },
+        },
+      },
     },
   },
   variants: {

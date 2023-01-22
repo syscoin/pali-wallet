@@ -7,7 +7,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
-import { IVaultState } from './types';
+import { IChangingConnectedAccount, IVaultState } from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
@@ -26,6 +26,13 @@ export const initialState: IVaultState = {
   },
   isBitcoinBased: true,
   isPendingBalances: false,
+  isNetworkChanging: false,
+  isLoadingTxs: false,
+  changingConnectedAccount: {
+    host: undefined,
+    isChangingConnectedAccount: false,
+    newConnectedAccount: undefined,
+  },
   timer: 5,
   networks: initialNetworksState,
   encryptedMnemonic: '',
@@ -46,14 +53,13 @@ const VaultState = createSlice({
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id } = state.activeAccount;
-      state.accounts[id].transactions.push(action.payload);
-      state.activeAccount.transactions.push(action.payload);
+      state.accounts[id].transactions.unshift(action.payload);
+      state.activeAccount.transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,
       action: PayloadAction<IKeyringAccountState>
     ) {
-      console.log({ account: action.payload });
       state.accounts[action.payload.id] = action.payload;
     },
     setNetworks(
@@ -135,7 +141,19 @@ const VaultState = createSlice({
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPendingBalances = action.payload;
-      state.activeAccount.transactions = [];
+      state.activeAccount.transactions = []; // TODO: check a better way to handle network transaction
+    },
+    setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingTxs = action.payload;
+    },
+    setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isNetworkChanging = action.payload;
+    },
+    setChangingConnectedAccount(
+      state: IVaultState,
+      action: PayloadAction<IChangingConnectedAccount>
+    ) {
+      state.changingConnectedAccount = action.payload;
     },
     setActiveAccountProperty(
       state: IVaultState,
@@ -194,7 +212,10 @@ export const {
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
+  setIsNetworkChanging,
   setIsPendingBalances,
+  setIsLoadingTxs,
+  setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
   setTimer,

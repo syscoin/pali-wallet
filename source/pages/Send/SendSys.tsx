@@ -238,9 +238,8 @@ export const SendSys = () => {
                             </button>
                           </Menu.Item>
 
-                          {hasAccountAssets &&
-                            Object.values(activeAccount.assets).map(
-                              (item: any) => (
+                          {activeAccount.assets.syscoin.length > 0
+                            ? activeAccount.assets.syscoin.map((item: any) => (
                                 <Menu.Item as="div" key={uniqueId()}>
                                   <Menu.Item>
                                     <button
@@ -249,15 +248,15 @@ export const SendSys = () => {
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
-                                      <p>{item.symbol}</p>
+                                      <p>{item?.symbol}</p>
                                       <small>
                                         {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
                                       </small>
                                     </button>
                                   </Menu.Item>
                                 </Menu.Item>
-                              )
-                            )}
+                              ))
+                            : null}
                         </Menu.Items>
                       )}
                     </Transition>

@@ -1728,6 +1728,21 @@
   resolved "https://registry.yarnpkg.com/@metamask/safe-event-emitter/-/safe-event-emitter-2.0.0.tgz#af577b477c683fad17c619a78208cede06f9605c"
   integrity sha512-/kSXhY692qiV1MXu6EeOZvg5nECLclxNXcKCxJ3cXQgYuRymRHpdx/t7JXfsK+JLjwA1e1c1/SBrlQYpusC29Q==
 
+"@noble/hashes@1.1.2":
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.1.2.tgz#e9e035b9b166ca0af657a7848eb2718f0f22f183"
+  integrity sha512-KYRCASVTv6aeUi1tsF8/vpyR7zpfs3FUzy2Jqm+MU+LmUKhQ0y2FpfwqkCcxSg2ua4GALJd8k2R76WxwZGbQpA==
+
+"@noble/hashes@~1.1.1":
+  version "1.1.5"
+  resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.1.5.tgz#1a0377f3b9020efe2fae03290bd2a12140c95c11"
+  integrity sha512-LTMZiiLc+V4v1Yi16TD6aX2gmtKszNye0pQgbaLqkvhIqP7nVsSaJsWloGQjJfJ8offaoP5GtX3yY5swbcJxxQ==
+
+"@noble/secp256k1@1.6.3", "@noble/secp256k1@~1.6.0":
+  version "1.6.3"
+  resolved "https://registry.yarnpkg.com/@noble/secp256k1/-/secp256k1-1.6.3.tgz#7eed12d9f4404b416999d0c87686836c4c5c9b94"
+  integrity sha512-T04e4iTurVy7I8Sw4+c5OSN9/RkPlo1uKxAomtxQNLq8j1uPAqnsqG1bqvY3Jv7c13gyr6dui0zmh/I3+f/JaQ==
+
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
   resolved "https://registry.yarnpkg.com/@nodelib/fs.scandir/-/fs.scandir-2.1.5.tgz#7619c2eb21b25483f6d167548b4cfd5a7488c3d5"
@@ -1827,29 +1842,31 @@
     read-package-json-fast "^2.0.3"
     which "^2.0.2"
 
-"@pollum-io/sysweb3-core@^1.0.16", "@pollum-io/sysweb3-core@^1.0.18":
-  version "1.0.18"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.18.tgz#b76351af62f415e9825c85723740959e1ef7b406"
-  integrity sha512-Z87aaqG4rZVnHzf0F3BSyersQ9p/JpF+SsnWkeuZyLN2ZmLtuq/dTsCqYE/buS5J3HlBwA8jUihMLu5pKDiqGQ==
+"@pollum-io/sysweb3-core@1.0.19", "@pollum-io/sysweb3-core@^1.0.19":
+  version "1.0.19"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.19.tgz#353b72fc774f1521c77471ae9260a20e9b3d9425"
+  integrity sha512-GT25l81YJxH3lGU5ov1kAv77be4nnYOy21WKwzt6mSraNcL+TM2Zlgf/Zd9Wa1m79cL7MozDpZYE1K89+oBjXg==
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@^1.0.412":
-  version "1.0.412"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.412.tgz#51ff688737cc7539c9b7898593b9191a61850d8f"
-  integrity sha512-EaJpMhd3wcyihSK/ILwtDIJet9H97+DfK55GSJJDB4LxkSVLcoekN2PI3hM7teCwP+wu7MRAbxnSNDIyP49ZRA==
+"@pollum-io/sysweb3-keyring@^1.0.435":
+  version "1.0.435"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.435.tgz#c79af5ca6b016d1e8d76095e304f4568ec6a6c7e"
+  integrity sha512-HUuQlIMlRkOgc6/Cz2lCrHBqI52Kt7NoWL3uyPUuv7pwoDvLXVzGiGoiL9NhHQXmSrX1wZtv5YQgHdPb3bgfYQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
-    "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.66"
-    "@pollum-io/sysweb3-utils" "^1.1.213"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-network" "^1.0.85"
+    "@pollum-io/sysweb3-utils" "^1.1.217"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
     crypto-js "^4.1.1"
+    dotenv "^16.0.3"
     eth-chains "^1.0.0"
     eth-sig-util "^3.0.1"
+    ethereum-cryptography "^1.1.2"
     ethereumjs-util "^7.1.5"
     ethereumjs-wallet "^1.0.2"
     ethers "^5.6.4"
@@ -1862,50 +1879,13 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@^1.0.50":
-  version "1.0.50"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.50.tgz#24288f0e101ad20eefcab5859362770be2b479b9"
-  integrity sha512-UI2zv5CbsF7ohTP3WV7KutOqfmnfhc6fMfmsqhvwWqrAMDNOAn0+/yZkOy/5dO5PPyMwxPSGEszDPOWfy75JHw==
+"@pollum-io/sysweb3-network@^1.0.72":
+  version "1.0.73"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.73.tgz#e0275d226b27be6b52ee549d6f5e55d2a19bcdd7"
+  integrity sha512-8YlXi4x8z7XO5W6q7mdc/7KlH4uISuvC7RY/0siuSWYNMUefXwqeNQszZ7NtRHUu2HOwAQKmQIORqWiikbqO+A==
   dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.18"
-    "@pollum-io/sysweb3-utils" "^1.1.159"
-    axios "^0.26.1"
-    bip44-constants "^114.0.0"
-    ethers "^5.6.9"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-network@^1.0.53":
-  version "1.0.53"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.53.tgz#7c97da797730cc86a2f35cb6277ba7678c708e54"
-  integrity sha512-FsDQsN3wrXpiMlzGjysO+moMrTHszsGd4UfoPt578JxtTGLI9dZQbwpVv0GIQAnnm0O6RfOV4SRQHW3QJ2s4aQ==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.18"
-    "@pollum-io/sysweb3-utils" "^1.1.159"
-    axios "^0.26.1"
-    bip44-constants "^114.0.0"
-    ethers "^5.6.9"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-network@^1.0.55":
-  version "1.0.55"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.55.tgz#5f973f1af54634c8560ad778cbb4cfd5cf1b73b1"
-  integrity sha512-vLKgHTj/WR+FD6CnU2fyeu6j442clniG/m3m3Lv07QGo5LW1Pj6CYt9x8+cR3tE0TmpsP+EWOHriOAEamIyB5w==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.18"
-    "@pollum-io/sysweb3-utils" "^1.1.190"
-    axios "^0.26.1"
-    bip44-constants "^114.0.0"
-    eth-chains "^1.0.0"
-    ethers "^5.6.9"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-network@^1.0.66":
-  version "1.0.66"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.66.tgz#b09d31ea6af36aa7ed044a11a041ad016aa311d5"
-  integrity sha512-kUGWoDEnidL/+ENtE1wi8vZuj4pZkUjMNL9VdidTnAC+oEt3hDLMq7mZdkBU9/fkpGUNCmrDWVObVam8A2sVVw==
-  dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.18"
-    "@pollum-io/sysweb3-utils" "^1.1.195"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-utils" "^1.1.214"
     axios "^0.26.1"
     bip44-constants "^114.0.0"
     bs58check "^2.1.2"
@@ -1913,55 +1893,42 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.159":
-  version "1.1.171"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.171.tgz#24bfe45c7b98aae2ce5f93722cdef30261b5fdb0"
-  integrity sha512-offk5rtGQi6zdAmyAQfB1LfZiBNq+VfNrTaS/9tg0nI0mnvpP8A5619wCyEdqa1zEj8R5qTt3P5Ul8q3bUWy5w==
+"@pollum-io/sysweb3-network@^1.0.84":
+  version "1.0.84"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.84.tgz#9109f3f3aae0bff9ea4cfc3444ffd44d8cb884a9"
+  integrity sha512-vjiH3PlfhhTtbJl0CjBQUnCAm7ukaPMLQX+jOEx42uYIFTOvEidg1qGlIretbkcUUA2vUwxKAEHpNBc7ynxfQA==
   dependencies:
-    "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.50"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-utils" "^1.1.214"
     axios "^0.26.1"
-    bech32 "^2.0.0"
     bip44-constants "^114.0.0"
-    bip84 "^0.2.7"
-    bitcoinjs-lib "^6.0.1"
-    camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
-    crypto-js "^4.1.1"
-    ethers "^5.6.4"
-    syscoinjs-lib "^1.0.214"
-    syscointx-js "^1.0.101"
+    bs58check "^2.1.2"
+    eth-chains "^1.0.0"
+    ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.190":
-  version "1.1.190"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.190.tgz#0f4d6e9f1b77d44dda8f42b3c36cc999d7db2876"
-  integrity sha512-sY+KgB4W3fhBGiOIGF1PFit8gCm7PzvvAg2Pcw3bSeVA9StxjouZTkgRA60ejaKXoqX7rBxmgjug7SOqTIocCw==
+"@pollum-io/sysweb3-network@^1.0.85":
+  version "1.0.85"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.85.tgz#4b948e625189b41c3bf3147a6df895c9936ad530"
+  integrity sha512-RjcVNukOcottLAn8mQrxoSi6IIH9bNgGjgzBnuHsm77W+Rso6YPk/j2clnozZQZmNm2zo/ahL5xEV7zhIncuYQ==
   dependencies:
-    "@ethersproject/contracts" "^5.6.2"
-    "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.53"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-utils" "^1.1.214"
     axios "^0.26.1"
-    bech32 "^2.0.0"
     bip44-constants "^114.0.0"
-    bip84 "^0.2.7"
-    bitcoinjs-lib "^6.0.1"
-    camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
-    crypto-js "^4.1.1"
-    ethers "^5.6.4"
-    syscoinjs-lib "^1.0.214"
-    syscointx-js "^1.0.101"
+    bs58check "^2.1.2"
+    eth-chains "^1.0.0"
+    ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.195":
-  version "1.1.195"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.195.tgz#8ae1674857e9f2cf7b92c4c945612402efc40151"
-  integrity sha512-o33lsYQJDGqu30Jd7bYDaTzqqlHtNcEheuAOfm4B2aGPse2/wGLRe5344KrgiOJD2YXzuKJyWc7EeShSpBrR/g==
+"@pollum-io/sysweb3-utils@^1.1.214":
+  version "1.1.214"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.214.tgz#686408857437936c637d317530310636e7e57269"
+  integrity sha512-JiigVyvONuv6jD+nYWgetSD6Qq3F+1tCPJY9fhY6ZUzCQ6zHRZnlPNspplpUcZHuTZlz++h7uRea1UTc7493FA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
-    "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.55"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-network" "^1.0.72"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip32 "^3.0.1"
@@ -1976,14 +1943,14 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.213":
-  version "1.1.213"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.213.tgz#925d370bc5898f16feca25045242b3198513f4ae"
-  integrity sha512-OJyZJWgdbz0Gfqw07LG2VBcJ8JnQfxMxPWlK6fQc657LQimDrw7jmnBMm9wrtq+JFLO45o4DLXxBuMH6jGUm7w==
+"@pollum-io/sysweb3-utils@^1.1.217", "@pollum-io/sysweb3-utils@^1.1.218":
+  version "1.1.218"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.218.tgz#941d78049e0fe56cfc5c95d05e0860352377ad8d"
+  integrity sha512-hCDA6oyLQaGLWX0JJMm7toWu+SBd3wcErWYW/iatyv90ivRFAhLrAqWG3k/5RyDCHE+g+R3SonA3tOQWJLcoCA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
-    "@pollum-io/sysweb3-core" "^1.0.16"
-    "@pollum-io/sysweb3-network" "^1.0.66"
+    "@pollum-io/sysweb3-core" "^1.0.19"
+    "@pollum-io/sysweb3-network" "^1.0.84"
     axios "^0.26.1"
     bech32 "^2.0.0"
     bip32 "^3.0.1"
@@ -2012,6 +1979,28 @@
     redux "^4.1.2"
     redux-thunk "^2.4.1"
     reselect "^4.1.5"
+
+"@scure/base@~1.1.0":
+  version "1.1.1"
+  resolved "https://registry.yarnpkg.com/@scure/base/-/base-1.1.1.tgz#ebb651ee52ff84f420097055f4bf46cfba403938"
+  integrity sha512-ZxOhsSyxYwLJj3pLZCefNitxsj093tb2vq90mp2txoYeBqbcjDjqFhyM8eUjq/uFm6zJ+mUuqxlS2FkuSY1MTA==
+
+"@scure/bip32@1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@scure/bip32/-/bip32-1.1.0.tgz#dea45875e7fbc720c2b4560325f1cf5d2246d95b"
+  integrity sha512-ftTW3kKX54YXLCxH6BB7oEEoJfoE2pIgw7MINKAs5PsS6nqKPuKk1haTF/EuHmYqG330t5GSrdmtRuHaY1a62Q==
+  dependencies:
+    "@noble/hashes" "~1.1.1"
+    "@noble/secp256k1" "~1.6.0"
+    "@scure/base" "~1.1.0"
+
+"@scure/bip39@1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@scure/bip39/-/bip39-1.1.0.tgz#92f11d095bae025f166bef3defcc5bf4945d419a"
+  integrity sha512-pwrPOS16VeTKg98dYXQyIjJEcWfz7/1YJIwxUEPFfQPtc86Ym/1sVgQ2RLoD43AazMk2l/unK4ITySSpW2+82w==
+  dependencies:
+    "@noble/hashes" "~1.1.1"
+    "@scure/base" "~1.1.0"
 
 "@sindresorhus/is@^0.14.0":
   version "0.14.0"
@@ -5328,11 +5317,6 @@ dashdash@^1.12.0:
   dependencies:
     assert-plus "^1.0.0"
 
-data-uri-to-buffer@^4.0.0:
-  version "4.0.0"
-  resolved "https://registry.yarnpkg.com/data-uri-to-buffer/-/data-uri-to-buffer-4.0.0.tgz#b5db46aea50f6176428ac05b73be39a57701a64b"
-  integrity sha512-Vr3mLBA8qWmcuschSLAOogKgQ/Jwxulv3RNE4FXnYWRGujzrRWQI4m12fQqRkwX06C0KanhLr4hK+GydchZsaA==
-
 data-urls@^2.0.0:
   version "2.0.0"
   resolved "https://registry.yarnpkg.com/data-urls/-/data-urls-2.0.0.tgz#156485a72963a970f5d5821aaf642bef2bf2db9b"
@@ -5681,6 +5665,11 @@ dot-prop@^5.2.0:
   integrity sha512-QM8q3zDe58hqUqjraQOmzZ1LIH9SWQJTlEKCH4kJ2oQvLZk7RbQXvtDM2XEq3fwkV9CCvvH4LA0AV+ogFsBM2Q==
   dependencies:
     is-obj "^2.0.0"
+
+dotenv@^16.0.3:
+  version "16.0.3"
+  resolved "https://registry.yarnpkg.com/dotenv/-/dotenv-16.0.3.tgz#115aec42bac5053db3c456db30cc243a5a836a07"
+  integrity sha512-7GO6HghkA5fYG9TYnNxi14/7K9f5occMlp3zXAuSxn7CKCxt9xbNWG7yF8hTCSUchlfWSe3uLmlPfigevRItzQ==
 
 drbg.js@^1.0.1:
   version "1.0.1"
@@ -6326,6 +6315,16 @@ ethereum-cryptography@^0.1.3:
     secp256k1 "^4.0.1"
     setimmediate "^1.0.5"
 
+ethereum-cryptography@^1.1.2:
+  version "1.1.2"
+  resolved "https://registry.yarnpkg.com/ethereum-cryptography/-/ethereum-cryptography-1.1.2.tgz#74f2ac0f0f5fe79f012c889b3b8446a9a6264e6d"
+  integrity sha512-XDSJlg4BD+hq9N2FjvotwUET9Tfxpxc3kWGE2AqUG5vcbeunnbImVk3cj6e/xT3phdW21mE8R5IugU4fspQDcQ==
+  dependencies:
+    "@noble/hashes" "1.1.2"
+    "@noble/secp256k1" "1.6.3"
+    "@scure/bip32" "1.1.0"
+    "@scure/bip39" "1.1.0"
+
 ethereum-input-data-decoder@^0.4.1:
   version "0.4.2"
   resolved "https://registry.yarnpkg.com/ethereum-input-data-decoder/-/ethereum-input-data-decoder-0.4.2.tgz#d6a96f1e3233523fb31f9c47ff4659452e202373"
@@ -6655,6 +6654,11 @@ fast-memoize@^2.5.2:
   resolved "https://registry.yarnpkg.com/fast-memoize/-/fast-memoize-2.5.2.tgz#79e3bb6a4ec867ea40ba0e7146816f6cdce9b57e"
   integrity sha512-Ue0LwpDYErFbmNnZSF0UH6eImUwDmogUO1jyE+JbN2gsQz/jICm1Ve7t9QT0rNSsfJt+Hs4/S3GnsDVjL4HVrw==
 
+fast-safe-stringify@^2.1.1:
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/fast-safe-stringify/-/fast-safe-stringify-2.1.1.tgz#c406a83b6e70d9e35ce3b30a81141df30aeba884"
+  integrity sha512-W+KJc2dmILlPplD/H4K9l9LcAHAfPtP6BY84uVLXQ6Evcz9Lcg33Y2z1IVblT6xdY54PXYVHEv+0Wpq8Io6zkA==
+
 fastest-levenshtein@^1.0.12:
   version "1.0.16"
   resolved "https://registry.yarnpkg.com/fastest-levenshtein/-/fastest-levenshtein-1.0.16.tgz#210e61b6ff181de91ea9b3d1b84fdedd47e034e5"
@@ -6673,14 +6677,6 @@ fb-watchman@^2.0.0:
   integrity sha512-DkPJKQeY6kKwmuMretBhr7G6Vodr7bFwDYTXIkfG1gjvNpaxBTQV3PbXg6bR1c1UP4jPOX0jHUbbHANL9vRjVg==
   dependencies:
     bser "2.1.1"
-
-fetch-blob@^3.1.2, fetch-blob@^3.1.4:
-  version "3.2.0"
-  resolved "https://registry.yarnpkg.com/fetch-blob/-/fetch-blob-3.2.0.tgz#f09b8d4bbd45adc6f0c20b7e787e793e309dcce9"
-  integrity sha512-7yAQpD2UMJzLi1Dqv7qFYnPbaPx7ZfFK6PiIxQ4PfkGPyNyl2Ugx+a/umUonmKqjhM4DnfbMvdX6otXq83soQQ==
-  dependencies:
-    node-domexception "^1.0.0"
-    web-streams-polyfill "^3.0.3"
 
 figgy-pudding@^3.5.1:
   version "3.5.2"
@@ -6862,13 +6858,6 @@ form-data@~2.3.2:
     asynckit "^0.4.0"
     combined-stream "^1.0.6"
     mime-types "^2.1.12"
-
-formdata-polyfill@^4.0.10:
-  version "4.0.10"
-  resolved "https://registry.yarnpkg.com/formdata-polyfill/-/formdata-polyfill-4.0.10.tgz#24807c31c9d402e002ab3d8c720144ceb8848423"
-  integrity sha512-buewHzMvYL29jdeQTVILecSaZKnt/RJWjoZCF5OW60Z67/GmSLBkOFM7qh1PI3zFNtJbaZL5eQu1vLfazOwj4g==
-  dependencies:
-    fetch-blob "^3.1.2"
 
 forwarded@0.2.0:
   version "0.2.0"
@@ -9889,11 +9878,6 @@ node-addon-api@^2.0.0:
   resolved "https://registry.yarnpkg.com/node-addon-api/-/node-addon-api-2.0.2.tgz#432cfa82962ce494b132e9d72a15b29f71ff5d32"
   integrity sha512-Ntyt4AIXyaLIuMHF6IOoTakB3K+RWxwtsHNRxllEoA6vPwP9o4866g6YWDLUdnucilZhmkxiHwHr11gAENw+QA==
 
-node-domexception@^1.0.0:
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/node-domexception/-/node-domexception-1.0.0.tgz#6888db46a1f71c0b76b3f7555016b63fe64766e5"
-  integrity sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==
-
 node-emoji@^1.11.0:
   version "1.11.0"
   resolved "https://registry.yarnpkg.com/node-emoji/-/node-emoji-1.11.0.tgz#69a0150e6946e2f115e9d7ea4df7971e2628301c"
@@ -9915,15 +9899,6 @@ node-fetch@^1.0.1:
   dependencies:
     encoding "^0.1.11"
     is-stream "^1.0.1"
-
-node-fetch@^3.2.3:
-  version "3.2.10"
-  resolved "https://registry.yarnpkg.com/node-fetch/-/node-fetch-3.2.10.tgz#e8347f94b54ae18b57c9c049ef641cef398a85c8"
-  integrity sha512-MhuzNwdURnZ1Cp4XTazr69K0BTizsBroX7Zx3UgDSVcZYKF/6p0CBe4EUb/hLqmzVhl0UpYfgRljQ4yxE+iCxA==
-  dependencies:
-    data-uri-to-buffer "^4.0.0"
-    fetch-blob "^3.1.4"
-    formdata-polyfill "^4.0.10"
 
 node-gyp-build@^4.2.0, node-gyp-build@^4.3.0:
   version "4.5.0"
@@ -14103,11 +14078,6 @@ watchpack@^2.4.0:
     glob-to-regexp "^0.4.1"
     graceful-fs "^4.1.2"
 
-web-streams-polyfill@^3.0.3:
-  version "3.2.1"
-  resolved "https://registry.yarnpkg.com/web-streams-polyfill/-/web-streams-polyfill-3.2.1.tgz#71c2718c52b45fd49dbeee88634b3a60ceab42a6"
-  integrity sha512-e0MO3wdXWKrLbL0DgGnUV7WHVuw9OUvL4hjgnPkIeEvESk74gAITi5G606JtZPp39cd8HA9VQzCIvA49LpPN5Q==
-
 web3-bzz@1.7.5:
   version "1.7.5"
   resolved "https://registry.yarnpkg.com/web3-bzz/-/web3-bzz-1.7.5.tgz#edeb262c3a6619109763077a94172513cf07cdde"
@@ -14312,10 +14282,23 @@ web3-shh@1.7.5:
     web3-core-subscriptions "1.7.5"
     web3-net "1.7.5"
 
-web3-utils@1.7.5, web3-utils@^1.7.1:
+web3-utils@1.7.5:
   version "1.7.5"
   resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.7.5.tgz#081a952ac6e0322e25ac97b37358a43c7372ef6a"
   integrity sha512-9AqNOziQky4wNQadEwEfHiBdOZqopIHzQQVzmvvv6fJwDSMhP+khqmAZC7YTiGjs0MboyZ8tWNivqSO1699XQw==
+  dependencies:
+    bn.js "^5.2.1"
+    ethereum-bloom-filters "^1.0.6"
+    ethereumjs-util "^7.1.0"
+    ethjs-unit "0.1.6"
+    number-to-bn "1.7.0"
+    randombytes "^2.1.0"
+    utf8 "3.0.0"
+
+web3-utils@^1.7.1:
+  version "1.8.1"
+  resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.8.1.tgz#f2f7ca7eb65e6feb9f3d61056d0de6bbd57125ff"
+  integrity sha512-LgnM9p6V7rHHUGfpMZod+NST8cRfGzJ1BTXAyNo7A9cJX9LczBfSRxJp+U/GInYe9mby40t3v22AJdlELibnsQ==
   dependencies:
     bn.js "^5.2.1"
     ethereum-bloom-filters "^1.0.6"

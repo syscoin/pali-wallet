@@ -28,7 +28,11 @@ export const EvmAssetsList = () => {
         <Fragment key={uniqueId(id)}>
           <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
             <div className="flex gap-3 items-center justify-start">
-              {!isNft && logo && <img src={`${logo}`} alt="token logo" />}
+              {!isNft && logo && (
+                <div style={{ maxWidth: '25px', maxHeight: '25px' }}>
+                  <img src={`${logo}`} alt="token logo" />
+                </div>
+              )}
 
               <p className="font-rubik">
                 <span className="text-button-primary font-poppins">
