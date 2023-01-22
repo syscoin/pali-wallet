@@ -149,8 +149,8 @@ export const SendEth = () => {
                         {truncate(
                           String(
                             selectedAsset?.tokenSymbol
-                              ? selectedAsset?.tokenSymbol
-                              : activeNetwork.currency
+                              ? selectedAsset?.tokenSymbol.toUpperCase()
+                              : activeNetwork.currency.toUpperCase()
                           ),
                           2
                         )}
@@ -180,7 +180,7 @@ export const SendEth = () => {
                                 onClick={() => handleSelectedAsset('-1')}
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
-                                <p>MATIC</p>
+                                <p>{activeNetwork.currency.toUpperCase()}</p>
                                 <small>Native</small>
                               </button>
                             </Menu.Item>
