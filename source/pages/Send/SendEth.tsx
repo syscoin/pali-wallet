@@ -236,14 +236,22 @@ export const SendEth = () => {
                       : Number(activeAccount?.balances.ethereum);
 
                     if (
-                      selectedAsset &&
-                      !selectedAsset.isNft &&
+                      !selectedAsset &&
                       parseFloat(value) <= parseFloat(balance)
                     ) {
                       return Promise.resolve();
                     }
 
-                    if (selectedAsset && selectedAsset.isNft && value >= 0) {
+                    if (
+                      Boolean(
+                        selectedAsset && selectedAsset.isNft && value >= 0
+                      ) ||
+                      Boolean(
+                        selectedAsset &&
+                          !selectedAsset.isNft &&
+                          parseFloat(value) <= parseFloat(selectedAsset.balance)
+                      )
+                    ) {
                       return Promise.resolve();
                     }
 

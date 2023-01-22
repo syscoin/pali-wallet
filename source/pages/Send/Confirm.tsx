@@ -9,6 +9,7 @@ import {
   Button,
   Icon,
   LoadingComponent,
+  NeutralButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { saveTransaction } from 'scripts/Background/controllers/account/evm';
@@ -92,7 +93,6 @@ export const SendConfirm = () => {
             const response = await sysTxsController.sendTransaction(
               basicTxValues
             );
-
             setConfirmed(true);
             setLoading(false);
 
@@ -182,7 +182,7 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case false:
               try {
-                const responseSendErc20 = ethereumTxsController
+                ethereumTxsController
                   .sendSignedErc20Transaction({
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
@@ -217,10 +217,7 @@ export const SendConfirm = () => {
                   })
                   .then(async (response) => {
                     if (isExternal)
-                      dispatchBackgroundEvent(
-                        `txSend.${host}`,
-                        responseSendErc20
-                      );
+                      dispatchBackgroundEvent(`txSend.${host}`, response);
 
                     const provider = new ethers.providers.JsonRpcProvider(
                       activeNetwork.url
@@ -245,6 +242,8 @@ export const SendConfirm = () => {
                         basicTxValues.token.isNft,
                         basicTxValues.token.decimals
                       );
+
+                      setConfirmedTx(response);
                     }
                   });
 
@@ -299,6 +298,8 @@ export const SendConfirm = () => {
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft
                       );
+
+                      setConfirmedTx(response);
                     }
                   });
 
@@ -437,7 +438,7 @@ export const SendConfirm = () => {
             </span>
 
             <span>
-              {!basicTxValues.token.isNft ? (
+              {!basicTxValues.token?.isNft ? (
                 <>
                   {`${basicTxValues.amount} ${' '} ${
                     basicTxValues.token
@@ -477,7 +478,7 @@ export const SendConfirm = () => {
                       )} ${activeNetwork.currency?.toUpperCase()}`}
                 </span>
               </p>
-              {!isBitcoinBased && !basicTxValues.token.isNft ? (
+              {!isBitcoinBased && !basicTxValues.token?.isNft ? (
                 <span
                   className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                   onClick={() => setIsOpenEditFeeModal(true)}
@@ -515,7 +516,7 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-8 w-full">
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 flex items-center justify-center h-8 text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
@@ -526,8 +527,8 @@ export const SendConfirm = () => {
             >
               <Icon
                 name="arrow-up"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
+                className="w-5"
+                wrapperClassname="mr-2 flex items-center"
                 rotate={45}
               />
               Cancel
@@ -535,16 +536,29 @@ export const SendConfirm = () => {
 
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              className={`${
+                loading
+                  ? 'opacity-60 cursor-not-allowed'
+                  : 'opacity-100 hover:opacity-90'
+              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              <Icon
-                name="arrow-down"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-              />
+              {!loading ? (
+                <Icon
+                  name="arrow-down"
+                  className="w-5"
+                  wrapperClassname="flex items-center mr-2"
+                />
+              ) : (
+                <Icon
+                  name="loading"
+                  color="#fff"
+                  className="w-5 animate-spin-slow"
+                  wrapperClassname="mr-2 flex items-center"
+                />
+              )}
               Confirm
             </Button>
           </div>
