@@ -31,7 +31,6 @@ const DAppController = (): IDAppController => {
   const setup = (port: Runtime.Port) => {
     const { host } = new URL(port.sender.url);
     const activeAccount = getAccount(host)?.address;
-    console.log('Checking host on setup', host);
     _dapps[host] = {
       activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
@@ -119,11 +118,11 @@ const DAppController = (): IDAppController => {
         ) as unknown as IDApp[];
         for (const dapp of dapps) {
           if (id === PaliEvents.lockStateChanged && _dapps[dapp.host]) {
-            console.log(
-              'Checking dapps connections',
-              _dapps[dapp.host],
-              dapp.host
-            );
+            // console.log(
+            //   'Checking dapps connections',
+            //   _dapps[dapp.host],
+            //   dapp.host
+            // );
             data.params.accounts = data.params.isUnlocked
               ? [_dapps[dapp.host].activeAddress]
               : [];

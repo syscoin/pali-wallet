@@ -60,7 +60,6 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<IKeyringAccountState>
     ) {
-      console.log({ account: action.payload });
       state.accounts[action.payload.id] = action.payload;
     },
     setNetworks(

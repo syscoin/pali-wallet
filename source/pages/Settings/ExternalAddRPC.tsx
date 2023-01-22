@@ -19,12 +19,12 @@ const CustomRPCExternal = () => {
     setLoading(true);
 
     try {
-      await controller.wallet.addCustomRpc(customRpc).then((network) => {
+      await controller.wallet.addCustomRpc(customRpc).then(async (network) => {
         setConfirmed(true);
         setLoading(false);
         const type = data.eventName;
         dispatchBackgroundEvent(`${type}.${host}`, null);
-        wallet.setActiveNetwork(network, 'ethereum');
+        await wallet.setActiveNetwork(network, 'ethereum');
       });
     } catch (error: any) {
       alert.removeAll();

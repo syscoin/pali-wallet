@@ -25,9 +25,6 @@ export function log(
   object?: any,
   alwaysShowObject = false
 ) {
-  //* log
-  console.log(logFormatter(message, prefix));
-
   //* display object
   if (!object) return;
   if (!isProd || alwaysShowObject) console.dir(object);

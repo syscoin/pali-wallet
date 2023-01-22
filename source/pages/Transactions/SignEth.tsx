@@ -76,7 +76,6 @@ const EthSign: React.FC<ISign> = () => {
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
-      console.log('Error', error);
       setErrorMsg(error.message);
 
       setTimeout(window.close, 40000);
