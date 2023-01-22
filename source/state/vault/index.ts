@@ -1,11 +1,14 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { ethers } from 'ethers';
 
 import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { getErc20Abi, getErc21Abi, INetwork } from '@pollum-io/sysweb3-utils';
+
+import { ITokenEthProps } from 'types/tokens';
 
 import { IChangingConnectedAccount, IVaultState } from './types';
 
@@ -204,6 +207,37 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
+    setUpdatedTokenBalace(
+      state: IVaultState,
+      action: PayloadAction<{ accountId: number; tokenAddress: string }>
+    ) {
+      const { accountId, tokenAddress } = action.payload;
+      const { activeNetwork, accounts, activeAccount } = state;
+
+      const findAccount = accounts[accountId];
+
+      if (findAccount.address === activeAccount.address) {
+        const getCurrentToken: ITokenEthProps =
+          activeAccount.assets.ethereum.find(
+            (token: ITokenEthProps) => token.contractAddress === tokenAddress
+          );
+
+        const provider = new ethers.providers.JsonRpcProvider(
+          activeNetwork.url
+        );
+
+        const _contract = new ethers.Contract(
+          tokenAddress,
+          getCurrentToken.isNft ? getErc21Abi() : getErc20Abi(),
+          provider
+        );
+
+        _contract
+          .balanceOf(findAccount.address)
+          .then((response) => console.log('response balance', response))
+          .catch((error) => console.log('error balance', error));
+      }
+    },
   },
 });
 
@@ -229,6 +263,7 @@ export const {
   setAccountTransactions,
   setStoreError,
   setIsBitcoinBased,
+  setUpdatedTokenBalace,
 } = VaultState.actions;
 
 export default VaultState.reducer;

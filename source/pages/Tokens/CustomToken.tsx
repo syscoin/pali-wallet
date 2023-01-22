@@ -13,7 +13,7 @@ import {
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, NeutralButton } from 'components/index';
+import { DefaultModal, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -27,6 +27,7 @@ export const CustomToken = () => {
   const { navigate } = useUtils();
 
   const [added, setAdded] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [ercError, setErcError] = useState({
     errorType: '',
     message: '',
@@ -80,7 +81,7 @@ export const CustomToken = () => {
       });
 
       setAdded(true);
-
+      setIsLoading(false);
       return;
     }
   };
@@ -94,6 +95,7 @@ export const CustomToken = () => {
     decimals: number;
     symbol: string;
   }) => {
+    setIsLoading(true);
     setActiveNetwork(activeNetwork);
 
     const contractResponse = (await contractChecker(
@@ -107,6 +109,8 @@ export const CustomToken = () => {
         message:
           'Invalid contract address. Verify the current contract address or the current network!',
       });
+
+      setIsLoading(false);
 
       return;
     }
@@ -137,11 +141,12 @@ export const CustomToken = () => {
             isNft: true,
             balance: balanceToNumber,
           });
-
+          setIsLoading(false);
           setAdded(true);
 
           return;
         } catch (_erc721Error) {
+          setIsLoading(false);
           setErcError({
             errorType: 'Undefined',
             message: '',
@@ -149,6 +154,7 @@ export const CustomToken = () => {
         }
         break;
       case 'ERC-1155':
+        setIsLoading(false);
         setErcError({
           errorType: 'ERC-1155',
           message: contractResponse.message,
@@ -158,8 +164,11 @@ export const CustomToken = () => {
         // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
         // has not been founded
         try {
-          return await handleERC20Tokens(contractAddress, decimals);
+          await handleERC20Tokens(contractAddress, decimals);
+          setIsLoading(false);
+          return;
         } catch (_ercUndefinedError) {
+          setIsLoading(false);
           setErcError({
             errorType: 'Undefined',
             message: '',
@@ -253,7 +262,13 @@ export const CustomToken = () => {
 
         <div className="flex flex-col items-center justify-center w-full">
           <div className="absolute bottom-12 md:static">
-            <NeutralButton type="submit">Next</NeutralButton>
+            <NeutralButton
+              type="submit"
+              disabled={isLoading}
+              loading={isLoading}
+            >
+              Next
+            </NeutralButton>
           </div>
         </div>
       </Form>

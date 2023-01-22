@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { EthereumTransactions } from '@pollum-io/sysweb3-keyring';
+
 import {
   Layout,
   DefaultModal,
@@ -11,7 +13,8 @@ import {
   LoadingComponent,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { setUpdatedTokenBalace } from 'state/vault';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import {
@@ -28,6 +31,9 @@ export const SendConfirm = () => {
     refresh,
     wallet: { account },
   } = getController();
+
+  const { sendSignedErc20Transaction, sendSignedErc721Transaction } =
+    EthereumTransactions();
 
   const { alert, navigate } = useUtils();
 
@@ -178,16 +184,113 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case false:
               try {
+                const responseSendErc20 = await sendSignedErc20Transaction({
+                  networkUrl: activeNetwork.url,
+                  receiver: txObjectState.to,
+                  tokenAddress: basicTxValues.token.contractAddress,
+                  tokenAmount: basicTxValues.amount,
+                  // maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  //   String(
+                  //     Boolean(
+                  //       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  //     )
+                  //       ? customFee.maxPriorityFeePerGas.toFixed(9)
+                  //       : fee.maxPriorityFeePerGas.toFixed(9)
+                  //   ),
+                  //   9
+                  // ),
+                  // maxFeePerGas: ethers.utils.parseUnits(
+                  //   String(
+                  //     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                  //       ? customFee.maxFeePerGas.toFixed(9)
+                  //       : fee.maxFeePerGas.toFixed(9)
+                  //   ),
+                  //   9
+                  // ),
+                  // gasLimit: ethereumTxsController.toBigNumber(
+                  //   validateCustomGasLimit
+                  //     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                  //     : fee.gasLimit
+                  // ),
+                });
+
+                setConfirmed(true);
+                setLoading(false);
+
+                if (isExternal)
+                  dispatchBackgroundEvent(`txSend.${host}`, responseSendErc20);
+
+                console.log('responseSendErc20', responseSendErc20);
+
+                return responseSendErc20;
               } catch (_erc20Error) {
-                console.log('_erc20Error', _erc20Error);
+                logError('error send ERC20', 'Transaction', _erc20Error);
+
+                alert.removeAll();
+                alert.error("Can't complete transaction. Try again later.");
+
+                if (isExternal) setTimeout(window.close, 4000);
+                else setLoading(false);
               }
               break;
 
             //HANDLE ERC721 NFTS TRANSACTIONS
             case true:
               try {
+                const responseSendErc721 = await sendSignedErc20Transaction({
+                  networkUrl: activeNetwork.url,
+                  receiver: txObjectState.to,
+                  tokenAddress: basicTxValues.token.contractAddress,
+                  tokenAmount: basicTxValues.amount,
+                  // maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  //   String(
+                  //     Boolean(
+                  //       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  //     )
+                  //       ? customFee.maxPriorityFeePerGas.toFixed(9)
+                  //       : fee.maxPriorityFeePerGas.toFixed(9)
+                  //   ),
+                  //   9
+                  // ),
+                  // maxFeePerGas: ethers.utils.parseUnits(
+                  //   String(
+                  //     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                  //       ? customFee.maxFeePerGas.toFixed(9)
+                  //       : fee.maxFeePerGas.toFixed(9)
+                  //   ),
+                  //   9
+                  // ),
+                  // gasLimit: ethereumTxsController.toBigNumber(
+                  //   validateCustomGasLimit
+                  //     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                  //     : fee.gasLimit
+                  // ),
+                });
+
+                setConfirmed(true);
+                setLoading(false);
+
+                if (isExternal)
+                  dispatchBackgroundEvent(`txSend.${host}`, responseSendErc721);
+
+                console.log('responseSendErc721', responseSendErc721);
+
+                store.dispatch(
+                  setUpdatedTokenBalace({
+                    accountId: activeAccount.id,
+                    tokenAddress: basicTxValues.token.contractAddress,
+                  })
+                );
+
+                return responseSendErc721;
               } catch (_erc721Error) {
-                console.log('_erc721Error', _erc721Error);
+                logError('error send ERC721', 'Transaction', _erc721Error);
+
+                alert.removeAll();
+                alert.error("Can't complete transaction. Try again later.");
+
+                if (isExternal) setTimeout(window.close, 4000);
+                else setLoading(false);
               }
 
               break;
