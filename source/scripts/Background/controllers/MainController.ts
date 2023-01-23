@@ -400,7 +400,8 @@ const MainController = (): IMainController => {
   };
 
   const updateNativeTokenBalance = async (accountId: number) => {
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const { accounts, activeAccount, activeNetwork, isNetworkChanging } =
+      store.getState().vault;
 
     const findAccount = accounts[accountId];
 
@@ -413,13 +414,13 @@ const MainController = (): IMainController => {
     const balance = ethers.utils.formatEther(callBalance);
 
     const formattedBalance = lodash.floor(parseFloat(balance), 4);
-
-    store.dispatch(
-      setUpdatedNativeTokenBalance({
-        accountId: findAccount.id,
-        balance: formattedBalance,
-      })
-    );
+    if (!isNetworkChanging)
+      store.dispatch(
+        setUpdatedNativeTokenBalance({
+          accountId: findAccount.id,
+          balance: formattedBalance,
+        })
+      );
   };
 
   const updateErcTokenBalances = async (

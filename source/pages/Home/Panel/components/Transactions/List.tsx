@@ -46,9 +46,13 @@ export const TransactionsList = () => {
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
-      idx === 0 ||
-      new Date(tx[blocktime] * 1e3).toDateString() !==
-        new Date(transactions[idx - 1][blocktime] * 1e3).toDateString(),
+      tx === null &&
+      tx === undefined &&
+      transactions[idx - 1] === undefined &&
+      transactions[idx - 1] === null &&
+      (idx === 0 ||
+        new Date(tx[blocktime] * 1e3).toDateString() !==
+          new Date(transactions[idx - 1][blocktime] * 1e3).toDateString()),
     [transactions]
   );
 
@@ -57,9 +61,9 @@ export const TransactionsList = () => {
       {transactions
         .filter((item: any) => {
           if (!isBitcoinBased) {
-            return item.chainId === chainId;
+            return item?.chainId === chainId;
           }
-          return item !== undefined;
+          return item !== undefined && item !== null;
         })
         .sort((a: any, b: any) => {
           if (a[blocktime] > b[blocktime]) {
@@ -81,7 +85,6 @@ export const TransactionsList = () => {
                 minute: '2-digit',
               }
             );
-
           return (
             tx[blocktime] && (
               <Fragment key={uniqueId(tx[txid])}>
