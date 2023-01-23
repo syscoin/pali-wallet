@@ -10,6 +10,11 @@ export enum PaliEvents {
   chainChanged = 'pali_chainChanged',
   lockStateChanged = 'pali_unlockStateChanged',
 }
+export enum PaliSyscoinEvents {
+  blockExplorerChanged = 'pali_blockExplorerChanged',
+  lockStateChanged = 'pali_unlockStateChanged',
+  xpubChanged = 'pali_xpubChanged',
+}
 
 // TODO review dapp methods
 export enum DAppMethods {

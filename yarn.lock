@@ -1943,29 +1943,7 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.217":
-  version "1.1.217"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.217.tgz#3b9ffac2031225fdf51ab7505d153f33dc203f69"
-  integrity sha512-IQC/UTae9rI1d1OcKzlgwGixBC2rlVl/YwdzUTBt7Bb4ysqA/62RXYNZ2+g+M+rKKtWM9UsPgtbx3tJUGnATHw==
-  dependencies:
-    "@ethersproject/contracts" "^5.6.2"
-    "@pollum-io/sysweb3-core" "^1.0.19"
-    "@pollum-io/sysweb3-network" "^1.0.84"
-    axios "^0.26.1"
-    bech32 "^2.0.0"
-    bip32 "^3.0.1"
-    bip44-constants "^114.0.0"
-    bip84 "^0.2.7"
-    bitcoinjs-lib "^6.0.1"
-    camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
-    crypto-js "^4.1.1"
-    ethers "^5.6.4"
-    syscoinjs-lib "^1.0.214"
-    syscointx-js "^1.0.101"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-utils@^1.1.218":
+"@pollum-io/sysweb3-utils@^1.1.217", "@pollum-io/sysweb3-utils@^1.1.218":
   version "1.1.218"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.218.tgz#941d78049e0fe56cfc5c95d05e0860352377ad8d"
   integrity sha512-hCDA6oyLQaGLWX0JJMm7toWu+SBd3wcErWYW/iatyv90ivRFAhLrAqWG3k/5RyDCHE+g+R3SonA3tOQWJLcoCA==
@@ -14304,10 +14282,23 @@ web3-shh@1.7.5:
     web3-core-subscriptions "1.7.5"
     web3-net "1.7.5"
 
-web3-utils@1.7.5, web3-utils@^1.7.1:
+web3-utils@1.7.5:
   version "1.7.5"
   resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.7.5.tgz#081a952ac6e0322e25ac97b37358a43c7372ef6a"
   integrity sha512-9AqNOziQky4wNQadEwEfHiBdOZqopIHzQQVzmvvv6fJwDSMhP+khqmAZC7YTiGjs0MboyZ8tWNivqSO1699XQw==
+  dependencies:
+    bn.js "^5.2.1"
+    ethereum-bloom-filters "^1.0.6"
+    ethereumjs-util "^7.1.0"
+    ethjs-unit "0.1.6"
+    number-to-bn "1.7.0"
+    randombytes "^2.1.0"
+    utf8 "3.0.0"
+
+web3-utils@^1.7.1:
+  version "1.8.1"
+  resolved "https://registry.yarnpkg.com/web3-utils/-/web3-utils-1.8.1.tgz#f2f7ca7eb65e6feb9f3d61056d0de6bbd57125ff"
+  integrity sha512-LgnM9p6V7rHHUGfpMZod+NST8cRfGzJ1BTXAyNo7A9cJX9LczBfSRxJp+U/GInYe9mby40t3v22AJdlELibnsQ==
   dependencies:
     bn.js "^5.2.1"
     ethereum-bloom-filters "^1.0.6"

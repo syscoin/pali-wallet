@@ -1,50 +1,20 @@
-import { EventEmitter } from 'events';
 import dequal from 'fast-deep-equal';
 
+import {
+  BaseProvider,
+  UnvalidatedJsonRpcRequest,
+  JsonRpcSuccessStruct,
+} from './BaseProvider';
 import messages from './messages';
 import {
   EMITTED_NOTIFICATIONS,
   getRpcPromiseCallback,
+  NOOP,
   isValidChainId,
   isValidNetworkVersion,
-  NOOP,
 } from './utils';
-export type Maybe<T> = Partial<T> | null | undefined;
-type WarningEventName = keyof SentWarningsState['events'];
-export declare type JsonRpcVersion = '2.0';
-// eslint-disable-next-line @typescript-eslint/naming-convention
-interface SentWarningsState {
-  // methods
-  disable: boolean;
-  enable: boolean;
-  // events
-  events: {
-    close: boolean;
-    data: boolean;
-    networkChanged: boolean;
-    notification: boolean;
-  };
-  // methods
-  experimentalMethods: boolean;
-  send: boolean;
-}
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export interface BaseProviderState {
-  accounts: null | string[];
-  initialized: boolean;
-  isConnected: boolean;
-  isPermanentlyDisconnected: boolean;
-  isUnlocked: boolean;
-}
-// eslint-disable-next-line @typescript-eslint/naming-convention
-interface RequestArguments {
-  /** The RPC method to request. */
-  method: string;
 
-  /** The params of the RPC method, if any. */
-  params?: unknown[] | Record<string, unknown>;
-}
-
+// eslint-disable-next-line @typescript-eslint/naming-convention
 interface SendSyncJsonRpcRequest {
   id: any;
   jsonrpc: any;
@@ -54,98 +24,54 @@ interface SendSyncJsonRpcRequest {
     | 'eth_uninstallFilter'
     | 'net_version';
 }
-interface JsonRpcSuccessStruct {
-  id: number;
-  jsonrpc: JsonRpcVersion;
-  result: any;
-}
-
-/**
- * A successful JSON-RPC response object.
- */
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
-export interface UnvalidatedJsonRpcRequest {
-  id?: number;
-  method: string;
-  params?: unknown;
+interface EthereumProviderState {
+  accounts: null | string[];
+  initialized: boolean;
+  isConnected: boolean;
+  isPermanentlyDisconnected: boolean;
+  isUnlocked: boolean;
 }
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export interface EnableLegacyPali {
-  chain: string;
-  chainId?: unknown;
-}
-//TODO: switch to SafeEventEmitter
-export class PaliInpageProvider extends EventEmitter {
+
+export class PaliInpageProviderEth extends BaseProvider {
   public readonly _metamask: ReturnType<
-    PaliInpageProvider['_getExperimentalApi']
+    PaliInpageProviderEth['_getExperimentalApi']
   >;
-  public chainType: string;
   public networkVersion: string | null;
   public chainId: string | null;
   public selectedAddress: string | null;
-  public wallet: string;
-  private static _defaultState: BaseProviderState = {
+  private static _defaultState: EthereumProviderState = {
     accounts: null,
     isConnected: false,
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
   };
-  private _state: BaseProviderState;
-  private _sentWarnings: SentWarningsState = {
-    // methods
-    enable: false,
-    disable: false,
-    experimentalMethods: false,
-    send: false,
-    // events
-    events: {
-      close: false,
-      data: false,
-      networkChanged: false,
-      notification: false,
-    },
-  };
-
-  /**
-   * Indicating that this provider is a MetaMask provider.
-   */
+  protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
-  public readonly version: number | null = null;
-  constructor(chainType, maxEventListeners = 100, wallet = 'pali-v2') {
-    super();
-    this.setMaxListeners(maxEventListeners);
-    // Private state
-    this._state = {
-      ...PaliInpageProvider._defaultState,
-    };
-    if (chainType === 'syscoin') {
-      //TODO: in case of syscoin chain nulify ethereum variables
-      this.isMetaMask = false;
-      this.version = 2;
-    }
-    // Public state
-    this.selectedAddress = null;
-    this.chainId = null;
-    this.wallet = wallet;
-    this._state;
-    this.chainType = chainType;
+  constructor(maxEventListeners = 100, wallet = 'pali-v2') {
+    super('ethereum', maxEventListeners, wallet);
     this._metamask = this._getExperimentalApi();
+    this._sendSync = this._sendSync.bind(this);
+    this.send = this.send.bind(this);
+    this.sendAsync = this.sendAsync.bind(this);
     this._handleAccountsChanged = this._handleAccountsChanged.bind(this);
     this._handleConnect = this._handleConnect.bind(this);
     this._handleChainChanged = this._handleChainChanged.bind(this);
     this._handleDisconnect = this._handleDisconnect.bind(this);
     this._handleUnlockStateChanged = this._handleUnlockStateChanged.bind(this);
-    this._rpcRequest = this._rpcRequest.bind(this);
-    this.request = this.request.bind(this);
-    this._sendSync = this._sendSync.bind(this);
-    this.send = this.send.bind(this);
-    this.sendAsync = this.sendAsync.bind(this);
+    // Private state
+    this._state = {
+      ...PaliInpageProviderEth._defaultState,
+    };
+    // Public state
+    this.selectedAddress = null;
+    this.chainId = null;
     this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
-          PaliInpageProvider['_initializeState']
+          PaliInpageProviderEth['_initializeState']
         >[0];
         this._initializeState(initialState);
       })
@@ -155,11 +81,11 @@ export class PaliInpageProvider extends EventEmitter {
           error
         )
       );
-
     window.addEventListener(
       'notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
+        // console.log('EthereumProvider: Received new message', method, params);
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);
@@ -174,7 +100,8 @@ export class PaliInpageProvider extends EventEmitter {
             //TODO: implement subscription messages
             throw {
               code: 69,
-              message: 'Pali: Does not yet have subscription to rpc methods',
+              message:
+                'Pali EthereumProvider: Does not yet have subscription to rpc methods',
             };
           default:
             this._handleDisconnect(
@@ -189,53 +116,18 @@ export class PaliInpageProvider extends EventEmitter {
     );
   }
 
-  //====================
-  // Public Methods
-  //====================
-
   /**
    * Returns whether the provider can process RPC requests.
    */
   isConnected(): boolean {
     return this._state.isConnected;
   }
+
   /**
-   * Submits an RPC request for the given method, with the given params.
-   * Resolves with the result of the method call, or rejects on error.
+   * Internal backwards compatibility method, used in send.
    *
-   * @param args - The RPC request arguments.
-   * @param args.method - The RPC method name.
-   * @param args.params - The parameters for the RPC method.
-   * @returns A Promise that resolves with the result of the RPC method,
-   * or rejects if an error is encountered.
+   * @deprecated
    */
-  public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
-    if (!args || typeof args !== 'object' || Array.isArray(args)) {
-      throw messages.errors.invalidRequestArgs();
-    }
-
-    const { method, params } = args;
-
-    if (typeof method !== 'string' || method.length === 0) {
-      throw messages.errors.invalidRequestMethod();
-    }
-
-    if (
-      params !== undefined &&
-      !Array.isArray(params) &&
-      (typeof params !== 'object' || params === null)
-    ) {
-      throw messages.errors.invalidRequestParams();
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      this._rpcRequest(
-        { method, params },
-        getRpcPromiseCallback(resolve, reject, false)
-      );
-    });
-  }
-
   sendAsync(
     payload: any,
     callback: (error: Error | null, result?: any) => void
@@ -243,6 +135,11 @@ export class PaliInpageProvider extends EventEmitter {
     this._rpcRequest(payload, callback);
   }
 
+  /**
+   * Internal backwards compatibility method, used in send.
+   *
+   * @deprecated
+   */
   send(methodOrPayload: unknown, callbackOrArgs?: unknown): unknown {
     if (!this._sentWarnings.send) {
       console.warn(messages.warnings.sendDeprecation);
@@ -276,6 +173,32 @@ export class PaliInpageProvider extends EventEmitter {
     return this._sendSync(methodOrPayload as SendSyncJsonRpcRequest);
   }
 
+  //====================
+  // Private Methods
+  //====================
+
+  protected async _rpcRequest(
+    payload: UnvalidatedJsonRpcRequest | UnvalidatedJsonRpcRequest[], //TODO: refactor to accept incoming batched requests
+    callback: (...args: any[]) => void
+  ) {
+    let cb = callback;
+    if (!Array.isArray(payload)) {
+      if (
+        payload.method === 'eth_requestAccounts' ||
+        payload.method === 'eth_accounts'
+      ) {
+        // handle accounts changing
+        cb = (err: Error, res: JsonRpcSuccessStruct) => {
+          this._handleAccountsChanged(
+            res?.result || [],
+            payload.method === 'eth_accounts'
+          );
+          callback(err, res);
+        };
+      }
+    }
+    return super._rpcRequest(payload, cb);
+  }
   /**
    * Internal backwards compatibility method, used in send.
    *
@@ -312,170 +235,6 @@ export class PaliInpageProvider extends EventEmitter {
     };
   }
 
-  /**
-   * Equivalent to: ethereum.request('eth_requestAccounts')
-   *
-   * @deprecated Use request({ method: 'eth_requestAccounts' }) instead.
-   * @returns A promise that resolves to an array of addresses.
-   */
-  //TODO: properly deprecate enable and change implementation on background of it
-  public async enable(): Promise<string[]> {
-    if (!this._sentWarnings.enable) {
-      console.warn(messages.warnings.enableDeprecation);
-      this._sentWarnings.enable = true;
-    }
-
-    return new Promise<string[]>(async (resolve, reject) => {
-      try {
-        const acc: string[] = (await this.proxy('ENABLE', {
-          chain: this.chainType,
-          chainId: this.chainType === 'ethereum' ? '0x01' : '0x57',
-        })) as string[];
-        resolve(acc);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-  //TODO: properly deprecate disable and change implementation on background of it
-  public async disable(): Promise<string[]> {
-    if (!this._sentWarnings.disable) {
-      console.warn(messages.warnings.enableDeprecation);
-      this._sentWarnings.enable = true;
-    }
-    return new Promise<string[]>(async (resolve, reject) => {
-      try {
-        const acc: string[] = (await this.proxy('DISABLE', {
-          chain: this.chainType,
-          chainId: this.chainType === 'ethereum' ? '0x01' : '0x57',
-        })) as string[];
-        resolve(acc);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-  //====================
-  // Private Methods
-  //====================
-
-  /**
-   *
-   * Sets initial state if provided and marks this provider as initialized.
-   * Throws if called more than once.
-   *
-   * @param initialState - The provider's initial state.
-   * @emits BaseProvider#_initialized
-   * @emits BaseProvider#connect - If `initialState` is defined.
-   */
-  private _initializeState(initialState?: {
-    accounts: string[];
-    chainId: string;
-    isUnlocked: boolean;
-    networkVersion?: string;
-  }) {
-    if (this._state.initialized === true) {
-      throw new Error('Provider already initialized.');
-    }
-
-    if (initialState) {
-      const { accounts, chainId, isUnlocked, networkVersion } = initialState;
-
-      // EIP-1193 connect
-      this._handleConnect(chainId);
-      this._handleChainChanged({ chainId, networkVersion });
-      this._handleUnlockStateChanged({ accounts, isUnlocked });
-      this._handleAccountsChanged(accounts);
-    }
-
-    // Mark provider as initialized regardless of whether initial state was
-    // retrieved.
-    this._state.initialized = true;
-    this.emit('_initialized');
-  }
-  private async _rpcRequest(
-    payload: UnvalidatedJsonRpcRequest | UnvalidatedJsonRpcRequest[], //TODO: refactor to accept incoming batched requests
-    callback: (...args: any[]) => void
-  ) {
-    let cb = callback;
-    let error = null;
-    let result = null;
-    let formatedResult = null;
-    if (!Array.isArray(payload)) {
-      if (
-        payload.method === 'eth_requestAccounts' ||
-        payload.method === 'eth_accounts'
-      ) {
-        // handle accounts changing
-        cb = (err: Error, res: JsonRpcSuccessStruct) => {
-          this._handleAccountsChanged(
-            res?.result || [],
-            payload.method === 'eth_accounts'
-          );
-          callback(err, res);
-        };
-      }
-
-      try {
-        result = await this.proxy('METHOD_REQUEST', payload);
-        formatedResult = {
-          id: payload.id || 1,
-          jsonrpc: '2.0' as JsonRpcVersion,
-          result: result,
-        };
-      } catch (_error) {
-        // A request handler error, a re-thrown middleware error, or something
-        // unexpected.
-        error = _error;
-      }
-      return cb(error, formatedResult);
-    }
-    error = {
-      code: 123,
-      message: messages.errors.invalidBatchRequest(),
-      data: null,
-    };
-    return callback(error, result);
-  }
-  private proxy = (
-    type: string,
-    data: UnvalidatedJsonRpcRequest | EnableLegacyPali
-  ) =>
-    new Promise((resolve, reject) => {
-      const id = Date.now() + '.' + Math.random();
-
-      window.addEventListener(
-        id,
-        (event: any) => {
-          if (event.detail === undefined) {
-            resolve(undefined);
-            return;
-          } else if (event.detail === null) {
-            resolve(null);
-            return;
-          }
-
-          const response = JSON.parse(event.detail);
-          if (response.error) {
-            reject(response.error);
-          }
-          resolve(response);
-        },
-        {
-          once: true,
-          passive: true,
-        }
-      );
-      window.postMessage(
-        {
-          id,
-          type,
-          data,
-        },
-        '*'
-      );
-    });
-
   private _handleAccountsChanged(
     accounts: unknown[],
     isEthAccounts = false
@@ -484,7 +243,7 @@ export class PaliInpageProvider extends EventEmitter {
 
     if (!Array.isArray(accounts)) {
       console.error(
-        'Pali: Received invalid accounts parameter. Please report this bug.',
+        'Pali EthereumProvider: Received invalid accounts parameter. Please report this bug.',
         accounts
       );
       _accounts = [];
@@ -493,7 +252,7 @@ export class PaliInpageProvider extends EventEmitter {
     for (const account of accounts) {
       if (typeof account !== 'string' && account !== null) {
         console.error(
-          'Pali: Received non-string account. Please report this bug.',
+          'Pali EthereumProvider: Received non-string account. Please report this bug.',
           accounts
         );
         _accounts = [];
@@ -511,7 +270,7 @@ export class PaliInpageProvider extends EventEmitter {
         this._state.accounts.length !== 0
       ) {
         console.error(
-          `Pali: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
+          `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
           _accounts
         );
       }
@@ -529,6 +288,7 @@ export class PaliInpageProvider extends EventEmitter {
       }
     }
   }
+
   /**
    * When the provider becomes connected, updates internal state and emits
    * required events. Idempotent.
@@ -625,6 +385,7 @@ export class PaliInpageProvider extends EventEmitter {
       this.emit('disconnect', error);
     }
   }
+
   /**
    * Upon receipt of a new isUnlocked state, sets relevant public state.
    * Calls the accounts changed handler with the received accounts, or an empty
@@ -643,7 +404,7 @@ export class PaliInpageProvider extends EventEmitter {
   }: { accounts?: string[]; isUnlocked?: boolean } = {}) {
     if (typeof isUnlocked !== 'boolean') {
       console.error(
-        'Pali: Received invalid isUnlocked parameter. Please report this bug.'
+        'Pali EthereumProvider: Received invalid isUnlocked parameter. Please report this bug.'
       );
       return;
     }
@@ -653,11 +414,40 @@ export class PaliInpageProvider extends EventEmitter {
       this._handleAccountsChanged(accounts || []);
     }
   }
-  private _warnOfDeprecation(eventName: string): void {
-    if (this._sentWarnings?.events[eventName as WarningEventName] === false) {
-      console.warn(messages.warnings.events[eventName as WarningEventName]);
-      this._sentWarnings.events[eventName as WarningEventName] = true;
+
+  /**
+   *
+   * Sets initial state if provided and marks this provider as initialized.
+   * Throws if called more than once.
+   *
+   * @param initialState - The provider's initial state.
+   * @emits EthereumProvider#_initialized
+   * @emits EthereumProvider#connect - If `initialState` is defined.
+   */
+  private _initializeState(initialState?: {
+    accounts: string[];
+    chainId: string;
+    isUnlocked: boolean;
+    networkVersion?: string;
+  }) {
+    if (this._state.initialized === true) {
+      throw new Error('Pali EthereumProvider: Provider already initialized.');
     }
+
+    if (initialState) {
+      const { accounts, chainId, isUnlocked, networkVersion } = initialState;
+
+      // EIP-1193 connect
+      this._handleConnect(chainId);
+      this._handleChainChanged({ chainId, networkVersion });
+      this._handleUnlockStateChanged({ accounts, isUnlocked });
+      this._handleAccountsChanged(accounts);
+    }
+
+    // Mark provider as initialized regardless of whether initial state was
+    // retrieved.
+    this._state.initialized = true;
+    this.emit('_initialized');
   }
 
   private _getExperimentalApi() {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
@@ -12,13 +12,31 @@ export const TransactionsPanel = () => {
     (state: RootState) => state.vault.activeAccount
   );
   const { isLoadingTxs } = useSelector((state: RootState) => state.vault);
+  const [internalLoading, setInternalLoading] = useState<any>(isLoadingTxs);
   const transactions = Object.values(activeAccount.transactions);
+  const seconds = 10000;
 
   const NoTransactionsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
       <p>You have no transaction history.</p>
     </div>
   );
+
+  const validateTimeoutError = () => {
+    if (isLoadingTxs) {
+      setTimeout(() => {
+        setInternalLoading(false);
+      }, seconds);
+    }
+  };
+
+  useEffect(() => {
+    validateTimeoutError();
+  }, [isLoadingTxs]);
+
+  useEffect(() => {
+    setInternalLoading(isLoadingTxs);
+  }, [isLoadingTxs]);
 
   return transactions.length === 0 ? (
     <>
@@ -28,7 +46,7 @@ export const TransactionsPanel = () => {
   ) : (
     <>
       <div className="p-4 w-full text-white text-base bg-bkg-3">
-        {isLoadingTxs ? <LoadingComponent /> : <TransactionsList />}
+        {internalLoading ? <LoadingComponent /> : <TransactionsList />}
       </div>
 
       <Fullscreen />

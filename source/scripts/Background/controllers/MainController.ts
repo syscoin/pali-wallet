@@ -43,7 +43,7 @@ import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
-import { PaliEvents } from './message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -186,12 +186,6 @@ const MainController = (): IMainController => {
 
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(accounts[id]));
-    // if (isBitcoinBased) {
-    //   window.controller.dapp.dispatchEvent(
-    //     DAppEvents.accountsChanged,
-    //     removeXprv(accounts[id])
-    //   );
-    // } // TODO: check if this is relevant in any form to syscoin events
   };
 
   const setActiveNetwork = async (
@@ -287,6 +281,13 @@ const MainController = (): IMainController => {
                 networkVersion: activeNetwork.chainId,
               },
             });
+            window.controller.dapp.handleBlockExplorerChange(
+              PaliSyscoinEvents.blockExplorerChanged,
+              {
+                method: PaliSyscoinEvents.blockExplorerChanged,
+                params: isBitcoinBased ? network.url : null,
+              }
+            );
 
             const { assets } = activeAccount;
 
@@ -376,6 +377,9 @@ const MainController = (): IMainController => {
 
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
   };
+
+  const getChangeAddress = (accountId: number) =>
+    keyringManager.getChangeAddress(accountId);
 
   const getRecommendedFee = () => {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
@@ -469,6 +473,7 @@ const MainController = (): IMainController => {
     removeKeyringNetwork,
     resolveAccountConflict,
     resolveError,
+    getChangeAddress,
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
