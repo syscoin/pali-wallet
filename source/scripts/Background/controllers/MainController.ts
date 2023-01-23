@@ -346,7 +346,7 @@ const MainController = (): IMainController => {
 
     const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
-    store.dispatch(setNetworks({ chain, network }));
+    store.dispatch(setNetworks({ chain, network, isEdit: false }));
 
     return network;
   };
@@ -357,6 +357,7 @@ const MainController = (): IMainController => {
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await getRpc(newRpc);
+    const newNetwork = { ...network, label: newRpc.label };
 
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
@@ -368,15 +369,19 @@ const MainController = (): IMainController => {
         })
       );
     }
-    store.dispatch(setNetworks({ chain, network }));
+    store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
 
-    return network;
+    return newNetwork;
   };
 
-  const removeKeyringNetwork = (chain: string, chainId: number) => {
+  const removeKeyringNetwork = (
+    chain: string,
+    chainId: number,
+    key?: string
+  ) => {
     keyringManager.removeNetwork(chain, chainId);
 
-    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId }));
+    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId, key }));
   };
 
   const getChangeAddress = (accountId: number) =>

@@ -100,12 +100,17 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const onSubmit = async () => {
     setLoading(true);
 
-    if (activeAccount.balances.syscoin <= 0) return;
+    if (activeAccount.balances.syscoin <= 0) {
+      const message = `You don't have enough funds to process this transaction. Your actual balance is: ${activeAccount.balances.syscoin}`;
+
+      setLoading(false);
+      setErrorMsg(message);
+      return;
+    }
 
     try {
       const callback = callbackResolver(type);
       const response = await callback(transaction);
-
       setLoading(false);
       setSubmitted(true);
 
@@ -114,7 +119,6 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       if (error.message.includes('txVersion'))
         error.message =
           "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.";
-
       setLoading(false);
       setErrorMsg(error.message);
     }

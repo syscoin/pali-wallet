@@ -111,9 +111,9 @@ export const ErrorModal = ({
   show,
   title = '',
 }: IErrorModal) => (
-  <Modal className="max-w-2xl" show={show} onClose={onClose}>
+  <Modal show={show} onClose={onClose}>
     <div
-      className="inline-block align-middle my-8 w-full max-w-2xl text-center font-poppins bg-bkg-7 border rounded-2xl shadow-xl overflow-hidden transform transition-all"
+      className="inline-block align-middle my-8 w-full text-center font-poppins bg-bkg-7 border rounded-2xl shadow-xl overflow-hidden transform transition-all"
       style={{ borderColor: 'rgba(255,255,255, .15)' }}
     >
       <div
