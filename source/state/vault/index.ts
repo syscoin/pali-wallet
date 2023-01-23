@@ -66,10 +66,11 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chain: string;
+        isEdit: boolean;
         network: INetwork;
       }>
     ) {
-      const { chain, network } = action.payload;
+      const { chain, network, isEdit } = action.payload;
 
       const replaceNetworkName = `${network.label
         .replace(/\s/g, '')
@@ -79,7 +80,7 @@ const VaultState = createSlice({
         state.networks[chain][Number(network.chainId)]
       );
 
-      if (alreadyExist) {
+      if (alreadyExist && !isEdit) {
         const verifyIfRpcOrNameExists = Object.values(
           state.networks[chain]
         ).find(
@@ -113,9 +114,14 @@ const VaultState = createSlice({
     },
     removeNetwork(
       state: IVaultState,
-      action: PayloadAction<{ chainId: number; prefix: string }>
+      action: PayloadAction<{ chainId: number; key?: string; prefix: string }>
     ) {
-      const { prefix, chainId } = action.payload;
+      const { prefix, chainId, key } = action.payload;
+
+      if (key) {
+        delete state.networks[prefix][key];
+        return;
+      }
 
       delete state.networks[prefix][chainId];
     },
