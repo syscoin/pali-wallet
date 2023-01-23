@@ -57,7 +57,7 @@ export const Home = () => {
 
     const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
-    return Boolean(
+    setIsTestnet(
       chain === 'test' ||
         chain === 'testnet' ||
         ethTestnetsChainsIds.some(
@@ -69,15 +69,8 @@ export const Home = () => {
   //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
-    let isMounted = true;
 
-    setMainOrTestNetwork().then((result) => {
-      if (isMounted) setIsTestnet(result);
-    });
-
-    return () => {
-      isMounted = false;
-    };
+    setMainOrTestNetwork();
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
