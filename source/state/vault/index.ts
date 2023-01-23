@@ -1,11 +1,15 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { ethers } from 'ethers';
+import loadsh from 'lodash';
 
 import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { getErc20Abi, getErc21Abi, INetwork } from '@pollum-io/sysweb3-utils';
+
+import { ITokenEthProps } from 'types/tokens';
 
 import { IChangingConnectedAccount, IVaultState } from './types';
 
@@ -210,6 +214,40 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
+    setUpdatedTokenBalace(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        newAccountsAssets: any;
+        newActiveAccountAssets: any;
+      }>
+    ) {
+      const { newAccountsAssets, newActiveAccountAssets, accountId } =
+        action.payload;
+
+      state.accounts[accountId].assets.ethereum = newAccountsAssets;
+      state.activeAccount.assets.ethereum = newActiveAccountAssets;
+    },
+    setUpdatedNativeTokenBalance(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        balance: number;
+      }>
+    ) {
+      const { accountId, balance } = action.payload;
+      const { isBitcoinBased } = state;
+
+      if (isBitcoinBased) {
+        state.accounts[accountId].balances.syscoin = balance;
+        state.activeAccount.balances.syscoin = balance;
+
+        return;
+      }
+
+      state.accounts[accountId].balances.ethereum = balance;
+      state.activeAccount.balances.ethereum = balance;
+    },
   },
 });
 
@@ -235,6 +273,8 @@ export const {
   setAccountTransactions,
   setStoreError,
   setIsBitcoinBased,
+  setUpdatedTokenBalace,
+  setUpdatedNativeTokenBalance,
 } = VaultState.actions;
 
 export default VaultState.reducer;

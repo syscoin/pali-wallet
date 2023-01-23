@@ -38,7 +38,6 @@ const start = () => {
       if (!event.data) return;
 
       const { id, type, data } = event.data;
-      // console.log('Check eventData', data);
 
       if (!id || !type) return;
 
@@ -65,7 +64,6 @@ const startEventEmitter = () => {
   }
 
   for (const ev in PaliSyscoinEvents) {
-    console.log('Subscribing to Syscoin event ', PaliSyscoinEvents[ev]);
     emitter.on(PaliSyscoinEvents[ev], (result) => {
       window.dispatchEvent(
         new CustomEvent('sys_notification', { detail: JSON.stringify(result) })
@@ -76,11 +74,6 @@ const startEventEmitter = () => {
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
-  console.log(
-    'Pali Content Background: Received message from backgroung',
-    id,
-    data
-  );
   emitter.emit(id, data);
 });
 

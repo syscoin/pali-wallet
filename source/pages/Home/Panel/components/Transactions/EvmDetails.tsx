@@ -26,7 +26,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const formattedTransaction = [];
 
   transactions.find((tx: any) => {
-    if (tx.hash !== hash) return null;
+    if (tx?.hash !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);

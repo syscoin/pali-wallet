@@ -17,10 +17,11 @@ import {
   setIsNetworkChanging,
   setIsPendingBalances,
 } from 'state/vault';
+import { ITokenSysProps } from 'types/tokens';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
-  saveTokenInfo: (token: any) => Promise<void>;
+  saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
   tx: ISyscoinTransactions;
@@ -42,10 +43,8 @@ const SysAccountController = (): ISysAccountController => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
     store.dispatch(setIsLoadingTxs(true));
-
     const { accountLatestUpdate, walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount(); //TODO: validate whats breaking on this function
-    //TODO: after calling createToken from syscoin UTXO getLatestUpdate breaks and gets to a infinite loop with setPendingTxs
+      await keyringManager.getLatestUpdateForAccount();
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
@@ -59,7 +58,8 @@ const SysAccountController = (): ISysAccountController => {
 
     const filteredTxs = transactions.filter(
       (value, index, self) =>
-        index === self.findIndex((tx) => tx[hash] === value[hash])
+        index ===
+        self.findIndex((tx) => tx && value && tx[hash] === value[hash])
     );
 
     store.dispatch(
@@ -108,9 +108,9 @@ const SysAccountController = (): ISysAccountController => {
 
         const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
           (value, i, self) =>
-            i === self.findIndex((tx) => tx[hash] === value[hash])
+            i ===
+            self.findIndex((tx) => tx && value && tx[hash] === value[hash])
         ); // to get array with unique txs.
-
         if (index === accountId) {
           if (isBitcoinBased)
             return {
@@ -149,7 +149,6 @@ const SysAccountController = (): ISysAccountController => {
           };
       })
     );
-
     store.dispatch(
       setAccounts({
         ...formattedWalletAccountsLatestUpdates,
@@ -213,12 +212,12 @@ const SysAccountController = (): ISysAccountController => {
     return address;
   };
 
-  const saveTokenInfo = async (token: any) => {
+  const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
       const { activeAccount } = store.getState().vault;
 
       const tokenExists = activeAccount.assets.find(
-        (asset: any) => asset.assetGuid === token.assetGuid
+        (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
       if (tokenExists) throw new Error('Token already exists');

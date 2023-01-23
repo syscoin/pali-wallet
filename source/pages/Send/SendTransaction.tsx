@@ -156,6 +156,10 @@ export const SendTransaction = () => {
         else setLoading(false);
         return error;
       }
+    } else {
+      alert.removeAll();
+      alert.error("You don't have enough funds for this transactions.");
+      if (isExternal) setTimeout(window.close, 2000);
     }
   };
 
@@ -163,14 +167,22 @@ export const SendTransaction = () => {
     const abortController = new AbortController();
 
     const getGasAndFunction = async () => {
-      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-        dataTx,
-        activeNetwork
-      );
-
-      setFee(feeDetails);
-      setTx(formTx);
-      setCustomNonce(nonce);
+      try {
+        const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
+          dataTx,
+          activeNetwork
+        );
+        setFee(feeDetails);
+        setTx(formTx);
+        setCustomNonce(nonce);
+      } catch (e) {
+        alert.removeAll();
+        alert.error(
+          'The transaction will fail due to wrong parameters, fix it and try again',
+          e
+        );
+        setTimeout(window.close, 3000);
+      }
     };
 
     getGasAndFunction();

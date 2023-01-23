@@ -7,6 +7,7 @@ import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
 export const ImportToken: FC = () => {
@@ -65,7 +66,7 @@ export const ImportToken: FC = () => {
     ));
   };
 
-  const addToken = async (token: any) => {
+  const addToken = async (token: ITokenEthProps) => {
     try {
       await controller.wallet.account.eth.saveTokenInfo(token);
 

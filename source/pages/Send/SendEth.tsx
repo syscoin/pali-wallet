@@ -3,26 +3,18 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment, useCallback } from 'react';
+import { useState, Fragment } from 'react';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import {
-  Icon,
-  IconButton,
-  Layout,
-  NeutralButton,
-  Tooltip,
-} from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { ITokenEthProps } from 'types/tokens';
 import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
-  const controller = getController();
-
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -31,42 +23,14 @@ export const SendEth = () => {
     (state: RootState) => state.vault.activeAccount
   );
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [recommendedGasPrice, setRecommendedGasPrice] = useState(0);
-  const [recommendedGasLimit, setRecommendedGasLimit] = useState(0);
-  const [feeValue, setFeeValue] = useState(0);
   const [form] = Form.useForm();
-
-  const getRecomendedFees = useCallback(async () => {
-    const { getGasLimit, getRecommendedGasPrice } =
-      controller.wallet.account.eth.tx;
-
-    const gasPrice = (await getRecommendedGasPrice(true)) as {
-      ethers: string;
-      gwei: string;
-    };
-    const gasLimit = await getGasLimit(form.getFieldValue('receiver'));
-
-    setRecommendedGasPrice(Number(gasPrice.gwei));
-    setRecommendedGasLimit(Number(gasLimit));
-    setFeeValue(Number(gasPrice.gwei) * Number(gasLimit));
-
-    form.setFieldsValue({
-      fee: recommendedGasPrice,
-      gasLimit,
-      gasPrice: gasPrice.gwei,
-    });
-  }, [controller.wallet.account]);
-
-  useEffect(() => {
-    getRecomendedFees();
-  }, [getRecomendedFees, form.getFieldValue('receiver')]);
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
 
   const handleSelectedAsset = (item: string) => {
-    if (activeAccount.assets) {
-      const getAsset = activeAccount.assets.find(
+    if (activeAccount.assets.ethereum?.length > 0) {
+      const getAsset = activeAccount.assets.ethereum.find(
         (asset: any) => asset.contractAddress === item
       );
 
@@ -80,7 +44,7 @@ export const SendEth = () => {
     }
   };
 
-  const nextStep = ({ receiver, amount, gasPrice, gasLimit }: any) => {
+  const nextStep = ({ receiver, amount }: any) => {
     try {
       navigate('/send/confirm', {
         state: {
@@ -88,9 +52,6 @@ export const SendEth = () => {
             sender: activeAccount.address,
             receivingAddress: receiver,
             amount,
-            gasPrice,
-            gasLimit,
-            fee: String(feeValue),
             token: selectedAsset
               ? {
                   ...selectedAsset,
@@ -116,7 +77,9 @@ export const SendEth = () => {
 
           {selectedAsset
             ? getAssetBalance(selectedAsset, activeAccount, false)
-            : `${activeAccount.balances.ethereum} ${activeNetwork.currency}`}
+            : `${
+                activeAccount.balances.ethereum
+              } ${activeNetwork.currency?.toUpperCase()}`}
         </p>
 
         <Form
@@ -125,12 +88,6 @@ export const SendEth = () => {
           id="send-form"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 8 }}
-          initialValues={{
-            fee: recommendedGasPrice,
-            gasLimit: recommendedGasLimit,
-            gasPrice: recommendedGasPrice,
-            amount: 0,
-          }}
           onFinish={nextStep}
           autoComplete="off"
           className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
@@ -145,8 +102,8 @@ export const SendEth = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
-                  if (!value || isValidEthereumAddress(value)) {
+                async validator(_, value) {
+                  if (isValidEthereumAddress(value)) {
                     return Promise.resolve();
                   }
 
@@ -156,9 +113,10 @@ export const SendEth = () => {
             ]}
           >
             <Input
+              id="receiver"
               type="text"
               placeholder="Receiver"
-              className="input-medium"
+              className="input-medium flex items-center"
             />
           </Form.Item>
 
@@ -168,7 +126,7 @@ export const SendEth = () => {
                 hasAccountAssets ? 'inline-flex' : 'hidden'
               } items-center px-5 bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border rounded-l-full`}
             >
-              {hasAccountAssets && (
+              {hasAccountAssets ? (
                 <Form.Item
                   name="asset"
                   className=""
@@ -188,8 +146,8 @@ export const SendEth = () => {
                         {truncate(
                           String(
                             selectedAsset?.tokenSymbol
-                              ? selectedAsset?.tokenSymbol
-                              : activeNetwork.currency
+                              ? selectedAsset?.tokenSymbol.toUpperCase()
+                              : activeNetwork.currency.toUpperCase()
                           ),
                           2
                         )}
@@ -209,7 +167,7 @@ export const SendEth = () => {
                         leaveFrom="transform opacity-100 scale-100"
                         leaveTo="transform opacity-0 scale-95"
                       >
-                        {hasAccountAssets && (
+                        {hasAccountAssets ? (
                           <Menu.Items
                             as="div"
                             className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
@@ -219,38 +177,44 @@ export const SendEth = () => {
                                 onClick={() => handleSelectedAsset('-1')}
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
-                                <p>MATIC</p>
+                                <p>{activeNetwork.currency.toUpperCase()}</p>
                                 <small>Native</small>
                               </button>
                             </Menu.Item>
 
                             {hasAccountAssets &&
-                              Object.values(activeAccount.assets).map(
-                                (item: any) => (
-                                  <Menu.Item as="div" key={uniqueId()}>
-                                    <Menu.Item>
-                                      <button
-                                        onClick={() =>
-                                          handleSelectedAsset(item.assetGuid)
-                                        }
-                                        className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                      >
-                                        <p>{item.tokenSymbol}</p>
-                                        <small>
-                                          {item.isNft ? 'NFT' : 'Token'}
-                                        </small>
-                                      </button>
-                                    </Menu.Item>
-                                  </Menu.Item>
+                              Object.values(activeAccount.assets.ethereum).map(
+                                (item: ITokenEthProps) => (
+                                  <div key={uniqueId()}>
+                                    {item.chainId === activeNetwork.chainId ? (
+                                      <Menu.Item as="div">
+                                        <Menu.Item>
+                                          <button
+                                            onClick={() =>
+                                              handleSelectedAsset(
+                                                item.contractAddress
+                                              )
+                                            }
+                                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                          >
+                                            <p>{item.tokenSymbol}</p>
+                                            <small>
+                                              {item.isNft ? 'NFT' : 'Token'}
+                                            </small>
+                                          </button>
+                                        </Menu.Item>
+                                      </Menu.Item>
+                                    ) : null}
+                                  </div>
                                 )
                               )}
                           </Menu.Items>
-                        )}
+                        ) : null}
                       </Transition>
                     </div>
                   </Menu>
                 </Form.Item>
-              )}
+              ) : null}
             </span>
 
             <Form.Item
@@ -263,12 +227,28 @@ export const SendEth = () => {
                   message: '',
                 },
                 () => ({
-                  validator(_, value) {
+                  async validator(_, value) {
                     const balance = selectedAsset
                       ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (value <= balance) {
+                    if (
+                      !selectedAsset &&
+                      parseFloat(value) <= parseFloat(balance)
+                    ) {
+                      return Promise.resolve();
+                    }
+
+                    if (
+                      Boolean(
+                        selectedAsset && selectedAsset.isNft && value >= 0
+                      ) ||
+                      Boolean(
+                        selectedAsset &&
+                          !selectedAsset.isNft &&
+                          parseFloat(value) <= parseFloat(selectedAsset.balance)
+                      )
+                    ) {
                       return Promise.resolve();
                     }
 
@@ -278,72 +258,18 @@ export const SendEth = () => {
               ]}
             >
               <Input
-                className={
-                  hasAccountAssets ? 'mixed-border-input' : 'input-medium'
-                }
+                id="amount"
+                className={`
+                  ${
+                    hasAccountAssets ? 'mixed-border-input' : 'input-medium'
+                  } flex items-center`}
                 type="number"
-                placeholder="Amount"
+                placeholder={`${
+                  selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
+                }`}
               />
             </Form.Item>
           </div>
-
-          <div className="flex-2 flex gap-3 items-center justify-center mt-4 px-4 py-2 w-full max-w-xs text-left text-brand-white font-poppins text-xs font-thin bg-bkg-3 bg-opacity-60 border border-t border-dashed border-brand-royalblue rounded-lg md:max-w-md">
-            <div className="flex flex-col w-full">
-              <div className="flex gap-1.5 items-center justify-start">
-                <p>Estimate fee</p>
-
-                <Tooltip content="Gas fees are paid to crypto miners who process transactions on the network. Pali does not profit from gas fees. Gas fees are set by the network and fluctuate based on network traffic and transaction complexity.">
-                  <Icon className="mb-1" name="question" />
-                </Tooltip>
-              </div>
-
-              <span className="text-brand-royalblue">
-                {' '}
-                {Number(
-                  Number(feeValue) + Number(form.getFieldValue('amount'))
-                ).toFixed(5) || 0}
-                {`${activeNetwork.currency?.toUpperCase()}`}
-              </span>
-            </div>
-
-            <div className="flex flex-col justify-end w-full text-right">
-              <span>Max Fee</span>
-
-              <span className="text-brand-royalblue">
-                {' '}
-                {Number(
-                  Number(feeValue) + Number(form.getFieldValue('amount'))
-                ).toFixed(5) || 0}
-                {`${activeNetwork.currency?.toUpperCase()}`}
-              </span>
-            </div>
-
-            <IconButton
-              className="flex flex-1 flex-col justify-end text-right hover:text-brand-royalbluemedium"
-              onClick={() =>
-                navigate('/send/edit/priority', {
-                  state: { tx: { ...form.getFieldsValue() } },
-                })
-              }
-            >
-              <Icon name="edit" />
-            </IconButton>
-          </div>
-
-          <div className="flex items-center justify-around my-2 w-full max-w-xs text-xs md:max-w-md">
-            <p className="text-brand-royalblue">Total</p>
-
-            <p className="text-brand-white">Amount + Gas fee</p>
-
-            <span className="text-brand-deepPink100 font-rubik">
-              -
-              {Number(
-                Number(feeValue) + Number(form.getFieldValue('amount'))
-              ).toFixed(5) || 0}
-              {`${activeNetwork.currency?.toUpperCase()}`}
-            </span>
-          </div>
-
           <div className="absolute bottom-12 md:static md:mt-3">
             <NeutralButton type="submit">Next</NeutralButton>
           </div>
