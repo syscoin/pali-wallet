@@ -33,6 +33,7 @@ import {
   setChangingConnectedAccount,
   setIsNetworkChanging,
   setUpdatedTokenBalace,
+  setUpdatedNativeTokenBalance,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -393,6 +394,33 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
+  const updateNativeTokenBalance = async (accountId: number) => {
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+
+    const findAccount = accounts[accountId];
+
+    if (!Boolean(findAccount.address === activeAccount.address)) return;
+
+    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+
+    const callBalance = await provider.getBalance(findAccount.address);
+
+    const balance = ethers.utils.formatEther(callBalance);
+
+    const formattedBalance = lodash.floor(parseFloat(balance), 4);
+
+    console.log('callBalance', callBalance);
+    console.log('balance', balance);
+    console.log('formattedBalance', formattedBalance);
+
+    store.dispatch(
+      setUpdatedNativeTokenBalance({
+        accountId: findAccount.id,
+        balance: formattedBalance,
+      })
+    );
+  };
+
   const updateErcTokenBalances = async (
     accountId: number,
     tokenAddress: string,
@@ -477,6 +505,7 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
+    updateNativeTokenBalance,
     ...keyringManager,
   };
 };

@@ -222,6 +222,26 @@ const VaultState = createSlice({
       state.accounts[accountId].assets.ethereum = newAccountsAssets;
       state.activeAccount.assets.ethereum = newActiveAccountAssets;
     },
+    setUpdatedNativeTokenBalance(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        balance: number;
+      }>
+    ) {
+      const { accountId, balance } = action.payload;
+      const { isBitcoinBased } = state;
+
+      if (isBitcoinBased) {
+        state.accounts[accountId].balances.syscoin = balance;
+        state.activeAccount.balances.syscoin = balance;
+
+        return;
+      }
+
+      state.accounts[accountId].balances.ethereum = balance;
+      state.activeAccount.balances.ethereum = balance;
+    },
   },
 });
 
@@ -248,6 +268,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedTokenBalace,
+  setUpdatedNativeTokenBalance,
 } = VaultState.actions;
 
 export default VaultState.reducer;

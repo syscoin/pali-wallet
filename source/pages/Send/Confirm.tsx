@@ -28,7 +28,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 export const SendConfirm = () => {
   const {
     refresh,
-    wallet: { account, updateErcTokenBalances },
+    wallet: { account, updateErcTokenBalances, updateNativeTokenBalance },
   } = getController();
 
   const { alert, navigate } = useUtils();
@@ -90,15 +90,33 @@ export const SendConfirm = () => {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
           try {
-            const response = await sysTxsController.sendTransaction(
-              basicTxValues
-            );
+            sysTxsController
+              .sendTransaction(basicTxValues)
+              .then(async (response) => {
+                if (isExternal)
+                  dispatchBackgroundEvent(`txSend.${host}`, response);
+
+                const provider = new ethers.providers.JsonRpcProvider(
+                  activeNetwork.url
+                );
+
+                let receipt = await provider.getTransactionReceipt(
+                  response.txid
+                );
+
+                while (!receipt) {
+                  receipt = await provider.getTransactionReceipt(response.txid);
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
+                }
+
+                if (receipt) {
+                  updateNativeTokenBalance(activeAccount.id);
+                }
+              });
             setConfirmed(true);
             setLoading(false);
 
-            if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
-
-            return response;
+            return;
           } catch (error) {
             logError('error SYS', 'Transaction', error);
 
@@ -125,8 +143,8 @@ export const SendConfirm = () => {
           try {
             const { chainId, ...restTx } = txObjectState;
 
-            const response =
-              await ethereumTxsController.sendFormattedTransaction({
+            ethereumTxsController
+              .sendFormattedTransaction({
                 ...restTx,
                 value: ethereumTxsController.toBigNumber(
                   Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
@@ -154,16 +172,34 @@ export const SendConfirm = () => {
                     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                     : fee.gasLimit
                 ),
-              });
+              })
+              .then(async (response) => {
+                if (isExternal)
+                  dispatchBackgroundEvent(`txSend.${host}`, response);
 
-            setConfirmedTx(response);
+                setConfirmedTx(response);
+                const provider = new ethers.providers.JsonRpcProvider(
+                  activeNetwork.url
+                );
+
+                let receipt = await provider.getTransactionReceipt(
+                  response.hash
+                );
+
+                while (!receipt) {
+                  receipt = await provider.getTransactionReceipt(response.hash);
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
+                }
+
+                if (receipt) {
+                  updateNativeTokenBalance(activeAccount.id);
+                }
+              });
 
             setConfirmed(true);
             setLoading(false);
 
-            if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
-
-            return response;
+            return;
           } catch (error: any) {
             logError('error ETH', 'Transaction', error);
 
@@ -218,7 +254,7 @@ export const SendConfirm = () => {
                   .then(async (response) => {
                     if (isExternal)
                       dispatchBackgroundEvent(`txSend.${host}`, response);
-
+                    setConfirmedTx(response);
                     const provider = new ethers.providers.JsonRpcProvider(
                       activeNetwork.url
                     );
@@ -242,8 +278,6 @@ export const SendConfirm = () => {
                         basicTxValues.token.isNft,
                         basicTxValues.token.decimals
                       );
-
-                      setConfirmedTx(response);
                     }
                   });
 
@@ -275,7 +309,7 @@ export const SendConfirm = () => {
                   .then(async (response) => {
                     if (isExternal)
                       dispatchBackgroundEvent(`txSend.${host}`, response);
-
+                    setConfirmedTx(response);
                     const provider = new ethers.providers.JsonRpcProvider(
                       activeNetwork.url
                     );
@@ -298,8 +332,6 @@ export const SendConfirm = () => {
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft
                       );
-
-                      setConfirmedTx(response);
                     }
                   });
 
@@ -364,6 +396,10 @@ export const SendConfirm = () => {
         setFee(finalFeeDetails as any);
       } catch (error) {
         logError('error getting fees', 'Transaction', error);
+        alert.error(
+          'Error in the proccess to get fee values, please try again later.'
+        );
+        navigate(-1);
       }
     };
 
