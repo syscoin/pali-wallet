@@ -414,10 +414,6 @@ const MainController = (): IMainController => {
 
     const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
-    console.log('callBalance', callBalance);
-    console.log('balance', balance);
-    console.log('formattedBalance', formattedBalance);
-
     store.dispatch(
       setUpdatedNativeTokenBalance({
         accountId: findAccount.id,
