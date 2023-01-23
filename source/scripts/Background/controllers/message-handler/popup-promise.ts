@@ -34,11 +34,13 @@ export const popupPromise = async ({
     !dapp.isConnected(host)
   )
     return;
-  if (dapp.hasWindow(host)) return;
-
+  if (dapp.hasWindow(host))
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized('Dapp already has a open window')
+    );
+  dapp.setHasWindow(host, true);
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   const popup = await createPopup(route, { ...data, host, eventName });
-  dapp.setHasWindow(host, true);
   return new Promise((resolve) => {
     window.addEventListener(
       `${eventName}.${host}`,

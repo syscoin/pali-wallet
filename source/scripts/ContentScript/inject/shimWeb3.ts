@@ -1,4 +1,4 @@
-import { PaliInpageProvider } from './paliProvider';
+import { PaliInpageProviderEth } from './paliProviderEthereum';
 
 /**
  * If no existing window.web3 is found, this function injects a web3 "shim" to
@@ -7,7 +7,7 @@ import { PaliInpageProvider } from './paliProvider';
  * @param provider - The provider to set as window.web3.currentProvider.
  * @param log - The logging API to use.
  */
-export function shimWeb3(provider: PaliInpageProvider): void {
+export function shimWeb3(provider: PaliInpageProviderEth): void {
   let loggedCurrentProvider = false;
   let loggedMissingProperty = false;
 

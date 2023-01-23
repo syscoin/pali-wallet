@@ -7,7 +7,7 @@ import {
   SyscoinTransactions,
 } from '@pollum-io/sysweb3-keyring';
 
-import { PaliEvents } from '../message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import {
@@ -44,8 +44,8 @@ const SysAccountController = (): ISysAccountController => {
     store.dispatch(setIsLoadingTxs(true));
 
     const { accountLatestUpdate, walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount();
-
+      await keyringManager.getLatestUpdateForAccount(); //TODO: validate whats breaking on this function
+    //TODO: after calling createToken from syscoin UTXO getLatestUpdate breaks and gets to a infinite loop with setPendingTxs
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
@@ -111,12 +111,42 @@ const SysAccountController = (): ISysAccountController => {
             i === self.findIndex((tx) => tx[hash] === value[hash])
         ); // to get array with unique txs.
 
-        return {
-          ...account,
-          label: accounts[index].label,
-          assets: accounts[index].assets,
-          transactions: [...allTxs],
-        };
+        if (index === accountId) {
+          if (isBitcoinBased)
+            return {
+              ...account,
+              label: accounts[index].label,
+              transactions: [...filteredTxs],
+              assets: {
+                ethereum: accounts[index].assets.ethereum,
+                syscoin: account.assets,
+              },
+            };
+          else
+            return {
+              ...account,
+              label: accounts[index].label,
+              assets: accounts[index].assets,
+              transactions: [...filteredTxs],
+            };
+        }
+        if (isBitcoinBased)
+          return {
+            ...account,
+            label: accounts[index].label,
+            transactions: [...filteredTxs],
+            assets: {
+              ethereum: accounts[index].assets.ethereum,
+              syscoin: account.assets,
+            },
+          };
+        else
+          return {
+            ...account,
+            label: accounts[index].label,
+            assets: accounts[index].assets,
+            transactions: [...allTxs],
+          };
       })
     );
 
@@ -127,21 +157,14 @@ const SysAccountController = (): ISysAccountController => {
     );
     resolve();
 
-    // if (isBitcoinBased)
-    //   window.controller.dapp.dispatchEvent(
-    //     DAppEvents.accountUpdate,
-    //     removeXprv(accounts[accountId])
-    //   );
-    // else {
-    // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-    //   method: PaliEvents.chainChanged,
-    //   params: {
-    //     chainId: `0x${activeNetwork.chainId.toString(16)}`,
-    //     networkVersion: activeNetwork.chainId,
-    //   },
-    // });
-    // } //This flow would consider the need for syscoin UTXO events of accountUpdate, if possible remove it. If not refactor to use paliEvents
     const isUpdating = store.getState().vault.isNetworkChanging;
+    window.controller.dapp.handleBlockExplorerChange(
+      PaliSyscoinEvents.blockExplorerChanged,
+      {
+        method: PaliSyscoinEvents.blockExplorerChanged,
+        params: isBitcoinBased ? activeNetwork.url : null,
+      }
+    );
     if (!isUpdating)
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
         method: PaliEvents.chainChanged,

@@ -1,7 +1,10 @@
 import { EventEmitter } from 'events';
 import { browser } from 'webextension-polyfill-ts';
 
-import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
+import {
+  PaliEvents,
+  PaliSyscoinEvents,
+} from 'scripts/Background/controllers/message-handler/types';
 const emitter = new EventEmitter();
 
 // Connect to pali
@@ -55,9 +58,17 @@ const start = () => {
 const startEventEmitter = () => {
   for (const ev in PaliEvents) {
     emitter.on(PaliEvents[ev], (result) => {
-      // console.log('Checking event emission PaliEmitter:', ev, result);
       window.dispatchEvent(
         new CustomEvent('notification', { detail: JSON.stringify(result) })
+      );
+    });
+  }
+
+  for (const ev in PaliSyscoinEvents) {
+    console.log('Subscribing to Syscoin event ', PaliSyscoinEvents[ev]);
+    emitter.on(PaliSyscoinEvents[ev], (result) => {
+      window.dispatchEvent(
+        new CustomEvent('sys_notification', { detail: JSON.stringify(result) })
       );
     });
   }
@@ -65,6 +76,11 @@ const startEventEmitter = () => {
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
+  console.log(
+    'Pali Content Background: Received message from backgroung',
+    id,
+    data
+  );
   emitter.emit(id, data);
 });
 

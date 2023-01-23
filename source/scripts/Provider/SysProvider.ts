@@ -1,5 +1,8 @@
-import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
+import { isValidSYSAddress as _isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
+import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
+import { isNFT as _isNFT } from 'scripts/Background/controllers/utils';
+import store from 'state/store';
 export const SysProvider = (host: string) => {
   const sendTransaction = (data: {
     amount: number;
@@ -28,6 +31,13 @@ export const SysProvider = (host: string) => {
       data,
       route: 'tx/asset/create',
       eventName: 'txCreateToken',
+    });
+  const transferAssetOwnership = (data) =>
+    popupPromise({
+      host,
+      data,
+      route: 'tx/asset/transfer',
+      eventName: 'txTransferAssetOwnership',
     });
 
   const updateToken = (data) =>
@@ -84,14 +94,25 @@ export const SysProvider = (host: string) => {
       eventName: 'txSignAndSend',
     });
 
+  const isNFT = (data) => _isNFT(data[0] as number);
+
+  const isValidSYSAddress = (data) => {
+    const { activeNetwork } = store.getState().vault;
+    const isValid = _isValidSYSAddress(data, activeNetwork); //Validate by coinType inside sysweb3
+    return isValid;
+  };
+
   return {
     sendTransaction,
     createToken,
     updateToken,
     mintToken,
+    transferAssetOwnership,
     createNft,
     mintNft,
     sign,
     signAndSend,
+    isNFT,
+    isValidSYSAddress,
   };
 };

@@ -19,7 +19,10 @@
     "notifications",
     "activeTab",
     "webRequest",
-    "*://*.eth/"
+    "*://*.eth/",
+    "clipboardWrite",
+    "unlimitedStorage",
+    "http://localhost:8545/"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
@@ -52,7 +55,7 @@
   "content_scripts": [
     {
       "all_frames": true,
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": ["file://*/*", "http://*/*", "https://*/*"],
       "run_at": "document_start",
       "js": ["js/webextension.bundle.js", "js/contentScript.bundle.js"]
     },
