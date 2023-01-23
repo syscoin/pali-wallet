@@ -9,13 +9,12 @@ import {
   Button,
   Icon,
   LoadingComponent,
-  NeutralButton,
 } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { getController } from 'utils/browser';
 import {
   truncate,
   logError,
@@ -46,7 +45,6 @@ export const SendConfirm = () => {
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
-  const { host, ...externalTx } = useQueryData();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -63,8 +61,7 @@ export const SendConfirm = () => {
   const [haveError, setHaveError] = useState<boolean>(false);
   const [confirmedTx, setConfirmedTx] = useState<any>();
 
-  const isExternal = Boolean(externalTx.amount);
-  const basicTxValues = isExternal ? externalTx : state.tx;
+  const basicTxValues = state.tx;
 
   const ethereumTxsController = account.eth.tx;
   const sysTxsController = account.sys.tx;
@@ -93,9 +90,6 @@ export const SendConfirm = () => {
             sysTxsController
               .sendTransaction(basicTxValues)
               .then(async (response) => {
-                if (isExternal)
-                  dispatchBackgroundEvent(`txSend.${host}`, response);
-
                 const provider = new ethers.providers.JsonRpcProvider(
                   activeNetwork.url
                 );
@@ -133,14 +127,14 @@ export const SendConfirm = () => {
             alert.removeAll();
             alert.error("Can't complete transaction. Try again later.");
 
-            if (isExternal) setTimeout(window.close, 4000);
-            else setLoading(false);
+            setLoading(false);
           }
           break;
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case isBitcoinBased === false && basicTxValues.token === null:
           try {
+            // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
             const { chainId, ...restTx } = txObjectState;
 
             ethereumTxsController
@@ -174,9 +168,6 @@ export const SendConfirm = () => {
                 ),
               })
               .then(async (response) => {
-                if (isExternal)
-                  dispatchBackgroundEvent(`txSend.${host}`, response);
-
                 setConfirmedTx(response);
                 const provider = new ethers.providers.JsonRpcProvider(
                   activeNetwork.url
@@ -206,8 +197,7 @@ export const SendConfirm = () => {
             alert.removeAll();
             alert.error("Can't complete transaction. Try again later.");
 
-            if (isExternal) setTimeout(window.close, 4000);
-            else setLoading(false);
+            setLoading(false);
           }
           break;
 
@@ -252,8 +242,8 @@ export const SendConfirm = () => {
                     ),
                   })
                   .then(async (response) => {
-                    if (isExternal)
-                      dispatchBackgroundEvent(`txSend.${host}`, response);
+                    setConfirmed(true);
+                    setLoading(false);
                     setConfirmedTx(response);
                     const provider = new ethers.providers.JsonRpcProvider(
                       activeNetwork.url
@@ -279,10 +269,14 @@ export const SendConfirm = () => {
                         basicTxValues.token.decimals
                       );
                     }
-                  });
+                  })
+                  .catch((error) => {
+                    logError('error send ERC20', 'Transaction', error);
 
-                setConfirmed(true);
-                setLoading(false);
+                    alert.removeAll();
+                    alert.error("Can't complete transaction. Try again later.");
+                    setLoading(false);
+                  });
 
                 return;
               } catch (_erc20Error) {
@@ -291,8 +285,7 @@ export const SendConfirm = () => {
                 alert.removeAll();
                 alert.error("Can't complete transaction. Try again later.");
 
-                if (isExternal) setTimeout(window.close, 4000);
-                else setLoading(false);
+                setLoading(false);
               }
               break;
 
@@ -307,9 +300,10 @@ export const SendConfirm = () => {
                     tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component
                   })
                   .then(async (response) => {
-                    if (isExternal)
-                      dispatchBackgroundEvent(`txSend.${host}`, response);
+                    setConfirmed(true);
+                    setLoading(false);
                     setConfirmedTx(response);
+
                     const provider = new ethers.providers.JsonRpcProvider(
                       activeNetwork.url
                     );
@@ -322,6 +316,7 @@ export const SendConfirm = () => {
                       receipt = await provider.getTransactionReceipt(
                         response.hash
                       );
+
                       await new Promise((resolve) => setTimeout(resolve, 5000));
                     }
 
@@ -333,10 +328,14 @@ export const SendConfirm = () => {
                         basicTxValues.token.isNft
                       );
                     }
-                  });
+                  })
+                  .catch((error) => {
+                    logError('error send ERC721', 'Transaction', error);
 
-                setConfirmed(true);
-                setLoading(false);
+                    alert.removeAll();
+                    alert.error("Can't complete transaction. Try again later.");
+                    setLoading(false);
+                  });
 
                 return;
               } catch (_erc721Error) {
@@ -345,8 +344,7 @@ export const SendConfirm = () => {
                 alert.removeAll();
                 alert.error("Can't complete transaction. Try again later.");
 
-                if (isExternal) setTimeout(window.close, 4000);
-                else setLoading(false);
+                setLoading(false);
               }
 
               break;
@@ -435,18 +433,15 @@ export const SendConfirm = () => {
   ]);
 
   return (
-    <Layout title="CONFIRM" canGoBack={!isExternal}>
+    <Layout title="CONFIRM" canGoBack={true}>
       <DefaultModal
         show={confirmed}
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
           refresh(false);
-          if (isExternal) window.close();
-          else {
-            saveTransaction(confirmedTx);
-            navigate('/home');
-          }
+          saveTransaction(confirmedTx);
+          navigate('/home');
         }}
       />
 
@@ -555,10 +550,7 @@ export const SendConfirm = () => {
               className="xl:p-18 flex items-center justify-center h-8 text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                if (isExternal) {
-                  refresh(false);
-                  window.close();
-                } else navigate('/home');
+                navigate('/home');
               }}
             >
               <Icon

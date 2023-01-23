@@ -73,6 +73,7 @@ export const SendNTokenTransaction = () => {
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await txs.getRecommendedGasPrice();
 
+          // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
           const { type, ...restTx } = tx; // REMOVE TYPE TO PREVENT TRANSACTION TYPE ERROR
 
           const response = await txs.sendFormattedTransaction({

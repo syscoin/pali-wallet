@@ -3,7 +3,7 @@ import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment } from 'react';
+import { useState, Fragment } from 'react';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
@@ -12,12 +12,9 @@ import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
-  const controller = getController();
-
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork

@@ -85,7 +85,6 @@ export class PaliInpageProviderEth extends BaseProvider {
       'notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
-        // console.log('EthereumProvider: Received new message', method, params);
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);

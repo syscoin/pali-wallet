@@ -147,9 +147,6 @@ export const EthProvider = (host: string) => {
     setProviderNetwork(store.getState().vault.activeNetwork);
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const resp = await web3Provider.send(method, params);
-    if (method === 'eth_getTransactionReceipt') {
-      console.log('Checking tx receipt', method, params, resp);
-    }
     return resp;
   };
 

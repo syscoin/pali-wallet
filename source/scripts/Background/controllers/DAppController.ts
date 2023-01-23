@@ -141,7 +141,6 @@ const DAppController = (): IDAppController => {
       try {
         const hosts = Object.keys(_dapps) as unknown as string;
         const paliData = data;
-        // console.log('Hosts', hosts);
         for (const host of hosts) {
           if (id === PaliEvents.lockStateChanged && _dapps[host]) {
             paliData.method = PaliSyscoinEvents.lockStateChanged;
@@ -169,7 +168,6 @@ const DAppController = (): IDAppController => {
   ): Promise<void> => {
     new Promise<void>((resolve) => {
       const hosts = Object.keys(_dapps) as unknown as string;
-      // console.log('Hosts', hosts);
       for (const host of hosts) {
         _dispatchPaliEvent(host, data, id);
       }
