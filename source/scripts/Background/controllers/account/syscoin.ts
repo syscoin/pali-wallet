@@ -16,8 +16,14 @@ import {
   setIsLoadingTxs,
   setIsNetworkChanging,
   setIsPendingBalances,
+  setUpdatedAllErcTokensBalance,
+  setUpdatedNativeTokenBalance,
 } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
+import {
+  getBalanceUpdatedToErcTokens,
+  getNativeTokenBalance,
+} from 'utils/tokens';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
@@ -35,10 +41,19 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
-      store.getState().vault;
+    const {
+      activeAccount,
+      isBitcoinBased,
+      accounts,
+      activeNetwork,
+      isNetworkChanging,
+    } = store.getState().vault;
     const { id: accountId } = activeAccount;
-    if (!accounts[accountId].address) return;
+    if (
+      !accounts[accountId].address ||
+      !Boolean(accounts[accountId].address === activeAccount.address)
+    )
+      return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
@@ -154,6 +169,37 @@ const SysAccountController = (): ISysAccountController => {
         ...formattedWalletAccountsLatestUpdates,
       })
     );
+
+    // UPDATE ETH NATIVE TOKEN BALANCE
+    if (!isNetworkChanging && !isBitcoinBased) {
+      console.log('accounts[accountId].address', accounts[accountId].address);
+      const nativeTokenBalance = await getNativeTokenBalance(
+        accounts[accountId].address,
+        activeNetwork.url
+      );
+      console.log('nativeTokenBalance', nativeTokenBalance);
+
+      store.dispatch(
+        setUpdatedNativeTokenBalance({
+          accountId: accounts[accountId].id,
+          balance: nativeTokenBalance,
+        })
+      );
+
+      //UPDATE ETH ERC TOKEN BALANCES
+      const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
+        accounts[accountId].id
+      );
+      console.log('getUpdatedErcTokens', getUpdatedErcTokens);
+
+      store.dispatch(
+        setUpdatedAllErcTokensBalance({
+          accountId: accounts[accountId].id,
+          updatedTokens: getUpdatedErcTokens,
+        })
+      );
+    }
+
     resolve();
 
     const isUpdating = store.getState().vault.isNetworkChanging;

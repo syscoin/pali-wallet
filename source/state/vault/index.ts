@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
 import loadsh from 'lodash';
+import lodash from 'lodash';
 
 import {
   initialNetworksState,
@@ -219,14 +220,16 @@ const VaultState = createSlice({
       action: PayloadAction<{
         accountId: number;
         newAccountsAssets: any;
-        newActiveAccountAssets: any;
       }>
     ) {
-      const { newAccountsAssets, newActiveAccountAssets, accountId } =
-        action.payload;
+      const { newAccountsAssets, accountId } = action.payload;
 
-      state.accounts[accountId].assets.ethereum = newAccountsAssets;
-      state.activeAccount.assets.ethereum = newActiveAccountAssets;
+      const { isBitcoinBased } = state;
+
+      if (!isBitcoinBased) {
+        state.accounts[accountId].assets.ethereum = newAccountsAssets;
+        state.activeAccount.assets.ethereum = newAccountsAssets;
+      }
     },
     setUpdatedNativeTokenBalance(
       state: IVaultState,
@@ -238,15 +241,35 @@ const VaultState = createSlice({
       const { accountId, balance } = action.payload;
       const { isBitcoinBased } = state;
 
-      if (isBitcoinBased) {
-        state.accounts[accountId].balances.syscoin = balance;
-        state.activeAccount.balances.syscoin = balance;
-
-        return;
+      if (!isBitcoinBased) {
+        state.accounts[accountId].balances.ethereum = balance;
+        state.activeAccount.balances.ethereum = balance;
       }
+    },
+    setUpdatedAllErcTokensBalance(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        updatedTokens: any[];
+      }>
+    ) {
+      const { accountId, updatedTokens } = action.payload;
+      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
+        state;
 
-      state.accounts[accountId].balances.ethereum = balance;
-      state.activeAccount.balances.ethereum = balance;
+      const findAccount = accounts[accountId];
+
+      if (
+        !Boolean(
+          findAccount.address === activeAccount.address ||
+            isNetworkChanging ||
+            isBitcoinBased
+        )
+      )
+        return;
+
+      state.accounts[accountId].assets.ethereum = updatedTokens;
+      state.activeAccount.assets.ethereum = updatedTokens;
     },
   },
 });
@@ -275,6 +298,7 @@ export const {
   setIsBitcoinBased,
   setUpdatedTokenBalace,
   setUpdatedNativeTokenBalance,
+  setUpdatedAllErcTokensBalance,
 } = VaultState.actions;
 
 export default VaultState.reducer;

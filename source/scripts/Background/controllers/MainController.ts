@@ -41,6 +41,7 @@ import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
+import { getNativeTokenBalance } from 'utils/tokens';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
@@ -407,13 +408,11 @@ const MainController = (): IMainController => {
 
     if (!Boolean(findAccount.address === activeAccount.address)) return;
 
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+    const formattedBalance = await getNativeTokenBalance(
+      findAccount.address,
+      activeNetwork.url
+    );
 
-    const callBalance = await provider.getBalance(findAccount.address);
-
-    const balance = ethers.utils.formatEther(callBalance);
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
     if (!isNetworkChanging)
       store.dispatch(
         setUpdatedNativeTokenBalance({
@@ -430,7 +429,8 @@ const MainController = (): IMainController => {
     isNft: boolean,
     decimals?: number
   ) => {
-    const { activeNetwork, accounts, activeAccount } = store.getState().vault;
+    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
+      store.getState().vault;
     const findAccount = accounts[accountId];
 
     if (!Boolean(findAccount.address === activeAccount.address)) return;
@@ -465,26 +465,14 @@ const MainController = (): IMainController => {
         return vaultAssets;
       }
     );
-
-    const newActiveAccountAssets = activeAccount.assets.ethereum.map(
-      (activeAssets: ITokenEthProps) => {
-        if (
-          Number(activeAssets.chainId) === tokenChain &&
-          activeAssets.contractAddress === tokenAddress
-        ) {
-          return { ...activeAssets, balance: formattedBalance };
-        }
-        return activeAssets;
-      }
-    );
-
-    store.dispatch(
-      setUpdatedTokenBalace({
-        accountId: findAccount.id,
-        newAccountsAssets,
-        newActiveAccountAssets,
-      })
-    );
+    if (!isNetworkChanging) {
+      store.dispatch(
+        setUpdatedTokenBalace({
+          accountId: findAccount.id,
+          newAccountsAssets,
+        })
+      );
+    }
   };
 
   return {

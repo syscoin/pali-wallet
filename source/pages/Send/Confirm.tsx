@@ -90,6 +90,7 @@ export const SendConfirm = () => {
             sysTxsController
               .sendTransaction(basicTxValues)
               .then(async (response) => {
+                setConfirmedTx(response);
                 const provider = new ethers.providers.JsonRpcProvider(
                   activeNetwork.url
                 );
