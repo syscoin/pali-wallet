@@ -1,10 +1,11 @@
 import { Form, Input } from 'antd';
-import loadsh from 'lodash';
+import { ethers } from 'ethers';
+import lodash from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { setActiveNetwork, web3Provider } from '@pollum-io/sysweb3-network';
+import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 import {
   getTokenStandardMetadata,
   isValidEthereumAddress,
@@ -41,11 +42,13 @@ export const CustomToken = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
+  const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+
   const handleERC721NFTs = async (contractAddress: string) => {
     const getBalance = await getERC721StandardBalance(
       contractAddress,
       activeAccount.address,
-      web3Provider
+      provider
     );
 
     const balanceToNumber = Number(getBalance);
@@ -63,11 +66,13 @@ export const CustomToken = () => {
     const metadata = await getTokenStandardMetadata(
       contractAddress,
       activeAccount.address,
-      web3Provider
+      provider
     );
 
-    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-    const formattedBalance = loadsh.floor(parseFloat(balance), 4);
+    const balance = `${
+      metadata.balance / 10 ** metadata.decimals ? metadata.decimals : decimals
+    }`;
+    const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
     if (metadata) {
       form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
