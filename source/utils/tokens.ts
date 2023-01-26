@@ -70,7 +70,6 @@ export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
 
     return updatedTokens;
   } catch (error) {
-    console.log('ERC TOKENS ERROR', error);
     return [];
   }
 };
