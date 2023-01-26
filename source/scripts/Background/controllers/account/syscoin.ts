@@ -41,13 +41,8 @@ const SysAccountController = (): ISysAccountController => {
   let intervalId: NodeJS.Timer;
 
   const getLatestUpdate = async (silent?: boolean) => {
-    const {
-      activeAccount,
-      isBitcoinBased,
-      accounts,
-      activeNetwork,
-      isNetworkChanging,
-    } = store.getState().vault;
+    const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
+      store.getState().vault;
     const { id: accountId } = activeAccount;
     if (
       !accounts[accountId].address ||
@@ -114,91 +109,98 @@ const SysAccountController = (): ISysAccountController => {
           value: { ...accounts[accountId].assets, syscoin: assets },
         })
       );
-    }
-
-    const formattedWalletAccountsLatestUpdates = Object.assign(
-      {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => {
-        const { transactions: updatedTxs } = account;
-
-        const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
-          (value, i, self) =>
-            i ===
-            self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-        ); // to get array with unique txs.
-        if (index === accountId) {
-          if (isBitcoinBased)
-            return {
-              ...account,
-              label: accounts[index].label,
-              transactions: [...filteredTxs],
-              assets: {
-                ethereum: accounts[index].assets.ethereum,
-                syscoin: account.assets,
-              },
-            };
-          else
-            return {
-              ...account,
-              label: accounts[index].label,
-              assets: accounts[index].assets,
-              transactions: [...filteredTxs],
-            };
-        }
-        if (isBitcoinBased)
-          return {
-            ...account,
-            label: accounts[index].label,
-            transactions: [...filteredTxs],
-            assets: {
-              ethereum: accounts[index].assets.ethereum,
-              syscoin: account.assets,
-            },
-          };
-        else
-          return {
-            ...account,
-            label: accounts[index].label,
-            assets: accounts[index].assets,
-            transactions: [...allTxs],
-          };
-      })
-    );
-    store.dispatch(
-      setAccounts({
-        ...formattedWalletAccountsLatestUpdates,
-      })
-    );
-
-    // UPDATE ETH NATIVE TOKEN BALANCE
-    if (!isNetworkChanging && !isBitcoinBased) {
-      console.log('accounts[accountId].address', accounts[accountId].address);
-      const nativeTokenBalance = await getNativeTokenBalance(
-        accounts[accountId].address,
-        activeNetwork.url
-      );
-      console.log('nativeTokenBalance', nativeTokenBalance);
-
-      store.dispatch(
-        setUpdatedNativeTokenBalance({
-          accountId: accounts[accountId].id,
-          balance: nativeTokenBalance,
-        })
-      );
-
+    } else {
       //UPDATE ETH ERC TOKEN BALANCES
       const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
         accounts[accountId].id
       );
-      console.log('getUpdatedErcTokens', getUpdatedErcTokens);
 
       store.dispatch(
-        setUpdatedAllErcTokensBalance({
-          accountId: accounts[accountId].id,
-          updatedTokens: getUpdatedErcTokens,
+        setActiveAccountProperty({
+          property: 'assets',
+          value: {
+            ...accounts[accountId].assets,
+            ethereum: getUpdatedErcTokens,
+          },
         })
       );
     }
+
+    const formattedWalletAccountsLatestUpdates = Object.assign(
+      {},
+      await Promise.all(
+        Object.values(walleAccountstLatestUpdate).map(
+          async (account: any, index) => {
+            const { transactions: updatedTxs } = account;
+
+            const allTxs = [
+              ...accounts[index].transactions,
+              ...updatedTxs,
+            ].filter(
+              (value, i, self) =>
+                i ===
+                self.findIndex((tx) => tx && value && tx[hash] === value[hash])
+            ); // to get array with unique txs.
+            if (index === accountId) {
+              if (isBitcoinBased)
+                return {
+                  ...account,
+                  label: accounts[index].label,
+                  transactions: [...filteredTxs],
+                  assets: {
+                    ethereum: accounts[index].assets.ethereum,
+                    syscoin: account.assets,
+                  },
+                };
+              else {
+                //UPDATE ETH ERC TOKEN BALANCES
+                const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
+                  accounts[index].id
+                );
+
+                return {
+                  ...account,
+                  label: accounts[index].label,
+                  assets: {
+                    syscoin: accounts[index].assets.syscoin,
+                    ethereum: getUpdatedErcTokens,
+                  },
+                  transactions: [...filteredTxs],
+                };
+              }
+            }
+            if (isBitcoinBased)
+              return {
+                ...account,
+                label: accounts[index].label,
+                transactions: [...filteredTxs],
+                assets: {
+                  ethereum: accounts[index].assets.ethereum,
+                  syscoin: account.assets,
+                },
+              };
+            else {
+              //UPDATE ETH ERC TOKEN BALANCES
+              const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
+                accounts[index].id
+              );
+
+              return {
+                ...account,
+                label: accounts[index].label,
+                assets: {
+                  syscoin: accounts[index].assets.syscoin,
+                  ethereum: getUpdatedErcTokens,
+                },
+                transactions: [...allTxs],
+              };
+            }
+          }
+        )
+      )
+    );
+
+    store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
 
     resolve();
 
