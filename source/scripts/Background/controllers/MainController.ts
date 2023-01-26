@@ -329,7 +329,6 @@ const MainController = (): IMainController => {
   };
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    //TODO: Fix sysweb3 so we can have this functionallity back again
     try {
       const { formattedNetwork } = data.isSyscoinRpc
         ? await getSysRpc(data)
@@ -337,7 +336,12 @@ const MainController = (): IMainController => {
 
       return formattedNetwork;
     } catch (error) {
-      throw cleanErrorStack(ethErrors.rpc.internal());
+      if (!data.isSyscoinRpc) {
+        throw cleanErrorStack(ethErrors.rpc.internal());
+      }
+      throw new Error(
+        'Could not add your network, please try a different RPC endpoint'
+      );
     }
   };
 
