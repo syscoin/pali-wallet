@@ -39,7 +39,7 @@ export const AddToken: FC = () => {
   };
 
   useEffect(() => {
-    verifyIfIsTestnet().then((isTestnet) => setIsTestnet(isTestnet));
+    verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
   }, [network, network.chainId]);
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
