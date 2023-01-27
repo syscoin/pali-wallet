@@ -16,14 +16,9 @@ import {
   setIsLoadingTxs,
   setIsNetworkChanging,
   setIsPendingBalances,
-  setUpdatedAllErcTokensBalance,
-  setUpdatedNativeTokenBalance,
 } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
-import {
-  getBalanceUpdatedToErcTokens,
-  getNativeTokenBalance,
-} from 'utils/tokens';
+import { getBalanceUpdatedToErcTokens } from 'utils/tokens';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
