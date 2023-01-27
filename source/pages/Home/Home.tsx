@@ -70,7 +70,7 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked) return;
 
-    verifyIfIsTestnet().then((isTestnet) => setIsTestnet(isTestnet));
+    verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
