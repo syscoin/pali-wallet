@@ -14,7 +14,7 @@ import {
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, Icon, NeutralButton } from 'components/index';
+import { DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
