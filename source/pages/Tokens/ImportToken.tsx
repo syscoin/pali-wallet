@@ -1,12 +1,19 @@
 import { Form, Input } from 'antd';
+import { ethers } from 'ethers';
 import { uniqueId } from 'lodash';
+import lodash from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
+import { useSelector } from 'react-redux';
 
-import { getTokenJson } from '@pollum-io/sysweb3-utils';
+import {
+  getTokenJson,
+  getTokenStandardMetadata,
+} from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
@@ -20,6 +27,16 @@ export const ImportToken: FC = () => {
   const [selected, setSelected] = useState(null);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
+
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const handleSearch = (query: string) => {
     setSelected(null);
@@ -38,7 +55,7 @@ export const ImportToken: FC = () => {
   };
 
   const renderTokens = () => {
-    const tokensList = list || getTokenJson();
+    const tokensList = list.length > 0 ? list : getTokenJson();
 
     for (const [key, value] of Object.entries(tokensList)) {
       const tokenValue: any = value;
@@ -68,7 +85,21 @@ export const ImportToken: FC = () => {
 
   const addToken = async (token: ITokenEthProps) => {
     try {
-      await controller.wallet.account.eth.saveTokenInfo(token);
+      const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+
+      const metadata = await getTokenStandardMetadata(
+        token.contractAddress,
+        accounts[activeAccount.id].address,
+        provider
+      );
+
+      const balance = `${metadata.balance / 10 ** Number(token.decimals)}`;
+      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+
+      await controller.wallet.account.eth.saveTokenInfo({
+        ...token,
+        balance: formattedBalance,
+      });
 
       setAdded(true);
     } catch (_error) {
