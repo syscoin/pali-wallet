@@ -110,13 +110,15 @@ const SysAccountController = (): ISysAccountController => {
         accounts[accountId].id
       );
 
+      const newAssets: any = {
+        syscoin: accounts[accountId].assets.syscoin,
+        ethereum: getUpdatedErcTokens,
+      };
+
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: {
-            ...accounts[accountId].assets,
-            ethereum: getUpdatedErcTokens,
-          },
+          value: newAssets,
         })
       );
     }

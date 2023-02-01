@@ -70,8 +70,10 @@ export const CustomToken = () => {
     );
 
     const balance = `${
-      metadata.balance / 10 ** metadata.decimals ? metadata.decimals : decimals
+      metadata.balance /
+      10 ** (metadata.decimals ? metadata.decimals : decimals)
     }`;
+
     const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
     if (metadata) {
