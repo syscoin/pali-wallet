@@ -30,16 +30,26 @@ export const getNativeTokenBalance = async (
 
     return formattedBalance;
   } catch (error) {
-    return 0;
+    console.error(
+      "Pali utils: Couldn't update native balance due to the following issue ",
+      error
+    );
+
+    const { accounts } = store.getState().vault;
+
+    const findAccount = Object.values(accounts).find(
+      (acc) => acc.address === accountAddress
+    );
+
+    return findAccount.balances.ethereum;
   }
 };
 
 export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
+  const { accounts, networks } = store.getState().vault;
+
+  const findAccount = accounts[accountId];
   try {
-    const { accounts, networks } = store.getState().vault;
-
-    const findAccount = accounts[accountId];
-
     const updatedTokens = await Promise.all(
       findAccount.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
         const provider = new ethers.providers.JsonRpcProvider(
@@ -70,6 +80,10 @@ export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
 
     return updatedTokens;
   } catch (error) {
-    return [];
+    console.error(
+      "Pali utils: Couldn't update assets due to the following issue ",
+      error
+    );
+    return findAccount.assets.ethereum;
   }
 };

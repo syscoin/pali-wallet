@@ -1,16 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ethers } from 'ethers';
-import loadsh from 'lodash';
-import lodash from 'lodash';
 
 import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getErc20Abi, getErc21Abi, INetwork } from '@pollum-io/sysweb3-utils';
-
-import { ITokenEthProps } from 'types/tokens';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { IChangingConnectedAccount, IVaultState } from './types';
 
