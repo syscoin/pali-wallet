@@ -2,6 +2,8 @@ import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+
 import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -20,11 +22,31 @@ const ConnectHardwareWalletView: FC = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  useEffect(() => {
-    setIsTestnet(
-      !(activeNetwork.chainId === 57 || activeNetwork.chainId === 1)
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+
+  const verifyIfIsTestnet = async () => {
+    const { url } = activeNetwork;
+
+    const { chain, chainId }: any = isBitcoinBased
+      ? await validateSysRpc(url)
+      : await validateEthRpc(url);
+
+    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
+
+    return Boolean(
+      chain === 'test' ||
+        chain === 'testnet' ||
+        ethTestnetsChainsIds.some(
+          (validationChain) => validationChain === chainId
+        )
     );
-  }, [activeNetwork]);
+  };
+
+  useEffect(() => {
+    verifyIfIsTestnet().then((isTestnet) => setIsTestnet(isTestnet));
+  }, [activeNetwork, activeNetwork.chainId]);
 
   return (
     <Layout title="HARDWARE WALLET" id="hardware-wallet-title">

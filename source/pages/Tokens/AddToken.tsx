@@ -24,15 +24,23 @@ export const AddToken: FC = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const setTestnet = async () => {
-    const { chain } = await validateEthRpc(network.url);
+  const verifyIfIsTestnet = async () => {
+    const { chain, chainId } = await validateEthRpc(network.url);
 
-    setIsTestnet(chain === 'testnet');
+    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
+
+    return Boolean(
+      chain === 'test' ||
+        chain === 'testnet' ||
+        ethTestnetsChainsIds.some(
+          (validationChain) => validationChain === chainId
+        )
+    );
   };
 
   useEffect(() => {
-    setTestnet();
-  }, [network]);
+    verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
+  }, [network, network.chainId]);
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
 
