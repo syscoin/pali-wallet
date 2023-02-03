@@ -58,10 +58,6 @@ const CustomRPCView = () => {
 
       navigate('/settings/networks/edit');
     } catch (error: any) {
-      if (error.message === null || error.message === undefined) {
-        error.message =
-          'Could not add your network, please try a different RPC endpoint';
-      }
       alert.removeAll();
       alert.error(error.message);
 
