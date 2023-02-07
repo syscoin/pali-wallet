@@ -47,9 +47,18 @@ export const SendNTokenTransaction = () => {
 
   const isExternal = Boolean(externalTx.external);
 
-  const tx = externalTx.tx;
+  const transactionDataValidation = Boolean(
+    externalTx.tx?.data && String(externalTx.tx.data).length > 0
+  );
 
-  const isLegacyTransaction = Boolean(tx.type);
+  const tx = transactionDataValidation
+    ? {
+        ...externalTx.tx,
+        data: ethers.utils.formatBytes32String(externalTx.tx.data),
+      }
+    : externalTx.tx;
+
+  const isLegacyTransaction = Boolean(tx.type === '0x0');
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
@@ -91,8 +100,10 @@ export const SendNTokenTransaction = () => {
 
           return response;
         } else {
+          const { type, ...txWithoutType } = tx;
+
           const response = await txs.sendFormattedTransaction({
-            ...tx,
+            ...txWithoutType,
             maxPriorityFeePerGas: ethers.utils.parseUnits(
               String(
                 Boolean(
@@ -276,6 +287,21 @@ export const SendNTokenTransaction = () => {
                 } ${activeNetwork.currency?.toLocaleUpperCase()}`}
               </span>
             </p>
+
+            {transactionDataValidation ? (
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Data
+                <div
+                  className="scrollbar-styled h-fit mb-6 mt-2 px-2.5 py-1 max-w-full max-h-16 break-all text-xs rounded-xl overflow-x-hidden overflow-y-auto"
+                  style={{
+                    backgroundColor: 'rgba(22, 39, 66, 1)',
+                    overflowWrap: 'break-word',
+                  }}
+                >
+                  {tx.data}
+                </div>
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-around py-8 w-full">

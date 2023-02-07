@@ -5,6 +5,7 @@ import {
   web3Provider,
   setActiveNetwork as setProviderNetwork,
 } from '@pollum-io/sysweb3-network';
+import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
@@ -23,11 +24,20 @@ export const EthProvider = (host: string) => {
 
     const tx = params;
 
-    const decodedTx = decodeTransactionData(tx) as IDecodedTx;
+    const validateTxToAddress = await validateEOAAddress(
+      tx.to,
+      store.getState().vault.activeNetwork.url
+    );
+
+    const decodedTx = decodeTransactionData(
+      tx,
+      validateTxToAddress
+    ) as IDecodedTx;
 
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
 
-    if (!tx.data) {
+    //Open Send Component
+    if (validateTxToAddress.wallet) {
       const resp = await popupPromise({
         host,
         data: { tx, external: true },
@@ -35,6 +45,16 @@ export const EthProvider = (host: string) => {
         eventName: 'nTokenTx',
       });
 
+      return resp;
+    }
+    //Open Contract Interaction component
+    if (validateTxToAddress.contract) {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/ethTx',
+        eventName: 'txSend',
+      });
       return resp;
     }
 
@@ -47,14 +67,6 @@ export const EthProvider = (host: string) => {
       });
       return resp;
     }
-
-    const resp = await popupPromise({
-      host,
-      data: { tx, decodedTx, external: true },
-      route: 'tx/send/ethTx',
-      eventName: 'txSend',
-    });
-    return resp;
   };
 
   const ethSign = async (params: string[]) => {

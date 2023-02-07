@@ -8,10 +8,16 @@ import { pegasysABI } from './pegasys';
 import { wrapABI } from './wrapABI';
 export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
 
-export const decodeTransactionData = (params: ITransactionParams) => {
+export const decodeTransactionData = (
+  params: ITransactionParams,
+  validateTxToAddress: IValidateEOAAddressResponse
+) => {
   try {
     const { data, value } = params;
-    if (data) {
+
+    const dataValidation = Boolean(data && data.length > 0);
+
+    if (validateTxToAddress.contract && dataValidation) {
       let decoderValue = erc20DataDecoder().decodeData(params.data); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
       const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
@@ -27,16 +33,7 @@ export const decodeTransactionData = (params: ITransactionParams) => {
       return decoderValue;
     }
 
-    const transactionValueValidation = [
-      value === 0,
-      value > 0,
-      String(value) === '0x0',
-    ];
-
-    if (
-      !data &&
-      transactionValueValidation.some((validation) => validation === true)
-    ) {
+    if (validateTxToAddress.wallet) {
       const emptyDecoderObject = {
         method: 'Send',
         types: [],
@@ -51,3 +48,8 @@ export const decodeTransactionData = (params: ITransactionParams) => {
     return;
   }
 };
+
+interface IValidateEOAAddressResponse {
+  contract: boolean | undefined;
+  wallet: boolean | undefined;
+}
