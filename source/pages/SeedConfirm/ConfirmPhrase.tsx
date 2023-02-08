@@ -12,10 +12,12 @@ export const ConfirmPhrase = ({
   passed,
   confirmPassed,
   seed,
+  setPassed,
 }: {
   confirmPassed: any;
   passed: boolean;
   seed: string;
+  setPassed: any;
 }) => {
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((seed || '').split(' '))
@@ -35,6 +37,11 @@ export const ConfirmPhrase = ({
     setOrgList([...orgList, newList[idx]]);
     tempList.splice(idx, 1);
     setNewList([...tempList]);
+  };
+
+  const handleValidate = () => {
+    if (newList.toString().replaceAll(',', ' ') === seed) setPassed(true);
+    else setPassed(false);
   };
 
   return (
@@ -69,7 +76,7 @@ export const ConfirmPhrase = ({
           </section>
 
           <div className="absolute bottom-12">
-            <PrimaryButton type="button" onClick={confirmPassed}>
+            <PrimaryButton type="button" onClick={handleValidate}>
               Validate
             </PrimaryButton>
           </div>
