@@ -18,6 +18,8 @@ export const decodeTransactionData = (
 
     const dataValidation = Boolean(data && String(data).length > 0);
 
+    // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
+    // so we need to transform it on Bytes32.
     const validatedData = dataValidation
       ? data.substring(0, 2) === '0x'
         ? data
