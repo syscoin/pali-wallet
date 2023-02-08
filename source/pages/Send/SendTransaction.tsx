@@ -17,6 +17,7 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
 import {
   TransactionDetailsComponent,
@@ -81,12 +82,7 @@ export const SendTransaction = () => {
 
   const { type, ...validatedDataTxWithoutType } = {
     ...dataTx,
-    data:
-      dataTx.data.length > 0
-        ? dataTx.data.substring(0, 2) === '0x'
-          ? dataTx.data
-          : ethers.utils.formatBytes32String(dataTx.data)
-        : '',
+    data: validateTransactionDataValue(dataTx.data),
   };
 
   const handleConfirm = async () => {

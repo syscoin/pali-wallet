@@ -6,6 +6,7 @@ import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 import { ITransactionParams } from 'types/transactions';
 
 import { pegasysABI } from './pegasys';
+import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
 export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
 
@@ -20,11 +21,7 @@ export const decodeTransactionData = (
 
     // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
     // so we need to transform it on Bytes32.
-    const validatedData = dataValidation
-      ? data.substring(0, 2) === '0x'
-        ? data
-        : ethers.utils.formatBytes32String(data)
-      : '';
+    const validatedData = validateTransactionDataValue(data);
 
     //Try to decode if address is contract and have Data
     if (validateTxToAddress.contract && dataValidation) {
