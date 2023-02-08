@@ -34,7 +34,7 @@ export const EthProvider = (host: string) => {
       validateTxToAddress
     ) as IDecodedTx;
 
-    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
+    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     //Open Send Component
     if (validateTxToAddress.wallet) {

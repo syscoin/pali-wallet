@@ -79,6 +79,16 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
+  const { type, ...validatedDataTxWithoutType } = {
+    ...dataTx,
+    data:
+      dataTx.data.length > 0
+        ? dataTx.data.substring(0, 2) === '0x'
+          ? dataTx.data
+          : ethers.utils.formatBytes32String(dataTx.data)
+        : '',
+  };
+
   const handleConfirm = async () => {
     const {
       balances: { ethereum },
@@ -91,7 +101,7 @@ export const SendTransaction = () => {
 
       const txs = account.eth.tx;
       setTx({
-        ...tx,
+        ...(validatedDataTxWithoutType as ITxState),
         nonce: customNonce,
         maxPriorityFeePerGas: ethers.utils.parseUnits(
           String(
@@ -169,7 +179,7 @@ export const SendTransaction = () => {
     const getGasAndFunction = async () => {
       try {
         const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          dataTx,
+          validatedDataTxWithoutType,
           activeNetwork
         );
         setFee(feeDetails);
@@ -177,10 +187,7 @@ export const SendTransaction = () => {
         setCustomNonce(nonce);
       } catch (e) {
         alert.removeAll();
-        alert.error(
-          'The transaction will fail due to wrong parameters, fix it and try again',
-          e
-        );
+        alert.error('The transaction will fail, fix it and try again!', e);
         setTimeout(window.close, 3000);
       }
     };
@@ -307,7 +314,7 @@ export const SendTransaction = () => {
                 ) : component.component === 'hex' ? (
                   <TransactionHexComponent
                     methodName={decodedTxData.method}
-                    dataHex={dataTx.data}
+                    dataHex={validatedDataTxWithoutType.data}
                   />
                 ) : null}
               </div>

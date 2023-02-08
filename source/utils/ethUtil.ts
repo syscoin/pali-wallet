@@ -1,4 +1,5 @@
 import InputDataDecoder from 'ethereum-input-data-decoder';
+import { ethers } from 'ethers';
 
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
@@ -13,26 +14,43 @@ export const decodeTransactionData = (
   validateTxToAddress: IValidateEOAAddressResponse
 ) => {
   try {
-    const { data, value } = params;
+    const { data } = params;
 
-    const dataValidation = Boolean(data && data.length > 0);
+    const dataValidation = Boolean(data && String(data).length > 0);
 
+    const validatedData = dataValidation
+      ? data.substring(0, 2) === '0x'
+        ? data
+        : ethers.utils.formatBytes32String(data)
+      : '';
+
+    //Try to decode if address is contract and have Data
     if (validateTxToAddress.contract && dataValidation) {
-      let decoderValue = erc20DataDecoder().decodeData(params.data); //First checking if method is defined on erc20ABI
+      let decoderValue = erc20DataDecoder().decodeData(validatedData); //First checking if method is defined on erc20ABI
       if (decoderValue.method !== null) return decoderValue;
       const decoderWrapInstance = new InputDataDecoder(JSON.stringify(wrapABI));
-      decoderValue = decoderWrapInstance.decodeData(params.data);
+      decoderValue = decoderWrapInstance.decodeData(validatedData);
       if (decoderValue.method !== null) return decoderValue;
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
-      decoderValue = decoderInstance.decodeData(params.data);
-      if (decoderValue.method === null && (!value || value === 0)) {
-        //TODO: This if needs to be changed we should check if its contract interaction by the address being of a contract or not
+      decoderValue = decoderInstance.decodeData(validatedData);
+      if (decoderValue.method === null) {
         decoderValue.method = 'Contract Interaction';
       }
-
       return decoderValue;
     }
 
+    //Return Contract Interaction if address is contract but don't have Data
+    if (validateTxToAddress.contract && !dataValidation) {
+      const emptyDecoderObject = {
+        method: 'Contract Interaction',
+        types: [],
+        inputs: [],
+        names: [],
+      };
+      return emptyDecoderObject;
+    }
+
+    // Return Send Method if address is a wallet
     if (validateTxToAddress.wallet) {
       const emptyDecoderObject = {
         method: 'Send',
