@@ -38,24 +38,27 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-
+  const { timer } = useSelector((state: RootState) => state.vault);
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
-  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
+  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic !== '';
+
+  const handleLogout = () => {
+    wallet.lock();
+
+    navigate('/');
+  };
 
   useEffect(() => {
     if (isUnlocked) {
-      window.addEventListener('mousemove', () => {
-        browser.runtime.sendMessage({
-          type: 'autolock',
-          target: 'background',
-        });
-      });
+      setTimeout(() => {
+        handleLogout();
+      }, timer * 60000);
     }
-  }, [isUnlocked]);
+  }, [isUnlocked, timer]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts && encryptedMnemonic;
