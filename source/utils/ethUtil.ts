@@ -1,5 +1,4 @@
 import InputDataDecoder from 'ethereum-input-data-decoder';
-import { ethers } from 'ethers';
 
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 

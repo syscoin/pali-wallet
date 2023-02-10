@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import lodash from 'lodash';
+import lodash, { omit } from 'lodash';
 
 import {
   KeyringManager,
@@ -83,8 +83,8 @@ const MainController = (): IMainController => {
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
       resolve();
       const { assets: currentAssets } = activeAccount;
-      //TODO: find better implementation;
-      const { assets, ...keyringAccount } = account;
+
+      const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
 

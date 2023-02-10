@@ -161,7 +161,7 @@ export interface ITxState {
   chainId: number;
   data: string;
   from: string;
-  gasLimit: any;
+  gasLimit: BigNumber | string | number | undefined;
   maxFeePerGas: any;
   maxPriorityFeePerGas: any;
   nonce?: number;

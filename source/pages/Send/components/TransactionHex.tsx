@@ -1,4 +1,4 @@
-import { ethers, utils } from 'ethers';
+import { utils } from 'ethers';
 import React, { useEffect } from 'react';
 
 import { Icon } from 'components/Icon';
