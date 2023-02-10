@@ -14,10 +14,10 @@ export const ConfirmPhrase = ({
   seed,
   setPassed,
 }: {
-  confirmPassed: any;
+  confirmPassed: () => Promise<void>;
   passed: boolean;
   seed: string;
-  setPassed: any;
+  setPassed: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((seed || '').split(' '))
