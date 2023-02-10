@@ -17,6 +17,7 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
 import {
@@ -80,8 +81,10 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
-  const { type, ...validatedDataTxWithoutType } = {
-    ...dataTx,
+  const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
+
+  const validatedDataTxWithoutType = {
+    ...omitTransactionObject,
     data: validateTransactionDataValue(dataTx.data),
   };
 
@@ -175,7 +178,7 @@ export const SendTransaction = () => {
     const getGasAndFunction = async () => {
       try {
         const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          validatedDataTxWithoutType,
+          validatedDataTxWithoutType as ITransactionParams,
           activeNetwork
         );
         setFee(feeDetails);

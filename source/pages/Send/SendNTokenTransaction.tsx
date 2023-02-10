@@ -5,9 +5,14 @@ import { useSelector } from 'react-redux';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ICustomFeeParams, IFeeState } from 'types/transactions';
+import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
-import { logError, ellipsis, removeScientificNotation } from 'utils/index';
+import {
+  logError,
+  ellipsis,
+  removeScientificNotation,
+  omitTransactionObjectData,
+} from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
 
@@ -73,7 +78,7 @@ export const SendNTokenTransaction = () => {
 
     if (activeAccount && balance > 0) {
       setLoading(true);
-
+      const txWithoutType = omitTransactionObjectData(tx, ['type']) as ITxState;
       try {
         if (isLegacyTransaction) {
           const getGasCorrectlyGasPrice = Boolean(
@@ -82,11 +87,8 @@ export const SendNTokenTransaction = () => {
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await txs.getRecommendedGasPrice();
 
-          // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
-          const { type, ...restTx } = tx; // REMOVE TYPE TO PREVENT TRANSACTION TYPE ERROR
-
           const response = await txs.sendFormattedTransaction({
-            ...restTx,
+            ...txWithoutType,
             gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
             gasLimit: txs.toBigNumber(
               validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
@@ -100,8 +102,6 @@ export const SendNTokenTransaction = () => {
 
           return response;
         } else {
-          const { type, ...txWithoutType } = tx;
-
           const response = await txs.sendFormattedTransaction({
             ...txWithoutType,
             maxPriorityFeePerGas: ethers.utils.parseUnits(

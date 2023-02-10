@@ -1,6 +1,8 @@
-import { isInteger } from 'lodash';
+import { isInteger, omit } from 'lodash';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+
+import { ITransactionParams, ITxState } from 'types/transactions';
 
 export const getAssetBalance = (
   asset: any,
@@ -21,3 +23,8 @@ export const getAssetBalance = (
 
   return `${asset.balance.toFixed(8)} ${asset.symbol}`;
 };
+
+export const omitTransactionObjectData = (
+  transaction: ITxState | ITransactionParams,
+  omitArray: Array<string>
+) => omit(transaction, omitArray);

@@ -162,8 +162,8 @@ export interface ITxState {
   data: string;
   from: string;
   gasLimit: BigNumber | string | number | undefined;
-  maxFeePerGas: any;
-  maxPriorityFeePerGas: any;
+  maxFeePerGas: BigNumber | string | number | undefined;
+  maxPriorityFeePerGas: BigNumber | string | number | undefined;
   nonce?: number;
   to: string;
   token?: any;
