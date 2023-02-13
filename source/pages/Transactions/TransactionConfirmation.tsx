@@ -66,9 +66,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 }) => {
   if (!transaction) throw { message: 'No transaction' };
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);

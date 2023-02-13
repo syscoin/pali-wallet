@@ -11,9 +11,11 @@ export const TransactionsPanel = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const { isLoadingTxs } = useSelector((state: RootState) => state.vault);
+  const { isLoadingTxs, accounts } = useSelector(
+    (state: RootState) => state.vault
+  );
   const [internalLoading, setInternalLoading] = useState<any>(isLoadingTxs);
-  const transactions = Object.values(activeAccount.transactions);
+  const transactions = Object.values(accounts[activeAccount].transactions);
   const seconds = 10000;
 
   const NoTransactionsComponent = () => (

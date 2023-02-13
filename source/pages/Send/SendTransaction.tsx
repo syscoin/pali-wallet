@@ -38,9 +38,10 @@ export const SendTransaction = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params

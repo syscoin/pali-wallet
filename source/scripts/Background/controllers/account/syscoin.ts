@@ -37,7 +37,7 @@ const SysAccountController = (): ISysAccountController => {
   const getLatestUpdate = async (silent?: boolean) => {
     const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
       store.getState().vault;
-    const { id: accountId } = activeAccount;
+    const accountId = activeAccount;
     if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
@@ -185,9 +185,12 @@ const SysAccountController = (): ISysAccountController => {
     const interval = 30 * 1000;
 
     intervalId = setInterval(() => {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, accounts } = store.getState().vault;
 
-      if (!activeAccount.address || !activeAccount.transactions) {
+      if (
+        !accounts[activeAccount].address ||
+        !accounts[activeAccount].transactions
+      ) {
         clearInterval(intervalId);
 
         return;
@@ -214,9 +217,9 @@ const SysAccountController = (): ISysAccountController => {
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, accounts } = store.getState().vault;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = accounts[activeAccount].assets.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
@@ -243,7 +246,7 @@ const SysAccountController = (): ISysAccountController => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, asset],
+          value: [...accounts[activeAccount].assets, asset],
         })
       );
     } catch (error) {
