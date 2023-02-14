@@ -84,7 +84,7 @@ const MainController = (): IMainController => {
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
       resolve();
       const { assets: currentAssets } = accounts[activeAccount];
-      const keyringAccount = omit(account, 'assets');
+      const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
 
