@@ -114,7 +114,7 @@ describe('Vault store actions', () => {
   it('should set the active account)', () => {
     const newState = reducer(initialState, setActiveAccount(MOCK_ACCOUNT.id));
 
-    expect(newState.activeAccount).toEqual(MOCK_ACCOUNT);
+    expect(newState.activeAccount).toEqual(MOCK_ACCOUNT.id);
   });
 
   //* setActiveAccountProperty
@@ -127,7 +127,8 @@ describe('Vault store actions', () => {
     const newState = reducer(customState, setActiveAccountProperty(payload));
 
     const { activeAccount } = newState;
-    expect(activeAccount[payload.property]).toEqual(payload.value);
+    const currentActiveAccount = newState.accounts[activeAccount];
+    expect(currentActiveAccount[payload.property]).toEqual(payload.value);
   });
 
   //* setAccountLabel
