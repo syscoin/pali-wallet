@@ -7,21 +7,25 @@ import {
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
+import { useUtils } from 'hooks/useUtils';
 
 export const ConfirmPhrase = ({
   passed,
   confirmPassed,
   seed,
+  setPassed,
 }: {
-  confirmPassed: any;
+  confirmPassed: () => Promise<void>;
   passed: boolean;
   seed: string;
+  setPassed: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((seed || '').split(' '))
   );
 
   const [newList, setNewList] = useState<Array<string>>([]);
+  const { alert } = useUtils();
 
   const handleOrgPhrase = (idx: number) => {
     const tempList = [...orgList];
@@ -35,6 +39,14 @@ export const ConfirmPhrase = ({
     setOrgList([...orgList, newList[idx]]);
     tempList.splice(idx, 1);
     setNewList([...tempList]);
+  };
+
+  const handleValidate = () => {
+    if (newList.toString().replaceAll(',', ' ') === seed) setPassed(true);
+    else {
+      setPassed(false);
+      alert.error('The seed passed is wrong. Verify it and try again.');
+    }
   };
 
   return (
@@ -69,7 +81,7 @@ export const ConfirmPhrase = ({
           </section>
 
           <div className="absolute bottom-12">
-            <PrimaryButton type="button" onClick={confirmPassed}>
+            <PrimaryButton type="button" onClick={handleValidate}>
               Validate
             </PrimaryButton>
           </div>
