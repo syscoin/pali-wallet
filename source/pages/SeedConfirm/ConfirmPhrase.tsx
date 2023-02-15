@@ -7,6 +7,7 @@ import {
   PrimaryButton,
   OnboardingLayout,
 } from 'components/index';
+import { useUtils } from 'hooks/useUtils';
 
 export const ConfirmPhrase = ({
   passed,
@@ -24,6 +25,7 @@ export const ConfirmPhrase = ({
   );
 
   const [newList, setNewList] = useState<Array<string>>([]);
+  const { alert } = useUtils();
 
   const handleOrgPhrase = (idx: number) => {
     const tempList = [...orgList];
@@ -41,7 +43,10 @@ export const ConfirmPhrase = ({
 
   const handleValidate = () => {
     if (newList.toString().replaceAll(',', ' ') === seed) setPassed(true);
-    else setPassed(false);
+    else {
+      setPassed(false);
+      alert.error('The seed passed is wrong. Verify it and try again.');
+    }
   };
 
   return (
