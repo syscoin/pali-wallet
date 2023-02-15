@@ -98,23 +98,6 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  useEffect(() => {
-    console.log({
-      validation:
-        accounts[activeAccount] &&
-        lastLogin &&
-        isUnlocked &&
-        !isPendingBalances &&
-        !isNetworkChanging,
-    });
-  }, [
-    accounts[activeAccount],
-    lastLogin,
-    isUnlocked,
-    isPendingBalances,
-    isNetworkChanging,
-  ]);
-
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount] &&

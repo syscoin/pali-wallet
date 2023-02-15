@@ -49,7 +49,7 @@ const SysAccountController = (): ISysAccountController => {
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
 
-    const { address, balances, xpub, assets } = accountLatestUpdate;
+    const { address, balances, xpub } = accountLatestUpdate;
 
     const transactions = [
       ...accountLatestUpdate.transactions,
@@ -62,44 +62,7 @@ const SysAccountController = (): ISysAccountController => {
         self.findIndex((tx) => tx && value && tx[hash] === value[hash])
     );
 
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'transactions',
-        value: [...filteredTxs],
-      })
-    );
-
     store.dispatch(setIsLoadingTxs(false));
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'address',
-        value: address,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'balances',
-        value: balances,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xpub',
-        value: xpub,
-      })
-    );
-
-    if (isBitcoinBased) {
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: { ...accounts[accountId].assets, syscoin: assets },
-        })
-      );
-    }
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
@@ -117,6 +80,9 @@ const SysAccountController = (): ISysAccountController => {
               ...account,
               label: accounts[index].label,
               transactions: [...filteredTxs],
+              address,
+              balances,
+              xpub,
               assets: {
                 ethereum: accounts[index].assets.ethereum,
                 syscoin: account.assets,
