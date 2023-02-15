@@ -6,6 +6,7 @@ import {
   ErrorModal,
   PrimaryButton,
   SecondaryButton,
+  Tooltip,
 } from 'components/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -147,25 +148,37 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
       <div className="flex flex-col items-center justify-center w-full">
         <ul className="scrollbar-styled mt-4 px-4 w-full h-80 text-xs overflow-auto">
-          {data.map(
-            (item) =>
+          {data.map((item) => {
+            const valueValidation =
+              typeof item.value === 'string' && item.value.length > 10;
+
+            return (
               !item.advanced && (
                 <li
                   key={item.label}
                   className="flex items-center justify-between my-2 p-2 w-full text-xs border-b border-dashed border-brand-royalblue"
                 >
                   <p>{camelCaseToText(item.label)}</p>
-                  <p>
-                    {typeof item.value === 'string' && item.value.length > 10
-                      ? ellipsis(item.value)
-                      : item.value}
+                  <p
+                    className={
+                      valueValidation ? 'hover:text-brand-royalblue' : ''
+                    }
+                  >
+                    {valueValidation ? (
+                      <Tooltip content={item.value}>
+                        {ellipsis(item.value)}
+                      </Tooltip>
+                    ) : (
+                      item.value
+                    )}
                     {typeof item.value === 'boolean' &&
                       (item.value ? 'Yes' : 'No')}
                     {!item.value && '-'}
                   </p>
                 </li>
               )
-          )}
+            );
+          })}
         </ul>
 
         <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
