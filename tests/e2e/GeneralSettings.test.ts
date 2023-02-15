@@ -59,7 +59,7 @@ describe('General settings', () => {
     }
 
     const url = await driver.getCurrentUrl();
-    const expectedUrl = 'https://discord.com/invite/8QKeyurHRd';
+    const expectedUrl = 'https://discord.com/invite/syscoin';
 
     expect(url).toBe(expectedUrl);
   });
