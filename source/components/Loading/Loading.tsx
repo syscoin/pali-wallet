@@ -47,6 +47,9 @@ export const Loading = ({
 
   useEffect(() => {
     validateTimeoutError();
+    return () => {
+      setTimeoutError(false);
+    };
   }, []);
 
   return (
