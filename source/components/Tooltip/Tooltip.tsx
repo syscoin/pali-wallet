@@ -27,7 +27,9 @@ export const Tooltip: React.FC<ITooltip> = ({
       interactive
       content={
         <div
-          className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none ${className}`}
+          className={`p-3 text-xs bg-bkg-1 border border-bkg-3 rounded-lg leading-5 shadow-md text-brand-white outline-none focus:outline-none 
+          ${className} 
+          ${String(content).length >= 20 && 'max-w-full text-clip break-all'}`}
         >
           {content}
         </div>
