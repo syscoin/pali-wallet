@@ -32,10 +32,10 @@ export const TransactionsPanel = () => {
 
   useEffect(() => {
     validateTimeoutError();
-  }, [isLoadingTxs]);
-
-  useEffect(() => {
     setInternalLoading(isLoadingTxs);
+    return () => {
+      setInternalLoading(false);
+    };
   }, [isLoadingTxs]);
 
   return transactions.length === 0 ? (
