@@ -48,6 +48,7 @@ browser.runtime.onMessage.addListener(async ({ type, target }) => {
 });
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
+  if (port.name === 'pali') window.controller.wallet.setIsPopupOpen(true);
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
@@ -70,6 +71,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
+      window.controller.wallet.setIsPopupOpen(false);
       log('pali disconnecting port', 'System');
     });
   }
