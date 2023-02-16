@@ -1,5 +1,7 @@
 import { AES } from 'crypto-js';
 
+import { initialActiveAccountState } from '@pollum-io/sysweb3-keyring';
+
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
   createAccount,
@@ -91,7 +93,12 @@ describe('Vault store actions', () => {
     it('should remove all accounts', () => {
       const newState = reducer(stateWithAccounts, removeAccounts());
 
-      expect(newState.accounts).toEqual({});
+      expect(newState.accounts).toEqual({
+        0: {
+          ...initialActiveAccountState,
+          assets: { syscoin: [], ethereum: [] },
+        },
+      });
     });
   });
 
