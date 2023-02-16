@@ -181,7 +181,12 @@ const VaultState = createSlice({
       return initialState;
     },
     removeAccounts(state: IVaultState) {
-      state.accounts = {};
+      state.accounts = {
+        0: {
+          ...initialActiveAccountState,
+          assets: { syscoin: [], ethereum: [] },
+        },
+      };
       state.activeAccount = 0;
     },
     removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {

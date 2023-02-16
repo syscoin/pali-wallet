@@ -43,24 +43,11 @@ const SysAccountController = (): ISysAccountController => {
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
     store.dispatch(setIsLoadingTxs(true));
-    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+    const { walleAccountstLatestUpdate } =
       await keyringManager.getLatestUpdateForAccount();
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
-
-    const { address, balances, xpub } = accountLatestUpdate;
-
-    const transactions = [
-      ...accountLatestUpdate.transactions,
-      ...accounts[accountId].transactions,
-    ];
-
-    const filteredTxs = transactions.filter(
-      (value, index, self) =>
-        index ===
-        self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-    );
 
     store.dispatch(setIsLoadingTxs(false));
 
@@ -74,33 +61,12 @@ const SysAccountController = (): ISysAccountController => {
             i ===
             self.findIndex((tx) => tx && value && tx[hash] === value[hash])
         ); // to get array with unique txs.
-        if (index === accountId) {
-          if (isBitcoinBased)
-            return {
-              ...account,
-              label: accounts[index].label,
-              transactions: [...filteredTxs],
-              address,
-              balances,
-              xpub,
-              assets: {
-                ethereum: accounts[index].assets.ethereum,
-                syscoin: account.assets,
-              },
-            };
-          else
-            return {
-              ...account,
-              label: accounts[index].label,
-              assets: accounts[index].assets,
-              transactions: [...filteredTxs],
-            };
-        }
+
         if (isBitcoinBased)
           return {
             ...account,
             label: accounts[index].label,
-            transactions: [...filteredTxs],
+            transactions: [...allTxs],
             assets: {
               ethereum: accounts[index].assets.ethereum,
               syscoin: account.assets,

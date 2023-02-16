@@ -98,7 +98,6 @@ const MainController = (): IMainController => {
             isUnlocked: keyringManager.isUnlocked(),
           },
         })
-        // .then(() => console.log('Successfully update all Dapps Unlock'))
         .catch((error) => console.error('Unlock', error));
     });
     return;
