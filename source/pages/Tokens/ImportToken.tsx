@@ -28,11 +28,10 @@ export const ImportToken: FC = () => {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
 
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork

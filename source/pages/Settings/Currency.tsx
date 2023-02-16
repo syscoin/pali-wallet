@@ -19,13 +19,10 @@ const CurrencyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccount.id
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const activeAccount = accounts[activeAccountId];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
