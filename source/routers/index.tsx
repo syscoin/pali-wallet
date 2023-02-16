@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   About,
@@ -38,27 +37,12 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-  const { timer } = useSelector((state: RootState) => state.vault);
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const isUnlocked = wallet.isUnlocked() && encryptedMnemonic !== '';
-
-  const handleLogout = () => {
-    wallet.lock();
-
-    navigate('/');
-  };
-
-  useEffect(() => {
-    if (isUnlocked) {
-      setTimeout(() => {
-        handleLogout();
-      }, timer * 60000);
-    }
-  }, [isUnlocked, timer]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts && encryptedMnemonic;

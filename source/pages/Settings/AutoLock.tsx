@@ -1,3 +1,4 @@
+import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -8,7 +9,10 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 const AutolockView = () => {
+  const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
+
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [isEnabled, setIsEnabled] = useState<boolean>(isTimerEnabled);
   const [loading, setLoading] = useState<boolean>(false);
 
   const controller = getController();
@@ -20,6 +24,7 @@ const AutolockView = () => {
     setLoading(true);
 
     controller.wallet.setAutolockTimer(data.minutes);
+    controller.wallet.setIsAutolockEnabled(isEnabled);
 
     setConfirmed(true);
     setLoading(false);
@@ -80,6 +85,36 @@ const AutolockView = () => {
             placeholder="Minutes"
             className="input-small relative"
           />
+        </Form.Item>
+
+        <Form.Item
+          id="verify-address-switch"
+          name="verify"
+          className="flex flex-col w-full text-center"
+          rules={[
+            {
+              required: false,
+              message: '',
+            },
+          ]}
+        >
+          <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
+            <span className="text-sm">Enable autolock</span>
+            <Switch
+              checked={isEnabled}
+              onChange={() => setIsEnabled(!isEnabled)}
+              className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
+              style={{ margin: '0 auto !important' }}
+            >
+              <span
+                className={`${
+                  isEnabled
+                    ? 'translate-x-6 bg-warning-success'
+                    : 'translate-x-1'
+                } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+              />
+            </Switch>
+          </div>
         </Form.Item>
 
         <div className="absolute bottom-12 md:static">

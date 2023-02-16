@@ -34,6 +34,7 @@ import {
   setIsNetworkChanging,
   setUpdatedTokenBalace,
   setUpdatedNativeTokenBalance,
+  setIsTimerEnabled as setIsTimerActive,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -142,6 +143,10 @@ const MainController = (): IMainController => {
       // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
+  };
+
+  const setIsAutolockEnabled = (isEnabled: boolean) => {
+    store.dispatch(setIsTimerActive(isEnabled));
   };
 
   const createAccount = async (
@@ -502,6 +507,7 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    setIsAutolockEnabled,
     getRpc,
     editCustomRpc,
     removeKeyringNetwork,

@@ -38,6 +38,7 @@ export const initialState: IVaultState = {
     newConnectedAccount: undefined,
   },
   timer: 5,
+  isTimerEnabled: true,
   networks: initialNetworksState,
   encryptedMnemonic: '',
   error: false,
@@ -131,6 +132,9 @@ const VaultState = createSlice({
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
+    },
+    setIsTimerEnabled(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isTimerEnabled = action.payload;
     },
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
@@ -263,6 +267,7 @@ export const {
   setLastLogin,
   setNetworks,
   setTimer,
+  setIsTimerEnabled,
   setEncryptedMnemonic,
   forgetWallet,
   removeAccount,

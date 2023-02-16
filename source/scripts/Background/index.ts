@@ -43,6 +43,12 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
+const handleLogout = () => {
+  window.controller.wallet.lock();
+
+  window.location.replace('/');
+};
+
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
 });
@@ -53,7 +59,17 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     return;
   }
-  const { changingConnectedAccount } = store.getState().vault;
+  const { changingConnectedAccount, timer, isTimerEnabled } =
+    store.getState().vault;
+
+  if (timeout) clearTimeout(timeout);
+
+  if (isTimerEnabled) {
+    timeout = setTimeout(() => {
+      handleLogout();
+    }, timer * 60 * 1000);
+  }
+
   if (changingConnectedAccount.isChangingConnectedAccount)
     window.controller.wallet.resolveAccountConflict();
 
@@ -70,6 +86,12 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
+      if (timeout) clearTimeout(timeout);
+      if (isTimerEnabled) {
+        timeout = setTimeout(() => {
+          handleLogout();
+        }, timer * 60 * 1000);
+      }
       log('pali disconnecting port', 'System');
     });
   }
