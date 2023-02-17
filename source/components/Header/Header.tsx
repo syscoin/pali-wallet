@@ -25,6 +25,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     (state: RootState) => state.vault.activeAccount
   );
 
+  const { accounts } = useSelector((state: RootState) => state.vault);
+
   const { newConnectedAccount, host, isChangingConnectedAccount } = useSelector(
     (state: RootState) => state.vault.changingConnectedAccount
   );
@@ -97,8 +99,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                 <p className="text-brand-white text-sm">
                   <b className="text-gray-400">{host}</b> is connected to{' '}
                   {newConnectedAccount ? newConnectedAccount.label : ''}. Your
-                  active account is {activeAccount.label}. Would you like to
-                  continue with the active account?
+                  active account is {accounts[activeAccount].label}. Would you
+                  like to continue with the active account?
                 </p>
               </div>
 

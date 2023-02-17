@@ -33,6 +33,9 @@ export const Home = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const { accounts, isNetworkChanging } = useSelector(
+    (state: RootState) => state.vault
+  );
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -40,10 +43,10 @@ export const Home = () => {
   //* Constants
   const controller = getController();
   const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
+    controller.wallet.isUnlocked() && accounts[activeAccount].address !== '';
+  const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
-    activeAccount.balances;
+    accounts[activeAccount].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
@@ -71,6 +74,9 @@ export const Home = () => {
     if (!isUnlocked) return;
 
     verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
+    return () => {
+      setIsTestnet(false);
+    };
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
@@ -87,7 +93,7 @@ export const Home = () => {
   }, [
     isUnlocked,
     activeAccount,
-    activeAccount.address,
+    accounts[activeAccount].address,
     activeNetwork,
     activeNetwork.chainId,
     fiatAsset,
@@ -96,8 +102,12 @@ export const Home = () => {
   ]);
 
   return (
-    <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount && lastLogin && isUnlocked && !isPendingBalances ? (
+    <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
+      {accounts[activeAccount] &&
+      lastLogin &&
+      isUnlocked &&
+      !isPendingBalances &&
+      !isNetworkChanging ? (
         <>
           <Header accountHeader />
 

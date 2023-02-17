@@ -27,10 +27,10 @@ const EthAccountController = (): IEthAccountController => {
 
   const saveTokenInfo = async (token: ITokenEthProps) => {
     try {
-      const { activeAccount, activeNetwork } = store.getState().vault;
+      const { activeAccount, activeNetwork, accounts } = store.getState().vault;
       const { chainId } = activeNetwork;
 
-      const tokenExists = activeAccount.assets.ethereum?.find(
+      const tokenExists = accounts[activeAccount].assets.ethereum?.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress
       );
@@ -69,8 +69,8 @@ const EthAccountController = (): IEthAccountController => {
         setActiveAccountProperty({
           property: 'assets',
           value: {
-            ...activeAccount.assets,
-            ethereum: [...activeAccount.assets.ethereum, web3Token],
+            ...accounts[activeAccount].assets,
+            ethereum: [...accounts[activeAccount].assets.ethereum, web3Token],
           },
         })
       );

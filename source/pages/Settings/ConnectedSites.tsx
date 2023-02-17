@@ -13,9 +13,10 @@ const ConnectedSites = () => {
   const { dapp } = getController();
   const { navigate } = useUtils();
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   const [selected, setSelected] = useState<IDApp>();
   const dapps = Object.values(dapp.getAll());

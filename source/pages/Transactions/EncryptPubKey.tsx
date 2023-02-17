@@ -14,9 +14,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

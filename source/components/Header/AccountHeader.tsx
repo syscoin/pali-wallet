@@ -157,7 +157,7 @@ const AccountMenu: React.FC = () => {
                             {account.label} ({ellipsis(account.address, 4, 8)})
                           </span>
 
-                          {activeAccount.id === account.id && (
+                          {activeAccount === account.id && (
                             <Icon
                               name="check"
                               className="mb-1 w-4"
@@ -208,6 +208,7 @@ export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const { accounts } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
@@ -216,11 +217,11 @@ export const AccountHeader: React.FC = () => {
     const placeholder = document.querySelector('.add-identicon');
     if (!placeholder) return;
 
-    placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
+    placeholder.innerHTML = toSvg(accounts[activeAccount]?.xpub, 50, {
       backColor: '#07152B',
       padding: 1,
     });
-  }, [activeAccount?.address]);
+  }, [accounts[activeAccount]?.address]);
 
   useEffect(() => {
     if (!copied) return;
@@ -236,13 +237,15 @@ export const AccountHeader: React.FC = () => {
 
         <div className="items-center justify-center px-1 text-brand-white">
           <p className="mb-1 text-base" id="active-account-label">
-            {activeAccount?.label}
+            {accounts[activeAccount]?.label}
           </p>
-          <p className="text-xs">{ellipsis(activeAccount?.address, 6, 14)}</p>
+          <p className="text-xs">
+            {ellipsis(accounts[activeAccount]?.address, 6, 14)}
+          </p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address ?? '')}
+          onClick={() => copy(accounts[activeAccount]?.address ?? '')}
           type="primary"
           shape="circle"
           className="mt-3"

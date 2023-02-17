@@ -8,9 +8,10 @@ import { RootState } from 'state/store';
 import { ellipsis, formatCurrency, truncate } from 'utils/index';
 
 export const SyscoinAssetsList = () => {
-  const assets = useSelector(
-    (state: RootState) => state.vault.activeAccount.assets
+  const { accounts, activeAccount } = useSelector(
+    (state: RootState) => state.vault
   );
+  const { assets } = accounts[activeAccount];
   const { navigate } = useUtils();
 
   return (

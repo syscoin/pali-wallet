@@ -19,20 +19,21 @@ export const SeedConfirm = () => {
   }: any = useLocation();
 
   const handleConfirm = async () => {
-    await controller.wallet.createWallet(password);
+    if (passed) {
+      await controller.wallet.createWallet(password);
 
-    navigate('/home');
-
-    setPassed(true);
+      navigate('/home');
+    }
   };
 
   return (
     <>
-      {next && !passed ? (
+      {next ? (
         <ConfirmPhrase
           confirmPassed={handleConfirm}
           passed={passed}
           seed={createdSeed}
+          setPassed={setPassed}
         />
       ) : (
         <CreatePhrase password={password} />

@@ -1,26 +1,23 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ethers } from 'ethers';
-import loadsh from 'lodash';
 
 import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-import { getErc20Abi, getErc21Abi, INetwork } from '@pollum-io/sysweb3-utils';
-
-import { ITokenEthProps } from 'types/tokens';
+import { INetwork } from '@pollum-io/sysweb3-utils';
 
 import { IChangingConnectedAccount, IVaultState } from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
-  accounts: {},
-  activeAccount: {
-    ...initialActiveAccountState,
-    transactions: [],
-    assets: { syscoin: [], ethereum: [] },
+  accounts: {
+    0: {
+      ...initialActiveAccountState,
+      assets: { syscoin: [], ethereum: [] },
+    },
   },
+  activeAccount: 0,
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
@@ -57,9 +54,8 @@ const VaultState = createSlice({
       state.accounts = action.payload;
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
-      const { id } = state.activeAccount;
+      const id = state.activeAccount;
       state.accounts[id].transactions.unshift(action.payload);
-      state.activeAccount.transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,
@@ -139,10 +135,7 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
-    setActiveAccount(
-      state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
-    ) {
+    setActiveAccount(state: IVaultState, action: PayloadAction<number>) {
       state.activeAccount = action.payload;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
@@ -154,8 +147,9 @@ const VaultState = createSlice({
       // ).toString();
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
+      const id = state.activeAccount;
       state.isPendingBalances = action.payload;
-      state.activeAccount.transactions = []; // TODO: check a better way to handle network transaction
+      state.accounts[id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;
@@ -176,16 +170,12 @@ const VaultState = createSlice({
         value: number | string | boolean | any[];
       }>
     ) {
+      const { activeAccount: id } = state;
       const { property, value } = action.payload;
 
-      if (!(property in state.activeAccount))
+      if (!(property in state.accounts[id]))
         throw new Error('Unable to set property. Unknown key');
 
-      state.activeAccount[property] = value;
-
-      const {
-        activeAccount: { id },
-      } = state;
       state.accounts[id][property] = value;
     },
     setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
@@ -195,8 +185,13 @@ const VaultState = createSlice({
       return initialState;
     },
     removeAccounts(state: IVaultState) {
-      state.accounts = {};
-      state.activeAccount = initialActiveAccountState;
+      state.accounts = {
+        0: {
+          ...initialActiveAccountState,
+          assets: { syscoin: [], ethereum: [] },
+        },
+      };
+      state.activeAccount = 0;
     },
     removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
       delete state.accounts[action.payload.id];
@@ -223,14 +218,11 @@ const VaultState = createSlice({
       action: PayloadAction<{
         accountId: number;
         newAccountsAssets: any;
-        newActiveAccountAssets: any;
       }>
     ) {
-      const { newAccountsAssets, newActiveAccountAssets, accountId } =
-        action.payload;
+      const { newAccountsAssets, accountId } = action.payload;
 
       state.accounts[accountId].assets.ethereum = newAccountsAssets;
-      state.activeAccount.assets.ethereum = newActiveAccountAssets;
     },
     setUpdatedNativeTokenBalance(
       state: IVaultState,
@@ -244,13 +236,11 @@ const VaultState = createSlice({
 
       if (isBitcoinBased) {
         state.accounts[accountId].balances.syscoin = balance;
-        state.activeAccount.balances.syscoin = balance;
 
         return;
       }
 
       state.accounts[accountId].balances.ethereum = balance;
-      state.activeAccount.balances.ethereum = balance;
     },
   },
 });
