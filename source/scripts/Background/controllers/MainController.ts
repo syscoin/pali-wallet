@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import lodash from 'lodash';
+import floor from 'lodash/floor';
+import omit from 'lodash/omit';
 
 import {
   KeyringManager,
@@ -46,7 +47,6 @@ import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
@@ -82,15 +82,14 @@ const MainController = (): IMainController => {
     await new Promise<void>(async (resolve) => {
       const { activeAccount } = store.getState().vault;
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-      resolve();
       const { assets: currentAssets } = activeAccount;
-      //TODO: find better implementation;
-      const { assets, ...keyringAccount } = account;
+      const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
+      store.dispatch(setActiveAccount(mainAccount));
+      resolve();
 
       store.dispatch(setLastLogin());
-      store.dispatch(setActiveAccount(mainAccount));
       window.controller.dapp
         .handleStateChange(PaliEvents.lockStateChanged, {
           method: PaliEvents.lockStateChanged,
@@ -140,7 +139,6 @@ const MainController = (): IMainController => {
           isUnlocked: keyringManager.isUnlocked(),
         },
       })
-      // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
   };
@@ -422,7 +420,7 @@ const MainController = (): IMainController => {
 
     const balance = ethers.utils.formatEther(callBalance);
 
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
+    const formattedBalance = floor(parseFloat(balance), 4);
     if (!isNetworkChanging)
       store.dispatch(
         setUpdatedNativeTokenBalance({
@@ -459,7 +457,7 @@ const MainController = (): IMainController => {
       : Number(balanceMethodCall);
 
     const formattedBalance = !isNft
-      ? lodash.floor(parseFloat(balance as string), 4)
+      ? floor(parseFloat(balance as string), 4)
       : balance;
 
     const newAccountsAssets = accounts[accountId].assets.ethereum.map(
