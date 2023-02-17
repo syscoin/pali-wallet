@@ -23,7 +23,7 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
   const controller = getController();
   const [prefix, methodName] = data.method.split('_');
-  const { activeAccount, isBitcoinBased, isNetworkChanging } =
+  const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
     store.getState().vault;
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
@@ -203,7 +203,7 @@ export const methodRequest = async (
   }
 
   if (
-    activeAccount.address !== dapp.getAccount(host).address &&
+    accounts[activeAccount].address !== dapp.getAccount(host).address &&
     !isBitcoinBased &&
     EthProvider(host).checkIsBlocking(data.method)
   ) {

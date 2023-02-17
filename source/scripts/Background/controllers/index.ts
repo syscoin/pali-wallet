@@ -26,8 +26,8 @@ const MasterController = (): IMasterController => {
   const dapp = Object.freeze(DAppController());
 
   const refresh = async (silent?: boolean) => {
-    const { activeAccount } = store.getState().vault;
-    if (!activeAccount.address) return;
+    const { activeAccount, accounts } = store.getState().vault;
+    if (!accounts[activeAccount].address) return;
 
     await wallet.account.sys.getLatestUpdate(silent);
     wallet.account.sys.watchMemPool();
