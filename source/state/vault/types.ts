@@ -5,7 +5,7 @@ export interface IVaultState {
   accounts: {
     [id: number]: IKeyringAccountState;
   };
-  activeAccount: IKeyringAccountState;
+  activeAccount: number;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
   encryptedMnemonic: string;
