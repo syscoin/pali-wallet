@@ -37,9 +37,7 @@ const restartLockTimeout = () => {
   }
 
   timeout = setTimeout(() => {
-    if (window.controller.wallet.isUnlocked()) {
-      // window.controller.wallet.lock();
-    }
+    handleLogout();
   }, timer * 60 * 1000);
 };
 
@@ -50,8 +48,32 @@ const handleLogout = () => {
 };
 
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
-  if (type === 'autolock' && target === 'background') restartLockTimeout();
+  if (type === 'reset_autolock' && target === 'background') {
+    restartLockTimeout();
+  }
 });
+
+export const inactivityTime = () => {
+  const resetTimer = () => {
+    browser.runtime.sendMessage({
+      type: 'reset_autolock',
+      target: 'background',
+    });
+  };
+
+  // DOM Events
+  const events = [
+    'onmousemove',
+    'onkeydown',
+    'onload',
+    'onmousedown',
+    'ontouchstart',
+    'onclick',
+    'onkeydown',
+  ];
+
+  events.forEach((event) => (document[event] = resetTimer));
+};
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali-inject') {

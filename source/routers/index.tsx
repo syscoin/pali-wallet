@@ -28,6 +28,7 @@ import {
   Phrase,
 } from '../pages';
 import { useUtils } from 'hooks/index';
+import { inactivityTime } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -40,6 +41,7 @@ export const Router = () => {
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+  const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const isUnlocked = wallet.isUnlocked() && encryptedMnemonic !== '';
@@ -56,6 +58,10 @@ export const Router = () => {
     const route = appRoute();
     if (route !== '/') navigate(route);
   }, [isUnlocked]);
+
+  useEffect(() => {
+    if (isTimerEnabled) inactivityTime();
+  }, []);
 
   useEffect(() => {
     alert.removeAll();
