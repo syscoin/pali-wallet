@@ -34,7 +34,6 @@ import {
   setChangingConnectedAccount,
   setIsNetworkChanging,
   setUpdatedTokenBalace,
-  setUpdatedNativeTokenBalance,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -42,6 +41,7 @@ import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
+import { getNativeTokenBalance } from 'utils/tokens';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
@@ -138,7 +138,6 @@ const MainController = (): IMainController => {
           isUnlocked: keyringManager.isUnlocked(),
         },
       })
-      // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
   };
@@ -402,31 +401,6 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
-  const updateNativeTokenBalance = async (accountId: number) => {
-    const { accounts, activeAccount, activeNetwork, isNetworkChanging } =
-      store.getState().vault;
-
-    const findAccount = accounts[accountId];
-
-    if (!Boolean(findAccount.address === accounts[activeAccount].address))
-      return;
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const callBalance = await provider.getBalance(findAccount.address);
-
-    const balance = ethers.utils.formatEther(callBalance);
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
-    if (!isNetworkChanging)
-      store.dispatch(
-        setUpdatedNativeTokenBalance({
-          accountId: findAccount.id,
-          balance: formattedBalance,
-        })
-      );
-  };
-
   const updateErcTokenBalances = async (
     accountId: number,
     tokenAddress: string,
@@ -434,7 +408,8 @@ const MainController = (): IMainController => {
     isNft: boolean,
     decimals?: number
   ) => {
-    const { activeNetwork, accounts, activeAccount } = store.getState().vault;
+    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
+      store.getState().vault;
     const findAccount = accounts[accountId];
 
     if (!Boolean(findAccount.address === accounts[activeAccount].address))
@@ -471,12 +446,14 @@ const MainController = (): IMainController => {
       }
     );
 
-    store.dispatch(
-      setUpdatedTokenBalace({
-        accountId: findAccount.id,
-        newAccountsAssets,
-      })
-    );
+    if (!isNetworkChanging) {
+      store.dispatch(
+        setUpdatedTokenBalace({
+          accountId: findAccount.id,
+          newAccountsAssets,
+        })
+      );
+    }
   };
 
   return {
@@ -499,7 +476,6 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
-    updateNativeTokenBalance,
     ...keyringManager,
   };
 };

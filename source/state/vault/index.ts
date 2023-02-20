@@ -218,25 +218,36 @@ const VaultState = createSlice({
     ) {
       const { newAccountsAssets, accountId } = action.payload;
 
-      state.accounts[accountId].assets.ethereum = newAccountsAssets;
+      const { isBitcoinBased } = state;
+      //TODO: remove this if condition and guarantee that this redux state is only called on the appropriate state transition.
+      //TODO: the appropriate state transition is updating ERC tokens balance, so its a great concern that this if is here
+      if (!isBitcoinBased) {
+        state.accounts[accountId].assets.ethereum = newAccountsAssets;
+      }
     },
-    setUpdatedNativeTokenBalance(
+    setUpdatedAllErcTokensBalance(
       state: IVaultState,
       action: PayloadAction<{
         accountId: number;
-        balance: number;
+        updatedTokens: any[];
       }>
     ) {
-      const { accountId, balance } = action.payload;
-      const { isBitcoinBased } = state;
+      const { accountId, updatedTokens } = action.payload;
+      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
+        state;
 
-      if (isBitcoinBased) {
-        state.accounts[accountId].balances.syscoin = balance;
+      const findAccount = accounts[accountId];
 
+      if (
+        !Boolean(
+          findAccount.address === accounts[activeAccount].address ||
+            isNetworkChanging ||
+            isBitcoinBased
+        )
+      )
         return;
-      }
 
-      state.accounts[accountId].balances.ethereum = balance;
+      state.accounts[accountId].assets.ethereum = updatedTokens;
     },
   },
 });
@@ -264,7 +275,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedTokenBalace,
-  setUpdatedNativeTokenBalance,
+  setUpdatedAllErcTokensBalance,
 } = VaultState.actions;
 
 export default VaultState.reducer;
