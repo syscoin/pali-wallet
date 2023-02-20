@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import lodash, { omit } from 'lodash';
+import floor from 'lodash/floor';
+import omit from 'lodash/omit';
 
 import {
   KeyringManager,
@@ -33,7 +34,6 @@ import {
   setChangingConnectedAccount,
   setIsNetworkChanging,
   setUpdatedTokenBalace,
-  setUpdatedNativeTokenBalance,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -41,6 +41,7 @@ import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
+import { getNativeTokenBalance } from 'utils/tokens';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
@@ -79,17 +80,16 @@ const MainController = (): IMainController => {
   const unlock = async (pwd: string): Promise<void> => {
     if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
     await new Promise<void>(async (resolve) => {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, accounts } = store.getState().vault;
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
       resolve();
-      const { assets: currentAssets } = activeAccount;
-
+      const { assets: currentAssets } = accounts[activeAccount];
       const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
 
       store.dispatch(setLastLogin());
-      store.dispatch(setActiveAccount(mainAccount));
+      store.dispatch(setActiveAccount(mainAccount.id));
       window.controller.dapp
         .handleStateChange(PaliEvents.lockStateChanged, {
           method: PaliEvents.lockStateChanged,
@@ -98,7 +98,6 @@ const MainController = (): IMainController => {
             isUnlocked: keyringManager.isUnlocked(),
           },
         })
-        // .then(() => console.log('Successfully update all Dapps Unlock'))
         .catch((error) => console.error('Unlock', error));
     });
     return;
@@ -120,10 +119,10 @@ const MainController = (): IMainController => {
       },
     };
 
-    store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(newAccountWithAssets));
+    store.dispatch(setActiveAccount(newAccountWithAssets.id));
+    store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setLastLogin());
   };
 
@@ -139,7 +138,6 @@ const MainController = (): IMainController => {
           isUnlocked: keyringManager.isUnlocked(),
         },
       })
-      // .then(() => console.log('Successfully update all Dapps'))
       .catch((error) => console.error(error));
     return;
   };
@@ -158,7 +156,7 @@ const MainController = (): IMainController => {
     };
 
     store.dispatch(addAccountToStore(newAccountWithAssets));
-    store.dispatch(setActiveAccount(newAccountWithAssets));
+    store.dispatch(setActiveAccount(newAccountWithAssets.id));
 
     return newAccountWithAssets;
   };
@@ -171,7 +169,7 @@ const MainController = (): IMainController => {
     const { accounts, activeAccount } = store.getState().vault;
     if (
       connectedAccount &&
-      connectedAccount.address === activeAccount.address
+      connectedAccount.address === accounts[activeAccount].address
     ) {
       if (connectedAccount.address !== accounts[id].address) {
         store.dispatch(
@@ -186,7 +184,7 @@ const MainController = (): IMainController => {
     }
 
     keyringManager.setActiveAccount(id);
-    store.dispatch(setActiveAccount(accounts[id]));
+    store.dispatch(setActiveAccount(id));
   };
 
   const setActiveNetwork = async (
@@ -196,7 +194,7 @@ const MainController = (): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork, activeAccount } = store.getState().vault;
+    const { activeNetwork, activeAccount, accounts } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -211,11 +209,11 @@ const MainController = (): IMainController => {
             chain
           );
 
-          const { assets } = activeAccount;
+          const { assets } = accounts[activeAccount];
 
           const generalAssets = isBitcoinBased
             ? {
-                ethereum: activeAccount.assets?.ethereum,
+                ethereum: accounts[activeAccount].assets?.ethereum,
                 syscoin: networkAccount.assets,
               }
             : assets;
@@ -247,7 +245,7 @@ const MainController = (): IMainController => {
 
           store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
-          store.dispatch(setActiveAccount(account));
+          store.dispatch(setActiveAccount(account.id));
           await utilsController.setFiat();
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
@@ -290,11 +288,11 @@ const MainController = (): IMainController => {
               }
             );
 
-            const { assets } = activeAccount;
+            const { assets } = accounts[activeAccount];
 
             const generalAssets = isBitcoinBased
               ? {
-                  ethereum: activeAccount.assets?.ethereum,
+                  ethereum: accounts[activeAccount].assets?.ethereum,
                   syscoin: networkAccount.assets,
                 }
               : assets;
@@ -305,7 +303,7 @@ const MainController = (): IMainController => {
 
             store.dispatch(setIsPendingBalances(false));
 
-            store.dispatch(setActiveAccount(account));
+            store.dispatch(setActiveAccount(account.id));
 
             await utilsController.setFiat();
           }
@@ -403,30 +401,6 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
-  const updateNativeTokenBalance = async (accountId: number) => {
-    const { accounts, activeAccount, activeNetwork, isNetworkChanging } =
-      store.getState().vault;
-
-    const findAccount = accounts[accountId];
-
-    if (!Boolean(findAccount.address === activeAccount.address)) return;
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const callBalance = await provider.getBalance(findAccount.address);
-
-    const balance = ethers.utils.formatEther(callBalance);
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
-    if (!isNetworkChanging)
-      store.dispatch(
-        setUpdatedNativeTokenBalance({
-          accountId: findAccount.id,
-          balance: formattedBalance,
-        })
-      );
-  };
-
   const updateErcTokenBalances = async (
     accountId: number,
     tokenAddress: string,
@@ -434,10 +408,12 @@ const MainController = (): IMainController => {
     isNft: boolean,
     decimals?: number
   ) => {
-    const { activeNetwork, accounts, activeAccount } = store.getState().vault;
+    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
+      store.getState().vault;
     const findAccount = accounts[accountId];
 
-    if (!Boolean(findAccount.address === activeAccount.address)) return;
+    if (!Boolean(findAccount.address === accounts[activeAccount].address))
+      return;
 
     const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
 
@@ -454,7 +430,7 @@ const MainController = (): IMainController => {
       : Number(balanceMethodCall);
 
     const formattedBalance = !isNft
-      ? lodash.floor(parseFloat(balance as string), 4)
+      ? floor(parseFloat(balance as string), 4)
       : balance;
 
     const newAccountsAssets = accounts[accountId].assets.ethereum.map(
@@ -470,25 +446,14 @@ const MainController = (): IMainController => {
       }
     );
 
-    const newActiveAccountAssets = activeAccount.assets.ethereum.map(
-      (activeAssets: ITokenEthProps) => {
-        if (
-          Number(activeAssets.chainId) === tokenChain &&
-          activeAssets.contractAddress === tokenAddress
-        ) {
-          return { ...activeAssets, balance: formattedBalance };
-        }
-        return activeAssets;
-      }
-    );
-
-    store.dispatch(
-      setUpdatedTokenBalace({
-        accountId: findAccount.id,
-        newAccountsAssets,
-        newActiveAccountAssets,
-      })
-    );
+    if (!isNetworkChanging) {
+      store.dispatch(
+        setUpdatedTokenBalace({
+          accountId: findAccount.id,
+          newAccountsAssets,
+        })
+      );
+    }
   };
 
   return {
@@ -511,7 +476,6 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
-    updateNativeTokenBalance,
     ...keyringManager,
   };
 };

@@ -34,9 +34,10 @@ export const CustomToken = () => {
     message: '',
   });
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -70,8 +71,10 @@ export const CustomToken = () => {
     );
 
     const balance = `${
-      metadata.balance / 10 ** metadata.decimals ? metadata.decimals : decimals
+      metadata.balance /
+      10 ** (metadata.decimals ? metadata.decimals : decimals)
     }`;
+
     const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
     if (metadata) {
