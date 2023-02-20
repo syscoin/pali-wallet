@@ -15,36 +15,6 @@ export const getSymbolByChain = async (chain: string) => {
   return data.symbol.toString().toUpperCase();
 };
 
-export const getNativeTokenBalance = async (
-  accountAddress: string,
-  networkUrl: string
-) => {
-  try {
-    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
-
-    const callBalance = await provider.getBalance(accountAddress);
-
-    const balance = ethers.utils.formatEther(callBalance);
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
-
-    return formattedBalance;
-  } catch (error) {
-    console.error(
-      "Pali utils: Couldn't update native balance due to the following issue ",
-      error
-    );
-
-    const { accounts } = store.getState().vault;
-
-    const findAccount = Object.values(accounts).find(
-      (acc) => acc.address === accountAddress
-    );
-
-    return findAccount.balances.ethereum;
-  }
-};
-
 export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
   const { accounts, networks } = store.getState().vault;
 

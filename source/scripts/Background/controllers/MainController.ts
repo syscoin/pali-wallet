@@ -41,7 +41,6 @@ import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
-import { getNativeTokenBalance } from 'utils/tokens';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
