@@ -19,9 +19,10 @@ export const Receive = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const networks = useSelector((state: RootState) => state.vault.networks);
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
 
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased

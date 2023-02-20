@@ -23,9 +23,10 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountId];
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);

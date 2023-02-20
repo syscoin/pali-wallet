@@ -38,90 +38,19 @@ const SysAccountController = (): ISysAccountController => {
   const getLatestUpdate = async (silent?: boolean) => {
     const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
       store.getState().vault;
-    const { id: accountId } = activeAccount;
-    if (
-      !accounts[accountId].address ||
-      !Boolean(accounts[accountId].address === activeAccount.address)
-    )
-      return;
+    const accountId = activeAccount;
+    if (!accounts[accountId].address) return;
 
     if (!silent) store.dispatch(setIsPendingBalances(true));
 
     store.dispatch(setIsLoadingTxs(true));
-    const { accountLatestUpdate, walleAccountstLatestUpdate } =
+    const { walleAccountstLatestUpdate } =
       await keyringManager.getLatestUpdateForAccount();
     store.dispatch(setIsPendingBalances(false));
 
     const hash = isBitcoinBased ? 'txid' : 'hash';
 
-    const { address, balances, xpub, assets } = accountLatestUpdate;
-
-    const transactions = [
-      ...accountLatestUpdate.transactions,
-      ...accounts[accountId].transactions,
-    ];
-
-    const filteredTxs = transactions.filter(
-      (value, index, self) =>
-        index ===
-        self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'transactions',
-        value: [...filteredTxs],
-      })
-    );
-
     store.dispatch(setIsLoadingTxs(false));
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'address',
-        value: address,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'balances',
-        value: balances,
-      })
-    );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'xpub',
-        value: xpub,
-      })
-    );
-
-    if (isBitcoinBased) {
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: { ...accounts[accountId].assets, syscoin: assets },
-        })
-      );
-    } else {
-      //UPDATE ETH ERC TOKEN BALANCES
-      const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
-        accounts[accountId].id
-      );
-
-      const newAssets: any = {
-        syscoin: accounts[accountId].assets.syscoin,
-        ethereum: getUpdatedErcTokens,
-      };
-
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'assets',
-          value: newAssets,
-        })
-      );
-    }
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
@@ -138,39 +67,12 @@ const SysAccountController = (): ISysAccountController => {
                 i ===
                 self.findIndex((tx) => tx && value && tx[hash] === value[hash])
             ); // to get array with unique txs.
-            if (index === accountId) {
-              if (isBitcoinBased)
-                return {
-                  ...account,
-                  label: accounts[index].label,
-                  transactions: [...filteredTxs],
-                  assets: {
-                    ethereum: accounts[index].assets.ethereum,
-                    syscoin: account.assets,
-                  },
-                };
-              else {
-                //UPDATE ETH ERC TOKEN BALANCES
-                const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
-                  accounts[index].id
-                );
 
-                return {
-                  ...account,
-                  label: accounts[index].label,
-                  assets: {
-                    syscoin: accounts[index].assets.syscoin,
-                    ethereum: getUpdatedErcTokens,
-                  },
-                  transactions: [...filteredTxs],
-                };
-              }
-            }
             if (isBitcoinBased)
               return {
                 ...account,
                 label: accounts[index].label,
-                transactions: [...filteredTxs],
+                transactions: [...allTxs],
                 assets: {
                   ethereum: accounts[index].assets.ethereum,
                   syscoin: account.assets,
@@ -195,6 +97,12 @@ const SysAccountController = (): ISysAccountController => {
           }
         )
       )
+    );
+
+    store.dispatch(
+      setAccounts({
+        ...formattedWalletAccountsLatestUpdates,
+      })
     );
 
     store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
@@ -230,9 +138,12 @@ const SysAccountController = (): ISysAccountController => {
     const interval = 30 * 1000;
 
     intervalId = setInterval(() => {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, accounts } = store.getState().vault;
 
-      if (!activeAccount.address || !activeAccount.transactions) {
+      if (
+        !accounts[activeAccount].address ||
+        !accounts[activeAccount].transactions
+      ) {
         clearInterval(intervalId);
 
         return;
@@ -259,9 +170,9 @@ const SysAccountController = (): ISysAccountController => {
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
-      const { activeAccount } = store.getState().vault;
+      const { activeAccount, accounts } = store.getState().vault;
 
-      const tokenExists = activeAccount.assets.find(
+      const tokenExists = accounts[activeAccount].assets.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
@@ -288,7 +199,7 @@ const SysAccountController = (): ISysAccountController => {
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...activeAccount.assets, asset],
+          value: [...accounts[activeAccount].assets, asset],
         })
       );
     } catch (error) {

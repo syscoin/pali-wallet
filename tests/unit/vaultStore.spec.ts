@@ -1,5 +1,7 @@
 import { AES } from 'crypto-js';
 
+import { initialActiveAccountState } from '@pollum-io/sysweb3-keyring';
+
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
   createAccount,
@@ -91,7 +93,12 @@ describe('Vault store actions', () => {
     it('should remove all accounts', () => {
       const newState = reducer(stateWithAccounts, removeAccounts());
 
-      expect(newState.accounts).toEqual({});
+      expect(newState.accounts).toEqual({
+        0: {
+          ...initialActiveAccountState,
+          assets: { syscoin: [], ethereum: [] },
+        },
+      });
     });
   });
 
@@ -112,22 +119,23 @@ describe('Vault store actions', () => {
 
   //* setActiveAccount
   it('should set the active account)', () => {
-    const newState = reducer(initialState, setActiveAccount(MOCK_ACCOUNT));
+    const newState = reducer(initialState, setActiveAccount(MOCK_ACCOUNT.id));
 
-    expect(newState.activeAccount).toEqual(MOCK_ACCOUNT);
+    expect(newState.activeAccount).toEqual(MOCK_ACCOUNT.id);
   });
 
   //* setActiveAccountProperty
   it('should set a property for the active account)', () => {
     // state with `accounts` and `activeAccount` populated
     let customState = reducer(initialState, createAccount(MOCK_ACCOUNT));
-    customState = reducer(customState, setActiveAccount(MOCK_ACCOUNT));
+    customState = reducer(customState, setActiveAccount(MOCK_ACCOUNT.id));
 
     const payload = { property: 'label', value: 'New Account Label' };
     const newState = reducer(customState, setActiveAccountProperty(payload));
 
     const { activeAccount } = newState;
-    expect(activeAccount[payload.property]).toEqual(payload.value);
+    const currentActiveAccount = newState.accounts[activeAccount];
+    expect(currentActiveAccount[payload.property]).toEqual(payload.value);
   });
 
   //* setAccountLabel
@@ -154,11 +162,11 @@ describe('Vault store actions', () => {
 
     const customState = reducer(
       STATE_W_ACCOUNT,
-      setActiveAccount(MOCK_ACCOUNT)
+      setActiveAccount(MOCK_ACCOUNT.id)
     );
     const newState = reducer(customState, setAccountTransactions(payload));
 
-    const { id } = newState.activeAccount;
+    const id = newState.activeAccount;
     const account = newState.accounts[id];
     expect(account.transactions).toContain(payload);
   });
