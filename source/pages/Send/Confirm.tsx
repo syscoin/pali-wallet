@@ -27,7 +27,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 export const SendConfirm = () => {
   const {
     refresh,
-    wallet: { account, updateErcTokenBalances, updateNativeTokenBalance },
+    wallet: { account, updateErcTokenBalances },
   } = getController();
 
   const { alert, navigate } = useUtils();
@@ -87,26 +87,15 @@ export const SendConfirm = () => {
       switch (true) {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
+          // Just reiterating it does not make any sense to add a ethers provider inside a UTXO code block
           try {
             sysTxsController
               .sendTransaction(basicTxValues)
               .then(async (response) => {
-                const provider = new ethers.providers.JsonRpcProvider(
-                  activeNetwork.url
-                );
-
-                let receipt = await provider.getTransactionReceipt(
-                  response.txid
-                );
-
-                while (!receipt) {
-                  receipt = await provider.getTransactionReceipt(response.txid);
-                  await new Promise((resolve) => setTimeout(resolve, 5000));
-                }
-
-                if (receipt) {
-                  updateNativeTokenBalance(activeAccount.id);
-                }
+                setConfirmedTx(response);
+              })
+              .catch((error) => {
+                throw error;
               });
             setConfirmed(true);
             setLoading(false);
@@ -170,22 +159,6 @@ export const SendConfirm = () => {
               })
               .then(async (response) => {
                 setConfirmedTx(response);
-                const provider = new ethers.providers.JsonRpcProvider(
-                  activeNetwork.url
-                );
-
-                let receipt = await provider.getTransactionReceipt(
-                  response.hash
-                );
-
-                while (!receipt) {
-                  receipt = await provider.getTransactionReceipt(response.hash);
-                  await new Promise((resolve) => setTimeout(resolve, 5000));
-                }
-
-                if (receipt) {
-                  updateNativeTokenBalance(activeAccount.id);
-                }
               });
 
             setConfirmed(true);
@@ -260,7 +233,6 @@ export const SendConfirm = () => {
                       );
                       await new Promise((resolve) => setTimeout(resolve, 5000));
                     }
-
                     if (receipt) {
                       updateErcTokenBalances(
                         activeAccount.id,
@@ -320,7 +292,6 @@ export const SendConfirm = () => {
 
                       await new Promise((resolve) => setTimeout(resolve, 5000));
                     }
-
                     if (receipt) {
                       updateErcTokenBalances(
                         activeAccount.id,

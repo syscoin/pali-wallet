@@ -5,6 +5,7 @@ import {
   web3Provider,
   setActiveNetwork as setProviderNetwork,
 } from '@pollum-io/sysweb3-network';
+import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
@@ -23,14 +24,44 @@ export const EthProvider = (host: string) => {
 
     const tx = params;
 
-    const decodedTx = decodeTransactionData(tx) as IDecodedTx;
+    const validateTxToAddress = await validateEOAAddress(
+      tx.to,
+      store.getState().vault.activeNetwork.url
+    );
 
-    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
+    const decodedTx = decodeTransactionData(
+      tx,
+      validateTxToAddress
+    ) as IDecodedTx;
 
-    if (!tx.data) {
+    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
+
+    //Open Send Component
+    if (validateTxToAddress.wallet) {
       const resp = await popupPromise({
         host,
-        data: { tx, external: true },
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/nTokenTx',
+        eventName: 'nTokenTx',
+      });
+
+      return resp;
+    }
+    //Open Contract Interaction component
+    if (validateTxToAddress.contract) {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/ethTx',
+        eventName: 'txSend',
+      });
+      return resp;
+    }
+
+    if (decodedTx.method === 'Contract Deployment') {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
         route: 'tx/send/nTokenTx',
         eventName: 'nTokenTx',
       });
@@ -47,14 +78,6 @@ export const EthProvider = (host: string) => {
       });
       return resp;
     }
-
-    const resp = await popupPromise({
-      host,
-      data: { tx, decodedTx, external: true },
-      route: 'tx/send/ethTx',
-      eventName: 'txSend',
-    });
-    return resp;
   };
 
   const ethSign = async (params: string[]) => {
@@ -181,7 +204,9 @@ export const EthProvider = (host: string) => {
         try {
           return await web3Provider.send(method, params);
         } catch (error) {
-          throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
+          throw cleanErrorStack(
+            ethErrors.rpc.internal(error.error.data || error.error.message)
+          );
         }
     }
   };

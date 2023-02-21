@@ -17,6 +17,8 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import { omitTransactionObjectData } from 'utils/transactions';
+import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
 import {
   TransactionDetailsComponent,
@@ -80,6 +82,13 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
+  const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
+
+  const validatedDataTxWithoutType = {
+    ...omitTransactionObject,
+    data: validateTransactionDataValue(dataTx.data),
+  };
+
   const handleConfirm = async () => {
     const {
       balances: { ethereum },
@@ -92,7 +101,7 @@ export const SendTransaction = () => {
 
       const txs = account.eth.tx;
       setTx({
-        ...tx,
+        ...(validatedDataTxWithoutType as ITxState),
         nonce: customNonce,
         maxPriorityFeePerGas: ethers.utils.parseUnits(
           String(
@@ -170,7 +179,7 @@ export const SendTransaction = () => {
     const getGasAndFunction = async () => {
       try {
         const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          dataTx,
+          validatedDataTxWithoutType as ITransactionParams,
           activeNetwork
         );
         setFee(feeDetails);
@@ -178,10 +187,7 @@ export const SendTransaction = () => {
         setCustomNonce(nonce);
       } catch (e) {
         alert.removeAll();
-        alert.error(
-          'The transaction will fail due to wrong parameters, fix it and try again',
-          e
-        );
+        alert.error('The transaction will fail, fix it and try again!', e);
         setTimeout(window.close, 3000);
       }
     };
@@ -308,7 +314,7 @@ export const SendTransaction = () => {
                 ) : component.component === 'hex' ? (
                   <TransactionHexComponent
                     methodName={decodedTxData.method}
-                    dataHex={dataTx.data}
+                    dataHex={validatedDataTxWithoutType.data}
                   />
                 ) : null}
               </div>
