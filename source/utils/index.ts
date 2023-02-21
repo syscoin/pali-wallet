@@ -12,3 +12,4 @@ export * from './transactions';
 export * from './removeScientificNotation';
 export * from './verifyZerosInValueAndFormat';
 export * from './cleanErrorStack';
+export * from './validateTransactionDataValue';
