@@ -13,14 +13,17 @@ export const decodeTransactionData = (
   params: ITransactionParams,
   validateTxToAddress: IValidateEOAAddressResponse
 ) => {
+  const contractCreationInitialBytes = '0x60806040';
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
   try {
     const { data } = params;
-
     const dataValidation = Boolean(data && String(data).length > 0);
 
     // Validate the Data as same as in the SendTransaction Component. If we let the data come as normal string will break all the decode Validation,
     // so we need to transform it on Bytes32.
-    const validatedData = validateTransactionDataValue(data);
+    const validatedData = dataValidation
+      ? validateTransactionDataValue(data)
+      : null; //Data might as well be null or undefined in which case the validateTransactionDataValue will fail
 
     //Try to decode if address is contract and have Data
     if (validateTxToAddress.contract && dataValidation) {
@@ -52,6 +55,29 @@ export const decodeTransactionData = (
     if (validateTxToAddress.wallet) {
       const emptyDecoderObject = {
         method: 'Send',
+        types: [],
+        inputs: [],
+        names: [],
+      };
+      return emptyDecoderObject;
+    }
+
+    if (dataValidation) {
+      const initialBytes = data.slice(0, 10); //Get the first four bytes of data + 0x
+      if (initialBytes === contractCreationInitialBytes) {
+        const emptyDecoderObject = {
+          method: 'Contract Deployment',
+          types: [],
+          inputs: [],
+          names: [],
+        };
+        return emptyDecoderObject;
+      }
+    }
+
+    if (!params?.to || params?.to === zeroAddress) {
+      const emptyDecoderObject = {
+        method: 'Burn',
         types: [],
         inputs: [],
         names: [],

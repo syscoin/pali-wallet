@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -56,11 +57,13 @@ export const SendNTokenTransaction = () => {
   const transactionDataValidation = Boolean(
     externalTx.tx?.data && String(externalTx.tx.data).length > 0
   );
-
   const tx = transactionDataValidation
     ? {
         ...externalTx.tx,
-        data: ethers.utils.formatBytes32String(externalTx.tx.data),
+        data:
+          String(externalTx.tx.data).length < 66
+            ? ethers.utils.formatBytes32String(externalTx.tx.data)
+            : externalTx.tx.data, //Messages above 32bytes cannot be decoded through this formatMethods
       }
     : externalTx.tx;
 
@@ -79,7 +82,11 @@ export const SendNTokenTransaction = () => {
 
     if (activeAccount && balance > 0) {
       setLoading(true);
-      const txWithoutType = omitTransactionObjectData(tx, ['type']) as ITxState;
+      let txToSend = tx;
+      if (tx?.gas) txToSend = omit(txToSend, ['gas']); //Paliative solution until we figure out how to enhance useEffect so its not constantly called
+      const txWithoutType = omitTransactionObjectData(txToSend, [
+        'type',
+      ]) as ITxState;
       try {
         if (isLegacyTransaction) {
           const getGasCorrectlyGasPrice = Boolean(
@@ -239,14 +246,20 @@ export const SendNTokenTransaction = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
-              Send
+              {externalTx.decodedTx.method}
             </span>
 
-            <span>
-              {`${
-                Number(tx.value) / 10 ** 18
-              } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
-            </span>
+            {externalTx.decodedTx.method !== 'Contract Deployment' ? (
+              <span>
+                {`${
+                  Number(tx.value) / 10 ** 18
+                } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+              </span>
+            ) : (
+              <span>
+                {`${0} ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+              </span>
+            )}
           </p>
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
@@ -282,11 +295,17 @@ export const SendNTokenTransaction = () => {
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               Total (Amount + gas fee)
-              <span className="text-brand-royalblue text-xs">
-                {`${
-                  Number(tx.value) / 10 ** 18 + getCalculatedFee
-                } ${activeNetwork.currency?.toLocaleUpperCase()}`}
-              </span>
+              {externalTx.decodedTx.method !== 'Contract Deployment' ? (
+                <span className="text-brand-royalblue text-xs">
+                  {`${
+                    Number(tx.value) / 10 ** 18 + getCalculatedFee
+                  } ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                </span>
+              ) : (
+                <span className="text-brand-royalblue text-xs">
+                  {`${getCalculatedFee} ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                </span>
+              )}
             </p>
 
             {transactionDataValidation ? (

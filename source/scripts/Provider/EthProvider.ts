@@ -40,7 +40,7 @@ export const EthProvider = (host: string) => {
     if (validateTxToAddress.wallet) {
       const resp = await popupPromise({
         host,
-        data: { tx, external: true },
+        data: { tx, decodedTx, external: true },
         route: 'tx/send/nTokenTx',
         eventName: 'nTokenTx',
       });
@@ -55,6 +55,17 @@ export const EthProvider = (host: string) => {
         route: 'tx/send/ethTx',
         eventName: 'txSend',
       });
+      return resp;
+    }
+
+    if (decodedTx.method === 'Contract Deployment') {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/nTokenTx',
+        eventName: 'nTokenTx',
+      });
+
       return resp;
     }
 
@@ -193,7 +204,9 @@ export const EthProvider = (host: string) => {
         try {
           return await web3Provider.send(method, params);
         } catch (error) {
-          throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
+          throw cleanErrorStack(
+            ethErrors.rpc.internal(error.error.data || error.error.message)
+          );
         }
     }
   };
