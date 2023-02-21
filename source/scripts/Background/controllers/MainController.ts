@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import lodash from 'lodash';
+import floor from 'lodash/floor';
 import omit from 'lodash/omit';
 
 import {
@@ -41,7 +41,6 @@ import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
-import { getNativeTokenBalance } from 'utils/tokens';
 
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
@@ -430,7 +429,7 @@ const MainController = (): IMainController => {
       : Number(balanceMethodCall);
 
     const formattedBalance = !isNft
-      ? lodash.floor(parseFloat(balance as string), 4)
+      ? floor(parseFloat(balance as string), 4)
       : balance;
 
     const newAccountsAssets = accounts[accountId].assets.ethereum.map(
