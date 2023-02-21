@@ -34,6 +34,7 @@ import {
   setChangingConnectedAccount,
   setIsNetworkChanging,
   setUpdatedTokenBalace,
+  setIsTimerEnabled as setIsTimerActive,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -45,7 +46,6 @@ import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
@@ -81,14 +81,15 @@ const MainController = (): IMainController => {
     await new Promise<void>(async (resolve) => {
       const { activeAccount, accounts } = store.getState().vault;
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-      resolve();
       const { assets: currentAssets } = accounts[activeAccount];
       const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };
 
-      store.dispatch(setLastLogin());
       store.dispatch(setActiveAccount(mainAccount.id));
+      resolve();
+
+      store.dispatch(setLastLogin());
       window.controller.dapp
         .handleStateChange(PaliEvents.lockStateChanged, {
           method: PaliEvents.lockStateChanged,
@@ -139,6 +140,10 @@ const MainController = (): IMainController => {
       })
       .catch((error) => console.error(error));
     return;
+  };
+
+  const setIsAutolockEnabled = (isEnabled: boolean) => {
+    store.dispatch(setIsTimerActive(isEnabled));
   };
 
   const createAccount = async (
@@ -466,6 +471,7 @@ const MainController = (): IMainController => {
     setAutolockTimer,
     setActiveNetwork,
     addCustomRpc,
+    setIsAutolockEnabled,
     getRpc,
     editCustomRpc,
     removeKeyringNetwork,
