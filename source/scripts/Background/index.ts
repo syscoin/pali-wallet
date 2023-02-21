@@ -42,9 +42,12 @@ const restartLockTimeout = () => {
 };
 
 const handleLogout = () => {
-  window.controller.wallet.lock();
+  const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+  if (isTimerEnabled) {
+    window.controller.wallet.lock();
 
-  window.location.replace('/');
+    window.location.replace('/');
+  }
 };
 
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
