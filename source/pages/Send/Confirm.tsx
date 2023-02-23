@@ -475,10 +475,16 @@ export const SendConfirm = () => {
                 Estimated GasFee
                 <span className="text-brand-royalblue text-xs">
                   {isBitcoinBased
-                    ? `${basicTxValues.fee * 10 ** 9} GWEI`
-                    : `${removeScientificNotation(
-                        getCalculatedFee
-                      )} ${activeNetwork.currency?.toUpperCase()}`}
+                    ? `${removeScientificNotation(basicTxValues.fee)} ${
+                        activeNetwork.currency
+                          ? activeNetwork.currency?.toUpperCase()
+                          : activeNetwork.label
+                      }`
+                    : `${removeScientificNotation(getCalculatedFee)} ${
+                        activeNetwork.currency
+                          ? activeNetwork.currency.toUpperCase()
+                          : activeNetwork.label
+                      }`}
                 </span>
               </p>
               {!isBitcoinBased && !basicTxValues.token?.isNft ? (
@@ -502,7 +508,12 @@ export const SendConfirm = () => {
                           Number(basicTxValues.amount)
                         }`
                       : `${Number(basicTxValues.amount) + getCalculatedFee}`}
-                    &nbsp;{`${activeNetwork.currency?.toUpperCase()}`}
+                    &nbsp;
+                    {`${
+                      activeNetwork.currency
+                        ? activeNetwork.currency.toUpperCase()
+                        : activeNetwork.label
+                    }`}
                   </span>
                 </>
               ) : (
