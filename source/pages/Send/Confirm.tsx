@@ -98,6 +98,7 @@ export const SendConfirm = () => {
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
+                setLoading(false);
                 throw error;
               });
 
@@ -162,6 +163,11 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+              })
+              .catch((error: any) => {
+                alert.error("Can't complete transaction. Try again later.");
+                setLoading(false);
+                throw error;
               });
 
             return;
