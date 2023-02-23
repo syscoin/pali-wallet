@@ -177,7 +177,12 @@ export const methodRequest = async (
             eventName: 'wallet_switchEthereumChain',
             data: { chainId: chainId },
           });
-        }
+        } else if (isNetworkChanging)
+          throw cleanErrorStack(
+            ethErrors.rpc.resourceUnavailable({
+              message: 'Already processing network change. Please wait',
+            })
+          );
         throw cleanErrorStack(ethErrors.rpc.internal());
       case 'getProviderState':
         const providerState = {
@@ -216,7 +221,6 @@ export const methodRequest = async (
     if (!response) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
-    // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
@@ -269,7 +273,12 @@ export const enable = async (
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
 
-  if (isPopupOpen) return;
+  if (isPopupOpen)
+    throw cleanErrorStack(
+      ethErrors.rpc.resourceUnavailable({
+        message: 'Already processing eth_requestAccounts. Please wait.',
+      })
+    );
 
   const dAppActiveAddress: any = await popupPromise({
     host,
