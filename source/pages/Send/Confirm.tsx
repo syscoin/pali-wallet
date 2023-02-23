@@ -13,13 +13,14 @@ import {
 import { useUtils } from 'hooks/index';
 import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
-import { ICustomFeeParams, IFeeState } from 'types/transactions';
+import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { getController } from 'utils/browser';
 import {
   truncate,
   logError,
   ellipsis,
   removeScientificNotation,
+  omitTransactionObjectData,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -124,8 +125,9 @@ export const SendConfirm = () => {
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case isBitcoinBased === false && basicTxValues.token === null:
           try {
-            // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
-            const { chainId, ...restTx } = txObjectState;
+            const restTx = omitTransactionObjectData(txObjectState, [
+              'chainId',
+            ]) as ITxState;
 
             ethereumTxsController
               .sendFormattedTransaction({
