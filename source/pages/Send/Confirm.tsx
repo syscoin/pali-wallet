@@ -97,12 +97,14 @@ export const SendConfirm = () => {
               .sendTransaction(basicTxValues)
               .then(async (response) => {
                 setConfirmedTx(response);
+                setConfirmed(true);
+                setLoading(false);
               })
               .catch((error) => {
+                alert.error("Can't complete transaction. Try again later.");
+                setLoading(false);
                 throw error;
               });
-            setConfirmed(true);
-            setLoading(false);
 
             return;
           } catch (error) {
@@ -164,10 +166,14 @@ export const SendConfirm = () => {
               })
               .then(async (response) => {
                 setConfirmedTx(response);
+                setConfirmed(true);
+                setLoading(false);
+              })
+              .catch((error: any) => {
+                alert.error("Can't complete transaction. Try again later.");
+                setLoading(false);
+                throw error;
               });
-
-            setConfirmed(true);
-            setLoading(false);
 
             return;
           } catch (error: any) {
