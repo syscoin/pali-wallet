@@ -251,7 +251,11 @@ export const enable = async (
   chainId: number,
   isSyscoinDapp = false
 ) => {
-  const { isBitcoinBased, isPopupOpen } = store.getState().vault;
+  const { isBitcoinBased } = store.getState().vault;
+  const { isOpen: isPopupOpen } = JSON.parse(
+    window.localStorage.getItem('isPopupOpen')
+  );
+
   if (!isSyscoinDapp && isBitcoinBased)
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Connected to Bitcoin based chain')

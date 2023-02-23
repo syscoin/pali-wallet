@@ -35,7 +35,6 @@ export const initialState: IVaultState = {
     newConnectedAccount: undefined,
   },
   timer: 5,
-  isPopupOpen: false,
   networks: initialNetworksState,
   encryptedMnemonic: '',
   error: false,
@@ -131,9 +130,6 @@ const VaultState = createSlice({
     },
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
-    },
-    setIsPopupOpen(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isPopupOpen = action.payload;
     },
     setActiveAccount(state: IVaultState, action: PayloadAction<number>) {
       state.activeAccount = action.payload;
@@ -255,7 +251,6 @@ export const {
   setIsLoadingTxs,
   setChangingConnectedAccount,
   setLastLogin,
-  setIsPopupOpen,
   setNetworks,
   setTimer,
   setEncryptedMnemonic,

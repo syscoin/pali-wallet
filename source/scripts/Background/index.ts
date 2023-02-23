@@ -43,12 +43,17 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
+const handleIsOpen = (isOpen: boolean) =>
+  window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
+
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
   if (type === 'autolock' && target === 'background') restartLockTimeout();
 });
 
+window.onload = () => handleIsOpen(false);
+
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-  if (port.name === 'pali') window.controller.wallet.setIsPopupOpen(true);
+  if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
@@ -71,7 +76,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
-      window.controller.wallet.setIsPopupOpen(false);
+      handleIsOpen(false);
       log('pali disconnecting port', 'System');
     });
   }

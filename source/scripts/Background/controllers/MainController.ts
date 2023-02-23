@@ -35,7 +35,6 @@ import {
   setIsNetworkChanging,
   setUpdatedTokenBalace,
   setUpdatedNativeTokenBalance,
-  setIsPopupOpen as setIsExtensionOpen,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -317,10 +316,6 @@ const MainController = (): IMainController => {
     );
   };
 
-  const setIsPopupOpen = (isOpen: boolean) => {
-    store.dispatch(setIsExtensionOpen(isOpen));
-  };
-
   const resolveError = () => store.dispatch(setStoreError(false));
   const resolveAccountConflict = () => {
     store.dispatch(
@@ -496,7 +491,6 @@ const MainController = (): IMainController => {
     setActiveNetwork,
     addCustomRpc,
     getRpc,
-    setIsPopupOpen,
     editCustomRpc,
     removeKeyringNetwork,
     resolveAccountConflict,

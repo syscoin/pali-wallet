@@ -50,7 +50,6 @@ export interface IMainController extends IKeyringManager {
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
-  setIsPopupOpen: (isOpen: boolean) => void;
   unlock: (pwd: string) => Promise<void>;
   updateErcTokenBalances: (
     accountId: number,

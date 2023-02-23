@@ -14,7 +14,6 @@ export interface IVaultState {
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
   isPendingBalances: boolean;
-  isPopupOpen: boolean;
   lastLogin: number;
   networks: {
     [INetworkType.Ethereum]: {
