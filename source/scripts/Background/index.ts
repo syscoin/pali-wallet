@@ -58,7 +58,6 @@ browser.runtime.onMessage.addListener(async ({ type, target }) => {
   }
 });
 
-window.onload = () => handleIsOpen(false);
 export const inactivityTime = () => {
   const resetTimer = () => {
     browser.runtime.sendMessage({
