@@ -50,6 +50,7 @@ export interface IMainController extends IKeyringManager {
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
+  setIsAutolockEnabled: (isEnabled: boolean) => void;
   unlock: (pwd: string) => Promise<void>;
   updateErcTokenBalances: (
     accountId: number,
@@ -58,7 +59,6 @@ export interface IMainController extends IKeyringManager {
     isNft: boolean,
     decimals?: number
   ) => Promise<void>;
-  updateNativeTokenBalance: (accountId: number) => Promise<void>;
 }
 
 export interface IEthTokenDetails {

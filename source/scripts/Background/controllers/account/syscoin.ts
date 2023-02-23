@@ -18,6 +18,7 @@ import {
   setIsPendingBalances,
 } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
+import { getBalanceUpdatedToErcTokens } from 'utils/tokens';
 
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
@@ -53,39 +54,59 @@ const SysAccountController = (): ISysAccountController => {
 
     const formattedWalletAccountsLatestUpdates = Object.assign(
       {},
-      Object.values(walleAccountstLatestUpdate).map((account: any, index) => {
-        const { transactions: updatedTxs } = account;
+      await Promise.all(
+        Object.values(walleAccountstLatestUpdate).map(
+          async (account: any, index) => {
+            const { transactions: updatedTxs } = account;
 
-        const allTxs = [...accounts[index].transactions, ...updatedTxs].filter(
-          (value, i, self) =>
-            i ===
-            self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-        ); // to get array with unique txs.
+            const allTxs = [
+              ...accounts[index].transactions,
+              ...updatedTxs,
+            ].filter(
+              (value, i, self) =>
+                i ===
+                self.findIndex((tx) => tx && value && tx[hash] === value[hash])
+            ); // to get array with unique txs.
 
-        if (isBitcoinBased)
-          return {
-            ...account,
-            label: accounts[index].label,
-            transactions: [...allTxs],
-            assets: {
-              ethereum: accounts[index].assets.ethereum,
-              syscoin: account.assets,
-            },
-          };
-        else
-          return {
-            ...account,
-            label: accounts[index].label,
-            assets: accounts[index].assets,
-            transactions: [...allTxs],
-          };
-      })
+            if (isBitcoinBased)
+              return {
+                ...account,
+                label: accounts[index].label,
+                transactions: [...allTxs],
+                assets: {
+                  ethereum: accounts[index].assets.ethereum,
+                  syscoin: account.assets,
+                },
+              };
+            else {
+              //UPDATE ETH ERC TOKEN BALANCES
+              const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
+                accounts[index].id
+              );
+
+              return {
+                ...account,
+                label: accounts[index].label,
+                assets: {
+                  syscoin: accounts[index].assets.syscoin,
+                  ethereum: getUpdatedErcTokens,
+                },
+                transactions: [...allTxs],
+              };
+            }
+          }
+        )
+      )
     );
+
     store.dispatch(
       setAccounts({
         ...formattedWalletAccountsLatestUpdates,
       })
     );
+
+    store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
+
     resolve();
 
     const isUpdating = store.getState().vault.isNetworkChanging;

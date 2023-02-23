@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   About,
@@ -29,6 +28,7 @@ import {
   Phrase,
 } from '../pages';
 import { useUtils } from 'hooks/index';
+import { inactivityTime } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -38,24 +38,13 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
+  const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
-  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic;
-
-  useEffect(() => {
-    if (isUnlocked) {
-      window.addEventListener('mousemove', () => {
-        browser.runtime.sendMessage({
-          type: 'autolock',
-          target: 'background',
-        });
-      });
-    }
-  }, [isUnlocked]);
+  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic !== '';
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts && encryptedMnemonic;
@@ -69,6 +58,10 @@ export const Router = () => {
     const route = appRoute();
     if (route !== '/') navigate(route);
   }, [isUnlocked]);
+
+  useEffect(() => {
+    if (isTimerEnabled) inactivityTime();
+  }, []);
 
   useEffect(() => {
     alert.removeAll();

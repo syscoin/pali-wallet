@@ -37,20 +37,49 @@ const restartLockTimeout = () => {
   }
 
   timeout = setTimeout(() => {
-    if (window.controller.wallet.isUnlocked()) {
-      // window.controller.wallet.lock();
-    }
+    handleLogout();
   }, timer * 60 * 1000);
 };
 
 const handleIsOpen = (isOpen: boolean) =>
   window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
+const handleLogout = () => {
+  const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+  if (isTimerEnabled) {
+    window.controller.wallet.lock();
+
+    window.location.replace('/');
+  }
+};
 
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
-  if (type === 'autolock' && target === 'background') restartLockTimeout();
+  if (type === 'reset_autolock' && target === 'background') {
+    restartLockTimeout();
+  }
 });
 
 window.onload = () => handleIsOpen(false);
+export const inactivityTime = () => {
+  const resetTimer = () => {
+    browser.runtime.sendMessage({
+      type: 'reset_autolock',
+      target: 'background',
+    });
+  };
+
+  // DOM Events
+  const events = [
+    'onmousemove',
+    'onkeydown',
+    'onload',
+    'onmousedown',
+    'ontouchstart',
+    'onclick',
+    'onkeydown',
+  ];
+
+  events.forEach((event) => (document[event] = resetTimer));
+};
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
@@ -59,7 +88,17 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     return;
   }
-  const { changingConnectedAccount } = store.getState().vault;
+  const { changingConnectedAccount, timer, isTimerEnabled } =
+    store.getState().vault;
+
+  if (timeout) clearTimeout(timeout);
+
+  if (isTimerEnabled) {
+    timeout = setTimeout(() => {
+      handleLogout();
+    }, timer * 60 * 1000);
+  }
+
   if (changingConnectedAccount.isChangingConnectedAccount)
     window.controller.wallet.resolveAccountConflict();
 
@@ -77,6 +116,12 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
+      if (timeout) clearTimeout(timeout);
+      if (isTimerEnabled) {
+        timeout = setTimeout(() => {
+          handleLogout();
+        }, timer * 60 * 1000);
+      }
       log('pali disconnecting port', 'System');
     });
   }

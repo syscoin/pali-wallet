@@ -45,7 +45,9 @@ const ConnectHardwareWalletView: FC = () => {
   };
 
   useEffect(() => {
-    verifyIfIsTestnet().then((isTestnet) => setIsTestnet(isTestnet));
+    verifyIfIsTestnet().then((isTestnetResponse) =>
+      setIsTestnet(isTestnetResponse)
+    );
   }, [activeNetwork, activeNetwork.chainId]);
 
   return (
