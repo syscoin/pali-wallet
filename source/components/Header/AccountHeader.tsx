@@ -146,7 +146,7 @@ const AccountMenu: React.FC = () => {
                         <span>Create new account</span>
                       </li>
                       <li
-                        onClick={() => navigate('/settings/account/new')}
+                        onClick={() => navigate('/settings/account/import')}
                         className="backface-visibility-hidden absolute top-12 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
                         id="create-new-account-btn"
                       >
