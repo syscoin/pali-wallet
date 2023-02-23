@@ -58,7 +58,7 @@ const AboutView: FC = () => {
             Click here to be redirected to Syscoin Discord, please contact
             support team at #pali_support.
           </p>
-          <p className="pt-3 text-brand-white text-xs">
+          <div className="pt-3 text-brand-white text-xs">
             To access the support link, you need to give permission or copy and
             paste the link below
             <div className="flex flex-row mt-2">
@@ -73,7 +73,7 @@ const AboutView: FC = () => {
               </IconButton>
               {copied && showSuccessAlert()}
             </div>
-          </p>
+          </div>
         </SimpleCard>
 
         <div className="absolute bottom-12 md:static md:mt-3">
