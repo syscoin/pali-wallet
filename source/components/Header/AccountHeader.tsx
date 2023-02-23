@@ -127,7 +127,7 @@ const AccountMenu: React.FC = () => {
                   <div
                     className="relative"
                     style={{
-                      paddingTop: `${open ? '45px' : '0px'}`,
+                      paddingTop: `${open ? '90px' : '0px'}`,
                     }}
                   >
                     <Disclosure.Panel
@@ -135,7 +135,7 @@ const AccountMenu: React.FC = () => {
                     >
                       <li
                         onClick={() => navigate('/settings/account/new')}
-                        className="backface-visibility-hidden absolute top-0 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                        className="backface-visibility-hidden absolute top-0.5 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
                         id="create-new-account-btn"
                       >
                         <Icon
@@ -144,6 +144,18 @@ const AccountMenu: React.FC = () => {
                         />
 
                         <span>Create new account</span>
+                      </li>
+                      <li
+                        onClick={() => navigate('/settings/account/new')}
+                        className="backface-visibility-hidden absolute top-12 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                        id="create-new-account-btn"
+                      >
+                        <Icon
+                          name="import"
+                          className="mb-1 mr-3 text-brand-white"
+                        />
+
+                        <span>Import new account</span>
                       </li>
 
                       {Object.values(accounts).map((account, index) => (
