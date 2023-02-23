@@ -475,7 +475,9 @@ export const SendConfirm = () => {
                 Estimated GasFee
                 <span className="text-brand-royalblue text-xs">
                   {isBitcoinBased
-                    ? `${basicTxValues.fee * 10 ** 9} GWEI`
+                    ? `${removeScientificNotation(
+                        basicTxValues.fee * 10 ** -8
+                      )} Satoshi`
                     : `${removeScientificNotation(
                         getCalculatedFee
                       )} ${activeNetwork.currency?.toUpperCase()}`}
