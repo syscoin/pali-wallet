@@ -9,6 +9,8 @@ import {
   Button,
   Icon,
   LoadingComponent,
+  Tooltip,
+  IconButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { saveTransaction } from 'scripts/Background/controllers/account/evm';
@@ -30,7 +32,7 @@ export const SendConfirm = () => {
     wallet: { account, updateErcTokenBalances },
   } = getController();
 
-  const { alert, navigate } = useUtils();
+  const { alert, navigate, useCopyClipboard } = useUtils();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -61,6 +63,7 @@ export const SendConfirm = () => {
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [confirmedTx, setConfirmedTx] = useState<any>();
+  const [copied, copy] = useCopyClipboard();
 
   const basicTxValues = state.tx;
 
@@ -404,6 +407,12 @@ export const SendConfirm = () => {
     isBitcoinBased,
   ]);
 
+  useEffect(() => {
+    if (!copied) return;
+    alert.removeAll();
+    alert.success('Address successfully copied');
+  }, [copied]);
+
   return (
     <Layout title="CONFIRM" canGoBack={true}>
       <DefaultModal
@@ -459,14 +468,46 @@ export const SendConfirm = () => {
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               From
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(basicTxValues.sender, 7, 15)}
+                <Tooltip
+                  content={basicTxValues.sender}
+                  childrenClassName="flex"
+                >
+                  {ellipsis(basicTxValues.sender, 7, 15)}
+                  {
+                    <IconButton
+                      onClick={() => copy(basicTxValues.sender ?? '')}
+                    >
+                      <Icon
+                        wrapperClassname="flex items-center justify-center"
+                        name="copy"
+                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  }
+                </Tooltip>
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               To
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(basicTxValues.receivingAddress, 7, 15)}
+                <Tooltip
+                  content={basicTxValues.receivingAddress}
+                  childrenClassName="flex"
+                >
+                  {ellipsis(basicTxValues.receivingAddress, 7, 15)}{' '}
+                  {
+                    <IconButton
+                      onClick={() => copy(basicTxValues.receivingAddress ?? '')}
+                    >
+                      <Icon
+                        wrapperClassname="flex items-center justify-center"
+                        name="copy"
+                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  }
+                </Tooltip>
               </span>
             </p>
 

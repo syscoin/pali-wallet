@@ -3,7 +3,9 @@ import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
+import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
@@ -25,7 +27,8 @@ export const SendNTokenTransaction = () => {
 
   const txs = account.eth.tx;
 
-  const { alert, navigate } = useUtils();
+  const { alert, navigate, useCopyClipboard } = useUtils();
+  const [copied, copy] = useCopyClipboard();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -212,6 +215,11 @@ export const SendNTokenTransaction = () => {
           10 ** 9;
   }, [fee?.gasPrice, fee?.gasLimit, fee?.maxFeePerGas, customFee]);
 
+  useEffect(() => {
+    if (!copied) return;
+    alert.removeAll();
+    alert.success('Address successfully copied');
+  }, [copied]);
   return (
     <Layout title="SEND" canGoBack={!isExternal}>
       <DefaultModal
@@ -266,14 +274,36 @@ export const SendNTokenTransaction = () => {
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               From
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.from, 7, 15)}
+                <Tooltip content={tx.from} childrenClassName="flex">
+                  {ellipsis(tx.from, 7, 15)}
+                  {
+                    <IconButton onClick={() => copy(tx.from ?? '')}>
+                      <Icon
+                        wrapperClassname="flex items-center justify-center"
+                        name="copy"
+                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  }
+                </Tooltip>
               </span>
             </p>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               To
               <span className="text-brand-royalblue text-xs">
-                {ellipsis(tx.to, 7, 15)}
+                <Tooltip content={tx.to} childrenClassName="flex">
+                  {ellipsis(tx.to, 7, 15)}
+                  {
+                    <IconButton onClick={() => copy(tx.to ?? '')}>
+                      <Icon
+                        wrapperClassname="flex items-center justify-center"
+                        name="copy"
+                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                      />
+                    </IconButton>
+                  }
+                </Tooltip>
               </span>
             </p>
 
