@@ -13,22 +13,43 @@ const ImportAccountView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const [form] = useForm();
-  const { importAccount } = controller.wallet.account.eth;
+  const { importAccount, getBalance, getUserTransactions } =
+    controller.wallet.account.eth;
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountId,
+    activeNetwork,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountId];
 
   if (!activeAccount) throw new Error('No account');
 
   // Private key to test in UI: 6e578c2227bc4629794e566610209c9cb7a35341f13de4ba886a59a4e11b7d1e
 
-  const handleImportAccount = () => {
+  const handleImportAccount = async () => {
     if (form.getFieldValue('privKey')) {
       const account = importAccount(`0x${form.getFieldValue('privKey')}`);
       const { address, publicKey, privateKey } = account;
-      console.log({ account, address, activeAccount, publicKey, privateKey });
+      const newAccount = {
+        address,
+        assets: { syscoin: [], ethereum: [] },
+        isTrezorWallet: false,
+        label: form.getFieldValue('label')
+          ? form.getFieldValue('label')
+          : `Account ${Object.values(accounts).length + 1}`,
+        id: Object.values(accounts).length + 1,
+        balances: {
+          syscoin: 0,
+          ethereum: await getBalance(address),
+        },
+        xprv: privateKey,
+        xpub: publicKey,
+        transactions: await getUserTransactions(address, activeNetwork),
+      };
+      console.log({
+        newAccount,
+      });
     }
   };
 
@@ -106,13 +127,31 @@ const ImportAccountView = () => {
         <div className="flex flex-col items-center justify-center text-center">
           <Form
             validateMessages={{ default: '' }}
-            className="flex flex-col gap-8 items-center justify-center text-center md:w-full"
+            className="flex flex-col gap-5 items-center justify-center text-center md:w-full"
             name="newaccount"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 16 }}
             autoComplete="off"
             form={form}
           >
+            <Form.Item
+              name="label"
+              className="md:w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
+            >
+              <Input
+                type="text"
+                className="input-small relative"
+                placeholder="Label (optional)"
+                id="account-name-input"
+              />
+            </Form.Item>
             <Form.Item
               name="privKey"
               className="md:w-full"
