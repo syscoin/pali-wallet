@@ -3,12 +3,18 @@ import {
   EthereumTransactions,
   IWeb3Accounts,
   Web3Accounts,
+  IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import {
+  setAccounts,
+  setAccountTransactions,
+  setActiveAccount,
+  setActiveAccountProperty,
+} from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthTransactions extends IEthereumTransactions {
@@ -17,6 +23,10 @@ export interface IEthTransactions extends IEthereumTransactions {
 }
 
 export interface IEthAccountController extends IWeb3Accounts {
+  importAccountByPrivKey: (
+    privKey: string,
+    label?: string
+  ) => Promise<IKeyringAccountState>;
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
   tx: IEthTransactions;
 }
@@ -24,6 +34,38 @@ export interface IEthAccountController extends IWeb3Accounts {
 const EthAccountController = (): IEthAccountController => {
   const txs = EthereumTransactions();
   const web3Accounts = Web3Accounts();
+  const { importAccount, getBalance, getUserTransactions } = web3Accounts;
+
+  const importAccountByPrivKey = async (privKey: string, label?: string) => {
+    const { activeNetwork, accounts, isBitcoinBased } = store.getState().vault;
+    if (isBitcoinBased) return;
+    if (privKey) {
+      const account = importAccount(`0x${privKey}`);
+      const { address, publicKey, privateKey } = account;
+      const importedAccount = {
+        address,
+        assets: { syscoin: [], ethereum: [] },
+        isTrezorWallet: false,
+        label: label ? label : `Account ${Object.values(accounts).length + 1}`,
+        id: Object.values(accounts).length,
+        balances: {
+          syscoin: 0,
+          ethereum: await getBalance(address),
+        },
+        xprv: privateKey,
+        xpub: publicKey,
+        transactions: await getUserTransactions(address, activeNetwork),
+      } as IKeyringAccountState;
+      store.dispatch(
+        setAccounts({
+          ...accounts,
+          [Object.values(accounts).length]: importedAccount,
+        })
+      );
+      store.dispatch(setActiveAccount(importedAccount.id));
+      return importedAccount;
+    }
+  };
 
   const saveTokenInfo = async (token: ITokenEthProps) => {
     try {
@@ -96,6 +138,7 @@ const EthAccountController = (): IEthAccountController => {
   return {
     saveTokenInfo,
     tx,
+    importAccountByPrivKey,
     ...web3Accounts,
   };
 };

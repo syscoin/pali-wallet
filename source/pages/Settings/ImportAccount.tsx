@@ -13,14 +13,11 @@ const ImportAccountView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const [form] = useForm();
-  const { importAccount, getBalance, getUserTransactions } =
-    controller.wallet.account.eth;
+  const { importAccountByPrivKey } = controller.wallet.account.eth;
 
-  const {
-    accounts,
-    activeAccount: activeAccountId,
-    activeNetwork,
-  } = useSelector((state: RootState) => state.vault);
+  const { accounts, activeAccount: activeAccountId } = useSelector(
+    (state: RootState) => state.vault
+  );
   const activeAccount = accounts[activeAccountId];
 
   if (!activeAccount) throw new Error('No account');
@@ -29,27 +26,10 @@ const ImportAccountView = () => {
 
   const handleImportAccount = async () => {
     if (form.getFieldValue('privKey')) {
-      const account = importAccount(`0x${form.getFieldValue('privKey')}`);
-      const { address, publicKey, privateKey } = account;
-      const newAccount = {
-        address,
-        assets: { syscoin: [], ethereum: [] },
-        isTrezorWallet: false,
-        label: form.getFieldValue('label')
-          ? form.getFieldValue('label')
-          : `Account ${Object.values(accounts).length + 1}`,
-        id: Object.values(accounts).length + 1,
-        balances: {
-          syscoin: 0,
-          ethereum: await getBalance(address),
-        },
-        xprv: privateKey,
-        xpub: publicKey,
-        transactions: await getUserTransactions(address, activeNetwork),
-      };
-      console.log({
-        newAccount,
-      });
+      const account = await importAccountByPrivKey(
+        form.getFieldValue('privKey')
+      );
+      if (account) setConfirmed(true);
     }
   };
 

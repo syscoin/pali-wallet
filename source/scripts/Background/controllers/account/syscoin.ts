@@ -100,12 +100,8 @@ const SysAccountController = (): ISysAccountController => {
     );
 
     store.dispatch(
-      setAccounts({
-        ...formattedWalletAccountsLatestUpdates,
-      })
+      setAccounts({ ...accounts, ...formattedWalletAccountsLatestUpdates })
     );
-
-    store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
 
     resolve();
 
