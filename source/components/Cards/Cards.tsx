@@ -78,6 +78,6 @@ export const CopyCard: React.FC<ICopyCard> = ({
       <Icon name="copy" className="text-brand-white" id="copy-btn" />
     </div>
 
-    <p>{children}</p>
+    <div>{children}</div>
   </div>
 );

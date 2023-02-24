@@ -23,7 +23,8 @@ export const methodRequest = async (
   const { dapp, wallet } = window.controller;
   const controller = getController();
   const [prefix, methodName] = data.method.split('_');
-  const { activeAccount, isBitcoinBased, accounts } = store.getState().vault;
+  const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
+    store.getState().vault;
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased) {
@@ -169,14 +170,19 @@ export const methodRequest = async (
           : Number(data.params[0].chainId);
 
         if (activeNetwork.chainId === chainId) return null;
-        else if (chains.ethereum[chainId]) {
+        else if (chains.ethereum[chainId] && !isNetworkChanging) {
           return popupPromise({
             host,
             route: 'switch-EthChain',
             eventName: 'wallet_switchEthereumChain',
             data: { chainId: chainId },
           });
-        }
+        } else if (isNetworkChanging)
+          throw cleanErrorStack(
+            ethErrors.rpc.resourceUnavailable({
+              message: 'Already processing network change. Please wait',
+            })
+          );
         throw cleanErrorStack(ethErrors.rpc.internal());
       case 'getProviderState':
         const providerState = {
@@ -215,7 +221,6 @@ export const methodRequest = async (
     if (!response) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
-    // dapp.setHasWindow(host, false); // TESTED CHANGING ACCOUNT SO CAN KEEP COMENTED
   }
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
@@ -251,6 +256,10 @@ export const enable = async (
   isSyscoinDapp = false
 ) => {
   const { isBitcoinBased } = store.getState().vault;
+  const { isOpen: isPopupOpen } = JSON.parse(
+    window.localStorage.getItem('isPopupOpen')
+  );
+
   if (!isSyscoinDapp && isBitcoinBased)
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
@@ -263,6 +272,14 @@ export const enable = async (
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
+
+  if (isPopupOpen)
+    throw cleanErrorStack(
+      ethErrors.rpc.resourceUnavailable({
+        message: 'Already processing eth_requestAccounts. Please wait.',
+      })
+    );
+
   const dAppActiveAddress: any = await popupPromise({
     host,
     route: 'connect-wallet',

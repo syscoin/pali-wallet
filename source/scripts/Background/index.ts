@@ -41,6 +41,8 @@ const restartLockTimeout = () => {
   }, timer * 60 * 1000);
 };
 
+const handleIsOpen = (isOpen: boolean) =>
+  window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
 const handleLogout = () => {
   const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
   if (isTimerEnabled) {
@@ -79,6 +81,7 @@ export const inactivityTime = () => {
 };
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
+  if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
     window.controller.dapp.setup(port);
 
@@ -111,6 +114,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
+      handleIsOpen(false);
       if (timeout) clearTimeout(timeout);
       if (isTimerEnabled) {
         timeout = setTimeout(() => {
