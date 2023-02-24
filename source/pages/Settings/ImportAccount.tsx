@@ -27,7 +27,8 @@ const ImportAccountView = () => {
   const handleImportAccount = async () => {
     if (form.getFieldValue('privKey')) {
       const account = await importAccountByPrivKey(
-        form.getFieldValue('privKey')
+        form.getFieldValue('privKey'),
+        form.getFieldValue('label')
       );
       if (account) setConfirmed(true);
     }
