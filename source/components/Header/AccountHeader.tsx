@@ -26,7 +26,9 @@ const AccountMenu: React.FC = () => {
     (state: RootState) => state.vault.encryptedMnemonic
   );
 
-  const numberOfAccounts = Object.keys(accounts).length;
+  const numberOfAccounts = isBitcoinBased
+    ? Object.values(accounts).filter((acc) => acc.isImported === false).length
+    : Object.keys(accounts).length;
 
   let className: string;
   switch (numberOfAccounts) {
