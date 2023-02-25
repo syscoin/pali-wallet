@@ -22,6 +22,10 @@ export const NetworkMenu: React.FC = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.accounts[state.vault.activeAccount]
+  );
+
   const { navigate } = useUtils();
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
@@ -99,57 +103,62 @@ export const NetworkMenu: React.FC = () => {
                   </li>
                 </Menu.Item>
 
-                <Menu.Item>
-                  <Disclosure>
-                    {({ open }) => (
-                      <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                          <Icon
-                            name="dolar"
-                            className="ml-1 mr-4 text-brand-white"
-                          />
+                {!activeAccount.isImported ? (
+                  <Menu.Item>
+                    <Disclosure>
+                      {({ open }) => (
+                        <>
+                          <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                            <Icon
+                              name="dolar"
+                              className="ml-1 mr-4 text-brand-white"
+                            />
 
-                          <span className="px-3 text-base">Syscoin core</span>
+                            <span className="px-3 text-base">Syscoin core</span>
 
-                          <Icon
-                            name="select-down"
-                            className={`${
-                              open ? 'transform rotate-180' : ''
-                            } text-brand-white mb-1`}
-                          />
-                        </Disclosure.Button>
+                            <Icon
+                              name="select-down"
+                              className={`${
+                                open ? 'transform rotate-180' : ''
+                              } text-brand-white mb-1`}
+                            />
+                          </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(networks.syscoin).map(
-                            (currentNetwork: INetwork) => (
-                              <li
-                                key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                                onClick={() =>
-                                  handleChangeNetwork(currentNetwork, 'syscoin')
-                                }
-                              >
-                                <span className="ml-8 text-left">
-                                  {currentNetwork.label}
-                                </span>
+                          <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
+                            {Object.values(networks.syscoin).map(
+                              (currentNetwork: INetwork) => (
+                                <li
+                                  key={uniqueId()}
+                                  className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                  onClick={() =>
+                                    handleChangeNetwork(
+                                      currentNetwork,
+                                      'syscoin'
+                                    )
+                                  }
+                                >
+                                  <span className="ml-8 text-left">
+                                    {currentNetwork.label}
+                                  </span>
 
-                                {isBitcoinBased &&
-                                  activeNetwork.chainId ===
-                                    currentNetwork.chainId && (
-                                    <Icon
-                                      name="check"
-                                      className="mb-1 w-4"
-                                      wrapperClassname="w-6 absolute right-20"
-                                    />
-                                  )}
-                              </li>
-                            )
-                          )}
-                        </Disclosure.Panel>
-                      </>
-                    )}
-                  </Disclosure>
-                </Menu.Item>
+                                  {isBitcoinBased &&
+                                    activeNetwork.chainId ===
+                                      currentNetwork.chainId && (
+                                      <Icon
+                                        name="check"
+                                        className="mb-1 w-4"
+                                        wrapperClassname="w-6 absolute right-20"
+                                      />
+                                    )}
+                                </li>
+                              )
+                            )}
+                          </Disclosure.Panel>
+                        </>
+                      )}
+                    </Disclosure>
+                  </Menu.Item>
+                ) : null}
 
                 <Menu.Item>
                   <Disclosure>

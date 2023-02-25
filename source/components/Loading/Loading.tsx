@@ -25,6 +25,10 @@ export const Loading = ({
     (state: RootState) => state.vault.networks
   );
 
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.accounts[state.vault.activeAccount]
+  );
+
   const [timeoutError, setTimeoutError] = useState(false);
 
   const validateTimeoutError = () => {
@@ -41,6 +45,11 @@ export const Loading = ({
 
   const connectToSyscoin = async () => {
     setTimeoutError(false);
+
+    if (activeAccount.isImported) {
+      // Set the Default UTX0 account to user can return safely to UTX0 Syscoin Network
+      wallet.setActiveAccount(0);
+    }
 
     await wallet.setActiveNetwork(correctSyscoinNetwork, 'syscoin');
   };
