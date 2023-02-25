@@ -35,6 +35,7 @@ import {
   setIsNetworkChanging,
   setUpdatedTokenBalace,
   setIsTimerEnabled as setIsTimerActive,
+  setAccounts,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -460,6 +461,26 @@ const MainController = (): IMainController => {
     }
   };
 
+  const importAccountFromPrivateKey = async (
+    privKey: string,
+    label?: string
+  ) => {
+    const { accounts } = store.getState().vault;
+
+    const importedAccount =
+      await keyringManager.handleImportAccountByPrivateKey(privKey, label);
+
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [importedAccount.id]: importedAccount,
+      })
+    );
+    store.dispatch(setActiveAccount(importedAccount.id));
+
+    return importedAccount;
+  };
+
   return {
     createWallet,
     forgetWallet,
@@ -481,6 +502,7 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
+    importAccountFromPrivateKey,
     ...keyringManager,
   };
 };

@@ -99,9 +99,12 @@ const SysAccountController = (): ISysAccountController => {
       )
     );
 
-    store.dispatch(
-      setAccounts({ ...accounts, ...formattedWalletAccountsLatestUpdates })
+    console.log(
+      'formattedWalletAccountsLatestUpdates',
+      formattedWalletAccountsLatestUpdates
     );
+
+    store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
 
     resolve();
 

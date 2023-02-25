@@ -8,12 +8,13 @@ import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const [form] = useForm();
-  const { importAccountByPrivKey } = controller.wallet.account.eth;
+  const { importAccountFromPrivateKey } = controller.wallet;
 
   const { accounts, activeAccount: activeAccountId } = useSelector(
     (state: RootState) => state.vault
@@ -26,10 +27,11 @@ const ImportAccountView = () => {
 
   const handleImportAccount = async () => {
     if (form.getFieldValue('privKey')) {
-      const account = await importAccountByPrivKey(
+      const account = await importAccountFromPrivateKey(
         form.getFieldValue('privKey'),
         form.getFieldValue('label')
       );
+
       if (account) setConfirmed(true);
     }
   };
@@ -142,6 +144,14 @@ const ImportAccountView = () => {
                   required: true,
                   message: '',
                 },
+                () => ({
+                  async validator(_, value) {
+                    if (validatePrivateKeyValue(value)) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject();
+                  },
+                }),
               ]}
             >
               <Input
