@@ -23,8 +23,6 @@ const ImportAccountView = () => {
 
   if (!activeAccount) throw new Error('No account');
 
-  // Private key to test in UI: 6e578c2227bc4629794e566610209c9cb7a35341f13de4ba886a59a4e11b7d1e
-
   const handleImportAccount = async () => {
     if (form.getFieldValue('privKey')) {
       const account = await importAccountFromPrivateKey(

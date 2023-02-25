@@ -99,11 +99,6 @@ const SysAccountController = (): ISysAccountController => {
       )
     );
 
-    console.log(
-      'formattedWalletAccountsLatestUpdates',
-      formattedWalletAccountsLatestUpdates
-    );
-
     store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
 
     resolve();

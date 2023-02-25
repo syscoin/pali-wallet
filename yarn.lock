@@ -1844,14 +1844,16 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@D:\\Projetos\\Elint\\Pali\\sysweb3\\packages\\sysweb3-keyring\\dist":
-  version "1.0.440"
+"@pollum-io/sysweb3-keyring@^1.0.441":
+  version "1.0.441"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.441.tgz#20409dbe1799ed2c76c989dd5a2bd8b05f9a66b3"
+  integrity sha512-DAwtXT6fFZZMrBxO0MIjeYQ/TLEvneeLXTw0RqInvGdtVHRri0q9LT2pv6JTLy7B3sPZnEXM28Vah1NBw8F15w==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.19"
     "@pollum-io/sysweb3-network" "^1.0.86"
-    "@pollum-io/sysweb3-utils" "^1.1.217"
+    "@pollum-io/sysweb3-utils" "^1.1.219"
     axios "^0.26.1"
     bip39 "^3.0.4"
     coinselectsyscoin "^1.0.77"
@@ -1950,7 +1952,7 @@
     syscointx-js "^1.0.101"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.217", "@pollum-io/sysweb3-utils@^1.1.219":
+"@pollum-io/sysweb3-utils@^1.1.219":
   version "1.1.219"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.219.tgz#b001324518a39bb3c9b4466339a03233d12b968d"
   integrity sha512-fjG3M5C8K8CmlwgyDc4gJvZTVaAS/atGVu+AEG2t+VqXgomSFkECCSJtiKWUQw9NWsCcxAzXVlx64QgWQHk1Ug==
