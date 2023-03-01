@@ -4,13 +4,7 @@ import { useForm } from 'antd/es/form/Form';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  Layout,
-  Icon,
-  DefaultModal,
-  Button,
-  NeutralButton,
-} from 'components/index';
+import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -18,7 +12,7 @@ import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {
   const controller = getController();
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const [form] = useForm();
   const { importAccountFromPrivateKey } = controller.wallet;
 
@@ -41,14 +35,21 @@ const ImportAccountView = () => {
   const handleImportAccount = async () => {
     setIsImporting(true);
     if (form.getFieldValue('privKey')) {
-      const account = await importAccountFromPrivateKey(
-        form.getFieldValue('privKey'),
-        form.getFieldValue('label')
-      );
+      try {
+        const account = await importAccountFromPrivateKey(
+          form.getFieldValue('privKey'),
+          form.getFieldValue('label')
+        );
 
-      if (account) setIsAccountImported(true);
+        if (account) setIsAccountImported(true);
 
-      setIsImporting(false);
+        setIsImporting(false);
+      } catch (error) {
+        alert.removeAll();
+        alert.error(String(error.message));
+        console.log('error', error);
+        setIsImporting(false);
+      }
     }
   };
 
