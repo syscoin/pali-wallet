@@ -4,7 +4,13 @@ import { useForm } from 'antd/es/form/Form';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, DefaultModal, Button } from 'components/index';
+import {
+  Layout,
+  Icon,
+  DefaultModal,
+  Button,
+  NeutralButton,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -165,33 +171,13 @@ const ImportAccountView = () => {
               />
             </Form.Item>
 
-            <Button
+            <NeutralButton
               type="button"
-              className={`${
-                isImporting
-                  ? 'opacity-60 cursor-not-allowed'
-                  : 'opacity-100 hover:opacity-90'
-              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
-              id="receive-btn"
               loading={isImporting}
               onClick={handleImportAccount}
             >
-              {!isImporting ? (
-                <Icon
-                  name="arrow-down"
-                  className="w-5"
-                  wrapperClassname="flex items-center mr-2"
-                />
-              ) : (
-                <Icon
-                  name="loading"
-                  color="#fff"
-                  className="w-5 animate-spin-slow"
-                  wrapperClassname="mr-2 flex items-center"
-                />
-              )}
               Import
-            </Button>
+            </NeutralButton>
           </Form>
         </div>
       </div>
