@@ -10,10 +10,17 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
-const AccountMenu: React.FC = () => {
-  const { navigate } = useUtils();
-  const { wallet, dapp } = getController();
+type RenderAccountsListByBitcoinBasedProps = {
+  setActiveAccount: (id: number) => Promise<void>;
+};
+
+const RenderAccountsListByBitcoinBased = (
+  props: RenderAccountsListByBitcoinBasedProps
+) => {
+  const { setActiveAccount } = props;
+
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -22,10 +29,68 @@ const AccountMenu: React.FC = () => {
     (state: RootState) => state.vault.activeAccount
   );
 
+  return (
+    <>
+      {isBitcoinBased // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
+        ? Object.values(accounts)
+            .filter((acc) => acc.isImported === false)
+            .map((account, index) => (
+              <li
+                key={account.id}
+                className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                onClick={() => setActiveAccount(account.id)}
+                id={`account-${index}`}
+              >
+                <span>
+                  {account.label} ({ellipsis(account.address, 4, 8)})
+                </span>
+
+                {activeAccountId === account.id && (
+                  <Icon
+                    name="check"
+                    className="mb-1 w-4"
+                    wrapperClassname="w-6 absolute right-1"
+                  />
+                )}
+              </li>
+            ))
+        : Object.values(accounts).map((account, index) => (
+            <li
+              key={account.id}
+              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+              onClick={() => setActiveAccount(account.id)}
+              id={`account-${index}`}
+            >
+              <span>
+                {account.label} ({ellipsis(account.address, 4, 8)})
+              </span>
+
+              {activeAccountId === account.id && (
+                <Icon
+                  name="check"
+                  className="mb-1 w-4"
+                  wrapperClassname="w-6 absolute right-1"
+                />
+              )}
+            </li>
+          ))}
+    </>
+  );
+};
+
+const AccountMenu: React.FC = () => {
+  const { navigate } = useUtils();
+  const { wallet, dapp } = getController();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
   );
 
+  //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
   const numberOfAccounts = isBitcoinBased
     ? Object.values(accounts).filter((acc) => acc.isImported === false).length
     : Object.keys(accounts).length;
@@ -166,51 +231,9 @@ const AccountMenu: React.FC = () => {
                         </li>
                       ) : null}
 
-                      {isBitcoinBased
-                        ? Object.values(accounts)
-                            .filter((acc) => acc.isImported === false)
-                            .map((account, index) => (
-                              <li
-                                key={account.id}
-                                className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                                onClick={() => setActiveAccount(account.id)}
-                                id={`account-${index}`}
-                              >
-                                <span>
-                                  {account.label} (
-                                  {ellipsis(account.address, 4, 8)})
-                                </span>
-
-                                {activeAccountId === account.id && (
-                                  <Icon
-                                    name="check"
-                                    className="mb-1 w-4"
-                                    wrapperClassname="w-6 absolute right-1"
-                                  />
-                                )}
-                              </li>
-                            ))
-                        : Object.values(accounts).map((account, index) => (
-                            <li
-                              key={account.id}
-                              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                              onClick={() => setActiveAccount(account.id)}
-                              id={`account-${index}`}
-                            >
-                              <span>
-                                {account.label} (
-                                {ellipsis(account.address, 4, 8)})
-                              </span>
-
-                              {activeAccountId === account.id && (
-                                <Icon
-                                  name="check"
-                                  className="mb-1 w-4"
-                                  wrapperClassname="w-6 absolute right-1"
-                                />
-                              )}
-                            </li>
-                          ))}
+                      <RenderAccountsListByBitcoinBased
+                        setActiveAccount={setActiveAccount}
+                      />
                     </Disclosure.Panel>
                   </div>
                 </>

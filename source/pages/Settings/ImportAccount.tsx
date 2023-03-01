@@ -4,7 +4,7 @@ import { useForm } from 'antd/es/form/Form';
 import React, { useEffect, Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
+import { Layout, Icon, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -16,30 +16,35 @@ const ImportAccountView = () => {
   const [form] = useForm();
   const { importAccountFromPrivateKey } = controller.wallet;
 
+  //* States
+  const [type, setType] = useState('Private Key');
+  const [isAccountImported, setIsAccountImported] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
   const { accounts, activeAccount: activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
+
   const activeAccount = accounts[activeAccountId];
+
+  const isUnlocked =
+    controller.wallet.isUnlocked() && activeAccount.address !== '';
 
   if (!activeAccount) throw new Error('No account');
 
   const handleImportAccount = async () => {
+    setIsImporting(true);
     if (form.getFieldValue('privKey')) {
       const account = await importAccountFromPrivateKey(
         form.getFieldValue('privKey'),
         form.getFieldValue('label')
       );
 
-      if (account) setConfirmed(true);
+      if (account) setIsAccountImported(true);
+
+      setIsImporting(false);
     }
   };
-
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
-  //* States
-  const [type, setType] = useState('Private Key');
-  const [confirmed, setConfirmed] = useState(false);
 
   //* Effects
   useEffect(() => {
@@ -51,7 +56,7 @@ const ImportAccountView = () => {
   return (
     <Layout title="IMPORT ACCOUNT">
       <DefaultModal
-        show={confirmed}
+        show={isAccountImported}
         onClose={() => navigate('/home')}
         title="Account imported successfully"
       />
@@ -159,12 +164,36 @@ const ImportAccountView = () => {
                 id="account-name-input"
               />
             </Form.Item>
+
+            <Button
+              type="button"
+              className={`${
+                isImporting
+                  ? 'opacity-60 cursor-not-allowed'
+                  : 'opacity-100 hover:opacity-90'
+              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
+              id="receive-btn"
+              loading={isImporting}
+              onClick={handleImportAccount}
+            >
+              {!isImporting ? (
+                <Icon
+                  name="arrow-down"
+                  className="w-5"
+                  wrapperClassname="flex items-center mr-2"
+                />
+              ) : (
+                <Icon
+                  name="loading"
+                  color="#fff"
+                  className="w-5 animate-spin-slow"
+                  wrapperClassname="mr-2 flex items-center"
+                />
+              )}
+              Import
+            </Button>
           </Form>
         </div>
-
-        <NeutralButton type="button" onClick={handleImportAccount}>
-          Import
-        </NeutralButton>
       </div>
     </Layout>
   );
