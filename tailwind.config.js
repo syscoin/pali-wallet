@@ -11,6 +11,9 @@ module.exports = {
         btn: '0px 1px 5px rgba(0, 0, 0, 0.25)',
         tooltip: '0px 0px 5px rgba(0, 0, 0, 0.25)',
       },
+      scale: {
+        103: '1.03',
+      },
       inset: {
         '5percent': '5%',
       },
