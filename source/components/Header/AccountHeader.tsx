@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import { IconButton, Icon } from 'components/index';
+import { IconButton, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -34,14 +34,81 @@ const RenderAccountsListByBitcoinBased = (
       {isBitcoinBased // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
         ? Object.values(accounts)
             .filter((acc) => acc.isImported === false)
-            .map((account, index) => (
-              <li
+            .map((account, index, { length }) => (
+              <Tooltip
                 key={account.id}
-                className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
+                placement="top-end"
+                content={account.address}
+              >
+                <li
+                  className={`${
+                    index + 1 !== length &&
+                    'border-b border-dashed border-gray-500'
+                  } ${
+                    index === 0 ? 'py-3.5' : 'py-4'
+                  } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                   transition duration-300`}
+                  onClick={() => setActiveAccount(account.id)}
+                  id={`account-${index}`}
+                >
+                  <span
+                    style={{ maxWidth: '11.25rem', textOverflow: 'ellipsis' }}
+                    className="whitespace-nowrap overflow-hidden"
+                  >
+                    {account.label} ({ellipsis(account.address, 4, 8)})
+                  </span>
+
+                  {activeAccountId === account.id && (
+                    <Icon
+                      name="check"
+                      className="mb-1 w-4"
+                      wrapperClassname="absolute right-2.5"
+                    />
+                  )}
+                </li>
+              </Tooltip>
+            ))
+        : Object.values(accounts).map((account, index, { length }) => (
+            <Tooltip
+              key={account.id}
+              childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
+              placement="top-end"
+              content={account.address}
+            >
+              <li
+                className={`${
+                  index + 1 !== length &&
+                  'border-b border-dashed border-gray-500'
+                } ${
+                  index === 0 ? 'py-3.5' : 'py-4'
+                } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                 transition duration-300`}
                 onClick={() => setActiveAccount(account.id)}
                 id={`account-${index}`}
               >
-                <span>
+                {account.isImported ? (
+                  <span
+                    style={{
+                      borderRadius: '1.25rem',
+                      fontSize: '0.5625rem',
+                      borderColor: 'rgba(203, 44, 112,1)',
+                    }}
+                    className="absolute left-0 px-1.5 py-0 font-bold border border-solid"
+                  >
+                    Imported
+                  </span>
+                ) : null}
+
+                <span
+                  style={{
+                    maxWidth: `${account.isImported ? '10rem' : '11.25rem'}`,
+                    textOverflow: 'ellipsis',
+                  }}
+                  className="whitespace-nowrap overflow-hidden"
+                >
                   {account.label} ({ellipsis(account.address, 4, 8)})
                 </span>
 
@@ -49,30 +116,11 @@ const RenderAccountsListByBitcoinBased = (
                   <Icon
                     name="check"
                     className="mb-1 w-4"
-                    wrapperClassname="w-6 absolute right-1"
+                    wrapperClassname="absolute right-2.5"
                   />
                 )}
               </li>
-            ))
-        : Object.values(accounts).map((account, index) => (
-            <li
-              key={account.id}
-              className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-              onClick={() => setActiveAccount(account.id)}
-              id={`account-${index}`}
-            >
-              <span>
-                {account.label} ({ellipsis(account.address, 4, 8)})
-              </span>
-
-              {activeAccountId === account.id && (
-                <Icon
-                  name="check"
-                  className="mb-1 w-4"
-                  wrapperClassname="w-6 absolute right-1"
-                />
-              )}
-            </li>
+            </Tooltip>
           ))}
     </>
   );
@@ -201,11 +249,11 @@ const AccountMenu: React.FC = () => {
                     }}
                   >
                     <Disclosure.Panel
-                      className={`static overflow-y-scroll scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
+                      className={`static overflow-y-scroll overflow-x-hidden scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
                     >
                       <li
                         onClick={() => navigate('/settings/account/new')}
-                        className="backface-visibility-hidden absolute top-0.5 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                        className="backface-visibility-hidden absolute top-0.5 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
                         id="create-new-account-btn"
                       >
                         <Icon
@@ -219,7 +267,7 @@ const AccountMenu: React.FC = () => {
                       {!isBitcoinBased ? (
                         <li
                           onClick={() => navigate('/settings/account/import')}
-                          className="backface-visibility-hidden absolute top-12 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                          className="backface-visibility-hidden absolute top-12 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
                           id="create-new-account-btn"
                         >
                           <Icon

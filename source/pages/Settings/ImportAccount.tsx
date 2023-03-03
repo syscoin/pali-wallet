@@ -47,7 +47,6 @@ const ImportAccountView = () => {
       } catch (error) {
         alert.removeAll();
         alert.error(String(error.message));
-        console.log('error', error);
         setIsImporting(false);
       }
     }

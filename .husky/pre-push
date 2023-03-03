@@ -1,6 +1,5 @@
-# ONLY COMMENT THIS TIME TO CAN PUSH WITH KEYRING METHODS THAT ONLY EXISTS IN LOCAL PACKAGE
 
-# !/bin/sh
+#!/bin/sh
 . "$(dirname "$0")/_/husky.sh"
 
 yarn type-check
