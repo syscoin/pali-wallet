@@ -378,7 +378,7 @@ export const SendConfirm = () => {
       } catch (error) {
         logError('error getting fees', 'Transaction', error);
         alert.error(
-          'Error in the proccess to get fee values, please try again later.'
+          'Error in the proccess to get fee values, please verify your balance and try again later.'
         );
         navigate(-1);
       }

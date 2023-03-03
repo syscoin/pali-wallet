@@ -163,38 +163,49 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     const abortController = new AbortController();
 
-    const getFeeRecomendation = async () => {
-      const { maxFeePerGas, maxPriorityFeePerGas } =
-        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
+    const getInitialFeeRecomendation = async () => {
+      try {
+        const { maxFeePerGas, maxPriorityFeePerGas } =
+          await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
-      const getTxGasLimitResult = await txs.getTxGasLimit(tx);
+        const getTxGasLimitResult = await txs.getTxGasLimit(tx);
 
-      tx.gasLimit =
-        (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
-        (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-          ? txs.toBigNumber(tx.gas || tx.gasLimit)
-          : getTxGasLimitResult;
+        tx.gasLimit =
+          (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
+          (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
+            ? txs.toBigNumber(tx.gas || tx.gasLimit)
+            : getTxGasLimitResult;
 
-      const feeDetails = {
-        maxFeePerGas: tx?.maxFeePerGas
-          ? Number(tx?.maxFeePerGas) / 10 ** 9
-          : maxFeePerGas.toNumber() / 10 ** 9,
-        baseFee:
-          tx?.maxFeePerGas && tx?.maxPriorityFeePerGas
-            ? (Number(tx.maxFeePerGas) - Number(tx.maxPriorityFeePerGas)) /
-              10 ** 9
-            : maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-        maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
-          ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
-          : maxPriorityFeePerGas.toNumber() / 10 ** 9,
-        gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
-        gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
-      };
+        const feeRecomendation = {
+          maxFeePerGas: tx?.maxFeePerGas
+            ? Number(tx?.maxFeePerGas) / 10 ** 9
+            : maxFeePerGas.toNumber() / 10 ** 9,
+          baseFee:
+            tx?.maxFeePerGas && tx?.maxPriorityFeePerGas
+              ? (Number(tx.maxFeePerGas) - Number(tx.maxPriorityFeePerGas)) /
+                10 ** 9
+              : maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+          maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
+            ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
+            : maxPriorityFeePerGas.toNumber() / 10 ** 9,
+          gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
+          gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
+        };
 
-      setFee(feeDetails);
+        setFee(feeRecomendation);
+      } catch (error) {
+        logError('error getting fees', 'Transaction', error);
+        alert.removeAll();
+        alert.error(
+          'Error in the proccess to get fee values,  please verify your balance and try again later.'
+        );
+
+        //Wait enough time to te error be showed to later close the window
+        setTimeout(window.close, 3000);
+      }
     };
 
-    getFeeRecomendation();
+    getInitialFeeRecomendation();
 
     return () => {
       abortController.abort();

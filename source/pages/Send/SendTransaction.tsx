@@ -186,6 +186,7 @@ export const SendTransaction = () => {
         setTx(formTx);
         setCustomNonce(nonce);
       } catch (e) {
+        logError('error getting fees', 'Transaction', e);
         alert.removeAll();
         alert.error('The transaction will fail, fix it and try again!', e);
         setTimeout(window.close, 3000);
