@@ -95,7 +95,7 @@ export const SendConfirm = () => {
           try {
             sysTxsController
               .sendTransaction(basicTxValues)
-              .then(async (response) => {
+              .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
@@ -164,7 +164,7 @@ export const SendConfirm = () => {
                     : fee.gasLimit
                 ),
               })
-              .then(async (response) => {
+              .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);

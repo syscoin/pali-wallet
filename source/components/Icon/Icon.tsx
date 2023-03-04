@@ -49,6 +49,7 @@ const icons = {
   trash: AntIcons.DeleteOutlined,
   'external-link': ExternalLinkIcon,
   tag: AntIcons.TagFilled,
+  import: AntIcons.ImportOutlined,
 };
 
 interface IIcon {
