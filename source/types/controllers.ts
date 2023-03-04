@@ -91,10 +91,6 @@ export interface IControllerUtils {
   }>;
   // eslint-disable-next-line @typescript-eslint/ban-types
   getFeeRate: (fee: number) => BigInt;
-  getGasUsedInTransaction: (transactionHash: string) => Promise<{
-    effectiveGasPrice: number;
-    gasUsed: number;
-  }>;
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
   getSearch: (query: string) => Promise<ICoingeckoSearchResults>;

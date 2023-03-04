@@ -106,6 +106,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
     window.controller.utils.setFiat();
+    window.controller.wallet.setStorage(window.localStorage);
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
