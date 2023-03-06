@@ -76,10 +76,6 @@ const ImportAccountView = () => {
         Pali account Secret Recovery Phrase.
       </p>
 
-      <p className="mb-2 mt-5 text-left text-white text-sm md:max-w-full">
-        Select Type
-      </p>
-
       <div className="flex flex-col gap-y-5 items-center justify-center">
         <Menu as="div" className="relative inline-block text-left">
           <Menu.Button className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full">
