@@ -55,7 +55,8 @@ export const SendNTokenTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
-  const [confirmedTx, setConfirmedTx] = useState<any>();
+  const [confirmedTx, setConfirmedTx] =
+    useState<ethers.providers.TransactionResponse>();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -100,7 +101,7 @@ export const SendNTokenTransaction = () => {
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await txs.getRecommendedGasPrice();
 
-          await txs
+          txs
             .sendFormattedTransaction({
               ...txWithoutType,
               gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
@@ -114,16 +115,11 @@ export const SendNTokenTransaction = () => {
               setLoading(false);
               if (isExternal)
                 dispatchBackgroundEvent(`nTokenTx.${host}`, response);
-            })
-            .catch((error) => {
-              alert.error("Can't complete transaction. Try again later.");
-              setLoading(false);
-              throw error;
             });
 
           return;
         } else {
-          await txs
+          txs
             .sendFormattedTransaction({
               ...txWithoutType,
               maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -156,11 +152,6 @@ export const SendNTokenTransaction = () => {
               setLoading(false);
               if (isExternal)
                 dispatchBackgroundEvent(`nTokenTx.${host}`, response);
-            })
-            .catch((error) => {
-              alert.error("Can't complete transaction. Try again later.");
-              setLoading(false);
-              throw error;
             });
 
           return;

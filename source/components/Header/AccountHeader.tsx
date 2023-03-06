@@ -10,14 +10,8 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
-type RenderAccountsListByBitcoinBasedProps = {
-  setActiveAccount: (id: number) => Promise<void>;
-};
-
-const RenderAccountsListByBitcoinBased = (
-  props: RenderAccountsListByBitcoinBasedProps
-) => {
-  const { setActiveAccount } = props;
+const RenderAccountsListByBitcoinBased = () => {
+  const { wallet, dapp } = getController();
 
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
@@ -28,6 +22,20 @@ const RenderAccountsListByBitcoinBased = (
   const activeAccountId = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+
+  const setActiveAccount = async (id: number) => {
+    if (!isBitcoinBased) {
+      const tabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      const host = new URL(tabs[0].url).hostname;
+      const connectedAccount = dapp.getAccount(host);
+      wallet.setAccount(Number(id), host, connectedAccount);
+      return;
+    }
+    wallet.setAccount(Number(id));
+  };
 
   return (
     <>
@@ -128,7 +136,7 @@ const RenderAccountsListByBitcoinBased = (
 
 const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
-  const { wallet, dapp } = getController();
+  const { wallet } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -155,20 +163,6 @@ const AccountMenu: React.FC = () => {
       className = 'h-40';
       break;
   }
-
-  const setActiveAccount = async (id: number) => {
-    if (!isBitcoinBased) {
-      const tabs = await browser.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      const host = new URL(tabs[0].url).hostname;
-      const connectedAccount = dapp.getAccount(host);
-      wallet.setAccount(Number(id), host, connectedAccount);
-      return;
-    }
-    wallet.setAccount(Number(id));
-  };
 
   const handleLogout = () => {
     wallet.lock();
@@ -279,9 +273,7 @@ const AccountMenu: React.FC = () => {
                         </li>
                       ) : null}
 
-                      <RenderAccountsListByBitcoinBased
-                        setActiveAccount={setActiveAccount}
-                      />
+                      <RenderAccountsListByBitcoinBased />
                     </Disclosure.Panel>
                   </div>
                 </>
