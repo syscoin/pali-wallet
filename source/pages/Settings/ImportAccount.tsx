@@ -51,14 +51,10 @@ const ImportAccountView = () => {
 
   //* Effects
   useEffect(() => {
-    if (
-      !isUnlocked &&
-      !Object.values(accounts).length &&
-      !accounts[activeAccountId]
-    )
-      return;
+    const validationForControllerRefresh =
+      isUnlocked && Object.values(accounts).length && accounts[activeAccountId];
 
-    controller.refresh(true);
+    if (validationForControllerRefresh) controller.refresh(true);
   }, [isUnlocked, activeAccountId]);
 
   if (!activeAccount) return null;
