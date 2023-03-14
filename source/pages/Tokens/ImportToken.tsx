@@ -82,6 +82,7 @@ export const ImportToken: FC = () => {
     ));
   };
 
+  //Change this later using new AssetsController function
   const addToken = async (token: ITokenEthProps) => {
     try {
       const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
