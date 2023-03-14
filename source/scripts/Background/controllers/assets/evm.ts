@@ -1,12 +1,12 @@
+import { ethers } from 'ethers';
+import lodash from 'lodash';
+
 import {
   ISupportsInterfaceProps,
   contractChecker,
   getERC721StandardBalance,
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
-import { ethers } from 'ethers';
-
-import lodash from 'lodash';
 
 import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
@@ -14,7 +14,7 @@ import { getController } from 'utils/browser';
 const EvmAssetsController = (): IEvmAssetsController => {
   const controller = getController();
 
-  const addDefaultToken = async (
+  const addEvmDefaultToken = async (
     token: ITokenEthProps,
     accountAddress: string,
     networkUrl: string
@@ -38,7 +38,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       return true;
     } catch (error) {
-      return Boolean(error);
+      return false;
     }
   };
 
@@ -199,7 +199,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   };
 
   return {
-    addDefaultToken,
+    addEvmDefaultToken,
     addCustomTokenByType,
   };
 };
@@ -211,11 +211,6 @@ interface IAddCustomTokenResponse {
 }
 
 export interface IEvmAssetsController {
-  addDefaultToken: (
-    token: ITokenEthProps,
-    accountAddress: string,
-    networkUrl: string
-  ) => Promise<boolean>;
   addCustomTokenByType: (
     walletAddres: string,
     contractAddress: string,
@@ -223,6 +218,11 @@ export interface IEvmAssetsController {
     decimals: number,
     provider: ethers.providers.JsonRpcProvider
   ) => Promise<IAddCustomTokenResponse>;
+  addEvmDefaultToken: (
+    token: ITokenEthProps,
+    accountAddress: string,
+    networkUrl: string
+  ) => Promise<boolean>;
 }
 
 export default EvmAssetsController;
