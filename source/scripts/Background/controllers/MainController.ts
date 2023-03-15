@@ -44,12 +44,14 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
+import AssetsManager from './assets';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
   const utilsController = Object.freeze(ControllerUtils());
+  const assetsManager = AssetsManager();
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -467,6 +469,7 @@ const MainController = (): IMainController => {
     lock,
     createAccount,
     account: walletController.account,
+    assets: assetsManager,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,

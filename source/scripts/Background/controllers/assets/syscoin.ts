@@ -1,24 +1,22 @@
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { getController } from 'utils/browser';
+import { ITokenSysProps } from 'types/tokens';
 
 const SysAssetsControler = (): ISysAssetsController => {
-  const controller = getController();
-
   const addSysDefaultToken = async (assetGuid: string, networkUrl: string) => {
     try {
       const metadata = await getAsset(networkUrl, assetGuid);
 
       if (metadata && metadata.symbol) {
-        await controller.wallet.account.sys.saveTokenInfo({
+        const sysAssetToAdd = {
           ...metadata,
           symbol: metadata.symbol ? atob(String(metadata.symbol)) : '',
-        });
+        } as ITokenSysProps;
 
-        return true;
+        return sysAssetToAdd;
       }
     } catch (error) {
-      return false;
+      return Boolean(error);
     }
   };
 
@@ -31,7 +29,7 @@ export interface ISysAssetsController {
   addSysDefaultToken: (
     assetGuid: string,
     networkUrl: string
-  ) => Promise<boolean>;
+  ) => Promise<boolean | ITokenSysProps>;
 }
 
 export default SysAssetsControler;

@@ -25,8 +25,9 @@ export const ImportToken: FC = () => {
 
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [added, setAdded] = useState<boolean>(false);
+  const [error, setError] = useState<boolean>(false);
 
   const { accounts, activeAccount: activeAccountId } = useSelector(
     (state: RootState) => state.vault
@@ -82,29 +83,30 @@ export const ImportToken: FC = () => {
     ));
   };
 
-  //Change this later using new AssetsController function
   const addToken = async (token: ITokenEthProps) => {
-    try {
-      const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+    setIsLoading(true);
 
-      const metadata = await getTokenStandardMetadata(
-        token.contractAddress,
-        accounts[activeAccount.id].address,
-        provider
+    const addTokenMethodResponse =
+      await controller.wallet.assets.evm.addEvmDefaultToken(
+        token,
+        activeAccount.address,
+        activeNetwork.url
       );
 
-      const balance = `${metadata.balance / 10 ** Number(token.decimals)}`;
-      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+    if (
+      typeof addTokenMethodResponse === 'boolean' ||
+      typeof addTokenMethodResponse === 'undefined'
+    ) {
+      setError(true);
+      setIsLoading(false);
 
-      await controller.wallet.account.eth.saveTokenInfo({
-        ...token,
-        balance: formattedBalance,
-      });
-
-      setAdded(true);
-    } catch (_error) {
-      setError(Boolean(_error));
+      return;
     }
+
+    await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
+
+    setAdded(true);
+    setIsLoading(false);
   };
 
   return (
@@ -145,6 +147,7 @@ export const ImportToken: FC = () => {
 
         <NeutralButton
           type="button"
+          loading={isLoading}
           onClick={
             selected ? () => addToken(selected) : () => navigate('/home')
           }

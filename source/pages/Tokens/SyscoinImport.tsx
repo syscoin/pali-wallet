@@ -8,6 +8,7 @@ import { getAsset } from '@pollum-io/sysweb3-utils';
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { ITokenSysProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
 export const SyscoinImportToken = () => {
@@ -25,26 +26,27 @@ export const SyscoinImportToken = () => {
   );
 
   const nextStep = async ({ assetGuid }: { assetGuid: string }) => {
-    try {
-      setIsLoading(true);
+    setIsLoading(true);
 
-      const metadata = await getAsset(activeNetwork.url, assetGuid);
+    const addTokenMethodResponse =
+      await controller.wallet.assets.sys.addSysDefaultToken(
+        assetGuid,
+        activeNetwork.url
+      );
 
-      if (metadata && metadata.symbol) {
-        await controller.wallet.account.sys.saveTokenInfo({
-          ...metadata,
-          symbol: metadata.symbol ? atob(String(metadata.symbol)) : '',
-        });
-
-        setAdded(true);
-        setIsLoading(false);
-
-        return;
-      }
-    } catch (_error) {
-      setError(Boolean(_error));
+    if (
+      typeof addTokenMethodResponse === 'boolean' ||
+      typeof addTokenMethodResponse === 'undefined'
+    ) {
+      setError(true);
       setIsLoading(false);
+      return;
     }
+
+    await controller.wallet.account.sys.saveTokenInfo(addTokenMethodResponse);
+
+    setAdded(true);
+    setIsLoading(false);
   };
 
   return (

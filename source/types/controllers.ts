@@ -13,6 +13,7 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+import { IAssetsManager } from 'scripts/Background/controllers/assets';
 import {
   PaliEvents,
   PaliSyscoinEvents,
@@ -28,6 +29,7 @@ export interface IMainController extends IKeyringManager {
     sys: ISysAccountController;
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
+  assets: IAssetsManager;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: (password: string) => Promise<void>;
   editCustomRpc: (

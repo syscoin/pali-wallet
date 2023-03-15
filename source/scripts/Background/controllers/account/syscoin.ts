@@ -172,7 +172,7 @@ const SysAccountController = (): ISysAccountController => {
     try {
       const { activeAccount, accounts } = store.getState().vault;
 
-      const tokenExists = accounts[activeAccount].assets.find(
+      const tokenExists = accounts[activeAccount].assets.syscoin.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
@@ -185,21 +185,26 @@ const SysAccountController = (): ISysAccountController => {
         ? description
         : '';
 
-      const { data } = await axios.get(ipfsUrl);
-
-      const image = data && data.image ? data.image : '';
-
-      const asset = {
+      const assetInfos = {
         ...token,
         description,
-        image,
+        image: '',
         balance: Number(token.balance) / 10 ** Number(token.decimals),
       };
+
+      if (ipfsUrl !== '') {
+        const { data } = await axios.get(ipfsUrl);
+
+        assetInfos.image = data && data.image ? data.image : '';
+      }
 
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [...accounts[activeAccount].assets, asset],
+          value: {
+            ...accounts[activeAccount].assets,
+            syscoin: [...accounts[activeAccount].assets.syscoin, assetInfos],
+          },
         })
       );
     } catch (error) {

@@ -9,16 +9,13 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 
 const EvmAssetsController = (): IEvmAssetsController => {
-  const controller = getController();
-
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
     accountAddress: string,
     networkUrl: string
-  ) => {
+  ): Promise<ITokenEthProps | boolean> => {
     try {
       const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
@@ -31,14 +28,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
       const balance = `${metadata.balance / 10 ** Number(token.decimals)}`;
       const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
-      await controller.wallet.account.eth.saveTokenInfo({
+      return {
         ...token,
         balance: formattedBalance,
-      });
-
-      return true;
+      };
     } catch (error) {
-      return false;
+      console.log('error evm', error);
+      return Boolean(error);
     }
   };
 
@@ -63,17 +59,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
       const formattedBalance = lodash.floor(parseFloat(balance), 4);
 
       if (metadata) {
-        await controller.wallet.account.eth.saveTokenInfo({
+        const assetToAdd = {
           tokenSymbol: metadata.tokenSymbol.toUpperCase(),
           contractAddress,
           decimals,
           isNft: false,
           balance: formattedBalance,
-        });
+        } as ITokenEthProps;
 
         return {
           error: false,
-          errorType: '',
+          tokenToAdd: assetToAdd,
           message: 'ERC-20 Token added',
         };
       }
@@ -81,7 +77,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return {
         error: true,
         errorType: 'Undefined',
-        message: '',
       };
     }
   };
@@ -119,24 +114,23 @@ const EvmAssetsController = (): IEvmAssetsController => {
         return;
       }
 
-      await controller.wallet.account.eth.saveTokenInfo({
+      const nftToAdd = {
         tokenSymbol: treatedSymbol,
         contractAddress,
         decimals,
         isNft: true,
         balance: balanceToNumber,
-      });
+      } as ITokenEthProps;
 
       return {
         error: false,
-        errorType: '',
+        tokenToAdd: nftToAdd,
         message: 'ERC-721 Token added',
       };
     } catch (error) {
       return {
         error: true,
         errorType: 'Undefined',
-        message: '',
       };
     }
   };
@@ -200,8 +194,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
 interface IAddCustomTokenResponse {
   error: boolean;
-  errorType: string;
-  message: string;
+  errorType?: string;
+  message?: string;
+  tokenToAdd?: ITokenEthProps;
 }
 
 export interface IEvmAssetsController {
@@ -216,7 +211,7 @@ export interface IEvmAssetsController {
     token: ITokenEthProps,
     accountAddress: string,
     networkUrl: string
-  ) => Promise<boolean>;
+  ) => Promise<ITokenEthProps | boolean>;
 }
 
 export default EvmAssetsController;

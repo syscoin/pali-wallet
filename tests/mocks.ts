@@ -53,7 +53,6 @@ export const MOCK_ACCOUNT: IKeyringAccountState = {
   ],
   xprv: MOCK_XPRV,
   xpub: MOCK_XPUB,
-  isImported: false,
 };
 
 export const STATE_W_ACCOUNT: IVaultState = {

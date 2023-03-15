@@ -1,18 +1,14 @@
-import EvmAssetsController from './evm';
-import SysAssetsController from './syscoin';
-import store from 'state/store';
+import EvmAssetsController, { IEvmAssetsController } from './evm';
+import SysAssetsController, { ISysAssetsController } from './syscoin';
 
-const AssetsManager = () => {
-  const { isBitcoinBased } = store.getState().vault;
+export interface IAssetsManager {
+  evm: IEvmAssetsController;
+  sys: ISysAssetsController;
+}
 
-  switch (isBitcoinBased) {
-    case true:
-      return SysAssetsController();
-    case false:
-      return EvmAssetsController();
-    default:
-      return SysAssetsController();
-  }
-};
+const AssetsManager = (): IAssetsManager => ({
+  evm: EvmAssetsController(),
+  sys: SysAssetsController(),
+});
 
 export default AssetsManager;
