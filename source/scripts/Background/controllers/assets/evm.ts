@@ -47,30 +47,42 @@ const EvmAssetsController = (): IEvmAssetsController => {
     contractAddress: string,
     decimals: number,
     provider: ethers.providers.JsonRpcProvider
-  ) => {
-    const metadata = await getTokenStandardMetadata(
-      contractAddress,
-      walletAddres,
-      provider
-    );
-
-    const balance = `${
-      metadata.balance /
-      10 ** (metadata.decimals ? metadata.decimals : decimals)
-    }`;
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
-
-    if (metadata) {
-      await controller.wallet.account.eth.saveTokenInfo({
-        tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+  ): Promise<IAddCustomTokenResponse> => {
+    try {
+      const metadata = await getTokenStandardMetadata(
         contractAddress,
-        decimals,
-        isNft: false,
-        balance: formattedBalance,
-      });
+        walletAddres,
+        provider
+      );
 
-      return true;
+      const balance = `${
+        metadata.balance /
+        10 ** (metadata.decimals ? metadata.decimals : decimals)
+      }`;
+
+      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+
+      if (metadata) {
+        await controller.wallet.account.eth.saveTokenInfo({
+          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+          contractAddress,
+          decimals,
+          isNft: false,
+          balance: formattedBalance,
+        });
+
+        return {
+          error: false,
+          errorType: '',
+          message: 'ERC-20 Token added',
+        };
+      }
+    } catch (error) {
+      return {
+        error: true,
+        errorType: 'Undefined',
+        message: '',
+      };
     }
   };
 
@@ -80,41 +92,53 @@ const EvmAssetsController = (): IEvmAssetsController => {
     symbol: string,
     decimals: number,
     provider: ethers.providers.JsonRpcProvider
-  ) => {
-    const getBalance = await getERC721StandardBalance(
-      contractAddress,
-      walletAddres,
-      provider
-    );
-
-    const balanceToNumber = Number(getBalance);
-
-    const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
-
-    if (
-      typeof balanceToNumber !== 'number' ||
-      Number.isNaN(balanceToNumber) ||
-      Boolean(String(getBalance).includes('Error'))
-    ) {
-      await handleERC20Tokens(
-        walletAddres,
+  ): Promise<IAddCustomTokenResponse> => {
+    try {
+      const getBalance = await getERC721StandardBalance(
         contractAddress,
-        decimals,
+        walletAddres,
         provider
       );
 
-      return;
+      const balanceToNumber = Number(getBalance);
+
+      const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
+
+      if (
+        typeof balanceToNumber !== 'number' ||
+        Number.isNaN(balanceToNumber) ||
+        Boolean(String(getBalance).includes('Error'))
+      ) {
+        await handleERC20Tokens(
+          walletAddres,
+          contractAddress,
+          decimals,
+          provider
+        );
+
+        return;
+      }
+
+      await controller.wallet.account.eth.saveTokenInfo({
+        tokenSymbol: treatedSymbol,
+        contractAddress,
+        decimals,
+        isNft: true,
+        balance: balanceToNumber,
+      });
+
+      return {
+        error: false,
+        errorType: '',
+        message: 'ERC-721 Token added',
+      };
+    } catch (error) {
+      return {
+        error: true,
+        errorType: 'Undefined',
+        message: '',
+      };
     }
-
-    await controller.wallet.account.eth.saveTokenInfo({
-      tokenSymbol: treatedSymbol,
-      contractAddress,
-      decimals,
-      isNft: true,
-      balance: balanceToNumber,
-    });
-
-    return true;
   };
 
   const addCustomTokenByType = async (
@@ -141,28 +165,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     switch (contractTypeResponse.type) {
       case 'ERC-721':
-        try {
-          const tryAddErc721 = await handleERC721NFTs(
-            walletAddres,
-            contractAddress,
-            symbol,
-            decimals,
-            provider
-          );
-
-          if (tryAddErc721)
-            return {
-              error: false,
-              errorType: '',
-              message: 'ERC-721 Token added',
-            };
-        } catch (_erc721Error) {
-          return {
-            error: true,
-            errorType: 'Undefined',
-            message: '',
-          };
-        }
+        await handleERC721NFTs(
+          walletAddres,
+          contractAddress,
+          symbol,
+          decimals,
+          provider
+        );
         break;
       case 'ERC-1155':
         return {
@@ -173,27 +182,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
       // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
       // has not been founded
       default:
-        try {
-          const tryAddErc20 = await handleERC20Tokens(
-            walletAddres,
-            contractAddress,
-            decimals,
-            provider
-          );
-
-          if (tryAddErc20)
-            return {
-              error: false,
-              errorType: '',
-              message: 'ERC-20 Token added',
-            };
-        } catch (_ercUndefinedError) {
-          return {
-            error: true,
-            errorType: 'Undefined',
-            message: '',
-          };
-        }
+        await handleERC20Tokens(
+          walletAddres,
+          contractAddress,
+          decimals,
+          provider
+        );
         break;
     }
   };
