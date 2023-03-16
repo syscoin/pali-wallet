@@ -1,5 +1,6 @@
-import EvmAssetsController, { IEvmAssetsController } from './evm';
-import SysAssetsController, { ISysAssetsController } from './syscoin';
+import EvmAssetsController from './evm';
+import SysAssetsController from './syscoin';
+import { IEvmAssetsController, ISysAssetsController } from './types';
 
 export interface IAssetsManager {
   evm: IEvmAssetsController;

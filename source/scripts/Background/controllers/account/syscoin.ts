@@ -80,9 +80,7 @@ const SysAccountController = (): ISysAccountController => {
               };
             else {
               //UPDATE ETH ERC TOKEN BALANCES
-              const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
-                accounts[index].id
-              );
+              const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens();
 
               return {
                 ...account,

@@ -10,6 +10,8 @@ import {
 
 import { ITokenEthProps } from 'types/tokens';
 
+import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
+
 const EvmAssetsController = (): IEvmAssetsController => {
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
@@ -196,27 +198,5 @@ const EvmAssetsController = (): IEvmAssetsController => {
     addCustomTokenByType,
   };
 };
-
-interface IAddCustomTokenResponse {
-  error: boolean;
-  errorType?: string;
-  message?: string;
-  tokenToAdd?: ITokenEthProps;
-}
-
-export interface IEvmAssetsController {
-  addCustomTokenByType: (
-    walletAddres: string,
-    contractAddress: string,
-    symbol: string,
-    decimals: number,
-    provider: ethers.providers.JsonRpcProvider
-  ) => Promise<IAddCustomTokenResponse>;
-  addEvmDefaultToken: (
-    token: ITokenEthProps,
-    accountAddress: string,
-    networkUrl: string
-  ) => Promise<ITokenEthProps | boolean>;
-}
 
 export default EvmAssetsController;

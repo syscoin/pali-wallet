@@ -15,10 +15,10 @@ export const getSymbolByChain = async (chain: string) => {
   return data.symbol.toString().toUpperCase();
 };
 
-export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
-  const { accounts, networks } = store.getState().vault;
+export const getBalanceUpdatedToErcTokens = async () => {
+  const { accounts, networks, activeAccount } = store.getState().vault;
 
-  const findAccount = accounts[accountId];
+  const findAccount = accounts[activeAccount];
   try {
     const updatedTokens = await Promise.all(
       findAccount.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {

@@ -246,7 +246,6 @@ export const SendConfirm = () => {
                     }
                     if (receipt) {
                       updateErcTokenBalances(
-                        activeAccount.id,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft,
@@ -305,7 +304,6 @@ export const SendConfirm = () => {
                     }
                     if (receipt) {
                       updateErcTokenBalances(
-                        activeAccount.id,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft

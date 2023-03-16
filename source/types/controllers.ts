@@ -55,7 +55,6 @@ export interface IMainController extends IKeyringManager {
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   unlock: (pwd: string) => Promise<void>;
   updateErcTokenBalances: (
-    accountId: number,
     tokenAddress: string,
     tokenChain: number,
     isNft: boolean,

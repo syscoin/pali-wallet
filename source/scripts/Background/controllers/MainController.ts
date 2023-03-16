@@ -33,7 +33,7 @@ import {
   setIsBitcoinBased,
   setChangingConnectedAccount,
   setIsNetworkChanging,
-  setUpdatedTokenBalace,
+  setUpdatedAllErcTokensBalance,
   setIsTimerEnabled as setIsTimerActive,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
@@ -408,7 +408,6 @@ const MainController = (): IMainController => {
   };
 
   const updateErcTokenBalances = async (
-    accountId: number,
     tokenAddress: string,
     tokenChain: number,
     isNft: boolean,
@@ -416,10 +415,8 @@ const MainController = (): IMainController => {
   ) => {
     const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
       store.getState().vault;
-    const findAccount = accounts[accountId];
 
-    if (!Boolean(findAccount.address === accounts[activeAccount].address))
-      return;
+    const findAccount = accounts[activeAccount];
 
     const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
 
@@ -439,7 +436,7 @@ const MainController = (): IMainController => {
       ? floor(parseFloat(balance as string), 4)
       : balance;
 
-    const newAccountsAssets = accounts[accountId].assets.ethereum.map(
+    const newAccountsAssets = accounts[activeAccount].assets.ethereum.map(
       (vaultAssets: ITokenEthProps) => {
         if (
           Number(vaultAssets.chainId) === tokenChain &&
@@ -454,9 +451,8 @@ const MainController = (): IMainController => {
 
     if (!isNetworkChanging) {
       store.dispatch(
-        setUpdatedTokenBalace({
-          accountId: findAccount.id,
-          newAccountsAssets,
+        setUpdatedAllErcTokensBalance({
+          updatedTokens: newAccountsAssets,
         })
       );
     }

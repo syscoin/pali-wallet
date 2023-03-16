@@ -213,45 +213,19 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
-    setUpdatedTokenBalace(
-      state: IVaultState,
-      action: PayloadAction<{
-        accountId: number;
-        newAccountsAssets: any;
-      }>
-    ) {
-      const { newAccountsAssets, accountId } = action.payload;
 
-      const { isBitcoinBased } = state;
-      //TODO: remove this if condition and guarantee that this redux state is only called on the appropriate state transition.
-      //TODO: the appropriate state transition is updating ERC tokens balance, so its a great concern that this if is here
-      if (!isBitcoinBased) {
-        state.accounts[accountId].assets.ethereum = newAccountsAssets;
-      }
-    },
     setUpdatedAllErcTokensBalance(
       state: IVaultState,
       action: PayloadAction<{
-        accountId: number;
         updatedTokens: any[];
       }>
     ) {
-      const { accountId, updatedTokens } = action.payload;
-      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
-        state;
+      const { updatedTokens } = action.payload;
+      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
 
-      const findAccount = accounts[accountId];
+      if (!Boolean(isNetworkChanging || isBitcoinBased)) return;
 
-      if (
-        !Boolean(
-          findAccount.address === accounts[activeAccount].address ||
-            isNetworkChanging ||
-            isBitcoinBased
-        )
-      )
-        return;
-
-      state.accounts[accountId].assets.ethereum = updatedTokens;
+      state.accounts[activeAccount].assets.ethereum = updatedTokens;
     },
   },
 });
@@ -279,7 +253,6 @@ export const {
   setAccountTransactions,
   setStoreError,
   setIsBitcoinBased,
-  setUpdatedTokenBalace,
   setUpdatedAllErcTokensBalance,
 } = VaultState.actions;
 
