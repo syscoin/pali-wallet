@@ -15,6 +15,7 @@ export const getSymbolByChain = async (chain: string) => {
   return data.symbol.toString().toUpperCase();
 };
 
+//Remove this function later, will be only in EvmAssetsController
 export const getBalanceUpdatedToErcTokens = async () => {
   const { accounts, networks, activeAccount } = store.getState().vault;
 

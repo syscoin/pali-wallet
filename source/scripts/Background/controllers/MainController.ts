@@ -458,6 +458,67 @@ const MainController = (): IMainController => {
     }
   };
 
+  const updateAccountAssetsValues = async () => {
+    const {
+      isBitcoinBased,
+      isNetworkChanging,
+      accounts,
+      activeAccount,
+      activeNetwork,
+      networks,
+    } = store.getState().vault;
+
+    if (!isNetworkChanging) return;
+
+    const activeAccountValues = accounts[activeAccount];
+
+    switch (isBitcoinBased) {
+      case true:
+        try {
+          const getSysAssets = await assetsManager.sys.getSysAssetsByXpub(
+            activeAccountValues.xpub,
+            activeNetwork.url
+          );
+
+          store.dispatch(
+            setActiveAccountProperty({
+              property: 'assets',
+              value: {
+                ...activeAccountValues.assets,
+                syscoin: getSysAssets,
+              },
+            })
+          );
+        } catch (_sysUpdateError) {
+          console.log('_sysUpdateError', _sysUpdateError);
+          return _sysUpdateError;
+        }
+        break;
+
+      case false:
+        try {
+          const getEvmAssets = await assetsManager.evm.updateAllEvmTokens(
+            activeAccountValues,
+            networks
+          );
+
+          store.dispatch(
+            setActiveAccountProperty({
+              property: 'assets',
+              value: {
+                ...activeAccountValues.assets,
+                ethereum: getEvmAssets,
+              },
+            })
+          );
+        } catch (_evmUpdateError) {
+          console.log('_evmUpdateError', _evmUpdateError);
+          return _evmUpdateError;
+        }
+        break;
+    }
+  };
+
   return {
     createWallet,
     forgetWallet,

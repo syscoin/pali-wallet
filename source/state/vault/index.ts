@@ -170,6 +170,7 @@ const VaultState = createSlice({
         value: number | string | boolean | any[];
       }>
     ) {
+      //Later with new sysweb3 change this to only get activeAccount
       const { activeAccount: id } = state;
       const { property, value } = action.payload;
 

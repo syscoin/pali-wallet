@@ -1,10 +1,13 @@
 import { ethers } from 'ethers';
 import lodash from 'lodash';
 
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import {
   ISupportsInterfaceProps,
   contractChecker,
   getERC721StandardBalance,
+  getErc20Abi,
+  getErc21Abi,
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
@@ -193,9 +196,51 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
   };
 
+  const updateAllEvmTokens = async (
+    account: IKeyringAccountState,
+    networks: any
+  ) => {
+    try {
+      const updatedTokens = await Promise.all(
+        account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
+          const provider = new ethers.providers.JsonRpcProvider(
+            networks.ethereum[vaultAssets.chainId].url
+          );
+
+          const _contract = new ethers.Contract(
+            vaultAssets.contractAddress,
+            vaultAssets.isNft ? getErc21Abi() : getErc20Abi(),
+            provider
+          );
+
+          const balanceCallMethod = await _contract.balanceOf(account.address);
+
+          const balance = vaultAssets.isNft
+            ? Number(balanceCallMethod)
+            : `${balanceCallMethod / 10 ** Number(vaultAssets.decimals)}`;
+
+          const formattedBalance = vaultAssets.isNft
+            ? balance
+            : lodash.floor(parseFloat(balance as string), 4);
+
+          return { ...vaultAssets, balance: formattedBalance };
+        })
+      );
+
+      return updatedTokens;
+    } catch (error) {
+      console.error(
+        "Pali utils: Couldn't update assets due to the following issue ",
+        error
+      );
+      return account.assets.ethereum;
+    }
+  };
+
   return {
     addEvmDefaultToken,
     addCustomTokenByType,
+    updateAllEvmTokens,
   };
 };
 

@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
@@ -48,4 +50,8 @@ export interface IEvmAssetsController {
     accountAddress: string,
     networkUrl: string
   ) => Promise<ITokenEthProps | boolean>;
+  updateAllEvmTokens: (
+    account: IKeyringAccountState,
+    networks: any
+  ) => Promise<any>;
 }
