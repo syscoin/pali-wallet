@@ -33,7 +33,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
         balance: formattedBalance,
       };
     } catch (error) {
-      console.log('error evm', error);
       return Boolean(error);
     }
   };
@@ -159,14 +158,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     switch (contractTypeResponse.type) {
       case 'ERC-721':
-        await handleERC721NFTs(
-          walletAddres,
-          contractAddress,
-          symbol,
-          decimals,
-          provider
-        );
-        break;
+        try {
+          return await handleERC721NFTs(
+            walletAddres,
+            contractAddress,
+            symbol,
+            decimals,
+            provider
+          );
+        } catch (_erc721Error) {
+          return _erc721Error;
+        }
       case 'ERC-1155':
         return {
           error: true,
@@ -176,13 +178,16 @@ const EvmAssetsController = (): IEvmAssetsController => {
       // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
       // has not been founded
       default:
-        await handleERC20Tokens(
-          walletAddres,
-          contractAddress,
-          decimals,
-          provider
-        );
-        break;
+        try {
+          return await handleERC20Tokens(
+            walletAddres,
+            contractAddress,
+            decimals,
+            provider
+          );
+        } catch (_erc20Error) {
+          return _erc20Error;
+        }
     }
   };
 
