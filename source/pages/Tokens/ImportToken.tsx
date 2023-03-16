@@ -1,15 +1,10 @@
 import { Form, Input } from 'antd';
-import { ethers } from 'ethers';
 import { uniqueId } from 'lodash';
-import lodash from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  getTokenJson,
-  getTokenStandardMetadata,
-} from '@pollum-io/sysweb3-utils';
+import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';

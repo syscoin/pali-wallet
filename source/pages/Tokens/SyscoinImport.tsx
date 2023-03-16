@@ -8,7 +8,6 @@ import { getAsset } from '@pollum-io/sysweb3-utils';
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ITokenSysProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
 export const SyscoinImportToken = () => {

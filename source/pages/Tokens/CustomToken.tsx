@@ -1,18 +1,10 @@
 import { Form, Input } from 'antd';
 import { ethers } from 'ethers';
-import lodash from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { setActiveNetwork } from '@pollum-io/sysweb3-network';
-import {
-  getTokenStandardMetadata,
-  isValidEthereumAddress,
-  getERC721StandardBalance,
-  contractChecker,
-  ISupportsInterfaceProps,
-} from '@pollum-io/sysweb3-utils';
+import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
