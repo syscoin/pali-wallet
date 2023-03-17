@@ -72,14 +72,14 @@ export const CustomToken = () => {
         addTokenMethodResponse.tokenToAdd
       );
 
-      setIsLoading(false);
       setAdded(true);
     } catch (error) {
-      setIsLoading(false);
       setErcError({
         errorType: 'Undefined',
         message: '',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 

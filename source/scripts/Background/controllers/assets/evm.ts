@@ -11,6 +11,7 @@ import {
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
+import { INetworksVault } from 'state/vault/types';
 import { ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
@@ -171,8 +172,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
             decimals,
             provider
           );
-        } catch (_erc721Error) {
-          return _erc721Error;
+        } catch (erc721Error) {
+          return erc721Error;
         }
       case 'ERC-1155':
         return {
@@ -190,15 +191,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
             decimals,
             provider
           );
-        } catch (_erc20Error) {
-          return _erc20Error;
+        } catch (erc20Error) {
+          return erc20Error;
         }
     }
   };
 
   const updateAllEvmTokens = async (
     account: IKeyringAccountState,
-    networks: any
+    networks: INetworksVault
   ) => {
     try {
       const updatedTokens = await Promise.all(

@@ -489,9 +489,8 @@ const MainController = (): IMainController => {
               },
             })
           );
-        } catch (_sysUpdateError) {
-          console.log('_sysUpdateError', _sysUpdateError);
-          return _sysUpdateError;
+        } catch (sysUpdateError) {
+          return sysUpdateError;
         }
         break;
 
@@ -511,9 +510,8 @@ const MainController = (): IMainController => {
               },
             })
           );
-        } catch (_evmUpdateError) {
-          console.log('_evmUpdateError', _evmUpdateError);
-          return _evmUpdateError;
+        } catch (evmUpdateError) {
+          return evmUpdateError;
         }
         break;
     }
@@ -541,6 +539,7 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
+    updateAccountAssetsValues,
     ...keyringManager,
   };
 };

@@ -16,15 +16,17 @@ export interface IVaultState {
   isPendingBalances: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
-  networks: {
-    [INetworkType.Ethereum]: {
-      [chainId: number]: INetwork;
-    };
-    [INetworkType.Syscoin]: {
-      [chainId: number]: INetwork;
-    };
-  };
+  networks: INetworksVault;
   timer: number;
+}
+
+export interface INetworksVault {
+  [INetworkType.Ethereum]: {
+    [chainId: number]: INetwork;
+  };
+  [INetworkType.Syscoin]: {
+    [chainId: number]: INetwork;
+  };
 }
 
 export interface IChangingConnectedAccount {

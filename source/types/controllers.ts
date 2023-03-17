@@ -54,6 +54,7 @@ export interface IMainController extends IKeyringManager {
   setAutolockTimer: (minutes: number) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   unlock: (pwd: string) => Promise<void>;
+  updateAccountAssetsValues: () => Promise<void>;
   updateErcTokenBalances: (
     tokenAddress: string,
     tokenChain: number,

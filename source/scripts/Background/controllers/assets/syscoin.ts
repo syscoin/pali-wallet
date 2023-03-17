@@ -40,16 +40,16 @@ const SysAssetsControler = (): ISysAssetsController => {
 
       //Validate to know which tokens use, for some cases the request only return tokens without tokensAsset
       //and for some other cases return both
-      const validateTokenAssets =
-        tokensAsset && tokensAsset.length > 0 ? tokensAsset : tokens;
+      const isTokensAssetValid = tokensAsset && tokensAsset.length > 0;
 
-      const filteredAssetsLength: ITokensAssetReponse[] = validateTokenAssets
-        ? validateTokenAssets.slice(0, 30)
+      const validTokens = isTokensAssetValid ? tokensAsset : tokens;
+
+      const filteredAssetsLength: ITokensAssetReponse[] = validTokens
+        ? validTokens.slice(0, 30)
         : [];
 
       return filteredAssetsLength;
     } catch (error) {
-      console.log('assets by xpub error', error);
       return error;
     }
   };

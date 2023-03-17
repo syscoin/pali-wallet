@@ -1,4 +1,5 @@
 import { Form, Input } from 'antd';
+import { isBoolean, isNil } from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -26,26 +27,27 @@ export const SyscoinImportToken = () => {
 
   const nextStep = async ({ assetGuid }: { assetGuid: string }) => {
     setIsLoading(true);
+    try {
+      const addTokenMethodResponse =
+        await controller.wallet.assets.sys.addSysDefaultToken(
+          assetGuid,
+          activeNetwork.url
+        );
 
-    const addTokenMethodResponse =
-      await controller.wallet.assets.sys.addSysDefaultToken(
-        assetGuid,
-        activeNetwork.url
-      );
+      if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
+        setError(true);
+        setIsLoading(false);
+        return;
+      }
 
-    if (
-      typeof addTokenMethodResponse === 'boolean' ||
-      typeof addTokenMethodResponse === 'undefined'
-    ) {
+      await controller.wallet.account.sys.saveTokenInfo(addTokenMethodResponse);
+
+      setAdded(true);
+    } catch (error) {
       setError(true);
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    await controller.wallet.account.sys.saveTokenInfo(addTokenMethodResponse);
-
-    setAdded(true);
-    setIsLoading(false);
   };
 
   return (

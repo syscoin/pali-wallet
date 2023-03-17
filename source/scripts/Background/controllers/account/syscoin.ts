@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isEmpty } from 'lodash';
 import { resolve } from 'path';
 
 import {
@@ -190,7 +191,7 @@ const SysAccountController = (): ISysAccountController => {
         balance: Number(token.balance) / 10 ** Number(token.decimals),
       };
 
-      if (ipfsUrl !== '') {
+      if (!isEmpty(ipfsUrl)) {
         const { data } = await axios.get(ipfsUrl);
 
         assetInfos.image = data && data.image ? data.image : '';

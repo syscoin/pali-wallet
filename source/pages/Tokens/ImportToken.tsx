@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import { uniqueId } from 'lodash';
+import { isBoolean, isNil, uniqueId } from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
 import { useSelector } from 'react-redux';
@@ -80,28 +80,29 @@ export const ImportToken: FC = () => {
 
   const addToken = async (token: ITokenEthProps) => {
     setIsLoading(true);
+    try {
+      const addTokenMethodResponse =
+        await controller.wallet.assets.evm.addEvmDefaultToken(
+          token,
+          activeAccount.address,
+          activeNetwork.url
+        );
 
-    const addTokenMethodResponse =
-      await controller.wallet.assets.evm.addEvmDefaultToken(
-        token,
-        activeAccount.address,
-        activeNetwork.url
-      );
+      if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
+        setError(true);
+        setIsLoading(false);
 
-    if (
-      typeof addTokenMethodResponse === 'boolean' ||
-      typeof addTokenMethodResponse === 'undefined'
-    ) {
+        return;
+      }
+
+      await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
+
+      setAdded(true);
+    } catch (error) {
       setError(true);
+    } finally {
       setIsLoading(false);
-
-      return;
     }
-
-    await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
-
-    setAdded(true);
-    setIsLoading(false);
   };
 
   return (
