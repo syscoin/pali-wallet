@@ -47,13 +47,11 @@ import WalletController from './account';
 import AssetsManager from './assets';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-import TransactionsManager from './transactions';
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const transactionsManager = TransactionsManager();
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -527,7 +525,6 @@ const MainController = (): IMainController => {
     createAccount,
     account: walletController.account,
     assets: assetsManager,
-    transactions: transactionsManager,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,

@@ -18,7 +18,6 @@ import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
-import { ITransactionsManager } from 'scripts/Background/controllers/transactions';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -44,7 +43,6 @@ export interface IMainController extends IKeyringManager {
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
-  transactions: ITransactionsManager;
   resolveAccountConflict: () => void;
   resolveError: () => void;
   setAccount: (
