@@ -66,11 +66,13 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         data: { result },
       } = await axios.get(`${networkApiUrl}${query}`);
 
+      const limitedTxHistory = result.slice(0, 30);
+
       if (!isString(result)) {
         const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
         const formattedTxs: ITransactionResponse[] = await Promise.all(
-          result.map(
+          limitedTxHistory.map(
             async (tx: ITransactionResponse) =>
               await getFormattedTransactionResponse(provider, tx)
           )

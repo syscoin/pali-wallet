@@ -1,14 +1,17 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useCallback } from 'react';
+import React, { Fragment, useCallback, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
+  const controller = getController();
+
   const id = useSelector((state: RootState) => state.vault.activeAccount);
   const { chainId } = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -40,6 +43,17 @@ export const TransactionsList = () => {
 
     return `Type: ${tx.type}`;
   };
+
+  useEffect(() => {
+    const getNewTxs = async () => {
+      const txs =
+        await controller.wallet.transactions.evm.getInitialUserTransactions();
+
+      console.log('new txs', txs);
+    };
+
+    getNewTxs();
+  }, []);
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
