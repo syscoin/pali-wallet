@@ -20,7 +20,6 @@ import {
 } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 import { getBalanceUpdatedToErcTokens } from 'utils/tokens';
-
 export interface ISysAccountController {
   getLatestUpdate: (silent?: boolean) => Promise<void>;
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
@@ -36,6 +35,8 @@ const SysAccountController = (): ISysAccountController => {
   // id for `watchMemPool` setInterval
   let intervalId: NodeJS.Timer;
 
+  //TODO: Delete this function, we will create a new one to update only the infos about the
+  //current account at MainController
   const getLatestUpdate = async (silent?: boolean) => {
     const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
       store.getState().vault;

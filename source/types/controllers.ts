@@ -13,7 +13,7 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
-import { IAssetsManager } from 'scripts/Background/controllers/assets';
+import { IAssetsManager } from 'scripts/Background/controllers/assets/types';
 import {
   PaliEvents,
   PaliSyscoinEvents,
@@ -38,6 +38,7 @@ export interface IMainController extends IKeyringManager {
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   getChangeAddress: (accountId: number) => string;
+  getLatestUpdateForCurrentAccount: () => Promise<void>;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
@@ -54,7 +55,6 @@ export interface IMainController extends IKeyringManager {
   setAutolockTimer: (minutes: number) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   unlock: (pwd: string) => Promise<void>;
-  updateAccountAssetsValues: () => Promise<void>;
   updateErcTokenBalances: (
     tokenAddress: string,
     tokenChain: number,

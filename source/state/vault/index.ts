@@ -29,6 +29,7 @@ export const initialState: IVaultState = {
   isPendingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
+  isLoadingAssets: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -154,6 +155,9 @@ const VaultState = createSlice({
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;
     },
+    setIsLoadingAssets(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingAssets = action.payload;
+    },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
     },
@@ -239,6 +243,7 @@ export const {
   setIsNetworkChanging,
   setIsPendingBalances,
   setIsLoadingTxs,
+  setIsLoadingAssets,
   setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
