@@ -200,7 +200,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const updateAllEvmTokens = async (
     account: IKeyringAccountState,
     networks: INetworksVault
-  ) => {
+  ): Promise<ITokenEthProps[]> => {
     try {
       const updatedTokens = await Promise.all(
         account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {

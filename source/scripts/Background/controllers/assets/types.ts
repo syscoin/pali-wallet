@@ -13,13 +13,19 @@ export interface IAssetsManager {
   utils: IAssetsManagerUtils;
 }
 
+export interface IAssetsManagerUtilsResponse {
+  assets: {
+    ethereum: ITokenEthProps[];
+    syscoin: ISysTokensAssetReponse[];
+  };
+}
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networks: INetworksVault
-  ) => Promise<any>;
+  ) => Promise<IAssetsManagerUtilsResponse>;
 }
 export interface ISysAssetsController {
   addSysDefaultToken: (
@@ -69,5 +75,5 @@ export interface IEvmAssetsController {
   updateAllEvmTokens: (
     account: IKeyringAccountState,
     networks: INetworksVault
-  ) => Promise<any>;
+  ) => Promise<ITokenEthProps[]>;
 }

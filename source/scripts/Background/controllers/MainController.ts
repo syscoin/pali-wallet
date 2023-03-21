@@ -487,7 +487,7 @@ const MainController = (): IMainController => {
     store.dispatch(
       setActiveAccountProperty({
         property: 'assets',
-        value: updatedAssets,
+        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
       })
     );
 

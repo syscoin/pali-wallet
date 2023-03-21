@@ -4,7 +4,7 @@ import { INetworksVault } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
-import { IAssetsManager } from './types';
+import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
 const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
@@ -12,7 +12,7 @@ const AssetsManager = (): IAssetsManager => {
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networks: INetworksVault
-  ) => {
+  ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
         try {
