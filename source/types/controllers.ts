@@ -38,7 +38,7 @@ export interface IMainController extends IKeyringManager {
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   getChangeAddress: (accountId: number) => string;
-  getLatestUpdateForCurrentAccount: () => Promise<void>;
+  getLatestUpdateForCurrentAccount: () => void;
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;

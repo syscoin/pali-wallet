@@ -494,16 +494,21 @@ const MainController = (): IMainController => {
     store.dispatch(setIsLoadingAssets(false));
   };
 
-  const getLatestUpdateForCurrentAccount = async () => {
+  const getLatestUpdateForCurrentAccount = () => {
     const { isNetworkChanging, accounts, activeAccount } =
       store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount];
 
-    if (!isNetworkChanging || isNil(activeAccountValues.address)) return;
+    if (isNetworkChanging || isNil(activeAccountValues.address)) return;
 
-    //First update Assets
-    await updateAssetsFromCurrentAccount();
+    new Promise<void>(async (resolve) => {
+      //First update Assets
+      await updateAssetsFromCurrentAccount();
+      resolve();
+    });
+
+    return;
   };
 
   return {

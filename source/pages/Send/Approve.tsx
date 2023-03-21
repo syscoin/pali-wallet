@@ -311,7 +311,7 @@ export const ApproveTransactionComponent = () => {
         title="Approve successful"
         description="Your approve has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
+          refresh();
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -547,7 +547,7 @@ export const ApproveTransactionComponent = () => {
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
                   id="send-btn"
                   onClick={() => {
-                    refresh(false);
+                    refresh();
                     if (isExternal) window.close();
                     else navigate('/home');
                   }}

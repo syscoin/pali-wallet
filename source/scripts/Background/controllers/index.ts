@@ -15,7 +15,7 @@ export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
-  refresh: (silent?: boolean) => Promise<void>;
+  refresh: () => void;
   utils: Readonly<IControllerUtils>;
   wallet: Readonly<IMainController>;
 }
@@ -25,12 +25,12 @@ const MasterController = (): IMasterController => {
   const utils = Object.freeze(ControllerUtils());
   const dapp = Object.freeze(DAppController());
 
-  const refresh = async (silent?: boolean) => {
+  const refresh = () => {
     const { activeAccount, accounts } = store.getState().vault;
+    //We really need this validation ?
     if (!accounts[activeAccount].address) return;
 
-    await wallet.account.sys.getLatestUpdate(silent);
-    wallet.account.sys.watchMemPool();
+    wallet.getLatestUpdateForCurrentAccount();
     utils.setFiat();
   };
 
