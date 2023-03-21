@@ -1,3 +1,4 @@
+import { isNil } from 'lodash';
 import sys from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
@@ -44,8 +45,14 @@ const SysAssetsControler = (): ISysAssetsController => {
 
       const validTokens = isTokensAssetValid ? tokensAsset : tokens;
 
-      const filteredAssetsLength: ISysTokensAssetReponse[] = validTokens
-        ? validTokens.slice(0, 30)
+      //We need to get only tokens that has AssetGuid property
+      const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
+        validTokens.filter(
+          (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
+        );
+
+      const filteredAssetsLength = getOnlyTokensWithAssetGuid
+        ? getOnlyTokensWithAssetGuid.slice(0, 30)
         : [];
 
       return filteredAssetsLength;

@@ -14,19 +14,15 @@ export const SyscoinAssetsList = () => {
   const { assets } = accounts[activeAccount];
   const { navigate } = useUtils();
 
-  const validateAssetsSize = assets.length > 0;
-
-  console.log('assets', assets);
-
   return (
     <>
       {isLoadingAssets ? (
         <LoadingComponent />
       ) : (
         <>
-          {validateAssetsSize &&
-            assets.syscoin.map((asset: any) => (
-              <Fragment key={uniqueId(String(asset.assetGuid))}>
+          {assets.syscoin.map(
+            ({ decimals, balance, symbol, assetGuid }: any) => (
+              <Fragment key={uniqueId(String(assetGuid))}>
                 <li className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200">
                   <table className="table-auto w-full">
                     <tbody>
@@ -39,20 +35,15 @@ export const SyscoinAssetsList = () => {
                             <span className="text-brand-white">
                               {truncate(
                                 formatCurrency(
-                                  String(asset.balance / 10 ** asset.decimals),
-                                  asset.decimals
+                                  String(balance / 10 ** decimals),
+                                  decimals
                                 ),
                                 14
                               )}
                             </span>
 
                             <span className="text-brand-blue100">
-                              {asset.symbol
-                                ? `  ${truncate(
-                                    asset.symbol,
-                                    10
-                                  ).toUpperCase()}`
-                                : ''}
+                              {`  ${truncate(symbol, 10).toUpperCase()}`}
                             </span>
                           </p>
                         </td>
@@ -71,7 +62,7 @@ export const SyscoinAssetsList = () => {
                             className="w-full text-brand-assetGuidText font-poppins text-xs font-normal"
                             style={{ width: '75px' }}
                           >
-                            {ellipsis(asset.assetGuid, 4)}
+                            {ellipsis(assetGuid, 4)}
                           </span>
                         </td>
 
@@ -79,7 +70,7 @@ export const SyscoinAssetsList = () => {
                           <IconButton
                             onClick={() =>
                               navigate('/home/details', {
-                                state: { id: asset.assetGuid, hash: null },
+                                state: { id: assetGuid, hash: null },
                               })
                             }
                           >
@@ -94,7 +85,8 @@ export const SyscoinAssetsList = () => {
                   </table>
                 </li>
               </Fragment>
-            ))}
+            )
+          )}
         </>
       )}
     </>

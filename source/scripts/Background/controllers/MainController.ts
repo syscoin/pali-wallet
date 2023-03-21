@@ -116,11 +116,9 @@ const MainController = (): IMainController => {
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
-    const initialSysAssetsForAccount =
-      await assetsManager.sys.getSysAssetsByXpub(
-        account.xpub,
-        initialState.activeNetwork.url
-      );
+    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+      account.xpub
+    );
 
     const newAccountWithAssets = {
       ...account,
@@ -162,11 +160,9 @@ const MainController = (): IMainController => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await walletController.addAccount(label);
 
-    const initialSysAssetsForAccount =
-      await assetsManager.sys.getSysAssetsByXpub(
-        newAccount.xpub,
-        initialState.activeNetwork.url
-      );
+    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+      newAccount.xpub
+    );
 
     const newAccountWithAssets = {
       ...newAccount,
@@ -402,6 +398,24 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
+  //------- New Assets methods -------//
+
+  //Sys methods
+  const getInitialSysTokenForAccount = async (xpub: string) => {
+    store.dispatch(setIsLoadingAssets(true));
+
+    const initialSysAssetsForAccount =
+      await assetsManager.sys.getSysAssetsByXpub(
+        xpub,
+        initialState.activeNetwork.url
+      );
+
+    store.dispatch(setIsLoadingAssets(false));
+
+    return initialSysAssetsForAccount;
+  };
+
+  //Evm methods
   const updateErcTokenBalances = async (
     tokenAddress: string,
     tokenChain: number,
@@ -453,6 +467,7 @@ const MainController = (): IMainController => {
     }
   };
 
+  //Methods for update both
   const updateAssetsFromCurrentAccount = async () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
       store.getState().vault;
