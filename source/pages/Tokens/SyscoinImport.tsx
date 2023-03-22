@@ -43,7 +43,7 @@ export const SyscoinImportToken = () => {
       await controller.wallet.account.sys.saveTokenInfo(addTokenMethodResponse);
 
       setAdded(true);
-    } catch (error) {
+    } catch (submitError) {
       setError(true);
     } finally {
       setIsLoading(false);

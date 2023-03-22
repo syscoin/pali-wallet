@@ -98,7 +98,7 @@ export const ImportToken: FC = () => {
       await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
 
       setAdded(true);
-    } catch (error) {
+    } catch (submitError) {
       setError(true);
     } finally {
       setIsLoading(false);

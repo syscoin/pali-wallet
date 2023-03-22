@@ -6,6 +6,27 @@ import { INetworksVault } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
+
+export interface IAssetsManager {
+  evm: IEvmAssetsController;
+  sys: ISysAssetsController;
+  utils: IAssetsManagerUtils;
+}
+
+export interface IAssetsManagerUtilsResponse {
+  assets: {
+    ethereum: ITokenEthProps[];
+    syscoin: ISysTokensAssetReponse[];
+  };
+}
+export interface IAssetsManagerUtils {
+  updateAssetsFromCurrentAccount: (
+    currentAccount: IKeyringAccountState,
+    isBitcoinBased: boolean,
+    activeNetworkUrl: string,
+    networks: INetworksVault
+  ) => Promise<IAssetsManagerUtilsResponse>;
+}
 export interface ISysAssetsController {
   addSysDefaultToken: (
     assetGuid: string,
@@ -14,10 +35,10 @@ export interface ISysAssetsController {
   getSysAssetsByXpub: (
     xpub: string,
     networkUrl: string
-  ) => Promise<ITokensAssetReponse[]>;
+  ) => Promise<ISysTokensAssetReponse[]>;
 }
 
-export interface ITokensAssetReponse {
+export interface ISysTokensAssetReponse {
   assetGuid: string;
   balance: string;
   decimals: number;
@@ -54,5 +75,5 @@ export interface IEvmAssetsController {
   updateAllEvmTokens: (
     account: IKeyringAccountState,
     networks: INetworksVault
-  ) => Promise<any>;
+  ) => Promise<ITokenEthProps[]>;
 }

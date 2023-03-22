@@ -426,7 +426,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
+          refresh();
           saveTransaction(confirmedTx);
           navigate('/home');
         }}

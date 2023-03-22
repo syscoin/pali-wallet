@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
+import { isNil } from 'lodash';
 import floor from 'lodash/floor';
 import omit from 'lodash/omit';
 
@@ -35,6 +36,8 @@ import {
   setIsNetworkChanging,
   setUpdatedAllErcTokensBalance,
   setIsTimerEnabled as setIsTimerActive,
+  setIsLoadingAssets,
+  initialState,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -115,10 +118,14 @@ const MainController = (): IMainController => {
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
+    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+      account.xpub
+    );
+
     const newAccountWithAssets = {
       ...account,
       assets: {
-        syscoin: account.assets,
+        syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
     };
@@ -155,10 +162,14 @@ const MainController = (): IMainController => {
   ): Promise<IKeyringAccountState> => {
     const newAccount = await walletController.addAccount(label);
 
+    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+      newAccount.xpub
+    );
+
     const newAccountWithAssets = {
       ...newAccount,
       assets: {
-        syscoin: newAccount.assets,
+        syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
     };
@@ -202,7 +213,7 @@ const MainController = (): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork, activeAccount, accounts } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -212,21 +223,9 @@ const MainController = (): IMainController => {
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
         try {
-          const networkAccount = await keyringManager.setSignerNetwork(
-            network,
-            chain
-          );
+          const account = await keyringManager.setSignerNetwork(network, chain);
 
-          const { assets } = accounts[activeAccount];
-
-          const generalAssets = isBitcoinBased
-            ? {
-                ethereum: accounts[activeAccount].assets?.ethereum,
-                syscoin: networkAccount.assets,
-              }
-            : assets;
-
-          const account = { ...networkAccount, assets: generalAssets };
+          await updateAssetsFromCurrentAccount();
 
           if (isBitcoinBased) {
             store.dispatch(
@@ -277,10 +276,13 @@ const MainController = (): IMainController => {
           );
 
           if (errorMessageValidate) {
-            const networkAccount = await keyringManager.setSignerNetwork(
+            const account = await keyringManager.setSignerNetwork(
               activeNetwork,
               networkChain()
             );
+
+            await updateAssetsFromCurrentAccount();
+
             window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
               method: PaliEvents.chainChanged,
               params: {
@@ -295,17 +297,6 @@ const MainController = (): IMainController => {
                 params: isBitcoinBased ? network.url : null,
               }
             );
-
-            const { assets } = accounts[activeAccount];
-
-            const generalAssets = isBitcoinBased
-              ? {
-                  ethereum: accounts[activeAccount].assets?.ethereum,
-                  syscoin: networkAccount.assets,
-                }
-              : assets;
-
-            const account = { ...networkAccount, assets: generalAssets };
 
             store.dispatch(setNetwork(activeNetwork));
 
@@ -409,6 +400,24 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
+  //------- New Assets methods -------//
+
+  //Sys methods
+  const getInitialSysTokenForAccount = async (xpub: string) => {
+    store.dispatch(setIsLoadingAssets(true));
+
+    const initialSysAssetsForAccount =
+      await assetsManager.sys.getSysAssetsByXpub(
+        xpub,
+        initialState.activeNetwork.url
+      );
+
+    store.dispatch(setIsLoadingAssets(false));
+
+    return initialSysAssetsForAccount;
+  };
+
+  //Evm methods
   const updateErcTokenBalances = async (
     tokenAddress: string,
     tokenChain: number,
@@ -460,63 +469,48 @@ const MainController = (): IMainController => {
     }
   };
 
-  const updateAccountAssetsValues = async () => {
-    const {
-      isBitcoinBased,
-      isNetworkChanging,
-      accounts,
-      activeAccount,
-      activeNetwork,
-      networks,
-    } = store.getState().vault;
+  //Methods for update both
+  const updateAssetsFromCurrentAccount = async () => {
+    const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
+      store.getState().vault;
 
-    if (!isNetworkChanging) return;
+    const currentAccount = accounts[activeAccount];
+
+    store.dispatch(setIsLoadingAssets(true));
+
+    const updatedAssets =
+      await assetsManager.utils.updateAssetsFromCurrentAccount(
+        currentAccount,
+        isBitcoinBased,
+        activeNetwork.url,
+        networks
+      );
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'assets',
+        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+      })
+    );
+
+    store.dispatch(setIsLoadingAssets(false));
+  };
+
+  const getLatestUpdateForCurrentAccount = () => {
+    const { isNetworkChanging, accounts, activeAccount } =
+      store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount];
 
-    switch (isBitcoinBased) {
-      case true:
-        try {
-          const getSysAssets = await assetsManager.sys.getSysAssetsByXpub(
-            activeAccountValues.xpub,
-            activeNetwork.url
-          );
+    if (isNetworkChanging || isNil(activeAccountValues.address)) return;
 
-          store.dispatch(
-            setActiveAccountProperty({
-              property: 'assets',
-              value: {
-                ...activeAccountValues.assets,
-                syscoin: getSysAssets,
-              },
-            })
-          );
-        } catch (sysUpdateError) {
-          return sysUpdateError;
-        }
-        break;
+    new Promise<void>(async (resolve) => {
+      //First update Assets
+      await updateAssetsFromCurrentAccount();
+      resolve();
+    });
 
-      case false:
-        try {
-          const getEvmAssets = await assetsManager.evm.updateAllEvmTokens(
-            activeAccountValues,
-            networks
-          );
-
-          store.dispatch(
-            setActiveAccountProperty({
-              property: 'assets',
-              value: {
-                ...activeAccountValues.assets,
-                ethereum: getEvmAssets,
-              },
-            })
-          );
-        } catch (evmUpdateError) {
-          return evmUpdateError;
-        }
-        break;
-    }
+    return;
   };
 
   return {
@@ -542,7 +536,7 @@ const MainController = (): IMainController => {
     getRecommendedFee,
     getNetworkData,
     updateErcTokenBalances,
-    updateAccountAssetsValues,
+    getLatestUpdateForCurrentAccount,
     ...keyringManager,
   };
 };

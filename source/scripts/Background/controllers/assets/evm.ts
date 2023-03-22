@@ -200,7 +200,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const updateAllEvmTokens = async (
     account: IKeyringAccountState,
     networks: INetworksVault
-  ) => {
+  ): Promise<ITokenEthProps[]> => {
     try {
       const updatedTokens = await Promise.all(
         account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
@@ -228,13 +228,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
         })
       );
 
-      return updatedTokens;
+      return updatedTokens as ITokenEthProps[];
     } catch (error) {
       console.error(
         "Pali utils: Couldn't update assets due to the following issue ",
         error
       );
-      return account.assets.ethereum;
+      return account.assets.ethereum as ITokenEthProps[];
     }
   };
 

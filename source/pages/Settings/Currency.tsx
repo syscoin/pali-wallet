@@ -80,7 +80,7 @@ const CurrencyView = () => {
   //* Effects
   useEffect(() => {
     if (isUnlocked && accounts && accounts[activeAccountId]) {
-      controller.refresh(true);
+      controller.refresh();
     }
   }, [isUnlocked, activeAccountId]);
 

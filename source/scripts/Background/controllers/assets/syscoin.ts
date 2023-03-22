@@ -1,10 +1,11 @@
+import { isNil } from 'lodash';
 import sys from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
 import { ITokenSysProps } from 'types/tokens';
 
-import { ISysAssetsController, ITokensAssetReponse } from './types';
+import { ISysAssetsController, ISysTokensAssetReponse } from './types';
 
 const SysAssetsControler = (): ISysAssetsController => {
   const addSysDefaultToken = async (assetGuid: string, networkUrl: string) => {
@@ -27,7 +28,7 @@ const SysAssetsControler = (): ISysAssetsController => {
   const getSysAssetsByXpub = async (
     xpub: string,
     networkUrl: string
-  ): Promise<ITokensAssetReponse[]> => {
+  ): Promise<ISysTokensAssetReponse[]> => {
     try {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
@@ -44,8 +45,14 @@ const SysAssetsControler = (): ISysAssetsController => {
 
       const validTokens = isTokensAssetValid ? tokensAsset : tokens;
 
-      const filteredAssetsLength: ITokensAssetReponse[] = validTokens
-        ? validTokens.slice(0, 30)
+      //We need to get only tokens that has AssetGuid property
+      const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
+        validTokens.filter(
+          (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
+        );
+
+      const filteredAssetsLength = getOnlyTokensWithAssetGuid
+        ? getOnlyTokensWithAssetGuid.slice(0, 30)
         : [];
 
       return filteredAssetsLength;
