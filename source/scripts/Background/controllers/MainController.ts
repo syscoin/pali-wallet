@@ -507,6 +507,7 @@ const MainController = (): IMainController => {
     new Promise<void>(async (resolve) => {
       //First update Assets
       await updateAssetsFromCurrentAccount();
+      await transactionsManager.evm.firstRunForTransactions();
       resolve();
     });
 

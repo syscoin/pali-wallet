@@ -1,20 +1,21 @@
 import axios from 'axios';
-import { Chain, chains } from 'eth-chains';
 import { ethers } from 'ethers';
-import { isNil, isString } from 'lodash';
+import { isString } from 'lodash';
 
 import store from 'state/store';
 
 import { etherscanSupportedNetworks } from './constants';
+import { IEvmTransactionsController, ITransactionResponse } from './types';
 import {
-  IEvmTransaction,
-  IEvmTransactionsController,
-  ITransactionResponse,
-} from './types';
-import { getFormattedTransactionResponse } from './utils';
+  findUserTxsInProviderByBlocksRange,
+  getFormattedTransactionResponse,
+  validateAndManageUserTransactions,
+} from './utils';
+
+let LAST_PROCESSED_BLOCK = -1;
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
-  const getInitialUserTransactions = async (): Promise<
+  const getUserTransactionsByOthersRPCs = async (): Promise<
     ITransactionResponse[]
   > => {
     const { activeNetwork, accounts, activeAccount } = store.getState().vault;
@@ -76,66 +77,71 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
   };
 
-  const getSocketPendingTransactions = async (): Promise<IEvmTransaction[]> => {
-    const { activeNetwork, accounts, activeAccount } = store.getState().vault;
+  const getUserTransactionByDefaultProvider = async (
+    startBlock: number,
+    endBlock: number
+  ) => {
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
 
-    const { address: userAddress, transactions: userTransactions } =
-      accounts[activeAccount];
+    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
 
-    const getChain = chains.get(activeNetwork.chainId) as Chain;
+    const { address: userAddress } = accounts[activeAccount];
 
-    const wssUrlByChain = getChain.rpc.find((rpc) => rpc.startsWith('wss://'));
+    const providerUserTxs = await findUserTxsInProviderByBlocksRange(
+      provider,
+      userAddress,
+      startBlock,
+      endBlock
+    );
 
-    const wssNeedApiKey = Boolean(wssUrlByChain.includes('API_KEY'));
+    if (providerUserTxs.length > 0) {
+      const getTxs = providerUserTxs.forEach((tx) =>
+        validateAndManageUserTransactions(tx)
+      );
 
-    const validatedUrl = wssNeedApiKey ? null : wssUrlByChain;
+      console.log('getTxs at evm', getTxs);
+    }
+  };
 
-    if (isNil(validatedUrl)) return [];
+  const firstRunForTransactions = async () => {
+    const { activeNetwork } = store.getState().vault;
 
-    const wssProvider = new ethers.providers.WebSocketProvider(validatedUrl);
+    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
 
-    wssProvider.on('error', (error) => {
-      console.log('error socket transactions', error);
-      return userTransactions.ethereum as IEvmTransaction[];
-    });
+    const latestBlockNumber = await provider.getBlockNumber();
+    const fromBlock = Math.max(0, latestBlockNumber - 10); // Get only the last 5 blocks
+    const toBlock = latestBlockNumber;
 
-    wssProvider.on('pending', async (txHash: string) => {
-      const transaction = await wssProvider.getTransaction(txHash);
+    await getUserTransactionByDefaultProvider(fromBlock, toBlock);
 
-      const { from, to, hash, blockNumber } = transaction;
+    // LAST_PROCESSED_BLOCK = toBlock
+  };
 
-      const isValidTx =
-        transaction && (from === userAddress || to === userAddress);
+  const pollTransactions = async (
+    provider:
+      | ethers.providers.EtherscanProvider
+      | ethers.providers.JsonRpcProvider
+  ) => {
+    console.log('running');
+    const latestBlockNumber = await provider.getBlockNumber();
 
-      if (isValidTx) {
-        const { timestamp } = await wssProvider.getBlock(Number(blockNumber));
+    const fromBlock = LAST_PROCESSED_BLOCK + 1;
 
-        const txAlreadyExists =
-          userTransactions.ethereum.findIndex(
-            (transaction: ITransactionResponse) => transaction.hash === hash
-          ) > -1;
+    if (latestBlockNumber === LAST_PROCESSED_BLOCK) {
+      return;
+    }
 
-        if (txAlreadyExists)
-          return userTransactions.ethereum as IEvmTransaction[];
+    await getUserTransactionByDefaultProvider(fromBlock, latestBlockNumber);
 
-        const formattedTx = {
-          ...transaction,
-          timestamp,
-        };
+    LAST_PROCESSED_BLOCK = latestBlockNumber;
 
-        // Remove last TX from state and add a new one at the beginning
-        const updatedEvmTxs: IEvmTransaction[] = userTransactions.ethereum
-          .pop()
-          .unshift(formattedTx);
-
-        return (userTransactions.ethereum = updatedEvmTxs);
-      }
-    });
+    setTimeout(pollTransactions, 20000); //20s
   };
 
   return {
-    getInitialUserTransactions,
-    getSocketPendingTransactions,
+    getUserTransactionsByOthersRPCs,
+    getUserTransactionByDefaultProvider,
+    firstRunForTransactions,
   };
 };
 

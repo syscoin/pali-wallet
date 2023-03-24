@@ -89,6 +89,10 @@ export interface ITransactionResponse extends IEvmTransaction {
 }
 
 export interface IEvmTransactionsController {
-  getInitialUserTransactions: () => Promise<ITransactionResponse[]>;
-  getSocketPendingTransactions: () => Promise<IEvmTransaction[]>;
+  firstRunForTransactions: () => Promise<void>;
+  getUserTransactionByDefaultProvider: (
+    startBlock: number,
+    endBlock: number
+  ) => Promise<void>;
+  getUserTransactionsByOthersRPCs: () => Promise<ITransactionResponse[]>;
 }

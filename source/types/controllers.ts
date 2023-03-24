@@ -45,7 +45,6 @@ export interface IMainController extends IKeyringManager {
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
-  transactions: ITransactionsManager;
   resolveAccountConflict: () => void;
   resolveError: () => void;
   setAccount: (
@@ -56,6 +55,7 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<void>;
   updateErcTokenBalances: (
     tokenAddress: string,
