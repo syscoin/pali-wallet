@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import {
   initialNetworksState,
-  initialActiveAccountState,
+  initialActiveAccountState, //todo we should handle because now the new keyring does not have initialActiveAccountState and have utxo and imported instead
   IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
@@ -56,7 +56,7 @@ const VaultState = createSlice({
         [id: number]: IKeyringAccountState;
       }>
     ) {
-      state.accounts = action.payload;
+      state.accounts = action.payload; //todo: account should be adjusted with the new type and format
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const id = state.activeAccount;
@@ -191,6 +191,7 @@ const VaultState = createSlice({
     },
     removeAccounts(state: IVaultState) {
       state.accounts = {
+        //todo: account should be adjusted with the new type and format
         0: {
           ...initialActiveAccountState,
           assets: { syscoin: [], ethereum: [] },

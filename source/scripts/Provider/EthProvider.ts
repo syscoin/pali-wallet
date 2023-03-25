@@ -2,8 +2,8 @@ import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
 import {
-  web3Provider,
-  setActiveNetwork as setProviderNetwork,
+  web3Provider, //todo new keyring does not have this anymore we should update it
+  setActiveNetwork as setProviderNetwork, //todo new keyring does not have this anymore we should update it
 } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 

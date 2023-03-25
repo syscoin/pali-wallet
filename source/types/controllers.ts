@@ -4,8 +4,8 @@ import {
   IKeyringManager,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 import {
-  INetwork,
   ITokenMap,
   ICoingeckoToken,
   ICoingeckoSearchResults,
@@ -55,7 +55,7 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
-  unlock: (pwd: string) => Promise<void>;
+  unlock: (pwd: string) => Promise<boolean>;
   updateErcTokenBalances: (
     accountId: number,
     tokenAddress: string,

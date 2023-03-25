@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { ImWarning } from 'react-icons/im';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { PrimaryButton } from '..';
 import { Icon } from '..';
 import { RootState } from 'state/store';
@@ -16,7 +18,7 @@ export const Loading = ({
   opacity?: number;
   usePopupSize?: boolean;
 }) => {
-  const { wallet } = getController();
+  const { wallet } = getController(); //todo we need to get keyring to get setActiveAccount fn here
 
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
@@ -48,7 +50,7 @@ export const Loading = ({
 
     if (activeAccount.isImported) {
       // Set the Default UTX0 account to user can return safely to UTX0 Syscoin Network
-      wallet.setActiveAccount(0);
+      wallet.setActiveAccount(0, KeyringAccountType.Imported);
     }
 
     await wallet.setActiveNetwork(correctSyscoinNetwork, 'syscoin');

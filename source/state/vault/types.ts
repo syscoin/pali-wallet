@@ -6,7 +6,7 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: accountType };
+  accounts: { [key in KeyringAccountType]: accountType }; //todo adjust and guarantee type is correct
   activeAccount: number;
   activeAccountType: KeyringAccountType;
   activeNetwork: INetwork;

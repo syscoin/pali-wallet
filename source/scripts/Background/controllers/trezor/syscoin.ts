@@ -7,6 +7,7 @@ export interface ISysTrezorController {
   createAccount: () => Promise<IKeyringAccountState>;
 }
 //TODO: validate unit testing for trezor on pali after fix on sysweb3
+//todo: we should evaluate trezor removal from the new keyring
 const SysTrezorController = (): ISysTrezorController => {
   const { trezor } = KeyringManager();
 

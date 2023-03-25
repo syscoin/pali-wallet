@@ -28,6 +28,7 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
+  //todo: we need to get the keyringmanager.getDecryptedPrivateKey these are not wallet functions anymore
   const getDecryptedPrivateKey = (key: string) =>
     controller.wallet.getDecryptedPrivateKey(key);
 
@@ -86,7 +87,7 @@ const PrivateKeyView = () => {
             },
             () => ({
               validator(_, pwd) {
-                if (controller.wallet.checkPassword(pwd)) {
+                if (controller.wallet.unlock(pwd)) {
                   setValid(true);
 
                   return Promise.resolve();

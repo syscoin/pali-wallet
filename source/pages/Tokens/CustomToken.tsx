@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
+//todo: we need to replace with the new keyring functions since setActiveNetwork does not exits anymore
 import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 import {
   getTokenStandardMetadata,

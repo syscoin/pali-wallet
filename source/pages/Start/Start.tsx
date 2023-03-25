@@ -12,7 +12,7 @@ import { getController } from 'utils/browser';
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock, checkPassword },
+    wallet: { unlock },
   } = getController();
   const encryptedMnemonic = useSelector(
     (state: RootState) => state.vault.encryptedMnemonic
@@ -63,7 +63,7 @@ export const Start = (props: any) => {
             },
             () => ({
               async validator(_, value) {
-                if (checkPassword(value)) {
+                if (unlock(value)) {
                   return Promise.resolve();
                 }
 

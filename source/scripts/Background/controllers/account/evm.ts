@@ -1,8 +1,8 @@
 import {
   IEthereumTransactions,
   EthereumTransactions,
-  IWeb3Accounts,
-  Web3Accounts,
+  IWeb3Accounts, //todo: we don't have this in the keyring anymore
+  Web3Accounts, //todo: we don't have this in the keyring anymore
 } from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
@@ -22,6 +22,7 @@ export interface IEthAccountController extends IWeb3Accounts {
 }
 
 const EthAccountController = (): IEthAccountController => {
+  //todo: we need to call EthereumTransactions and Web3Accounts over keyringmanager
   const txs = EthereumTransactions();
   const web3Accounts = Web3Accounts();
 

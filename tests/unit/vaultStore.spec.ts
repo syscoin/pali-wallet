@@ -1,6 +1,6 @@
 import { AES } from 'crypto-js';
 
-import { initialActiveAccountState } from '@pollum-io/sysweb3-keyring';
+import { initialActiveAccountState } from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
 
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
@@ -75,6 +75,7 @@ describe('Vault store actions', () => {
     const stateWithAccounts: IVaultState = {
       ...initialState,
       accounts: {
+        //todo we should update this test to handle the new accounts format
         [fakeAccount1.id]: fakeAccount1,
         [fakeAccount2.id]: fakeAccount2,
       },

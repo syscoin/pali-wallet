@@ -11,6 +11,7 @@ export const MOCK_XPUB =
 export const MOCK_XPRV =
   'U2FsdGVkX18BNGHcPVXdJTVqdLn8/W4r/6UxD2Q1oshv/UkxSk/ir/uvXGDb3nP1TcvCcaruZU7FFXzLR7Uh/tr1j12/cEKWqUNwaNO/KXSVNvJP4dH8BN2ZTNfJMWgIdChPFFBsG1dCEODvrrntmYpB/gz8eEqSChr4j7xpFuc=';
 
+//todo: adjust mocks to guarantee new types
 export const MOCK_ACCOUNT: IKeyringAccountState = {
   address: 'sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax',
   assets: [

@@ -53,7 +53,7 @@ const MainController = (): IMainController => {
   };
 
   const getNetworkData = async () => {
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault; //todo: need to update to handle the new keyring manager class
     if (web3Provider.connection.url !== activeNetwork.url)
       _sysweb3SetActiveNetwork(activeNetwork);
     const networkVersion = await web3Provider.send('net_version', []);
@@ -74,12 +74,16 @@ const MainController = (): IMainController => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    if (!keyringManager.checkPassword(pwd)) throw new Error('Invalid password');
+    if (!keyringManager.unlock(pwd)) throw new Error('Invalid password');
     await new Promise<void>(async (resolve) => {
-      const { activeAccount, accounts } = store.getState().vault;
-      const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
+      const { activeAccount, accounts, activeAccountType } =
+        store.getState().vault;
+      const account = (await keyringManager.unlock(
+        pwd
+      )) as IKeyringAccountState;
+
       const { assets: currentAssets } =
-        accounts[KeyringAccountType.HDAccount][activeAccount];
+        accounts[KeyringAccountType[activeAccountType]][activeAccount];
 
       const keyringAccount = omit(account, ['assets']);
 
@@ -118,6 +122,7 @@ const MainController = (): IMainController => {
       },
     };
 
+    //todo we need to check if this is working as expected
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(setActiveAccount(newAccountWithAssets.id));
@@ -186,6 +191,7 @@ const MainController = (): IMainController => {
       }
     }
 
+    //todo: we need to pass the account type as well keyringManager.setActiveAccount(id, accountType)
     keyringManager.setActiveAccount(id);
     store.dispatch(setActiveAccount(id));
   };
@@ -331,6 +337,7 @@ const MainController = (): IMainController => {
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     try {
+      //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? await getSysRpc(data)
         : await getEthRpc(data);
@@ -384,11 +391,13 @@ const MainController = (): IMainController => {
     chainId: number,
     key?: string
   ) => {
+    //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
     keyringManager.removeNetwork(chain, chainId);
 
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId, key }));
   };
 
+  //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
   const getChangeAddress = (accountId: number) =>
     keyringManager.getChangeAddress(accountId);
 
@@ -464,7 +473,7 @@ const MainController = (): IMainController => {
     label?: string
   ) => {
     const { accounts } = store.getState().vault;
-
+    //todo: this function was renamed we should update it
     const importedAccount =
       await keyringManager.handleImportAccountByPrivateKey(privKey, label);
 
@@ -482,7 +491,7 @@ const MainController = (): IMainController => {
   return {
     createWallet,
     forgetWallet,
-    unlock,
+    unlock, //todo we need to adjust unlock type
     lock,
     createAccount,
     account: walletController.account,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';

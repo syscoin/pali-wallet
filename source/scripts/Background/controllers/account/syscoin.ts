@@ -30,7 +30,8 @@ export interface ISysAccountController {
 }
 
 const SysAccountController = (): ISysAccountController => {
-  const keyringManager = KeyringManager();
+  //todo: we need to check if we will need to get from main controller or initialize it again with opts
+  const keyringManager = new KeyringManager();
 
   // id for `watchMemPool` setInterval
   let intervalId: NodeJS.Timer;
@@ -201,6 +202,7 @@ const SysAccountController = (): ISysAccountController => {
     }
   };
 
+  //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
   const tx = SyscoinTransactions();
 

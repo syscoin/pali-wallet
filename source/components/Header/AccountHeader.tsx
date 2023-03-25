@@ -33,7 +33,7 @@ const RenderAccountsListByBitcoinBased = (
     <>
       {isBitcoinBased // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
         ? Object.values(accounts)
-            .filter((acc) => acc.isImported === false)
+            .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index, { length }) => (
               <Tooltip
                 key={account.id}

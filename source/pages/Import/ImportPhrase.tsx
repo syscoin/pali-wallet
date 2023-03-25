@@ -18,6 +18,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
     if (controller.wallet.validateSeed(phrase)) {
+      //todo we should validate seed phrase with the new fn
       onRegister();
     }
   };
@@ -53,6 +54,7 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
 
                 form.setFieldsValue({ phrase: value });
 
+                //todo: we should validate the seed phrase with the new fn
                 setSeedIsValid(controller.wallet.validateSeed(value) && value);
 
                 if (controller.wallet.validateSeed(value)) {

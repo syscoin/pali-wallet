@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
+//todo: update with the new function
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';

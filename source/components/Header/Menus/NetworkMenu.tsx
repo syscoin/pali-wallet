@@ -3,7 +3,7 @@ import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';

@@ -15,7 +15,7 @@ export const removeSensitiveDataFromVault = (
   const accounts = {};
 
   for (const account of Object.values(vault.accounts)) {
-    accounts[account.id] = removeXprv(account);
+    accounts[account.id] = removeXprv(account); //todo: need to get the id from the correct new keyring accoutn type, and also types should be adusted to use the removeXprv correctly
   }
 
   return {
