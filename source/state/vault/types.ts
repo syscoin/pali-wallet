@@ -1,11 +1,14 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+  accountType,
+} from '@pollum-io/sysweb3-keyring';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 export interface IVaultState {
-  accounts: {
-    [id: number]: IKeyringAccountState;
-  };
+  accounts: { [key in KeyringAccountType]: accountType };
   activeAccount: number;
+  activeAccountType: KeyringAccountType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
   encryptedMnemonic: string;

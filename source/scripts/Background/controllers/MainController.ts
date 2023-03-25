@@ -6,14 +6,10 @@ import omit from 'lodash/omit';
 import {
   KeyringManager,
   IKeyringAccountState,
+  KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import {
-  getSysRpc,
-  getEthRpc,
-  web3Provider,
-  setActiveNetwork as _sysweb3SetActiveNetwork,
-} from '@pollum-io/sysweb3-network';
-import { INetwork, getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
+import { getSysRpc, getEthRpc, INetwork } from '@pollum-io/sysweb3-network';
+import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -48,7 +44,7 @@ import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 const MainController = (): IMainController => {
-  const keyringManager = KeyringManager();
+  const keyringManager = new KeyringManager();
   const walletController = WalletController(keyringManager);
   const utilsController = Object.freeze(ControllerUtils());
 
@@ -82,7 +78,9 @@ const MainController = (): IMainController => {
     await new Promise<void>(async (resolve) => {
       const { activeAccount, accounts } = store.getState().vault;
       const account = (await keyringManager.login(pwd)) as IKeyringAccountState;
-      const { assets: currentAssets } = accounts[activeAccount];
+      const { assets: currentAssets } =
+        accounts[KeyringAccountType.HDAccount][activeAccount];
+
       const keyringAccount = omit(account, ['assets']);
 
       const mainAccount = { ...keyringAccount, assets: currentAssets };

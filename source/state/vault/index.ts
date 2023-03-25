@@ -4,19 +4,24 @@ import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
+  KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { IChangingConnectedAccount, IVaultState } from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: {
-    0: {
-      ...initialActiveAccountState,
-      assets: { syscoin: [], ethereum: [] },
+    [KeyringAccountType.HDAccount]: {
+      0: {
+        ...initialActiveAccountState,
+        assets: { syscoin: [], ethereum: [] },
+      },
     },
+    [KeyringAccountType.Imported]: {},
   },
+  activeAccountType: KeyringAccountType.HDAccount,
   activeAccount: 0,
   activeNetwork: {
     chainId: 57,
