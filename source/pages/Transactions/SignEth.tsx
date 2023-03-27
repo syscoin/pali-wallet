@@ -21,7 +21,7 @@ const EthSign: React.FC<ISign> = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountId];

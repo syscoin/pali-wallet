@@ -23,7 +23,7 @@ const Decrypt: React.FC<ISign> = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [decryptedMessage, setDecryptedMessage] = useState('');
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountId];

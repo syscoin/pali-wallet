@@ -82,7 +82,7 @@ export const ApproveTransactionComponent = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountId];

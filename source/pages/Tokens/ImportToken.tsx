@@ -28,7 +28,7 @@ export const ImportToken: FC = () => {
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountId];

@@ -22,6 +22,7 @@ export interface IMasterController {
 
 const MasterController = (): IMasterController => {
   const vaultState = store.getState().vault;
+  console.log('Checking vault State', vaultState);
   // const sysweb3Vault = Omit<IvaultState //TODO: omit information that's not used by sysweb3Vault
   // const wallet = Object.freeze(MainController(sysweb3Vault)); // TODO: initialise vault from our pali redux vault
   const wallet = Object.freeze(MainController());

@@ -6,7 +6,7 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 export interface IVaultState {
   accounts: { [key in KeyringAccountType]: PaliAccountType }; //todo adjust and guarantee type is correct
-  activeAccount: number;
+  activeAccountId: number;
   activeAccountType: KeyringAccountType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
@@ -33,25 +33,6 @@ export interface IChangingConnectedAccount {
   host: string | undefined;
   isChangingConnectedAccount: boolean;
   newConnectedAccount: IKeyringAccountState | undefined;
-}
-
-export interface IHolding {
-  NFTID: string;
-  assetGuid: string;
-  balance: number;
-  baseAssetID: string;
-  childAssetID: string;
-  decimals: number;
-  description: string;
-  symbol: string;
-  type: string;
-}
-
-export interface IMintedToken {
-  assetGuid: string;
-  maxSupply: number;
-  symbol: string;
-  totalSupply: number;
 }
 
 export interface IPaliAccountType extends IKeyringAccountState {

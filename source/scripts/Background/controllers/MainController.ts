@@ -52,16 +52,6 @@ const MainController = (): IMainController => {
     store.dispatch(setTimer(minutes));
   };
 
-  const getNetworkData = async () => {
-    const { activeNetwork } = store.getState().vault; //todo: need to update to handle the new keyring manager class
-    if (web3Provider.connection.url !== activeNetwork.url)
-      _sysweb3SetActiveNetwork(activeNetwork);
-    const networkVersion = await web3Provider.send('net_version', []);
-    const chainId = await web3Provider.send('eth_chainId', []);
-
-    return { chainId: String(chainId), networkVersion: String(networkVersion) };
-  };
-
   /** forget your wallet created with pali and associated with your seed phrase,
    *  but don't delete seed phrase so it is possible to create a new
    *  account using the same seed
@@ -74,35 +64,46 @@ const MainController = (): IMainController => {
   };
 
   const unlock = async (pwd: string): Promise<void> => {
-    if (!keyringManager.unlock(pwd)) throw new Error('Invalid password');
-    await new Promise<void>(async (resolve) => {
-      const { activeAccount, accounts, activeAccountType } =
-        store.getState().vault;
-      const account = (await keyringManager.unlock(
-        pwd
-      )) as IKeyringAccountState;
+    const unlocked = await keyringManager.unlock(pwd);
+    if (!unlocked) throw new Error('Invalid password');
+    store.dispatch(setLastLogin());
+    window.controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          accounts: [],
+          isUnlocked: keyringManager.isUnlocked(),
+        },
+      })
+      .catch((error) => console.error('Unlock', error));
+    // await new Promise<void>(async (resolve) => {
+    //   const { activeAccount, accounts, activeAccountType } =
+    //     store.getState().vault;
+    //   const account = (await keyringManager.unlock(
+    //     pwd
+    //   )) as IKeyringAccountState;
 
-      const { assets: currentAssets } =
-        accounts[KeyringAccountType[activeAccountType]][activeAccount];
+    //   const { assets: currentAssets } =
+    //     accounts[KeyringAccountType[activeAccountType]][activeAccount];
 
-      const keyringAccount = omit(account, ['assets']);
+    //   const keyringAccount = omit(account, ['assets']);
 
-      const mainAccount = { ...keyringAccount, assets: currentAssets };
+    //   const mainAccount = { ...keyringAccount, assets: currentAssets };
 
-      store.dispatch(setActiveAccount(mainAccount.id));
-      resolve();
+    //   store.dispatch(setActiveAccount(mainAccount.id));
+    //   resolve();
 
-      store.dispatch(setLastLogin());
-      window.controller.dapp
-        .handleStateChange(PaliEvents.lockStateChanged, {
-          method: PaliEvents.lockStateChanged,
-          params: {
-            accounts: [],
-            isUnlocked: keyringManager.isUnlocked(),
-          },
-        })
-        .catch((error) => console.error('Unlock', error));
-    });
+    //   store.dispatch(setLastLogin());
+    //   window.controller.dapp
+    //     .handleStateChange(PaliEvents.lockStateChanged, {
+    //       method: PaliEvents.lockStateChanged,
+    //       params: {
+    //         accounts: [],
+    //         isUnlocked: keyringManager.isUnlocked(),
+    //       },
+    //     })
+    //     .catch((error) => console.error('Unlock', error));
+    // });
     return;
   };
 
@@ -420,11 +421,11 @@ const MainController = (): IMainController => {
     isNft: boolean,
     decimals?: number
   ) => {
-    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
+    const { activeNetwork, accounts, activeAccountId, isNetworkChanging } =
       store.getState().vault;
     const findAccount = accounts[accountId];
 
-    if (!Boolean(findAccount.address === accounts[activeAccount].address))
+    if (!Boolean(findAccount.address === accounts[activeAccountId].address))
       return;
 
     const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);

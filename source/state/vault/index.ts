@@ -34,7 +34,7 @@ export const initialState: IVaultState = {
     },
   },
   activeAccountType: KeyringAccountType.HDAccount,
-  activeAccount: 0,
+  activeAccountId: 0,
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
@@ -71,7 +71,7 @@ const VaultState = createSlice({
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
-      const id = state.activeAccount;
+      const id = state.activeAccountId;
       state.accounts[id].transactions.unshift(action.payload);
     },
     createAccount(
@@ -153,7 +153,7 @@ const VaultState = createSlice({
       state.lastLogin = Date.now();
     },
     setActiveAccount(state: IVaultState, action: PayloadAction<number>) {
-      state.activeAccount = action.payload;
+      state.activeAccountId = action.payload;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
@@ -164,7 +164,7 @@ const VaultState = createSlice({
       // ).toString();
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
-      const id = state.activeAccount;
+      const id = state.activeAccountId;
       state.isPendingBalances = action.payload;
       state.accounts[id].transactions = []; // TODO: check a better way to handle network transaction
     },
@@ -187,7 +187,7 @@ const VaultState = createSlice({
         value: number | string | boolean | any[];
       }>
     ) {
-      const { activeAccount: id } = state;
+      const { activeAccountId: id } = state;
       const { property, value } = action.payload;
 
       if (!(property in state.accounts[id]))
@@ -218,7 +218,7 @@ const VaultState = createSlice({
           },
         },
       };
-      state.activeAccount = 0;
+      state.activeAccountId = 0;
     },
     removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
       delete state.accounts[action.payload.id];
@@ -264,14 +264,14 @@ const VaultState = createSlice({
       }>
     ) {
       const { accountId, updatedTokens } = action.payload;
-      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
+      const { isBitcoinBased, accounts, activeAccountId, isNetworkChanging } =
         state;
 
       const findAccount = accounts[accountId];
 
       if (
         !Boolean(
-          findAccount.address === accounts[activeAccount].address ||
+          findAccount.address === accounts[activeAccountId].address ||
             isNetworkChanging ||
             isBitcoinBased
         )
