@@ -8,14 +8,14 @@ import { RootState } from 'state/store';
 import { TransactionsList } from './components/Transactions';
 
 export const TransactionsPanel = () => {
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const activeAccountId = useSelector(
+    (state: RootState) => state.vault.activeAccountId
   );
   const { isLoadingTxs, accounts } = useSelector(
     (state: RootState) => state.vault
   );
   const [internalLoading, setInternalLoading] = useState<any>(isLoadingTxs);
-  const transactions = Object.values(accounts[activeAccount].transactions);
+  const transactions = Object.values(accounts[activeAccountId].transactions);
   const seconds = 10000;
 
   const NoTransactionsComponent = () => (

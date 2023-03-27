@@ -36,7 +36,7 @@ const EthSign: React.FC<ISign> = () => {
     "Signing this message can be dangerous. This signature could potentially perform any operation on your account's behalf, including granting complete control of your account and all of its assets to the requesting site. Only sign this message if you know what you're doing or completely trust the requesting site.";
 
   const onSubmit = async () => {
-    const { account } = getController().wallet;
+    const wallet = getController().wallet;
 
     setLoading(true);
 
@@ -44,9 +44,9 @@ const EthSign: React.FC<ISign> = () => {
       let response = '';
       const type = data.eventName;
       if (data.eventName === 'eth_sign')
-        response = await account.eth.tx.ethSign(data);
+        response = await wallet.ethereumTransaction.ethSign(data);
       else if (data.eventName === 'personal_sign')
-        response = await account.eth.tx.signPersonalMessage(data);
+        response = await wallet.ethereumTransactionsignPersonalMessage(data);
       else {
         let typedData;
         if (
@@ -64,11 +64,23 @@ const EthSign: React.FC<ISign> = () => {
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
         if (data.eventName === 'eth_signTypedData') {
-          response = account.eth.tx.signTypedData(address, typedData, 'V1');
+          response = wallet.ethereumTransaction.signTypedData(
+            address,
+            typedData,
+            'V1'
+          );
         } else if (data.eventName === 'eth_signTypedData_v3') {
-          response = account.eth.tx.signTypedData(address, typedData, 'V3');
+          response = wallet.ethereumTransaction.signTypedData(
+            address,
+            typedData,
+            'V3'
+          );
         } else if (data.eventName === 'eth_signTypedData_v4') {
-          response = account.eth.tx.signTypedData(address, typedData, 'V4');
+          response = wallet.ethereumTransaction.signTypedData(
+            address,
+            typedData,
+            'V4'
+          );
         }
       }
       setConfirmed(true);

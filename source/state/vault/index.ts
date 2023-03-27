@@ -7,7 +7,7 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   IChangingConnectedAccount,
@@ -34,6 +34,7 @@ export const initialState: IVaultState = {
     },
   },
   activeAccountType: KeyringAccountType.HDAccount,
+  activeChain: INetworkType.Syscoin,
   activeAccountId: 0,
   activeNetwork: {
     chainId: 57,
@@ -88,6 +89,7 @@ const VaultState = createSlice({
         network: INetwork;
       }>
     ) {
+      //TODO: refactor, it should just set the network the verification is already done on sysweb3
       const { chain, network, isEdit } = action.payload;
 
       const replaceNetworkName = `${network.label
@@ -162,6 +164,9 @@ const VaultState = createSlice({
       //   action.payload.chainId.toString(),
       //   16
       // ).toString();
+    },
+    setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
+      state.activeChain = action.payload;
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       const id = state.activeAccountId;
@@ -287,6 +292,7 @@ export const {
   setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
+  setNetworkType,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsPendingBalances,

@@ -31,7 +31,7 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 export const SendTransaction = () => {
   const {
     refresh,
-    wallet: { account },
+    wallet: { ethereumTransaction },
   } = getController();
 
   const { navigate, alert } = useUtils();
@@ -99,7 +99,6 @@ export const SendTransaction = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
       setTx({
         ...(validatedDataTxWithoutType as ITxState),
         nonce: customNonce,
@@ -119,14 +118,14 @@ export const SendTransaction = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
         ),
       });
       try {
-        const response = await txs.sendFormattedTransaction({
+        const response = await ethereumTransaction.sendFormattedTransaction({
           ...tx,
           nonce: customNonce,
           maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -145,7 +144,7 @@ export const SendTransaction = () => {
             ),
             9
           ),
-          gasLimit: txs.toBigNumber(
+          gasLimit: ethereumTransaction.toBigNumber(
             Boolean(customFee.isCustom && customFee.gasLimit > 0)
               ? customFee.gasLimit
               : fee.gasLimit

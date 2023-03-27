@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
-  const id = useSelector((state: RootState) => state.vault.activeAccount);
+  const id = useSelector((state: RootState) => state.vault.activeAccountId);
   const { chainId } = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

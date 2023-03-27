@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const id = useSelector((state: RootState) => state.vault.activeAccount);
+  const id = useSelector((state: RootState) => state.vault.activeAccountId);
   const { assets } = useSelector(
     (state: RootState) => state.vault.accounts[id]
   );

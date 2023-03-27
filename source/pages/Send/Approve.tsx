@@ -33,10 +33,7 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const ApproveTransactionComponent = () => {
-  const {
-    refresh,
-    wallet: { account },
-  } = getController();
+  const { refresh, wallet } = getController();
 
   const { getFiatAmount } = usePrice();
 
@@ -155,8 +152,6 @@ export const ApproveTransactionComponent = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
-
       const newDataEncoded = validatedEncodedData();
       const newTxValue = {
         ...tx,
@@ -178,7 +173,7 @@ export const ApproveTransactionComponent = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: wallet.ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
@@ -186,7 +181,8 @@ export const ApproveTransactionComponent = () => {
       };
 
       try {
-        const response = await txs.sendFormattedTransaction(newTxValue);
+        const response =
+          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal) dispatchBackgroundEvent(`txApprove.${host}`, response);

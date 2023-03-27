@@ -28,7 +28,7 @@ export const Loading = ({
   );
 
   const activeAccount = useSelector(
-    (state: RootState) => state.vault.accounts[state.vault.activeAccount]
+    (state: RootState) => state.vault.accounts[state.vault.activeAccountId]
   );
 
   const [timeoutError, setTimeoutError] = useState(false);

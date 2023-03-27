@@ -204,7 +204,7 @@ const SysAccountController = (): ISysAccountController => {
 
   //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
-  const tx = SyscoinTransactions();
+  const tx = keyringManager.syscoinTransaction;
 
   return {
     watchMemPool,

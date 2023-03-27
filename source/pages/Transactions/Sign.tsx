@@ -30,7 +30,6 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const onSubmit = async () => {
     const { account } = getController().wallet;
     const sign = account.sys.tx.signTransaction;
-    // : account.eth.tx.signTypedDataV4;
 
     setLoading(true);
 

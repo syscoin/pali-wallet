@@ -11,10 +11,10 @@ import { camelCaseToText, truncate } from 'utils/index';
 import { NftImage } from './NftImage';
 
 export const EvmAssetDetais = ({ id }: { id: string }) => {
-  const { accounts, activeAccount } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
-  const { assets } = accounts[activeAccount];
+  const { assets } = accounts[activeAccountId];
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

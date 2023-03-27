@@ -9,7 +9,7 @@ import { RootState } from 'state/store';
 
 export const EvmAssetsList = () => {
   const accountId = useSelector(
-    (state: RootState) => state.vault.activeAccount
+    (state: RootState) => state.vault.activeAccountId
   );
   const assets = useSelector(
     (state: RootState) => state.vault.accounts[accountId].assets

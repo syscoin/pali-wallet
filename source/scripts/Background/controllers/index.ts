@@ -1,6 +1,16 @@
+import omit from 'lodash/omit';
 import { browser, Windows } from 'webextension-polyfill-ts';
 
+import {
+  accountType,
+  IKeyringAccountState,
+  IWalletState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import store from 'state/store';
+import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
   IDAppController,
@@ -21,23 +31,51 @@ export interface IMasterController {
 }
 
 const MasterController = (): IMasterController => {
-  const vaultState = store.getState().vault;
-  console.log('Checking vault State', vaultState);
-  // const sysweb3Vault = Omit<IvaultState //TODO: omit information that's not used by sysweb3Vault
-  // const wallet = Object.freeze(MainController(sysweb3Vault)); // TODO: initialise vault from our pali redux vault
-  const wallet = Object.freeze(MainController());
+  const vaultToWalletState = (vaultState: IVaultState) => {
+    const accounts: { [key in KeyringAccountType]: accountType } =
+      Object.entries(vaultState.accounts).reduce(
+        (acc, [sysAccountType, paliAccountType]) => {
+          acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
+            Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
+              // const { assets, transactions, ...keyringAccountState } =
+              //   paliAccount;
+              const keyringAccountState: IKeyringAccountState = omit(
+                paliAccount,
+                ['assets', 'transactions']
+              ) as IKeyringAccountState;
+              return [accountId, keyringAccountState];
+            })
+          );
+          return acc;
+        },
+        {} as { [key in KeyringAccountType]: accountType }
+      );
+
+    const wallet: IWalletState = {
+      accounts,
+      activeAccountId: vaultState.activeAccountId,
+      activeAccountType: vaultState.activeAccountType,
+      networks: vaultState.networks,
+      activeNetwork: vaultState.activeNetwork,
+    };
+    const activeChain: INetworkType = vaultState.activeChain;
+
+    return { wallet, activeChain };
+  };
+  const walletState = vaultToWalletState(store.getState().vault);
+  console.log('Checking wallet State', walletState);
+  const wallet = Object.freeze(MainController(walletState));
   const utils = Object.freeze(ControllerUtils());
   const dapp = Object.freeze(DAppController());
 
   const refresh = async (silent?: boolean) => {
-    const { activeAccount, accounts } = store.getState().vault;
-    if (!accounts[activeAccount].address) return;
+    const { activeAccountId, accounts } = store.getState().vault;
+    if (!accounts[activeAccountId].address) return;
 
     await wallet.account.sys.getLatestUpdate(silent);
     wallet.account.sys.watchMemPool();
     utils.setFiat();
   };
-
   /**
    * Creates a popup for external routes. Mostly for DApps
    * @returns the window object from the popup

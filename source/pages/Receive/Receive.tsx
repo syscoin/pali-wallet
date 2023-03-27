@@ -19,7 +19,7 @@ export const Receive = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const networks = useSelector((state: RootState) => state.vault.networks);
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountId];

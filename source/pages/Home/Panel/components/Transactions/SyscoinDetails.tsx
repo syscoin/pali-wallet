@@ -12,10 +12,10 @@ import { camelCaseToText, ellipsis, truncate } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
-  const { accounts, activeAccount } = useSelector(
+  const { accounts, activeAccountId } = useSelector(
     (state: RootState) => state.vault
   );
-  const { transactions } = accounts[activeAccount];
+  const { transactions } = accounts[activeAccountId];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

@@ -8,6 +8,7 @@ export interface IVaultState {
   accounts: { [key in KeyringAccountType]: PaliAccountType }; //todo adjust and guarantee type is correct
   activeAccountId: number;
   activeAccountType: KeyringAccountType;
+  activeChain: INetworkType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
   encryptedMnemonic: string;

@@ -8,15 +8,15 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeConnectedAccount = () => {
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const activeAccountId = useSelector(
+    (state: RootState) => state.vault.activeAccountId
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { dapp, wallet } = getController();
   const { host, eventName, connectedAccount } = useQueryData();
 
   const handleConnectedAccount = () => {
-    dapp.changeAccount(host, activeAccount);
+    dapp.changeAccount(host, activeAccountId);
     dispatchBackgroundEvent(`${eventName}.${host}`, false);
     window.close();
   };
@@ -36,15 +36,15 @@ export const ChangeConnectedAccount = () => {
           <h2 className="text-center text-sm">
             The website <b className="text-gray-400">{host}</b> is connected to{' '}
             {connectedAccount.label} ({ellipsis(connectedAccount.address)}).
-            Your active account is {accounts[activeAccount].label} (
-            {ellipsis(accounts[activeAccount].address)}). With which account do
+            Your active account is {accounts[activeAccountId].label} (
+            {ellipsis(accounts[activeAccountId].address)}). With which account
             you want to proceed?
           </h2>
           <div className="mt-1 px-4 w-full text-center text-xs">
             <span>
               If you continue with the active account, Pali will change the
               connected account for <b className="text-gray-400">{host}</b> to{' '}
-              {accounts[activeAccount].label}.
+              {accounts[activeAccountId].label}.
             </span>
           </div>
         </div>

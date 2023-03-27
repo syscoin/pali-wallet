@@ -26,7 +26,7 @@ const RenderAccountsListByBitcoinBased = (
   );
 
   const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccount
+    (state: RootState) => state.vault.activeAccountId
   );
 
   return (
@@ -322,7 +322,7 @@ const AccountMenu: React.FC = () => {
 
 export const AccountHeader: React.FC = () => {
   const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccount
+    (state: RootState) => state.vault.activeAccountId
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert } = useUtils();

@@ -43,8 +43,8 @@ import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 import WalletController from './account';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-const MainController = (): IMainController => {
-  const keyringManager = new KeyringManager();
+const MainController = (walletState): IMainController => {
+  const keyringManager = new KeyringManager(walletState);
   const walletController = WalletController(keyringManager);
   const utilsController = Object.freeze(ControllerUtils());
 
@@ -204,7 +204,7 @@ const MainController = (): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork, activeAccount, accounts } = store.getState().vault;
+    const { activeNetwork, activeAccountId, accounts } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -219,11 +219,11 @@ const MainController = (): IMainController => {
             chain
           );
 
-          const { assets } = accounts[activeAccount];
+          const { assets } = accounts[activeAccountId];
 
           const generalAssets = isBitcoinBased
             ? {
-                ethereum: accounts[activeAccount].assets?.ethereum,
+                ethereum: accounts[activeAccountId].assets?.ethereum,
                 syscoin: networkAccount.assets,
               }
             : assets;
@@ -298,11 +298,11 @@ const MainController = (): IMainController => {
               }
             );
 
-            const { assets } = accounts[activeAccount];
+            const { assets } = accounts[activeAccountId];
 
             const generalAssets = isBitcoinBased
               ? {
-                  ethereum: accounts[activeAccount].assets?.ethereum,
+                  ethereum: accounts[activeAccountId].assets?.ethereum,
                   syscoin: networkAccount.assets,
                 }
               : assets;

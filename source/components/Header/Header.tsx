@@ -21,8 +21,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
   );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const activeAccountId = useSelector(
+    (state: RootState) => state.vault.activeAccountId
   );
 
   const { accounts } = useSelector((state: RootState) => state.vault);
@@ -99,7 +99,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                 <p className="text-brand-white text-sm">
                   <b className="text-gray-400">{host}</b> is connected to{' '}
                   {newConnectedAccount ? newConnectedAccount.label : ''}. Your
-                  active account is {accounts[activeAccount].label}. Would you
+                  active account is {accounts[activeAccountId].label}. Would you
                   like to continue with the active account?
                 </p>
               </div>

@@ -23,10 +23,8 @@ import { EditPriorityModal } from './EditPriorityModal';
 export const SendNTokenTransaction = () => {
   const {
     refresh,
-    wallet: { account },
+    wallet: { ethereumTransaction }, //TODO: validates this gets doesn't leads into bugs
   } = getController();
-
-  const txs = account.eth.tx;
 
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -98,13 +96,13 @@ export const SendNTokenTransaction = () => {
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
-            : await txs.getRecommendedGasPrice();
+            : await ethereumTransaction.getRecommendedGasPrice();
 
-          await txs
+          await ethereumTransaction
             .sendFormattedTransaction({
               ...txWithoutType,
               gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-              gasLimit: txs.toBigNumber(
+              gasLimit: ethereumTransaction.toBigNumber(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               ),
             })
@@ -123,7 +121,7 @@ export const SendNTokenTransaction = () => {
 
           return;
         } else {
-          await txs
+          await ethereumTransaction
             .sendFormattedTransaction({
               ...txWithoutType,
               maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -144,7 +142,7 @@ export const SendNTokenTransaction = () => {
                 ),
                 9
               ),
-              gasLimit: txs.toBigNumber(
+              gasLimit: ethereumTransaction.toBigNumber(
                 validateCustomGasLimit
                   ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                   : fee.gasLimit
@@ -183,14 +181,14 @@ export const SendNTokenTransaction = () => {
 
     const getFeeRecomendation = async () => {
       const { maxFeePerGas, maxPriorityFeePerGas } =
-        await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
+        await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
-      const getTxGasLimitResult = await txs.getTxGasLimit(tx);
+      const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
 
       tx.gasLimit =
         (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
         (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-          ? txs.toBigNumber(tx.gas || tx.gasLimit)
+          ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
           : getTxGasLimitResult;
 
       const feeDetails = {
