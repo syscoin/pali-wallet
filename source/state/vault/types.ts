@@ -1,12 +1,11 @@
 import {
   IKeyringAccountState,
   KeyringAccountType,
-  accountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: accountType }; //todo adjust and guarantee type is correct
+  accounts: { [key in KeyringAccountType]: PaliAccountType }; //todo adjust and guarantee type is correct
   activeAccount: number;
   activeAccountType: KeyringAccountType;
   activeNetwork: INetwork;
@@ -54,6 +53,17 @@ export interface IMintedToken {
   symbol: string;
   totalSupply: number;
 }
+
+export interface IPaliAccountType extends IKeyringAccountState {
+  assets: {
+    ethereum: [];
+    syscoin: [];
+  };
+  transactions: [];
+}
+export type PaliAccountType = {
+  [id: number]: IPaliAccountType;
+};
 
 export type IOmmitedAccount = Omit<IKeyringAccountState, 'xprv'>;
 

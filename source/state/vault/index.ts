@@ -2,24 +2,36 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import {
   initialNetworksState,
-  initialActiveAccountState, //todo we should handle because now the new keyring does not have initialActiveAccountState and have utxo and imported instead
+  initialActiveHdAccountState,
+  initialActiveImportedAccountState,
   IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
-import { IChangingConnectedAccount, IVaultState } from './types';
+import {
+  IChangingConnectedAccount,
+  IVaultState,
+  PaliAccountType,
+} from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: {
     [KeyringAccountType.HDAccount]: {
-      0: {
-        ...initialActiveAccountState,
-        assets: { syscoin: [], ethereum: [] },
+      [initialActiveHdAccountState.id]: {
+        ...initialActiveHdAccountState,
+        assets: { ethereum: [], syscoin: [] },
+        transactions: [],
       },
     },
-    [KeyringAccountType.Imported]: {},
+    [KeyringAccountType.Imported]: {
+      [initialActiveImportedAccountState.id]: {
+        ...initialActiveImportedAccountState,
+        assets: { ethereum: [], syscoin: [] },
+        transactions: [],
+      },
+    },
   },
   activeAccountType: KeyringAccountType.HDAccount,
   activeAccount: 0,
@@ -53,7 +65,7 @@ const VaultState = createSlice({
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
-        [id: number]: IKeyringAccountState;
+        [key in KeyringAccountType]: PaliAccountType;
       }>
     ) {
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
@@ -191,10 +203,19 @@ const VaultState = createSlice({
     },
     removeAccounts(state: IVaultState) {
       state.accounts = {
-        //todo: account should be adjusted with the new type and format
-        0: {
-          ...initialActiveAccountState,
-          assets: { syscoin: [], ethereum: [] },
+        [KeyringAccountType.HDAccount]: {
+          [initialActiveHdAccountState.id]: {
+            ...initialActiveHdAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: [],
+          },
+        },
+        [KeyringAccountType.Imported]: {
+          [initialActiveImportedAccountState.id]: {
+            ...initialActiveImportedAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: [],
+          },
         },
       };
       state.activeAccount = 0;
