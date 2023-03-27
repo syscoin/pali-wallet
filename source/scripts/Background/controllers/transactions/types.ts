@@ -1,4 +1,4 @@
-import { BigNumber } from 'ethers';
+import { ethers } from 'ethers';
 
 // EVM TYPES / INTERFACES
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
@@ -27,13 +27,13 @@ export interface IEvmTransaction {
   data: string;
   from?: string;
 
-  gasLimit: BigNumber;
-  gasPrice?: BigNumber;
+  gasLimit: ethers.BigNumber;
+  gasPrice?: ethers.BigNumber;
 
   hash?: string;
-  maxFeePerGas?: BigNumber;
+  maxFeePerGas?: ethers.BigNumber;
   // EIP-1559; Type 2
-  maxPriorityFeePerGas?: BigNumber;
+  maxPriorityFeePerGas?: ethers.BigNumber;
 
   nonce: number;
   r?: string;
@@ -45,7 +45,7 @@ export interface IEvmTransaction {
   type?: number | null;
 
   v?: number;
-  value: BigNumber;
+  value: ethers.BigNumber;
 }
 
 interface ITransactionReceipt {
@@ -54,10 +54,10 @@ interface ITransactionReceipt {
   byzantium: boolean;
   confirmations: number;
   contractAddress: string;
-  cumulativeGasUsed: BigNumber;
-  effectiveGasPrice: BigNumber;
+  cumulativeGasUsed: ethers.BigNumber;
+  effectiveGasPrice: ethers.BigNumber;
   from: string;
-  gasUsed: BigNumber;
+  gasUsed: ethers.BigNumber;
   logs: Array<ILog>;
   logsBloom: string;
   root?: string;
@@ -89,10 +89,14 @@ export interface ITransactionResponse extends IEvmTransaction {
 }
 
 export interface IEvmTransactionsController {
-  firstRunForTransactions: () => Promise<void>;
+  firstRunForProviderTransactions: () => Promise<void>;
   getUserTransactionByDefaultProvider: (
     startBlock: number,
     endBlock: number
   ) => Promise<void>;
-  getUserTransactionsByOthersRPCs: () => Promise<ITransactionResponse[]>;
+  pollingEvmTransactions: (
+    provider:
+      | ethers.providers.EtherscanProvider
+      | ethers.providers.JsonRpcProvider
+  ) => Promise<void>;
 }

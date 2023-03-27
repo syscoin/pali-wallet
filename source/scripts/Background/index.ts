@@ -1,4 +1,5 @@
 import 'emoji-log';
+import { ethers } from 'ethers';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
@@ -87,7 +88,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     return;
   }
-  const { changingConnectedAccount, timer, isTimerEnabled } =
+  const { changingConnectedAccount, timer, isTimerEnabled, activeNetwork } =
     store.getState().vault;
 
   if (timeout) clearTimeout(timeout);
@@ -126,100 +127,19 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   }
 });
 
-// const getSocketProvider = () => {
-//   const { activeNetwork } = store.getState().vault;
+// browser.runtime.onConnect.addListener(async () => {
+//   const pollingEvmTxs =
+//     await window.controller.wallet.transactions.evm.pollingEvmTransactions(
+//       new ethers.providers.JsonRpcProvider(
+//         store.getState().vault.activeNetwork.url
+//       )
+//     );
+//   console.log('here background');
 
-//   const getChain = chains.get(activeNetwork.chainId) as Chain;
-
-//   const wssUrlByChain = getChain.rpc.find((rpc) => rpc.startsWith('wss://'));
-
-//   const wssNeedApiKey = Boolean(wssUrlByChain?.includes('API_KEY'));
-
-//   const validatedUrl = wssNeedApiKey ? null : wssUrlByChain;
-
-//   const wssProvider = new ethers.providers.WebSocketProvider(validatedUrl, {
-//     name: getChain.name,
-//     chainId: getChain.chainId,
-//   });
-
-//   return wssProvider;
-// };
-
-// browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-//   const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
-//     store.getState().vault;
-
-//   if (isBitcoinBased) return;
-
-//   const {
-//     address: userAddress,
-//     transactions: userTransactions,
-//   }: {
-//     address: string;
-//     transactions: IEvmTransaction[];
-//   } = accounts[activeAccount];
-
-//   const socket = getSocketProvider();
-
-//   socket.on('error', (error) => {
-//     console.log('error socket transactions', error);
-//     return;
-//   });
-
-//   socket.on('pending', async (txHash: string) => {
-//     const transaction = await socket.getTransaction(txHash);
-
-//     const { from, to, hash, blockNumber } = transaction;
-
-//     const isValidTx =
-//       transaction &&
-//       (to.toLowerCase() === userAddress.toLowerCase() ||
-//         from.toLowerCase() === userAddress.toLowerCase());
-
-//     if (isValidTx) {
-//       const { timestamp } = await socket.getBlock(Number(blockNumber));
-
-//       const txAlreadyExists =
-//         userTransactions.findIndex(
-//           (transaction: ITransactionResponse) => transaction.hash === hash
-//         ) > -1;
-
-//       if (txAlreadyExists) return userTransactions as IEvmTransaction[];
-
-//       const formattedTx = {
-//         ...transaction,
-//         timestamp,
-//       };
-
-//       const validateUserTransactionsLength = userTransactions.length === 30;
-
-//       const cloneArray = [...userTransactions];
-
-//       //Validate array length to remove last item and add a new one at the beginning
-//       if (validateUserTransactionsLength) {
-//         cloneArray.pop();
-
-//         cloneArray.unshift(formattedTx);
-//       }
-
-//       const updatedEvmTxs = validateUserTransactionsLength
-//         ? cloneArray
-//         : [...userTransactions, formattedTx];
-
-//       console.log('new userTransactions', updatedEvmTxs);
-
-//       store.dispatch(
-//         setActiveAccountProperty({
-//           property: 'transactions',
-//           value: updatedEvmTxs,
-//         })
-//       );
-//     }
-
-//     socket.once(txHash, (transaction) => {
-//       const findTx =userTransactions
-//     });
-//   });
+//   setTimeout(() => {
+//     console.log('inside validation');
+//     pollingEvmTxs;
+//   }, 20000);
 // });
 
 wrapStore(store, { portName: STORE_PORT });

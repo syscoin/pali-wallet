@@ -44,7 +44,6 @@ export const findUserTxsInProviderByBlocksRange = async (
   endBlock: number
 ): Promise<ITransactionResponse[]> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
-  console.log('rangeBlocksToRun', rangeBlocksToRun);
 
   const userProviderTxs = await Promise.all(
     rangeBlocksToRun.map(async (blockNumber) => {
@@ -52,15 +51,21 @@ export const findUserTxsInProviderByBlocksRange = async (
 
       const filterTxsByAddress = currentBlock.transactions.filter(
         (tx) =>
-          tx.from.toLowerCase() === userAddress.toLowerCase() ||
-          tx.to.toLowerCase() === userAddress.toLowerCase()
+          tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
+          tx?.to?.toLowerCase() === userAddress.toLowerCase()
       );
 
       return flatMap(filterTxsByAddress);
     })
   );
 
-  return flatMap(userProviderTxs);
+  const txsWithTimestampTreated = await Promise.all(
+    flatMap(userProviderTxs).map(
+      async (tx) => await getFormattedTransactionResponse(provider, tx)
+    )
+  );
+
+  return flatMap(txsWithTimestampTreated);
 };
 
 export const validateAndManageUserTransactions = (
