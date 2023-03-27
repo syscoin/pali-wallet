@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { isString } from 'lodash';
 
 import store from 'state/store';
+import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 
 import { etherscanSupportedNetworks } from './constants';
 import { IEvmTransactionsController, ITransactionResponse } from './types';
@@ -12,9 +13,9 @@ import {
   validateAndManageUserTransactions,
 } from './utils';
 
-let LAST_PROCESSED_BLOCK = -1;
-
 const EvmTransactionsController = (): IEvmTransactionsController => {
+  let LAST_PROCESSED_BLOCK = -1;
+
   const getUserTransactionsByOthersRPCs = async (): Promise<
     ITransactionResponse[]
   > => {
@@ -77,6 +78,21 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     }
   };
 
+  const updateUserTransactionsState = (treatedTxs: ITransactionResponse[]) => {
+    //Only manage states if we have some Tx to update
+
+    store.dispatch(setIsLoadingTxs(true));
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'transactions',
+        value: treatedTxs,
+      })
+    );
+
+    store.dispatch(setIsLoadingTxs(false));
+  };
+
   const getUserTransactionByDefaultProvider = async (
     startBlock: number,
     endBlock: number
@@ -93,14 +109,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       startBlock,
       endBlock
     );
+    //This mean that we don't have any TXs to update in state, so we can stop here
+    if (providerUserTxs.length === 0) return;
 
-    if (providerUserTxs.length > 0) {
-      const getTxs = providerUserTxs.forEach((tx) =>
-        validateAndManageUserTransactions(tx)
-      );
+    const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
 
-      console.log('getTxs at evm', getTxs);
-    }
+    updateUserTransactionsState(treatedTxs);
   };
 
   const firstRunForTransactions = async () => {
@@ -109,12 +123,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
 
     const latestBlockNumber = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, latestBlockNumber - 10); // Get only the last 5 blocks
+    const fromBlock = Math.max(0, latestBlockNumber - 10); // Get only the last 10 blocks
     const toBlock = latestBlockNumber;
 
     await getUserTransactionByDefaultProvider(fromBlock, toBlock);
 
-    // LAST_PROCESSED_BLOCK = toBlock
+    LAST_PROCESSED_BLOCK = toBlock;
   };
 
   const pollTransactions = async (

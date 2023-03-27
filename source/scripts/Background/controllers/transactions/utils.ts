@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { compact, range, flatMap } from 'lodash';
+import { range, flatMap, isEqual } from 'lodash';
 
 import store from 'state/store';
 
@@ -50,26 +50,21 @@ export const findUserTxsInProviderByBlocksRange = async (
     rangeBlocksToRun.map(async (blockNumber) => {
       const currentBlock = await provider.getBlockWithTransactions(blockNumber);
 
-      const filterTxsByAddress = currentBlock.transactions.filter((tx) => {
-        const isTxValidForCurrentUser = Boolean(
+      const filterTxsByAddress = currentBlock.transactions.filter(
+        (tx) =>
           tx.from.toLowerCase() === userAddress.toLowerCase() ||
-            tx.to.toLowerCase() === userAddress.toLowerCase()
-        );
+          tx.to.toLowerCase() === userAddress.toLowerCase()
+      );
 
-        if (isTxValidForCurrentUser) return tx;
-
-        return [];
-      });
-
-      return filterTxsByAddress;
+      return flatMap(filterTxsByAddress);
     })
   );
 
-  return flatMap(compact(userProviderTxs));
+  return flatMap(userProviderTxs);
 };
 
 export const validateAndManageUserTransactions = (
-  providerTx: ITransactionResponse
+  providerTxs: ITransactionResponse[]
 ) => {
   const { accounts, activeAccount } = store.getState().vault;
 
@@ -77,57 +72,63 @@ export const validateAndManageUserTransactions = (
 
   const userTxsLimitLength = userTransactions.length >= 30;
 
-  const clonedUserTxs: ITransactionResponse[] = [...userTransactions];
+  const compareArrays = (arrayToCompare: ITransactionResponse[]) => {
+    const clonedUserTxsArray = [...userTransactions] as ITransactionResponse[];
 
-  const txAlreadyExists = Boolean(
-    clonedUserTxs.find(
-      (txs: ITransactionResponse) =>
-        txs.hash.toLowerCase() === providerTx.hash.toLowerCase()
-    )
-  );
+    const isArrayEquals = isEqual(clonedUserTxsArray, arrayToCompare);
 
-  console.log('outside switch', clonedUserTxs);
+    return !isArrayEquals ? arrayToCompare : [];
+  };
 
-  switch (txAlreadyExists) {
-    //Only try to update Confirmations property if is different
-    case true:
-      const searchForTxIndex = clonedUserTxs.findIndex(
-        (userTxs) =>
-          userTxs.hash.toLowerCase() === providerTx.hash.toLowerCase() &&
-          userTxs.confirmations !== providerTx.confirmations
-      );
+  const manageAndDealTxs = (tx: ITransactionResponse) => {
+    const txAlreadyExists = Boolean(
+      userTransactions.find(
+        (txs: ITransactionResponse) =>
+          txs.hash.toLowerCase() === tx.hash.toLowerCase()
+      )
+    );
+    switch (txAlreadyExists) {
+      //Only try to update Confirmations property if is different
+      case true:
+        const manageArray = [...userTransactions] as ITransactionResponse[];
 
-      if (searchForTxIndex === -1) break;
+        const searchForTxIndex = manageArray.findIndex(
+          (userTxs) =>
+            userTxs.hash.toLowerCase() === tx.hash.toLowerCase() &&
+            userTxs.confirmations !== tx.confirmations
+        );
 
-      const updatedTxsValue = [
-        ...clonedUserTxs,
-        (clonedUserTxs[searchForTxIndex].confirmations =
-          providerTx.confirmations),
-      ];
+        if (searchForTxIndex === -1) break;
 
-      return updatedTxsValue;
+        manageArray.map((item) => {
+          if (item.hash !== manageArray[searchForTxIndex].hash) return item;
+          return { ...item, confirmations: tx.confirmations };
+        });
 
-    case false:
-      if (!userTxsLimitLength) {
-        console.log('before unshift', clonedUserTxs);
-        clonedUserTxs.unshift(providerTx);
+        return compareArrays(manageArray);
 
-        console.log('later unshift', clonedUserTxs);
+      case false:
+        if (!userTxsLimitLength) {
+          const arrayToAdd = [...userTransactions];
 
-        return clonedUserTxs;
-      } else {
-        console.log('before pop', clonedUserTxs);
-        clonedUserTxs.pop();
+          arrayToAdd.unshift(tx);
 
-        console.log('later pop', clonedUserTxs);
+          return compareArrays(arrayToAdd);
+        } else {
+          const arrayToManage = [...userTransactions];
 
-        clonedUserTxs.unshift(providerTx);
+          arrayToManage.pop();
 
-        console.log('later unshift', clonedUserTxs);
+          arrayToManage.unshift(tx);
 
-        return clonedUserTxs;
-      }
-    default:
-      break;
-  }
+          return compareArrays(arrayToManage);
+        }
+      default:
+        break;
+    }
+  };
+
+  const treatedTxs = flatMap(providerTxs.map((tx) => manageAndDealTxs(tx)));
+
+  return treatedTxs;
 };
