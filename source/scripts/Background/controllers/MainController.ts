@@ -38,6 +38,7 @@ import {
   setIsTimerEnabled as setIsTimerActive,
   setIsLoadingAssets,
   initialState,
+  setIsLoadingTxs,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -57,6 +58,121 @@ const MainController = (): IMainController => {
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
   const transactionsManager = TransactionsManager();
+
+  //------------------------- New Transactions Methods -------------------------//
+
+  //---- SYS methods ----//
+  const getInitialSysTransactionsForAccount = async (xpub: string) => {
+    store.dispatch(setIsLoadingTxs(true));
+
+    const initialTxsForAccount =
+      await transactionsManager.sys.getInitialUserTransactionsByXpub(
+        xpub,
+        initialState.activeNetwork.url
+      );
+
+    store.dispatch(setIsLoadingTxs(false));
+
+    return initialTxsForAccount;
+  };
+
+  //---- EVM methods ----//
+
+  //------------------------- New Assets Methods -------------------------//
+
+  //---- SYS methods ----//
+  const getInitialSysTokenForAccount = async (xpub: string) => {
+    store.dispatch(setIsLoadingAssets(true));
+
+    const initialSysAssetsForAccount =
+      await assetsManager.sys.getSysAssetsByXpub(
+        xpub,
+        initialState.activeNetwork.url
+      );
+
+    store.dispatch(setIsLoadingAssets(false));
+
+    return initialSysAssetsForAccount;
+  };
+
+  //---- EVM methods ----//
+  const updateErcTokenBalances = async (
+    tokenAddress: string,
+    tokenChain: number,
+    isNft: boolean,
+    decimals?: number
+  ) => {
+    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
+      store.getState().vault;
+
+    const findAccount = accounts[activeAccount];
+
+    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+
+    const _contract = new ethers.Contract(
+      tokenAddress,
+      isNft ? getErc21Abi() : getErc20Abi(),
+      provider
+    );
+
+    const balanceMethodCall = await _contract.balanceOf(findAccount.address);
+
+    const balance = !isNft
+      ? `${balanceMethodCall / 10 ** Number(decimals)}`
+      : Number(balanceMethodCall);
+
+    const formattedBalance = !isNft
+      ? floor(parseFloat(balance as string), 4)
+      : balance;
+
+    const newAccountsAssets = accounts[activeAccount].assets.ethereum.map(
+      (vaultAssets: ITokenEthProps) => {
+        if (
+          Number(vaultAssets.chainId) === tokenChain &&
+          vaultAssets.contractAddress === tokenAddress
+        ) {
+          return { ...vaultAssets, balance: formattedBalance };
+        }
+
+        return vaultAssets;
+      }
+    );
+
+    if (!isNetworkChanging) {
+      store.dispatch(
+        setUpdatedAllErcTokensBalance({
+          updatedTokens: newAccountsAssets,
+        })
+      );
+    }
+  };
+
+  //---- Methods for update both assets ----//
+  const updateAssetsFromCurrentAccount = async () => {
+    const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
+      store.getState().vault;
+
+    const currentAccount = accounts[activeAccount];
+
+    store.dispatch(setIsLoadingAssets(true));
+
+    const updatedAssets =
+      await assetsManager.utils.updateAssetsFromCurrentAccount(
+        currentAccount,
+        isBitcoinBased,
+        activeNetwork.url,
+        networks
+      );
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'assets',
+        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+      })
+    );
+
+    store.dispatch(setIsLoadingAssets(false));
+  };
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -122,12 +238,19 @@ const MainController = (): IMainController => {
       account.xpub
     );
 
+    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+      account.xpub
+    );
+
+    console.log('seed createa acc txs', initialTxsForAccount);
+
     const newAccountWithAssets = {
       ...account,
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
+      transactions: initialTxsForAccount,
     };
 
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
@@ -166,12 +289,19 @@ const MainController = (): IMainController => {
       newAccount.xpub
     );
 
+    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+      newAccount.xpub
+    );
+
+    console.log(' creating new txs', initialTxsForAccount);
+
     const newAccountWithAssets = {
       ...newAccount,
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
+      transactions: initialTxsForAccount,
     };
 
     store.dispatch(addAccountToStore(newAccountWithAssets));
@@ -400,102 +530,7 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
-  //------- New Assets methods -------//
-
-  //Sys methods
-  const getInitialSysTokenForAccount = async (xpub: string) => {
-    store.dispatch(setIsLoadingAssets(true));
-
-    const initialSysAssetsForAccount =
-      await assetsManager.sys.getSysAssetsByXpub(
-        xpub,
-        initialState.activeNetwork.url
-      );
-
-    store.dispatch(setIsLoadingAssets(false));
-
-    return initialSysAssetsForAccount;
-  };
-
-  //Evm methods
-  const updateErcTokenBalances = async (
-    tokenAddress: string,
-    tokenChain: number,
-    isNft: boolean,
-    decimals?: number
-  ) => {
-    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
-      store.getState().vault;
-
-    const findAccount = accounts[activeAccount];
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const _contract = new ethers.Contract(
-      tokenAddress,
-      isNft ? getErc21Abi() : getErc20Abi(),
-      provider
-    );
-
-    const balanceMethodCall = await _contract.balanceOf(findAccount.address);
-
-    const balance = !isNft
-      ? `${balanceMethodCall / 10 ** Number(decimals)}`
-      : Number(balanceMethodCall);
-
-    const formattedBalance = !isNft
-      ? floor(parseFloat(balance as string), 4)
-      : balance;
-
-    const newAccountsAssets = accounts[activeAccount].assets.ethereum.map(
-      (vaultAssets: ITokenEthProps) => {
-        if (
-          Number(vaultAssets.chainId) === tokenChain &&
-          vaultAssets.contractAddress === tokenAddress
-        ) {
-          return { ...vaultAssets, balance: formattedBalance };
-        }
-
-        return vaultAssets;
-      }
-    );
-
-    if (!isNetworkChanging) {
-      store.dispatch(
-        setUpdatedAllErcTokensBalance({
-          updatedTokens: newAccountsAssets,
-        })
-      );
-    }
-  };
-
-  //Methods for update both
-  const updateAssetsFromCurrentAccount = async () => {
-    const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
-      store.getState().vault;
-
-    const currentAccount = accounts[activeAccount];
-
-    store.dispatch(setIsLoadingAssets(true));
-
-    const updatedAssets =
-      await assetsManager.utils.updateAssetsFromCurrentAccount(
-        currentAccount,
-        isBitcoinBased,
-        activeNetwork.url,
-        networks
-      );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
-      })
-    );
-
-    store.dispatch(setIsLoadingAssets(false));
-  };
-
+  //---- New method to update some infos from account like Assets, Txs etc ----//
   const getLatestUpdateForCurrentAccount = () => {
     const { isNetworkChanging, accounts, activeAccount } =
       store.getState().vault;

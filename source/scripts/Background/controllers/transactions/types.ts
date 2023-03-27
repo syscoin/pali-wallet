@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
+
 // EVM TYPES / INTERFACES
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
 
@@ -68,7 +70,7 @@ interface ITransactionReceipt {
   type: number;
 }
 
-export interface ITransactionResponse extends IEvmTransaction {
+export interface IEvmTransactionResponse extends IEvmTransaction {
   blockHash?: string;
 
   // Only if a transaction has been mined
@@ -99,4 +101,29 @@ export interface IEvmTransactionsController {
       | ethers.providers.EtherscanProvider
       | ethers.providers.JsonRpcProvider
   ) => Promise<void>;
+}
+
+//SYS UTXO TYPES
+
+export interface ISysTransaction {
+  blockHash: string;
+  blockHeight: number;
+  blockTime: number;
+  confirmations: number;
+  fees: string;
+  hex: string;
+  txid: string;
+  value: string;
+  valueIn: string;
+  version: number;
+  vin: ISyscoinVIn[];
+  vout: ISyscoinVOut;
+}
+
+export interface ISysTransactionsController {
+  getInitialUserTransactionsByXpub: (
+    xpub: string,
+    networkUrl: string
+  ) => Promise<ISysTransaction[]>;
+  pollingSysTransactions: (xpub: string, networkUrl: string) => Promise<void>;
 }

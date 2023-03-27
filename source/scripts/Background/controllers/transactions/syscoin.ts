@@ -1,3 +1,51 @@
-const SysTransactionController = () => {};
+import sys from 'syscoinjs-lib';
+
+import { ISysTransaction, ISysTransactionsController } from './types';
+import {
+  updateUserTransactionsState,
+  validateAndManageUserTransactions,
+} from './utils';
+
+const SysTransactionController = (): ISysTransactionsController => {
+  const getInitialUserTransactionsByXpub = async (
+    xpub: string,
+    networkUrl: string
+  ): Promise<ISysTransaction[]> => {
+    try {
+      const requestOptions = 'details=txs&pageSize=30';
+
+      const { transactions }: { transactions: ISysTransaction[] } =
+        await sys.utils.fetchBackendAccount(
+          networkUrl,
+          xpub,
+          requestOptions,
+          true
+        );
+
+      return transactions;
+    } catch (error) {
+      return error;
+    }
+  };
+
+  const pollingSysTransactions = async (xpub: string, networkUrl: string) => {
+    const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
+
+    const treatedSysTxs = validateAndManageUserTransactions(getSysTxs);
+
+    const validateIfManageState = Boolean(
+      getSysTxs.length === 0 || treatedSysTxs.length === 0
+    );
+    //This mean that we don't have any TXs to update in state, so we can stop here
+    if (!validateIfManageState) return;
+
+    updateUserTransactionsState(treatedSysTxs);
+  };
+
+  return {
+    getInitialUserTransactionsByXpub,
+    pollingSysTransactions,
+  };
+};
 
 export default SysTransactionController;

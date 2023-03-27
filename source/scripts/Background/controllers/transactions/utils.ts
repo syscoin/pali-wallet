@@ -2,14 +2,15 @@ import { ethers } from 'ethers';
 import { range, flatMap, isEqual } from 'lodash';
 
 import store from 'state/store';
+import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 
-import { ITransactionResponse } from './types';
+import { ISysTransaction, IEvmTransactionResponse } from './types';
 
-export const getTransactionTimestamp = async (
+export const getEvmTransactionTimestamp = async (
   provider:
     | ethers.providers.EtherscanProvider
     | ethers.providers.JsonRpcProvider,
-  transaction: ITransactionResponse
+  transaction: IEvmTransactionResponse
 ) => {
   const { timestamp } = await provider.getBlock(
     Number(transaction.blockNumber)
@@ -18,21 +19,21 @@ export const getTransactionTimestamp = async (
   return {
     ...transaction,
     timestamp,
-  } as ITransactionResponse;
+  } as IEvmTransactionResponse;
 };
 
-export const getFormattedTransactionResponse = async (
+export const getFormattedEvmTransactionResponse = async (
   provider:
     | ethers.providers.EtherscanProvider
     | ethers.providers.JsonRpcProvider,
-  transaction: ITransactionResponse
+  transaction: IEvmTransactionResponse
 ) => {
   const tx = await provider.getTransaction(transaction.hash);
 
   if (!tx) {
-    return await getTransactionTimestamp(provider, transaction);
+    return await getEvmTransactionTimestamp(provider, transaction);
   }
-  return await getTransactionTimestamp(provider, tx);
+  return await getEvmTransactionTimestamp(provider, tx);
 };
 
 export const findUserTxsInProviderByBlocksRange = async (
@@ -42,7 +43,7 @@ export const findUserTxsInProviderByBlocksRange = async (
   userAddress: string,
   startBlock: number,
   endBlock: number
-): Promise<ITransactionResponse[]> => {
+): Promise<IEvmTransactionResponse[]> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
 
   const userProviderTxs = await Promise.all(
@@ -61,7 +62,7 @@ export const findUserTxsInProviderByBlocksRange = async (
 
   const txsWithTimestampTreated = await Promise.all(
     flatMap(userProviderTxs).map(
-      async (tx) => await getFormattedTransactionResponse(provider, tx)
+      async (tx) => await getFormattedEvmTransactionResponse(provider, tx)
     )
   );
 
@@ -69,44 +70,54 @@ export const findUserTxsInProviderByBlocksRange = async (
 };
 
 export const validateAndManageUserTransactions = (
-  providerTxs: ITransactionResponse[]
-) => {
-  const { accounts, activeAccount } = store.getState().vault;
+  providerTxs: IEvmTransactionResponse[] | ISysTransaction[]
+): IEvmTransactionResponse[] | ISysTransaction[] => {
+  const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
   const { transactions: userTransactions } = accounts[activeAccount];
 
   const userTxsLimitLength = userTransactions.length >= 30;
 
-  const compareArrays = (arrayToCompare: ITransactionResponse[]) => {
-    const clonedUserTxsArray = [...userTransactions] as ITransactionResponse[];
+  const compareArrays = (arrayToCompare: IEvmTransactionResponse[]) => {
+    const clonedUserTxsArray = [
+      ...userTransactions,
+    ] as IEvmTransactionResponse[];
 
     const isArrayEquals = isEqual(clonedUserTxsArray, arrayToCompare);
 
     return !isArrayEquals ? arrayToCompare : [];
   };
 
-  const manageAndDealTxs = (tx: ITransactionResponse) => {
+  const manageAndDealTxs = (
+    tx: IEvmTransactionResponse | ISysTransaction
+  ): IEvmTransactionResponse[] | ISysTransaction[] => {
+    const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
+
     const txAlreadyExists = Boolean(
       userTransactions.find(
-        (txs: ITransactionResponse) =>
-          txs.hash.toLowerCase() === tx.hash.toLowerCase()
+        (txs: IEvmTransactionResponse) =>
+          txs[txIdValidated].toLowerCase() === tx[txIdValidated].toLowerCase()
       )
     );
     switch (txAlreadyExists) {
       //Only try to update Confirmations property if is different
       case true:
-        const manageArray = [...userTransactions] as ITransactionResponse[];
+        const manageArray = [...userTransactions] as IEvmTransactionResponse[];
 
         const searchForTxIndex = manageArray.findIndex(
           (userTxs) =>
-            userTxs.hash.toLowerCase() === tx.hash.toLowerCase() &&
+            userTxs[txIdValidated].toLowerCase() ===
+              tx[txIdValidated].toLowerCase() &&
             userTxs.confirmations !== tx.confirmations
         );
 
         if (searchForTxIndex === -1) break;
 
         manageArray.map((item) => {
-          if (item.hash !== manageArray[searchForTxIndex].hash) return item;
+          if (
+            item[txIdValidated] !== manageArray[searchForTxIndex][txIdValidated]
+          )
+            return item;
           return { ...item, confirmations: tx.confirmations };
         });
 
@@ -133,7 +144,25 @@ export const validateAndManageUserTransactions = (
     }
   };
 
+  //@ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
   const treatedTxs = flatMap(providerTxs.map((tx) => manageAndDealTxs(tx)));
-
+  //@ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
   return treatedTxs;
+};
+
+export const updateUserTransactionsState = (
+  treatedTxs: IEvmTransactionResponse[] | ISysTransaction[]
+) => {
+  //Only manage states if we have some Tx to update
+
+  store.dispatch(setIsLoadingTxs(true));
+
+  store.dispatch(
+    setActiveAccountProperty({
+      property: 'transactions',
+      value: treatedTxs,
+    })
+  );
+
+  store.dispatch(setIsLoadingTxs(false));
 };

@@ -1,31 +1,16 @@
 import { ethers } from 'ethers';
 
 import store from 'state/store';
-import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 
-import { IEvmTransactionsController, ITransactionResponse } from './types';
+import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
+  updateUserTransactionsState,
   validateAndManageUserTransactions,
 } from './utils';
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   let LAST_PROCESSED_BLOCK = -1;
-
-  const updateUserTransactionsState = (treatedTxs: ITransactionResponse[]) => {
-    //Only manage states if we have some Tx to update
-
-    store.dispatch(setIsLoadingTxs(true));
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'transactions',
-        value: treatedTxs,
-      })
-    );
-
-    store.dispatch(setIsLoadingTxs(false));
-  };
 
   const getUserTransactionByDefaultProvider = async (
     startBlock: number,
@@ -53,7 +38,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     //This mean that we don't have any TXs to update in state, so we can stop here
     if (validateIfManageState) return;
 
-    updateUserTransactionsState(treatedTxs);
+    updateUserTransactionsState(treatedTxs as IEvmTransactionResponse[]);
   };
 
   const firstRunForProviderTransactions = async () => {
