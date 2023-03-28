@@ -487,7 +487,7 @@ const MainController = (): IMainController => {
   };
 
   //Methods for update both
-  const updateAssetsFromCurrentAccount = async () => {
+  const updateAssetsFromCurrentAccount = () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
       store.getState().vault;
 
@@ -495,22 +495,22 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsLoadingAssets(true));
 
-    const updatedAssets =
-      await assetsManager.utils.updateAssetsFromCurrentAccount(
+    assetsManager.utils
+      .updateAssetsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
         activeNetwork.url,
         networks
-      );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+      )
+      .then((updatedAssets) => {
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'assets',
+            value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+          })
+        );
       })
-    );
-
-    store.dispatch(setIsLoadingAssets(false));
+      .finally(() => store.dispatch(setIsLoadingAssets(false)));
   };
 
   const getLatestUpdateForCurrentAccount = () => {
@@ -521,9 +521,9 @@ const MainController = (): IMainController => {
 
     if (isNetworkChanging || isNil(activeAccountValues.address)) return;
 
-    new Promise<void>(async (resolve) => {
+    new Promise<void>((resolve) => {
       //First update Assets
-      await updateAssetsFromCurrentAccount();
+      updateAssetsFromCurrentAccount();
       resolve();
     });
 
