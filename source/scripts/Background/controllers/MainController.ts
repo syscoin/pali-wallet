@@ -224,8 +224,6 @@ const MainController = (): IMainController => {
         try {
           const account = await keyringManager.setSignerNetwork(network, chain);
 
-          await updateAssetsFromCurrentAccount();
-
           if (isBitcoinBased) {
             store.dispatch(
               setActiveAccountProperty({
@@ -244,7 +242,7 @@ const MainController = (): IMainController => {
             walletController.account.sys.setAddress();
           }
 
-          walletController.account.sys.getLatestUpdate(true);
+          getLatestUpdateForCurrentAccount();
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
@@ -280,7 +278,7 @@ const MainController = (): IMainController => {
               networkChain()
             );
 
-            await updateAssetsFromCurrentAccount();
+            getLatestUpdateForCurrentAccount();
 
             window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
               method: PaliEvents.chainChanged,
