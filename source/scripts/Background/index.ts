@@ -106,6 +106,8 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
     window.controller.utils.setFiat();
+
+    //@ts-ignore LATER REMOVE THIS WHEN UPDATE CURRENT SYSWEB3-CORE VERSION
     window.controller.wallet.setStorage(window.localStorage);
 
     port.onDisconnect.addListener(() => {
