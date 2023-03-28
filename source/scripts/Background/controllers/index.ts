@@ -37,8 +37,6 @@ const MasterController = (): IMasterController => {
         (acc, [sysAccountType, paliAccountType]) => {
           acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
             Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
-              // const { assets, transactions, ...keyringAccountState } =
-              //   paliAccount;
               const keyringAccountState: IKeyringAccountState = omit(
                 paliAccount,
                 ['assets', 'transactions']
@@ -53,8 +51,8 @@ const MasterController = (): IMasterController => {
 
     const wallet: IWalletState = {
       accounts,
-      activeAccountId: vaultState.activeAccountId,
-      activeAccountType: vaultState.activeAccountType,
+      activeAccountId: vaultState.activeAccount.id,
+      activeAccountType: vaultState.activeAccount.type,
       networks: vaultState.networks,
       activeNetwork: vaultState.activeNetwork,
     };
@@ -69,12 +67,12 @@ const MasterController = (): IMasterController => {
   const dapp = Object.freeze(DAppController());
 
   const refresh = async (silent?: boolean) => {
-    const { activeAccountId, accounts } = store.getState().vault;
-    if (!accounts[activeAccountId].address) return;
-
-    await wallet.account.sys.getLatestUpdate(silent);
-    wallet.account.sys.watchMemPool();
-    utils.setFiat();
+    const { activeAccount, accounts } = store.getState().vault;
+    if (!accounts[activeAccount.type][activeAccount.id].address) return;
+    //TODO: Refactor refresh
+    // await wallet.account.sys.getLatestUpdate(silent);
+    // wallet.account.sys.watchMemPool();
+    // utils.setFiat();
   };
   /**
    * Creates a popup for external routes. Mostly for DApps

@@ -3,6 +3,7 @@ import { Runtime } from 'webextension-polyfill-ts';
 import {
   IKeyringManager,
   IKeyringAccountState,
+  KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 import {
@@ -35,8 +36,16 @@ export interface IMainController extends IKeyringManager {
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
-  getChangeAddress: (accountId: number) => string;
-  getRecommendedFee: (data?: string | boolean) => Promise<number>;
+  getChangeAddress: (accountId: number) => Promise<string>;
+  getRecommendedFee: (data?: string | boolean) =>
+    | Promise<number>
+    | Promise<
+        | string
+        | {
+            ethers: string;
+            gwei: string;
+          }
+      >;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
   importAccountFromPrivateKey: (
     privKey: string,
@@ -48,6 +57,7 @@ export interface IMainController extends IKeyringManager {
   resolveError: () => void;
   setAccount: (
     id: number,
+    type: KeyringAccountType,
     host?: string,
     connectedAccount?: IOmmitedAccount
   ) => void;
@@ -117,7 +127,7 @@ export interface IControllerUtils {
   isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
   isValidSYSAddress: (
     address: string,
-    activeNetwork: INetwork,
+    purpose: number,
     verification?: boolean
   ) => boolean;
   setFiat: (currency?: string, assetId?: string) => Promise<void>;
@@ -128,7 +138,11 @@ export interface IDAppController {
    * Changes the account
    * @emits accountsChanged
    */
-  changeAccount: (host: string, accountId: number) => void;
+  changeAccount: (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
   /**
    * Completes a connection with a DApp
    * @emits connect
@@ -187,7 +201,11 @@ export interface IDAppController {
    * If connected changes account granting permissions by EIP2255 reference
    * @emits requestPermissions
    */
-  requestPermissions: (host: string, accountId: number) => void;
+  requestPermissions: (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
   /**
    * Sets whether a DApp has an open popup
    */

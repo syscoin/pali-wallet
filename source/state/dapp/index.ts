@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { IDAppState, IDApp } from './types';
 
 export const initialState: IDAppState = {
@@ -16,14 +18,20 @@ const DAppState = createSlice({
 
     updateDAppAccount(
       state: IDAppState,
-      action: PayloadAction<{ accountId: number; date: number; host: string }>
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        date: number;
+        host: string;
+      }>
     ) {
-      const { host, accountId, date } = action.payload;
+      const { host, accountId, accountType, date } = action.payload;
 
       if (!state.dapps[host])
         throw new Error('Unable to update account. DApp does not exist');
 
       state.dapps[host].accountId = accountId;
+      state.dapps[host].accountType = accountType;
       state.dapps[host].date = date;
     },
 

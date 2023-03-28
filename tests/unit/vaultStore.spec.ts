@@ -1,6 +1,10 @@
 import { AES } from 'crypto-js';
 
-import { initialActiveAccountState } from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
+import {
+  initialActiveHdAccountState,
+  initialActiveImportedAccountState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
 
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
@@ -60,7 +64,10 @@ describe('Vault store actions', () => {
 
   //* createAccount
   it('should create an account', () => {
-    const newState = reducer(initialState, createAccount(MOCK_ACCOUNT));
+    const newState = reducer(
+      initialState,
+      createAccount(MOCK_ACCOUNT, KeyringAccountType.HDAccount)
+    );
 
     expect(newState.accounts[MOCK_ACCOUNT.id]).toEqual(MOCK_ACCOUNT);
   });
@@ -96,7 +103,7 @@ describe('Vault store actions', () => {
 
       expect(newState.accounts).toEqual({
         0: {
-          ...initialActiveAccountState,
+          ...initialActiveHdAccountState,
           assets: { syscoin: [], ethereum: [] },
         },
       });

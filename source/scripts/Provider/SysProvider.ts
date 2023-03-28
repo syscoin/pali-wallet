@@ -98,7 +98,7 @@ export const SysProvider = (host: string) => {
 
   const isValidSYSAddress = (data) => {
     const { activeNetwork } = store.getState().vault;
-    const isValid = _isValidSYSAddress(data, activeNetwork); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
+    const isValid = _isValidSYSAddress(data, activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
     return isValid;
   };
 

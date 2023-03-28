@@ -1,5 +1,8 @@
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 export interface IDApp {
   accountId: number;
+  accountType: KeyringAccountType;
   chain: string;
   chainId: number;
   date: number;

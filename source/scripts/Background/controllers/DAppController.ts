@@ -1,5 +1,7 @@
 import { Runtime } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -52,10 +54,14 @@ const DAppController = (): IDAppController => {
       : accounts[dapp.accountId].address;
   };
 
-  const requestPermissions = (host: string, accountId: number) => {
+  const requestPermissions = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
     const date = Date.now();
 
-    store.dispatch(updateDAppAccount({ host, accountId, date }));
+    store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
 
     const { accounts } = store.getState().vault;
     const account = accounts[accountId];
@@ -82,10 +88,14 @@ const DAppController = (): IDAppController => {
     );
   };
 
-  const changeAccount = (host: string, accountId: number) => {
+  const changeAccount = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
-    store.dispatch(updateDAppAccount({ host, accountId, date }));
+    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
     _dapps[host].activeAddress = isBitcoinBased
       ? accounts[accountId].xpub
       : accounts[accountId].address;

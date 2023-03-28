@@ -4,15 +4,15 @@ import {
   initialNetworksState,
   initialActiveHdAccountState,
   initialActiveImportedAccountState,
-  IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   IChangingConnectedAccount,
+  IPaliAccount,
   IVaultState,
-  PaliAccountType,
+  PaliAccount,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -32,10 +32,13 @@ export const initialState: IVaultState = {
         transactions: [],
       },
     },
+    //TODO: add Trezor account type here
   },
-  activeAccountType: KeyringAccountType.HDAccount,
+  activeAccount: {
+    id: 0,
+    type: KeyringAccountType.HDAccount,
+  },
   activeChain: INetworkType.Syscoin,
-  activeAccountId: 0,
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
@@ -66,20 +69,24 @@ const VaultState = createSlice({
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
-        [key in KeyringAccountType]: PaliAccountType;
+        [key in KeyringAccountType]: PaliAccount;
       }>
     ) {
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
-      const id = state.activeAccountId;
-      state.accounts[id].transactions.unshift(action.payload);
+      const { id, type } = state.activeAccount;
+      state.accounts[type][id].transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
+      action: PayloadAction<{
+        account: IPaliAccount;
+        accountType: KeyringAccountType;
+      }>
     ) {
-      state.accounts[action.payload.id] = action.payload;
+      const { account, accountType } = action.payload;
+      state.accounts[accountType][account.id] = account;
     },
     setNetworks(
       state: IVaultState,
@@ -154,8 +161,15 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
-    setActiveAccount(state: IVaultState, action: PayloadAction<number>) {
-      state.activeAccountId = action.payload;
+    setActiveAccount(
+      state: IVaultState,
+      action: PayloadAction<{
+        id: number;
+        type: KeyringAccountType;
+      }>
+    ) {
+      // const { accountId, accountType } = action.payload;
+      state.activeAccount = action.payload;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
@@ -169,9 +183,9 @@ const VaultState = createSlice({
       state.activeChain = action.payload;
     },
     setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
-      const id = state.activeAccountId;
+      const { id, type } = state.activeAccount;
       state.isPendingBalances = action.payload;
-      state.accounts[id].transactions = []; // TODO: check a better way to handle network transaction
+      state.accounts[type][id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;
@@ -189,16 +203,21 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         property: string;
-        value: number | string | boolean | any[];
+        value:
+          | number
+          | string
+          | boolean
+          | any[]
+          | { ethereum: any[]; syscoin: any[] };
       }>
     ) {
-      const { activeAccountId: id } = state;
+      const { id, type } = state.activeAccount;
       const { property, value } = action.payload;
 
-      if (!(property in state.accounts[id]))
+      if (!(property in state.accounts[type][id]))
         throw new Error('Unable to set property. Unknown key');
 
-      state.accounts[id][property] = value;
+      state.accounts[type][id][property] = value;
     },
     setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
       state.encryptedMnemonic = action.payload;
@@ -223,21 +242,25 @@ const VaultState = createSlice({
           },
         },
       };
-      state.activeAccountId = 0;
+      state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },
     removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
       delete state.accounts[action.payload.id];
     },
     setAccountLabel(
       state: IVaultState,
-      action: PayloadAction<{ id: number; label: string }>
+      action: PayloadAction<{
+        id: number;
+        label: string;
+        type: KeyringAccountType;
+      }>
     ) {
-      const { label, id } = action.payload;
+      const { label, id, type } = action.payload;
 
-      if (!state.accounts[id])
+      if (!state.accounts[type][id])
         throw new Error('Unable to set label. Account not found');
 
-      state.accounts[id].label = label;
+      state.accounts[type][id].label = label;
     },
     setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
       state.error = action.payload;
@@ -265,18 +288,19 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         accountId: number;
+        accountType: KeyringAccountType;
         updatedTokens: any[];
       }>
     ) {
-      const { accountId, updatedTokens } = action.payload;
-      const { isBitcoinBased, accounts, activeAccountId, isNetworkChanging } =
+      const { accountId, accountType, updatedTokens } = action.payload;
+      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
         state;
-
-      const findAccount = accounts[accountId];
+      const { type, id } = activeAccount;
+      const findAccount = accounts[accountType][accountId];
 
       if (
         !Boolean(
-          findAccount.address === accounts[activeAccountId].address ||
+          findAccount.address === accounts[type][id].address ||
             isNetworkChanging ||
             isBitcoinBased
         )

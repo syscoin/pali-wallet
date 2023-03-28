@@ -37,7 +37,7 @@ export const SendSys = () => {
 
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
-      await controller.wallet.account.sys.tx.getRecommendedFee(
+      await controller.wallet.syscoinTransaction.getRecommendedFee(
         activeNetwork.url
       );
 

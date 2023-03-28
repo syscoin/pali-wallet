@@ -1,14 +1,18 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
 import floor from 'lodash/floor';
-import omit from 'lodash/omit';
 
 import {
   KeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc, INetwork } from '@pollum-io/sysweb3-network';
+import {
+  getSysRpc,
+  getEthRpc,
+  INetwork,
+  INetworkType,
+} from '@pollum-io/sysweb3-network';
 import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -33,23 +37,31 @@ import {
   setIsTimerEnabled as setIsTimerActive,
   setAccounts,
 } from 'state/vault';
-import { IOmmitedAccount } from 'state/vault/types';
+import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
+import { isBitcoinBasedNetwork } from 'utils/network';
 
-import WalletController from './account';
+import EthAccountController from './account/evm';
+import SysAccountController from './account/syscoin';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
-  const walletController = WalletController(keyringManager);
   const utilsController = Object.freeze(ControllerUtils());
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
+  };
+
+  const getKeyringManager = (): KeyringManager => keyringManager;
+  const walletController = {
+    account: {
+      sys: SysAccountController(getKeyringManager),
+      eth: EthAccountController(),
+    },
   };
 
   /** forget your wallet created with pali and associated with your seed phrase,
@@ -67,6 +79,7 @@ const MainController = (walletState): IMainController => {
     const unlocked = await keyringManager.unlock(pwd);
     if (!unlocked) throw new Error('Invalid password');
     store.dispatch(setLastLogin());
+    //TODO: validate contentScripts flow
     window.controller.dapp
       .handleStateChange(PaliEvents.lockStateChanged, {
         method: PaliEvents.lockStateChanged,
@@ -115,19 +128,30 @@ const MainController = (walletState): IMainController => {
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
 
-    const newAccountWithAssets = {
+    const newAccountWithAssets: IPaliAccount = {
       ...account,
       assets: {
-        syscoin: account.assets,
+        syscoin: [],
         ethereum: [],
       },
+      transactions: [],
     };
 
     //todo we need to check if this is working as expected
-    store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
+    store.dispatch(setEncryptedMnemonic(keyringManager.getSeed(password)));
     store.dispatch(setIsPendingBalances(false));
-    store.dispatch(setActiveAccount(newAccountWithAssets.id));
-    store.dispatch(addAccountToStore(newAccountWithAssets));
+    store.dispatch(
+      setActiveAccount({
+        id: newAccountWithAssets.id,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
+    store.dispatch(
+      addAccountToStore({
+        account: newAccountWithAssets,
+        accountType: KeyringAccountType.HDAccount,
+      })
+    );
     store.dispatch(setLastLogin());
   };
 
@@ -151,36 +175,47 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsTimerActive(isEnabled));
   };
 
-  const createAccount = async (
-    label?: string
-  ): Promise<IKeyringAccountState> => {
-    const newAccount = await walletController.addAccount(label);
+  const createAccount = async (label?: string): Promise<IPaliAccount> => {
+    const newAccount = await keyringManager.addNewAccount(label);
 
-    const newAccountWithAssets = {
+    const newAccountWithAssets: IPaliAccount = {
       ...newAccount,
       assets: {
-        syscoin: newAccount.assets,
+        syscoin: [],
         ethereum: [],
       },
+      transactions: [],
     };
 
-    store.dispatch(addAccountToStore(newAccountWithAssets));
-    store.dispatch(setActiveAccount(newAccountWithAssets.id));
+    store.dispatch(
+      addAccountToStore({
+        account: newAccountWithAssets,
+        accountType: KeyringAccountType.HDAccount,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: newAccountWithAssets.id,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
 
     return newAccountWithAssets;
   };
 
   const setAccount = (
     id: number,
+    type: KeyringAccountType,
     host?: string,
     connectedAccount?: IOmmitedAccount
   ): void => {
     const { accounts, activeAccount } = store.getState().vault;
     if (
       connectedAccount &&
-      connectedAccount.address === accounts[activeAccount].address
+      connectedAccount.address ===
+        accounts[activeAccount.type][activeAccount.id].address
     ) {
-      if (connectedAccount.address !== accounts[id].address) {
+      if (connectedAccount.address !== accounts[type][id].address) {
         store.dispatch(
           setChangingConnectedAccount({
             host,
@@ -192,9 +227,9 @@ const MainController = (walletState): IMainController => {
       }
     }
 
-    //todo: we need to pass the account type as well keyringManager.setActiveAccount(id, accountType)
-    keyringManager.setActiveAccount(id);
-    store.dispatch(setActiveAccount(id));
+    //TODO: investigate if here would be a ideal place to add balance update
+    keyringManager.setActiveAccount(id, type);
+    store.dispatch(setActiveAccount({ id, type }));
   };
 
   const setActiveNetwork = async (
@@ -204,7 +239,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
-    const { activeNetwork, activeAccountId, accounts } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault;
 
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
@@ -214,21 +249,7 @@ const MainController = (walletState): IMainController => {
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
         try {
-          const networkAccount = await keyringManager.setSignerNetwork(
-            network,
-            chain
-          );
-
-          const { assets } = accounts[activeAccountId];
-
-          const generalAssets = isBitcoinBased
-            ? {
-                ethereum: accounts[activeAccountId].assets?.ethereum,
-                syscoin: networkAccount.assets,
-              }
-            : assets;
-
-          const account = { ...networkAccount, assets: generalAssets };
+          await keyringManager.setSignerNetwork(network, chain);
 
           if (isBitcoinBased) {
             store.dispatch(
@@ -248,14 +269,19 @@ const MainController = (walletState): IMainController => {
             walletController.account.sys.setAddress();
           }
 
-          walletController.account.sys.getLatestUpdate(true);
+          // walletController.account.sys.getLatestUpdate(true);
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
+          const { activeAccountType, activeAccount: keyringAccount } =
+            keyringManager.getActiveAccount();
 
           store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
-          store.dispatch(setActiveAccount(account.id));
+          //TODO: validate if active account is still the same it was being used before network change
+          store.dispatch(
+            setActiveAccount({ id: keyringAccount.id, type: activeAccountType })
+          );
           await utilsController.setFiat();
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
@@ -279,10 +305,6 @@ const MainController = (walletState): IMainController => {
           );
 
           if (errorMessageValidate) {
-            const networkAccount = await keyringManager.setSignerNetwork(
-              activeNetwork,
-              networkChain()
-            );
             window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
               method: PaliEvents.chainChanged,
               params: {
@@ -298,22 +320,11 @@ const MainController = (walletState): IMainController => {
               }
             );
 
-            const { assets } = accounts[activeAccountId];
-
-            const generalAssets = isBitcoinBased
-              ? {
-                  ethereum: accounts[activeAccountId].assets?.ethereum,
-                  syscoin: networkAccount.assets,
-                }
-              : assets;
-
-            const account = { ...networkAccount, assets: generalAssets };
-
             store.dispatch(setNetwork(activeNetwork));
 
             store.dispatch(setIsPendingBalances(false));
 
-            store.dispatch(setActiveAccount(account.id));
+            // store.dispatch(setActiveAccount(activeAccount.id));
 
             await utilsController.setFiat();
           }
@@ -340,7 +351,7 @@ const MainController = (walletState): IMainController => {
     try {
       //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
-        ? await getSysRpc(data)
+        ? (await getSysRpc(data)).rpc
         : await getEthRpc(data);
 
       return formattedNetwork;
@@ -388,7 +399,7 @@ const MainController = (walletState): IMainController => {
   };
 
   const removeKeyringNetwork = (
-    chain: string,
+    chain: INetworkType,
     chainId: number,
     key?: string
   ) => {
@@ -399,19 +410,17 @@ const MainController = (walletState): IMainController => {
   };
 
   //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
-  const getChangeAddress = (accountId: number) =>
-    keyringManager.getChangeAddress(accountId);
+  const getChangeAddress = async (accountId: number) =>
+    await keyringManager.getChangeAddress(accountId);
 
   const getRecommendedFee = () => {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-
-    const { tx } = isBitcoinBased
-      ? walletController.account.sys
-      : walletController.account.eth;
-
-    if (isBitcoinBased) return tx.getRecommendedFee(activeNetwork.url);
-
-    return tx.getRecommendedGasPrice(true).gwei;
+    if (isBitcoinBased)
+      return keyringManager.syscoinTransaction.getRecommendedFee(
+        activeNetwork.url
+      );
+    //TODO: Validate this method call through contentScript
+    return keyringManager.ethereumTransaction.getRecommendedGasPrice(true);
   };
 
   const updateErcTokenBalances = async (
@@ -421,11 +430,16 @@ const MainController = (walletState): IMainController => {
     isNft: boolean,
     decimals?: number
   ) => {
-    const { activeNetwork, accounts, activeAccountId, isNetworkChanging } =
+    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
       store.getState().vault;
-    const findAccount = accounts[accountId];
+    const findAccount = accounts[activeAccount.type][activeAccount.id];
 
-    if (!Boolean(findAccount.address === accounts[activeAccountId].address))
+    if (
+      !Boolean(
+        findAccount.address ===
+          accounts[activeAccount.type][activeAccount.id].address
+      )
+    )
       return;
 
     const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
@@ -475,16 +489,27 @@ const MainController = (walletState): IMainController => {
   ) => {
     const { accounts } = store.getState().vault;
     //todo: this function was renamed we should update it
-    const importedAccount =
-      await keyringManager.handleImportAccountByPrivateKey(privKey, label);
-
+    const importedAccount = await keyringManager.importAccount(privKey, label);
+    const paliImp: IPaliAccount = {
+      ...importedAccount,
+      assets: {
+        ethereum: [],
+        syscoin: [],
+      },
+      transactions: [],
+    } as IPaliAccount;
     store.dispatch(
       setAccounts({
         ...accounts,
-        [importedAccount.id]: importedAccount,
+        [KeyringAccountType.Imported]: {
+          ...accounts[KeyringAccountType.Imported],
+          [paliImp.id]: paliImp,
+        },
       })
     );
-    store.dispatch(setActiveAccount(importedAccount.id));
+    store.dispatch(
+      setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Imported })
+    );
 
     return importedAccount;
   };
@@ -508,7 +533,6 @@ const MainController = (walletState): IMainController => {
     resolveError,
     getChangeAddress,
     getRecommendedFee,
-    getNetworkData,
     updateErcTokenBalances,
     importAccountFromPrivateKey,
     ...keyringManager,
