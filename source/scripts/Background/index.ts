@@ -1,5 +1,4 @@
 import 'emoji-log';
-import { ethers } from 'ethers';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
@@ -88,7 +87,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
     return;
   }
-  const { changingConnectedAccount, timer, isTimerEnabled, activeNetwork } =
+  const { changingConnectedAccount, timer, isTimerEnabled } =
     store.getState().vault;
 
   if (timeout) clearTimeout(timeout);

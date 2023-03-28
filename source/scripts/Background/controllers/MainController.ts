@@ -52,7 +52,7 @@ import AssetsManager from './assets';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import TransactionsManager from './transactions';
-import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
+
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
@@ -76,8 +76,7 @@ const MainController = (): IMainController => {
 
     return initialTxsForAccount;
   };
-
-  //---- EVM METHODS ----//
+  //---- END SYS METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const updateUserTransactionsState = async () => {
@@ -107,12 +106,13 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsLoadingTxs(false));
   };
+  //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
   //------------------------- END TRANSACTIONS METHODS -------------------------//
 
   //------------------------- NEW ASSETS METHODS -------------------------//
 
-  //---- SYS methods ----//
+  //---- SYS METHODS ----//
   const getInitialSysTokenForAccount = async (xpub: string) => {
     store.dispatch(setIsLoadingAssets(true));
 
@@ -126,8 +126,9 @@ const MainController = (): IMainController => {
 
     return initialSysAssetsForAccount;
   };
+  //---- END SYS METHODS ----//
 
-  //---- EVM methods ----//
+  //---- EVM METHODS ----//
   const updateErcTokenBalances = async (
     tokenAddress: string,
     tokenChain: number,
@@ -178,8 +179,9 @@ const MainController = (): IMainController => {
       );
     }
   };
+  //---- END EVM METHODS ----//
 
-  //---- Methods for update both assets ----//
+  //---- METHODS FOR UPDATE BOTH ASSETS ----//
   const updateAssetsFromCurrentAccount = async () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
       store.getState().vault;
@@ -205,6 +207,7 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsLoadingAssets(false));
   };
+  //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
   //------------------------- END ASSETS METHODS -------------------------//
 
