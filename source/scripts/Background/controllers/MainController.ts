@@ -36,6 +36,7 @@ import {
   setIsNetworkChanging,
   setUpdatedAllErcTokensBalance,
   setIsTimerEnabled as setIsTimerActive,
+  setAccounts,
   setIsLoadingAssets,
   initialState,
   setIsLoadingTxs,
@@ -567,6 +568,26 @@ const MainController = (): IMainController => {
     return tx.getRecommendedGasPrice(true).gwei;
   };
 
+  const importAccountFromPrivateKey = async (
+    privKey: string,
+    label?: string
+  ) => {
+    const { accounts } = store.getState().vault;
+
+    const importedAccount =
+      await keyringManager.handleImportAccountByPrivateKey(privKey, label);
+
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [importedAccount.id]: importedAccount,
+      })
+    );
+    store.dispatch(setActiveAccount(importedAccount.id));
+
+    return importedAccount;
+  };
+
   //---- New method to update some infos from account like Assets, Txs etc ----//
   const getLatestUpdateForCurrentAccount = () => {
     const { isNetworkChanging, accounts, activeAccount } =
@@ -611,6 +632,7 @@ const MainController = (): IMainController => {
     getNetworkData,
     updateErcTokenBalances,
     getLatestUpdateForCurrentAccount,
+    importAccountFromPrivateKey,
     ...keyringManager,
   };
 };

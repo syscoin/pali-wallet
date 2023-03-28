@@ -7,6 +7,7 @@ import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
+import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -54,6 +55,7 @@ export const SendNTokenTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+  const [confirmedTx, setConfirmedTx] = useState<any>();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -98,54 +100,70 @@ export const SendNTokenTransaction = () => {
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await txs.getRecommendedGasPrice();
 
-          const response = await txs.sendFormattedTransaction({
-            ...txWithoutType,
-            gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-            gasLimit: txs.toBigNumber(
-              validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-            ),
-          });
+          await txs
+            .sendFormattedTransaction({
+              ...txWithoutType,
+              gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
+              gasLimit: txs.toBigNumber(
+                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+              ),
+            })
+            .then((response) => {
+              setConfirmedTx(response);
+              setConfirmed(true);
+              setLoading(false);
+              if (isExternal)
+                dispatchBackgroundEvent(`nTokenTx.${host}`, response);
+            })
+            .catch((error) => {
+              alert.error("Can't complete transaction. Try again later.");
+              setLoading(false);
+              throw error;
+            });
 
-          setConfirmed(true);
-          setLoading(false);
-
-          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
-
-          return response;
+          return;
         } else {
-          const response = await txs.sendFormattedTransaction({
-            ...txWithoutType,
-            maxPriorityFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(
-                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                )
-                  ? customFee.maxPriorityFeePerGas.toFixed(9)
-                  : fee.maxPriorityFeePerGas.toFixed(9)
+          await txs
+            .sendFormattedTransaction({
+              ...txWithoutType,
+              maxPriorityFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(
+                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  )
+                    ? customFee.maxPriorityFeePerGas.toFixed(9)
+                    : fee.maxPriorityFeePerGas.toFixed(9)
+                ),
+                9
               ),
-              9
-            ),
-            maxFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                  ? customFee.maxFeePerGas.toFixed(9)
-                  : fee.maxFeePerGas.toFixed(9)
+              maxFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? customFee.maxFeePerGas.toFixed(9)
+                    : fee.maxFeePerGas.toFixed(9)
+                ),
+                9
               ),
-              9
-            ),
-            gasLimit: txs.toBigNumber(
-              validateCustomGasLimit
-                ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                : fee.gasLimit
-            ),
-          });
+              gasLimit: txs.toBigNumber(
+                validateCustomGasLimit
+                  ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                  : fee.gasLimit
+              ),
+            })
+            .then((response) => {
+              setConfirmedTx(response);
+              setConfirmed(true);
+              setLoading(false);
+              if (isExternal)
+                dispatchBackgroundEvent(`nTokenTx.${host}`, response);
+            })
+            .catch((error) => {
+              alert.error("Can't complete transaction. Try again later.");
+              setLoading(false);
+              throw error;
+            });
 
-          setConfirmed(true);
-          setLoading(false);
-
-          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
-
-          return response;
+          return;
         }
       } catch (error: any) {
         logError('error', 'Transaction', error);
@@ -239,6 +257,7 @@ export const SendNTokenTransaction = () => {
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
           refresh();
+          saveTransaction(confirmedTx);
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -387,16 +406,29 @@ export const SendNTokenTransaction = () => {
 
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              className={`${
+                loading
+                  ? 'opacity-60 cursor-not-allowed'
+                  : 'opacity-100 hover:opacity-90'
+              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              <Icon
-                name="arrow-down"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-              />
+              {!loading ? (
+                <Icon
+                  name="arrow-down"
+                  className="w-5"
+                  wrapperClassname="flex items-center mr-2"
+                />
+              ) : (
+                <Icon
+                  name="loading"
+                  color="#fff"
+                  className="w-5 animate-spin-slow"
+                  wrapperClassname="mr-2 flex items-center"
+                />
+              )}
               Confirm
             </Button>
           </div>

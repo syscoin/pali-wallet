@@ -12,3 +12,4 @@ export { default as Phrase } from './Phrase';
 export { default as PrivateKey } from './PrivateKey';
 export { default as TrustedSites } from './TrustedSites';
 export { default as SwitchChain } from './SwitchEthereumChain';
+export { default as ImportAccount } from './ImportAccount';

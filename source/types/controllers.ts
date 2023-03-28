@@ -43,6 +43,10 @@ export interface IMainController extends IKeyringManager {
   getNetworkData: () => Promise<{ chainId: string; networkVersion: string }>;
   getRecommendedFee: (data?: string | boolean) => Promise<number>;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  importAccountFromPrivateKey: (
+    privKey: string,
+    label?: string
+  ) => Promise<IKeyringAccountState>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
   resolveAccountConflict: () => void;
@@ -91,10 +95,6 @@ export interface IControllerUtils {
   }>;
   // eslint-disable-next-line @typescript-eslint/ban-types
   getFeeRate: (fee: number) => BigInt;
-  getGasUsedInTransaction: (transactionHash: string) => Promise<{
-    effectiveGasPrice: number;
-    gasUsed: number;
-  }>;
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
   getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
