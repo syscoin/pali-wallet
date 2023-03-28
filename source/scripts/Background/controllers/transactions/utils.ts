@@ -2,7 +2,6 @@ import { ethers } from 'ethers';
 import { range, flatMap, isEqual } from 'lodash';
 
 import store from 'state/store';
-import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -148,21 +147,4 @@ export const validateAndManageUserTransactions = (
   const treatedTxs = flatMap(providerTxs.map((tx) => manageAndDealTxs(tx)));
   //@ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
   return treatedTxs;
-};
-
-export const updateUserTransactionsState = (
-  treatedTxs: IEvmTransactionResponse[] | ISysTransaction[]
-) => {
-  //Only manage states if we have some Tx to update
-
-  store.dispatch(setIsLoadingTxs(true));
-
-  store.dispatch(
-    setActiveAccountProperty({
-      property: 'transactions',
-      value: treatedTxs,
-    })
-  );
-
-  store.dispatch(setIsLoadingTxs(false));
 };

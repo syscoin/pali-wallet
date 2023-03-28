@@ -1,11 +1,10 @@
 import { ethers } from 'ethers';
 
-import store from 'state/store';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
-  updateUserTransactionsState,
   validateAndManageUserTransactions,
 } from './utils';
 
@@ -13,54 +12,53 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   let LAST_PROCESSED_BLOCK = -1;
 
   const getUserTransactionByDefaultProvider = async (
+    currentAccount: IKeyringAccountState,
+    networkUrl: string,
     startBlock: number,
     endBlock: number
   ) => {
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const { address: userAddress } = accounts[activeAccount];
+    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       provider,
-      userAddress,
+      currentAccount.address,
       startBlock,
       endBlock
     );
 
     const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
 
-    const validateIfManageState = Boolean(
-      providerUserTxs.length === 0 || treatedTxs.length === 0
-    );
-
-    //This mean that we don't have any TXs to update in state, so we can stop here
-    if (validateIfManageState) return;
-
-    updateUserTransactionsState(treatedTxs as IEvmTransactionResponse[]);
+    return treatedTxs as IEvmTransactionResponse[];
   };
 
-  const firstRunForProviderTransactions = async () => {
-    const { activeNetwork } = store.getState().vault;
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+  const firstRunForProviderTransactions = async (
+    currentAccount: IKeyringAccountState,
+    networkUrl: string
+  ) => {
+    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
     const latestBlockNumber = await provider.getBlockNumber();
     const fromBlock = Math.max(0, latestBlockNumber - 30); // Get only the last 30 blocks
     const toBlock = latestBlockNumber;
 
-    await getUserTransactionByDefaultProvider(fromBlock, toBlock);
+    const txs = await getUserTransactionByDefaultProvider(
+      currentAccount,
+      networkUrl,
+      fromBlock,
+      toBlock
+    );
 
     LAST_PROCESSED_BLOCK = toBlock;
+
+    return txs;
   };
 
   const pollingEvmTransactions = async (
-    provider:
-      | ethers.providers.EtherscanProvider
-      | ethers.providers.JsonRpcProvider
+    isBitcoinBased: boolean,
+    currentAccount: IKeyringAccountState,
+    networkUrl: string
   ) => {
-    const { isBitcoinBased } = store.getState().vault;
+    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
     console.log('running');
     const latestBlockNumber = await provider.getBlockNumber();
@@ -71,9 +69,16 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return;
     }
 
-    await getUserTransactionByDefaultProvider(fromBlock, latestBlockNumber);
+    const txs = await getUserTransactionByDefaultProvider(
+      currentAccount,
+      networkUrl,
+      fromBlock,
+      latestBlockNumber
+    );
 
     LAST_PROCESSED_BLOCK = latestBlockNumber;
+
+    return txs;
   };
 
   return {

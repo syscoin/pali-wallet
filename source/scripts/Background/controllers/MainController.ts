@@ -52,6 +52,7 @@ import AssetsManager from './assets';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import TransactionsManager from './transactions';
+import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
   const walletController = WalletController(keyringManager);
@@ -59,9 +60,9 @@ const MainController = (): IMainController => {
   const assetsManager = AssetsManager();
   const transactionsManager = TransactionsManager();
 
-  //------------------------- New Transactions Methods -------------------------//
+  //------------------------- NEW TRANSACTIONS METHODS -------------------------//
 
-  //---- SYS methods ----//
+  //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
     store.dispatch(setIsLoadingTxs(true));
 
@@ -76,9 +77,40 @@ const MainController = (): IMainController => {
     return initialTxsForAccount;
   };
 
-  //---- EVM methods ----//
+  //---- EVM METHODS ----//
 
-  //------------------------- New Assets Methods -------------------------//
+  //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
+  const updateUserTransactionsState = async () => {
+    const { isBitcoinBased, accounts, activeAccount, activeNetwork } =
+      store.getState().vault;
+
+    const currentAccount = accounts[activeAccount];
+
+    const updatedTxs =
+      await transactionsManager.utils.updateTransactionsFromCurrentAccount(
+        currentAccount,
+        isBitcoinBased,
+        activeNetwork.url
+      );
+
+    //Only manage states if we have some Tx to update
+    if (updatedTxs.length === 0) return;
+
+    store.dispatch(setIsLoadingTxs(true));
+
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'transactions',
+        value: updatedTxs,
+      })
+    );
+
+    store.dispatch(setIsLoadingTxs(false));
+  };
+
+  //------------------------- END TRANSACTIONS METHODS -------------------------//
+
+  //------------------------- NEW ASSETS METHODS -------------------------//
 
   //---- SYS methods ----//
   const getInitialSysTokenForAccount = async (xpub: string) => {
@@ -173,6 +205,8 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsLoadingAssets(false));
   };
+
+  //------------------------- END ASSETS METHODS -------------------------//
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -542,7 +576,8 @@ const MainController = (): IMainController => {
     new Promise<void>(async (resolve) => {
       //First update Assets
       await updateAssetsFromCurrentAccount();
-      await transactionsManager.evm.firstRunForProviderTransactions();
+      //Later update Txs
+      await updateUserTransactionsState();
       resolve();
     });
 

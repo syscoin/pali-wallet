@@ -1,8 +1,9 @@
 import { ethers } from 'ethers';
 
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
 
-// EVM TYPES / INTERFACES
+//------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
 
 interface ILog {
@@ -91,19 +92,26 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 }
 
 export interface IEvmTransactionsController {
-  firstRunForProviderTransactions: () => Promise<void>;
+  firstRunForProviderTransactions: (
+    currentAccount: IKeyringAccountState,
+    networkUrl: string
+  ) => Promise<IEvmTransactionResponse[]>;
   getUserTransactionByDefaultProvider: (
+    currentAccount: IKeyringAccountState,
+    networkUrl: string,
     startBlock: number,
     endBlock: number
-  ) => Promise<void>;
+  ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
-    provider:
-      | ethers.providers.EtherscanProvider
-      | ethers.providers.JsonRpcProvider
-  ) => Promise<void>;
+    isBitcoinBased: boolean,
+    currentAccount: IKeyringAccountState,
+    networkUrl: string
+  ) => Promise<IEvmTransactionResponse[]>;
 }
 
-//SYS UTXO TYPES
+//------------------------- END EVM TYPES / INTERFACES -------------------------//
+
+//------------------------- SYS TYPES / INTERFACES -------------------------//
 
 export interface ISysTransaction {
   blockHash: string;
@@ -125,5 +133,26 @@ export interface ISysTransactionsController {
     xpub: string,
     networkUrl: string
   ) => Promise<ISysTransaction[]>;
-  pollingSysTransactions: (xpub: string, networkUrl: string) => Promise<void>;
+  pollingSysTransactions: (
+    xpub: string,
+    networkUrl: string
+  ) => Promise<ISysTransaction[]>;
 }
+
+//------------------------- END SYS TYPES / INTERFACES -------------------------//
+
+//------------------------- MANAGER TYPES / INTERFACES -------------------------//
+export interface ITransactionsManagerUtils {
+  updateTransactionsFromCurrentAccount: (
+    currentAccount: IKeyringAccountState,
+    isBitcoinBased: boolean,
+    activeNetworkUrl: string
+  ) => Promise<ISysTransaction[] | IEvmTransaction[]>;
+}
+export interface ITransactionsManager {
+  evm: IEvmTransactionsController;
+  sys: ISysTransactionsController;
+  utils: ITransactionsManagerUtils;
+}
+
+//------------------------- END MANAGER TYPES / INTERFACES -------------------------//

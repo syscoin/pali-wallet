@@ -1,10 +1,7 @@
 import sys from 'syscoinjs-lib';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
-import {
-  updateUserTransactionsState,
-  validateAndManageUserTransactions,
-} from './utils';
+import { validateAndManageUserTransactions } from './utils';
 
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
@@ -28,7 +25,10 @@ const SysTransactionController = (): ISysTransactionsController => {
     }
   };
 
-  const pollingSysTransactions = async (xpub: string, networkUrl: string) => {
+  const pollingSysTransactions = async (
+    xpub: string,
+    networkUrl: string
+  ): Promise<ISysTransaction[]> => {
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
     const treatedSysTxs = validateAndManageUserTransactions(getSysTxs);
@@ -39,7 +39,7 @@ const SysTransactionController = (): ISysTransactionsController => {
     //This mean that we don't have any TXs to update in state, so we can stop here
     if (!validateIfManageState) return;
 
-    updateUserTransactionsState(treatedSysTxs);
+    return treatedSysTxs as ISysTransaction[];
   };
 
   return {
