@@ -80,32 +80,32 @@ const MainController = (): IMainController => {
   //---- END SYS METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
-  const updateUserTransactionsState = async () => {
+  const updateUserTransactionsState = () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork } =
       store.getState().vault;
 
     const currentAccount = accounts[activeAccount];
 
-    const updatedTxs =
-      await transactionsManager.utils.updateTransactionsFromCurrentAccount(
+    store.dispatch(setIsLoadingTxs(true));
+
+    transactionsManager.utils
+      .updateTransactionsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
         activeNetwork.url
-      );
+      )
+      .then((updatedTxs) => {
+        if (updatedTxs.length === 0) return;
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'transactions',
+            value: updatedTxs,
+          })
+        );
+      })
+      .finally(() => store.dispatch(setIsLoadingTxs(false)));
 
     //Only manage states if we have some Tx to update
-    if (updatedTxs.length === 0) return;
-
-    store.dispatch(setIsLoadingTxs(true));
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'transactions',
-        value: updatedTxs,
-      })
-    );
-
-    store.dispatch(setIsLoadingTxs(false));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -183,7 +183,7 @@ const MainController = (): IMainController => {
   //---- END EVM METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH ASSETS ----//
-  const updateAssetsFromCurrentAccount = async () => {
+  const updateAssetsFromCurrentAccount = () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
       store.getState().vault;
 
@@ -191,22 +191,22 @@ const MainController = (): IMainController => {
 
     store.dispatch(setIsLoadingAssets(true));
 
-    const updatedAssets =
-      await assetsManager.utils.updateAssetsFromCurrentAccount(
+    assetsManager.utils
+      .updateAssetsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
         activeNetwork.url,
         networks
-      );
-
-    store.dispatch(
-      setActiveAccountProperty({
-        property: 'assets',
-        value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+      )
+      .then((updatedAssets) => {
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'assets',
+            value: updatedAssets as any, //setActiveAccountProperty only accept any as type
+          })
+        );
       })
-    );
-
-    store.dispatch(setIsLoadingAssets(false));
+      .finally(() => store.dispatch(setIsLoadingAssets(false)));
   };
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
@@ -393,8 +393,6 @@ const MainController = (): IMainController => {
         try {
           const account = await keyringManager.setSignerNetwork(network, chain);
 
-          await updateAssetsFromCurrentAccount();
-
           if (isBitcoinBased) {
             store.dispatch(
               setActiveAccountProperty({
@@ -413,7 +411,7 @@ const MainController = (): IMainController => {
             walletController.account.sys.setAddress();
           }
 
-          walletController.account.sys.getLatestUpdate(true);
+          getLatestUpdateForCurrentAccount();
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
@@ -449,7 +447,7 @@ const MainController = (): IMainController => {
               networkChain()
             );
 
-            await updateAssetsFromCurrentAccount();
+            getLatestUpdateForCurrentAccount();
 
             window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
               method: PaliEvents.chainChanged,
@@ -597,11 +595,11 @@ const MainController = (): IMainController => {
 
     if (isNetworkChanging || isNil(activeAccountValues.address)) return;
 
-    new Promise<void>(async (resolve) => {
+    new Promise<void>((resolve) => {
       //First update Assets
-      await updateAssetsFromCurrentAccount();
+      updateAssetsFromCurrentAccount();
       //Later update Txs
-      await updateUserTransactionsState();
+      updateUserTransactionsState();
       resolve();
     });
 
