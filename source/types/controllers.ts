@@ -18,7 +18,7 @@ import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
-import { ITransactionsManager } from 'scripts/Background/controllers/transactions';
+import { ITransactionsManager } from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
