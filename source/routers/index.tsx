@@ -26,6 +26,7 @@ import {
   AddToken,
   SeedConfirm,
   Phrase,
+  ImportAccount,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
@@ -138,6 +139,11 @@ export const Router = () => {
             path="new"
             element={<ProtectedRoute element={<CreateAccount />} />}
           />
+          <Route
+            path="import"
+            element={<ProtectedRoute element={<ImportAccount />} />}
+          />
+
           <Route
             path="private-key"
             element={<ProtectedRoute element={<PrivateKey />} />}

@@ -36,6 +36,7 @@ import {
   setIsNetworkChanging,
   setUpdatedAllErcTokensBalance,
   setIsTimerEnabled as setIsTimerActive,
+  setAccounts,
   setIsLoadingAssets,
   initialState,
 } from 'state/vault';
@@ -467,6 +468,26 @@ const MainController = (): IMainController => {
     }
   };
 
+  const importAccountFromPrivateKey = async (
+    privKey: string,
+    label?: string
+  ) => {
+    const { accounts } = store.getState().vault;
+
+    const importedAccount =
+      await keyringManager.handleImportAccountByPrivateKey(privKey, label);
+
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [importedAccount.id]: importedAccount,
+      })
+    );
+    store.dispatch(setActiveAccount(importedAccount.id));
+
+    return importedAccount;
+  };
+
   //Methods for update both
   const updateAssetsFromCurrentAccount = async () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
@@ -534,6 +555,7 @@ const MainController = (): IMainController => {
     getNetworkData,
     updateErcTokenBalances,
     getLatestUpdateForCurrentAccount,
+    importAccountFromPrivateKey,
     ...keyringManager,
   };
 };
