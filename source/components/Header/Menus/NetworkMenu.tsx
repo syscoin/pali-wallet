@@ -23,7 +23,10 @@ export const NetworkMenu: React.FC = () => {
   );
 
   const activeAccount = useSelector(
-    (state: RootState) => state.vault.accounts[state.vault.activeAccount.id]
+    (state: RootState) =>
+      state.vault.accounts[state.vault.activeAccount.type][
+        state.vault.activeAccount.id
+      ]
   );
 
   const { navigate } = useUtils();
