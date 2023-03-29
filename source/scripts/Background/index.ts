@@ -2,6 +2,8 @@ import 'emoji-log';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import { sysweb3Di } from '@pollum-io/sysweb3-core';
+
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 // import { localStorage } from 'redux-persist-webextension-storage';
@@ -107,8 +109,9 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   ) {
     window.controller.utils.setFiat();
 
-    //@ts-ignore LATER REMOVE THIS WHEN UPDATE CURRENT SYSWEB3-CORE VERSION
-    window.controller.wallet.setStorage(window.localStorage);
+    sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
+    sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
+    sysweb3Di.useLocalStorageClient(window.localStorage);
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
