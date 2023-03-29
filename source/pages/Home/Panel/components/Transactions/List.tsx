@@ -80,6 +80,7 @@ export const TransactionsList = () => {
             const timestamp =
               blocktime &&
               new Date(tx[blocktime] * 1000).toLocaleTimeString(
+                //todo: add day/month/year as well
                 navigator.language,
                 {
                   hour: '2-digit',
