@@ -21,10 +21,10 @@ const EthSign: React.FC<ISign> = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -36,7 +36,7 @@ const EthSign: React.FC<ISign> = () => {
     "Signing this message can be dangerous. This signature could potentially perform any operation on your account's behalf, including granting complete control of your account and all of its assets to the requesting site. Only sign this message if you know what you're doing or completely trust the requesting site.";
 
   const onSubmit = async () => {
-    const wallet = getController().wallet;
+    const { ethereumTransaction } = getController().wallet;
 
     setLoading(true);
 
@@ -44,9 +44,9 @@ const EthSign: React.FC<ISign> = () => {
       let response = '';
       const type = data.eventName;
       if (data.eventName === 'eth_sign')
-        response = await wallet.ethereumTransaction.ethSign(data);
+        response = await ethereumTransaction.ethSign(data);
       else if (data.eventName === 'personal_sign')
-        response = await wallet.ethereumTransactionsignPersonalMessage(data);
+        response = await ethereumTransaction.signPersonalMessage(data);
       else {
         let typedData;
         if (
@@ -64,19 +64,19 @@ const EthSign: React.FC<ISign> = () => {
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
         if (data.eventName === 'eth_signTypedData') {
-          response = wallet.ethereumTransaction.signTypedData(
+          response = ethereumTransaction.signTypedData(
             address,
             typedData,
             'V1'
           );
         } else if (data.eventName === 'eth_signTypedData_v3') {
-          response = wallet.ethereumTransaction.signTypedData(
+          response = ethereumTransaction.signTypedData(
             address,
             typedData,
             'V3'
           );
         } else if (data.eventName === 'eth_signTypedData_v4') {
-          response = wallet.ethereumTransaction.signTypedData(
+          response = ethereumTransaction.signTypedData(
             address,
             typedData,
             'V4'
@@ -95,10 +95,10 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
   useEffect(() => {
-    const { account } = getController().wallet;
+    const { ethereumTransaction } = getController().wallet;
     if (data.eventName === 'personal_sign') {
       const msg = data[0] === activeAccount.address ? data[1] : data[0];
-      const parsedMessage = account.eth.tx.parsePersonalMessage(msg);
+      const parsedMessage = ethereumTransaction.parsePersonalMessage(msg);
       setMessage(parsedMessage);
     }
     if (data.eventName === 'eth_sign') {

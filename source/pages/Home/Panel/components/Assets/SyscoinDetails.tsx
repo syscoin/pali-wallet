@@ -12,10 +12,10 @@ import { NftImage } from './NftImage';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { useCopyClipboard, alert } = useUtils();
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { assets } = accounts[activeAccountId];
+  const { assets } = accounts[activeAccount.type][activeAccount.id];
 
   const [copied, copy] = useCopyClipboard();
 

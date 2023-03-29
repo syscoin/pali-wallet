@@ -24,10 +24,10 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
@@ -166,7 +166,11 @@ export const SendSys = () => {
                 validator(_, value) {
                   if (
                     !value ||
-                    isValidSYSAddress(value, activeNetwork, verifyAddress)
+                    isValidSYSAddress(
+                      value,
+                      activeNetwork.chainId,
+                      verifyAddress
+                    )
                   ) {
                     return Promise.resolve();
                   }

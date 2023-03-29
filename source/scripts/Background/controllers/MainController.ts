@@ -220,7 +220,8 @@ const MainController = (walletState): IMainController => {
           setChangingConnectedAccount({
             host,
             isChangingConnectedAccount: true,
-            newConnectedAccount: accounts[id],
+            newConnectedAccount: accounts[type][id],
+            connectedAccountType: type,
           })
         );
         return;
@@ -343,6 +344,7 @@ const MainController = (walletState): IMainController => {
         newConnectedAccount: undefined,
         host: undefined,
         isChangingConnectedAccount: false,
+        connectedAccountType: undefined,
       })
     );
   };

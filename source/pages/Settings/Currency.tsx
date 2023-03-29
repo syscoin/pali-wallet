@@ -19,10 +19,10 @@ const CurrencyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -79,10 +79,14 @@ const CurrencyView = () => {
 
   //* Effects
   useEffect(() => {
-    if (isUnlocked && accounts && accounts[activeAccountId]) {
+    if (
+      isUnlocked &&
+      accounts &&
+      accounts[activeAccountMeta.type][activeAccountMeta.id]
+    ) {
       controller.refresh(true);
     }
-  }, [isUnlocked, activeAccountId]);
+  }, [isUnlocked, activeAccountMeta]);
 
   useEffect(() => {
     if (selectedCoin) {

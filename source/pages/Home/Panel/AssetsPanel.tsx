@@ -9,9 +9,11 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
-  const id = useSelector((state: RootState) => state.vault.activeAccountId);
+  const { id, type } = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const { assets } = useSelector(
-    (state: RootState) => state.vault.accounts[id]
+    (state: RootState) => state.vault.accounts[type][id]
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased

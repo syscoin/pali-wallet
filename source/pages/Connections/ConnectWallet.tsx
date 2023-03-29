@@ -2,6 +2,8 @@ import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import {
   Layout,
   PrimaryButton,
@@ -19,17 +21,22 @@ export const ConnectWallet = () => {
   const { dapp, wallet } = getController();
   const { host, chain, chainId, eventName } = useQueryData();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const currentAccountId = dapp.get(host)?.accountId;
+  const currentAccountType = dapp.get(host)?.accountType;
 
   const [accountId, setAccountId] = useState(currentAccountId);
+  const [accountType, setAccountType] = useState(currentAccountType);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
 
   const isUnlocked = wallet.isUnlocked();
   const handleConnect = () => {
     const date = Date.now();
-    dapp.connect({ host, chain, chainId, accountId, date });
-    wallet.setAccount(accountId);
+    dapp.connect({ host, chain, chainId, accountId, accountType, date });
+    wallet.setAccount(accountId, accountType);
     dispatchBackgroundEvent(
       `${eventName}.${host}`,
       dapp.getAccount(host).address
@@ -45,7 +52,10 @@ export const ConnectWallet = () => {
 
   useEffect(() => {
     if (dapp.isConnected(host) && isUnlocked) {
-      dapp.connect({ host, chain, chainId, accountId, date: 0 }, true);
+      dapp.connect(
+        { host, chain, chainId, accountId, accountType, date: 0 },
+        true
+      );
       dispatchBackgroundEvent(
         `${eventName}.${host}`,
         dapp.getAccount(host).address
@@ -59,34 +69,60 @@ export const ConnectWallet = () => {
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
-        {accounts && Object.values(accounts).length > 0 ? (
-          <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
-            {Object.values(accounts).map((acc) => (
-              <li
-                className={`${
-                  acc.id === currentAccountId
-                    ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
-                    : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
-                } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
-                key={acc.id}
-                onClick={() => setAccountId(acc.id)}
-              >
-                <p>{acc.label}</p>
+        {accounts && Object.keys(accounts).length > 0 ? (
+          <>
+            {Object.entries(accounts).map(([keyringAccountType, account]) => {
+              if (
+                isBitcoinBased &&
+                keyringAccountType !== KeyringAccountType.HDAccount
+              ) {
+                return null;
+              }
 
-                <div className="flex gap-3 items-center justify-center">
-                  <small>{ellipsis(acc.address)}</small>
+              const accountList = Object.values(account);
+              return (
+                <div key={keyringAccountType}>
+                  <h3 className="mb-2 text-lg font-semibold">
+                    {keyringAccountType === KeyringAccountType.HDAccount
+                      ? 'Pali Account'
+                      : keyringAccountType}
+                  </h3>
+                  <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
+                    {accountList.map((acc) => (
+                      <li
+                        className={`${
+                          acc.id === currentAccountId
+                            ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
+                            : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
+                        } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
+                        key={acc.id}
+                        onClick={() => {
+                          setAccountId(acc.id);
+                          setAccountType(
+                            keyringAccountType as KeyringAccountType
+                          );
+                        }}
+                      >
+                        <p>{acc.label}</p>
 
-                  <div
-                    className={`${
-                      acc.id === accountId
-                        ? 'bg-warning-success'
-                        : 'bg-brand-graylight'
-                    } w-3 h-3 rounded-full border border-brand-royalblue`}
-                  />
+                        <div className="flex gap-3 items-center justify-center">
+                          <small>{ellipsis(acc.address)}</small>
+
+                          <div
+                            className={`${
+                              acc.id === accountId
+                                ? 'bg-warning-success'
+                                : 'bg-brand-graylight'
+                            } w-3 h-3 rounded-full border border-brand-royalblue`}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </>
         ) : (
           <div>
             <Icon name="loading" className="w-4 text-brand-graylight" />

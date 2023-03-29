@@ -33,6 +33,7 @@ export interface IVaultState {
 }
 
 export interface IChangingConnectedAccount {
+  connectedAccountType: KeyringAccountType | undefined;
   host: string | undefined;
   isChangingConnectedAccount: boolean;
   newConnectedAccount: IKeyringAccountState | undefined;

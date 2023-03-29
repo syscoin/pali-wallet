@@ -21,11 +21,11 @@ const ImportAccountView = () => {
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
 
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const isUnlocked =
     controller.wallet.isUnlocked() && activeAccount.address !== '';
@@ -54,10 +54,14 @@ const ImportAccountView = () => {
 
   //* Effects
   useEffect(() => {
-    if (isUnlocked && accounts && accounts[activeAccountId]) {
+    if (
+      isUnlocked &&
+      accounts &&
+      accounts[activeAccountMeta.type][activeAccountMeta.id]
+    ) {
       controller.refresh(true);
     }
-  }, [isUnlocked, activeAccountId]);
+  }, [isUnlocked, activeAccountMeta]);
 
   return (
     <Layout title="IMPORT ACCOUNT">

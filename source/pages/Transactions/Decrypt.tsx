@@ -23,11 +23,11 @@ const Decrypt: React.FC<ISign> = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [decryptedMessage, setDecryptedMessage] = useState('');
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
-  const { account } = getController().wallet;
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const { ethereumTransaction } = getController().wallet;
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -58,7 +58,7 @@ const Decrypt: React.FC<ISign> = () => {
       window.close();
     }
     try {
-      const response = await account.eth.tx.decryptMessage(data);
+      const response = await ethereumTransaction.decryptMessage(data);
       setConfirmed(true);
       setLoading(false);
       dispatchBackgroundEvent(`${type}.${host}`, response);
@@ -100,7 +100,7 @@ const Decrypt: React.FC<ISign> = () => {
               <div
                 className="h-fit align-center justify-center mt-1 px-4 w-full text-xs cursor-pointer"
                 onClick={() =>
-                  setDecryptedMessage(account.eth.tx.decryptMessage(data))
+                  setDecryptedMessage(ethereumTransaction.decryptMessage(data))
                 }
               >
                 <span className="w-full break-words opacity-20">{data[0]}</span>

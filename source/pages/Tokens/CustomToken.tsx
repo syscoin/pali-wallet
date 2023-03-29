@@ -1,12 +1,9 @@
 import { Form, Input } from 'antd';
-import { ethers } from 'ethers';
 import lodash from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-//todo: we need to replace with the new keyring functions since setActiveNetwork does not exits anymore
-import { setActiveNetwork } from '@pollum-io/sysweb3-network';
 import {
   getTokenStandardMetadata,
   isValidEthereumAddress,
@@ -35,16 +32,16 @@ export const CustomToken = () => {
     message: '',
   });
 
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+  const provider = controller.wallet.ethereumTransaction.web3Provider;
 
   const handleERC721NFTs = async (contractAddress: string) => {
     const getBalance = await getERC721StandardBalance(
@@ -105,7 +102,6 @@ export const CustomToken = () => {
     symbol: string;
   }) => {
     setIsLoading(true);
-    setActiveNetwork(activeNetwork);
 
     const contractResponse = (await contractChecker(
       contractAddress,

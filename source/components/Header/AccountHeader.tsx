@@ -4,6 +4,8 @@ import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { IconButton, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -11,7 +13,7 @@ import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {
-  setActiveAccount: (id: number) => Promise<void>;
+  setActiveAccount: (id: number, type: KeyringAccountType) => Promise<void>;
 };
 
 const RenderAccountsListByBitcoinBased = (
@@ -25,14 +27,14 @@ const RenderAccountsListByBitcoinBased = (
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccountId
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   return (
     <>
       {isBitcoinBased // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
-        ? Object.values(accounts)
+        ? Object.values(accounts.HDAccount)
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index, { length }) => (
               <Tooltip
@@ -50,7 +52,9 @@ const RenderAccountsListByBitcoinBased = (
                   } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
                   font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
                    transition duration-300`}
-                  onClick={() => setActiveAccount(account.id)}
+                  onClick={() =>
+                    setActiveAccount(account.id, KeyringAccountType.HDAccount)
+                  }
                   id={`account-${index}`}
                 >
                   <span
@@ -60,7 +64,7 @@ const RenderAccountsListByBitcoinBased = (
                     {account.label} ({ellipsis(account.address, 4, 8)})
                   </span>
 
-                  {activeAccountId === account.id && (
+                  {activeAccount.id === account.id && (
                     <Icon
                       name="check"
                       className="mb-1 w-4"
@@ -70,58 +74,63 @@ const RenderAccountsListByBitcoinBased = (
                 </li>
               </Tooltip>
             ))
-        : Object.values(accounts).map((account, index, { length }) => (
-            <Tooltip
-              key={account.id}
-              childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
-              placement="top-end"
-              content={account.address}
-            >
-              <li
-                className={`${
-                  index + 1 !== length &&
-                  'border-b border-dashed border-gray-500'
-                } ${
-                  index === 0 ? 'py-3.5' : 'py-4'
-                } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
-                font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
-                 transition duration-300`}
-                onClick={() => setActiveAccount(account.id)}
-                id={`account-${index}`}
-              >
-                {account.isImported ? (
-                  <span
-                    style={{
-                      borderRadius: '1.25rem',
-                      fontSize: '0.5625rem',
-                      borderColor: 'rgba(203, 44, 112,1)',
-                    }}
-                    className="absolute left-0 px-1.5 py-0 font-bold border border-solid"
-                  >
-                    Imported
-                  </span>
-                ) : null}
+        : Object.entries(accounts).map(
+            ([keyringAccountType, accountTypeAccounts]) => (
+              <div key={keyringAccountType}>
+                <h3>
+                  {keyringAccountType === KeyringAccountType.HDAccount
+                    ? 'Pali Account'
+                    : keyringAccountType}
+                </h3>
+                {Object.values(accountTypeAccounts).map(
+                  (account, index, { length }) => (
+                    <Tooltip
+                      key={account.id}
+                      childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
+                      placement="top-end"
+                      content={account.address}
+                    >
+                      <li
+                        className={`${
+                          index + 1 !== length &&
+                          'border-b border-dashed border-gray-500'
+                        } ${
+                          index === 0 ? 'py-3.5' : 'py-4'
+                        } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                   transition duration-300`}
+                        onClick={() =>
+                          setActiveAccount(
+                            account.id,
+                            keyringAccountType as KeyringAccountType
+                          )
+                        }
+                        id={`account-${index}`}
+                      >
+                        <span
+                          style={{
+                            maxWidth: '11.25rem',
+                            textOverflow: 'ellipsis',
+                          }}
+                          className="whitespace-nowrap overflow-hidden"
+                        >
+                          {account.label} ({ellipsis(account.address, 4, 8)})
+                        </span>
 
-                <span
-                  style={{
-                    maxWidth: `${account.isImported ? '10rem' : '11.25rem'}`,
-                    textOverflow: 'ellipsis',
-                  }}
-                  className="whitespace-nowrap overflow-hidden"
-                >
-                  {account.label} ({ellipsis(account.address, 4, 8)})
-                </span>
-
-                {activeAccountId === account.id && (
-                  <Icon
-                    name="check"
-                    className="mb-1 w-4"
-                    wrapperClassname="absolute right-2.5"
-                  />
+                        {activeAccount.id === account.id && (
+                          <Icon
+                            name="check"
+                            className="mb-1 w-4"
+                            wrapperClassname="absolute right-2.5"
+                          />
+                        )}
+                      </li>
+                    </Tooltip>
+                  )
                 )}
-              </li>
-            </Tooltip>
-          ))}
+              </div>
+            )
+          )}
     </>
   );
 };
@@ -130,6 +139,8 @@ const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet, dapp } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const importedAccounts = Object.values(accounts.Imported);
+  const hdAccounts = Object.values(accounts.HDAccount);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -140,8 +151,8 @@ const AccountMenu: React.FC = () => {
 
   //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
   const numberOfAccounts = isBitcoinBased
-    ? Object.values(accounts).filter((acc) => acc.isImported === false).length
-    : Object.keys(accounts).length;
+    ? Object.values(hdAccounts).filter((acc) => acc.isImported === false).length
+    : Object.keys(hdAccounts).length + Object.keys(importedAccounts).length;
 
   let className: string;
   switch (numberOfAccounts) {
@@ -156,7 +167,7 @@ const AccountMenu: React.FC = () => {
       break;
   }
 
-  const setActiveAccount = async (id: number) => {
+  const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
       const tabs = await browser.tabs.query({
         active: true,
@@ -164,10 +175,10 @@ const AccountMenu: React.FC = () => {
       });
       const host = new URL(tabs[0].url).hostname;
       const connectedAccount = dapp.getAccount(host);
-      wallet.setAccount(Number(id), host, connectedAccount);
+      wallet.setAccount(Number(id), type, host, connectedAccount);
       return;
     }
-    wallet.setAccount(Number(id));
+    wallet.setAccount(Number(id), type);
   };
 
   const handleLogout = () => {
@@ -321,8 +332,8 @@ const AccountMenu: React.FC = () => {
 };
 
 export const AccountHeader: React.FC = () => {
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccountId
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert } = useUtils();
@@ -333,11 +344,15 @@ export const AccountHeader: React.FC = () => {
     const placeholder = document.querySelector('.add-identicon');
     if (!placeholder) return;
 
-    placeholder.innerHTML = toSvg(accounts[activeAccountId]?.xpub, 50, {
-      backColor: '#07152B',
-      padding: 1,
-    });
-  }, [accounts[activeAccountId]?.address]);
+    placeholder.innerHTML = toSvg(
+      accounts[activeAccount.type][activeAccount.id]?.xpub,
+      50,
+      {
+        backColor: '#07152B',
+        padding: 1,
+      }
+    );
+  }, [accounts[activeAccount.type][activeAccount.id]?.address]);
 
   useEffect(() => {
     if (!copied) return;
@@ -353,15 +368,21 @@ export const AccountHeader: React.FC = () => {
 
         <div className="items-center justify-center px-1 text-brand-white">
           <p className="mb-1 text-base" id="active-account-label">
-            {accounts[activeAccountId]?.label}
+            {accounts[activeAccount.type][activeAccount.id]?.label}
           </p>
           <p className="text-xs">
-            {ellipsis(accounts[activeAccountId]?.address, 6, 14)}
+            {ellipsis(
+              accounts[activeAccount.type][activeAccount.id]?.address,
+              6,
+              14
+            )}
           </p>
         </div>
 
         <IconButton
-          onClick={() => copy(accounts[activeAccountId]?.address ?? '')}
+          onClick={() =>
+            copy(accounts[activeAccount.type][activeAccount.id]?.address ?? '')
+          }
           type="primary"
           shape="circle"
           className="mt-3"

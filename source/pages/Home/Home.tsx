@@ -30,8 +30,8 @@ export const Home = () => {
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
   );
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccountId
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
   const { accounts, isNetworkChanging } = useSelector(
     (state: RootState) => state.vault
@@ -43,10 +43,11 @@ export const Home = () => {
   //* Constants
   const controller = getController();
   const isUnlocked =
-    controller.wallet.isUnlocked() && accounts[activeAccountId].address !== '';
+    controller.wallet.isUnlocked() &&
+    accounts[activeAccount.type][activeAccount.id].address !== '';
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
-    accounts[activeAccountId].balances;
+    accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
@@ -92,8 +93,8 @@ export const Home = () => {
     return getAmount;
   }, [
     isUnlocked,
-    activeAccountId,
-    accounts[activeAccountId].address,
+    activeAccount,
+    accounts[activeAccount.type][activeAccount.id].address,
     activeNetwork,
     activeNetwork.chainId,
     fiatAsset,
@@ -103,7 +104,7 @@ export const Home = () => {
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
-      {accounts[activeAccountId] &&
+      {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
       isUnlocked &&
       !isPendingBalances &&

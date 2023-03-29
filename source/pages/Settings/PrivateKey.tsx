@@ -14,10 +14,10 @@ const PrivateKeyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -28,9 +28,12 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  //todo: we need to get the keyringmanager.getDecryptedPrivateKey these are not wallet functions anymore
   const getDecryptedPrivateKey = (key: string) =>
-    controller.wallet.getDecryptedPrivateKey(key);
+    controller.wallet.getPrivateKeyByAccountId(
+      activeAccountMeta.id,
+      activeAccountMeta.type,
+      key
+    );
 
   useEffect(() => {
     if (!copied) return;

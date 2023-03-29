@@ -10,10 +10,10 @@ import { RootState } from 'state/store';
 import { camelCaseToText, truncate } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { transactions } = accounts[activeAccountId];
+  const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

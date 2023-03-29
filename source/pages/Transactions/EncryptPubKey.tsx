@@ -14,10 +14,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const { accounts, activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -26,7 +26,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const { currency } = activeNetwork;
 
   const onSubmit = async () => {
-    const { account } = getController().wallet;
+    const { ethereumTransaction } = getController().wallet;
     setLoading(true);
     const type = data.eventName;
     if (data.address !== address) {
@@ -37,7 +37,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     }
-    const response = await account.eth.tx.getEncryptedPubKey();
+    const response = await ethereumTransaction.getEncryptedPubKey();
     setConfirmed(true);
     setLoading(false);
     dispatchBackgroundEvent(`${type}.${host}`, response);

@@ -54,6 +54,7 @@ export const initialState: IVaultState = {
     host: undefined,
     isChangingConnectedAccount: false,
     newConnectedAccount: undefined,
+    connectedAccountType: undefined,
   },
   timer: 5,
   isTimerEnabled: true,

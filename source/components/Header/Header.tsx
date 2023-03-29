@@ -21,15 +21,18 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const isPendingBalances = useSelector(
     (state: RootState) => state.vault.isPendingBalances
   );
-  const activeAccountId = useSelector(
-    (state: RootState) => state.vault.activeAccountId
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
   );
 
   const { accounts } = useSelector((state: RootState) => state.vault);
 
-  const { newConnectedAccount, host, isChangingConnectedAccount } = useSelector(
-    (state: RootState) => state.vault.changingConnectedAccount
-  );
+  const {
+    newConnectedAccount,
+    host,
+    isChangingConnectedAccount,
+    connectedAccountType,
+  } = useSelector((state: RootState) => state.vault.changingConnectedAccount);
 
   const [networkErrorStatus, setNetworkErrorStatus] = useState({
     error: false,
@@ -55,8 +58,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     wallet.resolveAccountConflict();
   };
   const handleChangeConnectedAccount = () => {
-    dapp.changeAccount(host, newConnectedAccount.id);
-    wallet.setAccount(newConnectedAccount.id);
+    dapp.changeAccount(host, newConnectedAccount.id, connectedAccountType);
+    wallet.setAccount(newConnectedAccount.id, connectedAccountType);
     wallet.resolveAccountConflict();
   };
 
@@ -99,7 +102,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                 <p className="text-brand-white text-sm">
                   <b className="text-gray-400">{host}</b> is connected to{' '}
                   {newConnectedAccount ? newConnectedAccount.label : ''}. Your
-                  active account is {accounts[activeAccountId].label}. Would you
+                  active account is{' '}
+                  {accounts[activeAccount.type][activeAccount.id].label}. Would
                   like to continue with the active account?
                 </p>
               </div>

@@ -28,8 +28,8 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const [errorMsg, setErrorMsg] = useState('');
 
   const onSubmit = async () => {
-    const { account } = getController().wallet;
-    const sign = account.sys.tx.signTransaction;
+    const { syscoinTransaction } = getController().wallet;
+    const sign = syscoinTransaction.signTransaction;
 
     setLoading(true);
 

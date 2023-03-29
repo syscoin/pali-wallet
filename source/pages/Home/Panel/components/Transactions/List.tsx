@@ -9,12 +9,14 @@ import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
-  const id = useSelector((state: RootState) => state.vault.activeAccountId);
+  const { id, type } = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const { chainId } = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const transactions = useSelector(
-    (state: RootState) => state.vault.accounts[id].transactions
+    (state: RootState) => state.vault.accounts[type][id].transactions
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
