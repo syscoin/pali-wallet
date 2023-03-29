@@ -2,7 +2,6 @@ import { AES } from 'crypto-js';
 
 import {
   initialActiveHdAccountState,
-  initialActiveImportedAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
 
@@ -66,7 +65,10 @@ describe('Vault store actions', () => {
   it('should create an account', () => {
     const newState = reducer(
       initialState,
-      createAccount(MOCK_ACCOUNT, KeyringAccountType.HDAccount)
+      createAccount({
+        account: MOCK_ACCOUNT,
+        accountType: KeyringAccountType.HDAccount,
+      })
     );
 
     expect(newState.accounts[MOCK_ACCOUNT.id]).toEqual(MOCK_ACCOUNT);
@@ -82,9 +84,11 @@ describe('Vault store actions', () => {
     const stateWithAccounts: IVaultState = {
       ...initialState,
       accounts: {
-        //todo we should update this test to handle the new accounts format
-        [fakeAccount1.id]: fakeAccount1,
-        [fakeAccount2.id]: fakeAccount2,
+        ...initialState.accounts,
+        [KeyringAccountType.HDAccount]: {
+          [fakeAccount1.id]: fakeAccount1,
+          [fakeAccount2.id]: fakeAccount2,
+        },
       },
     };
 
@@ -127,29 +131,52 @@ describe('Vault store actions', () => {
 
   //* setActiveAccount
   it('should set the active account)', () => {
-    const newState = reducer(initialState, setActiveAccount(MOCK_ACCOUNT.id));
+    const newState = reducer(
+      initialState,
+      setActiveAccount({
+        id: MOCK_ACCOUNT.id,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
 
-    expect(newState.activeAccountId).toEqual(MOCK_ACCOUNT.id);
+    expect(newState.activeAccount.id).toEqual(MOCK_ACCOUNT.id);
   });
 
   //* setActiveAccountProperty
   it('should set a property for the active account)', () => {
     // state with `accounts` and `activeAccount` populated
-    let customState = reducer(initialState, createAccount(MOCK_ACCOUNT));
-    customState = reducer(customState, setActiveAccount(MOCK_ACCOUNT.id));
+    let customState = reducer(
+      initialState,
+      createAccount({
+        account: MOCK_ACCOUNT,
+        accountType: KeyringAccountType.HDAccount,
+      })
+    );
+    customState = reducer(
+      customState,
+      setActiveAccount({
+        id: MOCK_ACCOUNT.id,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
 
     const payload = { property: 'label', value: 'New Account Label' };
     const newState = reducer(customState, setActiveAccountProperty(payload));
 
-    const { activeAccountId } = newState;
-    const currentActiveAccount = newState.accounts[activeAccountId];
+    const { activeAccount } = newState;
+    const currentActiveAccount =
+      newState.accounts[activeAccount.type][activeAccount.id];
     expect(currentActiveAccount[payload.property]).toEqual(payload.value);
   });
 
   //* setAccountLabel
   it('should set the label for an account)', () => {
     // 15 = mock account id
-    const payload = { id: 15, label: 'Label' };
+    const payload = {
+      id: 15,
+      label: 'Label',
+      type: KeyringAccountType.HDAccount,
+    };
     const newState = reducer(STATE_W_ACCOUNT, setAccountLabel(payload));
 
     const account = newState.accounts[payload.id];
@@ -170,11 +197,14 @@ describe('Vault store actions', () => {
 
     const customState = reducer(
       STATE_W_ACCOUNT,
-      setActiveAccount(MOCK_ACCOUNT.id)
+      setActiveAccount({
+        id: MOCK_ACCOUNT.id,
+        type: KeyringAccountType.HDAccount,
+      })
     );
     const newState = reducer(customState, setAccountTransactions(payload));
 
-    const id = newState.activeAccountId;
+    const id = newState.activeAccount.id;
     const account = newState.accounts[id];
     expect(account.transactions).toContain(payload);
   });
