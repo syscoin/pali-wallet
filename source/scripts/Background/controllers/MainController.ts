@@ -275,7 +275,7 @@ const MainController = (): IMainController => {
     const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
       account.xpub
     );
-
+    //todo: test promise.all to enhance performance
     const initialTxsForAccount = await getInitialSysTransactionsForAccount(
       account.xpub
     );
