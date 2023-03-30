@@ -27,7 +27,7 @@ export interface IMasterController {
   dapp: Readonly<IDAppController>;
   refresh: (silent?: boolean) => Promise<void>;
   utils: Readonly<IControllerUtils>;
-  wallet: Readonly<IMainController>;
+  wallet: IMainController;
 }
 
 const MasterController = (): IMasterController => {

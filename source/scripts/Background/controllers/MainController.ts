@@ -241,17 +241,23 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsPendingBalances(true));
 
     const { activeNetwork } = store.getState().vault;
-
+    console.log('Log me pls');
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
-
+    console.log('Log me pls', isBitcoinBased);
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
-
+    console.log('Log me pls 2', isBitcoinBased);
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
-        try {
-          await keyringManager.setSignerNetwork(network, chain);
-
+        console.log('Checking network switch', network, chain);
+        const sucess = await keyringManager.setSignerNetwork(network, chain);
+        console.log('Ah hungle bungle sucess', sucess);
+        if (sucess) {
+          console.log('Just test baby', keyringManager.getAccountXpub());
+          console.log(
+            'Just superDuper test baby',
+            keyringManager.getEncryptedXprv()
+          );
           if (isBitcoinBased) {
             store.dispatch(
               setActiveAccountProperty({
@@ -267,13 +273,14 @@ const MainController = (walletState): IMainController => {
               })
             );
 
-            walletController.account.sys.setAddress();
+            await walletController.account.sys.setAddress();
           }
 
           // walletController.account.sys.getLatestUpdate(true);
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
+          console.log('Ulala', keyringManager.getActiveAccount());
           const { activeAccountType, activeAccount: keyringAccount } =
             keyringManager.getActiveAccount();
 
@@ -283,7 +290,8 @@ const MainController = (walletState): IMainController => {
           store.dispatch(
             setActiveAccount({ id: keyringAccount.id, type: activeAccountType })
           );
-          await utilsController.setFiat();
+          // await utilsController.setFiat();
+          console.log('I think its all set');
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
@@ -292,46 +300,37 @@ const MainController = (walletState): IMainController => {
               networkVersion: network.chainId,
             },
           });
+          store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
           return;
-        } catch (error) {
+        } else {
           console.error(
-            'Pali: fail on setActiveNetwork due to the following reason',
-            error
+            'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
           );
           reject();
-          const statusCodeInError = ['401', '429', '500'];
+          store.dispatch(setNetwork(activeNetwork));
+          store.dispatch(setIsPendingBalances(false));
 
-          const errorMessageValidate = statusCodeInError.some((message) =>
-            error.message.includes(message)
+          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+            method: PaliEvents.chainChanged,
+            params: {
+              chainId: `0x${activeNetwork.chainId.toString(16)}`,
+              networkVersion: activeNetwork.chainId,
+            },
+          });
+          window.controller.dapp.handleBlockExplorerChange(
+            PaliSyscoinEvents.blockExplorerChanged,
+            {
+              method: PaliSyscoinEvents.blockExplorerChanged,
+              params: isBitcoinBased ? network.url : null,
+            }
           );
 
-          if (errorMessageValidate) {
-            window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-              method: PaliEvents.chainChanged,
-              params: {
-                chainId: `0x${activeNetwork.chainId.toString(16)}`,
-                networkVersion: activeNetwork.chainId,
-              },
-            });
-            window.controller.dapp.handleBlockExplorerChange(
-              PaliSyscoinEvents.blockExplorerChanged,
-              {
-                method: PaliSyscoinEvents.blockExplorerChanged,
-                params: isBitcoinBased ? network.url : null,
-              }
-            );
+          // store.dispatch(setActiveAccount(activeAccount.id));
 
-            store.dispatch(setNetwork(activeNetwork));
-
-            store.dispatch(setIsPendingBalances(false));
-
-            // store.dispatch(setActiveAccount(activeAccount.id));
-
-            await utilsController.setFiat();
-          }
+          await utilsController.setFiat();
 
           store.dispatch(setStoreError(true));
-          // store.dispatch(setIsNetworkChanging(false));
+          store.dispatch(setIsNetworkChanging(false));
         }
       }
     );

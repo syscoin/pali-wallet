@@ -43,26 +43,27 @@ const ControllerUtils = (): IControllerUtils => {
     switch (id) {
       case 'syscoin':
         try {
+          //TODO: validateSysRpc should not be called here
           const { chain } = await validateSysRpc(activeNetwork.url);
 
-          const getFiatForSys = await getFiatValueByToken(id, currency);
+          // const getFiatForSys = await getFiatValueByToken(id, currency);
 
-          const price = chain === 'test' ? 0 : getFiatForSys;
+          // const price = chain === 'test' ? 0 : getFiatForSys;
+          //TODO:This asset price API won't fetch the price for other currencies apart of sys
+          // const currencies = await (
+          //   await fetch(`${ASSET_PRICE_API}/currency`)
+          // ).json();
 
-          const currencies = await (
-            await fetch(`${ASSET_PRICE_API}/currency`)
-          ).json();
+          // if (currencies && currencies.rates) {
+          //   store.dispatch(setCoins(currencies.rates));
+          // }
 
-          if (currencies && currencies.rates) {
-            store.dispatch(setCoins(currencies.rates));
-          }
-
-          store.dispatch(
-            setPrices({
-              asset: currency,
-              price,
-            })
-          );
+          // store.dispatch(
+          //   setPrices({
+          //     asset: currency,
+          //     price,
+          //   })
+          // );
         } catch (error) {
           logError('Failed to retrieve asset price', '', error);
         }
