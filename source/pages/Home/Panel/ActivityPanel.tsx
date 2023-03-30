@@ -15,7 +15,9 @@ export const TransactionsPanel = () => {
     (state: RootState) => state.vault
   );
   const [internalLoading, setInternalLoading] = useState<any>(isLoadingTxs);
-  const transactions = Object.values(accounts[activeAccount].transactions);
+  const transactions = Object.values(
+    accounts[activeAccount].transactions ?? {}
+  );
   const seconds = 10000;
 
   const NoTransactionsComponent = () => (
