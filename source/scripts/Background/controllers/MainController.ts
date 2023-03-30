@@ -241,23 +241,16 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsPendingBalances(true));
 
     const { activeNetwork } = store.getState().vault;
-    console.log('Log me pls');
+
     const isBitcoinBased =
       chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
-    console.log('Log me pls', isBitcoinBased);
+
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
-    console.log('Log me pls 2', isBitcoinBased);
+
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
-        console.log('Checking network switch', network, chain);
         const sucess = await keyringManager.setSignerNetwork(network, chain);
-        console.log('Ah hungle bungle sucess', sucess);
         if (sucess) {
-          console.log('Just test baby', keyringManager.getAccountXpub());
-          console.log(
-            'Just superDuper test baby',
-            keyringManager.getEncryptedXprv()
-          );
           if (isBitcoinBased) {
             store.dispatch(
               setActiveAccountProperty({
@@ -280,7 +273,6 @@ const MainController = (walletState): IMainController => {
 
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
-          console.log('Ulala', keyringManager.getActiveAccount());
           const { activeAccountType, activeAccount: keyringAccount } =
             keyringManager.getActiveAccount();
 
@@ -291,7 +283,7 @@ const MainController = (walletState): IMainController => {
             setActiveAccount({ id: keyringAccount.id, type: activeAccountType })
           );
           // await utilsController.setFiat();
-          console.log('I think its all set');
+
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
