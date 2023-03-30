@@ -242,8 +242,7 @@ const MainController = (walletState): IMainController => {
 
     const { activeNetwork } = store.getState().vault;
 
-    const isBitcoinBased =
-      chain === 'syscoin' && (await isBitcoinBasedNetwork(network));
+    const isBitcoinBased = chain === INetworkType.Syscoin;
 
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
