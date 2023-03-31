@@ -199,7 +199,7 @@ async function checkForUpdates() {
 
 let intervalId;
 
-chrome.runtime.onConnect.addListener((port) => {
+browser.runtime.onConnect.addListener((port) => {
   // execute checkForUpdates() every 5 seconds
   if (port.name === 'polling') {
     port.onMessage.addListener((message) => {
@@ -216,7 +216,7 @@ chrome.runtime.onConnect.addListener((port) => {
   }
 });
 
-const port = chrome.runtime.connect({ name: 'polling' });
+const port = browser.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
 
 wrapStore(store, { portName: STORE_PORT });
