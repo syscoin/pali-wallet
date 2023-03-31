@@ -5,6 +5,7 @@ import {
   initialActiveHdAccountState,
   initialActiveImportedAccountState,
   KeyringAccountType,
+  IWalletState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -74,6 +75,35 @@ const VaultState = createSlice({
       }>
     ) {
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
+    },
+    setNetworkChange(
+      state: IVaultState,
+      action: PayloadAction<{
+        activeChain: INetworkType;
+        wallet: IWalletState;
+      }>
+    ) {
+      const { activeChain, wallet } = action.payload;
+      state.activeChain = activeChain;
+      state.activeNetwork = wallet.activeNetwork;
+      state.activeAccount = {
+        id: wallet.activeAccountId,
+        type: wallet.activeAccountType,
+      };
+      state.networks = wallet.networks;
+      for (const accountType in wallet.accounts) {
+        for (const accountId in wallet.accounts[accountType]) {
+          const account = wallet.accounts[accountType][accountId];
+          const mainAccount: IPaliAccount =
+            state.accounts[accountType][account.id];
+          // Update the account properties, leaving the assets and transactions fields unchanged
+          state.accounts[accountType][account.id] = {
+            ...account,
+            assets: mainAccount.assets,
+            transactions: mainAccount.transactions,
+          };
+        }
+      }
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id, type } = state.activeAccount;
@@ -318,6 +348,7 @@ export const {
   setActiveAccount,
   setActiveAccountProperty,
   setNetworkType,
+  setNetworkChange,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsPendingBalances,

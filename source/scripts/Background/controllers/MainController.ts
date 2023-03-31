@@ -36,6 +36,7 @@ import {
   setUpdatedTokenBalace,
   setIsTimerEnabled as setIsTimerActive,
   setAccounts,
+  setNetworkChange,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -248,39 +249,19 @@ const MainController = (walletState): IMainController => {
 
     return new Promise<{ chainId: string; networkVersion: number }>(
       async (resolve, reject) => {
-        const sucess = await keyringManager.setSignerNetwork(network, chain);
+        const { sucess, wallet, activeChain } =
+          await keyringManager.setSignerNetwork(network, chain);
         if (sucess) {
-          if (isBitcoinBased) {
-            store.dispatch(
-              setActiveAccountProperty({
-                property: 'xpub',
-                value: keyringManager.getAccountXpub(),
-              })
-            );
-
-            store.dispatch(
-              setActiveAccountProperty({
-                property: 'xprv',
-                value: keyringManager.getEncryptedXprv(),
-              })
-            );
-
-            await walletController.account.sys.setAddress();
-          }
-
-          // walletController.account.sys.getLatestUpdate(true);
-
+          store.dispatch(
+            setNetworkChange({
+              activeChain,
+              wallet,
+            })
+          );
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
-          const { activeAccountType, activeAccount: keyringAccount } =
-            keyringManager.getActiveAccount();
-
           store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
-          //TODO: validate if active account is still the same it was being used before network change
-          store.dispatch(
-            setActiveAccount({ id: keyringAccount.id, type: activeAccountType })
-          );
           // await utilsController.setFiat();
 
           resolve({ chainId: chainId, networkVersion: networkVersion });
@@ -298,9 +279,6 @@ const MainController = (walletState): IMainController => {
             'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
           );
           reject();
-          store.dispatch(setNetwork(activeNetwork));
-          store.dispatch(setIsPendingBalances(false));
-
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
             params: {
@@ -316,9 +294,7 @@ const MainController = (walletState): IMainController => {
             }
           );
 
-          // store.dispatch(setActiveAccount(activeAccount.id));
-
-          await utilsController.setFiat();
+          // await utilsController.setFiat();
 
           store.dispatch(setStoreError(true));
           store.dispatch(setIsNetworkChanging(false));
