@@ -26,7 +26,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       endBlock
     );
 
+    console.log('providerUserTxs', providerUserTxs);
     const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
+    console.log('treatedTxsEVM', treatedTxs);
 
     return treatedTxs as IEvmTransactionResponse[];
   };

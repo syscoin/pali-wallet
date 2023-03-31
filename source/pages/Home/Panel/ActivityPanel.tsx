@@ -7,6 +7,8 @@ import { RootState } from 'state/store';
 
 import { TransactionsList } from './components/Transactions';
 
+const SECONDS = 10000;
+
 export const TransactionsPanel = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
@@ -14,11 +16,11 @@ export const TransactionsPanel = () => {
   const { isLoadingTxs, accounts } = useSelector(
     (state: RootState) => state.vault
   );
-  const [internalLoading, setInternalLoading] = useState<any>(isLoadingTxs);
+  const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
+
   const transactions = Object.values(
     accounts[activeAccount].transactions ?? {}
   );
-  const seconds = 10000;
 
   const NoTransactionsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
@@ -30,7 +32,7 @@ export const TransactionsPanel = () => {
     if (isLoadingTxs) {
       setTimeout(() => {
         setInternalLoading(false);
-      }, seconds);
+      }, SECONDS);
     }
   };
 

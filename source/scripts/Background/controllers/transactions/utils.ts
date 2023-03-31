@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { range, flatMap, isEqual } from 'lodash';
+import { range, flatMap, isEqual, isEmpty, compact, clone } from 'lodash';
 
 import store from 'state/store';
 
@@ -93,11 +93,14 @@ export const validateAndManageUserTransactions = (
     const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
 
     const txAlreadyExists = Boolean(
-      userTransactions.find(
-        (txs: IEvmTransactionResponse) =>
-          txs[txIdValidated].toLowerCase() === tx[txIdValidated].toLowerCase()
-      )
+      !isEmpty(compact(userTransactions)) &&
+        userTransactions.find(
+          (txs: IEvmTransactionResponse) =>
+            txs[txIdValidated]?.toLowerCase() ===
+            tx[txIdValidated]?.toLowerCase()
+        )
     );
+
     switch (txAlreadyExists) {
       //Only try to update Confirmations property if is different
       case true:
@@ -124,7 +127,9 @@ export const validateAndManageUserTransactions = (
 
       case false:
         if (!userTxsLimitLength) {
-          const arrayToAdd = [...userTransactions];
+          const arrayToAdd = clone(
+            isBitcoinBased ? compact(userTransactions) : userTransactions
+          );
 
           arrayToAdd.unshift(tx);
 

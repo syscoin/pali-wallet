@@ -7,6 +7,7 @@ import { sysweb3Di } from '@pollum-io/sysweb3-core';
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 // import { localStorage } from 'redux-persist-webextension-storage';
+import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -140,5 +141,82 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 //     pollingEvmTxs;
 //   }, 20000);
 // });
+
+async function checkForUpdates() {
+  console.log('checkForUpdates');
+
+  const vault = store.getState().vault;
+
+  if (
+    store.getState().vault.changingConnectedAccount
+      .isChangingConnectedAccount ||
+    store.getState().vault.isLoadingAssets ||
+    store.getState().vault.isLoadingTxs
+  ) {
+    //also need to return if walle is unlocked
+    console.log('return');
+    return;
+  }
+  const activeAccountId = vault.activeAccount;
+  const account = vault.accounts?.[activeAccountId];
+  const isBitcoinBased = vault.isBitcoinBased;
+  const network = vault.activeNetwork;
+
+  if (isBitcoinBased) {
+    console.log('await sys polling');
+    const sysTx =
+      await window.controller.wallet.transactions.sys.pollingSysTransactions(
+        account.xpub,
+        network.url
+      );
+
+    console.log('aftersystxfn', sysTx);
+    if (sysTx?.length > 0) {
+      console.log('sysTx if');
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'transactions',
+          value: sysTx,
+        })
+      );
+    }
+  } else {
+    console.log('await evm polling');
+
+    const evmTx =
+      await window.controller.wallet.transactions.evm.pollingEvmTransactions(
+        isBitcoinBased,
+        account,
+        network.url
+      );
+
+    console.log(evmTx);
+    if (Object.values(evmTx)?.length > 0) {
+      store.dispatch(setAccountTransactions(evmTx));
+    }
+  }
+}
+
+let intervalId;
+
+chrome.runtime.onConnect.addListener((port) => {
+  // execute checkForUpdates() every 5 seconds
+  if (port.name === 'polling') {
+    port.onMessage.addListener((message) => {
+      console.log('polling');
+      if (message.action === 'startPolling') {
+        console.log('start polling');
+        intervalId = setInterval(checkForUpdates, 10000);
+        console.log('intervalId', intervalId);
+        port.postMessage({ intervalId });
+      } else if (message.action === 'stopPolling') {
+        clearInterval(intervalId);
+      }
+    });
+  }
+});
+
+const port = chrome.runtime.connect({ name: 'polling' });
+port.postMessage({ action: 'startPolling' });
 
 wrapStore(store, { portName: STORE_PORT });

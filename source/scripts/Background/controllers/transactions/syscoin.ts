@@ -1,3 +1,4 @@
+import { compact } from 'lodash';
 import sys from 'syscoinjs-lib';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
@@ -34,10 +35,11 @@ const SysTransactionController = (): ISysTransactionsController => {
     const treatedSysTxs = validateAndManageUserTransactions(getSysTxs);
 
     const validateIfManageState = Boolean(
-      getSysTxs.length === 0 || treatedSysTxs.length === 0
+      compact(getSysTxs as ISysTransaction[]).length === 0 ||
+        compact(treatedSysTxs as ISysTransaction[]).length === 0
     );
     //This mean that we don't have any TXs to update in state, so we can stop here
-    if (!validateIfManageState) return;
+    if (validateIfManageState) return;
 
     return treatedSysTxs as ISysTransaction[];
   };
