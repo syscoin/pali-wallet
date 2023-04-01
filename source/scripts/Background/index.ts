@@ -143,8 +143,6 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 // });
 
 async function checkForUpdates() {
-  console.log('checkForUpdates');
-
   const vault = store.getState().vault;
 
   if (
@@ -153,8 +151,7 @@ async function checkForUpdates() {
     store.getState().vault.isLoadingAssets ||
     store.getState().vault.isLoadingTxs
   ) {
-    //also need to return if walle is unlocked
-    console.log('return');
+    //todo: do we also need to return if walle is unlocked?
     return;
   }
   const activeAccountId = vault.activeAccount;
@@ -163,16 +160,13 @@ async function checkForUpdates() {
   const network = vault.activeNetwork;
 
   if (isBitcoinBased) {
-    console.log('await sys polling');
     const sysTx =
       await window.controller.wallet.transactions.sys.pollingSysTransactions(
         account.xpub,
         network.url
       );
 
-    console.log('aftersystxfn', sysTx);
     if (sysTx?.length > 0) {
-      console.log('sysTx if');
       store.dispatch(
         setActiveAccountProperty({
           property: 'transactions',
@@ -190,9 +184,14 @@ async function checkForUpdates() {
         network.url
       );
 
-    console.log(evmTx);
-    if (Object.values(evmTx)?.length > 0) {
-      store.dispatch(setAccountTransactions(evmTx));
+    console.log('evmTx', evmTx);
+    if (evmTx?.length > 0) {
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'transactions',
+          value: evmTx,
+        })
+      );
     }
   }
 }

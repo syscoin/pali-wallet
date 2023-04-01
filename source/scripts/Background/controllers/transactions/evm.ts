@@ -1,6 +1,10 @@
 import { ethers } from 'ethers';
+import flatMap from 'lodash/flatMap';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+
+import store from 'state/store';
+import { setIsLoadingTxs } from 'state/vault';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
@@ -27,7 +31,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     );
 
     console.log('providerUserTxs', providerUserTxs);
+
     const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
+
     console.log('treatedTxsEVM', treatedTxs);
 
     return treatedTxs as IEvmTransactionResponse[];
@@ -40,7 +46,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
     const latestBlockNumber = await provider.getBlockNumber();
-    const fromBlock = Math.max(0, latestBlockNumber - 30); // Get only the last 30 blocks
+    const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks
     const toBlock = latestBlockNumber;
 
     const txs = await getUserTransactionByDefaultProvider(
@@ -60,12 +66,12 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
+    store.dispatch(setIsLoadingTxs(true));
     const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
-    console.log('running');
     const latestBlockNumber = await provider.getBlockNumber();
 
-    const fromBlock = LAST_PROCESSED_BLOCK + 1;
+    const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
 
     if (Boolean(isBitcoinBased || latestBlockNumber === LAST_PROCESSED_BLOCK)) {
       return;
@@ -78,9 +84,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       latestBlockNumber
     );
 
+    console.log('after tx', txs);
     LAST_PROCESSED_BLOCK = latestBlockNumber;
 
-    return txs;
+    store.dispatch(setIsLoadingTxs(false));
+    return flatMap(txs);
   };
 
   return {

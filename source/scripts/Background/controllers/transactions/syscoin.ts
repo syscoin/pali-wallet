@@ -1,6 +1,9 @@
 import { compact } from 'lodash';
 import sys from 'syscoinjs-lib';
 
+import store from 'state/store';
+import { setIsLoadingTxs } from 'state/vault';
+
 import { ISysTransaction, ISysTransactionsController } from './types';
 import { validateAndManageUserTransactions } from './utils';
 
@@ -30,6 +33,7 @@ const SysTransactionController = (): ISysTransactionsController => {
     xpub: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
+    store.dispatch(setIsLoadingTxs(true));
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
     const treatedSysTxs = validateAndManageUserTransactions(getSysTxs);

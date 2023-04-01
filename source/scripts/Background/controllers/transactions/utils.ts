@@ -75,14 +75,20 @@ export const validateAndManageUserTransactions = (
 
   const { transactions: userTransactions } = accounts[activeAccount];
 
-  const userTxsLimitLength = userTransactions.length >= 30;
+  console.log('userTransactions', userTransactions);
 
-  const compareArrays = (arrayToCompare: IEvmTransactionResponse[]) => {
-    const clonedUserTxsArray = [
-      ...userTransactions,
-    ] as IEvmTransactionResponse[];
+  const clonedUserTransactionsArray = clone(
+    isBitcoinBased
+      ? (compact(userTransactions) as ISysTransaction[])
+      : (Object.values(userTransactions) as IEvmTransactionResponse[])
+  );
 
-    const isArrayEquals = isEqual(clonedUserTxsArray, arrayToCompare);
+  const userTxsLimitLength = clonedUserTransactionsArray.length >= 30;
+
+  const compareArrays = (
+    arrayToCompare: IEvmTransactionResponse[] | ISysTransaction[]
+  ) => {
+    const isArrayEquals = isEqual(clonedUserTransactionsArray, arrayToCompare);
 
     return !isArrayEquals ? arrayToCompare : [];
   };
@@ -127,11 +133,14 @@ export const validateAndManageUserTransactions = (
 
       case false:
         if (!userTxsLimitLength) {
+          console.log('userTransactions', userTransactions);
           const arrayToAdd = clone(
-            isBitcoinBased ? compact(userTransactions) : userTransactions
+            isBitcoinBased
+              ? (compact(userTransactions) as ISysTransaction[])
+              : (Object.values(userTransactions) as IEvmTransactionResponse[])
           );
 
-          arrayToAdd.unshift(tx);
+          arrayToAdd.unshift(tx as ISysTransaction & IEvmTransactionResponse);
 
           return compareArrays(arrayToAdd);
         } else {
