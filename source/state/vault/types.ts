@@ -13,7 +13,6 @@ export interface IVaultState {
   activeChain: INetworkType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
-  encryptedMnemonic: string;
   error: boolean;
   isBitcoinBased: boolean;
   isLoadingTxs: boolean;

@@ -19,7 +19,6 @@ import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
   setActiveAccount,
-  setEncryptedMnemonic,
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
@@ -76,7 +75,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setLastLogin());
   };
 
-  const unlock = async (pwd: string): Promise<void> => {
+  const unlock = async (pwd: string): Promise<boolean> => {
     const unlocked = await keyringManager.unlock(pwd);
     if (!unlocked) throw new Error('Invalid password');
     store.dispatch(setLastLogin());
@@ -118,7 +117,7 @@ const MainController = (walletState): IMainController => {
     //     })
     //     .catch((error) => console.error('Unlock', error));
     // });
-    return;
+    return unlocked;
   };
 
   const createWallet = async (password: string): Promise<void> => {
@@ -138,8 +137,6 @@ const MainController = (walletState): IMainController => {
       transactions: [],
     };
 
-    //todo we need to check if this is working as expected
-    store.dispatch(setEncryptedMnemonic(keyringManager.getSeed(password)));
     store.dispatch(setIsPendingBalances(false));
     store.dispatch(
       setActiveAccount({
@@ -314,6 +311,8 @@ const MainController = (walletState): IMainController => {
       })
     );
   };
+
+  const getSeed = (pwd: string) => keyringManager.getSeed(pwd);
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     try {
@@ -495,6 +494,7 @@ const MainController = (walletState): IMainController => {
     addCustomRpc,
     setIsAutolockEnabled,
     getRpc,
+    getSeed,
     editCustomRpc,
     removeKeyringNetwork,
     resolveAccountConflict,

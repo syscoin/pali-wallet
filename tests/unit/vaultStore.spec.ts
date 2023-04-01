@@ -18,7 +18,6 @@ import reducer, {
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
-  setEncryptedMnemonic,
   setIsPendingBalances,
   setLastLogin,
   setTimer,
@@ -36,18 +35,6 @@ describe('Vault store actions', () => {
     const newState = reducer(initialState, setTimer(payload));
 
     expect(newState.timer).toEqual(payload);
-  });
-
-  //* setEncryptedMnemonic
-  it('should set the encrypted mnemonic', () => {
-    const mnemonic =
-      'buffalo parade cotton festival trap gap judge slush wall top tired club';
-    const password = 'st0rngp@ssword';
-    const payload = AES.encrypt(mnemonic, password).toString();
-
-    const newState = reducer(initialState, setEncryptedMnemonic(payload));
-
-    expect(newState.encryptedMnemonic).toEqual(payload.toString());
   });
 
   //* setLastLogin

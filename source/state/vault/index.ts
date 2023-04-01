@@ -60,7 +60,6 @@ export const initialState: IVaultState = {
   timer: 5,
   isTimerEnabled: true,
   networks: initialNetworksState,
-  encryptedMnemonic: '',
   error: false,
 };
 
@@ -250,9 +249,6 @@ const VaultState = createSlice({
 
       state.accounts[type][id][property] = value;
     },
-    setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
-      state.encryptedMnemonic = action.payload;
-    },
     forgetWallet() {
       return initialState;
     },
@@ -358,7 +354,6 @@ export const {
   setNetworks,
   setTimer,
   setIsTimerEnabled,
-  setEncryptedMnemonic,
   forgetWallet,
   removeAccount,
   removeAccounts,

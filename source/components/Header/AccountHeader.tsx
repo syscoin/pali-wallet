@@ -6,6 +6,8 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
+import importIcon from 'assets/images/import.png';
+import logo from 'assets/images/whiteLogo.png';
 import { IconButton, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -77,18 +79,17 @@ const RenderAccountsListByBitcoinBased = (
         : Object.entries(accounts).map(
             ([keyringAccountType, accountTypeAccounts]) => (
               <div key={keyringAccountType}>
-                <h3>
-                  {keyringAccountType === KeyringAccountType.HDAccount
-                    ? 'Pali Account'
-                    : keyringAccountType}
-                </h3>
                 {Object.values(accountTypeAccounts).map(
                   (account, index, { length }) => (
                     <Tooltip
                       key={account.id}
                       childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
                       placement="top-end"
-                      content={account.address}
+                      content={
+                        account.isImported
+                          ? `${account.address} [imported]`
+                          : `${account.address} [pali account]`
+                      }
                     >
                       <li
                         className={`${
@@ -109,11 +110,16 @@ const RenderAccountsListByBitcoinBased = (
                       >
                         <span
                           style={{
-                            maxWidth: '11.25rem',
+                            maxWidth: '16.25rem',
                             textOverflow: 'ellipsis',
                           }}
-                          className="whitespace-nowrap overflow-hidden"
+                          className="flex whitespace-nowrap overflow-hidden"
                         >
+                          {account.isImported ? (
+                            <img src={importIcon} className="mr-1 w-5"></img>
+                          ) : (
+                            <img src={logo} className="mr-1 w-5"></img>
+                          )}{' '}
                           {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
@@ -143,10 +149,6 @@ const AccountMenu: React.FC = () => {
   const hdAccounts = Object.values(accounts.HDAccount);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
   );
 
   //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
@@ -194,7 +196,7 @@ const AccountMenu: React.FC = () => {
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encryptedMnemonic && <Icon name="dots" className="z-0" />}
+        <Icon name="dots" className="z-0" />
       </Menu.Button>
 
       <Transition
@@ -255,7 +257,7 @@ const AccountMenu: React.FC = () => {
                     className="relative"
                     style={{
                       paddingTop: `${
-                        open ? `${isBitcoinBased ? '45px' : '90px'}` : '0px'
+                        open ? `${isBitcoinBased ? '45px' : '94px'}` : '0px'
                       }`,
                     }}
                   >

@@ -14,9 +14,7 @@ export const Start = (props: any) => {
   const {
     wallet: { unlock },
   } = getController();
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
+  const { lastLogin } = useSelector((state: RootState) => state.vault);
 
   const { isExternal, externalRoute } = props;
 
@@ -63,7 +61,7 @@ export const Start = (props: any) => {
             },
             () => ({
               async validator(_, value) {
-                if (unlock(value)) {
+                if (await unlock(value)) {
                   return Promise.resolve();
                 }
 
@@ -104,7 +102,7 @@ export const Start = (props: any) => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      {encryptedMnemonic ? unLock : getStarted}
+      {lastLogin ? unLock : getStarted}
     </div>
   );
 };

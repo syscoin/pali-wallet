@@ -13,9 +13,6 @@ import { truncate, getHost } from 'utils/index';
 export const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
   const { isChangingConnectedAccount } = useSelector(
     (state: RootState) => state.vault.changingConnectedAccount
   );
@@ -102,14 +99,12 @@ export const GeneralMenu: React.FC = () => {
       </div>
 
       <Menu.Button as="button" className="mx-1.5">
-        {Boolean(encryptedMnemonic) && (
-          <div id="general-settings-button">
-            <Icon
-              name="settings"
-              className="hover:text-brand-royalblue text-brand-white"
-            />
-          </div>
-        )}
+        <div id="general-settings-button">
+          <Icon
+            name="settings"
+            className="hover:text-brand-royalblue text-brand-white"
+          />
+        </div>
       </Menu.Button>
 
       <Transition
