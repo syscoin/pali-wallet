@@ -22,7 +22,6 @@ import {
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
-  setActiveNetwork as setNetwork,
   setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
@@ -42,7 +41,6 @@ import { IMainController } from 'types/controllers';
 import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { isBitcoinBasedNetwork } from 'utils/network';
 
 import EthAccountController from './account/evm';
 import SysAccountController from './account/syscoin';
@@ -257,9 +255,8 @@ const MainController = (walletState): IMainController => {
           );
           const chainId = network.chainId.toString(16);
           const networkVersion = network.chainId;
-          store.dispatch(setNetwork(network));
           store.dispatch(setIsPendingBalances(false));
-          // await utilsController.setFiat();
+          await utilsController.setFiat();
 
           resolve({ chainId: chainId, networkVersion: networkVersion });
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
@@ -290,8 +287,6 @@ const MainController = (walletState): IMainController => {
               params: isBitcoinBased ? network.url : null,
             }
           );
-
-          // await utilsController.setFiat();
 
           store.dispatch(setStoreError(true));
           store.dispatch(setIsNetworkChanging(false));

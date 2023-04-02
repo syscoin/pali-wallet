@@ -8,7 +8,6 @@ import {
   getTokenByContract,
   getAsset,
   txUtils,
-  getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
@@ -43,27 +42,31 @@ const ControllerUtils = (): IControllerUtils => {
     switch (id) {
       case 'syscoin':
         try {
-          //TODO: validateSysRpc should not be called here
           const { chain } = await validateSysRpc(activeNetwork.url);
+          if (chain !== 'test') {
+            const currencies = await (
+              await fetch(`${activeNetwork.url}${ASSET_PRICE_API}`)
+            ).json();
+            if (currencies && currencies.rates) {
+              store.dispatch(setCoins(currencies.rates));
+              if (currencies.rates[currency.toLowerCase()]) {
+                store.dispatch(
+                  setPrices({
+                    asset: currency,
+                    price: currencies.rates[currency.toLowerCase()],
+                  })
+                );
+                return;
+              }
+            }
+          }
 
-          // const getFiatForSys = await getFiatValueByToken(id, currency);
-
-          // const price = chain === 'test' ? 0 : getFiatForSys;
-          //TODO:This asset price API won't fetch the price for other currencies apart of sys
-          // const currencies = await (
-          //   await fetch(`${ASSET_PRICE_API}/currency`)
-          // ).json();
-
-          // if (currencies && currencies.rates) {
-          //   store.dispatch(setCoins(currencies.rates));
-          // }
-
-          // store.dispatch(
-          //   setPrices({
-          //     asset: currency,
-          //     price,
-          //   })
-          // );
+          store.dispatch(
+            setPrices({
+              asset: currency,
+              price: 0,
+            })
+          );
         } catch (error) {
           logError('Failed to retrieve asset price', '', error);
         }
