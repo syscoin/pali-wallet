@@ -66,21 +66,23 @@ const RenderAccountsListByBitcoinBased = (
                     {account.label} ({ellipsis(account.address, 4, 8)})
                   </span>
 
-                  {activeAccount.id === account.id && (
-                    <Icon
-                      name="check"
-                      className="mb-1 w-4"
-                      wrapperClassname="absolute right-2.5"
-                    />
-                  )}
+                  {activeAccount.id === account.id &&
+                    activeAccount.type === KeyringAccountType.HDAccount && (
+                      <Icon
+                        name="check"
+                        className="mb-1 w-4"
+                        wrapperClassname="absolute right-2.5"
+                      />
+                    )}
                 </li>
               </Tooltip>
             ))
         : Object.entries(accounts).map(
             ([keyringAccountType, accountTypeAccounts]) => (
               <div key={keyringAccountType}>
-                {Object.values(accountTypeAccounts).map(
-                  (account, index, { length }) => (
+                {Object.values(accountTypeAccounts)
+                  .filter((account) => account.xpub !== '')
+                  .map((account, index, { length }) => (
                     <Tooltip
                       key={account.id}
                       childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
@@ -123,17 +125,17 @@ const RenderAccountsListByBitcoinBased = (
                           {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
 
-                        {activeAccount.id === account.id && (
-                          <Icon
-                            name="check"
-                            className="mb-1 w-4"
-                            wrapperClassname="absolute right-2.5"
-                          />
-                        )}
+                        {activeAccount.id === account.id &&
+                          activeAccount.type === keyringAccountType && (
+                            <Icon
+                              name="check"
+                              className="mb-1 w-4"
+                              wrapperClassname="absolute right-2.5"
+                            />
+                          )}
                       </li>
                     </Tooltip>
-                  )
-                )}
+                  ))}
               </div>
             )
           )}

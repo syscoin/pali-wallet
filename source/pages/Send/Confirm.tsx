@@ -241,6 +241,7 @@ export const SendConfirm = () => {
                     if (receipt) {
                       wallet.updateErcTokenBalances(
                         activeAccount.id,
+                        activeAccountMeta.type,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft,
@@ -300,6 +301,7 @@ export const SendConfirm = () => {
                     if (receipt) {
                       wallet.updateErcTokenBalances(
                         activeAccount.id,
+                        activeAccountMeta.type,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft

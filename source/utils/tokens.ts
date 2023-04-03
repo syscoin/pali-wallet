@@ -2,6 +2,7 @@ import axios from 'axios';
 import { ethers } from 'ethers';
 import lodash from 'lodash';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -22,10 +23,13 @@ export const getSymbolByChain = async (chain: string) => {
   return data.symbol.toString().toUpperCase();
 };
 
-export const getBalanceUpdatedToErcTokens = async (accountId: number) => {
+export const getBalanceUpdatedToErcTokens = async (
+  accountId: number,
+  accountType: KeyringAccountType
+) => {
   const { accounts, networks } = store.getState().vault;
 
-  const findAccount = accounts[accountId];
+  const findAccount = accounts[accountType][accountId];
   try {
     const updatedTokens = await Promise.all(
       findAccount.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {

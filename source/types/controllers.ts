@@ -67,6 +67,7 @@ export interface IMainController extends IKeyringManager {
   unlock: (pwd: string) => Promise<boolean>;
   updateErcTokenBalances: (
     accountId: number,
+    accountType: KeyringAccountType,
     tokenAddress: string,
     tokenChain: number,
     isNft: boolean,

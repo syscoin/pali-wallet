@@ -385,8 +385,11 @@ const MainController = (walletState): IMainController => {
     return keyringManager.ethereumTransaction.getRecommendedGasPrice(true);
   };
 
+  //TODO: Review this function it seems the accountId and accountType being passed are always activeAccount values from vault
+  //It seems a bit unnecessary to pass them as params
   const updateErcTokenBalances = async (
     accountId: number,
+    accountType: KeyringAccountType,
     tokenAddress: string,
     tokenChain: number,
     isNft: boolean,
@@ -422,23 +425,24 @@ const MainController = (walletState): IMainController => {
       ? floor(parseFloat(balance as string), 4)
       : balance;
 
-    const newAccountsAssets = accounts[accountId].assets.ethereum.map(
-      (vaultAssets: ITokenEthProps) => {
-        if (
-          Number(vaultAssets.chainId) === tokenChain &&
-          vaultAssets.contractAddress === tokenAddress
-        ) {
-          return { ...vaultAssets, balance: formattedBalance };
-        }
-
-        return vaultAssets;
+    const newAccountsAssets = accounts[accountType][
+      accountId
+    ].assets.ethereum.map((vaultAssets: ITokenEthProps) => {
+      if (
+        Number(vaultAssets.chainId) === tokenChain &&
+        vaultAssets.contractAddress === tokenAddress
+      ) {
+        return { ...vaultAssets, balance: formattedBalance };
       }
-    );
+
+      return vaultAssets;
+    });
 
     if (!isNetworkChanging) {
       store.dispatch(
         setUpdatedTokenBalace({
           accountId: findAccount.id,
+          accountType: activeAccount.type,
           newAccountsAssets,
         })
       );

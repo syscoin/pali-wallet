@@ -81,7 +81,10 @@ describe('Vault store actions', () => {
 
     //* removeAccount
     it('should remove an account', () => {
-      const payload = { id: fakeAccount1.id };
+      const payload = {
+        id: fakeAccount1.id,
+        type: KeyringAccountType.HDAccount,
+      };
       const newState = reducer(stateWithAccounts, removeAccount(payload));
 
       expect(newState.accounts[fakeAccount1.id]).not.toBeDefined();

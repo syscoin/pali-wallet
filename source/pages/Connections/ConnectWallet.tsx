@@ -65,7 +65,7 @@ export const ConnectWallet = () => {
   }, [isUnlocked]);
 
   return (
-    <Layout canGoBack={false} title="CONNECT WITH" titleOnly={true}>
+    <Layout canGoBack={false} title="CONNECT ACCOUNT" titleOnly={true}>
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="mt-4 text-sm">PALI WALLET</h1>
 
@@ -91,11 +91,12 @@ export const ConnectWallet = () => {
                     {accountList.map((acc) => (
                       <li
                         className={`${
-                          acc.id === currentAccountId
+                          acc.id === currentAccountId &&
+                          accountType === keyringAccountType
                             ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                             : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
                         } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
-                        key={acc.id}
+                        key={`${acc.id}-${keyringAccountType}`}
                         onClick={() => {
                           setAccountId(acc.id);
                           setAccountType(
@@ -110,7 +111,8 @@ export const ConnectWallet = () => {
 
                           <div
                             className={`${
-                              acc.id === accountId
+                              acc.id === accountId &&
+                              accountType === keyringAccountType
                                 ? 'bg-warning-success'
                                 : 'bg-brand-graylight'
                             } w-3 h-3 rounded-full border border-brand-royalblue`}
@@ -142,7 +144,7 @@ export const ConnectWallet = () => {
           <PrimaryButton
             type="button"
             action
-            disabled={accountId === undefined}
+            disabled={accountId === undefined && accountType === undefined}
             onClick={onConfirm}
           >
             Confirm

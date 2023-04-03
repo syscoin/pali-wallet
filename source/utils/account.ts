@@ -1,3 +1,5 @@
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import {
   IVaultState,
   IOmittedVault,
@@ -18,10 +20,10 @@ export const removeSensitiveDataFromVault = (
   const accounts = {};
 
   for (const account of Object.values(vault.accounts.HDAccount)) {
-    accounts[account.id] = removeXprv(account);
+    accounts[KeyringAccountType.HDAccount][account.id] = removeXprv(account);
   }
   for (const account of Object.values(vault.accounts.Imported)) {
-    accounts[account.id] = removeXprv(account);
+    accounts[KeyringAccountType.Imported][account.id] = removeXprv(account);
   }
 
   return {

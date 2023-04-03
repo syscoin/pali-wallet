@@ -93,6 +93,10 @@ const VaultState = createSlice({
       for (const accountType in wallet.accounts) {
         for (const accountId in wallet.accounts[accountType]) {
           const account = wallet.accounts[accountType][accountId];
+          if (!account.xpub) {
+            //This is for the default imported account, we don't want to add it yet to pali State
+            continue;
+          }
           const mainAccount: IPaliAccount =
             state.accounts[accountType][account.id];
           // Update the account properties, leaving the assets and transactions fields unchanged
@@ -271,8 +275,12 @@ const VaultState = createSlice({
       };
       state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },
-    removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
-      delete state.accounts[action.payload.id];
+    removeAccount(
+      state: IVaultState,
+      action: PayloadAction<{ id: number; type: KeyringAccountType }>
+    ) {
+      const { id, type } = action.payload;
+      delete state.accounts[type][id];
     },
     setAccountLabel(
       state: IVaultState,
@@ -299,16 +307,18 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         accountId: number;
+        accountType: KeyringAccountType;
         newAccountsAssets: any;
       }>
     ) {
-      const { newAccountsAssets, accountId } = action.payload;
+      const { newAccountsAssets, accountId, accountType } = action.payload;
 
       const { isBitcoinBased } = state;
       //TODO: remove this if condition and guarantee that this redux state is only called on the appropriate state transition.
       //TODO: the appropriate state transition is updating ERC tokens balance, so its a great concern that this if is here
       if (!isBitcoinBased) {
-        state.accounts[accountId].assets.ethereum = newAccountsAssets;
+        state.accounts[accountType][accountId].assets.ethereum =
+          newAccountsAssets;
       }
     },
     setUpdatedAllErcTokensBalance(
@@ -334,7 +344,7 @@ const VaultState = createSlice({
       )
         return;
 
-      state.accounts[accountId].assets.ethereum = updatedTokens;
+      state.accounts[type][accountId].assets.ethereum = updatedTokens;
     },
   },
 });
