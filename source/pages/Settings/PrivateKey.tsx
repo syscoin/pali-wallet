@@ -28,12 +28,17 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) =>
-    controller.wallet.getPrivateKeyByAccountId(
-      activeAccountMeta.id,
-      activeAccountMeta.type,
-      key
-    );
+  const getDecryptedPrivateKey = (key: string) => {
+    try {
+      return controller.wallet.getPrivateKeyByAccountId(
+        activeAccountMeta.id,
+        activeAccountMeta.type,
+        key
+      );
+    } catch (e) {
+      console.log('Wrong password', e);
+    }
+  };
 
   useEffect(() => {
     if (!copied) return;
@@ -89,8 +94,8 @@ const PrivateKeyView = () => {
               message: '',
             },
             () => ({
-              validator(_, pwd) {
-                if (controller.wallet.unlock(pwd)) {
+              async validator(_, pwd) {
+                if (await controller.wallet.unlock(pwd)) {
                   setValid(true);
 
                   return Promise.resolve();
