@@ -66,9 +66,7 @@ export const ConnectWallet = () => {
 
   return (
     <Layout canGoBack={false} title="CONNECT ACCOUNT" titleOnly={true}>
-      <div className="flex flex-col items-center justify-center w-full">
-        <h1 className="mt-4 text-sm">PALI WALLET</h1>
-
+      <div className="flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
@@ -80,14 +78,25 @@ export const ConnectWallet = () => {
               }
 
               const accountList = Object.values(account);
+
+              if (!accountList.length) return null;
               return (
-                <div key={keyringAccountType}>
-                  <h3 className="mb-2 text-lg font-semibold">
+                <div
+                  key={keyringAccountType}
+                  className="h-fit flex flex-col text-center"
+                >
+                  <h3 className="text-sm font-semibold">
                     {keyringAccountType === KeyringAccountType.HDAccount
                       ? 'Pali Account'
                       : keyringAccountType}
                   </h3>
-                  <ul className="scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-64 overflow-auto">
+                  <ul
+                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-${
+                      accountList.length === 1 || accountList.length === 2
+                        ? 'fit'
+                        : '32'
+                    } overflow-auto`}
+                  >
                     {accountList.map((acc) => (
                       <li
                         className={`${
@@ -95,7 +104,7 @@ export const ConnectWallet = () => {
                           accountType === keyringAccountType
                             ? 'cursor-not-allowed bg-opacity-50 border-brand-royalblue'
                             : 'cursor-pointer hover:bg-bkg-4 border-brand-royalblue'
-                        } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 flex justify-between items-center transition-all duration-200`}
+                        } border border-solid  rounded-lg px-2 py-4 text-xs bg-bkg-2 w-48 flex justify-between items-center transition-all duration-200`}
                         key={`${acc.id}-${keyringAccountType}`}
                         onClick={() => {
                           setAccountId(acc.id);
@@ -131,7 +140,7 @@ export const ConnectWallet = () => {
           </div>
         )}
 
-        <small className="mb-8 text-center text-brand-royalblue text-sm">
+        <small className="absolute bottom-28 text-center text-brand-royalblue text-sm">
           Only connect with sites you trust.{' '}
           <a href="https://docs.syscoin.org/">Learn more.</a>
         </small>

@@ -26,13 +26,7 @@ export const initialState: IVaultState = {
         transactions: [],
       },
     },
-    [KeyringAccountType.Imported]: {
-      [initialActiveImportedAccountState.id]: {
-        ...initialActiveImportedAccountState,
-        assets: { ethereum: [], syscoin: [] },
-        transactions: [],
-      },
-    },
+    [KeyringAccountType.Imported]: {},
     //TODO: add Trezor account type here
   },
   activeAccount: {
