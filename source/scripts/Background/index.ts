@@ -175,8 +175,6 @@ async function checkForUpdates() {
       );
     }
   } else {
-    console.log('await evm polling');
-
     const evmTx =
       await window.controller.wallet.transactions.evm.pollingEvmTransactions(
         isBitcoinBased,

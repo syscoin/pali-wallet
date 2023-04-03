@@ -75,8 +75,6 @@ export const manageAndDealWithUserTxs = (
 
   const { transactions: userTransactions } = accounts[activeAccount];
 
-  console.log('userTransactions', userTransactions);
-
   const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
 
   const txAlreadyExists = Boolean(
@@ -119,19 +117,21 @@ export const manageAndDealWithUserTxs = (
 
       if (searchForTxIndex === -1) return compareArrays(manageArray);
 
-      manageArray.map((item) => {
-        if (
-          item[txIdValidated] !== manageArray[searchForTxIndex][txIdValidated]
-        )
-          return item;
-        return { ...item, confirmations: tx.confirmations };
+      const changedArray = manageArray.map((item) => {
+        const isIndexToChange = Boolean(
+          item[txIdValidated] === manageArray[searchForTxIndex][txIdValidated]
+        );
+
+        if (isIndexToChange)
+          return Object.assign({}, item, { confirmations: tx.confirmations });
+
+        return item;
       });
 
-      return compareArrays(manageArray);
+      return compareArrays(changedArray);
 
     case false:
       if (!userTxsLimitLength) {
-        console.log('userTransactions', userTransactions);
         const arrayToAdd = clone(
           isBitcoinBased
             ? (compact(userTransactions) as ISysTransaction[])
@@ -164,6 +164,7 @@ export const validateAndManageUserTransactions = (
     // @ts-ignore @ts-expect-error FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
     providerTxs.map((tx: any) => manageAndDealWithUserTxs(tx))
   ) as IEvmTransactionResponse[] | ISysTransaction[];
+
   // @ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
   return treatedTxs;
 };

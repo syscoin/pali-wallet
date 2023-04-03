@@ -314,8 +314,6 @@ const MainController = (): IMainController => {
       account.xpub
     );
 
-    console.log('seed createa acc txs', initialTxsForAccount);
-
     const newAccountWithAssets = {
       ...account,
       assets: {
@@ -364,8 +362,6 @@ const MainController = (): IMainController => {
     const initialTxsForAccount = await getInitialSysTransactionsForAccount(
       newAccount.xpub
     );
-
-    console.log(' creating new txs', initialTxsForAccount);
 
     const newAccountWithAssets = {
       ...newAccount,
