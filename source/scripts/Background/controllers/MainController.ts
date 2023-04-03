@@ -95,13 +95,20 @@ const MainController = (): IMainController => {
         activeNetwork.url
       )
       .then((updatedTxs) => {
-        if (updatedTxs.length === 0) return;
+        if (updatedTxs.length === 0) {
+          store.dispatch(setIsLoadingTxs(false));
+          return;
+        }
         store.dispatch(
           setActiveAccountProperty({
             property: 'transactions',
             value: updatedTxs,
           })
         );
+      })
+      .catch((err) => {
+        console.log({ err });
+        store.dispatch(setIsLoadingTxs(false));
       })
       .finally(() => store.dispatch(setIsLoadingTxs(false)));
 
