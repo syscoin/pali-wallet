@@ -67,28 +67,35 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     networkUrl: string
   ) => {
     store.dispatch(setIsLoadingTxs(true));
-    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+    try {
+      const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
-    const latestBlockNumber = await provider.getBlockNumber();
+      const latestBlockNumber = await provider.getBlockNumber();
 
-    const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
+      const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
 
-    if (Boolean(isBitcoinBased || latestBlockNumber === LAST_PROCESSED_BLOCK)) {
-      return;
+      if (Boolean(isBitcoinBased)) {
+        store.dispatch(setIsLoadingTxs(false));
+        return;
+      }
+
+      const txs = await getUserTransactionByDefaultProvider(
+        currentAccount,
+        networkUrl,
+        fromBlock,
+        latestBlockNumber
+      );
+
+      console.log('after tx', txs);
+      LAST_PROCESSED_BLOCK = latestBlockNumber;
+
+      store.dispatch(setIsLoadingTxs(false));
+      return flatMap(txs);
+    } catch (error) {
+      store.dispatch(setIsLoadingTxs(false));
+
+      console.log(error);
     }
-
-    const txs = await getUserTransactionByDefaultProvider(
-      currentAccount,
-      networkUrl,
-      fromBlock,
-      latestBlockNumber
-    );
-
-    console.log('after tx', txs);
-    LAST_PROCESSED_BLOCK = latestBlockNumber;
-
-    store.dispatch(setIsLoadingTxs(false));
-    return flatMap(txs);
   };
 
   return {

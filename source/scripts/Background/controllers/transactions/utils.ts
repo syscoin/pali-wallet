@@ -106,7 +106,9 @@ export const manageAndDealWithUserTxs = (
   switch (txAlreadyExists) {
     //Only try to update Confirmations property if is different
     case true:
-      const manageArray = [...userTransactions] as IEvmTransactionResponse[];
+      const manageArray = compact(
+        Object.values(userTransactions)
+      ) as IEvmTransactionResponse[];
 
       const searchForTxIndex = manageArray.findIndex(
         (userTxs) =>
@@ -115,7 +117,7 @@ export const manageAndDealWithUserTxs = (
           userTxs.confirmations !== tx.confirmations
       );
 
-      if (searchForTxIndex === -1) break;
+      if (searchForTxIndex === -1) return compareArrays(manageArray);
 
       manageArray.map((item) => {
         if (
@@ -129,10 +131,13 @@ export const manageAndDealWithUserTxs = (
 
     case false:
       if (!userTxsLimitLength) {
+        console.log('userTransactions', userTransactions);
         const arrayToAdd = clone(
           isBitcoinBased
             ? (compact(userTransactions) as ISysTransaction[])
-            : (Object.values(userTransactions) as IEvmTransactionResponse[])
+            : (compact(
+                Object.values(userTransactions)
+              ) as IEvmTransactionResponse[])
         );
 
         arrayToAdd.unshift(tx as ISysTransaction & IEvmTransactionResponse);

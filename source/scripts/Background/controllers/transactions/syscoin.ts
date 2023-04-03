@@ -43,7 +43,10 @@ const SysTransactionController = (): ISysTransactionsController => {
         compact(treatedSysTxs as ISysTransaction[]).length === 0
     );
     //This mean that we don't have any TXs to update in state, so we can stop here
-    if (validateIfManageState) return;
+    if (validateIfManageState) {
+      store.dispatch(setIsLoadingTxs(false));
+      return;
+    }
 
     return treatedSysTxs as ISysTransaction[];
   };
