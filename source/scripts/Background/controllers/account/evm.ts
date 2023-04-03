@@ -8,17 +8,12 @@ import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import { setActiveAccountProperty } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
-
-export interface IEthTransactions extends IEthereumTransactions {
-  saveTransaction: (tx: any) => void;
-  sendAndSaveTransaction: (tx: any) => Promise<void>;
-}
 
 export interface IEthAccountController extends IWeb3Accounts {
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
-  tx: IEthTransactions;
+  tx: IEthereumTransactions;
 }
 
 const EthAccountController = (): IEthAccountController => {
@@ -79,30 +74,11 @@ const EthAccountController = (): IEthAccountController => {
     }
   };
 
-  const sendAndSaveTransaction = async (tx: any) => {
-    store.dispatch(setAccountTransactions(await txs.sendTransaction(tx)));
-  };
-
-  const saveTransaction = (tx: any) => {
-    store.dispatch(setAccountTransactions(tx));
-  };
-
-  const tx: IEthTransactions = {
-    sendAndSaveTransaction,
-    saveTransaction,
-    ...txs,
-  };
-
   return {
     saveTokenInfo,
-    tx,
+    tx: txs,
     ...web3Accounts,
   };
 };
 
 export default EthAccountController;
-
-export const saveTransaction = (tx: any) => {
-  const finalTx = { ...tx, timestamp: Math.floor(Date.now() / 1000) };
-  store.dispatch(setAccountTransactions(finalTx));
-};

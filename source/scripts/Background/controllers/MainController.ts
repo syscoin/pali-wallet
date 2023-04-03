@@ -53,6 +53,7 @@ import AssetsManager from './assets';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import TransactionsManager from './transactions';
+import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
 
 const MainController = (): IMainController => {
   const keyringManager = KeyringManager();
@@ -106,6 +107,32 @@ const MainController = (): IMainController => {
       .finally(() => store.dispatch(setIsLoadingTxs(false)));
 
     //Only manage states if we have some Tx to update
+  };
+
+  const sendAndSaveTransaction = (
+    tx: IEvmTransactionResponse | ISysTransaction
+  ) => {
+    const {
+      activeNetwork: { url: networkUrl },
+      isBitcoinBased,
+    } = store.getState().vault;
+
+    console.log('tx being added', tx);
+
+    store.dispatch(setIsLoadingTxs(true));
+
+    transactionsManager.utils
+      .getTransactionsToSaveAfterSend(isBitcoinBased, tx, networkUrl)
+      .then((updatedTxs) => {
+        if (updatedTxs.length === 0) return;
+        store.dispatch(
+          setActiveAccountProperty({
+            property: 'transactions',
+            value: updatedTxs,
+          })
+        );
+      })
+      .finally(() => store.dispatch(setIsLoadingTxs(false)));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -622,6 +649,7 @@ const MainController = (): IMainController => {
     account: walletController.account,
     assets: assetsManager,
     transactions: transactionsManager,
+    sendAndSaveTransaction,
     setAccount,
     setAutolockTimer,
     setActiveNetwork,

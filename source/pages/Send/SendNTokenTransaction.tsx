@@ -7,7 +7,6 @@ import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
-import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -23,7 +22,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 export const SendNTokenTransaction = () => {
   const {
     refresh,
-    wallet: { account },
+    wallet: { account, sendAndSaveTransaction },
   } = getController();
 
   const txs = account.eth.tx;
@@ -92,15 +91,16 @@ export const SendNTokenTransaction = () => {
       const txWithoutType = omitTransactionObjectData(txToSend, [
         'type',
       ]) as ITxState;
-      try {
-        if (isLegacyTransaction) {
+
+      if (isLegacyTransaction) {
+        try {
           const getGasCorrectlyGasPrice = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await txs.getRecommendedGasPrice();
 
-          await txs
+          txs
             .sendFormattedTransaction({
               ...txWithoutType,
               gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
@@ -122,8 +122,19 @@ export const SendNTokenTransaction = () => {
             });
 
           return;
-        } else {
-          await txs
+        } catch (legacyError: any) {
+          logError('error', 'Transaction', legacyError);
+
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return legacyError;
+        }
+      } else {
+        try {
+          txs
             .sendFormattedTransaction({
               ...txWithoutType,
               maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -164,16 +175,16 @@ export const SendNTokenTransaction = () => {
             });
 
           return;
+        } catch (notLegacyError) {
+          logError('error', 'Transaction', notLegacyError);
+
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return notLegacyError;
         }
-      } catch (error: any) {
-        logError('error', 'Transaction', error);
-
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
-
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
-        return error;
       }
     }
   };
@@ -257,7 +268,7 @@ export const SendNTokenTransaction = () => {
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
           refresh();
-          saveTransaction(confirmedTx);
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) window.close();
           else navigate('/home');
         }}

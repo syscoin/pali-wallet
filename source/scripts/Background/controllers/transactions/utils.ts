@@ -68,14 +68,24 @@ export const findUserTxsInProviderByBlocksRange = async (
   return flatMap(txsWithTimestampTreated);
 };
 
-export const validateAndManageUserTransactions = (
-  providerTxs: IEvmTransactionResponse[] | ISysTransaction[]
+export const manageAndDealWithUserTxs = (
+  tx: IEvmTransactionResponse | ISysTransaction
 ): IEvmTransactionResponse[] | ISysTransaction[] => {
   const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
   const { transactions: userTransactions } = accounts[activeAccount];
 
   console.log('userTransactions', userTransactions);
+
+  const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
+
+  const txAlreadyExists = Boolean(
+    !isEmpty(compact(userTransactions)) &&
+      userTransactions.find(
+        (txs: IEvmTransactionResponse) =>
+          txs[txIdValidated]?.toLowerCase() === tx[txIdValidated]?.toLowerCase()
+      )
+  );
 
   const clonedUserTransactionsArray = clone(
     isBitcoinBased
@@ -93,72 +103,62 @@ export const validateAndManageUserTransactions = (
     return !isArrayEquals ? arrayToCompare : [];
   };
 
-  const manageAndDealTxs = (
-    tx: IEvmTransactionResponse | ISysTransaction
-  ): IEvmTransactionResponse[] | ISysTransaction[] => {
-    const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
+  switch (txAlreadyExists) {
+    //Only try to update Confirmations property if is different
+    case true:
+      const manageArray = [...userTransactions] as IEvmTransactionResponse[];
 
-    const txAlreadyExists = Boolean(
-      !isEmpty(compact(userTransactions)) &&
-        userTransactions.find(
-          (txs: IEvmTransactionResponse) =>
-            txs[txIdValidated]?.toLowerCase() ===
-            tx[txIdValidated]?.toLowerCase()
+      const searchForTxIndex = manageArray.findIndex(
+        (userTxs) =>
+          userTxs[txIdValidated].toLowerCase() ===
+            tx[txIdValidated].toLowerCase() &&
+          userTxs.confirmations !== tx.confirmations
+      );
+
+      if (searchForTxIndex === -1) break;
+
+      manageArray.map((item) => {
+        if (
+          item[txIdValidated] !== manageArray[searchForTxIndex][txIdValidated]
         )
-    );
+          return item;
+        return { ...item, confirmations: tx.confirmations };
+      });
 
-    switch (txAlreadyExists) {
-      //Only try to update Confirmations property if is different
-      case true:
-        const manageArray = [...userTransactions] as IEvmTransactionResponse[];
+      return compareArrays(manageArray);
 
-        const searchForTxIndex = manageArray.findIndex(
-          (userTxs) =>
-            userTxs[txIdValidated].toLowerCase() ===
-              tx[txIdValidated].toLowerCase() &&
-            userTxs.confirmations !== tx.confirmations
+    case false:
+      if (!userTxsLimitLength) {
+        const arrayToAdd = clone(
+          isBitcoinBased
+            ? (compact(userTransactions) as ISysTransaction[])
+            : (Object.values(userTransactions) as IEvmTransactionResponse[])
         );
 
-        if (searchForTxIndex === -1) break;
+        arrayToAdd.unshift(tx as ISysTransaction & IEvmTransactionResponse);
 
-        manageArray.map((item) => {
-          if (
-            item[txIdValidated] !== manageArray[searchForTxIndex][txIdValidated]
-          )
-            return item;
-          return { ...item, confirmations: tx.confirmations };
-        });
+        return compareArrays(arrayToAdd);
+      } else {
+        const arrayToManage = [...userTransactions];
 
-        return compareArrays(manageArray);
+        arrayToManage.pop();
 
-      case false:
-        if (!userTxsLimitLength) {
-          console.log('userTransactions', userTransactions);
-          const arrayToAdd = clone(
-            isBitcoinBased
-              ? (compact(userTransactions) as ISysTransaction[])
-              : (Object.values(userTransactions) as IEvmTransactionResponse[])
-          );
+        arrayToManage.unshift(tx);
 
-          arrayToAdd.unshift(tx as ISysTransaction & IEvmTransactionResponse);
+        return compareArrays(arrayToManage);
+      }
+    default:
+      break;
+  }
+};
 
-          return compareArrays(arrayToAdd);
-        } else {
-          const arrayToManage = [...userTransactions];
-
-          arrayToManage.pop();
-
-          arrayToManage.unshift(tx);
-
-          return compareArrays(arrayToManage);
-        }
-      default:
-        break;
-    }
-  };
-
-  //@ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
-  const treatedTxs = flatMap(providerTxs.map((tx) => manageAndDealTxs(tx)));
-  //@ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
+export const validateAndManageUserTransactions = (
+  providerTxs: IEvmTransactionResponse[] | ISysTransaction[]
+): IEvmTransactionResponse[] | ISysTransaction[] => {
+  const treatedTxs = flatMap(
+    // @ts-ignore @ts-expect-error FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
+    providerTxs.map((tx: any) => manageAndDealWithUserTxs(tx))
+  ) as IEvmTransactionResponse[] | ISysTransaction[];
+  // @ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
   return treatedTxs;
 };

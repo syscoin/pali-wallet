@@ -7,7 +7,7 @@ import { sysweb3Di } from '@pollum-io/sysweb3-core';
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 // import { localStorage } from 'redux-persist-webextension-storage';
-import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import { setActiveAccountProperty } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';

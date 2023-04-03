@@ -1,7 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
-import { saveTransaction } from '../account/evm';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -51,7 +50,7 @@ export const popupPromise = async ({
             route === 'tx/send/approve' ||
             route === 'tx/send/nTokenTx'
           ) {
-            saveTransaction(event.detail);
+            window.controller.wallet.sendAndSaveTransaction(event.detail);
             resolve(event.detail.hash);
           }
           resolve(event.detail);

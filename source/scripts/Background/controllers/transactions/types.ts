@@ -143,6 +143,11 @@ export interface ISysTransactionsController {
 
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
 export interface ITransactionsManagerUtils {
+  getTransactionsToSaveAfterSend: (
+    isBitcoinBased: boolean,
+    tx: IEvmTransactionResponse | ISysTransaction,
+    networkUrl?: string
+  ) => Promise<IEvmTransactionResponse[] | ISysTransaction[]>;
   updateTransactionsFromCurrentAccount: (
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
