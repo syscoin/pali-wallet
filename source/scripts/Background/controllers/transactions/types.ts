@@ -141,17 +141,10 @@ export interface ISysTransactionsController {
 //------------------------- END SYS TYPES / INTERFACES -------------------------//
 
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
-export interface ITransactionsManagerUtils {
-  updateTransactionsFromCurrentAccount: (
-    currentAccount: IKeyringAccountState,
-    isBitcoinBased: boolean,
-    activeNetworkUrl: string
-  ) => Promise<ISysTransaction[] | IEvmTransaction[]>;
-}
+
 export interface ITransactionsManager {
   evm: IEvmTransactionsController;
   sys: ISysTransactionsController;
-  utils: ITransactionsManagerUtils;
 }
 
 //------------------------- END MANAGER TYPES / INTERFACES -------------------------//

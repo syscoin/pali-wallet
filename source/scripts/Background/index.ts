@@ -6,7 +6,7 @@ import { sysweb3Di } from '@pollum-io/sysweb3-core';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -138,40 +138,49 @@ async function checkForUpdates() {
     //todo: do we also need to return if walle is unlocked?
     return;
   }
-  const activeAccountId = vault.activeAccount;
-  const account = vault.accounts?.[activeAccountId];
-  const isBitcoinBased = vault.isBitcoinBased;
-  const network = vault.activeNetwork;
+
+  const {
+    activeAccount: activeAccountId,
+    accounts,
+    isBitcoinBased,
+    activeNetwork: network,
+  } = vault;
+
+  const currentAccount = accounts[activeAccountId];
 
   if (isBitcoinBased) {
     const sysTx =
       await window.controller.wallet.transactions.sys.pollingSysTransactions(
-        account.xpub,
+        currentAccount.xpub,
         network.url
       );
 
     if (sysTx?.length > 0) {
+      store.dispatch(setIsLoadingTxs(true));
       store.dispatch(
         setActiveAccountProperty({
           property: 'transactions',
           value: sysTx,
         })
       );
+      store.dispatch(setIsLoadingTxs(false));
     }
   } else {
     const evmTx =
       await window.controller.wallet.transactions.evm.pollingEvmTransactions(
-        account,
+        currentAccount,
         network.url
       );
 
     if (evmTx?.length > 0) {
+      store.dispatch(setIsLoadingTxs(true));
       store.dispatch(
         setActiveAccountProperty({
           property: 'transactions',
           value: evmTx,
         })
       );
+      store.dispatch(setIsLoadingTxs(false));
     }
   }
 }

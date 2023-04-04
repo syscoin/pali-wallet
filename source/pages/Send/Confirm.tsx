@@ -89,7 +89,6 @@ export const SendConfirm = () => {
       switch (true) {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
-          // Just reiterating it does not make any sense to add a ethers provider inside a UTXO code block
           try {
             sysTxsController
               .sendTransaction(basicTxValues)

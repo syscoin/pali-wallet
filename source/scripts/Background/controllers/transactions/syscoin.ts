@@ -1,9 +1,9 @@
 import sys from 'syscoinjs-lib';
 
 import store from 'state/store';
-import { setIsLoadingTxs } from 'state/vault';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
+import { treatDuplicatedTxs } from './utils';
 
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
@@ -31,13 +31,15 @@ const SysTransactionController = (): ISysTransactionsController => {
     xpub: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
-    store.dispatch(setIsLoadingTxs(true));
+    const { accounts, activeAccount } = store.getState().vault;
+
+    const { transactions: userTransactions } = accounts[activeAccount];
 
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
-    store.dispatch(setIsLoadingTxs(false));
+    const mergedArrays = [...getSysTxs, ...userTransactions];
 
-    return getSysTxs;
+    return treatDuplicatedTxs(mergedArrays) as ISysTransaction[];
   };
 
   return {

@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
+import isEmpty from 'lodash/isEmpty';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
@@ -66,22 +67,52 @@ export const findUserTxsInProviderByBlocksRange = async (
   return flatMap(userProviderTxs);
 };
 
-const treatDuplicatedTxs = (transactions: IEvmTransactionResponse[]) =>
+export const treatDuplicatedTxs = (
+  transactions: IEvmTransactionResponse[] | ISysTransaction[]
+) =>
   uniqWith(
     transactions,
-    (a: IEvmTransactionResponse, b: IEvmTransactionResponse) => {
-      if (a.hash.toLowerCase() === b.hash.toLowerCase()) {
+    (
+      a: IEvmTransactionResponse | ISysTransaction,
+      b: IEvmTransactionResponse | ISysTransaction
+    ) => {
+      const idA = 'hash' in a ? a.hash : a.txid;
+      const idB = 'hash' in b ? b.hash : b.txid;
+
+      const TSTAMP_PROP = 'timestamp';
+      const BLOCKTIME_PROP = 'blockTime';
+
+      if (idA.toLowerCase() === idB.toLowerCase()) {
         // Keep the transaction with the higher confirmation number
-        console.log(a.hash.toLowerCase() === b.hash.toLowerCase());
         if (a.confirmations > b.confirmations) {
-          // Preserve timestamp if available
-          if (b.timestamp && !a.timestamp) {
-            a.timestamp = b.timestamp;
+          // Preserve timestamp if available and valid
+          if (
+            b[TSTAMP_PROP] &&
+            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] < b[TSTAMP_PROP])
+          ) {
+            a[TSTAMP_PROP] = b[TSTAMP_PROP];
+          }
+          // Preserve blockTime if available and valid
+          if (
+            b[BLOCKTIME_PROP] &&
+            (!a[BLOCKTIME_PROP] || a[BLOCKTIME_PROP] < b[BLOCKTIME_PROP])
+          ) {
+            a[BLOCKTIME_PROP] = b[BLOCKTIME_PROP];
           }
         } else {
-          // Preserve timestamp if available
-          if (a.timestamp && !b.timestamp) {
-            b.timestamp = a.timestamp;
+          // Preserve timestamp if available and valid
+          if (
+            a[TSTAMP_PROP] &&
+            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] < a[TSTAMP_PROP])
+          ) {
+            b[TSTAMP_PROP] = a[TSTAMP_PROP];
+          }
+          // Preserve blockTime if available and valid
+          if (
+            a[BLOCKTIME_PROP] &&
+            (!b[BLOCKTIME_PROP] || b[BLOCKTIME_PROP] < a[BLOCKTIME_PROP])
+          ) {
+            b[BLOCKTIME_PROP] = a[BLOCKTIME_PROP];
           }
         }
         return true;
@@ -93,6 +124,9 @@ const treatDuplicatedTxs = (transactions: IEvmTransactionResponse[]) =>
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
 ): IEvmTransactionResponse[] => {
+  //If providedTxs is empty only return an empty array to we don't need to dispatch any Tx or validated it with the userTxs state
+  if (isEmpty(providerTxs)) return [];
+
   const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
   const { transactions: userTransactions } = accounts[activeAccount];

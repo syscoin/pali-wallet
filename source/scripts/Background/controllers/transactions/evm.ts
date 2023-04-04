@@ -3,9 +3,6 @@ import flatMap from 'lodash/flatMap';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
-import store from 'state/store';
-import { setIsLoadingTxs } from 'state/vault';
-
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
@@ -57,7 +54,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
-    store.dispatch(setIsLoadingTxs(true));
     try {
       const provider = new ethers.providers.JsonRpcProvider(networkUrl);
 
@@ -75,8 +71,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return flatMap(txs);
     } catch (error) {
       console.log(error);
-    } finally {
-      store.dispatch(setIsLoadingTxs(false));
     }
   };
 

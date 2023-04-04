@@ -1,7 +1,10 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import { clone, compact, isEmpty, isNil } from 'lodash';
+import clone from 'lodash/clone';
+import compact from 'lodash/compact';
 import floor from 'lodash/floor';
+import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
 import omit from 'lodash/omit';
 
 import {
@@ -82,37 +85,26 @@ const MainController = (): IMainController => {
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const updateUserTransactionsState = () => {
-    const { isBitcoinBased, accounts, activeAccount, activeNetwork } =
-      store.getState().vault;
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount];
 
-    store.dispatch(setIsLoadingTxs(true));
-
-    transactionsManager.utils
-      .updateTransactionsFromCurrentAccount(
-        currentAccount,
-        isBitcoinBased,
-        activeNetwork.url
-      )
+    transactionsManager.evm
+      .pollingEvmTransactions(currentAccount, activeNetwork.url)
       .then((updatedTxs) => {
-        console.log('updatedTxs 1', updatedTxs);
-        if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
-          return;
-        }
+        if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
+
+        store.dispatch(setIsLoadingTxs(true));
+
         store.dispatch(
           setActiveAccountProperty({
             property: 'transactions',
             value: updatedTxs,
           })
         );
-      })
-      .catch((err) => {
-        console.log({ err });
-      })
-      .finally(() => store.dispatch(setIsLoadingTxs(false)));
 
-    //Only manage states if we have some Tx to update
+        store.dispatch(setIsLoadingTxs(false));
+      });
   };
 
   const sendAndSaveTransaction = (
@@ -124,7 +116,7 @@ const MainController = (): IMainController => {
 
     const txWithTimestamp = {
       ...tx,
-      [`${isBitcoinBased ? 'blocktime' : 'timestamp'}`]: Math.floor(
+      [`${isBitcoinBased ? 'blockTime' : 'timestamp'}`]: Math.floor(
         Date.now() / 1000
       ),
     } as IEvmTransactionResponse & ISysTransaction;
