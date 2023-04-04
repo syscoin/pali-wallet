@@ -28,7 +28,6 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const {
-    refresh,
     wallet: { account, updateErcTokenBalances, sendAndSaveTransaction },
   } = getController();
 
@@ -425,7 +424,6 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh();
           sendAndSaveTransaction(confirmedTx);
           navigate('/home');
         }}

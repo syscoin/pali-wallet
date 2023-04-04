@@ -1,11 +1,9 @@
-import { compact } from 'lodash';
 import sys from 'syscoinjs-lib';
 
 import store from 'state/store';
 import { setIsLoadingTxs } from 'state/vault';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
-import { validateAndManageUserTransactions } from './utils';
 
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
@@ -34,21 +32,12 @@ const SysTransactionController = (): ISysTransactionsController => {
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
     store.dispatch(setIsLoadingTxs(true));
+
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
-    const treatedSysTxs = validateAndManageUserTransactions(getSysTxs);
+    store.dispatch(setIsLoadingTxs(false));
 
-    const validateIfManageState = Boolean(
-      compact(getSysTxs as ISysTransaction[]).length === 0 ||
-        compact(treatedSysTxs as ISysTransaction[]).length === 0
-    );
-    //This mean that we don't have any TXs to update in state, so we can stop here
-    if (validateIfManageState) {
-      store.dispatch(setIsLoadingTxs(false));
-      return;
-    }
-
-    return treatedSysTxs as ISysTransaction[];
+    return getSysTxs;
   };
 
   return {

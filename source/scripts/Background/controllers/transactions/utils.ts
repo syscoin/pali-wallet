@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { range, flatMap, isEqual, isEmpty, compact, clone } from 'lodash';
+import { range, flatMap, compact, clone, uniqBy, uniqWith } from 'lodash';
 
 import store from 'state/store';
 
@@ -59,112 +59,63 @@ export const findUserTxsInProviderByBlocksRange = async (
     })
   );
 
-  const txsWithTimestampTreated = await Promise.all(
-    flatMap(userProviderTxs).map(
-      async (tx) => await getFormattedEvmTransactionResponse(provider, tx)
-    )
-  );
-
-  return flatMap(txsWithTimestampTreated);
+  return flatMap(userProviderTxs);
 };
 
-export const manageAndDealWithUserTxs = (
-  tx: IEvmTransactionResponse | ISysTransaction
-): IEvmTransactionResponse[] | ISysTransaction[] => {
+const treatDuplicatedTxs = (transactions: IEvmTransactionResponse[]) =>
+  uniqWith(
+    transactions,
+    (a: IEvmTransactionResponse, b: IEvmTransactionResponse) => {
+      if (a.hash.toLowerCase() === b.hash.toLowerCase()) {
+        console.log('here inside', {
+          a,
+          b,
+        });
+        // Keep the transaction with the higher confirmation number
+        if (a.confirmations > b.confirmations) {
+          // Preserve timestamp if available
+          if (b.timestamp && !a.timestamp) {
+            a.timestamp = b.timestamp;
+          }
+          return true; // a should be considered equal to b (b will be removed)
+        } else {
+          // Preserve timestamp if available
+          if (a.timestamp && !b.timestamp) {
+            b.timestamp = a.timestamp;
+          }
+          return false; // a should not be considered equal to b (a will be removed)
+        }
+      }
+
+      console.log('here outside', {
+        a,
+        b,
+      });
+
+      return false; // a and b are not equal (both will be kept)
+    }
+  );
+
+export const validateAndManageUserTransactions = (
+  providerTxs: IEvmTransactionResponse[]
+): IEvmTransactionResponse[] => {
   const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
   const { transactions: userTransactions } = accounts[activeAccount];
 
-  const txIdValidated = isBitcoinBased ? 'txid' : 'hash';
-
-  const txAlreadyExists = Boolean(
-    !isEmpty(compact(userTransactions)) &&
-      userTransactions.find(
-        (txs: IEvmTransactionResponse) =>
-          txs[txIdValidated]?.toLowerCase() === tx[txIdValidated]?.toLowerCase()
-      )
-  );
-
-  const clonedUserTransactionsArray = clone(
+  const userClonedArray = clone(
     isBitcoinBased
       ? (compact(userTransactions) as ISysTransaction[])
-      : (Object.values(userTransactions) as IEvmTransactionResponse[])
+      : (compact(Object.values(userTransactions)) as IEvmTransactionResponse[])
   );
 
-  const userTxsLimitLength = clonedUserTransactionsArray.length >= 30;
+  const mergeArrays = [
+    ...providerTxs,
+    ...userClonedArray,
+  ] as IEvmTransactionResponse[];
 
-  const compareArrays = (
-    arrayToCompare: IEvmTransactionResponse[] | ISysTransaction[]
-  ) => {
-    const isArrayEquals = isEqual(clonedUserTransactionsArray, arrayToCompare);
+  const uniqueTxsArray = treatDuplicatedTxs(mergeArrays);
 
-    return !isArrayEquals ? arrayToCompare : [];
-  };
-
-  switch (txAlreadyExists) {
-    //Only try to update Confirmations property if is different
-    case true:
-      const manageArray = compact(
-        Object.values(userTransactions)
-      ) as IEvmTransactionResponse[];
-
-      const searchForTxIndex = manageArray.findIndex(
-        (userTxs) =>
-          userTxs[txIdValidated].toLowerCase() ===
-            tx[txIdValidated].toLowerCase() &&
-          userTxs.confirmations !== tx.confirmations
-      );
-
-      if (searchForTxIndex === -1) return compareArrays(manageArray);
-
-      const changedArray = manageArray.map((item) => {
-        const isIndexToChange = Boolean(
-          item[txIdValidated] === manageArray[searchForTxIndex][txIdValidated]
-        );
-
-        if (isIndexToChange)
-          return Object.assign({}, item, { confirmations: tx.confirmations });
-
-        return item;
-      });
-
-      return compareArrays(changedArray);
-
-    case false:
-      if (!userTxsLimitLength) {
-        const arrayToAdd = clone(
-          isBitcoinBased
-            ? (compact(userTransactions) as ISysTransaction[])
-            : (compact(
-                Object.values(userTransactions)
-              ) as IEvmTransactionResponse[])
-        );
-
-        arrayToAdd.unshift(tx as ISysTransaction & IEvmTransactionResponse);
-
-        return compareArrays(arrayToAdd);
-      } else {
-        const arrayToManage = [...userTransactions];
-
-        arrayToManage.pop();
-
-        arrayToManage.unshift(tx);
-
-        return compareArrays(arrayToManage);
-      }
-    default:
-      break;
-  }
-};
-
-export const validateAndManageUserTransactions = (
-  providerTxs: IEvmTransactionResponse[] | ISysTransaction[]
-): IEvmTransactionResponse[] | ISysTransaction[] => {
-  const treatedTxs = flatMap(
-    // @ts-ignore @ts-expect-error FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
-    providerTxs.map((tx: any) => manageAndDealWithUserTxs(tx))
-  ) as IEvmTransactionResponse[] | ISysTransaction[];
-
-  // @ts-ignore FIX TYPE HERE LATER TO ACCEPT SYS AND EVM TXS
-  return treatedTxs;
+  console.log('uniqueTxsArray', uniqueTxsArray);
+  return uniqueTxsArray as IEvmTransactionResponse[];
 };

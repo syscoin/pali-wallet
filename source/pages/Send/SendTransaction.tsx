@@ -30,7 +30,6 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
-    refresh,
     wallet: { account, sendAndSaveTransaction },
   } = getController();
 
@@ -209,7 +208,6 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh();
           sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
             window.close();
@@ -330,7 +328,6 @@ export const SendTransaction = () => {
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                refresh();
                 if (isExternal) {
                   window.close();
                 } else {

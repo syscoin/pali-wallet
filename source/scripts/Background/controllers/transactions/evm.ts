@@ -58,7 +58,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const pollingEvmTransactions = async (
-    isBitcoinBased: boolean,
     currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
@@ -70,11 +69,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
       const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
 
-      if (Boolean(isBitcoinBased)) {
-        store.dispatch(setIsLoadingTxs(false));
-        return;
-      }
-
       const txs = await getUserTransactionByDefaultProvider(
         currentAccount,
         networkUrl,
@@ -85,12 +79,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       console.log('after tx', txs);
       LAST_PROCESSED_BLOCK = latestBlockNumber;
 
-      store.dispatch(setIsLoadingTxs(false));
       return flatMap(txs);
     } catch (error) {
-      store.dispatch(setIsLoadingTxs(false));
-
       console.log(error);
+    } finally {
+      store.dispatch(setIsLoadingTxs(false));
     }
   };
 

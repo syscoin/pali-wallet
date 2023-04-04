@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
-import { isNil } from 'lodash';
+import { clone, compact, isEmpty, isNil } from 'lodash';
 import floor from 'lodash/floor';
 import omit from 'lodash/omit';
 
@@ -96,8 +96,8 @@ const MainController = (): IMainController => {
         activeNetwork.url
       )
       .then((updatedTxs) => {
-        if (updatedTxs.length === 0) {
-          store.dispatch(setIsLoadingTxs(false));
+        console.log('updatedTxs 1', updatedTxs);
+        if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
           return;
         }
         store.dispatch(
@@ -109,7 +109,6 @@ const MainController = (): IMainController => {
       })
       .catch((err) => {
         console.log({ err });
-        store.dispatch(setIsLoadingTxs(false));
       })
       .finally(() => store.dispatch(setIsLoadingTxs(false)));
 
@@ -119,27 +118,37 @@ const MainController = (): IMainController => {
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
-    const {
-      activeNetwork: { url: networkUrl },
-      isBitcoinBased,
-    } = store.getState().vault;
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
-    console.log('tx being added', tx);
+    const { transactions: userTransactions } = accounts[activeAccount];
+
+    const txWithTimestamp = {
+      ...tx,
+      [`${isBitcoinBased ? 'blocktime' : 'timestamp'}`]: Math.floor(
+        Date.now() / 1000
+      ),
+    } as IEvmTransactionResponse & ISysTransaction;
+
+    const clonedArrayToAdd = clone(
+      isBitcoinBased
+        ? (compact(userTransactions) as ISysTransaction[])
+        : (compact(
+            Object.values(userTransactions)
+          ) as IEvmTransactionResponse[])
+    );
+
+    clonedArrayToAdd.unshift(txWithTimestamp);
 
     store.dispatch(setIsLoadingTxs(true));
 
-    transactionsManager.utils
-      .getTransactionsToSaveAfterSend(isBitcoinBased, tx, networkUrl)
-      .then((updatedTxs) => {
-        if (updatedTxs.length === 0) return;
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'transactions',
-            value: updatedTxs,
-          })
-        );
+    store.dispatch(
+      setActiveAccountProperty({
+        property: 'transactions',
+        value: clonedArrayToAdd,
       })
-      .finally(() => store.dispatch(setIsLoadingTxs(false)));
+    );
+
+    store.dispatch(setIsLoadingTxs(false));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 

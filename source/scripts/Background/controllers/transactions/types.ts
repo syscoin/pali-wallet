@@ -103,7 +103,6 @@ export interface IEvmTransactionsController {
     endBlock: number
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
-    isBitcoinBased: boolean,
     currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => Promise<IEvmTransactionResponse[]>;
@@ -143,11 +142,6 @@ export interface ISysTransactionsController {
 
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
 export interface ITransactionsManagerUtils {
-  getTransactionsToSaveAfterSend: (
-    isBitcoinBased: boolean,
-    tx: IEvmTransactionResponse | ISysTransaction,
-    networkUrl?: string
-  ) => Promise<IEvmTransactionResponse[] | ISysTransaction[]>;
   updateTransactionsFromCurrentAccount: (
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
