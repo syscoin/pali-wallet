@@ -2,9 +2,11 @@ import 'emoji-log';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import { sysweb3Di } from '@pollum-io/sysweb3-core';
+
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-// import { localStorage } from 'redux-persist-webextension-storage';
+import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -107,8 +109,9 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   ) {
     window.controller.utils.setFiat();
 
-    //@ts-ignore LATER REMOVE THIS WHEN UPDATE CURRENT SYSWEB3-CORE VERSION
-    window.controller.wallet.setStorage(window.localStorage);
+    sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
+    sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
+    sysweb3Di.useLocalStorageClient(window.localStorage);
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
@@ -122,5 +125,83 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     });
   }
 });
+
+async function checkForUpdates() {
+  const vault = store.getState().vault;
+
+  if (
+    store.getState().vault.changingConnectedAccount
+      .isChangingConnectedAccount ||
+    store.getState().vault.isLoadingAssets ||
+    store.getState().vault.isLoadingTxs
+  ) {
+    //todo: do we also need to return if walle is unlocked?
+    return;
+  }
+
+  const {
+    activeAccount: activeAccountId,
+    accounts,
+    isBitcoinBased,
+    activeNetwork: network,
+  } = vault;
+
+  const currentAccount = accounts[activeAccountId];
+
+  if (isBitcoinBased) {
+    const sysTx =
+      await window.controller.wallet.transactions.sys.pollingSysTransactions(
+        currentAccount.xpub,
+        network.url
+      );
+
+    if (sysTx?.length > 0) {
+      store.dispatch(setIsLoadingTxs(true));
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'transactions',
+          value: sysTx,
+        })
+      );
+      store.dispatch(setIsLoadingTxs(false));
+    }
+  } else {
+    const evmTx =
+      await window.controller.wallet.transactions.evm.pollingEvmTransactions(
+        currentAccount,
+        network.url
+      );
+
+    if (evmTx?.length > 0) {
+      store.dispatch(setIsLoadingTxs(true));
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'transactions',
+          value: evmTx,
+        })
+      );
+      store.dispatch(setIsLoadingTxs(false));
+    }
+  }
+}
+
+let intervalId;
+
+browser.runtime.onConnect.addListener((port) => {
+  // execute checkForUpdates() every 5 seconds
+  if (port.name === 'polling') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'startPolling') {
+        intervalId = setInterval(checkForUpdates, 10000);
+        port.postMessage({ intervalId });
+      } else if (message.action === 'stopPolling') {
+        clearInterval(intervalId);
+      }
+    });
+  }
+});
+
+const port = browser.runtime.connect(undefined, { name: 'polling' });
+port.postMessage({ action: 'startPolling' });
 
 wrapStore(store, { portName: STORE_PORT });

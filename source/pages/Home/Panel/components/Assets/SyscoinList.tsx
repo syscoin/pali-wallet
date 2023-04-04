@@ -20,7 +20,7 @@ export const SyscoinAssetsList = () => {
         <LoadingComponent />
       ) : (
         <>
-          {assets.syscoin.map(
+          {assets.syscoin?.map(
             ({ decimals, balance, symbol, assetGuid }: any) => (
               <Fragment key={uniqueId(String(assetGuid))}>
                 <li className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200">

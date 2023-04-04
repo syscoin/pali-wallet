@@ -30,8 +30,7 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
-    refresh,
-    wallet: { account },
+    wallet: { account, sendAndSaveTransaction },
   } = getController();
 
   const { navigate, alert } = useUtils();
@@ -66,6 +65,7 @@ export const SendTransaction = () => {
     : state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [confirmedTx, setConfirmedTx] = useState<any>();
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -153,6 +153,7 @@ export const SendTransaction = () => {
         });
         setConfirmed(true);
         setLoading(false);
+        setConfirmedTx(response);
 
         if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
         return response.hash;
@@ -207,7 +208,7 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh();
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
             window.close();
           } else {
@@ -327,7 +328,6 @@ export const SendTransaction = () => {
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                refresh();
                 if (isExternal) {
                   window.close();
                 } else {

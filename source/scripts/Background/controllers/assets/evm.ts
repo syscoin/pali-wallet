@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import lodash from 'lodash';
+import lodash, { isEmpty } from 'lodash';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import {
@@ -201,6 +201,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
     account: IKeyringAccountState,
     networks: INetworksVault
   ): Promise<ITokenEthProps[]> => {
+    if (isEmpty(account.assets.ethereum)) return [];
+
     try {
       const updatedTokens = await Promise.all(
         account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {

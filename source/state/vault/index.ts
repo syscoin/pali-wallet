@@ -55,6 +55,7 @@ const VaultState = createSlice({
       state.accounts = action.payload;
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
+      //todo: it looks like setAccountTransactionS just sets one transaction instead os many
       const id = state.activeAccount;
       state.accounts[id].transactions.unshift(action.payload);
     },

@@ -50,6 +50,7 @@ export const Home = () => {
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
+  //todo: this function can be in some utils file
   //* Functions
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;
@@ -58,6 +59,7 @@ export const Home = () => {
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
+    //todo: this can be in some consts file
     const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
     return Boolean(
@@ -74,9 +76,6 @@ export const Home = () => {
     if (!isUnlocked) return;
 
     verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
-    return () => {
-      setIsTestnet(false);
-    };
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same

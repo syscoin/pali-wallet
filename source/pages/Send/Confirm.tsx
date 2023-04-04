@@ -13,7 +13,6 @@ import {
   IconButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -29,8 +28,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const {
-    refresh,
-    wallet: { account, updateErcTokenBalances },
+    wallet: { account, updateErcTokenBalances, sendAndSaveTransaction },
   } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
@@ -91,7 +89,6 @@ export const SendConfirm = () => {
       switch (true) {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
-          // Just reiterating it does not make any sense to add a ethers provider inside a UTXO code block
           try {
             sysTxsController
               .sendTransaction(basicTxValues)
@@ -426,8 +423,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh();
-          saveTransaction(confirmedTx);
+          sendAndSaveTransaction(confirmedTx);
           navigate('/home');
         }}
       />

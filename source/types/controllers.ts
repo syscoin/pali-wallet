@@ -18,6 +18,11 @@ import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
+import {
+  IEvmTransactionResponse,
+  ISysTransaction,
+  ITransactionsManager,
+} from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -50,6 +55,9 @@ export interface IMainController extends IKeyringManager {
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;
+  sendAndSaveTransaction: (
+    tx: IEvmTransactionResponse | ISysTransaction
+  ) => void;
   setAccount: (
     id: number,
     host?: string,
@@ -58,6 +66,7 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<void>;
   updateErcTokenBalances: (
     tokenAddress: string,
