@@ -1,5 +1,9 @@
 import { ethers } from 'ethers';
-import { range, flatMap, compact, clone, uniqBy, uniqWith } from 'lodash';
+import clone from 'lodash/clone';
+import compact from 'lodash/compact';
+import flatMap from 'lodash/flatMap';
+import range from 'lodash/range';
+import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
 
@@ -63,39 +67,27 @@ export const findUserTxsInProviderByBlocksRange = async (
 };
 
 const treatDuplicatedTxs = (transactions: IEvmTransactionResponse[]) =>
-  uniqBy(
-    uniqWith(
-      transactions,
-      (a: IEvmTransactionResponse, b: IEvmTransactionResponse) => {
-        if (a.hash.toLowerCase() === b.hash.toLowerCase()) {
-          console.log('here inside', {
-            a,
-            b,
-          });
-          // Keep the transaction with the higher confirmation number
-          if (a.confirmations > b.confirmations) {
-            // Preserve timestamp if available
-            if (b.timestamp && !a.timestamp) {
-              a.timestamp = b.timestamp;
-            }
-            return true; // a should be considered equal to b (b will be removed)
-          } else {
-            // Preserve timestamp if available
-            if (a.timestamp && !b.timestamp) {
-              b.timestamp = a.timestamp;
-            }
-            return false; // a should not be considered equal to b (a will be removed)
+  uniqWith(
+    transactions,
+    (a: IEvmTransactionResponse, b: IEvmTransactionResponse) => {
+      if (a.hash.toLowerCase() === b.hash.toLowerCase()) {
+        // Keep the transaction with the higher confirmation number
+        console.log(a.hash.toLowerCase() === b.hash.toLowerCase());
+        if (a.confirmations > b.confirmations) {
+          // Preserve timestamp if available
+          if (b.timestamp && !a.timestamp) {
+            a.timestamp = b.timestamp;
+          }
+        } else {
+          // Preserve timestamp if available
+          if (a.timestamp && !b.timestamp) {
+            b.timestamp = a.timestamp;
           }
         }
-
-        console.log('here outside', {
-          a,
-          b,
-        });
-        return false; // a and b are not equal (both will be kept)
+        return true;
       }
-    ),
-    'hash'
+      return false;
+    }
   );
 
 export const validateAndManageUserTransactions = (
@@ -118,6 +110,5 @@ export const validateAndManageUserTransactions = (
 
   const uniqueTxsArray = treatDuplicatedTxs(mergeArrays);
 
-  console.log('uniqueTxsArray', uniqueTxsArray);
   return uniqueTxsArray as IEvmTransactionResponse[];
 };

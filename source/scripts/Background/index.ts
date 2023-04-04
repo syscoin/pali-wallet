@@ -6,7 +6,6 @@ import { sysweb3Di } from '@pollum-io/sysweb3-core';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-// import { localStorage } from 'redux-persist-webextension-storage';
 import { setActiveAccountProperty } from 'state/vault';
 import { log } from 'utils/logger';
 
@@ -127,25 +126,8 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   }
 });
 
-// browser.runtime.onConnect.addListener(async () => {
-//   const pollingEvmTxs =
-//     await window.controller.wallet.transactions.evm.pollingEvmTransactions(
-//       new ethers.providers.JsonRpcProvider(
-//         store.getState().vault.activeNetwork.url
-//       )
-//     );
-//   console.log('here background');
-
-//   setTimeout(() => {
-//     console.log('inside validation');
-//     pollingEvmTxs;
-//   }, 20000);
-// });
-
 async function checkForUpdates() {
   const vault = store.getState().vault;
-
-  return;
 
   if (
     store.getState().vault.changingConnectedAccount
@@ -183,7 +165,6 @@ async function checkForUpdates() {
         network.url
       );
 
-    console.log('evmTx', evmTx);
     if (evmTx?.length > 0) {
       store.dispatch(
         setActiveAccountProperty({
@@ -201,11 +182,8 @@ browser.runtime.onConnect.addListener((port) => {
   // execute checkForUpdates() every 5 seconds
   if (port.name === 'polling') {
     port.onMessage.addListener((message) => {
-      console.log('polling');
       if (message.action === 'startPolling') {
-        console.log('start polling');
         intervalId = setInterval(checkForUpdates, 10000);
-        console.log('intervalId', intervalId);
         port.postMessage({ intervalId });
       } else if (message.action === 'stopPolling') {
         clearInterval(intervalId);

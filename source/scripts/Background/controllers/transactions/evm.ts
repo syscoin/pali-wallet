@@ -13,8 +13,6 @@ import {
 } from './utils';
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
-  let LAST_PROCESSED_BLOCK = -1;
-
   const getUserTransactionByDefaultProvider = async (
     currentAccount: IKeyringAccountState,
     networkUrl: string,
@@ -52,8 +50,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       toBlock
     );
 
-    LAST_PROCESSED_BLOCK = toBlock;
-
     return txs;
   };
 
@@ -75,9 +71,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         fromBlock,
         latestBlockNumber
       );
-
-      console.log('after tx', txs);
-      LAST_PROCESSED_BLOCK = latestBlockNumber;
 
       return flatMap(txs);
     } catch (error) {
