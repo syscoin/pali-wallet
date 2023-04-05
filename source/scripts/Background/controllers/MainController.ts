@@ -22,7 +22,6 @@ import {
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
-  setActiveAccountProperty,
   setIsPendingBalances,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
@@ -49,6 +48,28 @@ import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
+  let currentPromise: {
+    cancel: () => void;
+    promise: Promise<{ chainId: string; networkVersion: number }>;
+  } | null = null;
+
+  const createCancellablePromise = <T>(
+    executor: (
+      resolve: (value: T) => void,
+      reject: (reason?: any) => void
+    ) => void
+  ): { cancel: () => void; promise: Promise<T> } => {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    let cancel = () => {};
+    const promise: Promise<T> = new Promise((resolve, reject) => {
+      cancel = () => {
+        reject('Network change cancelled');
+      };
+      executor(resolve, reject);
+    });
+
+    return { promise, cancel };
+  };
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -233,6 +254,27 @@ const MainController = (walletState): IMainController => {
     network: INetwork,
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> => {
+    if (currentPromise) {
+      currentPromise.cancel();
+    }
+
+    const promiseWrapper = createCancellablePromise<{
+      chainId: string;
+      networkVersion: number;
+    }>((resolve, reject) => {
+      setActiveNetworkLogic(network, chain, resolve, reject);
+    });
+
+    currentPromise = promiseWrapper;
+    return promiseWrapper.promise;
+  };
+
+  const setActiveNetworkLogic = async (
+    network: INetwork,
+    chain: string,
+    resolve: (value: { chainId: string; networkVersion: number }) => void,
+    reject: (reason?: any) => void
+  ) => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsPendingBalances(true));
 
@@ -242,57 +284,56 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
-    return new Promise<{ chainId: string; networkVersion: number }>(
-      async (resolve, reject) => {
-        const { sucess, wallet, activeChain } =
-          await keyringManager.setSignerNetwork(network, chain);
-        if (sucess) {
-          store.dispatch(
-            setNetworkChange({
-              activeChain,
-              wallet,
-            })
-          );
-          const chainId = network.chainId.toString(16);
-          const networkVersion = network.chainId;
-          store.dispatch(setIsPendingBalances(false));
-          await utilsController.setFiat();
+    const { sucess, wallet, activeChain } =
+      await keyringManager.setSignerNetwork(network, chain);
+    if (sucess) {
+      store.dispatch(
+        setNetworkChange({
+          activeChain,
+          wallet,
+        })
+      );
+      const chainId = network.chainId.toString(16);
+      const networkVersion = network.chainId;
+      store.dispatch(setIsPendingBalances(false));
+      await utilsController.setFiat();
 
-          resolve({ chainId: chainId, networkVersion: networkVersion });
-          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-            method: PaliEvents.chainChanged,
-            params: {
-              chainId: `0x${network.chainId.toString(16)}`,
-              networkVersion: network.chainId,
-            },
-          });
-          store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
-          return;
-        } else {
-          console.error(
-            'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-          );
-          reject();
-          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-            method: PaliEvents.chainChanged,
-            params: {
-              chainId: `0x${activeNetwork.chainId.toString(16)}`,
-              networkVersion: activeNetwork.chainId,
-            },
-          });
-          window.controller.dapp.handleBlockExplorerChange(
-            PaliSyscoinEvents.blockExplorerChanged,
-            {
-              method: PaliSyscoinEvents.blockExplorerChanged,
-              params: isBitcoinBased ? network.url : null,
-            }
-          );
-
-          store.dispatch(setStoreError(true));
-          store.dispatch(setIsNetworkChanging(false));
+      resolve({ chainId: chainId, networkVersion: networkVersion });
+      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${network.chainId.toString(16)}`,
+          networkVersion: network.chainId,
+        },
+      });
+      store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
+      return;
+    } else {
+      console.error(
+        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
+      );
+      reject(
+        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
+      );
+      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          networkVersion: activeNetwork.chainId,
+        },
+      });
+      window.controller.dapp.handleBlockExplorerChange(
+        PaliSyscoinEvents.blockExplorerChanged,
+        {
+          method: PaliSyscoinEvents.blockExplorerChanged,
+          params: isBitcoinBased ? network.url : null,
         }
-      }
-    );
+      );
+
+      store.dispatch(setStoreError(true));
+      store.dispatch(setIsNetworkChanging(false));
+      store.dispatch(setIsPendingBalances(false));
+    }
   };
 
   const resolveError = () => store.dispatch(setStoreError(false));
