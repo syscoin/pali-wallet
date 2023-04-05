@@ -1,4 +1,5 @@
 import 'emoji-log';
+import { isEqual, sortBy, xor } from 'lodash';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
@@ -10,6 +11,7 @@ import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
+import { ISysTransaction } from './controllers/transactions/types';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -155,7 +157,26 @@ async function checkForUpdates() {
         network.url
       );
 
-    if (sysTx?.length > 0) {
+    //Doing this to prevent the dispatch every time of loadingTxs and also updating TXs state when nothing change
+    const validateEqualsArrays = (
+      array1: ISysTransaction[],
+      array2: ISysTransaction[]
+    ) => {
+      const unionOfArrays = new Set([...currentAccount.transactions, ...sysTx]);
+
+      return (
+        unionOfArrays.size === array1.length &&
+        unionOfArrays.size === array2.length
+      );
+    };
+
+    const isTxsEquals =
+      isEqual(
+        sortBy(currentAccount.transactions, 'blockTime'),
+        sortBy(sysTx, 'blockTime')
+      ) || validateEqualsArrays(currentAccount.transactions, sysTx);
+
+    if (!isTxsEquals) {
       store.dispatch(setIsLoadingTxs(true));
       store.dispatch(
         setActiveAccountProperty({
