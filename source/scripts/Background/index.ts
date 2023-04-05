@@ -1,5 +1,6 @@
 import 'emoji-log';
-import { isEqual, sortBy, xor } from 'lodash';
+import isEqual from 'lodash/isEqual';
+import sortBy from 'lodash/sortBy';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
