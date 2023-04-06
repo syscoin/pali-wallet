@@ -130,8 +130,6 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 });
 
 async function checkForUpdates() {
-  const vault = store.getState().vault;
-
   if (
     store.getState().vault.changingConnectedAccount
       .isChangingConnectedAccount ||
