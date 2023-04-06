@@ -17,9 +17,13 @@ declare global {
   }
 }
 let paliPort: Runtime.Port;
-const onWalletReady = () => {
+const onWalletReady = (windowController: any) => {
   // Add any code here that depends on the initialized wallet
-  console.log('window.controller', window.controller);
+  if (!window?.controller?.dapp) {
+    window.controller = windowController;
+  }
+
+  console.log('window.controller', windowController);
   setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
   window.controller.dapp.setup(paliPort);
   window.controller.utils.setFiat();
@@ -27,6 +31,7 @@ const onWalletReady = () => {
 
 if (!window.controller) {
   window.controller = MasterController(onWalletReady);
+  console.log('if not window controller', window.controller);
   // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 

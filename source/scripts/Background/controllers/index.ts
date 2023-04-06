@@ -32,7 +32,9 @@ export interface IMasterController {
   wallet: IMainController;
 }
 
-const MasterController = (readyCallback: () => void): IMasterController => {
+const MasterController = (
+  readyCallback: (windowController: any) => void
+): IMasterController => {
   let route = '/';
   let externalRoute = '/';
   let wallet: IMainController;
@@ -74,6 +76,7 @@ const MasterController = (readyCallback: () => void): IMasterController => {
       _persist: { rehydrated },
     } = state;
     if (rehydrated) {
+      console.log('rehydrated', rehydrated);
       initializeMainController();
     }
   });
@@ -86,8 +89,9 @@ const MasterController = (readyCallback: () => void): IMasterController => {
     wallet = Object.freeze(MainController(walletState));
     utils = Object.freeze(ControllerUtils());
     console.log('utils: ', utils);
+    console.log('wallet: ', wallet);
     wallet.setStorage(window.localStorage);
-    readyCallback();
+    readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
   };
 
   const refresh = async (silent?: boolean) => {
