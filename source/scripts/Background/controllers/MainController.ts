@@ -29,7 +29,6 @@ import {
   createAccount as addAccountToStore,
   setActiveNetwork as setNetwork,
   setActiveAccountProperty,
-  setIsPendingBalances,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
   removeNetwork,
@@ -43,6 +42,7 @@ import {
   setIsLoadingAssets,
   initialState,
   setIsLoadingTxs,
+  setIsLoadingBalances,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -300,7 +300,7 @@ const MainController = (): IMainController => {
   };
 
   const createWallet = async (password: string): Promise<void> => {
-    store.dispatch(setIsPendingBalances(true));
+    store.dispatch(setIsLoadingBalances(true));
 
     keyringManager.setWalletPassword(password);
 
@@ -325,7 +325,7 @@ const MainController = (): IMainController => {
     };
 
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
-    store.dispatch(setIsPendingBalances(false));
+    store.dispatch(setIsLoadingBalances(false));
     store.dispatch(setActiveAccount(newAccountWithAssets.id));
     store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setLastLogin());
@@ -410,7 +410,7 @@ const MainController = (): IMainController => {
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> => {
     store.dispatch(setIsNetworkChanging(true));
-    store.dispatch(setIsPendingBalances(true));
+    store.dispatch(setIsLoadingBalances(true));
 
     const {
       activeNetwork,
@@ -461,7 +461,7 @@ const MainController = (): IMainController => {
             })
           );
           store.dispatch(setNetwork(network));
-          store.dispatch(setIsPendingBalances(false));
+          store.dispatch(setIsLoadingBalances(false));
           store.dispatch(setIsNetworkChanging(false));
           store.dispatch(setActiveAccount(account.id));
           await utilsController.setFiat();
@@ -511,7 +511,7 @@ const MainController = (): IMainController => {
 
             store.dispatch(setNetwork(activeNetwork));
 
-            store.dispatch(setIsPendingBalances(false));
+            store.dispatch(setIsLoadingBalances(false));
 
             store.dispatch(setActiveAccount(account.id));
 
