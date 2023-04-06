@@ -85,12 +85,17 @@ const MainController = (): IMainController => {
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const updateUserTransactionsState = () => {
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
+      store.getState().vault;
 
     const currentAccount = accounts[activeAccount];
 
-    transactionsManager.evm
-      .pollingEvmTransactions(currentAccount, activeNetwork.url)
+    transactionsManager.utils
+      .updateTransactionsFromCurrentAccount(
+        currentAccount,
+        isBitcoinBased,
+        activeNetwork.url
+      )
       .then((updatedTxs) => {
         if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
 
