@@ -28,7 +28,12 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const {
-    wallet: { account, updateErcTokenBalances, sendAndSaveTransaction },
+    wallet: {
+      account,
+      updateErcTokenBalances,
+      sendAndSaveTransaction,
+      updateUserNativeBalance,
+    },
   } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
@@ -101,7 +106,8 @@ export const SendConfirm = () => {
                 alert.error("Can't complete transaction. Try again later.");
                 setLoading(false);
                 throw error;
-              });
+              })
+              .finally(() => updateUserNativeBalance());
 
             return;
           } catch (error) {
@@ -170,7 +176,8 @@ export const SendConfirm = () => {
                 alert.error("Can't complete transaction. Try again later.");
                 setLoading(false);
                 throw error;
-              });
+              })
+              .finally(() => updateUserNativeBalance());
 
             return;
           } catch (error: any) {

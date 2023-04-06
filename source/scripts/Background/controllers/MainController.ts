@@ -724,6 +724,7 @@ const MainController = (): IMainController => {
     getChangeAddress,
     getRecommendedFee,
     getNetworkData,
+    updateUserNativeBalance,
     updateErcTokenBalances,
     getLatestUpdateForCurrentAccount,
     importAccountFromPrivateKey,

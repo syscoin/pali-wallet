@@ -74,6 +74,7 @@ export interface IMainController extends IKeyringManager {
     isNft: boolean,
     decimals?: number
   ) => Promise<void>;
+  updateUserNativeBalance: () => void;
 }
 
 export interface IEthTokenDetails {
