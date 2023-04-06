@@ -28,12 +28,8 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const {
-    wallet: {
-      account,
-      updateErcTokenBalances,
-      sendAndSaveTransaction,
-      updateUserNativeBalance,
-    },
+    wallet: { account, updateErcTokenBalances, sendAndSaveTransaction },
+    updateNativeBalanceAfterSend,
   } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
@@ -107,7 +103,7 @@ export const SendConfirm = () => {
                 setLoading(false);
                 throw error;
               })
-              .finally(() => updateUserNativeBalance());
+              .finally(() => updateNativeBalanceAfterSend());
 
             return;
           } catch (error) {
@@ -177,7 +173,7 @@ export const SendConfirm = () => {
                 setLoading(false);
                 throw error;
               })
-              .finally(() => updateUserNativeBalance());
+              .finally(() => updateNativeBalanceAfterSend());
 
             return;
           } catch (error: any) {

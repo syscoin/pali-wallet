@@ -16,6 +16,8 @@ export interface IMasterController {
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
+  updateNativeBalanceAfterSend: () => void;
+
   utils: Readonly<IControllerUtils>;
   wallet: Readonly<IMainController>;
 }
@@ -32,6 +34,12 @@ const MasterController = (): IMasterController => {
 
     wallet.getLatestUpdateForCurrentAccount();
     utils.setFiat();
+  };
+
+  const updateNativeBalanceAfterSend = () => {
+    setTimeout(() => {
+      wallet.updateUserNativeBalance();
+    }, 3500); // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
   };
 
   /**
@@ -60,6 +68,7 @@ const MasterController = (): IMasterController => {
     createPopup,
     dapp,
     refresh,
+    updateNativeBalanceAfterSend,
     utils,
     wallet,
   };
