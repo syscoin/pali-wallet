@@ -15,10 +15,20 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
+let paliPort: Runtime.Port;
+const onWalletReady = (windowController: IMasterController) => {
+  // Add any code here that depends on the initialized wallet
+  window.controller = windowController;
+  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  if (paliPort) {
+    window.controller.dapp.setup(paliPort);
+  }
+  window.controller.utils.setFiat();
+};
 
 if (!window.controller) {
-  window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  window.controller = MasterController(onWalletReady);
+  // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -81,8 +91,10 @@ export const inactivityTime = () => {
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
-    window.controller.dapp.setup(port);
-
+    if (window.controller?.dapp) {
+      window.controller.dapp.setup(port);
+    }
+    paliPort = port;
     return;
   }
   const { changingConnectedAccount, timer, isTimerEnabled } =
@@ -105,8 +117,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
-    window.controller.utils.setFiat();
-    window.controller.wallet.setStorage(window.localStorage);
+    // window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);

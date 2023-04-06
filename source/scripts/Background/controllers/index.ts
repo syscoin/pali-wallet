@@ -9,7 +9,9 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
+import { persistor, RootState } from 'state/store';
 import store from 'state/store';
+import { IPersistState } from 'state/types';
 import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
@@ -30,7 +32,14 @@ export interface IMasterController {
   wallet: IMainController;
 }
 
-const MasterController = (): IMasterController => {
+const MasterController = (
+  readyCallback: (windowController: any) => void
+): IMasterController => {
+  let route = '/';
+  let externalRoute = '/';
+  let wallet: IMainController;
+  let utils: Readonly<IControllerUtils>;
+  let dapp: Readonly<IDAppController>;
   const vaultToWalletState = (vaultState: IVaultState) => {
     const accounts: { [key in KeyringAccountType]: accountType } =
       Object.entries(vaultState.accounts).reduce(
@@ -49,7 +58,7 @@ const MasterController = (): IMasterController => {
         {} as { [key in KeyringAccountType]: accountType }
       );
 
-    const wallet: IWalletState = {
+    const sysweb3Wallet: IWalletState = {
       accounts,
       activeAccountId: vaultState.activeAccount.id,
       activeAccountType: vaultState.activeAccount.type,
@@ -58,13 +67,26 @@ const MasterController = (): IMasterController => {
     };
     const activeChain: INetworkType = vaultState.activeChain;
 
-    return { wallet, activeChain };
+    return { wallet: sysweb3Wallet, activeChain };
   };
-  const walletState = vaultToWalletState(store.getState().vault);
-  console.log('Checking wallet State', walletState);
-  const wallet = Object.freeze(MainController(walletState));
-  const utils = Object.freeze(ControllerUtils());
-  const dapp = Object.freeze(DAppController());
+  // Subscribe to store updates
+  persistor.subscribe(() => {
+    const state = store.getState() as RootState & { _persist: IPersistState };
+    const {
+      _persist: { rehydrated },
+    } = state;
+    if (rehydrated) {
+      initializeMainController();
+    }
+  });
+  const initializeMainController = () => {
+    const walletState = vaultToWalletState(store.getState().vault);
+    dapp = Object.freeze(DAppController());
+    wallet = Object.freeze(MainController(walletState));
+    utils = Object.freeze(ControllerUtils());
+    wallet.setStorage(window.localStorage);
+    readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
+  };
 
   const refresh = async (silent?: boolean) => {
     const { activeAccount, accounts } = store.getState().vault;
@@ -72,19 +94,31 @@ const MasterController = (): IMasterController => {
     //TODO: Refactor refresh
     // await wallet.account.sys.getLatestUpdate(silent);
     // wallet.account.sys.watchMemPool();
-    // utils.setFiat();
+    utils.setFiat();
+  };
+  /**
+   * Determine which is the app route
+   * @returns the proper route
+   */
+  const appRoute = (newRoute?: string, external = false) => {
+    if (newRoute) {
+      if (external) externalRoute = newRoute;
+      else route = newRoute;
+    }
+
+    return external ? externalRoute : route;
   };
   /**
    * Creates a popup for external routes. Mostly for DApps
    * @returns the window object from the popup
    */
-  const createPopup = async (route = '', data = {}) => {
+  const createPopup = async (popUpRoute = '', data = {}) => {
     const window = await browser.windows.getCurrent();
 
     if (!window || !window.width) return;
 
     const params = new URLSearchParams();
-    if (route) params.append('route', route);
+    if (popUpRoute) params.append('route', popUpRoute);
     if (data) params.append('data', JSON.stringify(data));
 
     return browser.windows.create({
@@ -96,7 +130,7 @@ const MasterController = (): IMasterController => {
   };
 
   return {
-    appRoute: utils.appRoute,
+    appRoute,
     createPopup,
     dapp,
     refresh,
