@@ -21,7 +21,6 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendNTokenTransaction = () => {
   const {
-    refresh,
     wallet: { account, sendAndSaveTransaction },
   } = getController();
 

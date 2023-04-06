@@ -9,16 +9,15 @@ import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = () => {
-  const id = useSelector((state: RootState) => state.vault.activeAccount);
-  const { chainId } = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const transactions = useSelector(
-    (state: RootState) => state.vault.accounts[id].transactions
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork: { url: chainId },
+    isBitcoinBased,
+  } = useSelector((state: RootState) => state.vault);
+
+  const { transactions: userTransactions } = accounts[activeAccount];
+
   const { navigate } = useUtils();
 
   const getTxType = (tx: any) => {
@@ -48,18 +47,18 @@ export const TransactionsList = () => {
     (tx: any, idx: number) =>
       tx === null &&
       tx === undefined &&
-      transactions[idx - 1] === undefined &&
-      transactions[idx - 1] === null &&
+      userTransactions[idx - 1] === undefined &&
+      userTransactions[idx - 1] === null &&
       (idx === 0 ||
         new Date(tx[blocktime] * 1e3).toDateString() !==
-          new Date(transactions[idx - 1][blocktime] * 1e3).toDateString()),
-    [transactions]
+          new Date(userTransactions[idx - 1][blocktime] * 1e3).toDateString()),
+    [userTransactions]
   );
 
   const TransactionList = useCallback(
     () => (
-      <ul className="pb-14 md:pb-4">
-        {transactions
+      <ul className="pb-4">
+        {userTransactions
           .filter((item: any) => {
             if (!isBitcoinBased) {
               return item?.chainId === chainId;
@@ -147,24 +146,8 @@ export const TransactionsList = () => {
           })}
       </ul>
     ),
-    [transactions]
+    [userTransactions]
   );
 
-  const NoTransactionsComponent = () => (
-    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      <p>You have no transactions to show.</p>
-    </div>
-  );
-
-  const transactionsLengthValidation = Boolean(transactions.length > 0);
-
-  return (
-    <>
-      {!transactionsLengthValidation ? (
-        <NoTransactionsComponent />
-      ) : (
-        <TransactionList />
-      )}
-    </>
-  );
+  return <TransactionList />;
 };
