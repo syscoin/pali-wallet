@@ -300,8 +300,6 @@ const MainController = (): IMainController => {
   };
 
   const createWallet = async (password: string): Promise<void> => {
-    store.dispatch(setIsLoadingBalances(true));
-
     keyringManager.setWalletPassword(password);
 
     const account =
@@ -325,7 +323,6 @@ const MainController = (): IMainController => {
     };
 
     store.dispatch(setEncryptedMnemonic(keyringManager.getEncryptedMnemonic()));
-    store.dispatch(setIsLoadingBalances(false));
     store.dispatch(setActiveAccount(newAccountWithAssets.id));
     store.dispatch(addAccountToStore(newAccountWithAssets));
     store.dispatch(setLastLogin());
@@ -410,7 +407,6 @@ const MainController = (): IMainController => {
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> => {
     store.dispatch(setIsNetworkChanging(true));
-    store.dispatch(setIsLoadingBalances(true));
 
     const {
       activeNetwork,
@@ -461,7 +457,6 @@ const MainController = (): IMainController => {
             })
           );
           store.dispatch(setNetwork(network));
-          store.dispatch(setIsLoadingBalances(false));
           store.dispatch(setIsNetworkChanging(false));
           store.dispatch(setActiveAccount(account.id));
           await utilsController.setFiat();
@@ -510,8 +505,6 @@ const MainController = (): IMainController => {
             );
 
             store.dispatch(setNetwork(activeNetwork));
-
-            store.dispatch(setIsLoadingBalances(false));
 
             store.dispatch(setActiveAccount(account.id));
 
