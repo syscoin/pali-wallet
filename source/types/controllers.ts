@@ -75,6 +75,7 @@ export interface IMainController extends IKeyringManager {
     decimals?: number
   ) => Promise<void>;
   updateUserNativeBalance: () => void;
+  updateUserTransactionsState: () => void;
 }
 
 export interface IEthTokenDetails {

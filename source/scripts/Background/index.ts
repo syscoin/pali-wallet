@@ -136,75 +136,18 @@ async function checkForUpdates() {
     store.getState().vault.changingConnectedAccount
       .isChangingConnectedAccount ||
     store.getState().vault.isLoadingAssets ||
-    store.getState().vault.isLoadingTxs
+    store.getState().vault.isLoadingTxs ||
+    store.getState().vault.isLoadingBalances
   ) {
     //todo: do we also need to return if walle is unlocked?
     return;
   }
 
-  const {
-    activeAccount: activeAccountId,
-    accounts,
-    isBitcoinBased,
-    activeNetwork: network,
-  } = vault;
+  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserTransactionsState();
 
-  const currentAccount = accounts[activeAccountId];
-
-  if (isBitcoinBased) {
-    const sysTx =
-      await window.controller.wallet.transactions.sys.pollingSysTransactions(
-        currentAccount.xpub,
-        network.url
-      );
-
-    //Doing this to prevent the dispatch every time of loadingTxs and also updating TXs state when nothing change
-    const validateEqualsArrays = (
-      array1: ISysTransaction[],
-      array2: ISysTransaction[]
-    ) => {
-      const unionOfArrays = new Set([...currentAccount.transactions, ...sysTx]);
-
-      return (
-        unionOfArrays.size === array1.length &&
-        unionOfArrays.size === array2.length
-      );
-    };
-
-    const isTxsEquals =
-      isEqual(
-        sortBy(currentAccount.transactions, 'blockTime'),
-        sortBy(sysTx, 'blockTime')
-      ) || validateEqualsArrays(currentAccount.transactions, sysTx);
-
-    if (!isTxsEquals) {
-      store.dispatch(setIsLoadingTxs(true));
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'transactions',
-          value: sysTx,
-        })
-      );
-      store.dispatch(setIsLoadingTxs(false));
-    }
-  } else {
-    const evmTx =
-      await window.controller.wallet.transactions.evm.pollingEvmTransactions(
-        currentAccount,
-        network.url
-      );
-
-    if (evmTx?.length > 0) {
-      store.dispatch(setIsLoadingTxs(true));
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'transactions',
-          value: evmTx,
-        })
-      );
-      store.dispatch(setIsLoadingTxs(false));
-    }
-  }
+  //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserNativeBalance();
 }
 
 let intervalId;
