@@ -35,14 +35,12 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
-
 export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {

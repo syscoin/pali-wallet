@@ -88,7 +88,6 @@ export interface IEthTokenDetails {
 }
 
 export interface IControllerUtils {
-  appRoute: (newRoute?: string, external?: boolean) => string;
   getAsset: (
     explorerUrl: string,
     assetGuid: string

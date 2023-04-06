@@ -17,18 +17,6 @@ import { IControllerUtils } from 'types/controllers';
 import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
-  let route = '/';
-  let externalRoute = '/';
-
-  const appRoute = (newRoute?: string, external = false) => {
-    if (newRoute) {
-      if (external) externalRoute = newRoute;
-      else route = newRoute;
-    }
-
-    return external ? externalRoute : route;
-  };
-
   const setFiat = async (currency?: string) => {
     if (!currency) {
       const storeCurrency = store.getState().price.fiat.asset;
@@ -145,7 +133,6 @@ const ControllerUtils = (): IControllerUtils => {
   const txs = txUtils();
 
   return {
-    appRoute,
     setFiat,
     getSearch,
     getAsset,
