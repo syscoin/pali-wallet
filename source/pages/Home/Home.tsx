@@ -105,22 +105,18 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              {!isLoadingBalances ? (
-                <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                  <p
-                    id="home-balance"
-                    className="font-rubik text-5xl font-medium"
-                  >
-                    {formatNumber(actualBalance || 0)}{' '}
-                  </p>
+              <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                <p
+                  id="home-balance"
+                  className="font-rubik text-5xl font-medium"
+                >
+                  {formatNumber(actualBalance || 0)}{' '}
+                </p>
 
-                  <p className="mt-4 font-poppins">
-                    {activeNetwork.currency.toUpperCase()}
-                  </p>
-                </div>
-              ) : (
-                <Loading />
-              )}
+                <p className="mt-4 font-poppins">
+                  {activeNetwork.currency.toUpperCase()}
+                </p>
+              </div>
 
               <p id="fiat-ammount">
                 {isTestnet || isLoadingBalances ? null : fiatPriceValue}
