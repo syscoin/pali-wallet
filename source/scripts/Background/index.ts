@@ -138,13 +138,12 @@ async function checkForUpdates() {
     isNetworkChanging,
   } = store.getState().vault;
 
-  const notValidToRunPolling = Boolean(
+  const notValidToRunPolling =
     isChangingConnectedAccount ||
-      isLoadingAssets ||
-      isLoadingBalances ||
-      isLoadingTxs ||
-      isNetworkChanging
-  );
+    isLoadingAssets ||
+    isLoadingBalances ||
+    isLoadingTxs ||
+    isNetworkChanging;
 
   if (notValidToRunPolling) {
     //todo: do we also need to return if walle is unlocked?
