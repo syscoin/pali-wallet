@@ -130,13 +130,23 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 });
 
 async function checkForUpdates() {
-  if (
-    store.getState().vault.changingConnectedAccount
-      .isChangingConnectedAccount ||
-    store.getState().vault.isLoadingAssets ||
-    store.getState().vault.isLoadingTxs ||
-    store.getState().vault.isLoadingBalances
-  ) {
+  const {
+    changingConnectedAccount: { isChangingConnectedAccount },
+    isLoadingAssets,
+    isLoadingBalances,
+    isLoadingTxs,
+    isNetworkChanging,
+  } = store.getState().vault;
+
+  const notValidToRunPolling = Boolean(
+    isChangingConnectedAccount ||
+      isLoadingAssets ||
+      isLoadingBalances ||
+      isLoadingTxs ||
+      isNetworkChanging
+  );
+
+  if (notValidToRunPolling) {
     //todo: do we also need to return if walle is unlocked?
     return;
   }
