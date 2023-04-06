@@ -275,7 +275,6 @@ const MainController = (): IMainController => {
     balancesMananger.utils
       .getBalanceUpdatedForAccount(currentAccount, isBitcoinBased, networkUrl)
       .then((updatedBalance) => {
-        console.log('updatedBalance', updatedBalance);
         const actualUserBalance = isBitcoinBased
           ? currentAccount.balances.syscoin
           : currentAccount.balances.ethereum;

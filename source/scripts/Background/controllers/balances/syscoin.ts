@@ -5,9 +5,9 @@ import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat
 import { ISysBalanceController } from './types';
 
 const SyscoinBalanceController = (): ISysBalanceController => {
-  const getSysBalanceForAccount = async (networkUrl: string, xpub: string) => {
+  const getSysBalanceForAccount = async (xpub: string, networkUrl: string) => {
     try {
-      const requestDetails = '?details=basic&pageSize=0';
+      const requestDetails = 'details=basic&pageSize=0';
 
       const { balance } = await sys.utils.fetchBackendAccount(
         networkUrl,

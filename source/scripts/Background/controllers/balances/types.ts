@@ -9,8 +9,8 @@ export interface IEvmBalanceController {
 
 export interface ISysBalanceController {
   getSysBalanceForAccount: (
-    networkUrl: string,
-    xpub: string
+    xpub: string,
+    networkUrl: string
   ) => Promise<string>;
 }
 
