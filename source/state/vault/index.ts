@@ -33,6 +33,7 @@ export const initialState: IVaultState = {
     id: 0,
     type: KeyringAccountType.HDAccount,
   },
+  hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
   activeNetwork: {
     chainId: 57,
@@ -221,6 +222,9 @@ const VaultState = createSlice({
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
     },
+    setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasEthProperty = action.payload;
+    },
     setChangingConnectedAccount(
       state: IVaultState,
       action: PayloadAction<IChangingConnectedAccount>
@@ -360,6 +364,7 @@ export const {
   setIsTimerEnabled,
   forgetWallet,
   removeAccount,
+  setHasEthProperty,
   removeAccounts,
   removeNetwork,
   createAccount,

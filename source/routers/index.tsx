@@ -27,6 +27,7 @@ import {
   SeedConfirm,
   Phrase,
   ImportAccount,
+  RemoveEth,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
@@ -113,6 +114,10 @@ export const Router = () => {
         <Route
           path="autolock"
           element={<ProtectedRoute element={<AutoLock />} />}
+        />
+        <Route
+          path="remove-eth"
+          element={<ProtectedRoute element={<RemoveEth />} />}
         />
         <Route
           path="currency"

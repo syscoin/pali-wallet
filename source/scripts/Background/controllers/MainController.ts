@@ -34,6 +34,7 @@ import {
   setIsTimerEnabled as setIsTimerActive,
   setAccounts,
   setNetworkChange,
+  setHasEthProperty as setEthProperty,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -73,6 +74,9 @@ const MainController = (walletState): IMainController => {
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
+  };
+  const setHasEthProperty = (exist: boolean) => {
+    store.dispatch(setEthProperty(exist));
   };
 
   const getKeyringManager = (): KeyringManager => keyringManager;
@@ -336,6 +340,24 @@ const MainController = (walletState): IMainController => {
     }
   };
 
+  const removeWindowEthProperty = () => {
+    window.controller.dapp.handleStateChange(PaliEvents.removeProperty, {
+      method: PaliEvents.removeProperty,
+      params: {
+        type: PaliEvents.removeProperty,
+      },
+    });
+  };
+
+  const addWindowEthProperty = () => {
+    window.controller.dapp.handleStateChange(PaliEvents.addProperty, {
+      method: PaliEvents.addProperty,
+      params: {
+        type: PaliEvents.addProperty,
+      },
+    });
+  };
+
   const resolveError = () => store.dispatch(setStoreError(false));
   const resolveAccountConflict = () => {
     store.dispatch(
@@ -543,6 +565,9 @@ const MainController = (walletState): IMainController => {
     getRecommendedFee,
     updateErcTokenBalances,
     importAccountFromPrivateKey,
+    removeWindowEthProperty,
+    addWindowEthProperty,
+    setHasEthProperty,
     ...keyringManager,
   };
 };
