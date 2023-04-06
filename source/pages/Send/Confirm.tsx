@@ -97,13 +97,13 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+                updateNativeBalanceAfterSend();
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
                 setLoading(false);
                 throw error;
-              })
-              .finally(() => updateNativeBalanceAfterSend());
+              });
 
             return;
           } catch (error) {
@@ -167,13 +167,13 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+                updateNativeBalanceAfterSend();
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
                 setLoading(false);
                 throw error;
-              })
-              .finally(() => updateNativeBalanceAfterSend());
+              });
 
             return;
           } catch (error: any) {
