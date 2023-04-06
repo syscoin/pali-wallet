@@ -27,9 +27,7 @@ export const Home = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
+
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -105,7 +103,6 @@ export const Home = () => {
       {accounts[activeAccount] &&
       lastLogin &&
       isUnlocked &&
-      !isPendingBalances &&
       !isNetworkChanging ? (
         <>
           <Header accountHeader />

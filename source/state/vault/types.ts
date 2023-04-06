@@ -12,9 +12,9 @@ export interface IVaultState {
   error: boolean;
   isBitcoinBased: boolean;
   isLoadingAssets: boolean;
+  isLoadingBalances: boolean;
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
-  isPendingBalances: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
