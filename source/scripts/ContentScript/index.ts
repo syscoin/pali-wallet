@@ -74,6 +74,16 @@ const startEventEmitter = () => {
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
+  switch (data?.params?.type) {
+    case 'pali_removeProperty':
+      injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
+      break;
+    case 'pali_addProperty':
+      injectScriptFile('js/inpage.bundle.js', 'inpage');
+      break;
+    default:
+      break;
+  }
   emitter.emit(id, data);
 });
 
@@ -137,18 +147,31 @@ export const shouldInjectProvider = () =>
   documentElementCheck() &&
   !blockedDomainCheck();
 
-const injectScriptFile = (file: string) => {
+const injectScriptFile = (file: string, id: string) => {
   try {
+    switch (id) {
+      case 'removeProperty':
+        const inpage = document.getElementById('inpage');
+        if (inpage) inpage.remove();
+        break;
+      case 'inpage':
+        const removeProperty = document.getElementById('removeProperty');
+        if (removeProperty) removeProperty.remove();
+        break;
+      default:
+        break;
+    }
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
     scriptTag.src = browser.runtime.getURL(file);
+    scriptTag.setAttribute('id', id);
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
     console.error('Pali Wallet: Provider injection failed.', error);
   }
 };
 if (shouldInjectProvider()) {
-  injectScriptFile('js/inpage.bundle.js');
+  injectScriptFile('js/inpage.bundle.js', 'inpage');
 }
 start();
 startEventEmitter();
