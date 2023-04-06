@@ -14,6 +14,7 @@ export interface IVaultState {
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
   error: boolean;
+  hasEthProperty: boolean;
   isBitcoinBased: boolean;
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;

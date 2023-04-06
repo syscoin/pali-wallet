@@ -142,6 +142,17 @@ export const GeneralMenu: React.FC = () => {
 
           <Menu.Item>
             <li
+              onClick={() => navigate('/settings/remove-eth')}
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+            >
+              <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
+
+              <span className="px-3">Remove ETH prop</span>
+            </li>
+          </Menu.Item>
+
+          <Menu.Item>
+            <li
               onClick={() => navigate('/settings/currency')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >

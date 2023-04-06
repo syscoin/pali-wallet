@@ -95,6 +95,10 @@ export class PaliInpageProviderEth extends BaseProvider {
           case 'pali_chainChanged':
             this._handleChainChanged(params);
             break;
+          case 'pali_removeProperty':
+            break;
+          case 'pali_addProperty':
+            break;
           case EMITTED_NOTIFICATIONS.includes(method):
             //TODO: implement subscription messages
             throw {

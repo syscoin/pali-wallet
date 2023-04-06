@@ -29,6 +29,7 @@ export interface IMainController extends IKeyringManager {
     sys: ISysAccountController;
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
+  addWindowEthProperty: () => void;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: (password: string) => Promise<void>;
   editCustomRpc: (
@@ -53,6 +54,7 @@ export interface IMainController extends IKeyringManager {
   ) => Promise<IKeyringAccountState>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
+  removeWindowEthProperty: () => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;
   setAccount: (
@@ -63,6 +65,7 @@ export interface IMainController extends IKeyringManager {
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAutolockTimer: (minutes: number) => void;
+  setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   unlock: (pwd: string) => Promise<boolean>;
   updateErcTokenBalances: (
