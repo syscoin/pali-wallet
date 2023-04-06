@@ -18,7 +18,7 @@ const SyscoinBalanceController = (): ISysBalanceController => {
 
       const formattedBalance = balance / 1e8;
 
-      return verifyZerosInBalanceAndFormat(formattedBalance, 4);
+      return verifyZerosInBalanceAndFormat(formattedBalance, 8);
     } catch (error) {
       return '0';
     }

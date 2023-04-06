@@ -20,20 +20,16 @@ export const Home = () => {
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
   );
-  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const { accounts, isNetworkChanging } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    isNetworkChanging,
+    activeAccount,
+    activeNetwork,
+    isBitcoinBased,
+    lastLogin,
+    isLoadingBalances,
+  } = useSelector((state: RootState) => state.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -109,20 +105,26 @@ export const Home = () => {
 
           <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
-              <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                <p
-                  id="home-balance"
-                  className="font-rubik text-5xl font-medium"
-                >
-                  {formatNumber(actualBalance || 0)}{' '}
-                </p>
+              {!isLoadingBalances ? (
+                <div className="balance-account flex gap-x-0.5 items-center justify-center">
+                  <p
+                    id="home-balance"
+                    className="font-rubik text-5xl font-medium"
+                  >
+                    {formatNumber(actualBalance || 0)}{' '}
+                  </p>
 
-                <p className="mt-4 font-poppins">
-                  {activeNetwork.currency.toUpperCase()}
-                </p>
-              </div>
+                  <p className="mt-4 font-poppins">
+                    {activeNetwork.currency.toUpperCase()}
+                  </p>
+                </div>
+              ) : (
+                <Loading />
+              )}
 
-              <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>
+              <p id="fiat-ammount">
+                {isTestnet || isLoadingBalances ? null : fiatPriceValue}
+              </p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
@@ -133,6 +135,7 @@ export const Home = () => {
                 onClick={() =>
                   isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
                 }
+                disabled={isLoadingBalances}
               >
                 <Icon
                   name="arrow-up"

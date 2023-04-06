@@ -17,7 +17,12 @@ import {
   web3Provider,
   setActiveNetwork as _sysweb3SetActiveNetwork,
 } from '@pollum-io/sysweb3-network';
-import { INetwork, getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
+import {
+  INetwork,
+  INetworkType,
+  getErc20Abi,
+  getErc21Abi,
+} from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -43,6 +48,7 @@ import {
   initialState,
   setIsLoadingTxs,
   setIsLoadingBalances,
+  setAccountBalances,
 } from 'state/vault';
 import { IOmmitedAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -53,6 +59,7 @@ import { isBitcoinBasedNetwork, networkChain } from 'utils/network';
 
 import WalletController from './account';
 import AssetsManager from './assets';
+import BalancesManager from './balances';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import TransactionsManager from './transactions';
@@ -64,6 +71,7 @@ const MainController = (): IMainController => {
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
   const transactionsManager = TransactionsManager();
+  const balancesMananger = BalancesManager();
 
   //------------------------- NEW TRANSACTIONS METHODS -------------------------//
 
@@ -251,6 +259,48 @@ const MainController = (): IMainController => {
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
   //------------------------- END ASSETS METHODS -------------------------//
+
+  //------------------------- NEW BALANCES METHODS -------------------------//
+
+  const updateUserNativeBalance = () => {
+    const {
+      isBitcoinBased,
+      activeNetwork: { url: networkUrl },
+      accounts,
+      activeAccount,
+    } = store.getState().vault;
+
+    const currentAccount = accounts[activeAccount];
+
+    balancesMananger.utils
+      .getBalanceUpdatedForAccount(currentAccount, isBitcoinBased, networkUrl)
+      .then((updatedBalance) => {
+        console.log('updatedBalance', updatedBalance);
+        const actualUserBalance = isBitcoinBased
+          ? currentAccount.balances.syscoin
+          : currentAccount.balances.ethereum;
+
+        const validateIfCanDispatch = Boolean(
+          actualUserBalance !== parseFloat(updatedBalance)
+        );
+
+        if (validateIfCanDispatch) {
+          store.dispatch(setIsLoadingBalances(true));
+
+          store.dispatch(
+            setAccountBalances({
+              ...currentAccount.balances,
+              [isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum]:
+                updatedBalance,
+            })
+          );
+
+          store.dispatch(setIsLoadingBalances(false));
+        }
+      });
+  };
+
+  //------------------------- END BALANCES METHODS -------------------------//
 
   const setAutolockTimer = (minutes: number) => {
     store.dispatch(setTimer(minutes));
@@ -639,7 +689,9 @@ const MainController = (): IMainController => {
     if (isNetworkChanging || isNil(activeAccountValues.address)) return;
 
     new Promise<void>((resolve) => {
-      //First update Assets
+      //First update native balance
+      updateUserNativeBalance();
+      //Later update Assets
       updateAssetsFromCurrentAccount();
       //Later update Txs
       updateUserTransactionsState();

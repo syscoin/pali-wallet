@@ -20,8 +20,8 @@ const TransactionsManager = (): ITransactionsManager => {
             );
 
           return getSysTxs;
-        } catch (sysErrorUpdateTxs) {
-          return sysErrorUpdateTxs;
+        } catch (sysTxError) {
+          return sysTxError;
         }
       case false:
         try {
@@ -32,8 +32,8 @@ const TransactionsManager = (): ITransactionsManager => {
             );
 
           return getEvmTxs;
-        } catch (evmErrorUpdateTxs) {
-          return evmErrorUpdateTxs;
+        } catch (evmTxError) {
+          return evmTxError;
         }
     }
   };

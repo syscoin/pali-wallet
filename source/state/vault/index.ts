@@ -4,6 +4,7 @@ import {
   initialNetworksState,
   initialActiveAccountState,
   IKeyringAccountState,
+  IKeyringBalances,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-utils';
 
@@ -53,6 +54,12 @@ const VaultState = createSlice({
       }>
     ) {
       state.accounts = action.payload;
+    },
+    setAccountBalances(
+      state: IVaultState,
+      action: PayloadAction<IKeyringBalances>
+    ) {
+      state.accounts[state.activeAccount].balances = action.payload;
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       //todo: it looks like setAccountTransactionS just sets one transaction instead os many
@@ -148,6 +155,7 @@ const VaultState = createSlice({
       //   16
       // ).toString();
     },
+
     setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingBalances = action.payload;
     },
@@ -238,6 +246,7 @@ export const {
   setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
+  setAccountBalances,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsLoadingBalances,
