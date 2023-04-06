@@ -5,7 +5,6 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 // import { localStorage } from 'redux-persist-webextension-storage';
-import { IMainController } from 'types/controllers';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -17,21 +16,18 @@ declare global {
   }
 }
 let paliPort: Runtime.Port;
-const onWalletReady = (windowController: any) => {
+const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
-  if (!window?.controller?.dapp) {
-    window.controller = windowController;
-  }
-
-  console.log('window.controller', windowController);
+  window.controller = windowController;
   setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
-  window.controller.dapp.setup(paliPort);
+  if (paliPort) {
+    window.controller.dapp.setup(paliPort);
+  }
   window.controller.utils.setFiat();
 };
 
 if (!window.controller) {
   window.controller = MasterController(onWalletReady);
-  console.log('if not window controller', window.controller);
   // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
@@ -95,9 +91,10 @@ export const inactivityTime = () => {
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
+    if (window.controller?.dapp) {
+      window.controller.dapp.setup(port);
+    }
     paliPort = port;
-    // window.controller.dapp.setup(port);
-
     return;
   }
   const { changingConnectedAccount, timer, isTimerEnabled } =

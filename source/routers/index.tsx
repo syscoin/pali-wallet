@@ -40,7 +40,6 @@ export const Router = () => {
   const { pathname } = useLocation();
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  console.log('Checking wallet', wallet);
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {

@@ -286,14 +286,6 @@ const MainController = (walletState): IMainController => {
 
     const { sucess, wallet, activeChain } =
       await keyringManager.setSignerNetwork(network, chain);
-    console.log(
-      'KeyringManager - setActiveNetworkLogic - sucess: ',
-      sucess,
-      'wallet: ',
-      wallet,
-      'activeChain: ',
-      activeChain
-    );
     if (sucess) {
       store.dispatch(
         setNetworkChange({

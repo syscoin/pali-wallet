@@ -76,20 +76,14 @@ const MasterController = (
       _persist: { rehydrated },
     } = state;
     if (rehydrated) {
-      console.log('rehydrated', rehydrated);
       initializeMainController();
     }
   });
   const initializeMainController = () => {
-    console.log('Initializing main controller');
-    console.log('Pali vault state: ', store.getState().vault);
     const walletState = vaultToWalletState(store.getState().vault);
-    console.log('wallet state: ', walletState);
     dapp = Object.freeze(DAppController());
     wallet = Object.freeze(MainController(walletState));
     utils = Object.freeze(ControllerUtils());
-    console.log('utils: ', utils);
-    console.log('wallet: ', wallet);
     wallet.setStorage(window.localStorage);
     readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
   };
