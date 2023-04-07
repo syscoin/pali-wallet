@@ -516,16 +516,12 @@ const MainController = (walletState): IMainController => {
       .then((updatedTxs) => {
         if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
 
-        store.dispatch(setIsLoadingTxs(true));
-
         store.dispatch(
           setActiveAccountProperty({
             property: 'transactions',
             value: updatedTxs,
           })
         );
-
-        store.dispatch(setIsLoadingTxs(false));
       });
   };
 
@@ -554,16 +550,12 @@ const MainController = (walletState): IMainController => {
 
     clonedArrayToAdd.unshift(txWithTimestamp);
 
-    store.dispatch(setIsLoadingTxs(true));
-
     store.dispatch(
       setActiveAccountProperty({
         property: 'transactions',
         value: clonedArrayToAdd,
       })
     );
-
-    store.dispatch(setIsLoadingTxs(false));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -574,7 +566,7 @@ const MainController = (walletState): IMainController => {
   //---- SYS METHODS ----//
   const getInitialSysTokenForAccount = async (xpub: string) => {
     store.dispatch(setIsLoadingAssets(true));
-    console.log('Account xpub: ', xpub);
+
     const initialSysAssetsForAccount =
       await assetsManager.sys.getSysAssetsByXpub(
         xpub,
@@ -647,8 +639,6 @@ const MainController = (walletState): IMainController => {
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    store.dispatch(setIsLoadingAssets(true));
-
     assetsManager.utils
       .updateAssetsFromCurrentAccount(
         currentAccount,
@@ -657,14 +647,15 @@ const MainController = (walletState): IMainController => {
         networks
       )
       .then((updatedAssets) => {
+        if (isNil(updatedAssets) || isEmpty(updatedAssets)) return;
+
         store.dispatch(
           setActiveAccountProperty({
             property: 'assets',
             value: updatedAssets as any, //setActiveAccountProperty only accept any as type
           })
         );
-      })
-      .finally(() => store.dispatch(setIsLoadingAssets(false)));
+      });
   };
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
@@ -690,12 +681,10 @@ const MainController = (walletState): IMainController => {
           : currentAccount.balances.ethereum;
 
         const validateIfCanDispatch = Boolean(
-          actualUserBalance !== parseFloat(updatedBalance)
+          Number(actualUserBalance) !== parseFloat(updatedBalance)
         );
 
         if (validateIfCanDispatch) {
-          store.dispatch(setIsLoadingBalances(true));
-
           store.dispatch(
             setAccountBalances({
               ...currentAccount.balances,
@@ -703,8 +692,6 @@ const MainController = (walletState): IMainController => {
                 updatedBalance,
             })
           );
-
-          store.dispatch(setIsLoadingBalances(false));
         }
       });
   };
