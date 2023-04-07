@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { ImWarning } from 'react-icons/im';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { PrimaryButton } from '..';
 import { Icon } from '..';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
-const TWENTY_FIVE_SECONDS = 25000;
+const FIVE_SECONDS = 5000;
 
 export const Loading = ({
   opacity = 60,
@@ -16,7 +18,7 @@ export const Loading = ({
   opacity?: number;
   usePopupSize?: boolean;
 }) => {
-  const { wallet } = getController();
+  const { wallet } = getController(); //todo we need to get keyring to get setActiveAccount fn here
 
   const isNetworkChanging = useSelector(
     (state: RootState) => state.vault.isNetworkChanging
@@ -27,7 +29,10 @@ export const Loading = ({
   );
 
   const activeAccount = useSelector(
-    (state: RootState) => state.vault.accounts[state.vault.activeAccount]
+    (state: RootState) =>
+      state.vault.accounts[state.vault.activeAccount.type][
+        state.vault.activeAccount.id
+      ]
   );
 
   const [timeoutError, setTimeoutError] = useState(false);
@@ -36,7 +41,7 @@ export const Loading = ({
     if (isNetworkChanging) {
       setTimeout(() => {
         setTimeoutError(true);
-      }, TWENTY_FIVE_SECONDS);
+      }, FIVE_SECONDS);
     }
   };
 
@@ -49,7 +54,7 @@ export const Loading = ({
 
     if (activeAccount.isImported) {
       // Set the Default UTX0 account to user can return safely to UTX0 Syscoin Network
-      wallet.setActiveAccount(0);
+      wallet.setActiveAccount(0, KeyringAccountType.HDAccount);
     }
 
     await wallet.setActiveNetwork(correctSyscoinNetwork, 'syscoin');
@@ -96,9 +101,9 @@ export const Loading = ({
                     className="text-sm"
                     style={{ color: '#FF1D1D', fontWeight: '600' }}
                   >
-                    It looks like an error is occurring when connecting to this
-                    network, click the button below and connect to Syscoin
-                    Mainnet
+                    The RPC you're trying to connect with is taking too long to
+                    reply. We recommend change to other provider for that
+                    network.
                   </span>
                 </div>
               </div>

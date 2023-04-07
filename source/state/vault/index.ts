@@ -2,23 +2,40 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import {
   initialNetworksState,
-  initialActiveAccountState,
-  IKeyringAccountState,
+  initialActiveHdAccountState,
+  initialActiveImportedAccountState,
+  KeyringAccountType,
+  IWalletState,
   IKeyringBalances,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
-import { IChangingConnectedAccount, IVaultState } from './types';
+import {
+  IChangingConnectedAccount,
+  IPaliAccount,
+  IVaultState,
+  PaliAccount,
+} from './types';
 
 export const initialState: IVaultState = {
   lastLogin: 0,
   accounts: {
-    0: {
-      ...initialActiveAccountState,
-      assets: { syscoin: [], ethereum: [] },
+    [KeyringAccountType.HDAccount]: {
+      [initialActiveHdAccountState.id]: {
+        ...initialActiveHdAccountState,
+        assets: { ethereum: [], syscoin: [] },
+        transactions: [],
+      },
     },
+    [KeyringAccountType.Imported]: {},
+    //TODO: add Trezor account type here
   },
-  activeAccount: 0,
+  activeAccount: {
+    id: 0,
+    type: KeyringAccountType.HDAccount,
+  },
+  hasEthProperty: true,
+  activeChain: INetworkType.Syscoin,
   activeNetwork: {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
@@ -35,11 +52,11 @@ export const initialState: IVaultState = {
     host: undefined,
     isChangingConnectedAccount: false,
     newConnectedAccount: undefined,
+    connectedAccountType: undefined,
   },
   timer: 5,
   isTimerEnabled: true,
   networks: initialNetworksState,
-  encryptedMnemonic: '',
   error: false,
 };
 
@@ -50,27 +67,65 @@ const VaultState = createSlice({
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
-        [id: number]: IKeyringAccountState;
+        [key in KeyringAccountType]: PaliAccount;
       }>
     ) {
-      state.accounts = action.payload;
+      state.accounts = action.payload; //todo: account should be adjusted with the new type and format
+    },
+    setNetworkChange(
+      state: IVaultState,
+      action: PayloadAction<{
+        activeChain: INetworkType;
+        wallet: IWalletState;
+      }>
+    ) {
+      const { activeChain, wallet } = action.payload;
+      state.activeChain = activeChain;
+      state.activeNetwork = wallet.activeNetwork;
+      state.activeAccount = {
+        id: wallet.activeAccountId,
+        type: wallet.activeAccountType,
+      };
+      state.networks = wallet.networks;
+      for (const accountType in wallet.accounts) {
+        for (const accountId in wallet.accounts[accountType]) {
+          const account = wallet.accounts[accountType][accountId];
+          if (!account.xpub) {
+            //This is for the default imported account, we don't want to add it yet to pali State
+            continue;
+          }
+          const mainAccount: IPaliAccount =
+            state.accounts[accountType][account.id];
+          // Update the account properties, leaving the assets and transactions fields unchanged
+          state.accounts[accountType][account.id] = {
+            ...account,
+            assets: mainAccount.assets,
+            transactions: mainAccount.transactions,
+          };
+        }
+      }
     },
     setAccountBalances(
       state: IVaultState,
       action: PayloadAction<IKeyringBalances>
     ) {
-      state.accounts[state.activeAccount].balances = action.payload;
+      state.accounts[state.activeAccount.type][
+        state.activeAccount.id
+      ].balances = action.payload;
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
-      //todo: it looks like setAccountTransactionS just sets one transaction instead os many
-      const id = state.activeAccount;
-      state.accounts[id].transactions.unshift(action.payload);
+      const { id, type } = state.activeAccount;
+      state.accounts[type][id].transactions.unshift(action.payload);
     },
     createAccount(
       state: IVaultState,
-      action: PayloadAction<IKeyringAccountState>
+      action: PayloadAction<{
+        account: IPaliAccount;
+        accountType: KeyringAccountType;
+      }>
     ) {
-      state.accounts[action.payload.id] = action.payload;
+      const { account, accountType } = action.payload;
+      state.accounts[accountType][account.id] = account;
     },
     setNetworks(
       state: IVaultState,
@@ -80,6 +135,7 @@ const VaultState = createSlice({
         network: INetwork;
       }>
     ) {
+      //TODO: refactor, it should just set the network the verification is already done on sysweb3
       const { chain, network, isEdit } = action.payload;
 
       const replaceNetworkName = `${network.label
@@ -144,7 +200,14 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
-    setActiveAccount(state: IVaultState, action: PayloadAction<number>) {
+    setActiveAccount(
+      state: IVaultState,
+      action: PayloadAction<{
+        id: number;
+        type: KeyringAccountType;
+      }>
+    ) {
+      // const { accountId, accountType } = action.payload;
       state.activeAccount = action.payload;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
@@ -155,9 +218,13 @@ const VaultState = createSlice({
       //   16
       // ).toString();
     },
-
+    setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
+      state.activeChain = action.payload;
+    },
     setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
+      const { id, type } = state.activeAccount;
       state.isLoadingBalances = action.payload;
+      state.accounts[type][id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;
@@ -167,6 +234,9 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
+    },
+    setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasEthProperty = action.payload;
     },
     setChangingConnectedAccount(
       state: IVaultState,
@@ -178,46 +248,65 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         property: string;
-        value: number | string | boolean | any[];
+        value:
+          | number
+          | string
+          | boolean
+          | any[]
+          | { ethereum: any[]; syscoin: any[] };
       }>
     ) {
-      //Later with new sysweb3 change this to only get activeAccount
-      const { activeAccount: id } = state;
+      const { id, type } = state.activeAccount;
       const { property, value } = action.payload;
 
-      if (!(property in state.accounts[id]))
+      if (!(property in state.accounts[type][id]))
         throw new Error('Unable to set property. Unknown key');
 
-      state.accounts[id][property] = value;
-    },
-    setEncryptedMnemonic(state: IVaultState, action: PayloadAction<string>) {
-      state.encryptedMnemonic = action.payload;
+      state.accounts[type][id][property] = value;
     },
     forgetWallet() {
       return initialState;
     },
     removeAccounts(state: IVaultState) {
       state.accounts = {
-        0: {
-          ...initialActiveAccountState,
-          assets: { syscoin: [], ethereum: [] },
+        [KeyringAccountType.HDAccount]: {
+          [initialActiveHdAccountState.id]: {
+            ...initialActiveHdAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: [],
+          },
+        },
+        [KeyringAccountType.Imported]: {
+          [initialActiveImportedAccountState.id]: {
+            ...initialActiveImportedAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: [],
+          },
         },
       };
-      state.activeAccount = 0;
+      state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },
-    removeAccount(state: IVaultState, action: PayloadAction<{ id: number }>) {
-      delete state.accounts[action.payload.id];
+    removeAccount(
+      state: IVaultState,
+      action: PayloadAction<{ id: number; type: KeyringAccountType }>
+    ) {
+      const { id, type } = action.payload;
+      delete state.accounts[type][id];
     },
     setAccountLabel(
       state: IVaultState,
-      action: PayloadAction<{ id: number; label: string }>
+      action: PayloadAction<{
+        id: number;
+        label: string;
+        type: KeyringAccountType;
+      }>
     ) {
-      const { label, id } = action.payload;
+      const { label, id, type } = action.payload;
 
-      if (!state.accounts[id])
+      if (!state.accounts[type][id])
         throw new Error('Unable to set label. Account not found');
 
-      state.accounts[id].label = label;
+      state.accounts[type][id].label = label;
     },
     setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
       state.error = action.payload;
@@ -225,7 +314,6 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
-
     setUpdatedAllErcTokensBalance(
       state: IVaultState,
       action: PayloadAction<{
@@ -233,11 +321,21 @@ const VaultState = createSlice({
       }>
     ) {
       const { updatedTokens } = action.payload;
-      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
+        state;
+      const { type, id } = activeAccount;
+      const findAccount = accounts[type][id];
 
-      if (!Boolean(isNetworkChanging || isBitcoinBased)) return;
+      if (
+        !Boolean(
+          findAccount.address === accounts[type][id].address ||
+            isNetworkChanging ||
+            isBitcoinBased
+        )
+      )
+        return;
 
-      state.accounts[activeAccount].assets.ethereum = updatedTokens;
+      state.accounts[type][id].assets.ethereum = updatedTokens;
     },
   },
 });
@@ -246,20 +344,22 @@ export const {
   setAccounts,
   setActiveAccount,
   setActiveAccountProperty,
-  setAccountBalances,
+  setNetworkType,
+  setNetworkChange,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsLoadingBalances,
-  setIsLoadingTxs,
   setIsLoadingAssets,
+  setIsLoadingTxs,
+  setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
   setTimer,
   setIsTimerEnabled,
-  setEncryptedMnemonic,
   forgetWallet,
   removeAccount,
+  setHasEthProperty,
   removeAccounts,
   removeNetwork,
   createAccount,

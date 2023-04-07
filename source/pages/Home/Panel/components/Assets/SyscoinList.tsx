@@ -11,7 +11,7 @@ export const SyscoinAssetsList = () => {
   const { accounts, activeAccount, isLoadingAssets } = useSelector(
     (state: RootState) => state.vault
   );
-  const { assets } = accounts[activeAccount];
+  const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
 
   return (

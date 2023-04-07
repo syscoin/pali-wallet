@@ -27,10 +27,7 @@ import {
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
-  const {
-    wallet: { account, updateErcTokenBalances, sendAndSaveTransaction },
-    updateNativeBalanceAfterSend,
-  } = getController();
+  const { wallet, updateNativeBalanceAfterSend } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
 
@@ -40,10 +37,10 @@ export const SendConfirm = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -67,9 +64,6 @@ export const SendConfirm = () => {
 
   const basicTxValues = state.tx;
 
-  const ethereumTxsController = account.eth.tx;
-  const sysTxsController = account.sys.tx;
-
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
   );
@@ -91,7 +85,7 @@ export const SendConfirm = () => {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
           try {
-            sysTxsController
+            wallet.syscoinTransaction
               .sendTransaction(basicTxValues)
               .then((response) => {
                 setConfirmedTx(response);
@@ -133,10 +127,10 @@ export const SendConfirm = () => {
               'chainId',
             ]) as ITxState;
 
-            ethereumTxsController
+            wallet.ethereumTransaction
               .sendFormattedTransaction({
                 ...restTx,
-                value: ethereumTxsController.toBigNumber(
+                value: wallet.ethereumTransaction.toBigNumber(
                   Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
                 ),
                 maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -157,7 +151,7 @@ export const SendConfirm = () => {
                   ),
                   9
                 ),
-                gasLimit: ethereumTxsController.toBigNumber(
+                gasLimit: wallet.ethereumTransaction.toBigNumber(
                   validateCustomGasLimit
                     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                     : fee.gasLimit
@@ -193,7 +187,7 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case false:
               try {
-                ethereumTxsController
+                wallet.ethereumTransaction
                   .sendSignedErc20Transaction({
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
@@ -220,7 +214,7 @@ export const SendConfirm = () => {
                       ),
                       9
                     ),
-                    gasLimit: ethereumTxsController.toBigNumber(
+                    gasLimit: wallet.ethereumTransaction.toBigNumber(
                       validateCustomGasLimit
                         ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                         : fee.gasLimit * 4
@@ -245,7 +239,7 @@ export const SendConfirm = () => {
                       await new Promise((resolve) => setTimeout(resolve, 5000));
                     }
                     if (receipt) {
-                      updateErcTokenBalances(
+                      wallet.updateErcTokenBalances(
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft,
@@ -275,7 +269,7 @@ export const SendConfirm = () => {
             //HANDLE ERC721 NFTS TRANSACTIONS
             case true:
               try {
-                ethereumTxsController
+                wallet.ethereumTransaction
                   .sendSignedErc721Transaction({
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
@@ -303,7 +297,7 @@ export const SendConfirm = () => {
                       await new Promise((resolve) => setTimeout(resolve, 5000));
                     }
                     if (receipt) {
-                      updateErcTokenBalances(
+                      wallet.updateErcTokenBalances(
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft
@@ -343,14 +337,14 @@ export const SendConfirm = () => {
     const getFeeRecomendation = async () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
-          await ethereumTxsController.getFeeDataWithDynamicMaxPriorityFeePerGas();
+          await wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
         const initialFeeDetails = {
           maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
           baseFee:
             (Number(maxFeePerGas) - Number(maxPriorityFeePerGas)) / 10 ** 9,
           maxPriorityFeePerGas: Number(maxPriorityFeePerGas) / 10 ** 9,
-          gasLimit: ethereumTxsController.toBigNumber(0),
+          gasLimit: wallet.ethereumTransaction.toBigNumber(0),
         };
 
         const formattedTxObject = {
@@ -363,7 +357,7 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        const getGasLimit = await ethereumTxsController.getTxGasLimit(
+        const getGasLimit = await wallet.ethereumTransaction.getTxGasLimit(
           formattedTxObject
         );
 
@@ -426,7 +420,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          sendAndSaveTransaction(confirmedTx);
+          wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
         }}
       />

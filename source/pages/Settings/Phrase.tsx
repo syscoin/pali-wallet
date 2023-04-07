@@ -47,12 +47,15 @@ const PhraseView = () => {
               },
               () => ({
                 validator(_, value) {
-                  const seed = controller.wallet.getSeed(value);
+                  try {
+                    const seed = controller.wallet.getSeed(value);
+                    if (seed) {
+                      setPhrase(seed);
 
-                  if (seed) {
-                    setPhrase(seed);
-
-                    return Promise.resolve();
+                      return Promise.resolve();
+                    }
+                  } catch (e) {
+                    console.log('Error: ', e);
                   }
 
                   return Promise.reject();

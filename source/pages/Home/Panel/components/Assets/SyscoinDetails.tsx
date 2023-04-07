@@ -15,7 +15,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { assets } = accounts[activeAccount];
+  const { assets } = accounts[activeAccount.type][activeAccount.id];
 
   const [copied, copy] = useCopyClipboard();
 

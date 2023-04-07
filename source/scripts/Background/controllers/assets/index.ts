@@ -1,6 +1,4 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-
-import { INetworksVault } from 'state/vault/types';
+import { INetworksVault, IPaliAccount } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
@@ -8,7 +6,7 @@ import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
 const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networks: INetworksVault

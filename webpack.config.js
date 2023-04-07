@@ -27,6 +27,8 @@ const extensionReloaderPlugin =
           contentScript: 'contentScript',
           background: 'background',
           inpage: 'inject',
+          pali: 'inject',
+          handleWindowProperties: 'inject',
           extensionPage: ['popup'],
           trezorScript: 'trezorScript',
         },
@@ -69,6 +71,12 @@ module.exports = {
     ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
+    pali: path.join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),
+    handleWindowProperties: path.join(
+      sourcePath,
+      'scripts/ContentScript',
+      'inject/handleWindowProperties.ts'
+    ),
     contentScript: path.join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: path.join(sourcePath, 'pages/App', 'index.tsx'),
     external: path.join(sourcePath, 'pages/External', 'index.tsx'),

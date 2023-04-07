@@ -18,12 +18,13 @@ export const TransactionsPanel = () => {
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
 
-  const { xpub, address: userAddress } = accounts[activeAccount];
+  const { xpub, address: userAddress } =
+    accounts[activeAccount.type][activeAccount.id];
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
 
   const transactions = Object.values(
-    accounts[activeAccount].transactions ?? {}
+    accounts[activeAccount.type][activeAccount.id].transactions ?? {}
   );
 
   const NoTransactionsComponent = () => (

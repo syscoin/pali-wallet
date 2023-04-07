@@ -37,10 +37,11 @@ export const Home = () => {
   //* Constants
   const controller = getController();
   const isUnlocked =
-    controller.wallet.isUnlocked() && accounts[activeAccount].address !== '';
+    controller.wallet.isUnlocked() &&
+    accounts[activeAccount.type][activeAccount.id].address !== '';
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
-    accounts[activeAccount].balances;
+    accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
@@ -86,7 +87,7 @@ export const Home = () => {
   }, [
     isUnlocked,
     activeAccount,
-    accounts[activeAccount].address,
+    accounts[activeAccount.type][activeAccount.id].address,
     activeNetwork,
     activeNetwork.chainId,
     fiatAsset,
@@ -96,7 +97,7 @@ export const Home = () => {
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
-      {accounts[activeAccount] &&
+      {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
       isUnlocked &&
       !isNetworkChanging ? (

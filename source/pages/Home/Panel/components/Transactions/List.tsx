@@ -16,7 +16,8 @@ export const TransactionsList = () => {
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
 
-  const { transactions: userTransactions } = accounts[activeAccount];
+  const { transactions: userTransactions } =
+    accounts[activeAccount.type][activeAccount.id];
 
   const { navigate } = useUtils();
 

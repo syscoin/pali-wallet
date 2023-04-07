@@ -1,15 +1,20 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-utils';
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 export interface IVaultState {
-  accounts: {
-    [id: number]: IKeyringAccountState;
+  accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
+  activeAccount: {
+    id: number;
+    type: KeyringAccountType;
   };
-  activeAccount: number;
+  activeChain: INetworkType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
-  encryptedMnemonic: string;
   error: boolean;
+  hasEthProperty: boolean;
   isBitcoinBased: boolean;
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;
@@ -31,31 +36,24 @@ export interface INetworksVault {
 }
 
 export interface IChangingConnectedAccount {
+  connectedAccountType: KeyringAccountType | undefined;
   host: string | undefined;
   isChangingConnectedAccount: boolean;
   newConnectedAccount: IKeyringAccountState | undefined;
 }
 
-export interface IHolding {
-  NFTID: string;
-  assetGuid: string;
-  balance: number;
-  baseAssetID: string;
-  childAssetID: string;
-  decimals: number;
-  description: string;
-  symbol: string;
-  type: string;
+export interface IPaliAccount extends IKeyringAccountState {
+  assets: {
+    ethereum: any[]; //TODO: add type
+    syscoin: any[]; //TODO: add type
+  };
+  transactions: any; //TODO: add type
 }
+export type PaliAccount = {
+  [id: number]: IPaliAccount;
+};
 
-export interface IMintedToken {
-  assetGuid: string;
-  maxSupply: number;
-  symbol: string;
-  totalSupply: number;
-}
-
-export type IOmmitedAccount = Omit<IKeyringAccountState, 'xprv'>;
+export type IOmmitedAccount = Omit<IPaliAccount, 'xprv'>;
 
 export type IOmittedVault = Omit<IVaultState, 'accounts'> & {
   accounts: { [id: number]: IOmmitedAccount };

@@ -14,10 +14,10 @@ const PrivateKeyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -28,8 +28,17 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) =>
-    controller.wallet.getDecryptedPrivateKey(key);
+  const getDecryptedPrivateKey = (key: string) => {
+    try {
+      return controller.wallet.getPrivateKeyByAccountId(
+        activeAccountMeta.id,
+        activeAccountMeta.type,
+        key
+      );
+    } catch (e) {
+      console.log('Wrong password', e);
+    }
+  };
 
   useEffect(() => {
     if (!copied) return;
@@ -85,8 +94,8 @@ const PrivateKeyView = () => {
               message: '',
             },
             () => ({
-              validator(_, pwd) {
-                if (controller.wallet.checkPassword(pwd)) {
+              async validator(_, pwd) {
+                if (await controller.wallet.unlock(pwd)) {
                   setValid(true);
 
                   return Promise.resolve();

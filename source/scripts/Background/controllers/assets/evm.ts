@@ -1,7 +1,6 @@
 import { ethers } from 'ethers';
 import lodash, { isEmpty } from 'lodash';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import {
   ISupportsInterfaceProps,
   contractChecker,
@@ -11,7 +10,7 @@ import {
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
-import { INetworksVault } from 'state/vault/types';
+import { INetworksVault, IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
@@ -198,7 +197,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
   };
 
   const updateAllEvmTokens = async (
-    account: IKeyringAccountState,
+    account: IPaliAccount,
     networks: INetworksVault
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(account.assets.ethereum)) return [];

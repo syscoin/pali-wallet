@@ -8,7 +8,6 @@ import {
   getTokenByContract,
   getAsset,
   txUtils,
-  getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
@@ -18,18 +17,6 @@ import { IControllerUtils } from 'types/controllers';
 import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
-  let route = '/';
-  let externalRoute = '/';
-
-  const appRoute = (newRoute?: string, external = false) => {
-    if (newRoute) {
-      if (external) externalRoute = newRoute;
-      else route = newRoute;
-    }
-
-    return external ? externalRoute : route;
-  };
-
   const setFiat = async (currency?: string) => {
     if (!currency) {
       const storeCurrency = store.getState().price.fiat.asset;
@@ -44,23 +31,28 @@ const ControllerUtils = (): IControllerUtils => {
       case 'syscoin':
         try {
           const { chain } = await validateSysRpc(activeNetwork.url);
-
-          const getFiatForSys = await getFiatValueByToken(id, currency);
-
-          const price = chain === 'test' ? 0 : getFiatForSys;
-
-          const currencies = await (
-            await fetch(`${ASSET_PRICE_API}/currency`)
-          ).json();
-
-          if (currencies && currencies.rates) {
-            store.dispatch(setCoins(currencies.rates));
+          if (chain !== 'test') {
+            const currencies = await (
+              await fetch(`${activeNetwork.url}${ASSET_PRICE_API}`)
+            ).json();
+            if (currencies && currencies.rates) {
+              store.dispatch(setCoins(currencies.rates));
+              if (currencies.rates[currency.toLowerCase()]) {
+                store.dispatch(
+                  setPrices({
+                    asset: currency,
+                    price: currencies.rates[currency.toLowerCase()],
+                  })
+                );
+                return;
+              }
+            }
           }
 
           store.dispatch(
             setPrices({
               asset: currency,
-              price,
+              price: 0,
             })
           );
         } catch (error) {
@@ -141,7 +133,6 @@ const ControllerUtils = (): IControllerUtils => {
   const txs = txUtils();
 
   return {
-    appRoute,
     setFiat,
     getSearch,
     getAsset,

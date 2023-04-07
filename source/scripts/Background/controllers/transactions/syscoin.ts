@@ -33,7 +33,8 @@ const SysTransactionController = (): ISysTransactionsController => {
   ): Promise<ISysTransaction[]> => {
     const { accounts, activeAccount } = store.getState().vault;
 
-    const { transactions: userTransactions } = accounts[activeAccount];
+    const { transactions: userTransactions } =
+      accounts[activeAccount.type][activeAccount.id];
 
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 

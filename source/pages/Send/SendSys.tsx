@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
+//todo: update with the new function
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
@@ -23,10 +24,10 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
@@ -36,7 +37,7 @@ export const SendSys = () => {
 
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
-      await controller.wallet.account.sys.tx.getRecommendedFee(
+      await controller.wallet.syscoinTransaction.getRecommendedFee(
         activeNetwork.url
       );
 
@@ -165,7 +166,11 @@ export const SendSys = () => {
                 validator(_, value) {
                   if (
                     !value ||
-                    isValidSYSAddress(value, activeNetwork, verifyAddress)
+                    isValidSYSAddress(
+                      value,
+                      activeNetwork.chainId,
+                      verifyAddress
+                    )
                   ) {
                     return Promise.resolve();
                   }

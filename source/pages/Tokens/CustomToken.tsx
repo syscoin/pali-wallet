@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { ethers } from 'ethers';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -26,14 +25,10 @@ export const CustomToken = () => {
     message: '',
   });
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const handleSubmit = async ({
     contractAddress,
@@ -47,7 +42,7 @@ export const CustomToken = () => {
     setIsLoading(true);
 
     try {
-      const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+      const provider = controller.wallet.ethereumTransaction.web3Provider;
 
       const addTokenMethodResponse =
         await controller.wallet.assets.evm.addCustomTokenByType(

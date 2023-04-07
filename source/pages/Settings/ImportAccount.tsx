@@ -21,11 +21,11 @@ const ImportAccountView = () => {
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
 
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   if (!activeAccount) throw new Error('No account');
 

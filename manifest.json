@@ -67,7 +67,12 @@
       "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]
     }
   ],
-  "web_accessible_resources": ["app.html", "js/inpage.bundle.js"],
+  "web_accessible_resources": [
+    "app.html",
+    "js/inpage.bundle.js",
+    "js/handleWindowProperties.bundle.js",
+    "js/pali.bundle.js"
+  ],
   "commands": {
     "_execute_browser_action": {
       "suggested_key": {

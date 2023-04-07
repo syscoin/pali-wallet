@@ -1,9 +1,3 @@
-import {
-  IEthereumTransactions,
-  EthereumTransactions,
-  IWeb3Accounts,
-  Web3Accounts,
-} from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
@@ -11,21 +5,19 @@ import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
-export interface IEthAccountController extends IWeb3Accounts {
+export interface IEthAccountController {
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
-  tx: IEthereumTransactions;
 }
 
 const EthAccountController = (): IEthAccountController => {
-  const txs = EthereumTransactions();
-  const web3Accounts = Web3Accounts();
-
   const saveTokenInfo = async (token: ITokenEthProps) => {
     try {
       const { activeAccount, activeNetwork, accounts } = store.getState().vault;
       const { chainId } = activeNetwork;
 
-      const tokenExists = accounts[activeAccount].assets.ethereum?.find(
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.ethereum?.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress
       );
@@ -64,8 +56,11 @@ const EthAccountController = (): IEthAccountController => {
         setActiveAccountProperty({
           property: 'assets',
           value: {
-            ...accounts[activeAccount].assets,
-            ethereum: [...accounts[activeAccount].assets.ethereum, web3Token],
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            ethereum: [
+              ...accounts[activeAccount.type][activeAccount.id].assets.ethereum,
+              web3Token,
+            ],
           },
         })
       );
@@ -76,9 +71,6 @@ const EthAccountController = (): IEthAccountController => {
 
   return {
     saveTokenInfo,
-    tx: txs,
-    ...web3Accounts,
   };
 };
-
 export default EthAccountController;

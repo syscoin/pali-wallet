@@ -3,7 +3,7 @@ import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -23,7 +23,10 @@ export const NetworkMenu: React.FC = () => {
   );
 
   const activeAccount = useSelector(
-    (state: RootState) => state.vault.accounts[state.vault.activeAccount]
+    (state: RootState) =>
+      state.vault.accounts[state.vault.activeAccount.type][
+        state.vault.activeAccount.id
+      ]
   );
 
   const { navigate } = useUtils();

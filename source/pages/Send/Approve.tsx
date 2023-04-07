@@ -33,9 +33,7 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const ApproveTransactionComponent = () => {
-  const {
-    wallet: { account },
-  } = getController();
+  const { wallet } = getController();
 
   const { getFiatAmount } = usePrice();
 
@@ -81,10 +79,10 @@ export const ApproveTransactionComponent = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
@@ -154,8 +152,6 @@ export const ApproveTransactionComponent = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
-
       const newDataEncoded = validatedEncodedData();
       const newTxValue = {
         ...tx,
@@ -177,7 +173,7 @@ export const ApproveTransactionComponent = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: wallet.ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
@@ -185,7 +181,8 @@ export const ApproveTransactionComponent = () => {
       };
 
       try {
-        const response = await txs.sendFormattedTransaction(newTxValue);
+        const response =
+          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal) dispatchBackgroundEvent(`txApprove.${host}`, response);

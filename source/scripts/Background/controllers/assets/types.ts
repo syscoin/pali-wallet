@@ -14,10 +14,8 @@ export interface IAssetsManager {
 }
 
 export interface IAssetsManagerUtilsResponse {
-  assets: {
-    ethereum: ITokenEthProps[];
-    syscoin: ISysTokensAssetReponse[];
-  };
+  ethereum: ITokenEthProps[];
+  syscoin: ISysTokensAssetReponse[];
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (

@@ -11,12 +11,12 @@ import { RootState } from 'state/store';
 export const EvmAssetsList = () => {
   const {
     accounts,
-    activeAccount: accountId,
+    activeAccount,
     isLoadingAssets,
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
 
-  const assets = accounts[accountId].assets;
+  const assets = accounts[activeAccount.type][activeAccount.id].assets;
 
   const filteredAssets = assets.ethereum?.filter(
     (token: any) => token.chainId === chainId

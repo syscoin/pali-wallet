@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
+import eth from 'assets/images/eth.png';
 import { Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -13,9 +14,6 @@ import { truncate, getHost } from 'utils/index';
 export const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
   const { isChangingConnectedAccount } = useSelector(
     (state: RootState) => state.vault.changingConnectedAccount
   );
@@ -102,14 +100,12 @@ export const GeneralMenu: React.FC = () => {
       </div>
 
       <Menu.Button as="button" className="mx-1.5">
-        {Boolean(encryptedMnemonic) && (
-          <div id="general-settings-button">
-            <Icon
-              name="settings"
-              className="hover:text-brand-royalblue text-brand-white"
-            />
-          </div>
-        )}
+        <div id="general-settings-button">
+          <Icon
+            name="settings"
+            className="hover:text-brand-royalblue text-brand-white"
+          />
+        </div>
       </Menu.Button>
 
       <Transition
@@ -142,6 +138,22 @@ export const GeneralMenu: React.FC = () => {
               <Icon name="clock" className="ml-1 mr-4 text-brand-white" />
 
               <span className="px-3">Auto lock timer</span>
+            </li>
+          </Menu.Item>
+
+          <Menu.Item>
+            <li
+              onClick={() => navigate('/settings/remove-eth')}
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+            >
+              <img
+                src={eth}
+                width="23px"
+                height="23px"
+                className="ml-0.2 mr-3 text-brand-white"
+              />
+
+              <span className="px-3">Manage ETH prop</span>
             </li>
           </Menu.Item>
 

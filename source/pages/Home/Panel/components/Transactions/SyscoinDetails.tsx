@@ -15,7 +15,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { transactions } = accounts[activeAccount];
+  const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

@@ -1,8 +1,13 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import { IVaultState, IOmittedVault, IOmmitedAccount } from 'state/vault/types';
+import {
+  IVaultState,
+  IOmittedVault,
+  IOmmitedAccount,
+  IPaliAccount,
+} from 'state/vault/types';
 
-export const removeXprv = (account: IKeyringAccountState): IOmmitedAccount => {
+export const removeXprv = (account: IPaliAccount): IOmmitedAccount => {
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   const { xprv, ...remainingInfo } = account;
 
@@ -14,8 +19,11 @@ export const removeSensitiveDataFromVault = (
 ): IOmittedVault => {
   const accounts = {};
 
-  for (const account of Object.values(vault.accounts)) {
-    accounts[account.id] = removeXprv(account);
+  for (const account of Object.values(vault.accounts.HDAccount)) {
+    accounts[KeyringAccountType.HDAccount][account.id] = removeXprv(account);
+  }
+  for (const account of Object.values(vault.accounts.Imported)) {
+    accounts[KeyringAccountType.Imported][account.id] = removeXprv(account);
   }
 
   return {

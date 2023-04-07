@@ -27,6 +27,7 @@ import {
   SeedConfirm,
   Phrase,
   ImportAccount,
+  RemoveEth,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
@@ -34,21 +35,16 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
-
 export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
-  );
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-
-  const isUnlocked = wallet.isUnlocked() && encryptedMnemonic !== '';
+  const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
-    const canProceed = isUnlocked && accounts && encryptedMnemonic;
+    const canProceed = isUnlocked && accounts;
 
     if (canProceed) {
       navigate('/home');
@@ -118,6 +114,10 @@ export const Router = () => {
         <Route
           path="autolock"
           element={<ProtectedRoute element={<AutoLock />} />}
+        />
+        <Route
+          path="remove-eth"
+          element={<ProtectedRoute element={<RemoveEth />} />}
         />
         <Route
           path="currency"

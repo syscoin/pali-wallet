@@ -1,18 +1,12 @@
 import 'emoji-log';
-import isEqual from 'lodash/isEqual';
-import sortBy from 'lodash/sortBy';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { sysweb3Di } from '@pollum-io/sysweb3-core';
-
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-import { setActiveAccountProperty, setIsLoadingTxs } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-import { ISysTransaction } from './controllers/transactions/types';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -20,10 +14,20 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
+let paliPort: Runtime.Port;
+const onWalletReady = (windowController: IMasterController) => {
+  // Add any code here that depends on the initialized wallet
+  window.controller = windowController;
+  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  if (paliPort) {
+    window.controller.dapp.setup(paliPort);
+  }
+  window.controller.utils.setFiat();
+};
 
 if (!window.controller) {
-  window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  window.controller = MasterController(onWalletReady);
+  // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -86,8 +90,10 @@ export const inactivityTime = () => {
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
-    window.controller.dapp.setup(port);
-
+    if (window.controller?.dapp) {
+      window.controller.dapp.setup(port);
+    }
+    paliPort = port;
     return;
   }
   const { changingConnectedAccount, timer, isTimerEnabled } =
@@ -110,11 +116,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
-    window.controller.utils.setFiat();
-
-    sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
-    sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
-    sysweb3Di.useLocalStorageClient(window.localStorage);
+    // window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);

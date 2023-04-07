@@ -129,7 +129,8 @@ export const validateAndManageUserTransactions = (
 
   const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
-  const { transactions: userTransactions } = accounts[activeAccount];
+  const { transactions: userTransactions } =
+    accounts[activeAccount.type][activeAccount.id];
 
   const userClonedArray = clone(
     isBitcoinBased

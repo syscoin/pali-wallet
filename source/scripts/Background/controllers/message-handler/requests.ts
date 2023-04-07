@@ -208,7 +208,8 @@ export const methodRequest = async (
   }
 
   if (
-    accounts[activeAccount].address !== dapp.getAccount(host).address &&
+    accounts[activeAccount.type][activeAccount.id].address !==
+      dapp.getAccount(host).address &&
     !isBitcoinBased &&
     EthProvider(host).checkIsBlocking(data.method)
   ) {

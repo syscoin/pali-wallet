@@ -12,6 +12,7 @@ import dapp from './dapp';
 import { IDAppState } from './dapp/types';
 import price from './price';
 import { IPriceState } from './price/types';
+import { IPersistState } from './types';
 import vault from './vault';
 import { IVaultState } from './vault/types';
 
@@ -48,9 +49,10 @@ const store: Store<{
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
-persistStore(store);
+export const persistor = persistStore(store);
 
-export type RootState = ReturnType<typeof store.getState>;
+export type RootState = ReturnType<typeof store.getState> & {
+  _persist: IPersistState;
+};
 export type AppDispatch = typeof store.dispatch;
-
 export default store;

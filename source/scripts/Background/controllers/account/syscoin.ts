@@ -1,30 +1,34 @@
 import axios from 'axios';
-import { isEmpty } from 'lodash';
+import isEmpty from 'lodash/isEmpty';
 
-import {
-  KeyringManager,
-  ISyscoinTransactions,
-  SyscoinTransactions,
-} from '@pollum-io/sysweb3-keyring';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
+
+const config = {
+  headers: {
+    'X-User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+  },
+  withCredentials: true,
+};
+
 export interface ISysAccountController {
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
-  tx: ISyscoinTransactions;
+  // tx: ISyscoinTransactions;
 }
 
-const SysAccountController = (): ISysAccountController => {
-  const keyringManager = KeyringManager();
-
+const SysAccountController = (
+  getKeyring: () => KeyringManager
+): ISysAccountController => {
   const setAddress = async (): Promise<string> => {
-    const {
-      accountLatestUpdate: { address },
-    } = await keyringManager.getLatestUpdateForAccount();
+    const keyringManager = getKeyring();
+    const address = await keyringManager.updateReceivingAddress();
 
     store.dispatch(
       setActiveAccountProperty({
@@ -40,7 +44,9 @@ const SysAccountController = (): ISysAccountController => {
     try {
       const { activeAccount, accounts } = store.getState().vault;
 
-      const tokenExists = accounts[activeAccount].assets.syscoin.find(
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.syscoin.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
@@ -52,16 +58,14 @@ const SysAccountController = (): ISysAccountController => {
       const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
         ? description
         : '';
-
       const assetInfos = {
         ...token,
         description,
         image: '',
         balance: Number(token.balance) / 10 ** Number(token.decimals),
       };
-
       if (!isEmpty(ipfsUrl)) {
-        const { data } = await axios.get(ipfsUrl);
+        const { data } = await axios.get(ipfsUrl, config);
 
         assetInfos.image = data && data.image ? data.image : '';
       }
@@ -70,8 +74,11 @@ const SysAccountController = (): ISysAccountController => {
         setActiveAccountProperty({
           property: 'assets',
           value: {
-            ...accounts[activeAccount].assets,
-            syscoin: [...accounts[activeAccount].assets.syscoin, assetInfos],
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            syscoin: [
+              ...accounts[activeAccount.type][activeAccount.id].assets.syscoin,
+              assetInfos,
+            ],
           },
         })
       );
@@ -80,13 +87,16 @@ const SysAccountController = (): ISysAccountController => {
     }
   };
 
+  //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
-  const tx = SyscoinTransactions();
+  // const tx = keyringManager.syscoinTransaction;
 
   return {
+    // watchMemPool,
     trezor,
-    tx,
+    // tx,
     setAddress,
+    // getLatestUpdate,
     saveTokenInfo,
   };
 };

@@ -21,10 +21,8 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendNTokenTransaction = () => {
   const {
-    wallet: { account, sendAndSaveTransaction },
+    wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
   } = getController();
-
-  const txs = account.eth.tx;
 
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -32,10 +30,10 @@ export const SendNTokenTransaction = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -90,20 +88,19 @@ export const SendNTokenTransaction = () => {
       const txWithoutType = omitTransactionObjectData(txToSend, [
         'type',
       ]) as ITxState;
-
       if (isLegacyTransaction) {
         try {
           const getGasCorrectlyGasPrice = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
-            : await txs.getRecommendedGasPrice();
+            : await ethereumTransaction.getRecommendedGasPrice();
 
-          txs
+          await ethereumTransaction
             .sendFormattedTransaction({
               ...txWithoutType,
               gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-              gasLimit: txs.toBigNumber(
+              gasLimit: ethereumTransaction.toBigNumber(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               ),
             })
@@ -133,7 +130,7 @@ export const SendNTokenTransaction = () => {
         }
       } else {
         try {
-          txs
+          await ethereumTransaction
             .sendFormattedTransaction({
               ...txWithoutType,
               maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -154,7 +151,7 @@ export const SendNTokenTransaction = () => {
                 ),
                 9
               ),
-              gasLimit: txs.toBigNumber(
+              gasLimit: ethereumTransaction.toBigNumber(
                 validateCustomGasLimit
                   ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                   : fee.gasLimit
@@ -194,14 +191,14 @@ export const SendNTokenTransaction = () => {
     const getInitialFeeRecomendation = async () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
-          await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
+          await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
-        const getTxGasLimitResult = await txs.getTxGasLimit(tx);
+        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
 
         tx.gasLimit =
           (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
           (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-            ? txs.toBigNumber(tx.gas || tx.gasLimit)
+            ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
             : getTxGasLimitResult;
 
         const feeRecomendation = {
