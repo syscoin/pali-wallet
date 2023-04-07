@@ -38,29 +38,26 @@ const SysAssetsControler = (): ISysAssetsController => {
         requestOptions,
         true
       );
-      console.log('tokens', tokens);
-      console.log('tokensAsset', tokens);
 
       //Validate to know which tokens use, for some cases the request only return tokens without tokensAsset
       //and for some other cases return both
       const isTokensAssetValid = tokensAsset && tokensAsset.length > 0;
 
       const validTokens = isTokensAssetValid ? tokensAsset : tokens;
-      console.log('validTokens', validTokens);
-      if (!validTokens || validTokens.length === 0) {
-        return [];
-      }
+
+      const preventUndefined =
+        typeof validTokens === 'undefined' || validTokens === undefined
+          ? []
+          : validTokens;
       //We need to get only tokens that has AssetGuid property
       const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
-        validTokens.filter(
+        preventUndefined.filter(
           (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
         );
-      console.log('getOnlyTokensWithAssetGuid', getOnlyTokensWithAssetGuid);
 
       const filteredAssetsLength = getOnlyTokensWithAssetGuid
         ? getOnlyTokensWithAssetGuid.slice(0, 30)
         : [];
-      console.log('filteredAssetsLength', filteredAssetsLength);
 
       return filteredAssetsLength;
     } catch (error) {

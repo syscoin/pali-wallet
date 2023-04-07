@@ -199,7 +199,6 @@ const MainController = (walletState): IMainController => {
     const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
       newAccount.xpub
     );
-    console.log('initialSysAssetsForAccount', initialSysAssetsForAccount);
 
     const initialTxsForAccount = await getInitialSysTransactionsForAccount(
       newAccount.xpub
