@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
+import eth from 'assets/images/eth.png';
 import { Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -145,9 +146,14 @@ export const GeneralMenu: React.FC = () => {
               onClick={() => navigate('/settings/remove-eth')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
-              <Icon name="delete" className="ml-1 mr-4 text-brand-white" />
+              <img
+                src={eth}
+                width="23px"
+                height="23px"
+                className="ml-0.2 mr-3 text-brand-white"
+              />
 
-              <span className="px-3">Remove ETH prop</span>
+              <span className="px-3">Manage ETH prop</span>
             </li>
           </Menu.Item>
 

@@ -70,7 +70,8 @@
   "web_accessible_resources": [
     "app.html",
     "js/inpage.bundle.js",
-    "js/handleWindowProperties.bundle.js"
+    "js/handleWindowProperties.bundle.js",
+    "js/pali.bundle.js"
   ],
   "commands": {
     "_execute_browser_action": {

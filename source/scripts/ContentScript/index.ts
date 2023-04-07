@@ -74,17 +74,28 @@ const startEventEmitter = () => {
 
 // Every message from pali emits an event
 backgroundPort.onMessage.addListener(({ id, data }) => {
+  // verify if data params contains type property for remove or not window.ethereum object
   switch (data?.params?.type) {
     case 'pali_removeProperty':
       injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
+      window.localStorage.setItem('hasEthProperty', JSON.stringify(false));
       break;
     case 'pali_addProperty':
       injectScriptFile('js/inpage.bundle.js', 'inpage');
+      window.localStorage.setItem('hasEthProperty', JSON.stringify(true));
       break;
     default:
       break;
   }
   emitter.emit(id, data);
+});
+
+// set localStorage value for all tabs to persist inject state
+window.addEventListener('storage', (event) => {
+  if (event.key === 'hasEthProperty') {
+    const newValue = event.newValue;
+    localStorage.setItem(event.key, newValue);
+  }
 });
 
 const doctypeCheck = () => {
@@ -152,10 +163,12 @@ const injectScriptFile = (file: string, id: string) => {
     switch (id) {
       case 'removeProperty':
         const inpage = document.getElementById('inpage');
+        // remove inpage script for not inject the same thing many times
         if (inpage) inpage.remove();
         break;
       case 'inpage':
         const removeProperty = document.getElementById('removeProperty');
+        // remove removeEth script for not inject the same thing many times
         if (removeProperty) removeProperty.remove();
         break;
       default:
@@ -171,7 +184,23 @@ const injectScriptFile = (file: string, id: string) => {
   }
 };
 if (shouldInjectProvider()) {
-  injectScriptFile('js/inpage.bundle.js', 'inpage');
+  // inject window.pali property in browser
+  injectScriptFile('js/pali.bundle.js', 'pali');
+  // and validate if window.ethereum can be injected or not
+
+  // this validation was implemented for prevent if user refresh page. This will persist inject state [injected or not injected]
+  const canInjectEthProperty = JSON.parse(
+    window.localStorage.getItem('hasEthProperty')
+  );
+
+  if (
+    canInjectEthProperty === undefined ||
+    canInjectEthProperty === null ||
+    canInjectEthProperty
+  )
+    // inject window.ethereum in browser in first load
+    injectScriptFile('js/inpage.bundle.js', 'inpage');
 }
+
 start();
 startEventEmitter();

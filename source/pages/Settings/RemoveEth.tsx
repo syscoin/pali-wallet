@@ -33,6 +33,13 @@ const RemoveEthView = () => {
       case false:
         controller.wallet.removeWindowEthProperty();
         controller.wallet.setHasEthProperty(false);
+        const dapps = Object.values(controller.dapp.getAll());
+        // disconnect from all dapps when remove window.ethereum property
+        if (dapps.length) {
+          for (const dapp of dapps) {
+            controller.dapp.disconnect(dapp.host);
+          }
+        }
         setConfirmed(true);
         setLoading(false);
         break;
@@ -42,7 +49,7 @@ const RemoveEthView = () => {
   };
 
   return (
-    <Layout title="REMOVE ETH PROVIDER" id="auto-lock-timer-title">
+    <Layout title="MANAGE ETH PROVIDER" id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
         For use another ETH wallet, you can disable window.ethereum injected by
         Pali.
