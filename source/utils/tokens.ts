@@ -2,16 +2,16 @@ import axios from 'axios';
 import { ethers } from 'ethers';
 import lodash from 'lodash';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 const config = {
   headers: {
-    'User-Agent':
+    'X-User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
   },
+  withCredentials: true,
 };
 
 export const getSymbolByChain = async (chain: string) => {
@@ -23,13 +23,11 @@ export const getSymbolByChain = async (chain: string) => {
   return data.symbol.toString().toUpperCase();
 };
 
-export const getBalanceUpdatedToErcTokens = async (
-  accountId: number,
-  accountType: KeyringAccountType
-) => {
-  const { accounts, networks } = store.getState().vault;
+//Remove this function later, will be only in EvmAssetsController
+export const getBalanceUpdatedToErcTokens = async () => {
+  const { accounts, networks, activeAccount } = store.getState().vault;
 
-  const findAccount = accounts[accountType][accountId];
+  const findAccount = accounts[activeAccount.type][activeAccount.id];
   try {
     const updatedTokens = await Promise.all(
       findAccount.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {

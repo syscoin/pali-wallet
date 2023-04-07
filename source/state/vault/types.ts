@@ -16,20 +16,23 @@ export interface IVaultState {
   error: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
+  isLoadingAssets: boolean;
+  isLoadingBalances: boolean;
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
-  isPendingBalances: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
-  networks: {
-    [INetworkType.Ethereum]: {
-      [chainId: number]: INetwork;
-    };
-    [INetworkType.Syscoin]: {
-      [chainId: number]: INetwork;
-    };
-  };
+  networks: INetworksVault;
   timer: number;
+}
+
+export interface INetworksVault {
+  [INetworkType.Ethereum]: {
+    [chainId: number]: INetwork;
+  };
+  [INetworkType.Syscoin]: {
+    [chainId: number]: INetwork;
+  };
 }
 
 export interface IChangingConnectedAccount {

@@ -20,22 +20,16 @@ export const Home = () => {
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
   );
-  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const { accounts, isNetworkChanging } = useSelector(
-    (state: RootState) => state.vault
-  );
+
+  const {
+    accounts,
+    isNetworkChanging,
+    activeAccount,
+    activeNetwork,
+    isBitcoinBased,
+    lastLogin,
+    isLoadingBalances,
+  } = useSelector((state: RootState) => state.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -51,6 +45,7 @@ export const Home = () => {
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
+  //todo: this function can be in some utils file
   //* Functions
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;
@@ -59,6 +54,7 @@ export const Home = () => {
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
+    //todo: this can be in some consts file
     const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
     return Boolean(
@@ -75,9 +71,6 @@ export const Home = () => {
     if (!isUnlocked) return;
 
     verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
-    return () => {
-      setIsTestnet(false);
-    };
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
@@ -107,7 +100,6 @@ export const Home = () => {
       {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
       isUnlocked &&
-      !isPendingBalances &&
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
@@ -127,7 +119,9 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>
+              <p id="fiat-ammount">
+                {isTestnet || isLoadingBalances ? null : fiatPriceValue}
+              </p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
@@ -138,6 +132,7 @@ export const Home = () => {
                 onClick={() =>
                   isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
                 }
+                disabled={isLoadingBalances}
               >
                 <Icon
                   name="arrow-up"

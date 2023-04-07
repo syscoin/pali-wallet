@@ -13,7 +13,6 @@ import {
   IconButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -28,7 +27,7 @@ import {
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
-  const { refresh, wallet } = getController();
+  const { wallet, updateNativeBalanceAfterSend } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
 
@@ -85,7 +84,6 @@ export const SendConfirm = () => {
       switch (true) {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
-          // Just reiterating it does not make any sense to add a ethers provider inside a UTXO code block
           try {
             wallet.syscoinTransaction
               .sendTransaction(basicTxValues)
@@ -93,6 +91,7 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+                updateNativeBalanceAfterSend();
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -162,6 +161,7 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+                updateNativeBalanceAfterSend();
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -240,8 +240,6 @@ export const SendConfirm = () => {
                     }
                     if (receipt) {
                       wallet.updateErcTokenBalances(
-                        activeAccount.id,
-                        activeAccountMeta.type,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft,
@@ -300,8 +298,6 @@ export const SendConfirm = () => {
                     }
                     if (receipt) {
                       wallet.updateErcTokenBalances(
-                        activeAccount.id,
-                        activeAccountMeta.type,
                         basicTxValues.token.contractAddress,
                         basicTxValues.token.chainId,
                         basicTxValues.token.isNft
@@ -374,7 +370,7 @@ export const SendConfirm = () => {
       } catch (error) {
         logError('error getting fees', 'Transaction', error);
         alert.error(
-          'Error in the proccess to get fee values, please try again later.'
+          'Error in the proccess to get fee values, please verify your balance and try again later.'
         );
         navigate(-1);
       }
@@ -424,8 +420,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
-          saveTransaction(confirmedTx);
+          wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
         }}
       />

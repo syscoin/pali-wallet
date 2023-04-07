@@ -77,17 +77,6 @@ const CurrencyView = () => {
     fiat: convertCurrency(actualBalance, checkValueCoin),
   });
 
-  //* Effects
-  useEffect(() => {
-    if (
-      isUnlocked &&
-      accounts &&
-      accounts[activeAccountMeta.type][activeAccountMeta.id]
-    ) {
-      controller.refresh(true);
-    }
-  }, [isUnlocked, activeAccountMeta]);
-
   useEffect(() => {
     if (selectedCoin) {
       controller.utils.setFiat(

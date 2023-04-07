@@ -1,5 +1,3 @@
-import { AES } from 'crypto-js';
-
 import {
   initialActiveHdAccountState,
   KeyringAccountType,
@@ -18,7 +16,7 @@ import reducer, {
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
-  setIsPendingBalances,
+  setIsLoadingBalances,
   setLastLogin,
   setTimer,
 } from 'state/vault';
@@ -173,12 +171,12 @@ describe('Vault store actions', () => {
     expect(account.label).toEqual(payload.label);
   });
 
-  //* setIsPendingBalances
+  //* setIsLoadingBalances
   it('should set the label for an account)', () => {
     const payload = true;
-    const newState = reducer(initialState, setIsPendingBalances(payload));
+    const newState = reducer(initialState, setIsLoadingBalances(payload));
 
-    expect(newState.isPendingBalances).toBe(true);
+    expect(newState.isLoadingBalances).toBe(true);
   });
 
   //* setAccountTransactions

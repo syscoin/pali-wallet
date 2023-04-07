@@ -18,9 +18,6 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
   const error = useSelector((state: RootState) => state.vault.error);
 
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -41,7 +38,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   });
 
   useEffect(() => {
-    if (!isPendingBalances && error) {
+    if (error) {
       setNetworkErrorStatus({
         error: true,
         description:
@@ -51,7 +48,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
       wallet.resolveError();
     }
-  }, [isPendingBalances, error]);
+  }, [error]);
 
   const hanldeDisconnectFromDapp = () => {
     dapp.disconnect(host);

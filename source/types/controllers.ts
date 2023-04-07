@@ -14,10 +14,16 @@ import {
 
 import { IEthAccountController } from 'scripts/Background/controllers/account/evm';
 import { ISysAccountController } from 'scripts/Background/controllers/account/syscoin';
+import { IAssetsManager } from 'scripts/Background/controllers/assets/types';
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
+import {
+  IEvmTransactionResponse,
+  ISysTransaction,
+  ITransactionsManager,
+} from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
@@ -30,6 +36,7 @@ export interface IMainController extends IKeyringManager {
   };
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   addWindowEthProperty: () => void;
+  assets: IAssetsManager;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: (password: string) => Promise<void>;
   editCustomRpc: (
@@ -38,6 +45,7 @@ export interface IMainController extends IKeyringManager {
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
   getChangeAddress: (accountId: number) => Promise<string>;
+  getLatestUpdateForCurrentAccount: () => void;
   getRecommendedFee: (data?: string | boolean) =>
     | Promise<number>
     | Promise<
@@ -57,6 +65,9 @@ export interface IMainController extends IKeyringManager {
   removeWindowEthProperty: () => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;
+  sendAndSaveTransaction: (
+    tx: IEvmTransactionResponse | ISysTransaction
+  ) => void;
   setAccount: (
     id: number,
     type: KeyringAccountType,
@@ -67,15 +78,16 @@ export interface IMainController extends IKeyringManager {
   setAutolockTimer: (minutes: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<boolean>;
   updateErcTokenBalances: (
-    accountId: number,
-    accountType: KeyringAccountType,
     tokenAddress: string,
     tokenChain: number,
     isNft: boolean,
     decimals?: number
   ) => Promise<void>;
+  updateUserNativeBalance: () => void;
+  updateUserTransactionsState: () => void;
 }
 
 export interface IEthTokenDetails {

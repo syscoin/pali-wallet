@@ -7,7 +7,6 @@ import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
-import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -22,8 +21,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendNTokenTransaction = () => {
   const {
-    refresh,
-    wallet: { ethereumTransaction }, //TODO: validates this gets doesn't leads into bugs
+    wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
   } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
@@ -90,8 +88,8 @@ export const SendNTokenTransaction = () => {
       const txWithoutType = omitTransactionObjectData(txToSend, [
         'type',
       ]) as ITxState;
-      try {
-        if (isLegacyTransaction) {
+      if (isLegacyTransaction) {
+        try {
           const getGasCorrectlyGasPrice = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
@@ -120,7 +118,18 @@ export const SendNTokenTransaction = () => {
             });
 
           return;
-        } else {
+        } catch (legacyError: any) {
+          logError('error', 'Transaction', legacyError);
+
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return legacyError;
+        }
+      } else {
+        try {
           await ethereumTransaction
             .sendFormattedTransaction({
               ...txWithoutType,
@@ -162,16 +171,16 @@ export const SendNTokenTransaction = () => {
             });
 
           return;
+        } catch (notLegacyError) {
+          logError('error', 'Transaction', notLegacyError);
+
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return notLegacyError;
         }
-      } catch (error: any) {
-        logError('error', 'Transaction', error);
-
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
-
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
-        return error;
       }
     }
   };
@@ -179,38 +188,49 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     const abortController = new AbortController();
 
-    const getFeeRecomendation = async () => {
-      const { maxFeePerGas, maxPriorityFeePerGas } =
-        await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
+    const getInitialFeeRecomendation = async () => {
+      try {
+        const { maxFeePerGas, maxPriorityFeePerGas } =
+          await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
-      const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
+        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
 
-      tx.gasLimit =
-        (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
-        (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-          ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
-          : getTxGasLimitResult;
+        tx.gasLimit =
+          (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
+          (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
+            ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
+            : getTxGasLimitResult;
 
-      const feeDetails = {
-        maxFeePerGas: tx?.maxFeePerGas
-          ? Number(tx?.maxFeePerGas) / 10 ** 9
-          : maxFeePerGas.toNumber() / 10 ** 9,
-        baseFee:
-          tx?.maxFeePerGas && tx?.maxPriorityFeePerGas
-            ? (Number(tx.maxFeePerGas) - Number(tx.maxPriorityFeePerGas)) /
-              10 ** 9
-            : maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-        maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
-          ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
-          : maxPriorityFeePerGas.toNumber() / 10 ** 9,
-        gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
-        gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
-      };
+        const feeRecomendation = {
+          maxFeePerGas: tx?.maxFeePerGas
+            ? Number(tx?.maxFeePerGas) / 10 ** 9
+            : maxFeePerGas.toNumber() / 10 ** 9,
+          baseFee:
+            tx?.maxFeePerGas && tx?.maxPriorityFeePerGas
+              ? (Number(tx.maxFeePerGas) - Number(tx.maxPriorityFeePerGas)) /
+                10 ** 9
+              : maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+          maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
+            ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
+            : maxPriorityFeePerGas.toNumber() / 10 ** 9,
+          gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
+          gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
+        };
 
-      setFee(feeDetails);
+        setFee(feeRecomendation);
+      } catch (error) {
+        logError('error getting fees', 'Transaction', error);
+        alert.removeAll();
+        alert.error(
+          'Error in the proccess to get fee values,  please verify your balance and try again later.'
+        );
+
+        //Wait enough time to te error be showed to later close the window
+        setTimeout(window.close, 3000);
+      }
     };
 
-    getFeeRecomendation();
+    getInitialFeeRecomendation();
 
     return () => {
       abortController.abort();
@@ -243,8 +263,7 @@ export const SendNTokenTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
-          saveTransaction(confirmedTx);
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -377,7 +396,6 @@ export const SendNTokenTransaction = () => {
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                refresh(false);
                 if (isExternal) window.close();
                 else navigate('/home');
               }}

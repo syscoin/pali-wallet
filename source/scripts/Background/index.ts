@@ -4,7 +4,6 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-// import { localStorage } from 'redux-persist-webextension-storage';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -131,5 +130,52 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     });
   }
 });
+
+async function checkForUpdates() {
+  const {
+    changingConnectedAccount: { isChangingConnectedAccount },
+    isLoadingAssets,
+    isLoadingBalances,
+    isLoadingTxs,
+    isNetworkChanging,
+  } = store.getState().vault;
+
+  const notValidToRunPolling =
+    isChangingConnectedAccount ||
+    isLoadingAssets ||
+    isLoadingBalances ||
+    isLoadingTxs ||
+    isNetworkChanging;
+
+  if (notValidToRunPolling) {
+    //todo: do we also need to return if walle is unlocked?
+    return;
+  }
+
+  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserTransactionsState();
+
+  //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserNativeBalance();
+}
+
+let intervalId;
+
+browser.runtime.onConnect.addListener((port) => {
+  // execute checkForUpdates() every 5 seconds
+  if (port.name === 'polling') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'startPolling') {
+        intervalId = setInterval(checkForUpdates, 10000);
+        port.postMessage({ intervalId });
+      } else if (message.action === 'stopPolling') {
+        clearInterval(intervalId);
+      }
+    });
+  }
+});
+
+const port = browser.runtime.connect(undefined, { name: 'polling' });
+port.postMessage({ action: 'startPolling' });
 
 wrapStore(store, { portName: STORE_PORT });

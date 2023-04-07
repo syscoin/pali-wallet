@@ -33,7 +33,7 @@ export const DetailsView = () => {
 
   const openSysExplorer = () => {
     browser.windows.create({
-      url: `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
+      url: `${activeNetwork.url}${isAsset ? 'asset' : 'tx'}/${
         isAsset ? id : hash
       }`,
     });

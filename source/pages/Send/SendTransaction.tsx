@@ -30,8 +30,7 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
-    refresh,
-    wallet: { ethereumTransaction },
+    wallet: { ethereumTransaction, sendAndSaveTransaction },
   } = getController();
 
   const { navigate, alert } = useUtils();
@@ -66,6 +65,7 @@ export const SendTransaction = () => {
     : state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [confirmedTx, setConfirmedTx] = useState<any>();
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -152,6 +152,7 @@ export const SendTransaction = () => {
         });
         setConfirmed(true);
         setLoading(false);
+        setConfirmedTx(response);
 
         if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
         return response.hash;
@@ -185,6 +186,7 @@ export const SendTransaction = () => {
         setTx(formTx);
         setCustomNonce(nonce);
       } catch (e) {
+        logError('error getting fees', 'Transaction', e);
         alert.removeAll();
         alert.error('The transaction will fail, fix it and try again!', e);
         setTimeout(window.close, 3000);
@@ -205,11 +207,10 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
-            refresh(true);
             window.close();
           } else {
-            refresh(false);
             navigate('/home');
           }
         }}
@@ -327,10 +328,8 @@ export const SendTransaction = () => {
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
-                  refresh(true);
                   window.close();
                 } else {
-                  refresh(false);
                   navigate('/home');
                 }
               }}

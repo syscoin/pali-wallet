@@ -20,9 +20,10 @@ export const Loading = ({
 }) => {
   const { wallet } = getController(); //todo we need to get keyring to get setActiveAccount fn here
 
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
+  const isNetworkChanging = useSelector(
+    (state: RootState) => state.vault.isNetworkChanging
   );
+
   const syscoinNetworks = useSelector(
     (state: RootState) => state.vault.networks
   );
@@ -37,7 +38,7 @@ export const Loading = ({
   const [timeoutError, setTimeoutError] = useState(false);
 
   const validateTimeoutError = () => {
-    if (isPendingBalances) {
+    if (isNetworkChanging) {
       setTimeout(() => {
         setTimeoutError(true);
       }, FIVE_SECONDS);

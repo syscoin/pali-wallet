@@ -2,7 +2,7 @@ import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import { setActiveAccountProperty } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
@@ -73,10 +73,4 @@ const EthAccountController = (): IEthAccountController => {
     saveTokenInfo,
   };
 };
-
 export default EthAccountController;
-
-export const saveTransaction = (tx: any) => {
-  const finalTx = { ...tx, timestamp: Math.floor(Date.now() / 1000) };
-  store.dispatch(setAccountTransactions(finalTx));
-};

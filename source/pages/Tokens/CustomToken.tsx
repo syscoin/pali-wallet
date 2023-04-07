@@ -1,16 +1,9 @@
 import { Form, Input } from 'antd';
-import lodash from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  getTokenStandardMetadata,
-  isValidEthereumAddress,
-  getERC721StandardBalance,
-  contractChecker,
-  ISupportsInterfaceProps,
-} from '@pollum-io/sysweb3-utils';
+import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -37,61 +30,6 @@ export const CustomToken = () => {
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const provider = controller.wallet.ethereumTransaction.web3Provider;
-
-  const handleERC721NFTs = async (contractAddress: string) => {
-    const getBalance = await getERC721StandardBalance(
-      contractAddress,
-      activeAccount.address,
-      provider
-    );
-
-    const balanceToNumber = Number(getBalance);
-
-    return {
-      defaultFetchValue: getBalance,
-      balanceToNumber,
-    };
-  };
-
-  const handleERC20Tokens = async (
-    contractAddress: string,
-    decimals: number
-  ) => {
-    const metadata = await getTokenStandardMetadata(
-      contractAddress,
-      activeAccount.address,
-      provider
-    );
-
-    const balance = `${
-      metadata.balance /
-      10 ** (metadata.decimals ? metadata.decimals : decimals)
-    }`;
-
-    const formattedBalance = lodash.floor(parseFloat(balance), 4);
-
-    if (metadata) {
-      form.setFieldValue('symbol', metadata.tokenSymbol.toUpperCase());
-
-      await controller.wallet.account.eth.saveTokenInfo({
-        tokenSymbol: metadata.tokenSymbol.toUpperCase(),
-        contractAddress,
-        decimals,
-        isNft: false,
-        balance: formattedBalance,
-      });
-
-      setAdded(true);
-      setIsLoading(false);
-      return;
-    }
-  };
-
   const handleSubmit = async ({
     contractAddress,
     symbol,
@@ -103,83 +41,40 @@ export const CustomToken = () => {
   }) => {
     setIsLoading(true);
 
-    const contractResponse = (await contractChecker(
-      contractAddress,
-      activeNetwork.url
-    )) as ISupportsInterfaceProps;
+    try {
+      const provider = controller.wallet.ethereumTransaction.web3Provider;
 
-    if (String(contractResponse).includes('Invalid contract address')) {
-      setErcError({
-        errorType: 'Invalid',
-        message:
-          'Invalid contract address. Verify the current contract address or the current network!',
-      });
+      const addTokenMethodResponse =
+        await controller.wallet.assets.evm.addCustomTokenByType(
+          activeAccount.address,
+          contractAddress,
+          symbol,
+          decimals,
+          provider
+        );
 
-      setIsLoading(false);
-
-      return;
-    }
-
-    switch (contractResponse.type) {
-      case 'ERC-721':
-        try {
-          const { defaultFetchValue, balanceToNumber } = await handleERC721NFTs(
-            contractAddress
-          );
-
-          if (
-            typeof balanceToNumber !== 'number' ||
-            Number.isNaN(balanceToNumber) ||
-            Boolean(String(defaultFetchValue).includes('Error'))
-          ) {
-            await handleERC20Tokens(contractAddress, decimals);
-
-            return;
-          }
-
-          const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
-
-          await controller.wallet.account.eth.saveTokenInfo({
-            tokenSymbol: treatedSymbol,
-            contractAddress,
-            decimals,
-            isNft: true,
-            balance: balanceToNumber,
-          });
-          setIsLoading(false);
-          setAdded(true);
-
-          return;
-        } catch (_erc721Error) {
-          setIsLoading(false);
-          setErcError({
-            errorType: 'Undefined',
-            message: '',
-          });
-        }
-        break;
-      case 'ERC-1155':
+      if (addTokenMethodResponse.error) {
         setIsLoading(false);
         setErcError({
-          errorType: 'ERC-1155',
-          message: contractResponse.message,
+          errorType: addTokenMethodResponse.errorType,
+          message: addTokenMethodResponse.message,
         });
-        break;
-      default:
-        // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
-        // has not been founded
-        try {
-          await handleERC20Tokens(contractAddress, decimals);
-          setIsLoading(false);
-          return;
-        } catch (_ercUndefinedError) {
-          setIsLoading(false);
-          setErcError({
-            errorType: 'Undefined',
-            message: '',
-          });
-        }
-        break;
+
+        return;
+      }
+
+      await controller.wallet.account.eth.saveTokenInfo(
+        addTokenMethodResponse.tokenToAdd
+      );
+
+      setAdded(true);
+    } catch (error) {
+      setErcError({
+        errorType: 'Undefined',
+        message: '',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 

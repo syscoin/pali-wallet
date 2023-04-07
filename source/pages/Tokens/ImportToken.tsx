@@ -1,15 +1,10 @@
 import { Form, Input } from 'antd';
-import { ethers } from 'ethers';
-import { uniqueId } from 'lodash';
-import lodash from 'lodash';
+import { isBoolean, isNil, uniqueId } from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  getTokenJson,
-  getTokenStandardMetadata,
-} from '@pollum-io/sysweb3-utils';
+import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -25,8 +20,9 @@ export const ImportToken: FC = () => {
 
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [added, setAdded] = useState<boolean>(false);
+  const [error, setError] = useState<boolean>(false);
 
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
@@ -83,26 +79,29 @@ export const ImportToken: FC = () => {
   };
 
   const addToken = async (token: ITokenEthProps) => {
+    setIsLoading(true);
     try {
-      const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
+      const addTokenMethodResponse =
+        await controller.wallet.assets.evm.addEvmDefaultToken(
+          token,
+          activeAccount.address,
+          activeNetwork.url
+        );
 
-      const metadata = await getTokenStandardMetadata(
-        token.contractAddress,
-        accounts[activeAccount.id].address,
-        provider
-      );
+      if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
+        setError(true);
+        setIsLoading(false);
 
-      const balance = `${metadata.balance / 10 ** Number(token.decimals)}`;
-      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+        return;
+      }
 
-      await controller.wallet.account.eth.saveTokenInfo({
-        ...token,
-        balance: formattedBalance,
-      });
+      await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
 
       setAdded(true);
-    } catch (_error) {
-      setError(Boolean(_error));
+    } catch (submitError) {
+      setError(true);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -144,6 +143,7 @@ export const ImportToken: FC = () => {
 
         <NeutralButton
           type="button"
+          loading={isLoading}
           onClick={
             selected ? () => addToken(selected) : () => navigate('/home')
           }

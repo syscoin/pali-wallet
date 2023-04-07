@@ -1,7 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import React, { useEffect, Fragment, useState } from 'react';
+import React, { Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
@@ -27,9 +27,6 @@ const ImportAccountView = () => {
 
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
   if (!activeAccount) throw new Error('No account');
 
   const handleImportAccount = async () => {
@@ -51,17 +48,6 @@ const ImportAccountView = () => {
       }
     }
   };
-
-  //* Effects
-  useEffect(() => {
-    if (
-      isUnlocked &&
-      accounts &&
-      accounts[activeAccountMeta.type][activeAccountMeta.id]
-    ) {
-      controller.refresh(true);
-    }
-  }, [isUnlocked, activeAccountMeta]);
 
   return (
     <Layout title="IMPORT ACCOUNT">

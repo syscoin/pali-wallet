@@ -93,7 +93,7 @@ export const GeneralMenu: React.FC = () => {
       </Tooltip>
 
       <div
-        onClick={() => refresh(false)}
+        onClick={() => refresh()}
         className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
       >
         <Icon name="reload" />

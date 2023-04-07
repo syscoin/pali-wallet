@@ -6,6 +6,7 @@ import {
   initialActiveImportedAccountState,
   KeyringAccountType,
   IWalletState,
+  IKeyringBalances,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -43,9 +44,10 @@ export const initialState: IVaultState = {
     currency: 'sys',
   },
   isBitcoinBased: true,
-  isPendingBalances: false,
+  isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
+  isLoadingAssets: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -102,6 +104,14 @@ const VaultState = createSlice({
           };
         }
       }
+    },
+    setAccountBalances(
+      state: IVaultState,
+      action: PayloadAction<IKeyringBalances>
+    ) {
+      state.accounts[state.activeAccount.type][
+        state.activeAccount.id
+      ].balances = action.payload;
     },
     setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
       const { id, type } = state.activeAccount;
@@ -211,13 +221,16 @@ const VaultState = createSlice({
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
     },
-    setIsPendingBalances(state: IVaultState, action: PayloadAction<boolean>) {
+    setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
       const { id, type } = state.activeAccount;
-      state.isPendingBalances = action.payload;
+      state.isLoadingBalances = action.payload;
       state.accounts[type][id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;
+    },
+    setIsLoadingAssets(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingAssets = action.payload;
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
@@ -301,37 +314,17 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
-    setUpdatedTokenBalace(
-      state: IVaultState,
-      action: PayloadAction<{
-        accountId: number;
-        accountType: KeyringAccountType;
-        newAccountsAssets: any;
-      }>
-    ) {
-      const { newAccountsAssets, accountId, accountType } = action.payload;
-
-      const { isBitcoinBased } = state;
-      //TODO: remove this if condition and guarantee that this redux state is only called on the appropriate state transition.
-      //TODO: the appropriate state transition is updating ERC tokens balance, so its a great concern that this if is here
-      if (!isBitcoinBased) {
-        state.accounts[accountType][accountId].assets.ethereum =
-          newAccountsAssets;
-      }
-    },
     setUpdatedAllErcTokensBalance(
       state: IVaultState,
       action: PayloadAction<{
-        accountId: number;
-        accountType: KeyringAccountType;
         updatedTokens: any[];
       }>
     ) {
-      const { accountId, accountType, updatedTokens } = action.payload;
+      const { updatedTokens } = action.payload;
       const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
         state;
       const { type, id } = activeAccount;
-      const findAccount = accounts[accountType][accountId];
+      const findAccount = accounts[type][id];
 
       if (
         !Boolean(
@@ -342,7 +335,7 @@ const VaultState = createSlice({
       )
         return;
 
-      state.accounts[type][accountId].assets.ethereum = updatedTokens;
+      state.accounts[type][id].assets.ethereum = updatedTokens;
     },
   },
 });
@@ -355,8 +348,10 @@ export const {
   setNetworkChange,
   setActiveNetwork,
   setIsNetworkChanging,
-  setIsPendingBalances,
+  setIsLoadingBalances,
+  setIsLoadingAssets,
   setIsLoadingTxs,
+  setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
   setNetworks,
@@ -372,7 +367,6 @@ export const {
   setAccountTransactions,
   setStoreError,
   setIsBitcoinBased,
-  setUpdatedTokenBalace,
   setUpdatedAllErcTokensBalance,
 } = VaultState.actions;
 

@@ -27,7 +27,9 @@ export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
-  refresh: (silent?: boolean) => Promise<void>;
+  refresh: () => void;
+  updateNativeBalanceAfterSend: () => void;
+
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
@@ -88,12 +90,10 @@ const MasterController = (
     readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
   };
 
-  const refresh = async (silent?: boolean) => {
+  const refresh = () => {
     const { activeAccount, accounts } = store.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
-    //TODO: Refactor refresh
-    // await wallet.account.sys.getLatestUpdate(silent);
-    // wallet.account.sys.watchMemPool();
+    wallet.getLatestUpdateForCurrentAccount();
     utils.setFiat();
   };
   /**
@@ -105,9 +105,15 @@ const MasterController = (
       if (external) externalRoute = newRoute;
       else route = newRoute;
     }
-
     return external ? externalRoute : route;
   };
+
+  const updateNativeBalanceAfterSend = () => {
+    setTimeout(() => {
+      wallet.updateUserNativeBalance();
+    }, 3500); // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
+  };
+
   /**
    * Creates a popup for external routes. Mostly for DApps
    * @returns the window object from the popup
@@ -134,6 +140,7 @@ const MasterController = (
     createPopup,
     dapp,
     refresh,
+    updateNativeBalanceAfterSend,
     utils,
     wallet,
   };

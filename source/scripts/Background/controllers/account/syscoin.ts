@@ -1,4 +1,5 @@
 import axios from 'axios';
+import isEmpty from 'lodash/isEmpty';
 
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
@@ -9,141 +10,22 @@ import { ITokenSysProps } from 'types/tokens';
 
 const config = {
   headers: {
-    'User-Agent':
+    'X-User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
   },
+  withCredentials: true,
 };
 
 export interface ISysAccountController {
-  // getLatestUpdate: (silent?: boolean) => Promise<void>;
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
   // tx: ISyscoinTransactions;
-  // watchMemPool: () => void;
 }
 
 const SysAccountController = (
   getKeyring: () => KeyringManager
 ): ISysAccountController => {
-  //todo: we need to check if we will need to get from main controller or initialize it again with opts
-  // const keyringManager = new KeyringManager();
-
-  // id for `watchMemPool` setInterval
-  // let intervalId: NodeJS.Timer;
-
-  // const getLatestUpdate = async (silent?: boolean) => {
-  //   const { activeAccountId, isBitcoinBased, accounts, activeNetwork } =
-  //     store.getState().vault;
-  //   const accountId = activeAccountId;
-  //   if (!accounts[accountId].address) return;
-
-  //   if (!silent) store.dispatch(setIsPendingBalances(true));
-
-  //   store.dispatch(setIsLoadingTxs(true));
-  //   const { walleAccountstLatestUpdate } =
-  //     await keyringManager.getLatestUpdateForAccount();
-  //   store.dispatch(setIsPendingBalances(false));
-
-  //   const hash = isBitcoinBased ? 'txid' : 'hash';
-
-  //   store.dispatch(setIsLoadingTxs(false));
-
-  //   const formattedWalletAccountsLatestUpdates = Object.assign(
-  //     {},
-  //     await Promise.all(
-  //       Object.values(walleAccountstLatestUpdate).map(
-  //         async (account: any, index) => {
-  //           const { transactions: updatedTxs } = account;
-
-  //           const allTxs = [
-  //             ...accounts[index].transactions,
-  //             ...updatedTxs,
-  //           ].filter(
-  //             (value, i, self) =>
-  //               i ===
-  //               self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-  //           ); // to get array with unique txs.
-
-  //           if (isBitcoinBased)
-  //             return {
-  //               ...account,
-  //               label: accounts[index].label,
-  //               transactions: [...allTxs],
-  //               assets: {
-  //                 ethereum: accounts[index].assets.ethereum,
-  //                 syscoin: account.assets,
-  //               },
-  //             };
-  //           else {
-  //             //UPDATE ETH ERC TOKEN BALANCES
-  //             const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
-  //               accounts[index].id
-  //             );
-
-  //             return {
-  //               ...account,
-  //               label: accounts[index].label,
-  //               assets: {
-  //                 syscoin: accounts[index].assets.syscoin,
-  //                 ethereum: getUpdatedErcTokens,
-  //               },
-  //               transactions: [...allTxs],
-  //             };
-  //           }
-  //         }
-  //       )
-  //     )
-  //   );
-
-  //   store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
-
-  //   resolve();
-
-  //   const isUpdating = store.getState().vault.isNetworkChanging;
-  //   window.controller.dapp.handleBlockExplorerChange(
-  //     PaliSyscoinEvents.blockExplorerChanged,
-  //     {
-  //       method: PaliSyscoinEvents.blockExplorerChanged,
-  //       params: isBitcoinBased ? activeNetwork.url : null,
-  //     }
-  //   );
-  //   if (!isUpdating)
-  //     window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-  //       method: PaliEvents.chainChanged,
-  //       params: {
-  //         chainId: `0x${activeNetwork.chainId.toString(16)}`,
-  //         networkVersion: activeNetwork.chainId,
-  //       },
-  //     });
-  //   else store.dispatch(setIsNetworkChanging(false));
-  // };
-
-  /** check if there is no pending transaction in mempool
-   *  and get the latest update for account
-   */
-  // const watchMemPool = () => {
-  //   if (intervalId) clearInterval(intervalId);
-  //   //TODO: this should be enhanced and its only being set after user refresh the wallet
-  //   // 30 seconds - 3000 milliseconds
-  //   const interval = 30 * 1000;
-
-  //   intervalId = setInterval(() => {
-  //     const { activeAccountId, accounts } = store.getState().vault;
-
-  //     if (
-  //       !accounts[activeAccountId].address ||
-  //       !accounts[activeAccountId].transactions
-  //     ) {
-  //       clearInterval(intervalId);
-
-  //       return;
-  //     }
-
-  //     getLatestUpdate(true);
-  //   }, interval);
-  // };
-
   const setAddress = async (): Promise<string> => {
     const keyringManager = getKeyring();
     const address = await keyringManager.updateReceivingAddress();
@@ -176,25 +58,28 @@ const SysAccountController = (
       const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
         ? description
         : '';
-
-      const { data } = await axios.get(ipfsUrl, config);
-
-      const image = data && data.image ? data.image : '';
-
-      const asset = {
+      const assetInfos = {
         ...token,
         description,
-        image,
+        image: '',
         balance: Number(token.balance) / 10 ** Number(token.decimals),
       };
+      if (!isEmpty(ipfsUrl)) {
+        const { data } = await axios.get(ipfsUrl, config);
+
+        assetInfos.image = data && data.image ? data.image : '';
+      }
 
       store.dispatch(
         setActiveAccountProperty({
           property: 'assets',
-          value: [
-            ...accounts[activeAccount.type][activeAccount.id].assets.syscoin,
-            asset,
-          ],
+          value: {
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            syscoin: [
+              ...accounts[activeAccount.type][activeAccount.id].assets.syscoin,
+              assetInfos,
+            ],
+          },
         })
       );
     } catch (error) {
