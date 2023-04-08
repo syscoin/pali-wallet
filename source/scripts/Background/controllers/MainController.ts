@@ -514,14 +514,17 @@ const MainController = (walletState): IMainController => {
         activeNetwork.url
       )
       .then((updatedTxs) => {
-        if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
-
+        if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+          return;
+        }
+        store.dispatch(setIsLoadingTxs(true));
         store.dispatch(
           setActiveAccountProperty({
             property: 'transactions',
             value: updatedTxs,
           })
         );
+        store.dispatch(setIsLoadingTxs(false));
       });
   };
 
@@ -649,12 +652,14 @@ const MainController = (walletState): IMainController => {
       .then((updatedAssets) => {
         if (isNil(updatedAssets) || isEmpty(updatedAssets)) return;
 
+        store.dispatch(setIsLoadingAssets(true));
         store.dispatch(
           setActiveAccountProperty({
             property: 'assets',
             value: updatedAssets as any, //setActiveAccountProperty only accept any as type
           })
         );
+        store.dispatch(setIsLoadingAssets(false));
       });
   };
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
@@ -685,6 +690,7 @@ const MainController = (walletState): IMainController => {
         );
 
         if (validateIfCanDispatch) {
+          store.dispatch(setIsLoadingBalances(true));
           store.dispatch(
             setAccountBalances({
               ...currentAccount.balances,
@@ -692,6 +698,7 @@ const MainController = (walletState): IMainController => {
                 updatedBalance,
             })
           );
+          store.dispatch(setIsLoadingBalances(false));
         }
       });
   };

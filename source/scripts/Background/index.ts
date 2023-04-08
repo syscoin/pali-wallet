@@ -4,7 +4,6 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-import { setIsLoadingBalances, setIsLoadingTxs } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -141,23 +140,6 @@ async function checkForUpdates() {
     isNetworkChanging,
   } = store.getState().vault;
 
-  const runPollingForTxs = () => {
-    store.dispatch(setIsLoadingTxs(true));
-
-    //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
-    window.controller.wallet.updateUserTransactionsState();
-
-    store.dispatch(setIsLoadingTxs(false));
-  };
-  const runPollingForBalances = () => {
-    store.dispatch(setIsLoadingBalances(true));
-
-    //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
-    window.controller.wallet.updateUserNativeBalance();
-
-    store.dispatch(setIsLoadingBalances(false));
-  };
-
   const notValidToRunPolling =
     isChangingConnectedAccount ||
     isLoadingAssets ||
@@ -170,9 +152,11 @@ async function checkForUpdates() {
     return;
   }
 
-  runPollingForTxs();
+  //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserNativeBalance();
 
-  runPollingForBalances();
+  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserTransactionsState();
 }
 
 let intervalId;
