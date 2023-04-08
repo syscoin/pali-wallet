@@ -156,6 +156,16 @@ const CustomRPCView = () => {
               async validator(_, value) {
                 setUrlFieldValue(value);
                 if (isSyscoinRpc) {
+                  const trezorIoRegExp = /trezor\.io/;
+                  if (trezorIoRegExp.test(value)) {
+                    console.error(
+                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
+                    );
+                    alert.error(
+                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
+                    );
+                    return Promise.reject();
+                  }
                   const { valid, coin } = await validateSysRpc(value);
 
                   if (valid || !value) {
