@@ -56,7 +56,6 @@ export const TransactionsList = ({
   );
 
   const filteredTransactions = useMemo(() => {
-    console.log('userTransactions', userTransactions);
     if (!Array.isArray(userTransactions)) {
       return [];
     }

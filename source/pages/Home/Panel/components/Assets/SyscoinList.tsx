@@ -8,11 +8,18 @@ import { RootState } from 'state/store';
 import { ellipsis, formatCurrency, truncate } from 'utils/index';
 
 export const SyscoinAssetsList = () => {
-  const { accounts, activeAccount, isLoadingAssets } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount,
+    isLoadingAssets,
+    activeNetwork: { chainId },
+  } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
+
+  const filteredAssets = assets.syscoin.filter(
+    (asset) => asset.chainId === chainId
+  );
 
   return (
     <>
@@ -20,7 +27,7 @@ export const SyscoinAssetsList = () => {
         <LoadingComponent />
       ) : (
         <>
-          {assets.syscoin?.map(
+          {filteredAssets?.map(
             ({ decimals, balance, symbol, assetGuid }: any) => (
               <Fragment key={uniqueId(String(assetGuid))}>
                 <li className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200">

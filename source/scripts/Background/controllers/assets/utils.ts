@@ -46,10 +46,5 @@ export const validateAndManageUserAssets = (
 
   const mergedArrays = [...fetchedAssets, ...userClonedAssets];
 
-  console.log(
-    'mergeArraysAndTreatValues',
-    mergeArraysAndTreatValues(mergedArrays)
-  );
-
   return mergeArraysAndTreatValues(mergedArrays);
 };

@@ -307,6 +307,10 @@ const MainController = (walletState): IMainController => {
       store.dispatch(setIsLoadingBalances(false));
       await utilsController.setFiat();
 
+      updateAssetsFromCurrentAccount();
+
+      updateUserTransactionsState();
+
       resolve({ chainId: chainId, networkVersion: networkVersion });
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
         method: PaliEvents.chainChanged,
@@ -573,7 +577,8 @@ const MainController = (walletState): IMainController => {
     const initialSysAssetsForAccount =
       await assetsManager.sys.getSysAssetsByXpub(
         xpub,
-        initialState.activeNetwork.url
+        initialState.activeNetwork.url,
+        initialState.activeNetwork.chainId
       );
 
     store.dispatch(setIsLoadingAssets(false));
@@ -647,10 +652,22 @@ const MainController = (walletState): IMainController => {
         currentAccount,
         isBitcoinBased,
         activeNetwork.url,
+        activeNetwork.chainId,
         networks
       )
       .then((updatedAssets) => {
-        if (isNil(updatedAssets) || isEmpty(updatedAssets)) return;
+        const validateIfIsInvalidDispatch =
+          updatedAssets.ethereum.length <
+            currentAccount.assets.ethereum.length ||
+          updatedAssets.syscoin.length < currentAccount.assets.syscoin.length ||
+          (currentAccount.assets.ethereum.length > 0 &&
+            isEmpty(updatedAssets.ethereum)) ||
+          (currentAccount.assets.syscoin.length > 0 &&
+            isEmpty(updatedAssets.syscoin));
+
+        if (validateIfIsInvalidDispatch) {
+          return;
+        }
 
         store.dispatch(setIsLoadingAssets(true));
         store.dispatch(

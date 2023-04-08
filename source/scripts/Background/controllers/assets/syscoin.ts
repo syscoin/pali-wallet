@@ -28,7 +28,8 @@ const SysAssetsControler = (): ISysAssetsController => {
 
   const getSysAssetsByXpub = async (
     xpub: string,
-    networkUrl: string
+    networkUrl: string,
+    networkChainId: number
   ): Promise<ISysTokensAssetReponse[]> => {
     try {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -56,11 +57,19 @@ const SysAssetsControler = (): ISysAssetsController => {
           (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
         );
 
-      const filteredAssetsLength = getOnlyTokensWithAssetGuid
-        ? getOnlyTokensWithAssetGuid.slice(0, 30)
-        : [];
+      const filteredAssetsLength = getOnlyTokensWithAssetGuid.slice(0, 30);
 
-      return validateAndManageUserAssets(filteredAssetsLength);
+      if (filteredAssetsLength && filteredAssetsLength.length > 0) {
+        const assetsWithChain = filteredAssetsLength.map((asset) => {
+          if (asset.chainId && asset.chainId === networkChainId) return asset;
+
+          return { ...asset, chainId: networkChainId };
+        });
+
+        return validateAndManageUserAssets(assetsWithChain);
+      }
+
+      return [];
     } catch (error) {
       console.error('SysAssetsControler -> getSysAssetsByXpub -> error', error);
       return [];
