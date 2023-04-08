@@ -175,10 +175,7 @@ browser.runtime.onConnect.addListener((port) => {
   }
 });
 
-let test = 0;
 const port = browser.runtime.connect(undefined, { name: 'polling' });
-console.log('port', port, test++);
 port.postMessage({ action: 'startPolling' });
-console.log('port-post-message', port);
 
 wrapStore(store, { portName: STORE_PORT });
