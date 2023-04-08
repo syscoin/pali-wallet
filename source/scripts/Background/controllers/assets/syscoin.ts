@@ -6,6 +6,7 @@ import { getAsset } from '@pollum-io/sysweb3-utils';
 import { ITokenSysProps } from 'types/tokens';
 
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
+import { validateAndManageUserAssets } from './utils';
 
 const SysAssetsControler = (): ISysAssetsController => {
   const addSysDefaultToken = async (assetGuid: string, networkUrl: string) => {
@@ -59,7 +60,7 @@ const SysAssetsControler = (): ISysAssetsController => {
         ? getOnlyTokensWithAssetGuid.slice(0, 30)
         : [];
 
-      return filteredAssetsLength;
+      return validateAndManageUserAssets(filteredAssetsLength);
     } catch (error) {
       console.error('SysAssetsControler -> getSysAssetsByXpub -> error', error);
       return [];
