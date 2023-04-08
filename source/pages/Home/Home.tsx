@@ -119,9 +119,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">
-                {isTestnet || isLoadingBalances ? null : fiatPriceValue}
-              </p>
+              <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>
             </div>
 
             <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
