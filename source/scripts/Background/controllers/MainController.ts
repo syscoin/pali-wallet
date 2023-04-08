@@ -199,7 +199,6 @@ const MainController = (walletState): IMainController => {
     const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
       newAccount.xpub
     );
-    console.log('initialSysAssetsForAccount', initialSysAssetsForAccount);
 
     const initialTxsForAccount = await getInitialSysTransactionsForAccount(
       newAccount.xpub
@@ -508,6 +507,7 @@ const MainController = (walletState): IMainController => {
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
+    store.dispatch(setIsLoadingTxs(true));
     transactionsManager.utils
       .updateTransactionsFromCurrentAccount(
         currentAccount,
@@ -515,9 +515,9 @@ const MainController = (walletState): IMainController => {
         activeNetwork.url
       )
       .then((updatedTxs) => {
-        if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
-
-        store.dispatch(setIsLoadingTxs(true));
+        if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+          return;
+        }
 
         store.dispatch(
           setActiveAccountProperty({
@@ -525,7 +525,8 @@ const MainController = (walletState): IMainController => {
             value: updatedTxs,
           })
         );
-
+      })
+      .finally(() => {
         store.dispatch(setIsLoadingTxs(false));
       });
   };
@@ -686,6 +687,7 @@ const MainController = (walletState): IMainController => {
     balancesMananger.utils
       .getBalanceUpdatedForAccount(currentAccount, isBitcoinBased, networkUrl)
       .then((updatedBalance) => {
+        console.log('updatedBalance', updatedBalance);
         const actualUserBalance = isBitcoinBased
           ? currentAccount.balances.syscoin
           : currentAccount.balances.ethereum;

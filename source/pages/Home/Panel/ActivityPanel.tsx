@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Fullscreen } from 'components/Fullscreen';
@@ -23,9 +23,29 @@ export const TransactionsPanel = () => {
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
 
-  const transactions = Object.values(
-    accounts[activeAccount.type][activeAccount.id].transactions ?? {}
-  );
+  const [previousTransactions, setPreviousTransactions] = useState([]);
+
+  const transactions = useMemo(() => {
+    const accountTransactions =
+      accounts[activeAccount.type][activeAccount.id].transactions ?? {};
+
+    return Object.values(accountTransactions);
+  }, [accounts, activeAccount]);
+
+  const hasTransactions =
+    transactions.length > 0 || previousTransactions.length > 0;
+
+  useEffect(() => {
+    if (
+      !isLoadingTxs &&
+      transactions.length === 0 &&
+      previousTransactions.length > 0
+    ) {
+      setPreviousTransactions(transactions);
+    } else if (transactions.length > 0) {
+      setPreviousTransactions(transactions);
+    }
+  }, [isLoadingTxs, transactions, previousTransactions]);
 
   const NoTransactionsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
@@ -69,19 +89,26 @@ export const TransactionsPanel = () => {
     };
   }, [isLoadingTxs]);
 
-  return transactions.length === 0 ? (
-    <div className="w-full text-white">
-      <NoTransactionsComponent />
-      <OpenTransactionExplorer />
-      <Fullscreen />
-    </div>
-  ) : (
+  return (
     <>
-      <div className="p-4 w-full text-white text-base bg-bkg-3">
-        {internalLoading ? <LoadingComponent /> : <TransactionsList />}
-        <OpenTransactionExplorer />
-      </div>
-
+      {internalLoading && !hasTransactions && <LoadingComponent />}
+      {!internalLoading && !hasTransactions && (
+        <div className="w-full text-white">
+          <NoTransactionsComponent />
+          <OpenTransactionExplorer />
+          <Fullscreen />
+        </div>
+      )}
+      {hasTransactions && (
+        <div className="p-4 w-full text-white text-base bg-bkg-3">
+          <TransactionsList
+            userTransactions={
+              hasTransactions ? transactions : previousTransactions
+            }
+          />
+          <OpenTransactionExplorer />
+        </div>
+      )}
       <Fullscreen />
     </>
   );
