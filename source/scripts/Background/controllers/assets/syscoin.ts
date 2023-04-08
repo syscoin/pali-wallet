@@ -60,6 +60,8 @@ const SysAssetsControler = (): ISysAssetsController => {
       const filteredAssetsLength = getOnlyTokensWithAssetGuid.slice(0, 30);
 
       if (filteredAssetsLength && filteredAssetsLength.length > 0) {
+        //Need to add chainId inside the asset object to we can validate it based on network connect
+        //To show it on list and maintain correctly inside state
         const assetsWithChain = filteredAssetsLength.map((asset) => {
           if (asset.chainId && asset.chainId === networkChainId) return asset;
 
