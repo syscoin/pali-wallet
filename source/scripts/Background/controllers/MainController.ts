@@ -50,6 +50,7 @@ import { IMainController } from 'types/controllers';
 import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { verifyIfIsTestnet } from 'utils/network';
 
 import EthAccountController from './account/evm';
 import SysAccountController from './account/syscoin';
@@ -316,6 +317,14 @@ const MainController = (walletState): IMainController => {
           networkVersion: network.chainId,
         },
       });
+      verifyIfIsTestnet(network.url, isBitcoinBased)
+        .then((isTestnet) => {
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet },
+          });
+        })
+        .catch((err) => console.log(err));
       store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
       return;
     } else {
@@ -339,6 +348,14 @@ const MainController = (walletState): IMainController => {
           params: isBitcoinBased ? network.url : null,
         }
       );
+      verifyIfIsTestnet(network.url, isBitcoinBased)
+        .then((isTestnet) => {
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet },
+          });
+        })
+        .catch((err) => console.log(err));
 
       store.dispatch(setStoreError(true));
       store.dispatch(setIsNetworkChanging(false));

@@ -8,6 +8,7 @@ interface SysProviderState {
   blockExplorerURL: string | null;
   initialized: boolean;
   isPermanentlyDisconnected: boolean;
+  isTestnet: boolean;
   isUnlocked: boolean;
   xpub: string | null;
 }
@@ -20,6 +21,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
+    isTestnet: false,
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
@@ -44,7 +46,7 @@ export class PaliInpageProviderSys extends BaseProvider {
         )
       );
     window.addEventListener(
-      'sys_notification',
+      'notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
         this.emit('walletUpdate');
@@ -57,6 +59,9 @@ export class PaliInpageProviderSys extends BaseProvider {
             break;
           case 'pali_blockExplorerChanged':
             this._handleActiveBlockExplorer(params);
+            break;
+          case 'pali_isTestnet':
+            this._handleIsTestnet(params);
             break;
           default:
             this._handleDisconnect(
@@ -108,6 +113,15 @@ export class PaliInpageProviderSys extends BaseProvider {
       });
     }
     return this._sysState.isUnlocked;
+  }
+
+  public async isTestnet(): Promise<boolean> {
+    if (!this._sysState.initialized) {
+      await new Promise<void>((resolve) => {
+        this.on('_sysInitialized', () => resolve());
+      });
+    }
+    return this._sysState.isTestnet;
   }
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
@@ -165,6 +179,9 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
+  }
+  private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
+    this._sysState.isTestnet = isTestnet;
   }
   private async _isSyscoinChain(): Promise<boolean> {
     let checkExplorer = false;

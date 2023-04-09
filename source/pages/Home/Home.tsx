@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
-
 import { Header, Icon, Button, Loading } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatNumber } from 'utils/index';
+import { formatNumber, verifyIfIsTestnet } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
@@ -35,6 +33,7 @@ export const Home = () => {
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants
+  const { url } = activeNetwork;
   const controller = getController();
   const isUnlocked =
     controller.wallet.isUnlocked() &&
@@ -45,32 +44,13 @@ export const Home = () => {
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
 
-  //todo: this function can be in some utils file
-  //* Functions
-  const verifyIfIsTestnet = async () => {
-    const { url } = activeNetwork;
-
-    const { chain, chainId }: any = isBitcoinBased
-      ? await validateSysRpc(url)
-      : await validateEthRpc(url);
-
-    //todo: this can be in some consts file
-    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
-    return Boolean(
-      chain === 'test' ||
-        chain === 'testnet' ||
-        ethTestnetsChainsIds.some(
-          (validationChain) => validationChain === chainId
-        )
-    );
-  };
-
   //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
-    verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
+    verifyIfIsTestnet(url, isBitcoinBased).then((_isTestnet) =>
+      setIsTestnet(_isTestnet)
+    );
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
