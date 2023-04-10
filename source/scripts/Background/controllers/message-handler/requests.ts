@@ -215,15 +215,18 @@ export const methodRequest = async (
     !isBitcoinBased &&
     EthProvider(host).checkIsBlocking(data.method)
   ) {
+    const dappAccount = dapp.getAccount(host);
+    const dappAccountType = dappAccount.isImported
+      ? KeyringAccountType.Imported
+      : KeyringAccountType.HDAccount;
+
     const response = await popupPromise({
       host,
       route: 'change-active-connected-account',
       eventName: 'changeActiveConnected',
       data: {
-        connectedAccount: dapp.getAccount(host),
-        accountType: dapp.getAccount(host).isImported
-          ? KeyringAccountType.Imported
-          : KeyringAccountType.HDAccount,
+        connectedAccount: dappAccount,
+        accountType: dappAccountType,
       },
     });
     if (!response) {
