@@ -1,5 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
@@ -213,11 +215,19 @@ export const methodRequest = async (
     !isBitcoinBased &&
     EthProvider(host).checkIsBlocking(data.method)
   ) {
+    const dappAccount = dapp.getAccount(host);
+    const dappAccountType = dappAccount.isImported
+      ? KeyringAccountType.Imported
+      : KeyringAccountType.HDAccount;
+
     const response = await popupPromise({
       host,
       route: 'change-active-connected-account',
       eventName: 'changeActiveConnected',
-      data: { connectedAccount: dapp.getAccount(host) },
+      data: {
+        connectedAccount: dappAccount,
+        accountType: dappAccountType,
+      },
     });
     if (!response) {
       throw cleanErrorStack(ethErrors.rpc.internal());
