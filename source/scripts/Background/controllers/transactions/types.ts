@@ -1,7 +1,8 @@
 import { ethers } from 'ethers';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
+
+import { IPaliAccount } from 'state/vault/types';
 
 //------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
@@ -93,17 +94,17 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 
 export interface IEvmTransactionsController {
   firstRunForProviderTransactions: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => Promise<IEvmTransactionResponse[]>;
   getUserTransactionByDefaultProvider: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string,
     startBlock: number,
     endBlock: number
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => Promise<IEvmTransactionResponse[]>;
 }
@@ -144,7 +145,7 @@ export interface ISysTransactionsController {
 
 export interface ITransactionsManagerUtils {
   updateTransactionsFromCurrentAccount: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string
   ) => Promise<ISysTransaction[] | IEvmTransaction[]>;

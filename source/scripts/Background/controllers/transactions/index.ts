@@ -1,4 +1,4 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { IPaliAccount } from 'state/vault/types';
 
 import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
@@ -6,7 +6,7 @@ import { ITransactionsManager } from './types';
 
 const TransactionsManager = (): ITransactionsManager => {
   const updateTransactionsFromCurrentAccount = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string
   ) => {

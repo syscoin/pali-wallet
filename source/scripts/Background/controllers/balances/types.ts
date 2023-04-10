@@ -1,22 +1,22 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { IPaliAccount } from 'state/vault/types';
 
 export interface IEvmBalanceController {
   getEvmBalanceForAccount: (
-    address: string,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => Promise<string>;
 }
 
 export interface ISysBalanceController {
   getSysBalanceForAccount: (
-    xpub: string,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => Promise<string>;
 }
 
 export interface IBalancesManagerUtils {
   getBalanceUpdatedForAccount: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     networkUrl: string
   ) => Promise<string>;

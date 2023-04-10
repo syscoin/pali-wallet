@@ -1,4 +1,4 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { IPaliAccount } from 'state/vault/types';
 
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';
@@ -6,7 +6,7 @@ import { IBalancesManager } from './types';
 
 const BalancesManager = (): IBalancesManager => {
   const getBalanceUpdatedForAccount = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     networkUrl: string
   ) => {
@@ -15,7 +15,7 @@ const BalancesManager = (): IBalancesManager => {
         try {
           const getSysBalance =
             await SyscoinBalanceController().getSysBalanceForAccount(
-              currentAccount.xpub,
+              currentAccount,
               networkUrl
             );
 
@@ -27,7 +27,7 @@ const BalancesManager = (): IBalancesManager => {
         try {
           const getEvmBalance =
             await EvmBalanceController().getEvmBalanceForAccount(
-              currentAccount.address,
+              currentAccount,
               networkUrl
             );
 

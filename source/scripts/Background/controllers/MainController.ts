@@ -587,59 +587,6 @@ const MainController = (walletState): IMainController => {
   };
   //---- END SYS METHODS ----//
 
-  //---- EVM METHODS ----//
-  const updateErcTokenBalances = async (
-    tokenAddress: string,
-    tokenChain: number,
-    isNft: boolean,
-    decimals?: number
-  ) => {
-    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
-      store.getState().vault;
-
-    const findAccount = accounts[activeAccount.type][activeAccount.id];
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const _contract = new ethers.Contract(
-      tokenAddress,
-      isNft ? getErc21Abi() : getErc20Abi(),
-      provider
-    );
-
-    const balanceMethodCall = await _contract.balanceOf(findAccount.address);
-
-    const balance = !isNft
-      ? `${balanceMethodCall / 10 ** Number(decimals)}`
-      : Number(balanceMethodCall);
-
-    const formattedBalance = !isNft
-      ? floor(parseFloat(balance as string), 4)
-      : balance;
-
-    const newAccountsAssets = accounts[activeAccount.type][
-      activeAccount.id
-    ].assets.ethereum.map((vaultAssets: ITokenEthProps) => {
-      if (
-        Number(vaultAssets.chainId) === tokenChain &&
-        vaultAssets.contractAddress === tokenAddress
-      ) {
-        return { ...vaultAssets, balance: formattedBalance };
-      }
-
-      return vaultAssets;
-    });
-
-    if (!isNetworkChanging) {
-      store.dispatch(
-        setUpdatedAllErcTokensBalance({
-          updatedTokens: newAccountsAssets,
-        })
-      );
-    }
-  };
-  //---- END EVM METHODS ----//
-
   //---- METHODS FOR UPDATE BOTH ASSETS ----//
   const updateAssetsFromCurrentAccount = () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
@@ -656,14 +603,20 @@ const MainController = (walletState): IMainController => {
         networks
       )
       .then((updatedAssets) => {
-        const validateIfIsInvalidDispatch =
+        const validateUpdatedAndPreviousAssetsLength =
           updatedAssets.ethereum.length <
             currentAccount.assets.ethereum.length ||
-          updatedAssets.syscoin.length < currentAccount.assets.syscoin.length ||
+          updatedAssets.syscoin.length < currentAccount.assets.syscoin.length;
+
+        const validateIfUpdatedAssetsStayEmpty =
           (currentAccount.assets.ethereum.length > 0 &&
             isEmpty(updatedAssets.ethereum)) ||
           (currentAccount.assets.syscoin.length > 0 &&
             isEmpty(updatedAssets.syscoin));
+
+        const validateIfIsInvalidDispatch =
+          validateUpdatedAndPreviousAssetsLength &&
+          validateIfUpdatedAssetsStayEmpty;
 
         if (validateIfIsInvalidDispatch) {
           return;
@@ -732,10 +685,11 @@ const MainController = (walletState): IMainController => {
     new Promise<void>((resolve) => {
       //First update native balance
       updateUserNativeBalance();
-      //Later update Assets
-      updateAssetsFromCurrentAccount();
       //Later update Txs
       updateUserTransactionsState();
+      //Later update Assets
+      updateAssetsFromCurrentAccount();
+
       resolve();
     });
 
@@ -762,10 +716,10 @@ const MainController = (walletState): IMainController => {
     resolveError,
     getChangeAddress,
     getRecommendedFee,
-    updateErcTokenBalances,
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
     updateUserTransactionsState,
     getLatestUpdateForCurrentAccount,

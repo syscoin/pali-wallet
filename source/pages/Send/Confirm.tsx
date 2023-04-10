@@ -224,28 +224,6 @@ export const SendConfirm = () => {
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);
-                    const provider = new ethers.providers.JsonRpcProvider(
-                      activeNetwork.url
-                    );
-
-                    let receipt = await provider.getTransactionReceipt(
-                      response.hash
-                    );
-
-                    while (!receipt) {
-                      receipt = await provider.getTransactionReceipt(
-                        response.hash
-                      );
-                      await new Promise((resolve) => setTimeout(resolve, 5000));
-                    }
-                    if (receipt) {
-                      wallet.updateErcTokenBalances(
-                        basicTxValues.token.contractAddress,
-                        basicTxValues.token.chainId,
-                        basicTxValues.token.isNft,
-                        basicTxValues.token.decimals
-                      );
-                    }
                   })
                   .catch((error) => {
                     logError('error send ERC20', 'Transaction', error);
@@ -280,29 +258,6 @@ export const SendConfirm = () => {
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);
-
-                    const provider = new ethers.providers.JsonRpcProvider(
-                      activeNetwork.url
-                    );
-
-                    let receipt = await provider.getTransactionReceipt(
-                      response.hash
-                    );
-
-                    while (!receipt) {
-                      receipt = await provider.getTransactionReceipt(
-                        response.hash
-                      );
-
-                      await new Promise((resolve) => setTimeout(resolve, 5000));
-                    }
-                    if (receipt) {
-                      wallet.updateErcTokenBalances(
-                        basicTxValues.token.contractAddress,
-                        basicTxValues.token.chainId,
-                        basicTxValues.token.isNft
-                      );
-                    }
                   })
                   .catch((error) => {
                     logError('error send ERC721', 'Transaction', error);

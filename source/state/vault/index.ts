@@ -222,9 +222,7 @@ const VaultState = createSlice({
       state.activeChain = action.payload;
     },
     setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
-      const { id, type } = state.activeAccount;
       state.isLoadingBalances = action.payload;
-      state.accounts[type][id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;

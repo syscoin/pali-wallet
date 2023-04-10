@@ -157,6 +157,9 @@ async function checkForUpdates() {
 
   //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
   window.controller.wallet.updateUserTransactionsState();
+
+  //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateAssetsFromCurrentAccount();
 }
 
 let intervalId;

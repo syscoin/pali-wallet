@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import flatMap from 'lodash/flatMap';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { IPaliAccount } from 'state/vault/types';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
@@ -11,7 +11,7 @@ import {
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string,
     startBlock: number,
     endBlock: number
@@ -31,7 +31,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const firstRunForProviderTransactions = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => {
     const provider = new ethers.providers.JsonRpcProvider(networkUrl);
@@ -51,7 +51,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const pollingEvmTransactions = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => {
     try {

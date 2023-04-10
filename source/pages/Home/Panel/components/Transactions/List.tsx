@@ -14,7 +14,7 @@ export const TransactionsList = ({
   userTransactions: any[]; //todo: adjust type
 }) => {
   const {
-    activeNetwork: { url: chainId },
+    activeNetwork: { chainId },
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
 
@@ -90,6 +90,7 @@ export const TransactionsList = ({
           minute: '2-digit',
         }
       );
+
     return (
       tx[blocktime] && (
         <Fragment key={uniqueId(tx[txid])}>
