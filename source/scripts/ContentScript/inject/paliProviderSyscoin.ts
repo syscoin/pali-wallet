@@ -8,7 +8,7 @@ interface SysProviderState {
   blockExplorerURL: string | null;
   initialized: boolean;
   isPermanentlyDisconnected: boolean;
-  isTestnet: boolean;
+  isTestnet: boolean | undefined;
   isUnlocked: boolean;
   xpub: string | null;
 }
