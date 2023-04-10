@@ -91,7 +91,13 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
-                updateNativeBalanceAfterSend();
+
+                //TRYING TO FIX updateNativeBalanceAfterSend but look that is not working properly
+                //even though the error is not displaying at console anymore
+                // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
+                setTimeout(() => {
+                  () => updateNativeBalanceAfterSend();
+                }, 3500);
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -161,7 +167,13 @@ export const SendConfirm = () => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
-                updateNativeBalanceAfterSend();
+
+                //TRYING TO FIX updateNativeBalanceAfterSend but look that is not working properly
+                //even though the error is not displaying at console anymore
+                // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
+                setTimeout(() => {
+                  () => updateNativeBalanceAfterSend();
+                }, 3500);
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");

@@ -29,7 +29,6 @@ export interface IMasterController {
   dapp: Readonly<IDAppController>;
   refresh: () => void;
   updateNativeBalanceAfterSend: () => void;
-
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
@@ -108,11 +107,7 @@ const MasterController = (
     return external ? externalRoute : route;
   };
 
-  const updateNativeBalanceAfterSend = () => {
-    setTimeout(() => {
-      wallet.updateUserNativeBalance();
-    }, 3500); // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
-  };
+  const updateNativeBalanceAfterSend = () => wallet.updateUserNativeBalance();
 
   /**
    * Creates a popup for external routes. Mostly for DApps
