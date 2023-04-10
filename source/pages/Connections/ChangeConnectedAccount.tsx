@@ -17,15 +17,15 @@ export const ChangeConnectedAccount = () => {
   const { host, eventName, connectedAccount, accountType } = useQueryData();
 
   const handleConnectedAccount = () => {
-    dapp.changeAccount(host, activeAccount.id, activeAccount.type);
-    dispatchBackgroundEvent(`${eventName}.${host}`, false);
+    wallet.setAccount(connectedAccount.id, accountType);
+    dispatchBackgroundEvent(`${eventName}.${host}`, true);
     window.close();
   };
 
   const handleActiveAccount = () => {
+    dapp.changeAccount(host, activeAccount.id, activeAccount.type);
     //this should be passed to constant instead of being hardcoded
-    wallet.setAccount(connectedAccount.id, accountType);
-    dispatchBackgroundEvent(`${eventName}.${host}`, true);
+    dispatchBackgroundEvent(`${eventName}.${host}`, false);
     window.close();
   };
 
