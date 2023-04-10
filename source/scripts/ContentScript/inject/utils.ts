@@ -48,3 +48,17 @@ export const NOOP = () => undefined;
 export const EMITTED_NOTIFICATIONS = Object.freeze([
   'eth_subscription', // per eth-json-rpc-filters/subscriptionManager
 ]);
+
+export const PALI_ETHEREUM_METHODS = [
+  'pali_accountsChanged',
+  'pali_chainChanged',
+  'pali_removeProperty',
+  'pali_addProperty',
+];
+
+export const PALI_UTXO_METHODS = [
+  'pali_xpubChanged',
+  'pali_blockExplorerChanged',
+  'pali_isTestnet',
+  ,
+];

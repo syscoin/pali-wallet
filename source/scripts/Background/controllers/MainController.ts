@@ -70,7 +70,7 @@ const MainController = (walletState): IMainController => {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
-
+  const { verifyIfIsTestnet } = keyringManager;
   const createCancellablePromise = <T>(
     executor: (
       resolve: (value: T) => void,
@@ -319,6 +319,25 @@ const MainController = (walletState): IMainController => {
           networkVersion: network.chainId,
         },
       });
+
+      switch (isBitcoinBased) {
+        case true:
+          const isTestnet = verifyIfIsTestnet();
+
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet },
+          });
+          break;
+        case false:
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet: undefined },
+          });
+        default:
+          break;
+      }
+
       store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
       return;
     } else {
@@ -342,6 +361,24 @@ const MainController = (walletState): IMainController => {
           params: isBitcoinBased ? network.url : null,
         }
       );
+
+      switch (isBitcoinBased) {
+        case true:
+          const isTestnet = verifyIfIsTestnet();
+
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet },
+          });
+          break;
+        case false:
+          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet: undefined },
+          });
+        default:
+          break;
+      }
 
       store.dispatch(setStoreError(true));
       store.dispatch(setIsNetworkChanging(false));
