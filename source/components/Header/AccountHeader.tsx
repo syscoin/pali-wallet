@@ -198,6 +198,7 @@ const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet, dapp } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const isTestnet = wallet.verifyIfIsTestnet();
   const importedAccounts = Object.values(accounts.Imported);
   const hdAccounts = Object.values(accounts.HDAccount);
   const isBitcoinBased = useSelector(
@@ -355,7 +356,7 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          {isBitcoinBased && (
+          {isBitcoinBased && !isTestnet && (
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/account/hardware')}
