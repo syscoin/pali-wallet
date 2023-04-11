@@ -69,6 +69,8 @@ const CustomRPCView = () => {
     label: (state && state.selected && state.selected.label) ?? '',
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
+    symbol: (state && state.selected && state.selected.currency) ?? '',
+    apiUrl: (state && state.selected && state.selected.apiUrl) ?? '',
   };
 
   useEffect(() => {

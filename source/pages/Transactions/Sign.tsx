@@ -21,7 +21,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const { host, ...data } = useQueryData();
+  const { host, eventName, ...data } = useQueryData();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -39,11 +39,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       setConfirmed(true);
       setLoading(false);
 
-      const psbtSign = send ? 'SignAndSend' : 'Sign';
-
-      const type = isBitcoinBased ? psbtSign : 'SignTypedDataV4';
-
-      dispatchBackgroundEvent(`tx${type}.${host}`, response);
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
 
@@ -57,7 +53,11 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
         show={confirmed}
         onClose={window.close}
         title={'Signature request successfully submitted'}
-        description="You can check your request under activity on your home screen."
+        description={
+          send
+            ? 'The Dapp has your signed psbt'
+            : 'You can check your request under activity on your home screen.'
+        }
         buttonText="Got it"
       />
 

@@ -90,7 +90,7 @@ export const ApproveTransactionComponent = () => {
 
   const { state }: { state: any } = useLocation();
 
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -185,7 +185,8 @@ export const ApproveTransactionComponent = () => {
           await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
         setConfirmedDefaultModal(true);
         setLoading(false);
-        if (isExternal) dispatchBackgroundEvent(`txApprove.${host}`, response);
+        if (isExternal)
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);

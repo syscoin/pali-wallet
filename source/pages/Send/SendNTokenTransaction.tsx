@@ -37,7 +37,7 @@ export const SendNTokenTransaction = () => {
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -109,7 +109,7 @@ export const SendNTokenTransaction = () => {
               setConfirmed(true);
               setLoading(false);
               if (isExternal)
-                dispatchBackgroundEvent(`nTokenTx.${host}`, response);
+                dispatchBackgroundEvent(`${eventName}.${host}`, response);
             })
             .catch((error) => {
               alert.error("Can't complete transaction. Try again later.");
@@ -162,7 +162,7 @@ export const SendNTokenTransaction = () => {
               setConfirmed(true);
               setLoading(false);
               if (isExternal)
-                dispatchBackgroundEvent(`nTokenTx.${host}`, response);
+                dispatchBackgroundEvent(`${eventName}.${host}`, response);
             })
             .catch((error) => {
               alert.error("Can't complete transaction. Try again later.");

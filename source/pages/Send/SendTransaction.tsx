@@ -48,7 +48,7 @@ export const SendTransaction = () => {
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
 
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -154,7 +154,8 @@ export const SendTransaction = () => {
         setLoading(false);
         setConfirmedTx(response);
 
-        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+        if (isExternal)
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
