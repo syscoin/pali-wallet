@@ -82,7 +82,7 @@ export interface IMainController extends IKeyringManager {
   unlock: (pwd: string) => Promise<boolean>;
   updateAssetsFromCurrentAccount: () => void;
   updateUserNativeBalance: () => void;
-  updateUserTransactionsState: () => void;
+  updateUserTransactionsState: (isPolling: boolean) => void;
 }
 
 export interface IEthTokenDetails {

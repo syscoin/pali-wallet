@@ -40,6 +40,7 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountBalances,
+  setAccountTransactions,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -65,7 +66,7 @@ const MainController = (walletState): IMainController => {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
-  //@ts-ignore RESOLVE THIS AFTER KEYRING IS IN THE CORRECT VERSION
+
   const { verifyIfIsTestnet } = keyringManager;
   const createCancellablePromise = <T>(
     executor: (
@@ -253,6 +254,10 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
+
+    updateAssetsFromCurrentAccount();
+
+    updateUserTransactionsState(false);
   };
 
   const setActiveNetwork = async (
@@ -298,6 +303,16 @@ const MainController = (walletState): IMainController => {
           wallet,
         })
       );
+      //WE CAN USE THIS TO RESET TXS WHEN CHANGE THE CURRENT NETWORK
+      //BUT LATER WE CAN HANDLE IT BETTER ADDING TXS SOME CHAINIDS AND CHAINTYPE PROPERTIES
+      //AND HANDLE IT BY ACCOUNT WITHOUT RESETING THE STATE
+      store.dispatch(
+        setActiveAccountProperty({
+          property: 'transactions',
+          value: [],
+        })
+      );
+
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
       store.dispatch(setIsLoadingBalances(false));
@@ -305,7 +320,7 @@ const MainController = (walletState): IMainController => {
 
       updateAssetsFromCurrentAccount();
 
-      updateUserTransactionsState();
+      updateUserTransactionsState(false);
 
       resolve({ chainId: chainId, networkVersion: networkVersion });
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
@@ -538,31 +553,107 @@ const MainController = (walletState): IMainController => {
   //---- END SYS METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
-  const updateUserTransactionsState = () => {
+  const callUpdateTxsMethodBasedByIsBitcoinBased = (
+    isBitcoinBased: boolean,
+    currentAccount: IPaliAccount,
+    activeNetworkUrl: string
+  ) => {
+    switch (isBitcoinBased) {
+      case true:
+        //IF SYS UTX0 ONLY RETURN DEFAULT TXS FROM XPUB REQUEST
+
+        window.controller.wallet.transactions.sys
+          .getInitialUserTransactionsByXpub(
+            currentAccount.xpub,
+            activeNetworkUrl
+          )
+          .then((txs) => {
+            if (isNil(txs) || isEmpty(txs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: txs,
+              })
+            );
+
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+      case false:
+        //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
+        transactionsManager.utils
+          .updateTransactionsFromCurrentAccount(
+            currentAccount,
+            isBitcoinBased,
+            activeNetworkUrl
+          )
+          .then((updatedTxs) => {
+            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: updatedTxs,
+              })
+            );
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const updateUserTransactionsState = (isPolling: boolean) => {
     const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
       store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    transactionsManager.utils
-      .updateTransactionsFromCurrentAccount(
-        currentAccount,
-        isBitcoinBased,
-        activeNetwork.url
-      )
-      .then((updatedTxs) => {
-        if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
-          return;
-        }
-        store.dispatch(setIsLoadingTxs(true));
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'transactions',
-            value: updatedTxs,
-          })
+    switch (isPolling) {
+      //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
+      case true:
+        console.log('isPolling', isPolling);
+        transactionsManager.utils
+          .updateTransactionsFromCurrentAccount(
+            currentAccount,
+            isBitcoinBased,
+            activeNetwork.url
+          )
+          .then((updatedTxs) => {
+            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: updatedTxs,
+              })
+            );
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+      //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
+      case false:
+        callUpdateTxsMethodBasedByIsBitcoinBased(
+          isBitcoinBased,
+          currentAccount,
+          activeNetwork.url
         );
-        store.dispatch(setIsLoadingTxs(false));
-      });
+
+        break;
+
+      default:
+        break;
+    }
   };
 
   const sendAndSaveTransaction = (
@@ -723,7 +814,7 @@ const MainController = (walletState): IMainController => {
       //First update native balance
       updateUserNativeBalance();
       //Later update Txs
-      updateUserTransactionsState();
+      updateUserTransactionsState(false);
       //Later update Assets
       updateAssetsFromCurrentAccount();
 

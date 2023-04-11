@@ -156,7 +156,7 @@ async function checkForUpdates() {
   window.controller.wallet.updateUserNativeBalance();
 
   //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateUserTransactionsState();
+  window.controller.wallet.updateUserTransactionsState(true);
 
   //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
   window.controller.wallet.updateAssetsFromCurrentAccount();
