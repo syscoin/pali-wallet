@@ -18,9 +18,9 @@ export const CreateNFT = () => <Transaction type="CreateNft" />;
 export const MintNFT = () => <Transaction type="MintNft" />;
 
 //* Sign
-export const Sign = () => <Sign_ />;
+export const Sign = () => <Sign_ send />;
 export const EthSign = () => <EthSign_ />;
-export const SignAndSend = () => <Sign_ send />;
+export const SignAndSend = () => <Sign_ />;
 
 //* PubKey for encryption
 export const EncryptPubKey = () => <EncryptPubKey_ />;
