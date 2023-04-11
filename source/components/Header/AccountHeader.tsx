@@ -7,6 +7,7 @@ import { browser } from 'webextension-polyfill-ts';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import importIcon from 'assets/images/import.png';
+import trezorLogo from 'assets/images/trezorLogo.png';
 import logo from 'assets/images/whiteLogo.png';
 import { IconButton, Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -62,9 +63,10 @@ const RenderAccountsListByBitcoinBased = (
                   id={`account-${index}`}
                 >
                   <span
-                    style={{ maxWidth: '11.25rem', textOverflow: 'ellipsis' }}
-                    className="whitespace-nowrap overflow-hidden"
+                    style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+                    className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
                   >
+                    <img src={logo} className="mr-1 w-7"></img>
                     {account.label} ({ellipsis(account.address, 4, 8)})
                   </span>
 
@@ -105,9 +107,17 @@ const RenderAccountsListByBitcoinBased = (
                     id={`account-${index}`}
                   >
                     <span
-                      style={{ maxWidth: '11.25rem', textOverflow: 'ellipsis' }}
-                      className="whitespace-nowrap overflow-hidden"
+                      style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+                      className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
                     >
+                      <img
+                        src={trezorLogo}
+                        style={{
+                          filter:
+                            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                        }}
+                        className="mr-1 w-7"
+                      ></img>
                       {account.label} ({ellipsis(account.address, 4, 8)})
                     </span>
 
