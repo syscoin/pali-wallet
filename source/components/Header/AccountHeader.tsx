@@ -24,6 +24,7 @@ const RenderAccountsListByBitcoinBased = (
   const { setActiveAccount } = props;
 
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
 
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -35,8 +36,9 @@ const RenderAccountsListByBitcoinBased = (
 
   return (
     <>
-      {isBitcoinBased // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
-        ? Object.values(accounts.HDAccount)
+      {isBitcoinBased ? ( // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
+        <>
+          {Object.values(accounts.HDAccount)
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index, { length }) => (
               <Tooltip
@@ -76,13 +78,60 @@ const RenderAccountsListByBitcoinBased = (
                     )}
                 </li>
               </Tooltip>
-            ))
-        : Object.entries(accounts).map(
-            ([keyringAccountType, accountTypeAccounts]) => (
-              <div key={keyringAccountType}>
-                {Object.values(accountTypeAccounts)
-                  .filter((account) => account.xpub !== '')
-                  .map((account, index, { length }) => (
+            ))}
+
+          {activeNetwork.currency !== 'tsys' &&
+            Object.values(accounts.Trezor)
+              .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
+              .map((account, index, { length }) => (
+                <Tooltip
+                  key={account.id}
+                  childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
+                  placement="top-end"
+                  content={account.address}
+                >
+                  <li
+                    className={`${
+                      index + 1 !== length &&
+                      'border-b border-dashed border-gray-500'
+                    } ${
+                      index === 0 ? 'py-3.5' : 'py-4'
+                    } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                   transition duration-300`}
+                    onClick={() =>
+                      setActiveAccount(account.id, KeyringAccountType.Trezor)
+                    }
+                    id={`account-${index}`}
+                  >
+                    <span
+                      style={{ maxWidth: '11.25rem', textOverflow: 'ellipsis' }}
+                      className="whitespace-nowrap overflow-hidden"
+                    >
+                      {account.label} ({ellipsis(account.address, 4, 8)})
+                    </span>
+
+                    {activeAccount.id === account.id &&
+                      activeAccount.type === KeyringAccountType.Trezor && (
+                        <Icon
+                          name="check"
+                          className="mb-1 w-4"
+                          wrapperClassname="absolute right-2.5"
+                        />
+                      )}
+                  </li>
+                </Tooltip>
+              ))}
+        </>
+      ) : (
+        Object.entries(accounts).map(
+          ([keyringAccountType, accountTypeAccounts]) => (
+            <div key={keyringAccountType}>
+              {Object.values(accountTypeAccounts)
+                .filter((account) => account.xpub !== '')
+                .map((account, index, { length }) => {
+                  if (account.isTrezorWallet) return null;
+                  return (
                     <Tooltip
                       key={account.id}
                       childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
@@ -135,10 +184,12 @@ const RenderAccountsListByBitcoinBased = (
                           )}
                       </li>
                     </Tooltip>
-                  ))}
-              </div>
-            )
-          )}
+                  );
+                })}
+            </div>
+          )
+        )
+      )}
     </>
   );
 };
@@ -304,20 +355,22 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/account/hardware')}
-              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-            >
-              <Icon
-                name="partition"
-                className="mb-2 ml-1 mr-2 text-brand-white"
-                id="hardware-wallet-btn"
-              />
+          {isBitcoinBased && (
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/account/hardware')}
+                className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+              >
+                <Icon
+                  name="partition"
+                  className="mb-2 ml-1 mr-2 text-brand-white"
+                  id="hardware-wallet-btn"
+                />
 
-              <span className="px-3">Hardware wallet</span>
-            </li>
-          </Menu.Item>
+                <span className="px-3">Hardware wallet</span>
+              </li>
+            </Menu.Item>
+          )}
 
           <Menu.Item>
             <li

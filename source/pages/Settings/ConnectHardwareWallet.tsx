@@ -11,20 +11,38 @@ import { getController } from 'utils/browser';
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
+  const { activeNetwork, isBitcoinBased, accounts } = useSelector(
+    (state: RootState) => state.vault
+  );
+
+  const trezorAccounts = Object.values(accounts.Trezor);
+
+  const getSlip44 = () => {
+    let slip44 = '';
+
+    switch (isBitcoinBased) {
+      case true:
+        slip44 = '57';
+        break;
+      case false:
+        slip44 = '60';
+        break;
+      default:
+        break;
+    }
+
+    return slip44;
+  };
 
   const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    await controller.wallet.account.sys.trezor.createAccount();
+    await controller.wallet.importTrezorAccount(
+      activeNetwork.currency,
+      getSlip44(),
+      `${trezorAccounts.length}`
+    );
   };
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
 
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;

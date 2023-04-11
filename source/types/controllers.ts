@@ -60,6 +60,11 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
+  importTrezorAccount: (
+    coin: string,
+    slip44: string,
+    index: string
+  ) => Promise<IKeyringAccountState>;
   lock: () => void;
   removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
   removeWindowEthProperty: () => void;
