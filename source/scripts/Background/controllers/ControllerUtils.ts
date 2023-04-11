@@ -32,6 +32,7 @@ const ControllerUtils = (): IControllerUtils => {
         try {
           const { chain } = await validateSysRpc(activeNetwork.url);
           if (chain !== 'test') {
+            //TODO: add check to verify if the active network has a / by the end of the url
             const currencies = await (
               await fetch(`${activeNetwork.url}${ASSET_PRICE_API}`)
             ).json();
@@ -56,7 +57,7 @@ const ControllerUtils = (): IControllerUtils => {
             })
           );
         } catch (error) {
-          logError('Failed to retrieve asset price', '', error);
+          logError('Failed to retrieve asset price - SYSCOIN UTXO', '', error);
         }
         break;
 
@@ -124,7 +125,7 @@ const ControllerUtils = (): IControllerUtils => {
 
           return;
         } catch (error) {
-          logError('Failed to retrieve asset price', '', error);
+          logError('Failed to retrieve asset price - EVM', '', error);
         }
         break;
     }

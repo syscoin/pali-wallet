@@ -254,10 +254,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-
-    updateAssetsFromCurrentAccount();
-
-    updateUserTransactionsState(false);
+    getLatestUpdateForCurrentAccount();
   };
 
   const setActiveNetwork = async (
@@ -782,7 +779,6 @@ const MainController = (walletState): IMainController => {
         const actualUserBalance = isBitcoinBased
           ? currentAccount.balances.syscoin
           : currentAccount.balances.ethereum;
-
         const validateIfCanDispatch = Boolean(
           Number(actualUserBalance) !== parseFloat(updatedBalance)
         );
