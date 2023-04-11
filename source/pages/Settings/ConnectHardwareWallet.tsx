@@ -17,29 +17,14 @@ const ConnectHardwareWalletView: FC = () => {
 
   const trezorAccounts = Object.values(accounts.Trezor);
 
-  const getSlip44 = () => {
-    let slip44 = '';
-
-    switch (isBitcoinBased) {
-      case true:
-        slip44 = '57';
-        break;
-      case false:
-        slip44 = '60';
-        break;
-      default:
-        break;
-    }
-
-    return slip44;
-  };
+  const { slip44 } = activeNetwork;
 
   const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
     await controller.wallet.importTrezorAccount(
       activeNetwork.currency,
-      getSlip44(),
+      `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
       `${trezorAccounts.length}`
     );
   };
