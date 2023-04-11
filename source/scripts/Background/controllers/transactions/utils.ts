@@ -8,6 +8,7 @@ import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
 
+import { Queue } from './queue';
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
@@ -49,20 +50,24 @@ export const findUserTxsInProviderByBlocksRange = async (
   endBlock: number
 ): Promise<IEvmTransactionResponse[]> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
+  const queue = new Queue(3);
 
-  const userProviderTxs = await Promise.all(
-    rangeBlocksToRun.map(async (blockNumber) => {
+  rangeBlocksToRun.forEach((blockNumber) => {
+    queue.execute(async () => {
       const currentBlock = await provider.getBlockWithTransactions(blockNumber);
-
       const filterTxsByAddress = currentBlock.transactions.filter(
         (tx) =>
           tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
           tx?.to?.toLowerCase() === userAddress.toLowerCase()
       );
-
       return flatMap(filterTxsByAddress);
-    })
-  );
+    });
+  });
+
+  const results = await queue.done();
+  const userProviderTxs = results
+    .filter((result) => result.success)
+    .map(({ result }) => result);
 
   return flatMap(userProviderTxs);
 };

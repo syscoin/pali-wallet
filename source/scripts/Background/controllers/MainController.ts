@@ -1,8 +1,6 @@
-import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
-import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -17,7 +15,6 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
-import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -41,13 +38,11 @@ import {
   initialState,
   setActiveAccountProperty,
   setIsLoadingAssets,
-  setUpdatedAllErcTokensBalance,
   setIsLoadingBalances,
   setAccountBalances,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
-import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -70,6 +65,7 @@ const MainController = (walletState): IMainController => {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
+  //@ts-ignore RESOLVE THIS AFTER KEYRING IS IN THE CORRECT VERSION
   const { verifyIfIsTestnet } = keyringManager;
   const createCancellablePromise = <T>(
     executor: (
@@ -651,9 +647,13 @@ const MainController = (walletState): IMainController => {
           (currentAccount.assets.syscoin.length > 0 &&
             isEmpty(updatedAssets.syscoin));
 
+        const validateIfBothUpdatedIsEmpty =
+          isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
+
         const validateIfIsInvalidDispatch =
-          validateUpdatedAndPreviousAssetsLength &&
-          validateIfUpdatedAssetsStayEmpty;
+          validateUpdatedAndPreviousAssetsLength ||
+          validateIfUpdatedAssetsStayEmpty ||
+          validateIfBothUpdatedIsEmpty;
 
         if (validateIfIsInvalidDispatch) {
           return;

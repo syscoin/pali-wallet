@@ -163,20 +163,34 @@ async function checkForUpdates() {
 }
 
 let intervalId;
+let isListenerRegistered = false;
 
-browser.runtime.onConnect.addListener((port) => {
-  // execute checkForUpdates() every 5 seconds
-  if (port.name === 'polling') {
-    port.onMessage.addListener((message) => {
-      if (message.action === 'startPolling') {
-        intervalId = setInterval(checkForUpdates, 10000);
-        port.postMessage({ intervalId });
-      } else if (message.action === 'stopPolling') {
-        clearInterval(intervalId);
-      }
-    });
+function registerListener() {
+  if (isListenerRegistered) {
+    return;
   }
-});
+
+  browser.runtime.onConnect.addListener((port) => {
+    let isPolling = false;
+
+    if (port.name === 'polling') {
+      port.onMessage.addListener((message) => {
+        if (message.action === 'startPolling' && !isPolling) {
+          isPolling = true;
+          intervalId = setInterval(checkForUpdates, 15000);
+          port.postMessage({ intervalId });
+        } else if (message.action === 'stopPolling') {
+          clearInterval(intervalId);
+          isPolling = false;
+        }
+      });
+    }
+  });
+
+  isListenerRegistered = true;
+}
+
+registerListener();
 
 const port = browser.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
