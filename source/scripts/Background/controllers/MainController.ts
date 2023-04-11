@@ -301,15 +301,6 @@ const MainController = (walletState): IMainController => {
           wallet,
         })
       );
-      //WE CAN USE THIS TO RESET TXS WHEN CHANGE THE CURRENT NETWORK
-      //BUT LATER WE CAN HANDLE IT BETTER ADDING TXS SOME CHAINIDS AND CHAINTYPE PROPERTIES
-      //AND HANDLE IT BY ACCOUNT WITHOUT RESETING THE STATE
-      store.dispatch(
-        setActiveAccountProperty({
-          property: 'transactions',
-          value: [],
-        })
-      );
 
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
