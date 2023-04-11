@@ -14,7 +14,7 @@ const TransactionsManager = (): ITransactionsManager => {
       case true:
         try {
           const getSysTxs =
-            await SysTransactionController().pollingSysTransactions(
+            await SysTransactionController().getInitialUserTransactionsByXpub(
               currentAccount.xpub,
               activeNetworkUrl
             );
