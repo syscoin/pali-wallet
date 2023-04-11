@@ -27,7 +27,7 @@ import {
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
-  const { wallet, updateNativeBalanceAfterSend } = getController();
+  const { wallet } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
 
@@ -92,12 +92,8 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
 
-                //TRYING TO FIX updateNativeBalanceAfterSend but look that is not working properly
-                //even though the error is not displaying at console anymore
-                // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
-                setTimeout(() => {
-                  () => updateNativeBalanceAfterSend();
-                }, 3500);
+                //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
+                //AFTER SEND SOME TX
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -168,12 +164,8 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
 
-                //TRYING TO FIX updateNativeBalanceAfterSend but look that is not working properly
-                //even though the error is not displaying at console anymore
-                // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
-                setTimeout(() => {
-                  () => updateNativeBalanceAfterSend();
-                }, 3500);
+                //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
+                //AFTER SEND SOME TX
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -236,6 +228,9 @@ export const SendConfirm = () => {
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);
+
+                    //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
+                    //AFTER SEND SOME TX
                   })
                   .catch((error) => {
                     logError('error send ERC20', 'Transaction', error);
@@ -270,6 +265,9 @@ export const SendConfirm = () => {
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);
+
+                    //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
+                    //AFTER SEND SOME TX
                   })
                   .catch((error) => {
                     logError('error send ERC721', 'Transaction', error);

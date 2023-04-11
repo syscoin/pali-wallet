@@ -254,6 +254,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
+
     getLatestUpdateForCurrentAccount();
   };
 

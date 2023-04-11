@@ -25,10 +25,10 @@ import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
+  callGetLatestUpdateForAccount: () => void;
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
-  updateNativeBalanceAfterSend: () => void;
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
@@ -89,12 +89,16 @@ const MasterController = (
     readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
   };
 
+  const callGetLatestUpdateForAccount = () =>
+    wallet.getLatestUpdateForCurrentAccount();
+
   const refresh = () => {
     const { activeAccount, accounts } = store.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
-    wallet.getLatestUpdateForCurrentAccount();
+    callGetLatestUpdateForAccount();
     utils.setFiat();
   };
+
   /**
    * Determine which is the app route
    * @returns the proper route
@@ -106,8 +110,6 @@ const MasterController = (
     }
     return external ? externalRoute : route;
   };
-
-  const updateNativeBalanceAfterSend = () => wallet.updateUserNativeBalance();
 
   /**
    * Creates a popup for external routes. Mostly for DApps
@@ -135,7 +137,7 @@ const MasterController = (
     createPopup,
     dapp,
     refresh,
-    updateNativeBalanceAfterSend,
+    callGetLatestUpdateForAccount,
     utils,
     wallet,
   };
