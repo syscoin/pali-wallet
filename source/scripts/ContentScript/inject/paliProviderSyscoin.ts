@@ -2,6 +2,7 @@ import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
+import { PALI_ETHEREUM_METHODS } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
@@ -63,6 +64,8 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_isTestnet':
             this._handleIsTestnet(params);
             break;
+          case PALI_ETHEREUM_METHODS.includes(params):
+            break;
           default:
             this._handleDisconnect(
               false,
@@ -75,6 +78,16 @@ export class PaliInpageProviderSys extends BaseProvider {
       }
     );
   }
+
+  public async activeExplorer(): Promise<string> {
+    if (!this._sysState.initialized) {
+      await new Promise<void>((resolve) => {
+        this.on('_sysInitialized', () => resolve());
+      });
+    }
+    return this._sysState.blockExplorerURL;
+  }
+
   private _initializeState(initialState?: {
     blockExplorerURL: string | null;
     isUnlocked: boolean;

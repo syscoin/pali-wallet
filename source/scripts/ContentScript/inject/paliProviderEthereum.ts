@@ -12,6 +12,7 @@ import {
   NOOP,
   isValidChainId,
   isValidNetworkVersion,
+  PALI_UTXO_METHODS,
 } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -106,6 +107,8 @@ export class PaliInpageProviderEth extends BaseProvider {
               message:
                 'Pali EthereumProvider: Does not yet have subscription to rpc methods',
             };
+          case PALI_UTXO_METHODS.includes(params):
+            break;
           default:
             this._handleDisconnect(
               false,
