@@ -1,5 +1,6 @@
 import {
   initialActiveImportedAccountState,
+  initialActiveTrezorAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 
@@ -69,6 +70,12 @@ const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
   transactions: [],
 };
 
+const MOCK_TREZOR_ACCOUNT: IPaliAccount = {
+  ...initialActiveTrezorAccountState,
+  assets: { ethereum: [], syscoin: [] },
+  transactions: [],
+};
+
 export const STATE_W_ACCOUNT: IVaultState = {
   ...initialState,
   accounts: {
@@ -77,6 +84,9 @@ export const STATE_W_ACCOUNT: IVaultState = {
     },
     [KeyringAccountType.Imported]: {
       [MOCK_IMPORTED_ACCOUNT.id]: MOCK_IMPORTED_ACCOUNT,
+    },
+    [KeyringAccountType.Trezor]: {
+      [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
     },
   },
 };

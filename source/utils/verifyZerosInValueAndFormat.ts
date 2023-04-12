@@ -19,7 +19,7 @@ export const verifyZerosInBalanceAndFormat = (
 ): string => {
   if (!balance) return;
 
-  const fullValue = removeScientificNotation(balance);
+  const fullValue = removeScientificNotation(balance) as number;
 
   const quantityOfZerosAfterDot = -Math.floor(
     Math.log10(fullValue as number) + 1
