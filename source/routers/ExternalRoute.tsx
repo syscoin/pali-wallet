@@ -25,6 +25,7 @@ import {
   Decrypt,
   CustomRPCExternal,
   SwitchChain,
+  SwitchNeworkUtxoEvm,
   ChangeConnectedAccount,
   SendNTokenTransaction,
 } from '../pages';
@@ -102,6 +103,10 @@ export const ExternalRoute = () => {
         <Route
           path="switch-EthChain"
           element={<ProtectedRoute element={<SwitchChain />} />}
+        />
+        <Route
+          path="switch-UtxoEvm"
+          element={<ProtectedRoute element={<SwitchNeworkUtxoEvm />} />}
         />
         {/* /tx/ */}
         <Route path="tx">

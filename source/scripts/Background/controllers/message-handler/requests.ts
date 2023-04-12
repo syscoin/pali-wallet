@@ -60,7 +60,8 @@ export const methodRequest = async (
     methodName !== 'switchEthereumChain' &&
     methodName !== 'getProviderState' &&
     methodName !== 'getSysProviderState' &&
-    methodName !== 'getAccount'
+    methodName !== 'getAccount' &&
+    methodName !== 'changeUTXOEVM'
   )
     throw cleanErrorStack(ethErrors.provider.unauthorized());
   //throw {
@@ -233,6 +234,63 @@ export const methodRequest = async (
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
   }
+
+  //* Change between networks methods
+
+  const validatePrefixAndCurrentChain =
+    (prefix === 'sys' && isBitcoinBased) ||
+    (prefix === 'eth' && !isBitcoinBased);
+
+  const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
+
+  const validateCanUseChangeUtxoEvm =
+    validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName;
+
+  if (validateCanUseChangeUtxoEvm) {
+    const { chainId } = data.params[0];
+
+    const networks = store.getState().vault.networks;
+
+    const newChainValue = prefix === 'sys' ? 'Ethereum' : 'Syscoin';
+
+    const findCorrectNetwork = networks[newChainValue.toLowerCase()][chainId];
+
+    if (!findCorrectNetwork) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized('Network request does not exists')
+      );
+    }
+
+    const changeNetwork = (await popupPromise({
+      host,
+      data: {
+        newNetwork: findCorrectNetwork,
+        newChainValue: newChainValue,
+      },
+      route: 'switch-UtxoEvm',
+      eventName: 'change_UTXOEVM',
+    })) as any;
+
+    if (changeNetwork && changeNetwork.error) {
+      return;
+    }
+
+    await popupPromise({
+      host,
+      route: 'change-account',
+      eventName: 'accountsChanged',
+      data: { network: findCorrectNetwork },
+    });
+
+    return;
+  } else if (!validateCanUseChangeUtxoEvm) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Method only available when connected on correct Network and using correct Prefix'
+      )
+    );
+  }
+
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);

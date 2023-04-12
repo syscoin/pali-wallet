@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -9,7 +8,6 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -17,10 +15,6 @@ interface ISign {
 }
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
   const { host, eventName, ...data } = useQueryData();
 
   const [loading, setLoading] = useState(false);

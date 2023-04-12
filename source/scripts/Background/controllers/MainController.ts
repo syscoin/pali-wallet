@@ -40,7 +40,6 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountBalances,
-  setAccountTransactions,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';

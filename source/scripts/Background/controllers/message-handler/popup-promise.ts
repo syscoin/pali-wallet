@@ -55,7 +55,11 @@ export const popupPromise = async ({
           }
           resolve(event.detail);
         }
-        if (route === 'switch-EthChain' || route === 'add-EthChain') {
+        if (
+          route === 'switch-EthChain' ||
+          route === 'add-EthChain' ||
+          route === 'switch-UtxoEvm'
+        ) {
           resolve(null);
           dapp.setHasWindow(host, false);
           return null;
@@ -73,7 +77,8 @@ export const popupPromise = async ({
           route === 'tx/encryptKey' ||
           route === 'switch-EthChain' ||
           route === 'add-EthChain' ||
-          route === 'change-account'
+          route === 'change-account' ||
+          route === 'switch-UtxoEvm'
         ) {
           resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }

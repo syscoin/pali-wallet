@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
-import lodash, { clone, compact, isEmpty, isEqual, sortBy } from 'lodash';
+import floor from 'lodash/floor';
+import isEmpty from 'lodash/isEmpty';
 
 import {
   ISupportsInterfaceProps,
@@ -10,7 +11,6 @@ import {
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
-import store from 'state/store';
 import { INetworksVault, IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps } from 'types/tokens';
 
@@ -32,7 +32,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       );
 
       const balance = `${metadata.balance / 10 ** Number(token.decimals)}`;
-      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+      const formattedBalance = floor(parseFloat(balance), 4);
 
       return {
         ...token,
@@ -61,7 +61,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         10 ** (metadata.decimals ? metadata.decimals : decimals)
       }`;
 
-      const formattedBalance = lodash.floor(parseFloat(balance), 4);
+      const formattedBalance = floor(parseFloat(balance), 4);
 
       if (metadata) {
         const assetToAdd = {
@@ -224,7 +224,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           const formattedBalance = vaultAssets.isNft
             ? balance
-            : lodash.floor(parseFloat(balance as string), 4);
+            : floor(parseFloat(balance as string), 4);
 
           return { ...vaultAssets, balance: formattedBalance };
         })
