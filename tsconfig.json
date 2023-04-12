@@ -34,5 +34,6 @@
       "tests/*": ["tests/*"]
     }
   },
+  "exclude": ["node_modules"],
   "include": ["source", "webpack.config.ts", "cypress", "tests"]
 }
