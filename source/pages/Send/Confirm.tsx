@@ -95,7 +95,7 @@ export const SendConfirm = () => {
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                 setTimeout(() => {
                   callGetLatestUpdateForAccount();
-                }, 3000);
+                }, 3500);
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -169,7 +169,7 @@ export const SendConfirm = () => {
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                 setTimeout(() => {
                   callGetLatestUpdateForAccount();
-                }, 3000);
+                }, 3500);
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -236,7 +236,7 @@ export const SendConfirm = () => {
                     //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                     setTimeout(() => {
                       callGetLatestUpdateForAccount();
-                    }, 3000);
+                    }, 3500);
                   })
                   .catch((error) => {
                     logError('error send ERC20', 'Transaction', error);
@@ -275,7 +275,7 @@ export const SendConfirm = () => {
                     //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                     setTimeout(() => {
                       callGetLatestUpdateForAccount();
-                    }, 3000);
+                    }, 3500);
                   })
                   .catch((error) => {
                     logError('error send ERC721', 'Transaction', error);
