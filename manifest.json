@@ -13,7 +13,7 @@
   "permissions": [
     "http://*/*",
     "https://*/*",
-    "*://connect.trezor.io/8/*",
+    "*://connect.trezor.io/9/*",
     "tabs",
     "storage",
     "notifications",
@@ -24,7 +24,7 @@
     "unlimitedStorage",
     "http://localhost:8545/"
   ],
-  "content_security_policy": "script-src 'self'; object-src 'self'",
+  "content_security_policy": "script-src 'self' https://connect.trezor.io/9/trezor-connect.js 'unsafe-inline'; object-src 'self'",
   "__chrome|firefox__author": "Pollum Sys Teams",
   "__opera__developer": {
     "name": "pollum labs"
@@ -61,7 +61,7 @@
     },
     {
       "matches": [
-        "*://connect.trezor.io/8/popup.html",
+        "*://connect.trezor.io/9/popup.html",
         "https://localhost:8088/*"
       ],
       "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]

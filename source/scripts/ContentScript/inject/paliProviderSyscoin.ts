@@ -2,7 +2,7 @@ import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
-import { PALI_ETHEREUM_METHODS } from './utils';
+import { EMITTED_NOTIFICATIONS, PALI_ETHEREUM_METHODS } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
@@ -65,6 +65,8 @@ export class PaliInpageProviderSys extends BaseProvider {
             this._handleIsTestnet(params);
             break;
           case PALI_ETHEREUM_METHODS.includes(params):
+            break;
+          case EMITTED_NOTIFICATIONS.includes(method):
             break;
           default:
             this._handleDisconnect(
