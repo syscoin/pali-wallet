@@ -13,6 +13,7 @@ export interface ITokenEthProps {
 export interface ITokenSysProps {
   assetGuid?: string;
   balance?: number;
+  chainId?: number;
   contract?: string;
   decimals?: number;
   description?: string;

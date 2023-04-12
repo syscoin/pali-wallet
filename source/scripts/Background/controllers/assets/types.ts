@@ -1,8 +1,6 @@
 import { ethers } from 'ethers';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-
-import { INetworksVault } from 'state/vault/types';
+import { INetworksVault, IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
@@ -19,9 +17,10 @@ export interface IAssetsManagerUtilsResponse {
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
+    networkChainId: number,
     networks: INetworksVault
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
@@ -32,13 +31,15 @@ export interface ISysAssetsController {
   ) => Promise<boolean | ITokenSysProps>;
   getSysAssetsByXpub: (
     xpub: string,
-    networkUrl: string
+    networkUrl: string,
+    networkChainId: number
   ) => Promise<ISysTokensAssetReponse[]>;
 }
 
 export interface ISysTokensAssetReponse {
   assetGuid: string;
   balance: string;
+  chainId?: number;
   decimals: number;
   name: string;
   path: string;
@@ -71,7 +72,7 @@ export interface IEvmAssetsController {
     networkUrl: string
   ) => Promise<ITokenEthProps | boolean>;
   updateAllEvmTokens: (
-    account: IKeyringAccountState,
+    account: IPaliAccount,
     networks: INetworksVault
   ) => Promise<ITokenEthProps[]>;
 }

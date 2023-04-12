@@ -25,11 +25,10 @@ import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
+  callGetLatestUpdateForAccount: () => void;
   createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
-  updateNativeBalanceAfterSend: () => void;
-
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
@@ -87,15 +86,27 @@ const MasterController = (
     wallet = Object.freeze(MainController(walletState));
     utils = Object.freeze(ControllerUtils());
     wallet.setStorage(window.localStorage);
-    readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
+    readyCallback({
+      appRoute,
+      createPopup,
+      dapp,
+      refresh,
+      utils,
+      wallet,
+      callGetLatestUpdateForAccount,
+    });
   };
+
+  const callGetLatestUpdateForAccount = () =>
+    wallet.getLatestUpdateForCurrentAccount();
 
   const refresh = () => {
     const { activeAccount, accounts } = store.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
-    wallet.getLatestUpdateForCurrentAccount();
+    callGetLatestUpdateForAccount();
     utils.setFiat();
   };
+
   /**
    * Determine which is the app route
    * @returns the proper route
@@ -106,12 +117,6 @@ const MasterController = (
       else route = newRoute;
     }
     return external ? externalRoute : route;
-  };
-
-  const updateNativeBalanceAfterSend = () => {
-    setTimeout(() => {
-      wallet.updateUserNativeBalance();
-    }, 3500); // Wait some seconds to can fetch and get actual balance ( probaly will work only in EVM, UTX0 get a lot of time to update RPC values)
   };
 
   /**
@@ -140,7 +145,7 @@ const MasterController = (
     createPopup,
     dapp,
     refresh,
-    updateNativeBalanceAfterSend,
+    callGetLatestUpdateForAccount,
     utils,
     wallet,
   };

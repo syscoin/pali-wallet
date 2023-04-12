@@ -1,8 +1,6 @@
-import { ethers } from 'ethers';
 import { ethErrors } from 'helpers/errors';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
-import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -17,7 +15,6 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
-import { getErc20Abi, getErc21Abi } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -41,13 +38,12 @@ import {
   initialState,
   setActiveAccountProperty,
   setIsLoadingAssets,
-  setUpdatedAllErcTokensBalance,
   setIsLoadingBalances,
   setAccountBalances,
+  setAccountTransactions,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
-import { ITokenEthProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -70,6 +66,7 @@ const MainController = (walletState): IMainController => {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
+
   const { verifyIfIsTestnet } = keyringManager;
   const createCancellablePromise = <T>(
     executor: (
@@ -199,7 +196,6 @@ const MainController = (walletState): IMainController => {
     const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
       newAccount.xpub
     );
-    console.log('initialSysAssetsForAccount', initialSysAssetsForAccount);
 
     const initialTxsForAccount = await getInitialSysTransactionsForAccount(
       newAccount.xpub
@@ -258,6 +254,8 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
+
+    getLatestUpdateForCurrentAccount();
   };
 
   const setActiveNetwork = async (
@@ -303,10 +301,15 @@ const MainController = (walletState): IMainController => {
           wallet,
         })
       );
+
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
       store.dispatch(setIsLoadingBalances(false));
       await utilsController.setFiat();
+
+      updateAssetsFromCurrentAccount();
+
+      updateUserTransactionsState(false);
 
       resolve({ chainId: chainId, networkVersion: networkVersion });
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
@@ -591,32 +594,106 @@ const MainController = (walletState): IMainController => {
   //---- END SYS METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
-  const updateUserTransactionsState = () => {
+  const callUpdateTxsMethodBasedByIsBitcoinBased = (
+    isBitcoinBased: boolean,
+    currentAccount: IPaliAccount,
+    activeNetworkUrl: string
+  ) => {
+    switch (isBitcoinBased) {
+      case true:
+        //IF SYS UTX0 ONLY RETURN DEFAULT TXS FROM XPUB REQUEST
+
+        window.controller.wallet.transactions.sys
+          .getInitialUserTransactionsByXpub(
+            currentAccount.xpub,
+            activeNetworkUrl
+          )
+          .then((txs) => {
+            if (isNil(txs) || isEmpty(txs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: txs,
+              })
+            );
+
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+      case false:
+        //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
+        transactionsManager.utils
+          .updateTransactionsFromCurrentAccount(
+            currentAccount,
+            isBitcoinBased,
+            activeNetworkUrl
+          )
+          .then((updatedTxs) => {
+            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: updatedTxs,
+              })
+            );
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const updateUserTransactionsState = (isPolling: boolean) => {
     const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
       store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    transactionsManager.utils
-      .updateTransactionsFromCurrentAccount(
-        currentAccount,
-        isBitcoinBased,
-        activeNetwork.url
-      )
-      .then((updatedTxs) => {
-        if (isNil(updatedTxs) || isEmpty(updatedTxs)) return;
-
-        store.dispatch(setIsLoadingTxs(true));
-
-        store.dispatch(
-          setActiveAccountProperty({
-            property: 'transactions',
-            value: updatedTxs,
-          })
+    switch (isPolling) {
+      //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
+      case true:
+        transactionsManager.utils
+          .updateTransactionsFromCurrentAccount(
+            currentAccount,
+            isBitcoinBased,
+            activeNetwork.url
+          )
+          .then((updatedTxs) => {
+            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+              return;
+            }
+            store.dispatch(setIsLoadingTxs(true));
+            store.dispatch(
+              setActiveAccountProperty({
+                property: 'transactions',
+                value: updatedTxs,
+              })
+            );
+            store.dispatch(setIsLoadingTxs(false));
+          });
+        break;
+      //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
+      case false:
+        callUpdateTxsMethodBasedByIsBitcoinBased(
+          isBitcoinBased,
+          currentAccount,
+          activeNetwork.url
         );
 
-        store.dispatch(setIsLoadingTxs(false));
-      });
+        break;
+
+      default:
+        break;
+    }
   };
 
   const sendAndSaveTransaction = (
@@ -644,16 +721,12 @@ const MainController = (walletState): IMainController => {
 
     clonedArrayToAdd.unshift(txWithTimestamp);
 
-    store.dispatch(setIsLoadingTxs(true));
-
     store.dispatch(
       setActiveAccountProperty({
         property: 'transactions',
         value: clonedArrayToAdd,
       })
     );
-
-    store.dispatch(setIsLoadingTxs(false));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -664,11 +737,12 @@ const MainController = (walletState): IMainController => {
   //---- SYS METHODS ----//
   const getInitialSysTokenForAccount = async (xpub: string) => {
     store.dispatch(setIsLoadingAssets(true));
-    console.log('Account xpub: ', xpub);
+
     const initialSysAssetsForAccount =
       await assetsManager.sys.getSysAssetsByXpub(
         xpub,
-        initialState.activeNetwork.url
+        initialState.activeNetwork.url,
+        initialState.activeNetwork.chainId
       );
 
     store.dispatch(setIsLoadingAssets(false));
@@ -677,59 +751,6 @@ const MainController = (walletState): IMainController => {
   };
   //---- END SYS METHODS ----//
 
-  //---- EVM METHODS ----//
-  const updateErcTokenBalances = async (
-    tokenAddress: string,
-    tokenChain: number,
-    isNft: boolean,
-    decimals?: number
-  ) => {
-    const { activeNetwork, accounts, activeAccount, isNetworkChanging } =
-      store.getState().vault;
-
-    const findAccount = accounts[activeAccount.type][activeAccount.id];
-
-    const provider = new ethers.providers.JsonRpcProvider(activeNetwork.url);
-
-    const _contract = new ethers.Contract(
-      tokenAddress,
-      isNft ? getErc21Abi() : getErc20Abi(),
-      provider
-    );
-
-    const balanceMethodCall = await _contract.balanceOf(findAccount.address);
-
-    const balance = !isNft
-      ? `${balanceMethodCall / 10 ** Number(decimals)}`
-      : Number(balanceMethodCall);
-
-    const formattedBalance = !isNft
-      ? floor(parseFloat(balance as string), 4)
-      : balance;
-
-    const newAccountsAssets = accounts[activeAccount.type][
-      activeAccount.id
-    ].assets.ethereum.map((vaultAssets: ITokenEthProps) => {
-      if (
-        Number(vaultAssets.chainId) === tokenChain &&
-        vaultAssets.contractAddress === tokenAddress
-      ) {
-        return { ...vaultAssets, balance: formattedBalance };
-      }
-
-      return vaultAssets;
-    });
-
-    if (!isNetworkChanging) {
-      store.dispatch(
-        setUpdatedAllErcTokensBalance({
-          updatedTokens: newAccountsAssets,
-        })
-      );
-    }
-  };
-  //---- END EVM METHODS ----//
-
   //---- METHODS FOR UPDATE BOTH ASSETS ----//
   const updateAssetsFromCurrentAccount = () => {
     const { isBitcoinBased, accounts, activeAccount, activeNetwork, networks } =
@@ -737,24 +758,47 @@ const MainController = (walletState): IMainController => {
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    store.dispatch(setIsLoadingAssets(true));
-
     assetsManager.utils
       .updateAssetsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
         activeNetwork.url,
+        activeNetwork.chainId,
         networks
       )
       .then((updatedAssets) => {
+        const validateUpdatedAndPreviousAssetsLength =
+          updatedAssets.ethereum.length <
+            currentAccount.assets.ethereum.length ||
+          updatedAssets.syscoin.length < currentAccount.assets.syscoin.length;
+
+        const validateIfUpdatedAssetsStayEmpty =
+          (currentAccount.assets.ethereum.length > 0 &&
+            isEmpty(updatedAssets.ethereum)) ||
+          (currentAccount.assets.syscoin.length > 0 &&
+            isEmpty(updatedAssets.syscoin));
+
+        const validateIfBothUpdatedIsEmpty =
+          isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
+
+        const validateIfIsInvalidDispatch =
+          validateUpdatedAndPreviousAssetsLength ||
+          validateIfUpdatedAssetsStayEmpty ||
+          validateIfBothUpdatedIsEmpty;
+
+        if (validateIfIsInvalidDispatch) {
+          return;
+        }
+
+        store.dispatch(setIsLoadingAssets(true));
         store.dispatch(
           setActiveAccountProperty({
             property: 'assets',
             value: updatedAssets as any, //setActiveAccountProperty only accept any as type
           })
         );
-      })
-      .finally(() => store.dispatch(setIsLoadingAssets(false)));
+        store.dispatch(setIsLoadingAssets(false));
+      });
   };
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
@@ -778,14 +822,12 @@ const MainController = (walletState): IMainController => {
         const actualUserBalance = isBitcoinBased
           ? currentAccount.balances.syscoin
           : currentAccount.balances.ethereum;
-
         const validateIfCanDispatch = Boolean(
-          actualUserBalance !== parseFloat(updatedBalance)
+          Number(actualUserBalance) !== parseFloat(updatedBalance)
         );
 
         if (validateIfCanDispatch) {
           store.dispatch(setIsLoadingBalances(true));
-
           store.dispatch(
             setAccountBalances({
               ...currentAccount.balances,
@@ -793,7 +835,6 @@ const MainController = (walletState): IMainController => {
                 updatedBalance,
             })
           );
-
           store.dispatch(setIsLoadingBalances(false));
         }
       });
@@ -811,10 +852,11 @@ const MainController = (walletState): IMainController => {
     new Promise<void>((resolve) => {
       //First update native balance
       updateUserNativeBalance();
+      //Later update Txs
+      updateUserTransactionsState(false);
       //Later update Assets
       updateAssetsFromCurrentAccount();
-      //Later update Txs
-      updateUserTransactionsState();
+
       resolve();
     });
 
@@ -841,10 +883,10 @@ const MainController = (walletState): IMainController => {
     resolveError,
     getChangeAddress,
     getRecommendedFee,
-    updateErcTokenBalances,
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
     updateUserTransactionsState,
     getLatestUpdateForCurrentAccount,

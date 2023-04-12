@@ -102,7 +102,10 @@ const VaultState = createSlice({
           state.accounts[accountType][account.id] = {
             ...account,
             assets: mainAccount.assets,
-            transactions: mainAccount.transactions,
+            //WE CAN BACK THIS WHEN FIX HOW WE HANDLE TXS STATE
+            // transactions: mainAccount.transactions,
+            //WE HAVE TO RESET EVERY ACCOUNT TXS WHEN CHANGE NETWORK TO PREVENT ERRORS TRYING TO READ INCORRECTS TXS FOR NETWORK
+            transactions: [],
           };
         }
       }
@@ -224,9 +227,7 @@ const VaultState = createSlice({
       state.activeChain = action.payload;
     },
     setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
-      const { id, type } = state.activeAccount;
       state.isLoadingBalances = action.payload;
-      state.accounts[type][id].transactions = []; // TODO: check a better way to handle network transaction
     },
     setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingTxs = action.payload;

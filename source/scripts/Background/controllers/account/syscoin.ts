@@ -42,7 +42,7 @@ const SysAccountController = (
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
-      const { activeAccount, accounts } = store.getState().vault;
+      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
 
       const tokenExists = accounts[activeAccount.type][
         activeAccount.id
@@ -60,9 +60,10 @@ const SysAccountController = (
         : '';
       const assetInfos = {
         ...token,
+        chainId: activeNetwork.chainId,
         description,
         image: '',
-        balance: Number(token.balance) / 10 ** Number(token.decimals),
+        balance: Number(token.balance) / 10 ** Number(token.decimals) || 0,
       };
       if (!isEmpty(ipfsUrl)) {
         const { data } = await axios.get(ipfsUrl, config);

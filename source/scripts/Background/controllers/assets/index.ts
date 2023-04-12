@@ -9,6 +9,7 @@ const AssetsManager = (): IAssetsManager => {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
+    networkChainId: number,
     networks: INetworksVault
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
@@ -16,7 +17,8 @@ const AssetsManager = (): IAssetsManager => {
         try {
           const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
             currentAccount.xpub,
-            activeNetworkUrl
+            activeNetworkUrl,
+            networkChainId
           );
 
           return {

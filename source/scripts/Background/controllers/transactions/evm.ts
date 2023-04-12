@@ -1,17 +1,18 @@
 import { ethers } from 'ethers';
 import flatMap from 'lodash/flatMap';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { IPaliAccount } from 'state/vault/types';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
+  getFormattedEvmTransactionResponse,
   validateAndManageUserTransactions,
 } from './utils';
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string,
     startBlock: number,
     endBlock: number
@@ -31,7 +32,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const firstRunForProviderTransactions = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => {
     const provider = new ethers.providers.JsonRpcProvider(networkUrl);
@@ -51,7 +52,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const pollingEvmTransactions = async (
-    currentAccount: IKeyringAccountState,
+    currentAccount: IPaliAccount,
     networkUrl: string
   ) => {
     try {
@@ -68,7 +69,23 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         latestBlockNumber
       );
 
-      return flatMap(txs);
+      //Doing this we prevent cases that user is receiving TX from other account and the
+      //RPC don't response the TX with Timestamp properly
+      const txsWithTimestamp = await Promise.all(
+        txs.map(async (pollingTx) => {
+          if (pollingTx?.timestamp) {
+            return pollingTx;
+          }
+
+          const getTxTimestamp = await getFormattedEvmTransactionResponse(
+            provider,
+            pollingTx
+          );
+
+          return getTxTimestamp;
+        })
+      );
+      return flatMap(txsWithTimestamp);
     } catch (error) {
       console.log(error);
     }
