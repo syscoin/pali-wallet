@@ -538,41 +538,41 @@ const MainController = (walletState): IMainController => {
     return importedAccount;
   };
 
-  const importTrezorAccount = async (
-    coin: string,
-    slip44: string,
-    index: string
-  ) => {
-    const { accounts } = store.getState().vault;
-    //todo: this function was renamed we should update it
-    const importedAccount = await keyringManager.importTrezorAccount(
-      coin,
-      slip44,
-      index
-    );
-    const paliImp: IPaliAccount = {
-      ...importedAccount,
-      assets: {
-        ethereum: [],
-        syscoin: [],
-      },
-      transactions: [],
-    } as IPaliAccount;
-    store.dispatch(
-      setAccounts({
-        ...accounts,
-        [KeyringAccountType.Trezor]: {
-          ...accounts[KeyringAccountType.Trezor],
-          [paliImp.id]: paliImp,
-        },
-      })
-    );
-    store.dispatch(
-      setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
-    );
+  // const importTrezorAccount = async (
+  //   coin: string,
+  //   slip44: string,
+  //   index: string
+  // ) => {
+  //   const { accounts } = store.getState().vault;
+  //   //todo: this function was renamed we should update it
+  //   const importedAccount = await keyringManager.importTrezorAccount(
+  //     coin,
+  //     slip44,
+  //     index
+  //   );
+  //   const paliImp: IPaliAccount = {
+  //     ...importedAccount,
+  //     assets: {
+  //       ethereum: [],
+  //       syscoin: [],
+  //     },
+  //     transactions: [],
+  //   } as IPaliAccount;
+  //   store.dispatch(
+  //     setAccounts({
+  //       ...accounts,
+  //       [KeyringAccountType.Trezor]: {
+  //         ...accounts[KeyringAccountType.Trezor],
+  //         [paliImp.id]: paliImp,
+  //       },
+  //     })
+  //   );
+  //   store.dispatch(
+  //     setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
+  //   );
 
-    return importedAccount;
-  };
+  //   return importedAccount;
+  // };
 
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
@@ -852,7 +852,7 @@ const MainController = (walletState): IMainController => {
     removeWindowEthProperty,
     addWindowEthProperty,
     setHasEthProperty,
-    importTrezorAccount,
+    // importTrezorAccount,
     ...keyringManager,
   };
 };
