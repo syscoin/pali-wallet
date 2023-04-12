@@ -100,6 +100,13 @@ export class PaliInpageProviderEth extends BaseProvider {
             break;
           case 'pali_addProperty':
             break;
+          // UTXO METHODS TO AVOID.
+          case 'pali_xpubChanged':
+            break;
+          case 'pali_blockExplorerChanged':
+            break;
+          case 'pali_isTestnet':
+            break;
           case EMITTED_NOTIFICATIONS.includes(method):
             //TODO: implement subscription messages
             throw {
@@ -107,8 +114,6 @@ export class PaliInpageProviderEth extends BaseProvider {
               message:
                 'Pali EthereumProvider: Does not yet have subscription to rpc methods',
             };
-          case PALI_UTXO_METHODS.includes(params):
-            break;
           default:
             this._handleDisconnect(
               false,
