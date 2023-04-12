@@ -208,7 +208,7 @@ const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet, dapp } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  // const isTestnet = wallet.verifyIfIsTestnet();
+  const isTestnet = wallet.verifyIfIsTestnet();
   const importedAccounts = Object.values(accounts.Imported);
   const hdAccounts = Object.values(accounts.HDAccount);
   const isBitcoinBased = useSelector(
@@ -366,22 +366,29 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          {/* {isBitcoinBased && !isTestnet && (
-            <Menu.Item>
-              <li
-                onClick={() => navigate('/settings/account/hardware')}
-                className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-              >
-                <Icon
-                  name="partition"
-                  className="mb-2 ml-1 mr-2 text-brand-white"
-                  id="hardware-wallet-btn"
-                />
+          {isBitcoinBased && !isTestnet && (
+            <Tooltip
+              key="hardware-wallet"
+              childrenClassName={`'mt-1' flex w-full`}
+              placement="top-end"
+              content={'Under development. Wait for it!'}
+            >
+              <Menu.Item>
+                <li
+                  // onClick={() => navigate('/settings/account/hardware')}
+                  className="disabled flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-not-allowed transition-all duration-200"
+                >
+                  <Icon
+                    name="partition"
+                    className="mb-2 ml-1 mr-2 text-brand-white"
+                    id="hardware-wallet-btn"
+                  />
 
-                <span className="px-3">Hardware wallet</span>
-              </li>
-            </Menu.Item>
-          )} */}
+                  <span className="px-3">Hardware wallet</span>
+                </li>
+              </Menu.Item>
+            </Tooltip>
+          )}
 
           <Menu.Item>
             <li
