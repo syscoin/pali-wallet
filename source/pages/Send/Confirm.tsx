@@ -27,7 +27,7 @@ import {
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
-  const { wallet } = getController();
+  const { wallet, callGetLatestUpdateForAccount } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
 
@@ -92,8 +92,10 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
 
-                //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
-                //AFTER SEND SOME TX
+                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                setTimeout(() => {
+                  callGetLatestUpdateForAccount();
+                }, 3000);
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -164,8 +166,10 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
 
-                //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
-                //AFTER SEND SOME TX
+                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                setTimeout(() => {
+                  callGetLatestUpdateForAccount();
+                }, 3000);
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -229,8 +233,10 @@ export const SendConfirm = () => {
                     setLoading(false);
                     setConfirmedTx(response);
 
-                    //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
-                    //AFTER SEND SOME TX
+                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                    setTimeout(() => {
+                      callGetLatestUpdateForAccount();
+                    }, 3000);
                   })
                   .catch((error) => {
                     logError('error send ERC20', 'Transaction', error);
@@ -266,8 +272,10 @@ export const SendConfirm = () => {
                     setLoading(false);
                     setConfirmedTx(response);
 
-                    //TODO -> CALL SOME FUNCTION LIKE GETLATESTUPDATEFORACCOUNT TO UPDATE BALANCE / BALANCE ASSETS / TXS
-                    //AFTER SEND SOME TX
+                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                    setTimeout(() => {
+                      callGetLatestUpdateForAccount();
+                    }, 3000);
                   })
                   .catch((error) => {
                     logError('error send ERC721', 'Transaction', error);

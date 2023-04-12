@@ -86,7 +86,15 @@ const MasterController = (
     wallet = Object.freeze(MainController(walletState));
     utils = Object.freeze(ControllerUtils());
     wallet.setStorage(window.localStorage);
-    readyCallback({ appRoute, createPopup, dapp, refresh, utils, wallet });
+    readyCallback({
+      appRoute,
+      createPopup,
+      dapp,
+      refresh,
+      utils,
+      wallet,
+      callGetLatestUpdateForAccount,
+    });
   };
 
   const callGetLatestUpdateForAccount = () =>
