@@ -6,25 +6,28 @@ import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
+  const { activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => state.vault
+  );
 
-  const controller = getController();
+  // const trezorAccounts = Object.values(accounts.Trezor);
+
+  // const { slip44 } = activeNetwork;
+
+  // const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    await controller.wallet.account.sys.trezor.createAccount();
+    // await controller.wallet.importTrezorAccount(
+    //   activeNetwork.currency,
+    //   `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+    //   `${trezorAccounts.length}`
+    // );
   };
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
 
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;

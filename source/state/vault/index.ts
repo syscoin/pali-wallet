@@ -7,6 +7,7 @@ import {
   KeyringAccountType,
   IWalletState,
   IKeyringBalances,
+  initialActiveTrezorAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -28,6 +29,7 @@ export const initialState: IVaultState = {
       },
     },
     [KeyringAccountType.Imported]: {},
+    [KeyringAccountType.Trezor]: {},
     //TODO: add Trezor account type here
   },
   activeAccount: {
@@ -276,6 +278,13 @@ const VaultState = createSlice({
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: [],
+          },
+        },
+        [KeyringAccountType.Trezor]: {
+          [initialActiveTrezorAccountState.id]: {
+            ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },
             transactions: [],
           },
