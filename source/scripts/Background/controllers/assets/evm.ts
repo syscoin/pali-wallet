@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import lodash, { isEmpty } from 'lodash';
+import lodash, { clone, compact, isEmpty, isEqual, sortBy } from 'lodash';
 
 import {
   ISupportsInterfaceProps,
@@ -10,11 +10,12 @@ import {
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
+import store from 'state/store';
 import { INetworksVault, IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
-
+import { validateAndManageUserAssets } from './utils';
 const EvmAssetsController = (): IEvmAssetsController => {
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
@@ -203,7 +204,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
     if (isEmpty(account.assets.ethereum)) return [];
 
     try {
-      const updatedTokens = await Promise.all(
+      const updatedTokens = (await Promise.all(
         account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
           const provider = new ethers.providers.JsonRpcProvider(
             networks.ethereum[vaultAssets.chainId].url
@@ -227,9 +228,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           return { ...vaultAssets, balance: formattedBalance };
         })
-      );
+      )) as ITokenEthProps[];
 
-      return updatedTokens as ITokenEthProps[];
+      return validateAndManageUserAssets(
+        true,
+        updatedTokens
+      ) as ITokenEthProps[];
     } catch (error) {
       console.error(
         "Pali utils: Couldn't update assets due to the following issue ",

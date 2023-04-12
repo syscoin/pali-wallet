@@ -68,7 +68,10 @@ const SysAssetsControler = (): ISysAssetsController => {
           return { ...asset, chainId: networkChainId };
         });
 
-        return validateAndManageUserAssets(assetsWithChain);
+        return validateAndManageUserAssets(
+          false,
+          assetsWithChain
+        ) as ISysTokensAssetReponse[];
       }
 
       return [];

@@ -1,50 +1,50 @@
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
-import groupBy from 'lodash/groupBy';
-import maxBy from 'lodash/maxBy';
+import isEqual from 'lodash/isEqual';
+import sortBy from 'lodash/sortBy';
 import uniqWith from 'lodash/uniqWith';
 
 import store from 'state/store';
+import { ITokenEthProps } from 'types/tokens';
 
 import { ISysTokensAssetReponse } from './types';
 
-export const mergeArraysAndTreatValues = (
-  assets: ISysTokensAssetReponse[]
-): ISysTokensAssetReponse[] => {
-  if (assets.length === 0) return [];
-
-  const grouped = groupBy(assets, 'assetGuid');
-
-  return uniqWith(
-    flatMap(grouped, (items) => {
-      const maxItem = maxBy(items, (item) => [
-        parseFloat(item.balance) || 0,
-        item.totalReceived,
-        item.totalSent,
-      ]);
-      return maxItem ? [maxItem] : [];
-    }).sort(
-      (a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0)
-    ),
-    (a, b) => a.assetGuid === b.assetGuid
-  );
-};
-
 export const validateAndManageUserAssets = (
-  fetchedAssets: ISysTokensAssetReponse[]
+  isForEvm: boolean,
+  fetchedAssetsOrTokens: ISysTokensAssetReponse[] | ITokenEthProps[]
 ) => {
-  if (fetchedAssets.length === 0) return [];
+  if (fetchedAssetsOrTokens.length === 0) return [];
 
   const { accounts, activeAccount } = store.getState().vault;
 
-  const {
-    assets: { syscoin: sysUserAssets },
-  } = accounts[activeAccount.type][activeAccount.id];
+  const { assets } = accounts[activeAccount.type][activeAccount.id];
 
-  const userClonedAssets = clone(compact(sysUserAssets));
+  const assetsValueToUse = isForEvm ? assets.ethereum : assets.syscoin;
 
-  const mergedArrays = [...fetchedAssets, ...userClonedAssets];
+  const userClonedAssets = clone(compact(assetsValueToUse));
 
-  return mergeArraysAndTreatValues(mergedArrays);
+  const tokenPropertyToUseAtGroupBy = isForEvm
+    ? 'contractAddress'
+    : 'assetGuid';
+
+  const validateIfTokensIsEquals = isEqual(
+    sortBy(userClonedAssets, tokenPropertyToUseAtGroupBy),
+    sortBy(fetchedAssetsOrTokens, tokenPropertyToUseAtGroupBy)
+  );
+
+  //Return a empty array to we don't need to dispatch something at the Polling
+  if (validateIfTokensIsEquals) {
+    return [];
+  }
+
+  //If the arrays is not equal, we have only to trust in the new fetchedValue because the assets can be
+  //With a bigger os smaller value from balance, we can't use maxBy to validate it. So we filter by assetGuid or contractAddres
+  //And order / sort it by balance value, to keep the biggests ones at first positions
+  return uniqWith(
+    flatMap(fetchedAssetsOrTokens).sort(
+      (a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0)
+    ),
+    (a, b) => a[tokenPropertyToUseAtGroupBy] === b[tokenPropertyToUseAtGroupBy]
+  );
 };

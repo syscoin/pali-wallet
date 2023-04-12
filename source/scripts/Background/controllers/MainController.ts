@@ -625,7 +625,6 @@ const MainController = (walletState): IMainController => {
     switch (isPolling) {
       //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
       case true:
-        console.log('isPolling', isPolling);
         transactionsManager.utils
           .updateTransactionsFromCurrentAccount(
             currentAccount,
