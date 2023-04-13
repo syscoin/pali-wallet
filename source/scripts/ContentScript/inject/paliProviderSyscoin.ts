@@ -64,9 +64,16 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_isTestnet':
             this._handleIsTestnet(params);
             break;
-          case PALI_ETHEREUM_METHODS.includes(params):
-            break;
           case EMITTED_NOTIFICATIONS.includes(method):
+            break;
+          // EVM METHODS TO AVOID
+          case 'pali_accountsChanged':
+            break;
+          case 'pali_chainChanged':
+            break;
+          case 'pali_removeProperty':
+            break;
+          case 'pali_addProperty':
             break;
           default:
             this._handleDisconnect(
