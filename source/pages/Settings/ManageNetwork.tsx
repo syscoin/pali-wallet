@@ -20,12 +20,14 @@ const ManageNetworkView = () => {
   const editNetwork = ({
     selected,
     chain,
+    isDefault,
   }: {
     chain: string;
+    isDefault: boolean;
     selected: INetwork;
   }) => {
     navigate('/settings/networks/custom-rpc', {
-      state: { selected, chain },
+      state: { selected, chain, isDefault },
     });
   };
 
@@ -38,13 +40,7 @@ const ManageNetworkView = () => {
         {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
             key={network.chainId}
-            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light
-              ${
-                network.default
-                  ? 'cursor-not-allowed bg-opacity-60'
-                  : 'cursor-default'
-              }
-            `}
+            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
@@ -55,21 +51,25 @@ const ManageNetworkView = () => {
               </span>
             </div>
 
-            {!network.default && (
-              <div className="flex gap-x-3 items-center justify-between">
-                <IconButton
-                  onClick={() =>
-                    editNetwork({ selected: network, chain: 'syscoin' })
-                  }
-                  type="primary"
-                  shape="circle"
-                >
-                  <Icon
-                    name="edit"
-                    className="hover:text-brand-royalblue text-xl"
-                  />
-                </IconButton>
+            <div className="flex gap-x-3 items-center justify-between">
+              <IconButton
+                onClick={() =>
+                  editNetwork({
+                    selected: network,
+                    chain: 'syscoin',
+                    isDefault: network.default,
+                  })
+                }
+                type="primary"
+                shape="circle"
+              >
+                <Icon
+                  name="edit"
+                  className="hover:text-brand-royalblue text-xl"
+                />
+              </IconButton>
 
+              {!network.default && (
                 <IconButton
                   onClick={() =>
                     removeNetwork('syscoin', network.chainId, network?.key)
@@ -82,8 +82,8 @@ const ManageNetworkView = () => {
                     className="hover:text-brand-royalblue text-xl"
                   />
                 </IconButton>
-              </div>
-            )}
+              )}
+            </div>
           </li>
         ))}
 
@@ -93,13 +93,7 @@ const ManageNetworkView = () => {
         {Object.values(networks.ethereum).map((network: any) => (
           <li
             key={network.chainId}
-            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light
-              ${
-                network.default
-                  ? 'cursor-not-allowed bg-opacity-60'
-                  : 'cursor-default'
-              }
-            `}
+            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
@@ -110,21 +104,25 @@ const ManageNetworkView = () => {
               </span>
             </div>
 
-            {!network.default && (
-              <div className="flex flex-col gap-y-3 items-end justify-end">
-                <IconButton
-                  onClick={() =>
-                    editNetwork({ selected: network, chain: 'ethereum' })
-                  }
-                  type="primary"
-                  shape="circle"
-                >
-                  <Icon
-                    name="edit"
-                    className="hover:text-brand-royalblue text-xs"
-                  />
-                </IconButton>
+            <div className="flex gap-x-3 items-center justify-between">
+              <IconButton
+                onClick={() =>
+                  editNetwork({
+                    selected: network,
+                    chain: 'ethereum',
+                    isDefault: network.default,
+                  })
+                }
+                type="primary"
+                shape="circle"
+              >
+                <Icon
+                  name="edit"
+                  className="hover:text-brand-royalblue text-xl"
+                />
+              </IconButton>
 
+              {!network.default && (
                 <IconButton
                   onClick={() => removeNetwork('ethereum', network.chainId)}
                   type="primary"
@@ -132,11 +130,11 @@ const ManageNetworkView = () => {
                 >
                   <Icon
                     name="trash"
-                    className="hover:text-brand-royalblue text-xs"
+                    className="hover:text-brand-royalblue text-xl"
                   />
                 </IconButton>
-              </div>
-            )}
+              )}
+            </div>
           </li>
         ))}
       </ul>

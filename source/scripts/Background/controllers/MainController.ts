@@ -460,29 +460,35 @@ const MainController = (walletState): IMainController => {
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await getRpc(newRpc);
-    const newNetwork = {
-      ...network,
-      label: newRpc.label,
-      currency: newRpc.symbol === oldRpc.symbol ? oldRpc.symbol : newRpc.symbol,
-      apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
-      url: newRpc.url === oldRpc.url ? oldRpc.url : newRpc.url,
-      chainId:
-        newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
-    } as INetwork;
-
     const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
 
-    if (changedChainId) {
-      store.dispatch(
-        removeNetwork({
-          chainId: oldRpc.chainId,
-          prefix: chain,
-        })
-      );
-    }
-    store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
+    if (network.chainId === oldRpc.chainId) {
+      const newNetwork = {
+        ...network,
+        label: newRpc.label,
+        currency:
+          newRpc.symbol === oldRpc.symbol ? oldRpc.symbol : newRpc.symbol,
+        apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
+        url: newRpc.url === oldRpc.url ? oldRpc.url : newRpc.url,
+        chainId:
+          newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
+      } as INetwork;
 
-    return newNetwork;
+      if (changedChainId) {
+        store.dispatch(
+          removeNetwork({
+            chainId: oldRpc.chainId,
+            prefix: chain,
+          })
+        );
+      }
+      store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
+
+      return newNetwork;
+    }
+    throw new Error(
+      'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
   };
 
   const removeKeyringNetwork = (
