@@ -140,7 +140,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={state.isDefault}
+            disabled={state ? state.isDefault : false}
             placeholder="Label (optional)"
             className="input-small relative"
           />

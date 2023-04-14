@@ -483,6 +483,7 @@ const MainController = (walletState): IMainController => {
         );
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
+      keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
 
       return newNetwork;
     }
