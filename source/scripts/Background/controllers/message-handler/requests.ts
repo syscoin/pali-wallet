@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
@@ -29,7 +30,7 @@ export const methodRequest = async (
     store.getState().vault;
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-  if (data.method && !isBitcoinBased) {
+  if (data.method && !isBitcoinBased && prefix !== 'sys') {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
@@ -64,11 +65,6 @@ export const methodRequest = async (
     methodName !== 'changeUTXOEVM'
   )
     throw cleanErrorStack(ethErrors.provider.unauthorized());
-  //throw {
-  //code: 4100,
-  //message:
-  //'The requested account and/or method has not been authorized by the user.',
-  //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   //* Wallet methods
@@ -210,11 +206,73 @@ export const methodRequest = async (
     }
   }
 
+  //* Change between networks methods
+
+  const validatePrefixAndCurrentChain =
+    (prefix === 'sys' && !isBitcoinBased) ||
+    (prefix === 'eth' && isBitcoinBased);
+
+  const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
+
+  if (validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName) {
+    const { chainId } = data.params[0];
+
+    const networks = store.getState().vault.networks;
+
+    const newChainValue = prefix === 'sys' ? 'Syscoin' : 'Ethereum';
+    const findCorrectNetwork: INetwork =
+      networks[newChainValue.toLowerCase()][chainId];
+    if (!findCorrectNetwork) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized('Network request does not exists')
+      );
+    }
+    const changeNetwork = (await popupPromise({
+      host,
+      data: {
+        newNetwork: findCorrectNetwork,
+        newChainValue: newChainValue,
+      },
+      route: 'switch-UtxoEvm',
+      eventName: 'change_UTXOEVM',
+    })) as any;
+
+    if (changeNetwork && changeNetwork.error) {
+      return;
+    }
+    if (dapp.isConnected(host)) {
+      await popupPromise({
+        host,
+        route: 'change-account',
+        eventName: 'accountsChanged',
+        data: { network: findCorrectNetwork },
+      });
+    } else {
+      await popupPromise({
+        host,
+        route: 'connect-wallet',
+        eventName: 'connect',
+        data: { newChainValue, chainId: findCorrectNetwork.chainId },
+      });
+    }
+    return;
+  } else if (
+    validateChangeUtxoEvmMethodName &&
+    !validatePrefixAndCurrentChain
+  ) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Method only available when connected on correct Network and using correct Prefix'
+      )
+    );
+  }
+
   if (
-    accounts[activeAccount.type][activeAccount.id].address !==
-      dapp.getAccount(host).address &&
+    prefix !== 'sys' &&
     !isBitcoinBased &&
-    EthProvider(host).checkIsBlocking(data.method)
+    EthProvider(host).checkIsBlocking(data.method) &&
+    accounts[activeAccount.type][activeAccount.id].address !==
+      dapp.getAccount(host).address
   ) {
     const dappAccount = dapp.getAccount(host);
     const dappAccountType = dappAccount.isImported
@@ -235,62 +293,6 @@ export const methodRequest = async (
     }
   }
 
-  //* Change between networks methods
-
-  const validatePrefixAndCurrentChain =
-    (prefix === 'sys' && isBitcoinBased) ||
-    (prefix === 'eth' && !isBitcoinBased);
-
-  const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
-
-  const validateCanUseChangeUtxoEvm =
-    validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName;
-
-  if (validateCanUseChangeUtxoEvm) {
-    const { chainId } = data.params[0];
-
-    const networks = store.getState().vault.networks;
-
-    const newChainValue = prefix === 'sys' ? 'Ethereum' : 'Syscoin';
-
-    const findCorrectNetwork = networks[newChainValue.toLowerCase()][chainId];
-
-    if (!findCorrectNetwork) {
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized('Network request does not exists')
-      );
-    }
-
-    const changeNetwork = (await popupPromise({
-      host,
-      data: {
-        newNetwork: findCorrectNetwork,
-        newChainValue: newChainValue,
-      },
-      route: 'switch-UtxoEvm',
-      eventName: 'change_UTXOEVM',
-    })) as any;
-
-    if (changeNetwork && changeNetwork.error) {
-      return;
-    }
-
-    await popupPromise({
-      host,
-      route: 'change-account',
-      eventName: 'accountsChanged',
-      data: { network: findCorrectNetwork },
-    });
-
-    return;
-  } else if (!validateCanUseChangeUtxoEvm) {
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized(
-        'Method only available when connected on correct Network and using correct Prefix'
-      )
-    );
-  }
-
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
@@ -299,14 +301,15 @@ export const methodRequest = async (
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
-  } else if (prefix === 'sys' && !isBitcoinBased)
+  } else if (prefix === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  else if (prefix === 'eth' && isBitcoinBased)
+  } else if (prefix === 'eth' && isBitcoinBased) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Method only available when connected on EVM chains'
       )
     );
+  }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
@@ -328,7 +331,6 @@ export const enable = async (
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-
   if (!isSyscoinDapp && isBitcoinBased)
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
