@@ -118,10 +118,6 @@ const VaultState = createSlice({
         state.activeAccount.id
       ].balances = action.payload;
     },
-    setAccountTransactions(state: IVaultState, action: PayloadAction<any>) {
-      const { id, type } = state.activeAccount;
-      state.accounts[type][id].transactions.unshift(action.payload);
-    },
     createAccount(
       state: IVaultState,
       action: PayloadAction<{
@@ -374,7 +370,6 @@ export const {
   removeNetwork,
   createAccount,
   setAccountLabel,
-  setAccountTransactions,
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,

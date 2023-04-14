@@ -12,7 +12,6 @@ import reducer, {
   removeAccounts,
   removeNetwork,
   setAccountLabel,
-  setAccountTransactions,
   setActiveAccount,
   setActiveAccountProperty,
   setActiveNetwork,
@@ -177,24 +176,6 @@ describe('Vault store actions', () => {
     const newState = reducer(initialState, setIsLoadingBalances(payload));
 
     expect(newState.isLoadingBalances).toBe(true);
-  });
-
-  //* setAccountTransactions
-  it('should add a transaction for the active account)', () => {
-    const payload = { hmm: 'hue' };
-
-    const customState = reducer(
-      STATE_W_ACCOUNT,
-      setActiveAccount({
-        id: MOCK_ACCOUNT.id,
-        type: KeyringAccountType.HDAccount,
-      })
-    );
-    const newState = reducer(customState, setAccountTransactions(payload));
-
-    const id = newState.activeAccount.id;
-    const account = newState.accounts[id];
-    expect(account.transactions).toContain(payload);
   });
 
   //* removeNetwork

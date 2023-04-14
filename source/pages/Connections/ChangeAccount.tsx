@@ -29,6 +29,10 @@ export const ChangeAccount = () => {
   };
 
   const handleChangeAccount = () => {
+    if (accountId === currentAccountId) {
+      window.close();
+      return;
+    }
     //this should be passed to constant instead of being hardcoded
     if (eventName === 'requestPermissions')
       dapp.requestPermissions(host, accountId, accountType);
@@ -126,7 +130,6 @@ export const ChangeAccount = () => {
           <PrimaryButton
             type="button"
             width="40"
-            disabled={accountId === currentAccountId}
             onClick={() => handleChangeAccount()}
           >
             Change

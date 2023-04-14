@@ -30,6 +30,7 @@ export const popupPromise = async ({
     eventName !== 'connect' &&
     eventName !== 'wallet_switchEthereumChain' &&
     eventName !== 'wallet_addEthereumChain' &&
+    eventName !== 'change_UTXOEVM' &&
     !dapp.isConnected(host)
   )
     return;
@@ -39,7 +40,13 @@ export const popupPromise = async ({
     );
   dapp.setHasWindow(host, true);
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
-  const popup = await createPopup(route, { ...data, host, eventName });
+  let popup = null;
+  try {
+    popup = await createPopup(route, { ...data, host, eventName });
+  } catch (error) {
+    dapp.setHasWindow(host, false);
+    throw error;
+  }
   return new Promise((resolve) => {
     window.addEventListener(
       `${eventName}.${host}`,
@@ -55,7 +62,11 @@ export const popupPromise = async ({
           }
           resolve(event.detail);
         }
-        if (route === 'switch-EthChain' || route === 'add-EthChain') {
+        if (
+          route === 'switch-EthChain' ||
+          route === 'add-EthChain' ||
+          route === 'switch-UtxoEvm'
+        ) {
           resolve(null);
           dapp.setHasWindow(host, false);
           return null;
@@ -73,7 +84,8 @@ export const popupPromise = async ({
           route === 'tx/encryptKey' ||
           route === 'switch-EthChain' ||
           route === 'add-EthChain' ||
-          route === 'change-account'
+          route === 'change-account' ||
+          route === 'switch-UtxoEvm'
         ) {
           resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }
