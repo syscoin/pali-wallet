@@ -1887,15 +1887,15 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@1.0.445":
-  version "1.0.445"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.445.tgz#5c5adbe335d649c7246b0a9a093a5b8f47611170"
-  integrity sha512-GenXbNQeuHTT839vhJfd7R4C2eOyLUcVgfpYtshxSM/c6YOkZnebk9IhOTdrUZg6ozuFItP0fUUxhhCRmwGGRA==
+"@pollum-io/sysweb3-keyring@1.0.446":
+  version "1.0.446"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.446.tgz#5426f819049dfc6e32801990430aadf9e4ab9098"
+  integrity sha512-aEEQFhLUq1M0X27M2xeOej4OFj1LyzFL6WzBP8vZGvJUlcL7f5ryGLtW7eMC48UY+L4Sl6gIRAnyUgRgblDYiA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "^1.0.22"
-    "@pollum-io/sysweb3-network" "^1.0.88"
+    "@pollum-io/sysweb3-network" "^1.0.89"
     "@pollum-io/sysweb3-utils" "^1.1.220"
     axios "^0.26.1"
     bip39 "^3.0.4"
@@ -1916,10 +1916,10 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@1.0.88", "@pollum-io/sysweb3-network@^1.0.88":
-  version "1.0.88"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.88.tgz#6b4c90434edf01cb7e6ba8bff9cbbff3f4dcaa4c"
-  integrity sha512-RhU4CjZAKi7EqHoLtO8nD1fQak5VJNBl/n/O7wY9r6wDnptuxUVmrNwwCDoasAnlsbewkNz1XXX2+88LNClRug==
+"@pollum-io/sysweb3-network@1.0.89", "@pollum-io/sysweb3-network@^1.0.89":
+  version "1.0.89"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.89.tgz#a3753691eec6a275c3147db841f0457a11305655"
+  integrity sha512-DqH97Nof71kiXwd4wbc0i6v5qgF60Znd0t8jns4l+QBVIYlTgn1EreblX6hqMHETx7BfK6K4fY9zDJHVPtGYxA==
   dependencies:
     axios "^0.26.1"
     bip44-constants "^114.0.0"
@@ -6274,15 +6274,8 @@ eth-lib@^0.1.26:
     ws "^3.0.0"
     xhr-request-promise "^0.1.2"
 
-eth-object@^1.0.3:
+eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
-  dependencies:
-    eth-util-lite "^1.0.1"
-
-"eth-object@https://github.com/syscoin/eth-object.git":
-  version "1.0.3"
-  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
   resolved "https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
     eth-util-lite "^1.0.1"
