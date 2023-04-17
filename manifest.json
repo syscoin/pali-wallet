@@ -8,7 +8,7 @@
     "48": "assets/icons/favicon-48.png",
     "128": "assets/icons/favicon-128.png"
   },
-  "description": "A Non-Custodial Crypto Wallet for Syscoin that Supports Trezor™",
+  "description": "A Non-Custodial Crypto Wallet",
   "short_name": "pali",
   "permissions": [
     "http://*/*",
@@ -16,16 +16,14 @@
     "*://connect.trezor.io/9/*",
     "tabs",
     "storage",
-    "notifications",
     "activeTab",
-    "webRequest",
     "*://*.eth/",
     "clipboardWrite",
     "unlimitedStorage",
     "http://localhost:8545/"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
-  "__chrome|firefox__author": "Pollum Sys Teams",
+  "__chrome|firefox__author": "pollum labs",
   "__opera__developer": {
     "name": "pollum labs"
   },
