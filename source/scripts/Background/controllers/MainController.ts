@@ -285,7 +285,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
 
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork, activeAccount } = store.getState().vault;
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
 
@@ -300,6 +300,17 @@ const MainController = (walletState): IMainController => {
           wallet,
         })
       );
+      const isTestnet = verifyIfIsTestnet();
+      const cannotContinueWithTrezorAccount =
+        (isTestnet && activeAccount.type === KeyringAccountType.Trezor) ||
+        (!isBitcoinBased && activeAccount.type === KeyringAccountType.Trezor);
+
+      if (cannotContinueWithTrezorAccount) {
+        keyringManager.setActiveAccount(0, KeyringAccountType.HDAccount);
+        store.dispatch(
+          setActiveAccount({ id: 0, type: KeyringAccountType.HDAccount })
+        );
+      }
 
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
@@ -547,41 +558,41 @@ const MainController = (walletState): IMainController => {
     return importedAccount;
   };
 
-  // const importTrezorAccount = async (
-  //   coin: string,
-  //   slip44: string,
-  //   index: string
-  // ) => {
-  //   const { accounts } = store.getState().vault;
-  //   //todo: this function was renamed we should update it
-  //   const importedAccount = await keyringManager.importTrezorAccount(
-  //     coin,
-  //     slip44,
-  //     index
-  //   );
-  //   const paliImp: IPaliAccount = {
-  //     ...importedAccount,
-  //     assets: {
-  //       ethereum: [],
-  //       syscoin: [],
-  //     },
-  //     transactions: [],
-  //   } as IPaliAccount;
-  //   store.dispatch(
-  //     setAccounts({
-  //       ...accounts,
-  //       [KeyringAccountType.Trezor]: {
-  //         ...accounts[KeyringAccountType.Trezor],
-  //         [paliImp.id]: paliImp,
-  //       },
-  //     })
-  //   );
-  //   store.dispatch(
-  //     setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
-  //   );
+  const importTrezorAccount = async (
+    coin: string,
+    slip44: string,
+    index: string
+  ) => {
+    const { accounts } = store.getState().vault;
+    //todo: this function was renamed we should update it
+    const importedAccount = await keyringManager.importTrezorAccount(
+      coin,
+      slip44,
+      index
+    );
+    const paliImp: IPaliAccount = {
+      ...importedAccount,
+      assets: {
+        ethereum: [],
+        syscoin: [],
+      },
+      transactions: [],
+    } as IPaliAccount;
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [KeyringAccountType.Trezor]: {
+          ...accounts[KeyringAccountType.Trezor],
+          [paliImp.id]: paliImp,
+        },
+      })
+    );
+    store.dispatch(
+      setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
+    );
 
-  //   return importedAccount;
-  // };
+    return importedAccount;
+  };
 
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
@@ -900,7 +911,7 @@ const MainController = (walletState): IMainController => {
     removeWindowEthProperty,
     addWindowEthProperty,
     setHasEthProperty,
-    // importTrezorAccount,
+    importTrezorAccount,
     ...keyringManager,
   };
 };

@@ -31,6 +31,7 @@ import {
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
+import { injectScriptFile } from 'scripts/ContentScript';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -64,6 +65,10 @@ export const Router = () => {
     alert.removeAll();
     appRoute(pathname);
   }, [pathname]);
+
+  useEffect(() => {
+    injectScriptFile('https://connect.trezor.io/9/trezor-connect.js', 'trezor');
+  }, []);
 
   return (
     <Routes>

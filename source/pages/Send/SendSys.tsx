@@ -251,9 +251,16 @@ export const SendSys = () => {
                                     <Menu.Item as="div" key={uniqueId()}>
                                       <Menu.Item>
                                         <button
-                                          onClick={() =>
-                                            handleSelectedAsset(item.assetGuid)
-                                          }
+                                          onClick={() => {
+                                            if (activeAccount.isTrezorWallet) {
+                                              alert.removeAll();
+                                              alert.error(
+                                                'Cannot send custom token with Trezor Account.'
+                                              );
+                                              return;
+                                            }
+                                            handleSelectedAsset(item.assetGuid);
+                                          }}
                                           className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                         >
                                           <p>{item?.symbol}</p>
