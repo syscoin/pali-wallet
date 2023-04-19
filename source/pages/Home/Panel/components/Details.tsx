@@ -24,11 +24,11 @@ export const DetailsView = () => {
   const isAsset = id && !hash;
 
   const openEthExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.explorer}${isAsset ? 'address' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    const url = `${activeNetwork.apiUrl ?? activeNetwork.explorer}/${
+      isAsset ? 'address' : 'tx'
+    }/${isAsset ? id : hash}`;
+
+    browser.windows.create({ url });
   };
 
   const openSysExplorer = () => {

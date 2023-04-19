@@ -177,6 +177,14 @@ const VaultState = createSlice({
         [network.chainId]: network,
       };
 
+      if (
+        chain === state.activeChain &&
+        state.networks[chain][network.chainId].chainId ===
+          state.activeNetwork.chainId
+      ) {
+        state.activeNetwork = network;
+      }
+
       return;
     },
     removeNetwork(
