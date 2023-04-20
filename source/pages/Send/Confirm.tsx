@@ -131,12 +131,15 @@ export const SendConfirm = () => {
               'chainId',
             ]) as ITxState;
 
+            const value = ethers.utils.parseUnits(
+              String(basicTxValues.amount),
+              'ether'
+            );
+
             wallet.ethereumTransaction
               .sendFormattedTransaction({
                 ...restTx,
-                value: wallet.ethereumTransaction.toBigNumber(
-                  Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
-                ),
+                value,
                 maxPriorityFeePerGas: ethers.utils.parseUnits(
                   String(
                     Boolean(
