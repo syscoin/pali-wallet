@@ -3,7 +3,6 @@ import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
-import { injectScriptFile } from 'scripts/ContentScript';
 import store from 'state/store';
 import { log } from 'utils/logger';
 
@@ -33,7 +32,6 @@ if (!window.controller) {
 
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
-  injectScriptFile('https://connect.trezor.io/9/trezor-connect.js', 'trezor');
 });
 
 let timeout: any;

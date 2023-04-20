@@ -22,7 +22,7 @@
     "unlimitedStorage",
     "http://localhost:8545/"
   ],
-  "content_security_policy": "script-src 'self' https://connect.trezor.io; object-src 'self'",
+  "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "pollum labs",
   "__opera__developer": {
     "name": "pollum labs"
