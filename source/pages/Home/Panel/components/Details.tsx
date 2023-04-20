@@ -57,8 +57,8 @@ export const DetailsView = () => {
 
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
             <p className="font-normal" style={{ lineHeight: '18px' }}>
-              Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isBitcoinBased ? 'Block' : 'Etherscan'} Explorer?
+              View this {isAsset ? 'asset' : 'transaction'} on{' '}
+              {isBitcoinBased ? 'Syscoin' : ''} Explorer?
             </p>
 
             <Button

@@ -352,7 +352,7 @@ const AccountMenu: React.FC = () => {
                             className="mb-1 mr-3 text-brand-white"
                           />
 
-                          <span>Import new account</span>
+                          <span>Import account</span>
                         </li>
                       ) : null}
 

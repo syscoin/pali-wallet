@@ -57,14 +57,16 @@ const PrivateKeyView = () => {
 
   return (
     <Layout title="YOUR KEYS">
-      <Card type="info">
-        <p>
-          <b className="text-warning-info">WARNING: </b>
-          This is your account root indexer to check your full balance for{' '}
-          {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
-          FUNDS TO THESE ADDRESSES, YOU WILL LOOSE THEM!
-        </p>
-      </Card>
+      {isBitcoinBased && (
+        <Card type="info">
+          <p>
+            <b className="text-warning-info">WARNING: </b>
+            This is your account root indexer to check your full balance for{' '}
+            {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
+            FUNDS TO THESE ADDRESSES, YOU WILL LOSE THEM!
+          </p>
+        </Card>
+      )}
 
       {isBitcoinBased && (
         <CopyCard
@@ -133,15 +135,17 @@ const PrivateKeyView = () => {
         </p>
       </CopyCard>
 
-      <div className="absolute bottom-8 md:static">
-        <NeutralButton
-          width="56 px-8"
-          type="button"
-          onClick={() => window.open(explorerLink)}
-        >
-          See on explorer
-        </NeutralButton>
-      </div>
+      {isBitcoinBased && (
+        <div className="absolute bottom-8 md:static">
+          <NeutralButton
+            width="56 px-8"
+            type="button"
+            onClick={() => window.open(explorerLink)}
+          >
+            See on explorer
+          </NeutralButton>
+        </div>
+      )}
     </Layout>
   );
 };

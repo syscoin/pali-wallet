@@ -153,7 +153,7 @@ export const GeneralMenu: React.FC = () => {
                 className="ml-0.2 mr-3 text-brand-white"
               />
 
-              <span className="px-3">Manage ETH prop</span>
+              <span className="px-3">Manage ETH provider</span>
             </li>
           </Menu.Item>
 
