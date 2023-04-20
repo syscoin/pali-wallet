@@ -285,7 +285,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
 
-    const { activeNetwork, activeAccount } = store.getState().vault;
+    const { activeNetwork, activeAccount, accounts } = store.getState().vault;
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
 
@@ -303,7 +303,9 @@ const MainController = (walletState): IMainController => {
       const isTestnet = verifyIfIsTestnet();
       const cannotContinueWithTrezorAccount =
         (isTestnet && activeAccount.type === KeyringAccountType.Trezor) ||
-        (!isBitcoinBased && activeAccount.type === KeyringAccountType.Trezor);
+        (!isBitcoinBased && activeAccount.type === KeyringAccountType.Trezor) ||
+        accounts[activeAccount.type][activeAccount.id]?.originNetwork !==
+          network;
 
       if (cannotContinueWithTrezorAccount) {
         keyringManager.setActiveAccount(0, KeyringAccountType.HDAccount);
