@@ -24,7 +24,7 @@ export const TransactionsList = ({
 
   const { navigate } = useUtils();
 
-  const getTxType = (tx: any) => {
+  const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
       if (tx.tokenType === 'SPTAssetActivate') {
         return 'SPT creation';
@@ -41,7 +41,9 @@ export const TransactionsList = ({
       return 'Transaction';
     }
 
-    return `Type: ${tx.type}`;
+    const txLabel = isTxSent ? 'Sent' : 'Received';
+
+    return `${txLabel}`;
   };
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
@@ -95,26 +97,9 @@ export const TransactionsList = ({
         }
       );
 
-    console.log('tx', tx);
-
     const isTxSent = isBitcoinBased
-      ? tx.vin?.some((vinObject) =>
-          vinObject.addresses?.some(
-            (address) => address === currentAccount.address
-          )
-        )
+      ? false
       : tx.from.toLowerCase() === currentAccount.address;
-
-    console.log(
-      'isTxSent',
-      isTxSent,
-      tx.vin?.some((vinObject) =>
-        vinObject.addresses?.some(
-          (address) => address === currentAccount.address
-        )
-      ),
-      currentAccount.address
-    );
 
     return (
       tx[blocktime] && (
@@ -128,10 +113,12 @@ export const TransactionsList = ({
           <li className="py-2 border-b border-dashed border-dashed-dark">
             <div className="relative flex items-center justify-between text-xs">
               <div className="flex items-center">
-                <Icon
-                  name={isTxSent ? 'arrow-up' : 'arrow-down'}
-                  className="mx-2"
-                />
+                {!isBitcoinBased && (
+                  <Icon
+                    name={isTxSent ? 'arrow-up' : 'arrow-down'}
+                    className="mx-2"
+                  />
+                )}
                 <div className="flex flex-row">
                   <div>
                     <p>{ellipsis(tx[txid], 4, 14)}</p>
@@ -155,7 +142,7 @@ export const TransactionsList = ({
                 <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
                   <p className="text-blue-300">{timestamp}</p>
 
-                  <p>{getTxType(tx)}</p>
+                  <p>{getTxType(tx, isTxSent)}</p>
                 </div>
               </div>
 
