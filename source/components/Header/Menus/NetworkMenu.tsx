@@ -188,7 +188,7 @@ export const NetworkMenu: React.FC = () => {
                             (currentNetwork: any) => (
                               <li
                                 key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                className="backface-visibility-hidden flex flex-row items-center justify-start mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,
@@ -205,8 +205,8 @@ export const NetworkMenu: React.FC = () => {
                                     currentNetwork.chainId && (
                                     <Icon
                                       name="check"
-                                      className="mb-1 w-4"
-                                      wrapperClassname="w-6 absolute right-16"
+                                      className="right-0 mb-1 w-4"
+                                      wrapperClassname="w-6 right-16"
                                     />
                                   )}
                               </li>

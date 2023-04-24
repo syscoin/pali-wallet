@@ -16,7 +16,11 @@ export const TransactionsList = ({
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
+    activeAccount,
+    accounts,
   } = useSelector((state: RootState) => state.vault);
+
+  const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
   const { navigate } = useUtils();
 
@@ -91,6 +95,27 @@ export const TransactionsList = ({
         }
       );
 
+    console.log('tx', tx);
+
+    const isTxSent = isBitcoinBased
+      ? tx.vin?.some((vinObject) =>
+          vinObject.addresses?.some(
+            (address) => address === currentAccount.address
+          )
+        )
+      : tx.from.toLowerCase() === currentAccount.address;
+
+    console.log(
+      'isTxSent',
+      isTxSent,
+      tx.vin?.some((vinObject) =>
+        vinObject.addresses?.some(
+          (address) => address === currentAccount.address
+        )
+      ),
+      currentAccount.address
+    );
+
     return (
       tx[blocktime] && (
         <Fragment key={uniqueId(tx[txid])}>
@@ -102,21 +127,29 @@ export const TransactionsList = ({
 
           <li className="py-2 border-b border-dashed border-dashed-dark">
             <div className="relative flex items-center justify-between text-xs">
-              <div>
-                <p>{ellipsis(tx[txid], 4, 14)}</p>
+              <div className="flex items-center">
+                <Icon
+                  name={isTxSent ? 'arrow-up' : 'arrow-down'}
+                  className="mx-2"
+                />
+                <div className="flex flex-row">
+                  <div>
+                    <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                <p
-                  className={
-                    isConfirmed ? 'text-warning-success' : 'text-yellow-300'
-                  }
-                >
-                  {isConfirmed ? 'Confirmed' : 'Pending'}
-                </p>
+                    <p
+                      className={
+                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
+                      }
+                    >
+                      {isConfirmed ? 'Confirmed' : 'Pending'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div
                 className={`absolute flex ${
-                  isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
+                  isBitcoinBased ? 'right-20 w-20' : 'right-28 w-14'
                 }`}
               >
                 <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
