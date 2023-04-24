@@ -47,7 +47,12 @@ const PrivateKeyView = () => {
     alert.success('Successfully copied');
   }, [copied]);
 
-  const url = isBitcoinBased ? activeNetwork.url : activeNetwork.explorer;
+  const url = isBitcoinBased
+    ? activeNetwork.url
+    : activeNetwork.apiUrl.length > 0
+    ? `${activeNetwork.apiUrl}/`
+    : activeNetwork.explorer;
+
   const property = isBitcoinBased ? 'xpub' : 'address';
   const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
 
