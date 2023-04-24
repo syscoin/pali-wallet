@@ -23,7 +23,7 @@ const ConnectHardwareWalletView: FC = () => {
 
   const handleCreateHardwareWallet = async () => {
     await controller.wallet.importTrezorAccount(
-      activeNetwork.currency,
+      isBitcoinBased ? activeNetwork.currency : 'eth',
       `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
       `${trezorAccounts.length}`
     );

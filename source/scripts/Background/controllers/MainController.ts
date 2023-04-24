@@ -334,8 +334,6 @@ const MainController = (walletState): IMainController => {
 
       switch (isBitcoinBased) {
         case true:
-          const isTestnet = verifyIfIsTestnet();
-
           window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
             method: PaliEvents.isTestnet,
             params: { isTestnet },

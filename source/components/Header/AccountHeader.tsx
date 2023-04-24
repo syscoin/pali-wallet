@@ -86,7 +86,7 @@ const RenderAccountsListByBitcoinBased = (
             Object.values(accounts.Trezor)
               .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
               .map((account, index, { length }) => {
-                if (account?.originNetwork.chainId !== activeNetwork.chainId)
+                if (account?.originNetwork.url !== activeNetwork.url)
                   return null;
                 return (
                   <Tooltip
@@ -149,7 +149,7 @@ const RenderAccountsListByBitcoinBased = (
                 .map((account, index, { length }) => {
                   if (
                     account.isTrezorWallet &&
-                    account?.originNetwork.url !== activeNetwork.url
+                    !account?.originNetwork?.isBitcoinBased
                   )
                     return null;
                   return (
@@ -160,6 +160,8 @@ const RenderAccountsListByBitcoinBased = (
                       content={
                         account.isImported
                           ? `${account.address} [imported]`
+                          : account.isTrezorWallet
+                          ? `${account.address} [trezor account]`
                           : `${account.address} [pali account]`
                       }
                     >
@@ -185,12 +187,21 @@ const RenderAccountsListByBitcoinBased = (
                             maxWidth: '16.25rem',
                             textOverflow: 'ellipsis',
                           }}
-                          className="flex whitespace-nowrap overflow-hidden"
+                          className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
                         >
                           {account.isImported ? (
-                            <img src={importIcon} className="mr-1 w-5"></img>
+                            <img src={importIcon} className="mr-1 w-7"></img>
+                          ) : account.isTrezorWallet ? (
+                            <img
+                              src={trezorLogo}
+                              style={{
+                                filter:
+                                  'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                              }}
+                              className="mr-1 w-7"
+                            ></img>
                           ) : (
-                            <img src={logo} className="mr-1 w-5"></img>
+                            <img src={logo} className="mr-1 w-7"></img>
                           )}{' '}
                           {account.label} ({ellipsis(account.address, 4, 8)})
                         </span>
@@ -377,7 +388,7 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          {isBitcoinBased && !isTestnet && (
+          {!isTestnet && (
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/account/hardware')}
