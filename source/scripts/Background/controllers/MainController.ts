@@ -497,6 +497,7 @@ const MainController = (walletState): IMainController => {
     key?: string
   ) => {
     //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
+    console.log({ chain, chainId });
     keyringManager.removeNetwork(chain, chainId);
 
     store.dispatch(removeNetworkFromStore({ prefix: chain, chainId, key }));

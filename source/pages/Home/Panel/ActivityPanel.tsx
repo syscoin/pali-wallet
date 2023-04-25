@@ -19,7 +19,7 @@ export const TransactionsPanel = () => {
   } = useSelector((state: RootState) => state.vault);
 
   const adjustedExplorer = useMemo(
-    () => (explorer.endsWith('/') ? explorer : `${explorer}/`),
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
     [explorer]
   );
 

@@ -50,7 +50,7 @@ const PrivateKeyView = () => {
   const { url: activeUrl, explorer } = activeNetwork;
 
   const adjustedExplorer = useMemo(
-    () => (explorer.endsWith('/') ? explorer : `${explorer}/`),
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
     [explorer]
   );
 

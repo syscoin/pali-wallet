@@ -26,7 +26,7 @@ export const DetailsView = () => {
   const { explorer } = activeNetwork;
 
   const adjustedExplorer = useMemo(
-    () => (explorer.endsWith('/') ? explorer : `${explorer}/`),
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
     [explorer]
   );
 
