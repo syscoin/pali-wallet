@@ -1,5 +1,5 @@
 import { Input, Form } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
@@ -47,11 +47,14 @@ const PrivateKeyView = () => {
     alert.success('Successfully copied');
   }, [copied]);
 
-  const url = isBitcoinBased
-    ? activeNetwork.url
-    : activeNetwork.apiUrl.length > 0
-    ? `${activeNetwork.apiUrl}/`
-    : activeNetwork.explorer;
+  const { url: activeUrl, explorer } = activeNetwork;
+
+  const adjustedExplorer = useMemo(
+    () => (explorer.endsWith('/') ? explorer : `${explorer}/`),
+    [explorer]
+  );
+
+  const url = isBitcoinBased ? activeUrl : adjustedExplorer;
 
   const property = isBitcoinBased ? 'xpub' : 'address';
   const value = isBitcoinBased ? activeAccount?.xpub : activeAccount.address;
