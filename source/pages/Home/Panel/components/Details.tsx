@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
@@ -23,12 +23,19 @@ export const DetailsView = () => {
 
   const isAsset = id && !hash;
 
+  const { explorer } = activeNetwork;
+
+  const adjustedExplorer = useMemo(
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
+    [explorer]
+  );
+
   const openEthExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.explorer}${isAsset ? 'address' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
+      isAsset ? id : hash
+    }`;
+
+    browser.windows.create({ url });
   };
 
   const openSysExplorer = () => {

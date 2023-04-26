@@ -70,7 +70,7 @@ const CustomRPCView = () => {
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
     symbol: (state && state.selected && state.selected.currency) ?? '',
-    apiUrl: (state && state.selected && state.selected.apiUrl) ?? '',
+    explorer: (state && state.selected && state.selected.explorer) ?? '',
   };
 
   useEffect(() => {
@@ -203,9 +203,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder={`${
-              isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
-            }`}
+            placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
             className="input-small relative"
           />
         </Form.Item>
@@ -252,7 +250,7 @@ const CustomRPCView = () => {
         <Form.Item
           hasFeedback
           className="md:w-full"
-          name="apiUrl"
+          name="explorer"
           rules={[
             {
               required: false,
@@ -262,7 +260,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="API URL (optional)"
+            placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
         </Form.Item>

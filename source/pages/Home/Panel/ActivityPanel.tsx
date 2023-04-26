@@ -18,6 +18,11 @@ export const TransactionsPanel = () => {
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
 
+  const adjustedExplorer = useMemo(
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
+    [explorer]
+  );
+
   const { xpub, address: userAddress } =
     accounts[activeAccount.type][activeAccount.id];
 
@@ -64,7 +69,7 @@ export const TransactionsPanel = () => {
   const OpenTransactionExplorer = useCallback(() => {
     const openExplorer = () =>
       window.open(
-        `${isBitcoinBased ? networkUrl : explorer}${
+        `${isBitcoinBased ? networkUrl : adjustedExplorer}${
           isBitcoinBased ? 'xpub' : 'address'
         }/${isBitcoinBased ? xpub : userAddress}`,
         '_blank'
@@ -79,7 +84,7 @@ export const TransactionsPanel = () => {
         See all your transactions
       </button>
     );
-  }, [networkUrl, chainId, isBitcoinBased]);
+  }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased]);
 
   useEffect(() => {
     validateTimeoutError();

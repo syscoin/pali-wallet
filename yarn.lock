@@ -1887,10 +1887,10 @@
   dependencies:
     rimraf "^3.0.2"
 
-"@pollum-io/sysweb3-keyring@1.0.448":
-  version "1.0.448"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.448.tgz#d06f97c5d643ab49f1b08e0b7216cdc8a593a5a6"
-  integrity sha512-9zliy2Zavwh0D8JGasZlC7zAI/mDjGc+GbV9bcGMufk43DIDcxOIE4rC3OyvHO4DTazuaV/IoIlqHQNPxTPceQ==
+"@pollum-io/sysweb3-keyring@1.0.449":
+  version "1.0.449"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.449.tgz#4a91f9123ff952b97517906126e1214b287fce94"
+  integrity sha512-3oe0yIh6LhWjLXa+oKA587kLpqpWyNFsum1A3lX8uYSY7klC0dbPniZZs6uTuNGmT1AtwD4i3ldINeB6P18GAg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
