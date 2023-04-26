@@ -177,20 +177,29 @@ const VaultState = createSlice({
         [network.chainId]: network,
       };
 
+      if (
+        chain === state.activeChain &&
+        state.networks[chain][network.chainId].chainId ===
+          state.activeNetwork.chainId
+      ) {
+        state.activeNetwork = network;
+      }
+
       return;
     },
     removeNetwork(
       state: IVaultState,
       action: PayloadAction<{ chainId: number; key?: string; prefix: string }>
     ) {
-      const { prefix, chainId, key } = action.payload;
+      const { prefix, chainId } = action.payload;
 
-      if (key) {
-        delete state.networks[prefix][key];
-        return;
-      }
+      const updatedNetworks = Object.fromEntries(
+        Object.entries(state.networks[prefix]).filter(
+          ([chainKey]) => Number(chainKey) !== chainId
+        )
+      );
 
-      delete state.networks[prefix][chainId];
+      state.networks[prefix] = updatedNetworks;
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
