@@ -133,7 +133,7 @@ const CustomRPCView = () => {
           hasFeedback
           rules={[
             {
-              required: false,
+              required: !isSyscoinRpc,
               message: '',
             },
           ]}
@@ -141,7 +141,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             disabled={state ? state.isDefault : false}
-            placeholder="Label (optional)"
+            placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
             className="input-small relative"
           />
         </Form.Item>
