@@ -182,7 +182,10 @@ export const ApproveTransactionComponent = () => {
 
       try {
         const response =
-          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
+          await wallet.ethereumTransaction.sendFormattedTransaction(
+            newTxValue,
+            wallet.sendAndSaveTransaction
+          );
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal)

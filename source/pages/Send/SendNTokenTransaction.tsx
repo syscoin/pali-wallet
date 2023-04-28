@@ -97,13 +97,16 @@ export const SendNTokenTransaction = () => {
             : await ethereumTransaction.getRecommendedGasPrice();
 
           await ethereumTransaction
-            .sendFormattedTransaction({
-              ...txWithoutType,
-              gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-              gasLimit: ethereumTransaction.toBigNumber(
-                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-              ),
-            })
+            .sendFormattedTransaction(
+              {
+                ...txWithoutType,
+                gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
+                gasLimit: ethereumTransaction.toBigNumber(
+                  validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+                ),
+              },
+              sendAndSaveTransaction
+            )
             .then((response) => {
               setConfirmedTx(response);
               setConfirmed(true);
