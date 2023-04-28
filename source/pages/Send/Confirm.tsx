@@ -230,6 +230,7 @@ export const SendConfirm = () => {
                         ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                         : fee.gasLimit * 4
                     ),
+                    saveTrezorTx: wallet.sendAndSaveTransaction,
                   })
                   .then(async (response) => {
                     setConfirmed(true);

@@ -32,19 +32,11 @@ const ConnectHardwareWalletView: FC = () => {
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;
 
-    const { chain, chainId }: any = isBitcoinBased
+    const { chain }: any = isBitcoinBased
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
-    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
-    return Boolean(
-      chain === 'test' ||
-        chain === 'testnet' ||
-        ethTestnetsChainsIds.some(
-          (validationChain) => validationChain === chainId
-        )
-    );
+    return Boolean(chain === 'test' || chain === 'testnet');
   };
 
   useEffect(() => {
