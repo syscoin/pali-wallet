@@ -1,41 +1,20 @@
-const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
+const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
 const webpack = require('webpack');
-const ExtensionReloader = require('webpack-extension-reloader');
 const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
 const ZipPlugin = require('zip-webpack-plugin');
+const NodePolyfillPlugin = require("node-polyfill-webpack-plugin")
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
 const destPath = path.join(__dirname, 'build');
 const nodeEnv = process.env.NODE_ENV || 'development';
 const targetBrowser = process.env.TARGET_BROWSER;
-
-const extensionReloaderPlugin =
-  nodeEnv === 'development'
-    ? new ExtensionReloader({
-        port: 9090,
-        reloadPage: true,
-        entries: {
-          // TODO: reload manifest on update
-          contentScript: 'contentScript',
-          background: 'background',
-          inpage: 'inject',
-          pali: 'inject',
-          handleWindowProperties: 'inject',
-          extensionPage: ['popup'],
-          trezorScript: 'trezorScript',
-        },
-      })
-    : () => {
-        this.apply = () => {};
-      };
 
 const getExtensionFileType = (browser) => {
   if (browser === 'opera') {
@@ -50,7 +29,7 @@ const getExtensionFileType = (browser) => {
 };
 
 module.exports = {
-  devtool: false, // https://github.com/webpack/webpack/issues/1194#issuecomment-560382342
+  devtool: false, //https://webpack.js.org/configuration/devtool/#root
 
   stats: {
     all: false,
@@ -91,10 +70,11 @@ module.exports = {
       'trezor-usb-permissions.ts'
     ),
   },
-
   output: {
     path: path.join(destPath, targetBrowser),
     filename: 'js/[name].bundle.js',
+    // delete previous build files -> Use instead clean-webpack-plugin
+    clean: true,
   },
 
   resolve: {
@@ -116,7 +96,9 @@ module.exports = {
       tests: path.resolve(__dirname, 'source/tests'),
       utils: path.resolve(__dirname, 'source/utils'),
       helpers: path.resolve(__dirname, 'source/helpers'),
-      fs: require.resolve('fs-extra'),
+    },
+    fallback: {
+      fs: false
     },
   },
 
@@ -135,27 +117,22 @@ module.exports = {
       },
       {
         test: /\.txt$/i,
-        use: [
-          {
-            loader: 'raw-loader',
-            options: {
-              esModule: false,
-            },
-          },
-        ],
-      },
-      {
-        test: /\.(jpg|png)x?$/,
-        loader: 'file-loader',
-        exclude: /node_modules/,
-        options: {
-          name: '[path][name].[ext]',
-          publicPath: '/',
+        type: 'asset/source', // replaced raw-loader
+        generator: {
+          filename: '[path][name][ext]',
         },
       },
       {
-        test: /\.(svg)x?$/,
-        loader: 'file-loader',
+        test: /\.(jpg|png|xlsx|xls|csv)$/i,
+        type: 'asset/resource', // replaced file-loader
+        generator: {
+          filename: '[path][name][ext]',
+        },
+        exclude: /node_modules/,
+      },
+      {
+        test: /\.(svg)$/i,
+        type: 'asset/inline', // replaced file-loader
         exclude: /node_modules/,
       },
       {
@@ -163,16 +140,11 @@ module.exports = {
         loader: 'babel-loader',
         exclude: /node_modules/,
       },
-
       {
         test: /\.less$/,
         use: [
-          {
-            loader: 'style-loader',
-          },
-          {
-            loader: 'css-loader',
-          },
+          'style-loader',
+          'css-loader',
           {
             loader: 'less-loader',
             options: {
@@ -188,20 +160,21 @@ module.exports = {
           },
         ],
       },
-
       {
         test: /\.(ttf)$/,
-        loader: 'url-loader',
+        type: 'asset/resource', // replaced url-loader
+        generator: {
+          filename: '[path][name][ext]',
+        },
       },
-
       {
         test: /\.(sa|sc|c)ss$/,
         use: [
           {
-            loader: MiniCssExtractPlugin.loader, // It creates a CSS file per JS file which contains CSS
+            loader: MiniCssExtractPlugin.loader,
           },
           {
-            loader: 'css-loader', // Takes the CSS files and returns the CSS with imports and url(...) for Webpack
+            loader: 'css-loader',
             options: {
               sourceMap: true,
             },
@@ -214,8 +187,8 @@ module.exports = {
               },
             },
           },
-          'resolve-url-loader', // Rewrites relative paths in url() statements
-          'sass-loader', // Takes the Sass/SCSS file and compiles to the CSS
+          'resolve-url-loader',
+          'sass-loader',
         ],
       },
     ],
@@ -228,19 +201,11 @@ module.exports = {
     new webpack.SourceMapDevToolPlugin({ filename: false }),
     new ForkTsCheckerWebpackPlugin(),
     // environmental variables
-    new webpack.EnvironmentPlugin(['NODE_ENV', 'TARGET_BROWSER']),
-    // delete previous build files
-    new CleanWebpackPlugin({
-      cleanOnceBeforeBuildPatterns: [
-        path.join(process.cwd(), `build/${targetBrowser}`),
-        path.join(
-          process.cwd(),
-          `build/${targetBrowser}.${getExtensionFileType(targetBrowser)}`
-        ),
-      ],
-      cleanStaleWebpackAssets: false,
-      verbose: true,
+    new webpack.DefinePlugin({
+      NODE_ENV: JSON.stringify(nodeEnv),
+      TARGET_BROWSER: JSON.stringify(targetBrowser),
     }),
+
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'app.html'),
       inject: 'body',
@@ -267,26 +232,23 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],
     }),
-    // plugin to enable browser reloading in development mode
-    extensionReloaderPlugin,
+    new NodePolyfillPlugin()
   ],
-
   optimization: {
     minimizer: [
+      new CssMinimizerPlugin(),
       new TerserPlugin({
-        cache: true,
         parallel: true,
         terserOptions: {
+          compress: {
+            drop_console: true,
+          },
           output: {
             comments: false,
           },
         },
+        // in webpack v5, this configuration is moved to the `optimization.minimizer.terserOptions` property
         extractComments: false,
-      }),
-      new OptimizeCSSAssetsPlugin({
-        cssProcessorPluginOptions: {
-          preset: ['default', { discardComments: { removeAll: true } }],
-        },
       }),
       new ZipPlugin({
         path: destPath,
@@ -294,5 +256,13 @@ module.exports = {
         filename: `${targetBrowser}`,
       }),
     ],
+  },
+  devServer: {
+    port: 9090,
+    hot: true,
+    compress: true,
+    watchFiles: {
+      paths: [sourcePath],
+    },
   },
 };
