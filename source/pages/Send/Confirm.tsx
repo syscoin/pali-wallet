@@ -132,35 +132,38 @@ export const SendConfirm = () => {
             ]) as ITxState;
 
             wallet.ethereumTransaction
-              .sendFormattedTransaction({
-                ...restTx,
-                value: wallet.ethereumTransaction.toBigNumber(
-                  Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
-                ),
-                maxPriorityFeePerGas: ethers.utils.parseUnits(
-                  String(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                    )
-                      ? customFee.maxPriorityFeePerGas.toFixed(9)
-                      : fee.maxPriorityFeePerGas.toFixed(9)
+              .sendFormattedTransaction(
+                {
+                  ...restTx,
+                  value: wallet.ethereumTransaction.toBigNumber(
+                    Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
                   ),
-                  9
-                ),
-                maxFeePerGas: ethers.utils.parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? customFee.maxFeePerGas.toFixed(9)
-                      : fee.maxFeePerGas.toFixed(9)
+                  maxPriorityFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(
+                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                      )
+                        ? customFee.maxPriorityFeePerGas.toFixed(9)
+                        : fee.maxPriorityFeePerGas.toFixed(9)
+                    ),
+                    9
                   ),
-                  9
-                ),
-                gasLimit: wallet.ethereumTransaction.toBigNumber(
-                  validateCustomGasLimit
-                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                    : fee.gasLimit
-                ),
-              })
+                  maxFeePerGas: ethers.utils.parseUnits(
+                    String(
+                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                        ? customFee.maxFeePerGas.toFixed(9)
+                        : fee.maxFeePerGas.toFixed(9)
+                    ),
+                    9
+                  ),
+                  gasLimit: wallet.ethereumTransaction.toBigNumber(
+                    validateCustomGasLimit
+                      ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                      : fee.gasLimit
+                  ),
+                },
+                wallet.sendAndSaveTransaction
+              )
               .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
