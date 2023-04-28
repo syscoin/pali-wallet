@@ -82,68 +82,67 @@ const RenderAccountsListByBitcoinBased = (
               </Tooltip>
             ))}
 
-          {activeNetwork.currency !== 'tsys' &&
-            Object.values(accounts.Trezor)
-              .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
-              .map((account, index, { length }) => (
-                <Tooltip
-                  key={account.id}
-                  childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
-                  placement="top-end"
-                  content={account.address}
-                >
-                  <li
-                    className={`${
-                      index + 1 !== length &&
-                      'border-b border-dashed border-gray-500'
-                    } ${
-                      index === 0 ? 'py-3.5' : 'py-4'
-                    } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
+          {Object.values(accounts.Trezor)
+            .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
+            .map((account, index, { length }) => (
+              <Tooltip
+                key={account.id}
+                childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
+                placement="top-end"
+                content={account.address}
+              >
+                <li
+                  className={`${
+                    index + 1 !== length &&
+                    'border-b border-dashed border-gray-500'
+                  } ${
+                    index === 0 ? 'py-3.5' : 'py-4'
+                  } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
                   font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'cursor-not-allowed disabled'
                       : 'cursor-pointer'
                   } transform hover:scale-103
                    transition duration-300`}
-                    onClick={() => {
-                      if (account?.originNetwork.url !== activeNetwork.url) {
-                        return;
-                      }
-                      setActiveAccount(account.id, KeyringAccountType.Trezor);
+                  onClick={() => {
+                    if (account?.originNetwork.url !== activeNetwork.url) {
+                      return;
+                    }
+                    setActiveAccount(account.id, KeyringAccountType.Trezor);
+                  }}
+                  id={`account-${index}`}
+                >
+                  <span
+                    style={{
+                      maxWidth: '16.25rem',
+                      textOverflow: 'ellipsis',
                     }}
-                    id={`account-${index}`}
+                    className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
                   >
-                    <span
+                    <img
+                      src={trezorLogo}
                       style={{
-                        maxWidth: '16.25rem',
-                        textOverflow: 'ellipsis',
+                        filter:
+                          'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                       }}
-                      className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
-                    >
-                      <img
-                        src={trezorLogo}
-                        style={{
-                          filter:
-                            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
-                        }}
-                        className="mr-1 w-7"
-                      ></img>
-                      {account.label}{' '}
-                      {!(account?.originNetwork.url !== activeNetwork.url) &&
-                        `${ellipsis(account.address, 4, 8)}`}
-                    </span>
+                      className="mr-1 w-7"
+                    ></img>
+                    {account.label}{' '}
+                    {!(account?.originNetwork.url !== activeNetwork.url) &&
+                      `(${ellipsis(account.address, 4, 8)})`}
+                  </span>
 
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Trezor && (
-                        <Icon
-                          name="check"
-                          className="mb-1 w-4"
-                          wrapperClassname="absolute right-2.5"
-                        />
-                      )}
-                  </li>
-                </Tooltip>
-              ))}
+                  {activeAccount.id === account.id &&
+                    activeAccount.type === KeyringAccountType.Trezor && (
+                      <Icon
+                        name="check"
+                        className="mb-1 w-4"
+                        wrapperClassname="absolute right-2.5"
+                      />
+                    )}
+                </li>
+              </Tooltip>
+            ))}
         </>
       ) : (
         Object.entries(accounts).map(

@@ -44,6 +44,7 @@ export const initialState: IVaultState = {
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',
+    slip44: 57,
   },
   isBitcoinBased: true,
   isLoadingBalances: false,
