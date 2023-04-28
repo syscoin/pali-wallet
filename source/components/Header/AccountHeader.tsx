@@ -400,7 +400,7 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          {!isTestnet && (
+          {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/account/hardware')}
@@ -415,7 +415,7 @@ const AccountMenu: React.FC = () => {
                 <span className="px-3">Hardware wallet</span>
               </li>
             </Menu.Item>
-          )}
+          }
 
           <Menu.Item>
             <li

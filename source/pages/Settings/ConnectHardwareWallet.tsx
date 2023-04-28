@@ -58,7 +58,8 @@ const ConnectHardwareWalletView: FC = () => {
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
           <p className="text-white text-sm">
-            Select the hardware wallet you'd like to connect to Pali
+            Select the hardware wallet you'd like{' '}
+            {!trezorAccounts.length ? 'to connect' : 'to add account'} to Pali
           </p>
 
           <p
@@ -142,10 +143,10 @@ const ConnectHardwareWalletView: FC = () => {
             <Tooltip
               content={
                 isTestnet &&
-                "Trezor doesn't support SYS testnet. Change your network to be able to connect to trezor."
+                "Trezor doesn't support SYS testnet. Please, change your network to be able to connect to trezor."
               }
             >
-              <p>Connect</p>
+              <p>{!trezorAccounts.length ? 'Connect' : 'Add Account'}</p>
             </Tooltip>
           </NeutralButton>
         </div>
