@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
@@ -23,12 +23,19 @@ export const DetailsView = () => {
 
   const isAsset = id && !hash;
 
+  const { explorer } = activeNetwork;
+
+  const adjustedExplorer = useMemo(
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
+    [explorer]
+  );
+
   const openEthExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.explorer}${isAsset ? 'address' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
+      isAsset ? id : hash
+    }`;
+
+    browser.windows.create({ url });
   };
 
   const openSysExplorer = () => {
@@ -57,8 +64,8 @@ export const DetailsView = () => {
 
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
             <p className="font-normal" style={{ lineHeight: '18px' }}>
-              Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isBitcoinBased ? 'Block' : 'Etherscan'} Explorer?
+              View this {isAsset ? 'asset' : 'transaction'} on{' '}
+              {isBitcoinBased ? 'Syscoin' : ''} Explorer?
             </p>
 
             <Button

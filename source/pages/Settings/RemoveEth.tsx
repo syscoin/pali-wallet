@@ -51,7 +51,7 @@ const RemoveEthView = () => {
   return (
     <Layout title="MANAGE ETH PROVIDER" id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
-        For use another ETH wallet, you can disable window.ethereum injected by
+        To use another ETH wallet, you can disable window.ethereum injected by
         Pali.
       </p>
 

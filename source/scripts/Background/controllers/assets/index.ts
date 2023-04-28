@@ -21,9 +21,21 @@ const AssetsManager = (): IAssetsManager => {
             networkChainId
           );
 
+          const decodedSysAssets = getSysAssets.map((asset) => ({
+            ...asset,
+            symbol: decodeURIComponent(
+              Array.prototype.map
+                .call(
+                  atob(asset.symbol),
+                  (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+                )
+                .join('')
+            ),
+          }));
+
           return {
             ...currentAccount.assets,
-            syscoin: getSysAssets,
+            syscoin: decodedSysAssets,
           };
         } catch (sysUpdateError) {
           return sysUpdateError;

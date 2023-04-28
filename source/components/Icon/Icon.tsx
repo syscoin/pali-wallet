@@ -55,6 +55,7 @@ const icons = {
 interface IIcon {
   className?: string;
   color?: string;
+  disabled?: boolean;
   id?: string;
   name: string;
   rotate?: number;
@@ -70,6 +71,7 @@ export const Icon: FC<IIcon> = ({
   rotate,
   size,
   wrapperClassname,
+  disabled,
 }) => {
   const Component = icons[name];
 
@@ -80,6 +82,7 @@ export const Icon: FC<IIcon> = ({
           className={className}
           style={{ fontSize: size, color }}
           rotate={rotate}
+          disabled={disabled}
         />
       )}
     </div>

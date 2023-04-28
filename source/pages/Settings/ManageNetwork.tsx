@@ -3,7 +3,13 @@ import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
-import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
+import {
+  IconButton,
+  Layout,
+  Icon,
+  NeutralButton,
+  Tooltip,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -11,6 +17,10 @@ import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+
   const { navigate } = useUtils();
   const { wallet } = getController();
 
@@ -76,10 +86,23 @@ const ManageNetworkView = () => {
                   }
                   type="primary"
                   shape="circle"
+                  disabled={
+                    network.chainId === activeNetwork.chainId &&
+                    network.url === activeNetwork.url
+                  }
                 >
                   <Icon
                     name="trash"
-                    className="hover:text-brand-royalblue text-xl"
+                    disabled={
+                      network.chainId === activeNetwork.chainId &&
+                      network.url === activeNetwork.url
+                    }
+                    className={
+                      network.chainId === activeNetwork.chainId &&
+                      network.url === activeNetwork.url
+                        ? 'text-xl'
+                        : 'hover:text-brand-royalblue text-xl'
+                    }
                   />
                 </IconButton>
               )}
@@ -123,16 +146,38 @@ const ManageNetworkView = () => {
               </IconButton>
 
               {!network.default && (
-                <IconButton
-                  onClick={() => removeNetwork('ethereum', network.chainId)}
-                  type="primary"
-                  shape="circle"
+                <Tooltip
+                  content={
+                    network.chainId === activeNetwork.chainId &&
+                    network.url === activeNetwork.url
+                      ? 'You cannot remove the active network'
+                      : ''
+                  }
                 >
-                  <Icon
-                    name="trash"
-                    className="hover:text-brand-royalblue text-xl"
-                  />
-                </IconButton>
+                  <IconButton
+                    onClick={() => removeNetwork('ethereum', network.chainId)}
+                    type="primary"
+                    shape="circle"
+                    disabled={
+                      network.chainId === activeNetwork.chainId &&
+                      network.url === activeNetwork.url
+                    }
+                  >
+                    <Icon
+                      name="trash"
+                      disabled={
+                        network.chainId === activeNetwork.chainId &&
+                        network.url === activeNetwork.url
+                      }
+                      className={
+                        network.chainId === activeNetwork.chainId &&
+                        network.url === activeNetwork.url
+                          ? 'text-xl'
+                          : 'hover:text-brand-royalblue text-xl'
+                      }
+                    />
+                  </IconButton>
+                </Tooltip>
               )}
             </div>
           </li>
