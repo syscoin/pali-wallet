@@ -282,6 +282,10 @@ const MainController = (walletState): IMainController => {
     resolve: (value: { chainId: string; networkVersion: number }) => void,
     reject: (reason?: any) => void
   ) => {
+    if (store.getState().vault.isNetworkChanging) {
+      return;
+    }
+
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
 
@@ -293,6 +297,7 @@ const MainController = (walletState): IMainController => {
 
     const { sucess, wallet, activeChain } =
       await keyringManager.setSignerNetwork(network, chain);
+
     if (sucess) {
       store.dispatch(
         setNetworkChange({
@@ -310,6 +315,7 @@ const MainController = (walletState): IMainController => {
 
       updateUserTransactionsState(false);
 
+      //todo: why do we need to call handleStateChange twice?
       resolve({ chainId: chainId, networkVersion: networkVersion });
       window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
         method: PaliEvents.chainChanged,

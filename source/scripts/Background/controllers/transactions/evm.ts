@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import flatMap from 'lodash/flatMap';
 
 import { IPaliAccount } from 'state/vault/types';
+import { Queue } from './queue';
 
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
@@ -53,11 +54,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
   const pollingEvmTransactions = async (
     currentAccount: IPaliAccount,
-    networkUrl: string
+    networkUrl: string,
+    provider: any
   ) => {
     try {
-      const provider = new ethers.providers.JsonRpcProvider(networkUrl);
-
+      const queue = new Queue(3);
       const latestBlockNumber = await provider.getBlockNumber();
 
       const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
@@ -71,20 +72,30 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
       //Doing this we prevent cases that user is receiving TX from other account and the
       //RPC don't response the TX with Timestamp properly
-      const txsWithTimestamp = await Promise.all(
-        txs.map(async (pollingTx) => {
-          if (pollingTx?.timestamp) {
-            return pollingTx;
-          }
+      queue.execute(
+        async () =>
+          await Promise.all(
+            txs.map(async (pollingTx) => {
+              if (pollingTx?.timestamp) {
+                return pollingTx;
+              }
 
-          const getTxTimestamp = await getFormattedEvmTransactionResponse(
-            provider,
-            pollingTx
-          );
+              const getTxTimestamp = await getFormattedEvmTransactionResponse(
+                provider,
+                pollingTx
+              );
 
-          return getTxTimestamp;
-        })
+              return getTxTimestamp;
+            })
+          )
       );
+
+      const results = await queue.done();
+
+      const txsWithTimestamp = results
+        .filter((result) => result.success)
+        .map(({ result }) => result);
+
       return flatMap(txsWithTimestamp);
     } catch (error) {
       console.log(error);
