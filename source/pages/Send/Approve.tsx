@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -182,10 +183,9 @@ export const ApproveTransactionComponent = () => {
 
       try {
         const response =
-          await wallet.ethereumTransaction.sendFormattedTransaction(
-            newTxValue,
-            wallet.sendAndSaveTransaction
-          );
+          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
+        if (activeAccountMeta.type === KeyringAccountType.Trezor)
+          wallet.sendAndSaveTransaction(response);
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal)

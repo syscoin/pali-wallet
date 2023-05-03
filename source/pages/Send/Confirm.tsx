@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import {
   Layout,
   DefaultModal,
@@ -132,39 +134,38 @@ export const SendConfirm = () => {
             ]) as ITxState;
 
             wallet.ethereumTransaction
-              .sendFormattedTransaction(
-                {
-                  ...restTx,
-                  value: wallet.ethereumTransaction.toBigNumber(
-                    Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
+              .sendFormattedTransaction({
+                ...restTx,
+                value: wallet.ethereumTransaction.toBigNumber(
+                  Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
+                ),
+                maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? customFee.maxPriorityFeePerGas.toFixed(9)
+                      : fee.maxPriorityFeePerGas.toFixed(9)
                   ),
-                  maxPriorityFeePerGas: ethers.utils.parseUnits(
-                    String(
-                      Boolean(
-                        customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                      )
-                        ? customFee.maxPriorityFeePerGas.toFixed(9)
-                        : fee.maxPriorityFeePerGas.toFixed(9)
-                    ),
-                    9
+                  9
+                ),
+                maxFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? customFee.maxFeePerGas.toFixed(9)
+                      : fee.maxFeePerGas.toFixed(9)
                   ),
-                  maxFeePerGas: ethers.utils.parseUnits(
-                    String(
-                      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                        ? customFee.maxFeePerGas.toFixed(9)
-                        : fee.maxFeePerGas.toFixed(9)
-                    ),
-                    9
-                  ),
-                  gasLimit: wallet.ethereumTransaction.toBigNumber(
-                    validateCustomGasLimit
-                      ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                      : fee.gasLimit
-                  ),
-                },
-                wallet.sendAndSaveTransaction
-              )
+                  9
+                ),
+                gasLimit: wallet.ethereumTransaction.toBigNumber(
+                  validateCustomGasLimit
+                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                    : fee.gasLimit
+                ),
+              })
               .then((response) => {
+                if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                  wallet.sendAndSaveTransaction(response);
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
@@ -230,9 +231,10 @@ export const SendConfirm = () => {
                         ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                         : fee.gasLimit * 4
                     ),
-                    saveTrezorTx: wallet.sendAndSaveTransaction,
                   })
                   .then(async (response) => {
+                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                      wallet.sendAndSaveTransaction(response);
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);

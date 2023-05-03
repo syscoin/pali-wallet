@@ -125,36 +125,31 @@ export const SendTransaction = () => {
         ),
       });
       try {
-        const response = await ethereumTransaction.sendFormattedTransaction(
-          {
-            ...tx,
-            nonce: customNonce,
-            maxPriorityFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(
-                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                )
-                  ? customFee.maxPriorityFeePerGas.toFixed(9)
-                  : fee.maxPriorityFeePerGas.toFixed(9)
-              ),
-              9
+        const response = await ethereumTransaction.sendFormattedTransaction({
+          ...tx,
+          nonce: customNonce,
+          maxPriorityFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
+                ? customFee.maxPriorityFeePerGas.toFixed(9)
+                : fee.maxPriorityFeePerGas.toFixed(9)
             ),
-            maxFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                  ? customFee.maxFeePerGas.toFixed(9)
-                  : fee.maxFeePerGas.toFixed(9)
-              ),
-              9
+            9
+          ),
+          maxFeePerGas: ethers.utils.parseUnits(
+            String(
+              Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                ? customFee.maxFeePerGas.toFixed(9)
+                : fee.maxFeePerGas.toFixed(9)
             ),
-            gasLimit: ethereumTransaction.toBigNumber(
-              Boolean(customFee.isCustom && customFee.gasLimit > 0)
-                ? customFee.gasLimit
-                : fee.gasLimit
-            ),
-          },
-          sendAndSaveTransaction
-        );
+            9
+          ),
+          gasLimit: ethereumTransaction.toBigNumber(
+            Boolean(customFee.isCustom && customFee.gasLimit > 0)
+              ? customFee.gasLimit
+              : fee.gasLimit
+          ),
+        });
         setConfirmed(true);
         setLoading(false);
         setConfirmedTx(response);
