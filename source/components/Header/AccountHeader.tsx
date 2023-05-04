@@ -41,7 +41,7 @@ const RenderAccountsListByBitcoinBased = (
         <>
           {Object.values(accounts.HDAccount)
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
-            .map((account, index, { length }) => (
+            .map((account, index) => (
               <Tooltip
                 key={account.id}
                 childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
@@ -50,9 +50,6 @@ const RenderAccountsListByBitcoinBased = (
               >
                 <li
                   className={`${
-                    index + 1 !== length &&
-                    'border-b border-dashed border-gray-500'
-                  } ${
                     index === 0 ? 'py-3.5' : 'py-4'
                   } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
                   font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
@@ -84,7 +81,7 @@ const RenderAccountsListByBitcoinBased = (
 
           {Object.values(accounts.Trezor)
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
-            .map((account, index, { length }) => (
+            .map((account, index) => (
               <Tooltip
                 key={account.id}
                 childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
@@ -93,9 +90,6 @@ const RenderAccountsListByBitcoinBased = (
               >
                 <li
                   className={`${
-                    index + 1 !== length &&
-                    'border-b border-dashed border-gray-500'
-                  } ${
                     index === 0 ? 'py-3.5' : 'py-4'
                   } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
                   font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
@@ -150,7 +144,7 @@ const RenderAccountsListByBitcoinBased = (
             <div key={keyringAccountType}>
               {Object.values(accountTypeAccounts)
                 .filter((account) => account.xpub !== '')
-                .map((account, index, { length }) => (
+                .map((account, index) => (
                   <Tooltip
                     key={account.id}
                     childrenClassName={`${index === 0 && 'mt-1'} flex w-full`}
@@ -165,9 +159,6 @@ const RenderAccountsListByBitcoinBased = (
                   >
                     <li
                       className={`${
-                        index + 1 !== length &&
-                        'border-b border-dashed border-gray-500'
-                      } ${
                         index === 0 ? 'py-3.5' : 'py-4'
                       } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
                   font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
@@ -242,17 +233,20 @@ const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet, dapp } = getController();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const isTestnet = wallet.verifyIfIsTestnet();
   const importedAccounts = Object.values(accounts.Imported);
   const hdAccounts = Object.values(accounts.HDAccount);
+  const trezorAccounts = Object.values(accounts.Trezor);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
 
   //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
   const numberOfAccounts = isBitcoinBased
-    ? Object.values(hdAccounts).filter((acc) => acc.isImported === false).length
-    : Object.keys(hdAccounts).length + Object.keys(importedAccounts).length;
+    ? Object.values(hdAccounts).filter((acc) => acc.isImported === false)
+        .length + Object.keys(trezorAccounts).length
+    : Object.keys(hdAccounts).length +
+      Object.keys(importedAccounts).length +
+      Object.keys(trezorAccounts).length;
 
   let className: string;
   switch (numberOfAccounts) {
