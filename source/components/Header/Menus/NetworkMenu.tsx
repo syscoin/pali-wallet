@@ -57,7 +57,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         Object.keys(networks.syscoin).find(
           (chainId) => `${network.chainId}` === chainId
         ) &&
-        network.slip44 &&
+        `${network.slip44}` !== 'undefined' &&
         activeAccountType === KeyringAccountType.Trezor);
 
     try {
