@@ -3,7 +3,7 @@ const palette = require('./palette.js');
 module.exports = {
   purge: false,
   content: ['./source/*/.{html,js,jsx,ts,tsx}'],
-  darkMode: false, // or 'media' or 'class'
+  media: false, //darkMode is outdated
   theme: {
     extend: {
       colors: palette,
