@@ -8,6 +8,7 @@ import {
   KeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
+  IWalletState,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -261,126 +262,154 @@ const MainController = (walletState): IMainController => {
     network: INetwork,
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> => {
+    let cancelled = false;
     if (currentPromise) {
       currentPromise.cancel();
+      cancelled = true;
     }
 
     const promiseWrapper = createCancellablePromise<{
+      activeChain: INetworkType;
+      chain: string;
       chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
       networkVersion: number;
+      wallet: IWalletState;
     }>((resolve, reject) => {
-      setActiveNetworkLogic(network, chain, resolve, reject);
+      setActiveNetworkLogic(network, chain, cancelled, resolve, reject);
     });
-
     currentPromise = promiseWrapper;
+    promiseWrapper.promise
+      .then(async ({ wallet, activeChain, isBitcoinBased }) => {
+        store.dispatch(
+          setNetworkChange({
+            activeChain,
+            wallet,
+          })
+        );
+        store.dispatch(setIsBitcoinBased(isBitcoinBased));
+        store.dispatch(setIsLoadingBalances(false));
+        await utilsController.setFiat();
+
+        updateAssetsFromCurrentAccount();
+
+        updateUserTransactionsState(false);
+        window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+          method: PaliEvents.chainChanged,
+          params: {
+            chainId: `0x${network.chainId.toString(16)}`,
+            networkVersion: network.chainId,
+          },
+        });
+
+        switch (isBitcoinBased) {
+          case true:
+            const isTestnet = verifyIfIsTestnet();
+
+            window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+              method: PaliEvents.isTestnet,
+              params: { isTestnet },
+            });
+            break;
+          case false:
+            window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+              method: PaliEvents.isTestnet,
+              params: { isTestnet: undefined },
+            });
+          default:
+            break;
+        }
+
+        store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
+        return;
+      })
+      .catch((reason) => {
+        if (reason === 'Network change cancelled') {
+          console.error('User asked to switch network - slow connection');
+        } else {
+          const { activeNetwork, isBitcoinBased } = store.getState().vault;
+          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+            method: PaliEvents.chainChanged,
+            params: {
+              chainId: `0x${activeNetwork.chainId.toString(16)}`,
+              networkVersion: activeNetwork.chainId,
+            },
+          });
+          window.controller.dapp.handleBlockExplorerChange(
+            PaliSyscoinEvents.blockExplorerChanged,
+            {
+              method: PaliSyscoinEvents.blockExplorerChanged,
+              params: isBitcoinBased ? network.url : null,
+            }
+          );
+
+          switch (isBitcoinBased) {
+            case true:
+              const isTestnet = verifyIfIsTestnet();
+
+              window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+                method: PaliEvents.isTestnet,
+                params: { isTestnet },
+              });
+              break;
+            case false:
+              window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+                method: PaliEvents.isTestnet,
+                params: { isTestnet: undefined },
+              });
+            default:
+              break;
+          }
+        }
+        store.dispatch(setStoreError(true));
+        store.dispatch(setIsNetworkChanging(false));
+        store.dispatch(setIsLoadingBalances(false));
+      });
     return promiseWrapper.promise;
   };
-
   const setActiveNetworkLogic = async (
     network: INetwork,
     chain: string,
-    resolve: (value: { chainId: string; networkVersion: number }) => void,
+    cancelled: boolean,
+    resolve: (value: {
+      activeChain: INetworkType;
+      chain: string;
+      chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
+      networkVersion: number;
+      wallet: IWalletState;
+    }) => void,
     reject: (reason?: any) => void
   ) => {
+    if (store.getState().vault.isNetworkChanging && !cancelled) {
+      return;
+    }
+
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
 
-    const { activeNetwork } = store.getState().vault;
-
     const isBitcoinBased = chain === INetworkType.Syscoin;
-
-    store.dispatch(setIsBitcoinBased(isBitcoinBased));
 
     const { sucess, wallet, activeChain } =
       await keyringManager.setSignerNetwork(network, chain);
+    const chainId = network.chainId.toString(16);
+    const networkVersion = network.chainId;
     if (sucess) {
-      store.dispatch(
-        setNetworkChange({
-          activeChain,
-          wallet,
-        })
-      );
-      const isTestnet = verifyIfIsTestnet();
-
-      const chainId = network.chainId.toString(16);
-      const networkVersion = network.chainId;
-      store.dispatch(setIsLoadingBalances(false));
-      await utilsController.setFiat();
-
-      updateAssetsFromCurrentAccount();
-
-      updateUserTransactionsState(false);
-
-      resolve({ chainId: chainId, networkVersion: networkVersion });
-      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-        method: PaliEvents.chainChanged,
-        params: {
-          chainId: `0x${network.chainId.toString(16)}`,
-          networkVersion: network.chainId,
-        },
+      resolve({
+        activeChain,
+        chain,
+        chainId,
+        isBitcoinBased,
+        network,
+        networkVersion,
+        wallet,
       });
-
-      switch (isBitcoinBased) {
-        case true:
-          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet },
-          });
-          break;
-        case false:
-          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet: undefined },
-          });
-        default:
-          break;
-      }
-
-      store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
-      return;
     } else {
-      console.error(
-        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-      );
       reject(
         'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
       );
-      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-        method: PaliEvents.chainChanged,
-        params: {
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
-          networkVersion: activeNetwork.chainId,
-        },
-      });
-      window.controller.dapp.handleBlockExplorerChange(
-        PaliSyscoinEvents.blockExplorerChanged,
-        {
-          method: PaliSyscoinEvents.blockExplorerChanged,
-          params: isBitcoinBased ? network.url : null,
-        }
-      );
-
-      switch (isBitcoinBased) {
-        case true:
-          const isTestnet = verifyIfIsTestnet();
-
-          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet },
-          });
-          break;
-        case false:
-          window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet: undefined },
-          });
-        default:
-          break;
-      }
-
-      store.dispatch(setStoreError(true));
-      store.dispatch(setIsNetworkChanging(false));
-      store.dispatch(setIsLoadingBalances(false));
     }
   };
 

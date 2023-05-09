@@ -16,11 +16,15 @@ export const TransactionsList = ({
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
+    activeAccount,
+    accounts,
   } = useSelector((state: RootState) => state.vault);
+
+  const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
   const { navigate } = useUtils();
 
-  const getTxType = (tx: any) => {
+  const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
       if (tx.tokenType === 'SPTAssetActivate') {
         return 'SPT creation';
@@ -37,7 +41,9 @@ export const TransactionsList = ({
       return 'Transaction';
     }
 
-    return `Type: ${tx.type}`;
+    const txLabel = isTxSent ? 'Sent' : 'Received';
+
+    return `${txLabel}`;
   };
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
@@ -91,6 +97,10 @@ export const TransactionsList = ({
         }
       );
 
+    const isTxSent = isBitcoinBased
+      ? false
+      : tx.from.toLowerCase() === currentAccount.address;
+
     return (
       tx[blocktime] && (
         <Fragment key={uniqueId(tx[txid])}>
@@ -102,27 +112,37 @@ export const TransactionsList = ({
 
           <li className="py-2 border-b border-dashed border-dashed-dark">
             <div className="relative flex items-center justify-between text-xs">
-              <div>
-                <p>{ellipsis(tx[txid], 4, 14)}</p>
+              <div className="flex items-center">
+                {!isBitcoinBased && (
+                  <Icon
+                    name={isTxSent ? 'arrow-up' : 'arrow-down'}
+                    className="mx-2"
+                  />
+                )}
+                <div className="flex flex-row">
+                  <div>
+                    <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                <p
-                  className={
-                    isConfirmed ? 'text-warning-success' : 'text-yellow-300'
-                  }
-                >
-                  {isConfirmed ? 'Confirmed' : 'Pending'}
-                </p>
+                    <p
+                      className={
+                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
+                      }
+                    >
+                      {isConfirmed ? 'Confirmed' : 'Pending'}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div
                 className={`absolute flex ${
-                  isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
+                  isBitcoinBased ? 'right-20 w-20' : 'right-28 w-14'
                 }`}
               >
                 <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
                   <p className="text-blue-300">{timestamp}</p>
 
-                  <p>{getTxType(tx)}</p>
+                  <p>{getTxType(tx, isTxSent)}</p>
                 </div>
               </div>
 

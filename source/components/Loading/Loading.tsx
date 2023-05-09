@@ -56,7 +56,6 @@ export const Loading = ({
       // Set the Default UTX0 account to user can return safely to UTX0 Syscoin Network
       wallet.setActiveAccount(0, KeyringAccountType.HDAccount);
     }
-
     await wallet.setActiveNetwork(correctSyscoinNetwork, 'syscoin');
   };
 

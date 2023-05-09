@@ -6,7 +6,6 @@ export * from './isNft';
 export * from './logger';
 export * from './network';
 export * from './notifications';
-export * from './tokens';
 export * from './formatTransactionValue';
 export * from './transactions';
 export * from './removeScientificNotation';
