@@ -11,11 +11,13 @@ import {
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
+import { Queue } from '../transactions/queue';
 import { INetworksVault, IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
+
 const EvmAssetsController = (): IEvmAssetsController => {
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
@@ -202,33 +204,45 @@ const EvmAssetsController = (): IEvmAssetsController => {
     networks: INetworksVault
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(account.assets.ethereum)) return [];
+    const queue = new Queue(3);
 
     try {
-      const updatedTokens = (await Promise.all(
-        account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
-          const provider = new ethers.providers.JsonRpcProvider(
-            networks.ethereum[vaultAssets.chainId].url
-          );
+      queue.execute(
+        async () =>
+          await Promise.all(
+            account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
+              const provider = new ethers.providers.JsonRpcProvider(
+                networks.ethereum[vaultAssets.chainId].url
+              );
 
-          const _contract = new ethers.Contract(
-            vaultAssets.contractAddress,
-            vaultAssets.isNft ? getErc21Abi() : getErc20Abi(),
-            provider
-          );
+              const _contract = new ethers.Contract(
+                vaultAssets.contractAddress,
+                vaultAssets.isNft ? getErc21Abi() : getErc20Abi(),
+                provider
+              );
 
-          const balanceCallMethod = await _contract.balanceOf(account.address);
+              const balanceCallMethod = await _contract.balanceOf(
+                account.address
+              );
 
-          const balance = vaultAssets.isNft
-            ? Number(balanceCallMethod)
-            : `${balanceCallMethod / 10 ** Number(vaultAssets.decimals)}`;
+              const balance = vaultAssets.isNft
+                ? Number(balanceCallMethod)
+                : `${balanceCallMethod / 10 ** Number(vaultAssets.decimals)}`;
 
-          const formattedBalance = vaultAssets.isNft
-            ? balance
-            : floor(parseFloat(balance as string), 4);
+              const formattedBalance = vaultAssets.isNft
+                ? balance
+                : floor(parseFloat(balance as string), 4);
 
-          return { ...vaultAssets, balance: formattedBalance };
-        })
-      )) as ITokenEthProps[];
+              return { ...vaultAssets, balance: formattedBalance };
+            })
+          )
+      );
+
+      const results = await queue.done();
+
+      const updatedTokens = results
+        .filter((result) => result.success)
+        .map(({ result }) => result);
 
       return validateAndManageUserAssets(
         true,

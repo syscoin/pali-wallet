@@ -105,7 +105,8 @@ export interface IEvmTransactionsController {
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
     currentAccount: IPaliAccount,
-    networkUrl: string
+    networkUrl: string,
+    provider: any
   ) => Promise<IEvmTransactionResponse[]>;
 }
 
