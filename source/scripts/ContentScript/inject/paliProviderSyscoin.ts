@@ -2,7 +2,7 @@ import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
-import { EMITTED_NOTIFICATIONS, PALI_ETHEREUM_METHODS } from './utils';
+import { EMITTED_NOTIFICATIONS } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
