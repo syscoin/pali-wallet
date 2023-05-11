@@ -581,12 +581,19 @@ const MainController = (walletState): IMainController => {
     index: string
   ) => {
     const { accounts } = store.getState().vault;
-    //todo: this function was renamed we should update it
-    const importedAccount = await keyringManager.importTrezorAccount(
-      coin,
-      slip44,
-      index
-    );
+    let importedAccount;
+    try {
+      importedAccount = await keyringManager.importTrezorAccount(
+        coin,
+        slip44,
+        index
+      );
+    } catch (error) {
+      console.error(error);
+      throw new Error(
+        'Could not import your account, please try again: ' + error.message
+      );
+    }
     const paliImp: IPaliAccount = {
       ...importedAccount,
       assets: {

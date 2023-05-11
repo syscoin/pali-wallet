@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -14,7 +15,7 @@ const ConnectHardwareWalletView: FC = () => {
   const { activeNetwork, isBitcoinBased, accounts } = useSelector(
     (state: RootState) => state.vault
   );
-
+  const { alert, navigate } = useUtils();
   const trezorAccounts = Object.values(accounts.Trezor);
 
   const { slip44 } = activeNetwork;
@@ -22,11 +23,18 @@ const ConnectHardwareWalletView: FC = () => {
   const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    await controller.wallet.importTrezorAccount(
-      isBitcoinBased ? activeNetwork.currency : 'eth',
-      `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-      `${trezorAccounts.length}`
-    );
+    try {
+      await controller.wallet.importTrezorAccount(
+        isBitcoinBased ? activeNetwork.currency : 'eth',
+        `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+        `${trezorAccounts.length}`
+      );
+      navigate('/home');
+    } catch (error) {
+      console.log(error);
+      alert.removeAll();
+      alert.error('Error creating hardware wallet.');
+    }
   };
 
   const verifyIfIsTestnet = async () => {
