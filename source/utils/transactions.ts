@@ -4,6 +4,8 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { ITransactionParams, ITxState } from 'types/transactions';
 
+import { formatCurrency, truncate } from './format';
+
 export const getAssetBalance = (
   asset: any,
   activeAccount: IKeyringAccountState,
@@ -21,7 +23,15 @@ export const getAssetBalance = (
     }`;
   }
 
-  return `${asset.balance.toFixed(8)} ${asset.symbol}`;
+  const formattedBalance = truncate(
+    formatCurrency(
+      String(+asset.balance / 10 ** asset.decimals),
+      asset.decimals
+    ),
+    14
+  );
+
+  return `${formattedBalance} ${asset.symbol}`;
 };
 
 export const omitTransactionObjectData = (
