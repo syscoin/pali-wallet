@@ -56,8 +56,8 @@ export const SendSys = () => {
     });
   }, [form, handleGetFee]);
 
-  const assets = activeAccount.assets
-    ? Object.values(activeAccount.assets)
+  const assets = activeAccount.assets.syscoin
+    ? Object.values(activeAccount.assets.syscoin)
     : [];
 
   const hasAccountAssets = assets && assets.length > 0;
