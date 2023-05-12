@@ -611,6 +611,7 @@ const MainController = (walletState): IMainController => {
         },
       })
     );
+    keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );

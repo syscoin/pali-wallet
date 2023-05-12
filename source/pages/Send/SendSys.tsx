@@ -62,6 +62,10 @@ export const SendSys = () => {
 
   const hasAccountAssets = assets && assets.length > 0;
 
+  const balance = selectedAsset
+    ? selectedAsset.balance
+    : Number(activeAccount?.balances.syscoin);
+
   const handleSelectedAsset = (item: number) => {
     if (assets) {
       const getAsset = assets.find((asset: any) => asset.assetGuid === item);
@@ -367,36 +371,40 @@ export const SendSys = () => {
             </div>
           </div>
 
-          <Form.Item
-            name="amount"
-            className="md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  const balance = selectedAsset
-                    ? selectedAsset.balance
-                    : Number(activeAccount?.balances.syscoin);
-
-                  if (value <= balance) {
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
+          <div className="flex w-80 md:w-96">
+            <Form.Item
+              name="amount"
+              className="w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
                 },
-              }),
-            ]}
-          >
-            <Input
-              className="input-medium"
-              type="number"
-              placeholder="Amount"
-            />
-          </Form.Item>
+                () => ({
+                  validator(_, value) {
+                    if (value <= balance) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject();
+                  },
+                }),
+              ]}
+            >
+              <Input
+                className="mixed-right-border-input"
+                type="number"
+                placeholder="Amount"
+              />
+            </Form.Item>
+            <span
+              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
+              onClick={() => form.setFieldValue('amount', balance)}
+            >
+              Max
+            </span>
+          </div>
 
           <Fee disabled={true} recommend={recommendedFee} form={form} />
 
