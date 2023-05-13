@@ -131,6 +131,10 @@ div[role='alert'] {
   @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full outline-none;
 }
 
+.mixed-double-border-input .ant-input {
+  @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus outline-none;
+}
+
 .mixed-right-border-input .ant-input {
   @apply block flex-1 p-3 w-full min-w-0 text-left text-sm bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full outline-none;
 }

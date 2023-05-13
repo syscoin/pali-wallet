@@ -1880,17 +1880,21 @@
     read-package-json-fast "^2.0.3"
     which "^2.0.2"
 
-"@pollum-io/sysweb3-core@file:../sysweb3/packages/sysweb3-core/dist":
-  version "1.0.22"
+"@pollum-io/sysweb3-core@1.0.26":
+  version "1.0.26"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
+  integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@file:../sysweb3/packages/sysweb3-keyring/dist":
-  version "1.0.450"
+"@pollum-io/sysweb3-keyring@1.0.451":
+  version "1.0.451"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.451.tgz#546ac241c816fdf49b1912120f49755dd71e6dec"
+  integrity sha512-BGNpsljBqT0/r5H8jyM87toNmap3n0pa4QhV8ssR35nYxB4wWR5KPszxp599tz/PTQVk+hMlvmJvIO7fQ4/QBQ==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
-    "@pollum-io/sysweb3-core" "file:../sysweb3/packages/sysweb3-core/dist"
-    "@pollum-io/sysweb3-network" "file:../sysweb3/packages/sysweb3-network/dist"
-    "@pollum-io/sysweb3-utils" "file:../sysweb3/packages/sysweb3-utils/dist"
+    "@pollum-io/sysweb3-core" "1.0.26"
+    "@pollum-io/sysweb3-network" "1.0.92"
+    "@pollum-io/sysweb3-utils" "1.1.223"
     "@trezor/connect-web" "^9.0.7"
     "@trezor/utxo-lib" "^1.0.4"
     axios "^0.26.1"
@@ -1914,8 +1918,10 @@
     web3 "^1.7.1"
     web3-utils "^1.7.1"
 
-"@pollum-io/sysweb3-network@file:../sysweb3/packages/sysweb3-network/dist":
-  version "1.0.91"
+"@pollum-io/sysweb3-network@1.0.92":
+  version "1.0.92"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-network/-/sysweb3-network-1.0.92.tgz#1d384790230a1f2846e33a7912d37019f7dfd3cc"
+  integrity sha512-UMFg0QYSiCnvE/oA1ClsC/zqTmTrRwGTX7UokqmK8Kqo0sGn+GDvy1n+PAcc09AvN4oTK8v0Z1su7Tbox+MF2Q==
   dependencies:
     axios "^0.26.1"
     bip44-constants "^114.0.0"
@@ -1924,8 +1930,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@file:../sysweb3/packages/sysweb3-utils/dist":
-  version "1.1.222"
+"@pollum-io/sysweb3-utils@1.1.223":
+  version "1.1.223"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.223.tgz#ace70f635e62e18fb659b82fced7ea94e06f3161"
+  integrity sha512-y4HvfVe7mVFoj7Hdyn2X4Ny7IdCcVurmpqu7bFkWRKUOCb1zYKWBk/XhpTgryAiFu676PJ6U5X75N2SuhRpiEQ==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
