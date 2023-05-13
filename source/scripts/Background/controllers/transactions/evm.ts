@@ -2,8 +2,8 @@ import { ethers } from 'ethers';
 import flatMap from 'lodash/flatMap';
 
 import { IPaliAccount } from 'state/vault/types';
-import { Queue } from './queue';
 
+import { Queue } from './queue';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,

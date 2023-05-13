@@ -158,7 +158,7 @@ export const shouldInjectProvider = () =>
   documentElementCheck() &&
   !blockedDomainCheck();
 
-const injectScriptFile = (file: string, id: string) => {
+export const injectScriptFile = (file: string, id: string) => {
   try {
     switch (id) {
       case 'removeProperty':
@@ -176,7 +176,7 @@ const injectScriptFile = (file: string, id: string) => {
     }
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
-    scriptTag.src = browser.runtime.getURL(file);
+    scriptTag.src = file.includes('http') ? file : browser.runtime.getURL(file);
     scriptTag.setAttribute('id', id);
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {

@@ -3,6 +3,8 @@ import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
@@ -105,6 +107,8 @@ export const SendNTokenTransaction = () => {
               ),
             })
             .then((response) => {
+              if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                sendAndSaveTransaction(response);
               setConfirmedTx(response);
               setConfirmed(true);
               setLoading(false);
