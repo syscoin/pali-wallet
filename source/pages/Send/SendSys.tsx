@@ -56,11 +56,15 @@ export const SendSys = () => {
     });
   }, [form, handleGetFee]);
 
-  const assets = activeAccount.assets
-    ? Object.values(activeAccount.assets)
+  const assets = activeAccount.assets.syscoin
+    ? Object.values(activeAccount.assets.syscoin)
     : [];
 
   const hasAccountAssets = assets && assets.length > 0;
+
+  const balance = selectedAsset
+    ? selectedAsset.balance
+    : Number(activeAccount?.balances.syscoin);
 
   const handleSelectedAsset = (item: number) => {
     if (assets) {
@@ -251,9 +255,16 @@ export const SendSys = () => {
                                     <Menu.Item as="div" key={uniqueId()}>
                                       <Menu.Item>
                                         <button
-                                          onClick={() =>
-                                            handleSelectedAsset(item.assetGuid)
-                                          }
+                                          onClick={() => {
+                                            if (activeAccount.isTrezorWallet) {
+                                              alert.removeAll();
+                                              alert.error(
+                                                'Cannot send custom token with Trezor Account.'
+                                              );
+                                              return;
+                                            }
+                                            handleSelectedAsset(item.assetGuid);
+                                          }}
                                           className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                         >
                                           <p>{item?.symbol}</p>
@@ -360,36 +371,42 @@ export const SendSys = () => {
             </div>
           </div>
 
-          <Form.Item
-            name="amount"
-            className="md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  const balance = selectedAsset
-                    ? selectedAsset.balance
-                    : Number(activeAccount?.balances.syscoin);
-
-                  if (value <= balance) {
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
+          <div className="flex w-80 md:w-96">
+            <Form.Item
+              name="amount"
+              className="w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
                 },
-              }),
-            ]}
-          >
-            <Input
-              className="input-medium"
-              type="number"
-              placeholder="Amount"
-            />
-          </Form.Item>
+                () => ({
+                  validator(_, value) {
+                    if (value <= balance) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject();
+                  },
+                }),
+              ]}
+            >
+              <Input
+                className="mixed-right-border-input"
+                type="number"
+                placeholder="Amount"
+              />
+            </Form.Item>
+            <span
+              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
+              onClick={() =>
+                form.setFieldValue('amount', balance - 5 * recommendedFee)
+              }
+            >
+              Max
+            </span>
+          </div>
 
           <Fee disabled={true} recommend={recommendedFee} form={form} />
 

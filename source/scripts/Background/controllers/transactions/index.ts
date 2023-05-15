@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 import { IPaliAccount } from 'state/vault/types';
 
 import EvmTransactionsController from './evm';
@@ -25,10 +27,15 @@ const TransactionsManager = (): ITransactionsManager => {
         }
       case false:
         try {
+          const provider = new ethers.providers.JsonRpcProvider(
+            activeNetworkUrl
+          );
+
           const getEvmTxs =
             await EvmTransactionsController().pollingEvmTransactions(
               currentAccount,
-              activeNetworkUrl
+              activeNetworkUrl,
+              provider
             );
 
           return getEvmTxs;

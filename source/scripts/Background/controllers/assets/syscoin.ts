@@ -16,7 +16,16 @@ const SysAssetsControler = (): ISysAssetsController => {
       if (metadata && metadata.symbol) {
         const sysAssetToAdd = {
           ...metadata,
-          symbol: metadata.symbol ? atob(String(metadata.symbol)) : '',
+          symbol: metadata.symbol
+            ? decodeURIComponent(
+                Array.prototype.map
+                  .call(
+                    atob(metadata.symbol),
+                    (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+                  )
+                  .join('')
+              )
+            : '',
         } as ITokenSysProps;
 
         return sysAssetToAdd;
@@ -68,10 +77,24 @@ const SysAssetsControler = (): ISysAssetsController => {
           return { ...asset, chainId: networkChainId };
         });
 
-        return validateAndManageUserAssets(
+        const treatedAssets = validateAndManageUserAssets(
           false,
           assetsWithChain
         ) as ISysTokensAssetReponse[];
+        const decodedSysAssets = treatedAssets.map((asset) => ({
+          ...asset,
+          symbol: asset.symbol
+            ? decodeURIComponent(
+                Array.prototype.map
+                  .call(
+                    atob(asset.symbol),
+                    (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
+                  )
+                  .join('')
+              )
+            : '',
+        }));
+        return decodedSysAssets;
       }
 
       return [];

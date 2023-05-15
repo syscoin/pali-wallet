@@ -17,6 +17,7 @@ export const verifyZerosInBalanceAndFormat = (
   balance: number,
   precision: number
 ): string => {
+  if (balance === 0) return '0';
   if (!balance) return;
 
   const fullValue = removeScientificNotation(balance) as number;
@@ -34,14 +35,12 @@ export const verifyZerosInBalanceAndFormat = (
       secondValueSplitted !== false &&
       Number(secondValueSplitted) === 0,
   ];
-
   const defaultPrecisionValidated =
     secondValueSplitted === false ? 0 : precision;
 
   const fractionValidation = valuesValidations.every(
     (validation) => validation === true
   );
-
   const formattedAndTruncatedValue = truncateNumberWithoutRound(
     fullValue,
     fractionValidation ? precision : defaultPrecisionValidated

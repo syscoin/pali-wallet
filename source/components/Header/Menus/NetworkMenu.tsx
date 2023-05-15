@@ -3,6 +3,7 @@ import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon } from 'components/index';
@@ -10,13 +11,26 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
-export const NetworkMenu: React.FC = () => {
+interface INetworkComponent {
+  setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setSelectedNetwork: React.Dispatch<
+    React.SetStateAction<{ chain: string; network: INetwork }>
+  >;
+}
+
+export const NetworkMenu: React.FC<INetworkComponent> = (
+  props: INetworkComponent
+) => {
+  const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
   const { wallet } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const {
+    activeAccount: { type: activeAccountType },
+  } = useSelector((state: RootState) => state.vault);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -32,7 +46,25 @@ export const NetworkMenu: React.FC = () => {
   const { navigate } = useUtils();
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    setSelectedNetwork({ network, chain });
+    const cannotContinueWithTrezorAccount =
+      // verify if user are on bitcoinBased network and if current account is Trezor-based
+      (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+      // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+      (Object.keys(networks.ethereum).find(
+        (chainId) => `${activeNetwork.chainId}` === chainId
+      ) &&
+        Object.keys(networks.syscoin).find(
+          (chainId) => `${network.chainId}` === chainId
+        ) &&
+        `${network.slip44}` !== 'undefined' &&
+        activeAccountType === KeyringAccountType.Trezor);
+
     try {
+      if (cannotContinueWithTrezorAccount) {
+        setActiveAccountModalIsOpen(true);
+        return;
+      }
       await wallet.setActiveNetwork(network, chain);
     } catch (networkError) {
       navigate('/home');

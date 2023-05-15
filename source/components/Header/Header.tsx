@@ -2,12 +2,15 @@ import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { AccountHeader } from '.';
 import { GeneralMenu, NetworkMenu } from './Menus';
+import { SetActiveAccountModal } from './SetActiveAccountModal';
 
 interface IHeader {
   accountHeader?: boolean;
@@ -36,6 +39,11 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     description: '',
     title: '',
   });
+  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [selectedNetwork, setSelectedNetwork] = useState<{
+    chain: string;
+    network: INetwork;
+  }>();
 
   useEffect(() => {
     if (error) {
@@ -64,9 +72,17 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     <div className={accountHeader ? 'pb-32' : 'pb-12'}>
       <div className="fixed z-10 w-full md:max-w-2xl">
         <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
-          <NetworkMenu />
+          <NetworkMenu
+            setActiveAccountModalIsOpen={setIsOpen}
+            setSelectedNetwork={setSelectedNetwork}
+          />
 
           <GeneralMenu />
+          <SetActiveAccountModal
+            showModal={isOpen}
+            setIsOpen={setIsOpen}
+            selectedNetwork={selectedNetwork}
+          />
 
           <ErrorModal
             title="Error switching networks"

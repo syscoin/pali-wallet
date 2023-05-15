@@ -64,19 +64,19 @@ const EthSign: React.FC<ISign> = () => {
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
         if (data.eventName === 'eth_signTypedData') {
-          response = ethereumTransaction.signTypedData(
+          response = await ethereumTransaction.signTypedData(
             address,
             typedData,
             'V1'
           );
         } else if (data.eventName === 'eth_signTypedData_v3') {
-          response = ethereumTransaction.signTypedData(
+          response = await ethereumTransaction.signTypedData(
             address,
             typedData,
             'V3'
           );
         } else if (data.eventName === 'eth_signTypedData_v4') {
-          response = ethereumTransaction.signTypedData(
+          response = await ethereumTransaction.signTypedData(
             address,
             typedData,
             'V4'
@@ -89,6 +89,7 @@ const EthSign: React.FC<ISign> = () => {
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      console.log(error);
       setErrorMsg(error.message);
 
       setTimeout(window.close, 40000);

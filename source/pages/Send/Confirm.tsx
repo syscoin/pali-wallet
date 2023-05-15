@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import {
   Layout,
   DefaultModal,
@@ -86,7 +88,7 @@ export const SendConfirm = () => {
         case isBitcoinBased === true:
           try {
             wallet.syscoinTransaction
-              .sendTransaction(basicTxValues)
+              .sendTransaction(basicTxValues, activeAccount.isTrezorWallet)
               .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
@@ -165,6 +167,8 @@ export const SendConfirm = () => {
                 ),
               })
               .then((response) => {
+                if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                  wallet.sendAndSaveTransaction(response);
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
@@ -232,6 +236,8 @@ export const SendConfirm = () => {
                     ),
                   })
                   .then(async (response) => {
+                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                      wallet.sendAndSaveTransaction(response);
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);

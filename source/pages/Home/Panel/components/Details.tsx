@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, Button, Icon } from 'components/index';
 import { RootState } from 'state/store';
@@ -34,16 +33,14 @@ export const DetailsView = () => {
     const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
       isAsset ? id : hash
     }`;
-
-    browser.windows.create({ url });
+    window.open(url, '_blank');
   };
 
   const openSysExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.url}${isAsset ? 'asset' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    window.open(
+      `${activeNetwork.url}${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`,
+      '_blank'
+    );
   };
 
   const isLoading = (isAsset && !id) || (!isAsset && !hash);

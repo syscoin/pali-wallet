@@ -1,5 +1,7 @@
 import {
   initialActiveHdAccountState,
+  initialActiveImportedAccountState,
+  initialActiveTrezorAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
 
@@ -55,7 +57,9 @@ describe('Vault store actions', () => {
       })
     );
 
-    expect(newState.accounts[MOCK_ACCOUNT.id]).toEqual(MOCK_ACCOUNT);
+    expect(
+      newState.accounts[KeyringAccountType.HDAccount][MOCK_ACCOUNT.id]
+    ).toEqual(MOCK_ACCOUNT);
   });
 
   describe('accounts removal methods', () => {
@@ -84,8 +88,12 @@ describe('Vault store actions', () => {
       };
       const newState = reducer(stateWithAccounts, removeAccount(payload));
 
-      expect(newState.accounts[fakeAccount1.id]).not.toBeDefined();
-      expect(newState.accounts[fakeAccount2.id]).toBeDefined();
+      expect(
+        newState.accounts[KeyringAccountType.HDAccount][fakeAccount1.id]
+      ).not.toBeDefined();
+      expect(
+        newState.accounts[KeyringAccountType.HDAccount][fakeAccount2.id]
+      ).toBeDefined();
     });
 
     //* removeAccounts
@@ -93,9 +101,26 @@ describe('Vault store actions', () => {
       const newState = reducer(stateWithAccounts, removeAccounts());
 
       expect(newState.accounts).toEqual({
-        0: {
-          ...initialActiveHdAccountState,
-          assets: { syscoin: [], ethereum: [] },
+        HDAccount: {
+          0: {
+            ...initialActiveHdAccountState,
+            assets: { syscoin: [], ethereum: [] },
+            transactions: [],
+          },
+        },
+        Imported: {
+          0: {
+            ...initialActiveImportedAccountState,
+            assets: { syscoin: [], ethereum: [] },
+            transactions: [],
+          },
+        },
+        Trezor: {
+          0: {
+            ...initialActiveTrezorAccountState,
+            assets: { syscoin: [], ethereum: [] },
+            transactions: [],
+          },
         },
       });
     });
@@ -166,7 +191,7 @@ describe('Vault store actions', () => {
     };
     const newState = reducer(STATE_W_ACCOUNT, setAccountLabel(payload));
 
-    const account = newState.accounts[payload.id];
+    const account = newState.accounts[KeyringAccountType.HDAccount][payload.id];
     expect(account.label).toEqual(payload.label);
   });
 
