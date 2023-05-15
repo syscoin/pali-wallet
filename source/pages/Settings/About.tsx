@@ -71,7 +71,7 @@ const AboutView: FC = () => {
               >
                 <Icon name="copy" className="text-xs" id="copy-address-btn" />
               </IconButton>
-              {copied && showSuccessAlert()}
+              <>{copied ? showSuccessAlert() : null}</>
             </div>
           </div>
         </SimpleCard>

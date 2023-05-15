@@ -10,7 +10,7 @@ export const LogoHeader: React.FC = () => {
   return (
     <div className="relative">
       <img
-        src={`/${LogoImage}`}
+        src={`${LogoImage}`}
         className="max-w-40 mt-4 mx-auto w-40"
         alt="pali"
       />
