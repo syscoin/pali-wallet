@@ -17,6 +17,7 @@ import {
   INetworkType,
 } from '@pollum-io/sysweb3-network';
 
+import { resetPolling } from '..';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -254,8 +255,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-
-    getLatestUpdateForCurrentAccount();
+    resetPolling();
   };
 
   const setActiveNetwork = async (
