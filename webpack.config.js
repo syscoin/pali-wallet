@@ -8,7 +8,7 @@ const TerserPlugin = require('terser-webpack-plugin');
 const webpack = require('webpack');
 const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
 const ZipPlugin = require('zip-webpack-plugin');
-const NodePolyfillPlugin = require("node-polyfill-webpack-plugin")
+const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -98,7 +98,7 @@ module.exports = {
       helpers: path.resolve(__dirname, 'source/helpers'),
     },
     fallback: {
-      fs: false
+      fs: false,
     },
   },
 
@@ -232,7 +232,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],
     }),
-    new NodePolyfillPlugin()
+    new NodePolyfillPlugin(),
   ],
   optimization: {
     minimizer: [
@@ -259,10 +259,8 @@ module.exports = {
   },
   devServer: {
     port: 9090,
-    hot: true,
     compress: true,
-    watchFiles: {
-      paths: [sourcePath],
-    },
+    hot: true,
+    watchFiles: ['*'],
   },
 };
