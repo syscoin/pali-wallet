@@ -12,7 +12,6 @@ import {
   NOOP,
   isValidChainId,
   isValidNetworkVersion,
-  PALI_UTXO_METHODS,
 } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention

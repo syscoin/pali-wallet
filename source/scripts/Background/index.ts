@@ -138,9 +138,17 @@ async function checkForUpdates() {
     isLoadingBalances,
     isLoadingTxs,
     isNetworkChanging,
+    lastLogin,
+    accounts,
   } = store.getState().vault;
 
+  const verifyIfUserIsNotRegistered = lastLogin === 0;
+
+  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
+
   const notValidToRunPolling =
+    !hasAccount0Address ||
+    verifyIfUserIsNotRegistered ||
     isChangingConnectedAccount ||
     isLoadingAssets ||
     isLoadingBalances ||
