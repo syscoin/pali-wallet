@@ -49,14 +49,36 @@ export const ChangeAccount = () => {
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
               if (
                 isBitcoinBased &&
-                keyringAccountType !== KeyringAccountType.HDAccount
+                keyringAccountType === KeyringAccountType.Imported
               ) {
                 return null;
               }
 
-              const accountList = Object.values(account);
+              let accountList = Object.values(account);
 
               if (!accountList.length) return null;
+
+              switch (keyringAccountType) {
+                case KeyringAccountType.Trezor:
+                  if (!isBitcoinBased) {
+                    for (const acc of accountList) {
+                      const networkKeys = Object.keys(acc.originNetwork);
+
+                      if (networkKeys.includes('slip44')) {
+                        accountList = accountList.filter((ac) => ac !== acc);
+                      }
+                    }
+                  } else {
+                    for (const acc of accountList) {
+                      const networkKeys = Object.keys(acc.originNetwork);
+
+                      if (!networkKeys.includes('slip44')) {
+                        accountList = accountList.filter((ac) => ac !== acc);
+                      }
+                    }
+                  }
+                  break;
+              }
               return (
                 <div
                   key={keyringAccountType}
