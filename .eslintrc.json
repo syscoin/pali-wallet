@@ -39,6 +39,16 @@
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
+    //Using this to allow we start / use some values as empty object -> {}
+    "@typescript-eslint/ban-types": [
+      "error",
+      {
+        "extendDefaults": true,
+        "types": {
+          "{}": false
+        }
+      }
+    ],
 
     // * ESLint default rules
     "array-callback-return": "error",
@@ -51,7 +61,7 @@
     "no-unneeded-ternary": "error",
     "no-unused-vars": "warn",
     "no-shadow": "warn",
-    "no-var":"warn",
+    "no-var": "warn",
     "semi": "error",
     "comma-dangle": [
       "error",
