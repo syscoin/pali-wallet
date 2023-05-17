@@ -85,9 +85,44 @@ export interface IMainController extends IKeyringManager {
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<boolean>;
-  updateAssetsFromCurrentAccount: () => void;
-  updateUserNativeBalance: () => void;
-  updateUserTransactionsState: (isPolling: boolean) => void;
+  updateAssetsFromCurrentAccount: ({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    isBitcoinBased: boolean;
+  }) => void;
+  updateUserNativeBalance: ({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    isBitcoinBased: boolean;
+  }) => void;
+  updateUserTransactionsState: ({
+    isPolling,
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    isBitcoinBased: boolean;
+    isPolling: boolean;
+  }) => void;
 }
 
 export interface IEthTokenDetails {

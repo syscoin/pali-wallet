@@ -273,6 +273,24 @@ const VaultState = createSlice({
 
       state.accounts[type][id][property] = value;
     },
+    setAccountPropertyByIdAndType(
+      state: IVaultState,
+      action: PayloadAction<{
+        id: number;
+        property: string;
+        type: KeyringAccountType;
+        value: any;
+      }>
+    ) {
+      const { id, type, property, value } = action.payload;
+
+      if (!state.accounts[type][id]) throw new Error('Account not found');
+
+      if (!(property in state.accounts[type][id]))
+        throw new Error('Unable to set property. Unknown key');
+
+      state.accounts[type][id][property] = value;
+    },
     forgetWallet() {
       return initialState;
     },
@@ -358,6 +376,7 @@ const VaultState = createSlice({
 
 export const {
   setAccounts,
+  setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
   setNetworkType,
