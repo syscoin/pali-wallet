@@ -9,7 +9,6 @@ export enum PaliEvents {
   accountsChanged = 'pali_accountsChanged',
   addProperty = 'pali_addProperty',
   chainChanged = 'pali_chainChanged',
-  isBitcoinBased = 'pali_isBitcoinBased',
   isTestnet = 'pali_isTestnet',
   lockStateChanged = 'pali_unlockStateChanged',
   removeProperty = 'pali_removeProperty',
