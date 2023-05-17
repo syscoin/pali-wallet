@@ -55,6 +55,25 @@ export class CancellablePromises {
     }
   };
 
+  public cancelPromise(target: PromiseTargets) {
+    switch (target) {
+      case PromiseTargets.TRANSACTION:
+        this.transactionPromise.cancel();
+        this.transactionPromise = null;
+        break;
+
+      case PromiseTargets.ASSETS:
+        this.assetsPromise.cancel();
+        this.assetsPromise = null;
+        break;
+
+      case PromiseTargets.BALANCE:
+        this.balancePromise.cancel();
+        this.balancePromise = null;
+        break;
+    }
+  }
+
   public setPromise(target: PromiseTargets, promiseState: any) {
     switch (target) {
       case PromiseTargets.TRANSACTION:

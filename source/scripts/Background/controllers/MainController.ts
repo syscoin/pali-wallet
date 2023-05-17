@@ -748,7 +748,7 @@ const MainController = (walletState): IMainController => {
       );
 
     if (cancellablePromises.transactionPromise) {
-      cancellablePromises.transactionPromise.cancel();
+      cancellablePromises.cancelPromise(PromiseTargets.TRANSACTION);
     }
 
     cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
@@ -881,7 +881,7 @@ const MainController = (walletState): IMainController => {
       );
 
     if (cancellablePromises.assetsPromise) {
-      cancellablePromises.assetsPromise.cancel();
+      cancellablePromises.cancelPromise(PromiseTargets.ASSETS);
     }
 
     cancellablePromises.setPromise(PromiseTargets.ASSETS, {
@@ -945,8 +945,9 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    if (cancellablePromises.balancePromise)
-      cancellablePromises.balancePromise.cancel();
+    if (cancellablePromises.balancePromise) {
+      cancellablePromises.cancelPromise(PromiseTargets.BALANCE);
+    }
 
     cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,
