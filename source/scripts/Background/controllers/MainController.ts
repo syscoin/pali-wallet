@@ -303,6 +303,11 @@ const MainController = (walletState): IMainController => {
           },
         });
 
+        window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
+          method: PaliEvents.isBitcoinBased,
+          params: { isBitcoinBased },
+        });
+
         switch (isBitcoinBased) {
           case true:
             const isTestnet = verifyIfIsTestnet();
