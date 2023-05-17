@@ -29,6 +29,7 @@ interface SendSyncJsonRpcRequest {
 interface EthereumProviderState {
   accounts: null | string[];
   initialized: boolean;
+  isBitcoinBased: boolean;
   isConnected: boolean;
   isPermanentlyDisconnected: boolean;
   isUnlocked: boolean;
@@ -47,6 +48,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
+    isBitcoinBased: true,
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
@@ -94,6 +96,9 @@ export class PaliInpageProviderEth extends BaseProvider {
             break;
           case 'pali_chainChanged':
             this._handleChainChanged(params);
+            break;
+          case 'pali_isBitcoinBased':
+            this._handleIsBitcoinBased(params);
             break;
           case 'pali_removeProperty':
             break;
@@ -243,6 +248,14 @@ export class PaliInpageProviderEth extends BaseProvider {
       jsonrpc: payload.jsonrpc,
       result,
     };
+  }
+
+  private _handleIsBitcoinBased({
+    isBitcoinBased,
+  }: {
+    isBitcoinBased: boolean;
+  }) {
+    this._state.isBitcoinBased = isBitcoinBased;
   }
 
   private _handleAccountsChanged(

@@ -302,6 +302,10 @@ const MainController = (walletState): IMainController => {
             networkVersion: network.chainId,
           },
         });
+        window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
+          method: PaliEvents.isBitcoinBased,
+          params: { isBitcoinBased },
+        });
 
         switch (isBitcoinBased) {
           case true:
