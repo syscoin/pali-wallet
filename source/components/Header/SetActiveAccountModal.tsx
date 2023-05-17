@@ -5,6 +5,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
+import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/format';
@@ -21,6 +22,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
     (state: RootState) => state.vault
   );
   const { wallet } = getController();
+  const { alert } = useUtils();
 
   const [accountId, setAccountId] = useState<number>(activeAccount.id);
   const [accountType, setCurrentAccountType] = useState<KeyringAccountType>(
@@ -33,7 +35,11 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   };
 
   const handleChangeAccount = async () => {
-    console.log({ accountId, accountType, selectedNetwork });
+    if (accountId === activeAccount.id && accountType === activeAccount.type) {
+      alert.removeAll();
+      alert.error('Please, select an account.');
+      return;
+    }
     wallet.setAccount(accountId, accountType);
     await wallet.setActiveNetwork(
       selectedNetwork.network,

@@ -332,13 +332,17 @@ export const enable = async (
     window.localStorage.getItem('isPopupOpen')
   );
   if (!isSyscoinDapp && isBitcoinBased)
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
-    );
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Bitcoin based chain',
+      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+    });
   else if (isSyscoinDapp && !isBitcoinBased)
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized('Connected to EVM based chain')
-    );
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Ethereum based chain',
+      data: { code: 4101, message: 'Connected to Ethereum based chain' },
+    });
 
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
