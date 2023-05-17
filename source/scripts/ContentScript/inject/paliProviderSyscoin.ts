@@ -151,6 +151,10 @@ export class PaliInpageProviderSys extends BaseProvider {
     return this._sysState.isTestnet;
   }
 
+  public isBitcoinBased(): boolean {
+    return this._sysState.isBitcoinBased;
+  }
+
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (args.method !== 'wallet_getSysProviderState') {

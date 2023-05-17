@@ -138,6 +138,10 @@ export class PaliInpageProviderEth extends BaseProvider {
     return this._state.isConnected;
   }
 
+  isBitcoinBased(): boolean {
+    return this._state.isBitcoinBased;
+  }
+
   /**
    * Internal backwards compatibility method, used in send.
    *
