@@ -17,6 +17,7 @@ import {
   INetworkType,
 } from '@pollum-io/sysweb3-network';
 
+import { resetPolling } from '..';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -258,8 +259,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-
-    getLatestUpdateForCurrentAccount();
+    resetPolling();
   };
 
   const setActiveNetwork = async (
@@ -307,6 +307,11 @@ const MainController = (walletState): IMainController => {
             chainId: `0x${network.chainId.toString(16)}`,
             networkVersion: network.chainId,
           },
+        });
+
+        window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
+          method: PaliEvents.isBitcoinBased,
+          params: { isBitcoinBased },
         });
 
         switch (isBitcoinBased) {

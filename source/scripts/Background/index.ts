@@ -203,4 +203,18 @@ registerListener();
 const port = browser.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
 
+browser.runtime.onMessage.addListener(({ action }) => {
+  if (action === 'resetPolling') {
+    const pollingPort = browser.runtime.connect(undefined, { name: 'polling' });
+
+    isListenerRegistered = false;
+    pollingPort.postMessage({ action: 'stopPolling' });
+    pollingPort.postMessage({ action: 'startPolling' });
+  }
+});
+
+export const resetPolling = () => {
+  browser.runtime.sendMessage({ action: 'resetPolling' });
+};
+
 wrapStore(store, { portName: STORE_PORT });

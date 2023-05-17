@@ -8,6 +8,7 @@ import { EMITTED_NOTIFICATIONS } from './utils';
 interface SysProviderState {
   blockExplorerURL: string | null;
   initialized: boolean;
+  isBitcoinBased: boolean;
   isPermanentlyDisconnected: boolean;
   isTestnet: boolean | undefined;
   isUnlocked: boolean;
@@ -23,6 +24,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     initialized: false,
     isPermanentlyDisconnected: false,
     isTestnet: false,
+    isBitcoinBased: true,
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
@@ -63,6 +65,9 @@ export class PaliInpageProviderSys extends BaseProvider {
             break;
           case 'pali_isTestnet':
             this._handleIsTestnet(params);
+            break;
+          case 'pali_isBitcoinBased':
+            this._handleIsBitcoinBased(params);
             break;
           case EMITTED_NOTIFICATIONS.includes(method):
             break;
@@ -146,6 +151,10 @@ export class PaliInpageProviderSys extends BaseProvider {
     return this._sysState.isTestnet;
   }
 
+  public isBitcoinBased(): boolean {
+    return this._sysState.isBitcoinBased;
+  }
+
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (args.method !== 'wallet_getSysProviderState') {
@@ -201,6 +210,13 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
+  }
+  private _handleIsBitcoinBased({
+    isBitcoinBased,
+  }: {
+    isBitcoinBased: boolean;
+  }) {
+    this._sysState.isBitcoinBased = isBitcoinBased;
   }
   private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
     this._sysState.isTestnet = isTestnet;

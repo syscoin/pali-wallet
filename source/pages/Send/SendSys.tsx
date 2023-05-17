@@ -60,8 +60,6 @@ export const SendSys = () => {
     ? Object.values(activeAccount.assets.syscoin)
     : [];
 
-  const hasAccountAssets = assets && assets.length > 0;
-
   const balance = selectedAsset
     ? selectedAsset.balance
     : Number(activeAccount?.balances.syscoin);
@@ -192,7 +190,7 @@ export const SendSys = () => {
           </Form.Item>
 
           <div className="flex items-center justify-center w-full md:max-w-md">
-            {hasAccountAssets ? (
+            {
               <Form.Item
                 name="asset"
                 className=""
@@ -205,10 +203,7 @@ export const SendSys = () => {
               >
                 <Menu>
                   <div className="relative inline-block text-left">
-                    <Menu.Button
-                      disabled={!hasAccountAssets}
-                      className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-                    >
+                    <Menu.Button className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                       {truncate(
                         String(
                           selectedAsset?.symbol
@@ -233,7 +228,7 @@ export const SendSys = () => {
                       leaveFrom="transform opacity-100 scale-100"
                       leaveTo="transform opacity-0 scale-95"
                     >
-                      {hasAccountAssets && (
+                      {
                         <Menu.Items
                           as="div"
                           className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
@@ -282,12 +277,12 @@ export const SendSys = () => {
                               ))
                             : null}
                         </Menu.Items>
-                      )}
+                      }
                     </Transition>
                   </div>
                 </Menu>
               </Form.Item>
-            ) : null}
+            }
 
             <div className="flex gap-x-0.5 items-center justify-center w-full">
               <Form.Item
@@ -305,11 +300,7 @@ export const SendSys = () => {
                   childrenClassName="text-brand-white h-4"
                   content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
                 >
-                  <p
-                    className={`${
-                      !hasAccountAssets && ' absolute top-0 left-8'
-                    } text-10px cursor-default text-brand-white`}
-                  >
+                  <p className={`text-10px cursor-default text-brand-white`}>
                     Verify address
                   </p>
                 </Tooltip>
@@ -344,11 +335,7 @@ export const SendSys = () => {
                   childrenClassName="text-brand-white h-4"
                   content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
                 >
-                  <p
-                    className={`${
-                      !hasAccountAssets && 'absolute top-0 right-14'
-                    } text-10px cursor-default text-brand-white`}
-                  >
+                  <p className={`text-10px cursor-default text-brand-white`}>
                     Z-DAG
                   </p>
                 </Tooltip>
