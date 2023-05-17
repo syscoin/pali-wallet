@@ -33,7 +33,6 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   };
 
   const handleChangeAccount = async () => {
-    console.log({ accountId, accountType, selectedNetwork });
     wallet.setAccount(accountId, accountType);
     await wallet.setActiveNetwork(
       selectedNetwork.network,

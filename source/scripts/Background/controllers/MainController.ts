@@ -272,19 +272,7 @@ const MainController = (walletState): IMainController => {
       cancelled = true;
     }
 
-    console.log('promises before cancel', {
-      transaction: cancellablePromises.transactionPromise,
-      assets: cancellablePromises.assetsPromise,
-      balance: cancellablePromises.balancePromise,
-    });
-
     cancellablePromises.cancelAllPromises();
-
-    console.log('promises later cancel', {
-      transaction: cancellablePromises.transactionPromise,
-      assets: cancellablePromises.assetsPromise,
-      balance: cancellablePromises.balancePromise,
-    });
 
     const promiseWrapper = createCancellablePromise<{
       activeChain: INetworkType;
@@ -754,35 +742,21 @@ const MainController = (walletState): IMainController => {
             }
             resolve();
           } catch (error) {
-            console.log('reject updateUserTransactionsState');
             reject(error);
           }
         }
       );
 
-    if (cancellablePromises.transactionPromise)
+    if (cancellablePromises.transactionPromise) {
       cancellablePromises.transactionPromise.cancel();
-
-    console.log(
-      'transaction promise before set',
-      cancellablePromises.transactionPromise
-    );
+    }
 
     cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel,
     });
-    console.log(
-      'transaction promise later set',
-      cancellablePromises.transactionPromise
-    );
 
     cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
-
-    console.log(
-      'transaction promise later run',
-      cancellablePromises.transactionPromise
-    );
   };
 
   const sendAndSaveTransaction = (
@@ -888,7 +862,6 @@ const MainController = (walletState): IMainController => {
               !isEmpty(updatedAssets.ethereum) ||
               isEmpty(updatedAssets.syscoin)
             ) {
-              console.log('reject');
               reject('failed to update assets');
             }
 
@@ -902,26 +875,21 @@ const MainController = (walletState): IMainController => {
             store.dispatch(setIsLoadingAssets(false));
             resolve();
           } catch (error) {
-            console.log('updateAssetsFromCurrentAccount error', error);
             reject(error);
           }
         }
       );
 
-    if (cancellablePromises.assetsPromise)
+    if (cancellablePromises.assetsPromise) {
       cancellablePromises.assetsPromise.cancel();
-
-    console.log('assets promise before set', cancellablePromises.assetsPromise);
+    }
 
     cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
       cancel,
     });
 
-    console.log('assets promise later set', cancellablePromises.assetsPromise);
-
     cancellablePromises.runPromise(PromiseTargets.ASSETS);
-    console.log('assets promise later run', cancellablePromises.assetsPromise);
   };
   //---- END METHODS FOR UPDATE BOTH ASSETS ----//
 
@@ -968,13 +936,10 @@ const MainController = (walletState): IMainController => {
                 })
               );
               store.dispatch(setIsLoadingBalances(false));
-            } else {
-              throw new Error('could not update user native balance');
             }
 
             resolve();
           } catch (error) {
-            console.log('reject balance');
             reject(error);
           }
         }
@@ -983,27 +948,12 @@ const MainController = (walletState): IMainController => {
     if (cancellablePromises.balancePromise)
       cancellablePromises.balancePromise.cancel();
 
-    console.log(
-      'balance promise before set',
-      cancellablePromises.balancePromise
-    );
-
     cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,
       cancel,
     });
 
-    console.log(
-      'balance promise later set',
-      cancellablePromises.balancePromise
-    );
-
     cancellablePromises.runPromise(PromiseTargets.BALANCE);
-
-    console.log(
-      'balance promise before run',
-      cancellablePromises.balancePromise
-    );
   };
 
   //---- New method to update some infos from account like Assets, Txs etc ----//
@@ -1017,12 +967,6 @@ const MainController = (walletState): IMainController => {
       throw new Error('Could not update account while changing network');
     }
 
-    console.log('promises before update all', {
-      transaction: cancellablePromises.transactionPromise,
-      assets: cancellablePromises.assetsPromise,
-      balance: cancellablePromises.balancePromise,
-    });
-
     Promise.all([
       //First update native balance
       updateUserNativeBalance(),
@@ -1031,12 +975,6 @@ const MainController = (walletState): IMainController => {
       //Later update Assets
       updateAssetsFromCurrentAccount(),
     ]);
-
-    console.log('promises later update all', {
-      transaction: cancellablePromises.transactionPromise,
-      assets: cancellablePromises.assetsPromise,
-      balance: cancellablePromises.balancePromise,
-    });
   };
 
   return {

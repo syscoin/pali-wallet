@@ -40,24 +40,18 @@ export class CancellablePromises {
 
   public cancelAllPromises = () => {
     if (this.transactionPromise) {
-      console.log('transaction existe', this.transactionPromise);
       this.transactionPromise.cancel();
       this.transactionPromise = null;
-      console.log('transaction depois de cancelar', this.transactionPromise);
     }
 
     if (this.assetsPromise) {
-      console.log('assets existe', this.assetsPromise);
       this.assetsPromise.cancel();
       this.assetsPromise = null;
-      console.log('assets depois de cancelar', this.assetsPromise);
     }
 
     if (this.balancePromise) {
-      console.log('balance existe', this.balancePromise);
       this.balancePromise.cancel();
       this.balancePromise = null;
-      console.log('balance depois de cancelar', this.balancePromise);
     }
   };
 
