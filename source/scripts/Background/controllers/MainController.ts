@@ -606,7 +606,8 @@ const MainController = (walletState): IMainController => {
     slip44: string,
     index: string
   ) => {
-    const { accounts } = store.getState().vault;
+    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+      store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await keyringManager.importTrezorAccount(
@@ -641,6 +642,17 @@ const MainController = (walletState): IMainController => {
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
+    updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeAccount,
+      activeNetwork,
+    });
+    updateAssetsFromCurrentAccount({
+      activeAccount,
+      activeNetwork,
+      isBitcoinBased,
+    });
 
     return importedAccount;
   };
