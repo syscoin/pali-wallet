@@ -620,6 +620,8 @@ const MainController = (walletState): IMainController => {
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
+    updateUserTransactionsState(false);
+    updateAssetsFromCurrentAccount();
 
     return importedAccount;
   };
