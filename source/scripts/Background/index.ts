@@ -140,6 +140,9 @@ async function checkForUpdates() {
     isNetworkChanging,
     lastLogin,
     accounts,
+    activeAccount,
+    isBitcoinBased,
+    activeNetwork,
   } = store.getState().vault;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;
@@ -161,13 +164,26 @@ async function checkForUpdates() {
   }
 
   //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateUserNativeBalance();
+  window.controller.wallet.updateUserNativeBalance({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
 
   //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateUserTransactionsState(true);
+  window.controller.wallet.updateUserTransactionsState({
+    isPolling: true,
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
 
   //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateAssetsFromCurrentAccount();
+  window.controller.wallet.updateAssetsFromCurrentAccount({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
 }
 
 let intervalId;
