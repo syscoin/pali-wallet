@@ -38,7 +38,6 @@ import {
   setHasEthProperty as setEthProperty,
   setIsLoadingTxs,
   initialState,
-  setActiveAccountProperty,
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
@@ -840,7 +839,9 @@ const MainController = (walletState): IMainController => {
     clonedArrayToAdd.unshift(txWithTimestamp);
 
     store.dispatch(
-      setActiveAccountProperty({
+      setAccountPropertyByIdAndType({
+        id: activeAccount.id,
+        type: activeAccount.type,
         property: 'transactions',
         value: clonedArrayToAdd,
       })

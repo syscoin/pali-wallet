@@ -2,7 +2,7 @@ import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import { setAccountPropertyByIdAndType } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
@@ -53,7 +53,9 @@ const EthAccountController = (): IEthAccountController => {
       }
 
       store.dispatch(
-        setActiveAccountProperty({
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
           property: 'assets',
           value: {
             ...accounts[activeAccount.type][activeAccount.id].assets,
