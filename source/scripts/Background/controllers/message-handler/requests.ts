@@ -199,6 +199,7 @@ export const methodRequest = async (
           xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
           isUnlocked: wallet.isUnlocked(),
+          isBitcoinBased,
         };
         return sysProviderState;
       default:

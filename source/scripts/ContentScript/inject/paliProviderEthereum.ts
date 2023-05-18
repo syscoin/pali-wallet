@@ -48,7 +48,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
-    isBitcoinBased: true,
+    isBitcoinBased: false,
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
@@ -454,6 +454,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _initializeState(initialState?: {
     accounts: string[];
     chainId: string;
+    isBitcoinBased: boolean;
     isUnlocked: boolean;
     networkVersion?: string;
   }) {
@@ -462,13 +463,15 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     if (initialState) {
-      const { accounts, chainId, isUnlocked, networkVersion } = initialState;
+      const { accounts, chainId, isUnlocked, networkVersion, isBitcoinBased } =
+        initialState;
 
       // EIP-1193 connect
       this._handleConnect(chainId);
       this._handleChainChanged({ chainId, networkVersion });
       this._handleUnlockStateChanged({ accounts, isUnlocked });
       this._handleAccountsChanged(accounts);
+      this._handleIsBitcoinBased({ isBitcoinBased });
     }
 
     // Mark provider as initialized regardless of whether initial state was
