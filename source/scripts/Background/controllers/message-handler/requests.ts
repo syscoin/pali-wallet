@@ -191,6 +191,7 @@ export const methodRequest = async (
           chainId: `0x${activeNetwork.chainId.toString(16)}`,
           isUnlocked: wallet.isUnlocked(),
           networkVersion: activeNetwork.chainId,
+          isBitcoinBased,
         };
         return providerState;
       case 'getSysProviderState':
