@@ -271,7 +271,7 @@ const MainController = (walletState): IMainController => {
       cancelled = true;
     }
 
-    cancellablePromises.cancelAllPromises();
+    // cancellablePromises.cancelAllPromises();
 
     const promiseWrapper = createCancellablePromise<{
       activeChain: INetworkType;
@@ -801,9 +801,9 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    if (cancellablePromises.transactionPromise) {
-      cancellablePromises.cancelPromise(PromiseTargets.TRANSACTION);
-    }
+    // if (cancellablePromises.transactionPromise) {
+    //   cancellablePromises.cancelPromise(PromiseTargets.TRANSACTION);
+    // }
 
     cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
@@ -924,13 +924,6 @@ const MainController = (walletState): IMainController => {
               return;
             }
 
-            if (
-              !isEmpty(updatedAssets.ethereum) ||
-              isEmpty(updatedAssets.syscoin)
-            ) {
-              reject('failed to update assets');
-            }
-
             store.dispatch(setIsLoadingAssets(true));
             store.dispatch(
               setAccountPropertyByIdAndType({
@@ -949,9 +942,9 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    if (cancellablePromises.assetsPromise) {
-      cancellablePromises.cancelPromise(PromiseTargets.ASSETS);
-    }
+    // if (cancellablePromises.assetsPromise) {
+    //   cancellablePromises.cancelPromise(PromiseTargets.ASSETS);
+    // }
 
     cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
@@ -1026,9 +1019,9 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    if (cancellablePromises.balancePromise) {
-      cancellablePromises.cancelPromise(PromiseTargets.BALANCE);
-    }
+    // if (cancellablePromises.balancePromise) {
+    //   cancellablePromises.cancelPromise(PromiseTargets.BALANCE);
+    // }
 
     cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,
