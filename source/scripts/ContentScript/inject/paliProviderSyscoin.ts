@@ -24,7 +24,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     initialized: false,
     isPermanentlyDisconnected: false,
     isTestnet: false,
-    isBitcoinBased: true,
+    isBitcoinBased: false,
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
@@ -104,6 +104,7 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _initializeState(initialState?: {
     blockExplorerURL: string | null;
+    isBitcoinBased: boolean;
     isUnlocked: boolean;
     xpub: string;
   }) {
@@ -112,12 +113,14 @@ export class PaliInpageProviderSys extends BaseProvider {
     }
 
     if (initialState) {
-      const { xpub, blockExplorerURL, isUnlocked } = initialState;
+      const { xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
+        initialState;
 
       // EIP-1193 connect
       this._handleConnectedXpub(xpub);
       this._handleActiveBlockExplorer(blockExplorerURL);
       this._handleUnlockStateChanged({ xpub, isUnlocked });
+      this._handleIsBitcoinBased({ isBitcoinBased });
     }
 
     // Mark provider as initialized regardless of whether initial state was
