@@ -5,7 +5,7 @@ import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
-import { setActiveAccountProperty } from 'state/vault';
+import { setAccountPropertyByIdAndType } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
 const config = {
@@ -28,10 +28,13 @@ const SysAccountController = (
 ): ISysAccountController => {
   const setAddress = async (): Promise<string> => {
     const keyringManager = getKeyring();
+    const { activeAccount } = store.getState().vault;
     const address = await keyringManager.updateReceivingAddress();
 
     store.dispatch(
-      setActiveAccountProperty({
+      setAccountPropertyByIdAndType({
+        id: activeAccount.id,
+        type: activeAccount.type,
         property: 'address',
         value: String(address),
       })
@@ -72,7 +75,9 @@ const SysAccountController = (
       }
 
       store.dispatch(
-        setActiveAccountProperty({
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
           property: 'assets',
           value: {
             ...accounts[activeAccount.type][activeAccount.id].assets,
