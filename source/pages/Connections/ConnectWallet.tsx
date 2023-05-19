@@ -189,7 +189,7 @@ export const ConnectWallet = () => {
               className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
             >
               <Icon name="warning" className="mb-2 text-brand-white" />
-              <p>Not trusted site detected</p>
+              <p>Non trusted site detected</p>
             </Dialog.Title>
 
             <div className="mt-4">
