@@ -57,7 +57,6 @@ export const popupPromise = async ({
             route === 'tx/send/approve' ||
             route === 'tx/send/nTokenTx'
           ) {
-            window.controller.wallet.sendAndSaveTransaction(event.detail);
             resolve(event.detail.hash);
           }
           resolve(event.detail);
