@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, NeutralButton } from 'components/index';
+import { Layout, NeutralButton, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -107,21 +107,27 @@ const CustomRPCView = () => {
         >
           <div className="flex gap-x-2 mb-4 text-xs">
             <p className="text-brand-royalblue text-xs">Ethereum</p>
-
-            <Switch
-              checked={isSyscoinRpc}
-              onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-              className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+            <Tooltip
+              content={
+                !!state ? 'Cant change type of network while editing' : ''
+              }
             >
-              <span className="sr-only">Syscoin Network</span>
-              <span
-                className={`${
-                  isSyscoinRpc
-                    ? 'translate-x-6 bg-brand-royalblue'
-                    : 'translate-x-1 bg-brand-deepPink100'
-                } inline-block w-2 h-2 transform rounded-full`}
-              />
-            </Switch>
+              <Switch
+                checked={isSyscoinRpc}
+                onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
+                className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                disabled={!!state}
+              >
+                <span className="sr-only">Syscoin Network</span>
+                <span
+                  className={`${
+                    isSyscoinRpc
+                      ? 'translate-x-6 bg-brand-royalblue'
+                      : 'translate-x-1 bg-brand-deepPink100'
+                  } inline-block w-2 h-2 transform rounded-full`}
+                />
+              </Switch>
+            </Tooltip>
 
             <p className="text-brand-deepPink100 text-xs">Syscoin</p>
           </div>

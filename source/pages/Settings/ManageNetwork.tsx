@@ -20,6 +20,7 @@ const ManageNetworkView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const SYSCOIN_UTXO_CHAIN_ID = 57;
 
   const { navigate } = useUtils();
   const { wallet } = getController();
@@ -62,49 +63,59 @@ const ManageNetworkView = () => {
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">
-              <IconButton
-                onClick={() =>
-                  editNetwork({
-                    selected: network,
-                    chain: 'syscoin',
-                    isDefault: network.default,
-                  })
-                }
-                type="primary"
-                shape="circle"
-              >
-                <Icon
-                  name="edit"
-                  className="hover:text-brand-royalblue text-xl"
-                />
-              </IconButton>
-
-              {!network.default && (
+              {network.chainId !== SYSCOIN_UTXO_CHAIN_ID && (
                 <IconButton
                   onClick={() =>
-                    removeNetwork('syscoin', network.chainId, network?.key)
+                    editNetwork({
+                      selected: network,
+                      chain: 'syscoin',
+                      isDefault: network.default,
+                    })
                   }
                   type="primary"
                   shape="circle"
-                  disabled={
-                    network.chainId === activeNetwork.chainId &&
-                    network.url === activeNetwork.url
-                  }
                 >
                   <Icon
-                    name="trash"
+                    name="edit"
+                    className="hover:text-brand-royalblue text-xl"
+                  />
+                </IconButton>
+              )}
+              {!network.default && (
+                <Tooltip
+                  content={
+                    network.chainId === activeNetwork.chainId &&
+                    network.url === activeNetwork.url
+                      ? 'You cannot remove the active network'
+                      : ''
+                  }
+                >
+                  <IconButton
+                    onClick={() =>
+                      removeNetwork('syscoin', network.chainId, network?.key)
+                    }
+                    type="primary"
+                    shape="circle"
                     disabled={
                       network.chainId === activeNetwork.chainId &&
                       network.url === activeNetwork.url
                     }
-                    className={
-                      network.chainId === activeNetwork.chainId &&
-                      network.url === activeNetwork.url
-                        ? 'text-xl'
-                        : 'hover:text-brand-royalblue text-xl'
-                    }
-                  />
-                </IconButton>
+                  >
+                    <Icon
+                      name="trash"
+                      disabled={
+                        network.chainId === activeNetwork.chainId &&
+                        network.url === activeNetwork.url
+                      }
+                      className={
+                        network.chainId === activeNetwork.chainId &&
+                        network.url === activeNetwork.url
+                          ? 'text-xl'
+                          : 'hover:text-brand-royalblue text-xl'
+                      }
+                    />
+                  </IconButton>
+                </Tooltip>
               )}
             </div>
           </li>

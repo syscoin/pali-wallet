@@ -508,7 +508,7 @@ const MainController = (walletState): IMainController => {
 
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
-    oldRpc: ICustomRpcParams
+    oldRpc: INetwork
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await getRpc(newRpc);
@@ -519,20 +519,15 @@ const MainController = (walletState): IMainController => {
         ...network,
         label: newRpc.label,
         currency:
-          newRpc.symbol === oldRpc.symbol ? oldRpc.symbol : newRpc.symbol,
+          newRpc.symbol === oldRpc.currency ? oldRpc.currency : newRpc.symbol,
         apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
         url: newRpc.url === oldRpc.url ? oldRpc.url : newRpc.url,
         chainId:
           newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
+        default: oldRpc.default,
       } as INetwork;
-
       if (changedChainId) {
-        store.dispatch(
-          removeNetwork({
-            chainId: oldRpc.chainId,
-            prefix: chain,
-          })
-        );
+        throw new Error('RPC from a different chainId');
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);

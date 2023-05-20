@@ -55,7 +55,8 @@ const handleLogout = () => {
   if (isTimerEnabled) {
     window.controller.wallet.lock();
 
-    window.location.replace('/');
+    // Send a message to the content script
+    browser.runtime.sendMessage({ action: 'logoutFS' });
   }
 };
 

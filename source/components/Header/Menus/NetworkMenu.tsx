@@ -149,7 +149,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                               className="ml-1 mr-4 text-brand-white"
                             />
 
-                            <span className="px-3 text-base">Syscoin core</span>
+                            <span className="px-3 text-base">
+                              UTXO Networks
+                            </span>
 
                             <Icon
                               name="select-down"
@@ -205,7 +207,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span className="px-3 text-base">Web3 networks</span>
+                          <span className="px-3 text-base">Web3 Networks</span>
 
                           <Icon
                             name="select-down"
@@ -216,8 +218,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                         </Disclosure.Button>
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(networks.ethereum).map(
-                            (currentNetwork: any) => (
+                          {Object.values(networks.ethereum)
+                            .sort((a, b) =>
+                              a.chainId === 57 ? -1 : b.chainId === 57 ? 1 : 0
+                            )
+
+                            .map((currentNetwork: any) => (
                               <li
                                 key={uniqueId()}
                                 className="backface-visibility-hidden flex flex-row items-center justify-start mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
@@ -242,8 +248,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     />
                                   )}
                               </li>
-                            )
-                          )}
+                            ))}
                         </Disclosure.Panel>
                       </>
                     )}
