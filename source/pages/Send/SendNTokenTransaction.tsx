@@ -3,6 +3,8 @@ import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
@@ -21,11 +23,8 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendNTokenTransaction = () => {
   const {
-    refresh,
-    wallet: { account },
+    wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
   } = getController();
-
-  const txs = account.eth.tx;
 
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -33,14 +32,14 @@ export const SendNTokenTransaction = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -54,6 +53,7 @@ export const SendNTokenTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+  const [confirmedTx, setConfirmedTx] = useState<any>();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -90,72 +90,101 @@ export const SendNTokenTransaction = () => {
       const txWithoutType = omitTransactionObjectData(txToSend, [
         'type',
       ]) as ITxState;
-      try {
-        if (isLegacyTransaction) {
+      if (isLegacyTransaction) {
+        try {
           const getGasCorrectlyGasPrice = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
-            : await txs.getRecommendedGasPrice();
+            : await ethereumTransaction.getRecommendedGasPrice();
 
-          const response = await txs.sendFormattedTransaction({
-            ...txWithoutType,
-            gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-            gasLimit: txs.toBigNumber(
-              validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-            ),
-          });
-
-          setConfirmed(true);
-          setLoading(false);
-
-          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
-
-          return response;
-        } else {
-          const response = await txs.sendFormattedTransaction({
-            ...txWithoutType,
-            maxPriorityFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(
-                  customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                )
-                  ? customFee.maxPriorityFeePerGas.toFixed(9)
-                  : fee.maxPriorityFeePerGas.toFixed(9)
+          await ethereumTransaction
+            .sendFormattedTransaction({
+              ...txWithoutType,
+              gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
+              gasLimit: ethereumTransaction.toBigNumber(
+                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               ),
-              9
-            ),
-            maxFeePerGas: ethers.utils.parseUnits(
-              String(
-                Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                  ? customFee.maxFeePerGas.toFixed(9)
-                  : fee.maxFeePerGas.toFixed(9)
-              ),
-              9
-            ),
-            gasLimit: txs.toBigNumber(
-              validateCustomGasLimit
-                ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                : fee.gasLimit
-            ),
-          });
+            })
+            .then((response) => {
+              if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                sendAndSaveTransaction(response);
+              setConfirmedTx(response);
+              setConfirmed(true);
+              setLoading(false);
+              if (isExternal)
+                dispatchBackgroundEvent(`${eventName}.${host}`, response);
+            })
+            .catch((error) => {
+              alert.error("Can't complete transaction. Try again later.");
+              setLoading(false);
+              throw error;
+            });
 
-          setConfirmed(true);
-          setLoading(false);
+          return;
+        } catch (legacyError: any) {
+          logError('error', 'Transaction', legacyError);
 
-          if (isExternal) dispatchBackgroundEvent(`nTokenTx.${host}`, response);
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
 
-          return response;
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return legacyError;
         }
-      } catch (error: any) {
-        logError('error', 'Transaction', error);
+      } else {
+        try {
+          await ethereumTransaction
+            .sendFormattedTransaction({
+              ...txWithoutType,
+              maxPriorityFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(
+                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  )
+                    ? customFee.maxPriorityFeePerGas.toFixed(9)
+                    : fee.maxPriorityFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              maxFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? customFee.maxFeePerGas.toFixed(9)
+                    : fee.maxFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              gasLimit: ethereumTransaction.toBigNumber(
+                validateCustomGasLimit
+                  ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                  : fee.gasLimit
+              ),
+            })
+            .then((response) => {
+              setConfirmedTx(response);
+              setConfirmed(true);
+              setLoading(false);
+              if (isExternal)
+                dispatchBackgroundEvent(`${eventName}.${host}`, response);
+            })
+            .catch((error) => {
+              alert.error("Can't complete transaction. Try again later.");
+              setLoading(false);
+              throw error;
+            });
 
-        alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
+          return;
+        } catch (notLegacyError) {
+          logError('error', 'Transaction', notLegacyError);
 
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
-        return error;
+          alert.removeAll();
+          alert.error("Can't complete transaction. Try again later.");
+
+          if (isExternal) setTimeout(window.close, 4000);
+          else setLoading(false);
+          return notLegacyError;
+        }
       }
     }
   };
@@ -166,14 +195,14 @@ export const SendNTokenTransaction = () => {
     const getInitialFeeRecomendation = async () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
-          await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
+          await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
-        const getTxGasLimitResult = await txs.getTxGasLimit(tx);
+        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
 
         tx.gasLimit =
           (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
           (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-            ? txs.toBigNumber(tx.gas || tx.gasLimit)
+            ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
             : getTxGasLimitResult;
 
         const feeRecomendation = {
@@ -238,7 +267,7 @@ export const SendNTokenTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -371,7 +400,6 @@ export const SendNTokenTransaction = () => {
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
-                refresh(false);
                 if (isExternal) window.close();
                 else navigate('/home');
               }}
@@ -387,16 +415,29 @@ export const SendNTokenTransaction = () => {
 
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              className={`${
+                loading
+                  ? 'opacity-60 cursor-not-allowed'
+                  : 'opacity-100 hover:opacity-90'
+              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              <Icon
-                name="arrow-down"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-              />
+              {!loading ? (
+                <Icon
+                  name="arrow-down"
+                  className="w-5"
+                  wrapperClassname="flex items-center mr-2"
+                />
+              ) : (
+                <Icon
+                  name="loading"
+                  color="#fff"
+                  className="w-5 animate-spin-slow"
+                  wrapperClassname="mr-2 flex items-center"
+                />
+              )}
               Confirm
             </Button>
           </div>

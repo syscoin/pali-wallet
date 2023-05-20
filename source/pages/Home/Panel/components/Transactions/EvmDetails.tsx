@@ -13,7 +13,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { transactions } = accounts[activeAccount];
+  const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

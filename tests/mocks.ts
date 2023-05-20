@@ -1,7 +1,11 @@
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import {
+  initialActiveImportedAccountState,
+  initialActiveTrezorAccountState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
 
 import { initialState } from 'state/vault';
-import { IVaultState } from 'state/vault/types';
+import { IPaliAccount, IVaultState } from 'state/vault/types';
 
 export const MOCK_PASSWORD = 'Asdqwe123!';
 export const MOCK_SEED_PHRASE = process.env.REACT_APP_SEED_PEACE_GLOBE;
@@ -11,24 +15,28 @@ export const MOCK_XPUB =
 export const MOCK_XPRV =
   'U2FsdGVkX18BNGHcPVXdJTVqdLn8/W4r/6UxD2Q1oshv/UkxSk/ir/uvXGDb3nP1TcvCcaruZU7FFXzLR7Uh/tr1j12/cEKWqUNwaNO/KXSVNvJP4dH8BN2ZTNfJMWgIdChPFFBsG1dCEODvrrntmYpB/gz8eEqSChr4j7xpFuc=';
 
-export const MOCK_ACCOUNT: IKeyringAccountState = {
+//todo: adjust mocks to guarantee new types
+export const MOCK_ACCOUNT: IPaliAccount = {
   address: 'sys1qydmw8wrtl4mvk6he65qqrq8ml9f6eyyl9tasax',
-  assets: [
-    {
-      type: 'SPTAllocated',
-      assetGuid: 3144265615,
-      symbol: 'NikBar',
-      balance: 200000000,
-      decimals: 8,
-    },
-    {
-      type: 'SPTAllocated',
-      assetGuid: 3569136514,
-      symbol: 'ads',
-      balance: 100000000,
-      decimals: 8,
-    },
-  ],
+  assets: {
+    syscoin: [
+      {
+        type: 'SPTAllocated',
+        assetGuid: 3144265615,
+        symbol: 'NikBar',
+        balance: 200000000,
+        decimals: 8,
+      },
+      {
+        type: 'SPTAllocated',
+        assetGuid: 3569136514,
+        symbol: 'ads',
+        balance: 100000000,
+        decimals: 8,
+      },
+    ],
+    ethereum: [],
+  },
   balances: { syscoin: 0.48430419, ethereum: 5.1 },
   id: 15,
   isTrezorWallet: false,
@@ -53,9 +61,32 @@ export const MOCK_ACCOUNT: IKeyringAccountState = {
   ],
   xprv: MOCK_XPRV,
   xpub: MOCK_XPUB,
+  isImported: false,
+};
+
+const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
+  ...initialActiveImportedAccountState,
+  assets: { ethereum: [], syscoin: [] },
+  transactions: [],
+};
+
+const MOCK_TREZOR_ACCOUNT: IPaliAccount = {
+  ...initialActiveTrezorAccountState,
+  assets: { ethereum: [], syscoin: [] },
+  transactions: [],
 };
 
 export const STATE_W_ACCOUNT: IVaultState = {
   ...initialState,
-  accounts: { [MOCK_ACCOUNT.id]: MOCK_ACCOUNT },
+  accounts: {
+    [KeyringAccountType.HDAccount]: {
+      [MOCK_ACCOUNT.id]: MOCK_ACCOUNT,
+    },
+    [KeyringAccountType.Imported]: {
+      [MOCK_IMPORTED_ACCOUNT.id]: MOCK_IMPORTED_ACCOUNT,
+    },
+    [KeyringAccountType.Trezor]: {
+      [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
+    },
+  },
 };

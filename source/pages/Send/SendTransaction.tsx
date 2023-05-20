@@ -30,8 +30,7 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
-    refresh,
-    wallet: { account },
+    wallet: { ethereumTransaction, sendAndSaveTransaction },
   } = getController();
 
   const { navigate, alert } = useUtils();
@@ -40,16 +39,16 @@ export const SendTransaction = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
 
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -66,6 +65,7 @@ export const SendTransaction = () => {
     : state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [confirmedTx, setConfirmedTx] = useState<any>();
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -99,7 +99,6 @@ export const SendTransaction = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
       setTx({
         ...(validatedDataTxWithoutType as ITxState),
         nonce: customNonce,
@@ -119,14 +118,14 @@ export const SendTransaction = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
         ),
       });
       try {
-        const response = await txs.sendFormattedTransaction({
+        const response = await ethereumTransaction.sendFormattedTransaction({
           ...tx,
           nonce: customNonce,
           maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -145,7 +144,7 @@ export const SendTransaction = () => {
             ),
             9
           ),
-          gasLimit: txs.toBigNumber(
+          gasLimit: ethereumTransaction.toBigNumber(
             Boolean(customFee.isCustom && customFee.gasLimit > 0)
               ? customFee.gasLimit
               : fee.gasLimit
@@ -153,8 +152,10 @@ export const SendTransaction = () => {
         });
         setConfirmed(true);
         setLoading(false);
+        setConfirmedTx(response);
 
-        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+        if (isExternal)
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
@@ -207,11 +208,10 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
-            refresh(true);
             window.close();
           } else {
-            refresh(false);
             navigate('/home');
           }
         }}
@@ -329,10 +329,8 @@ export const SendTransaction = () => {
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
-                  refresh(true);
                   window.close();
                 } else {
-                  refresh(false);
                   navigate('/home');
                 }
               }}

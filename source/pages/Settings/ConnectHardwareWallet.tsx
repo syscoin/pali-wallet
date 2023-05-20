@@ -5,43 +5,46 @@ import { useSelector } from 'react-redux';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
+  const { activeNetwork, isBitcoinBased, accounts } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const { alert, navigate } = useUtils();
+  const trezorAccounts = Object.values(accounts.Trezor);
+
+  const { slip44 } = activeNetwork;
 
   const controller = getController();
 
   const handleCreateHardwareWallet = async () => {
-    await controller.wallet.account.sys.trezor.createAccount();
+    try {
+      await controller.wallet.importTrezorAccount(
+        isBitcoinBased ? activeNetwork.currency : 'eth',
+        `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+        `${trezorAccounts.length}`
+      );
+      navigate('/home');
+    } catch (error) {
+      console.log(error);
+      alert.removeAll();
+      alert.error('Error creating hardware wallet.');
+    }
   };
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
 
   const verifyIfIsTestnet = async () => {
     const { url } = activeNetwork;
 
-    const { chain, chainId }: any = isBitcoinBased
+    const { chain }: any = isBitcoinBased
       ? await validateSysRpc(url)
       : await validateEthRpc(url);
 
-    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
-    return Boolean(
-      chain === 'test' ||
-        chain === 'testnet' ||
-        ethTestnetsChainsIds.some(
-          (validationChain) => validationChain === chainId
-        )
-    );
+    return Boolean(chain === 'test' || chain === 'testnet');
   };
 
   useEffect(() => {
@@ -55,7 +58,8 @@ const ConnectHardwareWalletView: FC = () => {
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
           <p className="text-white text-sm">
-            Select the hardware wallet you'd like to connect to Pali
+            Select the hardware wallet you'd like{' '}
+            {!trezorAccounts.length ? 'to connect' : 'to add account'} to Pali
           </p>
 
           <p
@@ -139,10 +143,10 @@ const ConnectHardwareWalletView: FC = () => {
             <Tooltip
               content={
                 isTestnet &&
-                "Trezor doesn't support SYS testnet. Change your network to be able to connect to trezor."
+                "Trezor doesn't support SYS testnet. Please, change your network to be able to connect to trezor."
               }
             >
-              <p>Connect</p>
+              <p>{!trezorAccounts.length ? 'Connect' : 'Add Account'}</p>
             </Tooltip>
           </NeutralButton>
         </div>

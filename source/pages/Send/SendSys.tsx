@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
+//todo: update with the new function
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
@@ -23,10 +24,10 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
@@ -36,7 +37,7 @@ export const SendSys = () => {
 
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
-      await controller.wallet.account.sys.tx.getRecommendedFee(
+      await controller.wallet.syscoinTransaction.getRecommendedFee(
         activeNetwork.url
       );
 
@@ -55,11 +56,13 @@ export const SendSys = () => {
     });
   }, [form, handleGetFee]);
 
-  const assets = activeAccount.assets
-    ? Object.values(activeAccount.assets)
+  const assets = activeAccount.assets.syscoin
+    ? Object.values(activeAccount.assets.syscoin)
     : [];
 
-  const hasAccountAssets = assets && assets.length > 0;
+  const balance = selectedAsset
+    ? selectedAsset.balance
+    : Number(activeAccount?.balances.syscoin);
 
   const handleSelectedAsset = (item: number) => {
     if (assets) {
@@ -165,7 +168,11 @@ export const SendSys = () => {
                 validator(_, value) {
                   if (
                     !value ||
-                    isValidSYSAddress(value, activeNetwork, verifyAddress)
+                    isValidSYSAddress(
+                      value,
+                      activeNetwork.chainId,
+                      verifyAddress
+                    )
                   ) {
                     return Promise.resolve();
                   }
@@ -183,7 +190,7 @@ export const SendSys = () => {
           </Form.Item>
 
           <div className="flex items-center justify-center w-full md:max-w-md">
-            {hasAccountAssets ? (
+            {
               <Form.Item
                 name="asset"
                 className=""
@@ -196,10 +203,7 @@ export const SendSys = () => {
               >
                 <Menu>
                   <div className="relative inline-block text-left">
-                    <Menu.Button
-                      disabled={!hasAccountAssets}
-                      className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"
-                    >
+                    <Menu.Button className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                       {truncate(
                         String(
                           selectedAsset?.symbol
@@ -224,7 +228,7 @@ export const SendSys = () => {
                       leaveFrom="transform opacity-100 scale-100"
                       leaveTo="transform opacity-0 scale-95"
                     >
-                      {hasAccountAssets && (
+                      {
                         <Menu.Items
                           as="div"
                           className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
@@ -246,9 +250,16 @@ export const SendSys = () => {
                                     <Menu.Item as="div" key={uniqueId()}>
                                       <Menu.Item>
                                         <button
-                                          onClick={() =>
-                                            handleSelectedAsset(item.assetGuid)
-                                          }
+                                          onClick={() => {
+                                            if (activeAccount.isTrezorWallet) {
+                                              alert.removeAll();
+                                              alert.error(
+                                                'Cannot send custom token with Trezor Account.'
+                                              );
+                                              return;
+                                            }
+                                            handleSelectedAsset(item.assetGuid);
+                                          }}
                                           className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                         >
                                           <p>{item?.symbol}</p>
@@ -266,12 +277,12 @@ export const SendSys = () => {
                               ))
                             : null}
                         </Menu.Items>
-                      )}
+                      }
                     </Transition>
                   </div>
                 </Menu>
               </Form.Item>
-            ) : null}
+            }
 
             <div className="flex gap-x-0.5 items-center justify-center w-full">
               <Form.Item
@@ -289,11 +300,7 @@ export const SendSys = () => {
                   childrenClassName="text-brand-white h-4"
                   content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
                 >
-                  <p
-                    className={`${
-                      !hasAccountAssets && ' absolute top-0 left-8'
-                    } text-10px cursor-default text-brand-white`}
-                  >
+                  <p className={`text-10px cursor-default text-brand-white`}>
                     Verify address
                   </p>
                 </Tooltip>
@@ -328,11 +335,7 @@ export const SendSys = () => {
                   childrenClassName="text-brand-white h-4"
                   content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
                 >
-                  <p
-                    className={`${
-                      !hasAccountAssets && 'absolute top-0 right-14'
-                    } text-10px cursor-default text-brand-white`}
-                  >
+                  <p className={`text-10px cursor-default text-brand-white`}>
                     Z-DAG
                   </p>
                 </Tooltip>
@@ -355,36 +358,42 @@ export const SendSys = () => {
             </div>
           </div>
 
-          <Form.Item
-            name="amount"
-            className="md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
-              },
-              () => ({
-                validator(_, value) {
-                  const balance = selectedAsset
-                    ? selectedAsset.balance
-                    : Number(activeAccount?.balances.syscoin);
-
-                  if (value <= balance) {
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
+          <div className="flex w-80 md:w-96">
+            <Form.Item
+              name="amount"
+              className="w-full"
+              hasFeedback
+              rules={[
+                {
+                  required: true,
+                  message: '',
                 },
-              }),
-            ]}
-          >
-            <Input
-              className="input-medium"
-              type="number"
-              placeholder="Amount"
-            />
-          </Form.Item>
+                () => ({
+                  validator(_, value) {
+                    if (value <= balance) {
+                      return Promise.resolve();
+                    }
+
+                    return Promise.reject();
+                  },
+                }),
+              ]}
+            >
+              <Input
+                className="mixed-right-border-input"
+                type="number"
+                placeholder="Amount"
+              />
+            </Form.Item>
+            <span
+              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
+              onClick={() =>
+                form.setFieldValue('amount', balance - 5 * recommendedFee)
+              }
+            >
+              Max
+            </span>
+          </div>
 
           <Fee disabled={true} recommend={recommendedFee} form={form} />
 

@@ -2,11 +2,8 @@ import 'emoji-log';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { sysweb3Di } from '@pollum-io/sysweb3-core';
-
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-// import { localStorage } from 'redux-persist-webextension-storage';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
@@ -17,10 +14,20 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
+let paliPort: Runtime.Port;
+const onWalletReady = (windowController: IMasterController) => {
+  // Add any code here that depends on the initialized wallet
+  window.controller = windowController;
+  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  if (paliPort) {
+    window.controller.dapp.setup(paliPort);
+  }
+  window.controller.utils.setFiat();
+};
 
 if (!window.controller) {
-  window.controller = Object.freeze(MasterController());
-  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  window.controller = MasterController(onWalletReady);
+  // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -48,7 +55,8 @@ const handleLogout = () => {
   if (isTimerEnabled) {
     window.controller.wallet.lock();
 
-    window.location.replace('/');
+    // Send a message to the content script
+    browser.runtime.sendMessage({ action: 'logoutFS' });
   }
 };
 
@@ -83,8 +91,10 @@ export const inactivityTime = () => {
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
-    window.controller.dapp.setup(port);
-
+    if (window.controller?.dapp) {
+      window.controller.dapp.setup(port);
+    }
+    paliPort = port;
     return;
   }
   const { changingConnectedAccount, timer, isTimerEnabled } =
@@ -107,11 +117,7 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
-    sysweb3Di.getStateStorageDb().setPrefix('sysweb3-');
-    sysweb3Di.useFetchHttpClient(window.fetch.bind(window));
-    sysweb3Di.useLocalStorageClient(window.localStorage);
-
-    window.controller.utils.setFiat();
+    // window.controller.utils.setFiat();
 
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
@@ -125,5 +131,107 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     });
   }
 });
+
+async function checkForUpdates() {
+  const {
+    changingConnectedAccount: { isChangingConnectedAccount },
+    isLoadingAssets,
+    isLoadingBalances,
+    isLoadingTxs,
+    isNetworkChanging,
+    lastLogin,
+    accounts,
+    activeAccount,
+    isBitcoinBased,
+    activeNetwork,
+  } = store.getState().vault;
+
+  const verifyIfUserIsNotRegistered = lastLogin === 0;
+
+  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
+
+  const notValidToRunPolling =
+    !hasAccount0Address ||
+    verifyIfUserIsNotRegistered ||
+    isChangingConnectedAccount ||
+    isLoadingAssets ||
+    isLoadingBalances ||
+    isLoadingTxs ||
+    isNetworkChanging;
+
+  if (notValidToRunPolling) {
+    //todo: do we also need to return if walle is unlocked?
+    return;
+  }
+
+  //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserNativeBalance({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
+
+  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateUserTransactionsState({
+    isPolling: true,
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
+
+  //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
+  window.controller.wallet.updateAssetsFromCurrentAccount({
+    isBitcoinBased,
+    activeNetwork,
+    activeAccount,
+  });
+}
+
+let intervalId;
+let isListenerRegistered = false;
+
+function registerListener() {
+  if (isListenerRegistered) {
+    return;
+  }
+
+  browser.runtime.onConnect.addListener((port) => {
+    let isPolling = false;
+
+    if (port.name === 'polling') {
+      port.onMessage.addListener((message) => {
+        if (message.action === 'startPolling' && !isPolling) {
+          isPolling = true;
+          intervalId = setInterval(checkForUpdates, 15000);
+          port.postMessage({ intervalId });
+        } else if (message.action === 'stopPolling') {
+          clearInterval(intervalId);
+          isPolling = false;
+        }
+      });
+    }
+  });
+
+  isListenerRegistered = true;
+}
+
+registerListener();
+
+const port = browser.runtime.connect(undefined, { name: 'polling' });
+port.postMessage({ action: 'startPolling' });
+
+browser.runtime.onMessage.addListener(({ action }) => {
+  if (action === 'resetPolling') {
+    const pollingPort = browser.runtime.connect(undefined, { name: 'polling' });
+
+    isListenerRegistered = false;
+    pollingPort.postMessage({ action: 'stopPolling' });
+    pollingPort.postMessage({ action: 'startPolling' });
+  }
+});
+
+export const resetPolling = () => {
+  browser.runtime.sendMessage({ action: 'resetPolling' });
+};
 
 wrapStore(store, { portName: STORE_PORT });

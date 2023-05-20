@@ -19,10 +19,10 @@ const CurrencyView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -77,13 +77,6 @@ const CurrencyView = () => {
     fiat: convertCurrency(actualBalance, checkValueCoin),
   });
 
-  //* Effects
-  useEffect(() => {
-    if (isUnlocked && accounts && accounts[activeAccountId]) {
-      controller.refresh(true);
-    }
-  }, [isUnlocked, activeAccountId]);
-
   useEffect(() => {
     if (selectedCoin) {
       controller.utils.setFiat(
@@ -126,7 +119,7 @@ const CurrencyView = () => {
       />
 
       <p className="mb-2 text-left text-white text-sm md:max-w-full">
-        You can choose and set your preferred currency to see in your wallet.
+        Set your preferred currency for displaying the value of your assets.
       </p>
 
       <div className="flex flex-col gap-y-5 items-center justify-center">

@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import {
   Layout,
   DefaultModal,
@@ -13,7 +15,6 @@ import {
   IconButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { saveTransaction } from 'scripts/Background/controllers/account/evm';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -28,10 +29,7 @@ import {
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
-  const {
-    refresh,
-    wallet: { account, updateErcTokenBalances },
-  } = getController();
+  const { wallet, callGetLatestUpdateForAccount } = getController();
 
   const { alert, navigate, useCopyClipboard } = useUtils();
 
@@ -41,10 +39,10 @@ export const SendConfirm = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -68,9 +66,6 @@ export const SendConfirm = () => {
 
   const basicTxValues = state.tx;
 
-  const ethereumTxsController = account.eth.tx;
-  const sysTxsController = account.sys.tx;
-
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
   );
@@ -91,14 +86,18 @@ export const SendConfirm = () => {
       switch (true) {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
-          // Just reiterating it does not make any sense to add a ethers provider inside a UTXO code block
           try {
-            sysTxsController
-              .sendTransaction(basicTxValues)
-              .then(async (response) => {
+            wallet.syscoinTransaction
+              .sendTransaction(basicTxValues, activeAccount.isTrezorWallet)
+              .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+
+                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                setTimeout(() => {
+                  callGetLatestUpdateForAccount();
+                }, 3500);
               })
               .catch((error) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -134,12 +133,15 @@ export const SendConfirm = () => {
               'chainId',
             ]) as ITxState;
 
-            ethereumTxsController
+            const value = ethers.utils.parseUnits(
+              String(basicTxValues.amount),
+              'ether'
+            );
+
+            wallet.ethereumTransaction
               .sendFormattedTransaction({
                 ...restTx,
-                value: ethereumTxsController.toBigNumber(
-                  Number(basicTxValues.amount) * 10 ** 18 // Calculate amount in correctly way to send in WEI
-                ),
+                value,
                 maxPriorityFeePerGas: ethers.utils.parseUnits(
                   String(
                     Boolean(
@@ -158,16 +160,23 @@ export const SendConfirm = () => {
                   ),
                   9
                 ),
-                gasLimit: ethereumTxsController.toBigNumber(
+                gasLimit: wallet.ethereumTransaction.toBigNumber(
                   validateCustomGasLimit
                     ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                     : fee.gasLimit
                 ),
               })
-              .then(async (response) => {
+              .then((response) => {
+                if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                  wallet.sendAndSaveTransaction(response);
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
+
+                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                setTimeout(() => {
+                  callGetLatestUpdateForAccount();
+                }, 3500);
               })
               .catch((error: any) => {
                 alert.error("Can't complete transaction. Try again later.");
@@ -193,7 +202,7 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case false:
               try {
-                ethereumTxsController
+                wallet.ethereumTransaction
                   .sendSignedErc20Transaction({
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
@@ -220,39 +229,23 @@ export const SendConfirm = () => {
                       ),
                       9
                     ),
-                    gasLimit: ethereumTxsController.toBigNumber(
+                    gasLimit: wallet.ethereumTransaction.toBigNumber(
                       validateCustomGasLimit
                         ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
                         : fee.gasLimit * 4
                     ),
                   })
                   .then(async (response) => {
+                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                      wallet.sendAndSaveTransaction(response);
                     setConfirmed(true);
                     setLoading(false);
                     setConfirmedTx(response);
-                    const provider = new ethers.providers.JsonRpcProvider(
-                      activeNetwork.url
-                    );
 
-                    let receipt = await provider.getTransactionReceipt(
-                      response.hash
-                    );
-
-                    while (!receipt) {
-                      receipt = await provider.getTransactionReceipt(
-                        response.hash
-                      );
-                      await new Promise((resolve) => setTimeout(resolve, 5000));
-                    }
-                    if (receipt) {
-                      updateErcTokenBalances(
-                        activeAccount.id,
-                        basicTxValues.token.contractAddress,
-                        basicTxValues.token.chainId,
-                        basicTxValues.token.isNft,
-                        basicTxValues.token.decimals
-                      );
-                    }
+                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                    setTimeout(() => {
+                      callGetLatestUpdateForAccount();
+                    }, 3500);
                   })
                   .catch((error) => {
                     logError('error send ERC20', 'Transaction', error);
@@ -276,7 +269,7 @@ export const SendConfirm = () => {
             //HANDLE ERC721 NFTS TRANSACTIONS
             case true:
               try {
-                ethereumTxsController
+                wallet.ethereumTransaction
                   .sendSignedErc721Transaction({
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
@@ -288,29 +281,10 @@ export const SendConfirm = () => {
                     setLoading(false);
                     setConfirmedTx(response);
 
-                    const provider = new ethers.providers.JsonRpcProvider(
-                      activeNetwork.url
-                    );
-
-                    let receipt = await provider.getTransactionReceipt(
-                      response.hash
-                    );
-
-                    while (!receipt) {
-                      receipt = await provider.getTransactionReceipt(
-                        response.hash
-                      );
-
-                      await new Promise((resolve) => setTimeout(resolve, 5000));
-                    }
-                    if (receipt) {
-                      updateErcTokenBalances(
-                        activeAccount.id,
-                        basicTxValues.token.contractAddress,
-                        basicTxValues.token.chainId,
-                        basicTxValues.token.isNft
-                      );
-                    }
+                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                    setTimeout(() => {
+                      callGetLatestUpdateForAccount();
+                    }, 3500);
                   })
                   .catch((error) => {
                     logError('error send ERC721', 'Transaction', error);
@@ -345,14 +319,14 @@ export const SendConfirm = () => {
     const getFeeRecomendation = async () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
-          await ethereumTxsController.getFeeDataWithDynamicMaxPriorityFeePerGas();
+          await wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
 
         const initialFeeDetails = {
           maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
           baseFee:
             (Number(maxFeePerGas) - Number(maxPriorityFeePerGas)) / 10 ** 9,
           maxPriorityFeePerGas: Number(maxPriorityFeePerGas) / 10 ** 9,
-          gasLimit: ethereumTxsController.toBigNumber(0),
+          gasLimit: wallet.ethereumTransaction.toBigNumber(0),
         };
 
         const formattedTxObject = {
@@ -365,7 +339,7 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        const getGasLimit = await ethereumTxsController.getTxGasLimit(
+        const getGasLimit = await wallet.ethereumTransaction.getTxGasLimit(
           formattedTxObject
         );
 
@@ -428,8 +402,7 @@ export const SendConfirm = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
-          saveTransaction(confirmedTx);
+          wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
         }}
       />

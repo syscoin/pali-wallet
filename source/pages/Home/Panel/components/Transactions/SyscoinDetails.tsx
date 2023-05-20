@@ -15,7 +15,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
-  const { transactions } = accounts[activeAccount];
+  const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -62,21 +62,28 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
         if (vin.length === 1) {
           for (const item of vin) {
             if (!item.vout) {
-              return;
-            }
-
-            controller.utils
-              .getRawTransaction(activeNetwork.url, item.txid)
-              .then((response: any) => {
-                for (const responseVout of response.vout) {
-                  if (responseVout.n === item.vout) {
-                    senders[item.addresses[0]] = {
-                      address: item.addresses[0],
-                      value: item.value,
-                    };
+              if (item.addresses) {
+                senders[item.addresses[0]] = {
+                  address: item.addresses[0],
+                  value: item.value ? item.value : '0',
+                };
+              } else {
+                return;
+              }
+            } else {
+              controller.utils
+                .getRawTransaction(activeNetwork.url, item.txid)
+                .then((response: any) => {
+                  for (const responseVout of response.vout) {
+                    if (responseVout.n === item.vout) {
+                      senders[item.addresses[0]] = {
+                        address: item.addresses[0],
+                        value: item.value,
+                      };
+                    }
                   }
-                }
-              });
+                });
+            }
           }
         }
 
@@ -90,7 +97,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             }
           }
         }
-
         setNewRecipients(recipients);
         setNewSenders(senders);
       }

@@ -29,6 +29,7 @@ interface SendSyncJsonRpcRequest {
 interface EthereumProviderState {
   accounts: null | string[];
   initialized: boolean;
+  isBitcoinBased: boolean;
   isConnected: boolean;
   isPermanentlyDisconnected: boolean;
   isUnlocked: boolean;
@@ -47,6 +48,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
+    isBitcoinBased: false,
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
@@ -95,6 +97,20 @@ export class PaliInpageProviderEth extends BaseProvider {
           case 'pali_chainChanged':
             this._handleChainChanged(params);
             break;
+          case 'pali_isBitcoinBased':
+            this._handleIsBitcoinBased(params);
+            break;
+          case 'pali_removeProperty':
+            break;
+          case 'pali_addProperty':
+            break;
+          // UTXO METHODS TO AVOID.
+          case 'pali_xpubChanged':
+            break;
+          case 'pali_blockExplorerChanged':
+            break;
+          case 'pali_isTestnet':
+            break;
           case EMITTED_NOTIFICATIONS.includes(method):
             //TODO: implement subscription messages
             throw {
@@ -120,6 +136,10 @@ export class PaliInpageProviderEth extends BaseProvider {
    */
   isConnected(): boolean {
     return this._state.isConnected;
+  }
+
+  isBitcoinBased(): boolean {
+    return this._state.isBitcoinBased;
   }
 
   /**
@@ -232,6 +252,14 @@ export class PaliInpageProviderEth extends BaseProvider {
       jsonrpc: payload.jsonrpc,
       result,
     };
+  }
+
+  private _handleIsBitcoinBased({
+    isBitcoinBased,
+  }: {
+    isBitcoinBased: boolean;
+  }) {
+    this._state.isBitcoinBased = isBitcoinBased;
   }
 
   private _handleAccountsChanged(
@@ -426,6 +454,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _initializeState(initialState?: {
     accounts: string[];
     chainId: string;
+    isBitcoinBased: boolean;
     isUnlocked: boolean;
     networkVersion?: string;
   }) {
@@ -434,13 +463,15 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     if (initialState) {
-      const { accounts, chainId, isUnlocked, networkVersion } = initialState;
+      const { accounts, chainId, isUnlocked, networkVersion, isBitcoinBased } =
+        initialState;
 
       // EIP-1193 connect
       this._handleConnect(chainId);
       this._handleChainChanged({ chainId, networkVersion });
       this._handleUnlockStateChanged({ accounts, isUnlocked });
       this._handleAccountsChanged(accounts);
+      this._handleIsBitcoinBased({ isBitcoinBased });
     }
 
     // Mark provider as initialized regardless of whether initial state was

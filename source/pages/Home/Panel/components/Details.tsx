@@ -1,7 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, Button, Icon } from 'components/index';
 import { RootState } from 'state/store';
@@ -23,20 +22,25 @@ export const DetailsView = () => {
 
   const isAsset = id && !hash;
 
+  const { explorer } = activeNetwork;
+
+  const adjustedExplorer = useMemo(
+    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
+    [explorer]
+  );
+
   const openEthExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.explorer}${isAsset ? 'address' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${
+      isAsset ? id : hash
+    }`;
+    window.open(url, '_blank');
   };
 
   const openSysExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.url}/${isAsset ? 'asset' : 'tx'}/${
-        isAsset ? id : hash
-      }`,
-    });
+    window.open(
+      `${activeNetwork.url}${isAsset ? 'asset' : 'tx'}/${isAsset ? id : hash}`,
+      '_blank'
+    );
   };
 
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
@@ -57,8 +61,8 @@ export const DetailsView = () => {
 
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
             <p className="font-normal" style={{ lineHeight: '18px' }}>
-              Would you like to go to view {isAsset ? 'asset' : 'transaction'}{' '}
-              on {isBitcoinBased ? 'Block' : 'Etherscan'} Explorer?
+              View this {isAsset ? 'asset' : 'transaction'} on{' '}
+              {isBitcoinBased ? 'Syscoin' : ''} Explorer?
             </p>
 
             <Button

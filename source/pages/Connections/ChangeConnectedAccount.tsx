@@ -13,18 +13,19 @@ export const ChangeConnectedAccount = () => {
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { dapp, wallet } = getController();
-  const { host, eventName, connectedAccount } = useQueryData();
+  //TODO: validate this
+  const { host, eventName, connectedAccount, accountType } = useQueryData();
 
   const handleConnectedAccount = () => {
-    dapp.changeAccount(host, activeAccount);
-    dispatchBackgroundEvent(`${eventName}.${host}`, false);
+    wallet.setAccount(connectedAccount.id, accountType);
+    dispatchBackgroundEvent(`${eventName}.${host}`, true);
     window.close();
   };
 
   const handleActiveAccount = () => {
+    dapp.changeAccount(host, activeAccount.id, activeAccount.type);
     //this should be passed to constant instead of being hardcoded
-    wallet.setAccount(connectedAccount.id);
-    dispatchBackgroundEvent(`${eventName}.${host}`, true);
+    dispatchBackgroundEvent(`${eventName}.${host}`, false);
     window.close();
   };
 
@@ -36,15 +37,16 @@ export const ChangeConnectedAccount = () => {
           <h2 className="text-center text-sm">
             The website <b className="text-gray-400">{host}</b> is connected to{' '}
             {connectedAccount.label} ({ellipsis(connectedAccount.address)}).
-            Your active account is {accounts[activeAccount].label} (
-            {ellipsis(accounts[activeAccount].address)}). With which account do
-            you want to proceed?
+            Your active account is{' '}
+            {accounts[activeAccount.type][activeAccount.id].label} (
+            {ellipsis(accounts[activeAccount.type][activeAccount.id].address)}).
+            With which account you want to proceed?
           </h2>
           <div className="mt-1 px-4 w-full text-center text-xs">
             <span>
               If you continue with the active account, Pali will change the
               connected account for <b className="text-gray-400">{host}</b> to{' '}
-              {accounts[activeAccount].label}.
+              {accounts[activeAccount.type][activeAccount.id].label}.
             </span>
           </div>
         </div>

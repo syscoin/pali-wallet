@@ -4,9 +4,11 @@
   "moduleDirectories": ["source", "node_modules"],
   "transform": {
     "^.+\\.ts$": "ts-jest",
-    "^.+\\.js$": "babel-jest",
-    "^.+\\.mjs$": "babel-jest"
+    "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "babel-jest"
   },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(@pollum-io/sysweb3-utils|@pollum-io/sysweb3-network|@pollum-io/sysweb3-core|@pollum-io/sysweb3-keyring)/)"
+  ],
   "testTimeout": 30000,
   "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$",
   "setupFilesAfterEnv": ["./jest.setup.js"]

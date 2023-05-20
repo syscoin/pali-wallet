@@ -56,7 +56,7 @@ const callbackResolver = (txType: string) => {
       throw new Error('Unknown transaction type');
   }
 
-  return getController().wallet.account.sys.tx[callbackName];
+  return getController().wallet.syscoinTransaction[callbackName];
 };
 
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
@@ -67,10 +67,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 }) => {
   if (!transaction) throw { message: 'No transaction' };
 
-  const { accounts, activeAccount: activeAccountId } = useSelector(
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
-  const activeAccount = accounts[activeAccountId];
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);

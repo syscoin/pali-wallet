@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -9,7 +8,6 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -17,20 +15,15 @@ interface ISign {
 }
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const { host, ...data } = useQueryData();
+  const { host, eventName, ...data } = useQueryData();
 
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const onSubmit = async () => {
-    const { account } = getController().wallet;
-    const sign = account.sys.tx.signTransaction;
-    // : account.eth.tx.signTypedDataV4;
+    const { syscoinTransaction } = getController().wallet;
+    const sign = syscoinTransaction.signTransaction;
 
     setLoading(true);
 
@@ -40,11 +33,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       setConfirmed(true);
       setLoading(false);
 
-      const psbtSign = send ? 'SignAndSend' : 'Sign';
-
-      const type = isBitcoinBased ? psbtSign : 'SignTypedDataV4';
-
-      dispatchBackgroundEvent(`tx${type}.${host}`, response);
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
     } catch (error: any) {
       setErrorMsg(error.message);
 
@@ -58,7 +47,11 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
         show={confirmed}
         onClose={window.close}
         title={'Signature request successfully submitted'}
-        description="You can check your request under activity on your home screen."
+        description={
+          send
+            ? 'The Dapp has your signed psbt'
+            : 'You can check your request under activity on your home screen.'
+        }
         buttonText="Got it"
       />
 

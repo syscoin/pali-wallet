@@ -1,36 +1,23 @@
-import {
-  IEthereumTransactions,
-  EthereumTransactions,
-  IWeb3Accounts,
-  Web3Accounts,
-} from '@pollum-io/sysweb3-keyring';
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setAccountTransactions, setActiveAccountProperty } from 'state/vault';
+import { setAccountPropertyByIdAndType } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
-export interface IEthTransactions extends IEthereumTransactions {
-  saveTransaction: (tx: any) => void;
-  sendAndSaveTransaction: (tx: any) => Promise<void>;
-}
-
-export interface IEthAccountController extends IWeb3Accounts {
+export interface IEthAccountController {
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
-  tx: IEthTransactions;
 }
 
 const EthAccountController = (): IEthAccountController => {
-  const txs = EthereumTransactions();
-  const web3Accounts = Web3Accounts();
-
   const saveTokenInfo = async (token: ITokenEthProps) => {
     try {
       const { activeAccount, activeNetwork, accounts } = store.getState().vault;
       const { chainId } = activeNetwork;
 
-      const tokenExists = accounts[activeAccount].assets.ethereum?.find(
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.ethereum?.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress
       );
@@ -66,11 +53,16 @@ const EthAccountController = (): IEthAccountController => {
       }
 
       store.dispatch(
-        setActiveAccountProperty({
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
           property: 'assets',
           value: {
-            ...accounts[activeAccount].assets,
-            ethereum: [...accounts[activeAccount].assets.ethereum, web3Token],
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            ethereum: [
+              ...accounts[activeAccount.type][activeAccount.id].assets.ethereum,
+              web3Token,
+            ],
           },
         })
       );
@@ -79,30 +71,8 @@ const EthAccountController = (): IEthAccountController => {
     }
   };
 
-  const sendAndSaveTransaction = async (tx: any) => {
-    store.dispatch(setAccountTransactions(await txs.sendTransaction(tx)));
-  };
-
-  const saveTransaction = (tx: any) => {
-    store.dispatch(setAccountTransactions(tx));
-  };
-
-  const tx: IEthTransactions = {
-    sendAndSaveTransaction,
-    saveTransaction,
-    ...txs,
-  };
-
   return {
     saveTokenInfo,
-    tx,
-    ...web3Accounts,
   };
 };
-
 export default EthAccountController;
-
-export const saveTransaction = (tx: any) => {
-  const finalTx = { ...tx, timestamp: Math.floor(Date.now() / 1000) };
-  store.dispatch(setAccountTransactions(finalTx));
-};

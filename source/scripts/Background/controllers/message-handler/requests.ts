@@ -1,5 +1,8 @@
 import { ethErrors } from 'helpers/errors';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
@@ -27,7 +30,7 @@ export const methodRequest = async (
     store.getState().vault;
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-  if (data.method && !isBitcoinBased) {
+  if (data.method && !isBitcoinBased && prefix !== 'sys') {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
@@ -58,14 +61,10 @@ export const methodRequest = async (
     methodName !== 'switchEthereumChain' &&
     methodName !== 'getProviderState' &&
     methodName !== 'getSysProviderState' &&
-    methodName !== 'getAccount'
+    methodName !== 'getAccount' &&
+    methodName !== 'changeUTXOEVM'
   )
     throw cleanErrorStack(ethErrors.provider.unauthorized());
-  //throw {
-  //code: 4100,
-  //message:
-  //'The requested account and/or method has not been authorized by the user.',
-  //};
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   //* Wallet methods
@@ -192,6 +191,7 @@ export const methodRequest = async (
           chainId: `0x${activeNetwork.chainId.toString(16)}`,
           isUnlocked: wallet.isUnlocked(),
           networkVersion: activeNetwork.chainId,
+          isBitcoinBased,
         };
         return providerState;
       case 'getSysProviderState':
@@ -200,6 +200,7 @@ export const methodRequest = async (
           xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
           isUnlocked: wallet.isUnlocked(),
+          isBitcoinBased,
         };
         return sysProviderState;
       default:
@@ -207,21 +208,93 @@ export const methodRequest = async (
     }
   }
 
-  if (
-    accounts[activeAccount].address !== dapp.getAccount(host).address &&
-    !isBitcoinBased &&
-    EthProvider(host).checkIsBlocking(data.method)
+  //* Change between networks methods
+
+  const validatePrefixAndCurrentChain =
+    (prefix === 'sys' && !isBitcoinBased) ||
+    (prefix === 'eth' && isBitcoinBased);
+
+  const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
+
+  if (validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName) {
+    const { chainId } = data.params[0];
+
+    const networks = store.getState().vault.networks;
+
+    const newChainValue = prefix === 'sys' ? 'Syscoin' : 'Ethereum';
+    const findCorrectNetwork: INetwork =
+      networks[newChainValue.toLowerCase()][chainId];
+    if (!findCorrectNetwork) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized('Network request does not exists')
+      );
+    }
+    const changeNetwork = (await popupPromise({
+      host,
+      data: {
+        newNetwork: findCorrectNetwork,
+        newChainValue: newChainValue,
+      },
+      route: 'switch-UtxoEvm',
+      eventName: 'change_UTXOEVM',
+    })) as any;
+
+    if (changeNetwork && changeNetwork.error) {
+      return;
+    }
+    if (dapp.isConnected(host)) {
+      await popupPromise({
+        host,
+        route: 'change-account',
+        eventName: 'accountsChanged',
+        data: { network: findCorrectNetwork },
+      });
+    } else {
+      await popupPromise({
+        host,
+        route: 'connect-wallet',
+        eventName: 'connect',
+        data: { newChainValue, chainId: findCorrectNetwork.chainId },
+      });
+    }
+    return;
+  } else if (
+    validateChangeUtxoEvmMethodName &&
+    !validatePrefixAndCurrentChain
   ) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Method only available when connected on correct Network and using correct Prefix'
+      )
+    );
+  }
+
+  if (
+    prefix !== 'sys' &&
+    !isBitcoinBased &&
+    EthProvider(host).checkIsBlocking(data.method) &&
+    accounts[activeAccount.type][activeAccount.id].address !==
+      dapp.getAccount(host).address
+  ) {
+    const dappAccount = dapp.getAccount(host);
+    const dappAccountType = dappAccount.isImported
+      ? KeyringAccountType.Imported
+      : KeyringAccountType.HDAccount;
+
     const response = await popupPromise({
       host,
       route: 'change-active-connected-account',
       eventName: 'changeActiveConnected',
-      data: { connectedAccount: dapp.getAccount(host) },
+      data: {
+        connectedAccount: dappAccount,
+        accountType: dappAccountType,
+      },
     });
     if (!response) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
   }
+
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
@@ -230,14 +303,15 @@ export const methodRequest = async (
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
-  } else if (prefix === 'sys' && !isBitcoinBased)
+  } else if (prefix === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  else if (prefix === 'eth' && isBitcoinBased)
+  } else if (prefix === 'eth' && isBitcoinBased) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Method only available when connected on EVM chains'
       )
     );
+  }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
@@ -259,15 +333,18 @@ export const enable = async (
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-
   if (!isSyscoinDapp && isBitcoinBased)
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized('Connected to Bitcoin based chain')
-    );
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Bitcoin based chain',
+      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+    });
   else if (isSyscoinDapp && !isBitcoinBased)
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized('Connected to EVM based chain')
-    );
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Ethereum based chain',
+      data: { code: 4101, message: 'Connected to Ethereum based chain' },
+    });
 
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())

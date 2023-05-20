@@ -1,165 +1,40 @@
 import axios from 'axios';
-import { resolve } from 'path';
+import isEmpty from 'lodash/isEmpty';
 
-import {
-  KeyringManager,
-  ISyscoinTransactions,
-  SyscoinTransactions,
-} from '@pollum-io/sysweb3-keyring';
+import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
-import { PaliEvents, PaliSyscoinEvents } from '../message-handler/types';
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
-import {
-  setAccounts,
-  setActiveAccountProperty,
-  setIsLoadingTxs,
-  setIsNetworkChanging,
-  setIsPendingBalances,
-} from 'state/vault';
+import { setAccountPropertyByIdAndType } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
-import { getBalanceUpdatedToErcTokens } from 'utils/tokens';
+
+const config = {
+  headers: {
+    'X-User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+  },
+  withCredentials: true,
+};
 
 export interface ISysAccountController {
-  getLatestUpdate: (silent?: boolean) => Promise<void>;
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
-  tx: ISyscoinTransactions;
-  watchMemPool: () => void;
+  // tx: ISyscoinTransactions;
 }
 
-const SysAccountController = (): ISysAccountController => {
-  const keyringManager = KeyringManager();
-
-  // id for `watchMemPool` setInterval
-  let intervalId: NodeJS.Timer;
-
-  const getLatestUpdate = async (silent?: boolean) => {
-    const { activeAccount, isBitcoinBased, accounts, activeNetwork } =
-      store.getState().vault;
-    const accountId = activeAccount;
-    if (!accounts[accountId].address) return;
-
-    if (!silent) store.dispatch(setIsPendingBalances(true));
-
-    store.dispatch(setIsLoadingTxs(true));
-    const { walleAccountstLatestUpdate } =
-      await keyringManager.getLatestUpdateForAccount();
-    store.dispatch(setIsPendingBalances(false));
-
-    const hash = isBitcoinBased ? 'txid' : 'hash';
-
-    store.dispatch(setIsLoadingTxs(false));
-
-    const formattedWalletAccountsLatestUpdates = Object.assign(
-      {},
-      await Promise.all(
-        Object.values(walleAccountstLatestUpdate).map(
-          async (account: any, index) => {
-            const { transactions: updatedTxs } = account;
-
-            const allTxs = [
-              ...accounts[index].transactions,
-              ...updatedTxs,
-            ].filter(
-              (value, i, self) =>
-                i ===
-                self.findIndex((tx) => tx && value && tx[hash] === value[hash])
-            ); // to get array with unique txs.
-
-            if (isBitcoinBased)
-              return {
-                ...account,
-                label: accounts[index].label,
-                transactions: [...allTxs],
-                assets: {
-                  ethereum: accounts[index].assets.ethereum,
-                  syscoin: account.assets,
-                },
-              };
-            else {
-              //UPDATE ETH ERC TOKEN BALANCES
-              const getUpdatedErcTokens = await getBalanceUpdatedToErcTokens(
-                accounts[index].id
-              );
-
-              return {
-                ...account,
-                label: accounts[index].label,
-                assets: {
-                  syscoin: accounts[index].assets.syscoin,
-                  ethereum: getUpdatedErcTokens,
-                },
-                transactions: [...allTxs],
-              };
-            }
-          }
-        )
-      )
-    );
-
-    store.dispatch(
-      setAccounts({
-        ...formattedWalletAccountsLatestUpdates,
-      })
-    );
-
-    store.dispatch(setAccounts({ ...formattedWalletAccountsLatestUpdates }));
-
-    resolve();
-
-    const isUpdating = store.getState().vault.isNetworkChanging;
-    window.controller.dapp.handleBlockExplorerChange(
-      PaliSyscoinEvents.blockExplorerChanged,
-      {
-        method: PaliSyscoinEvents.blockExplorerChanged,
-        params: isBitcoinBased ? activeNetwork.url : null,
-      }
-    );
-    if (!isUpdating)
-      window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-        method: PaliEvents.chainChanged,
-        params: {
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
-          networkVersion: activeNetwork.chainId,
-        },
-      });
-    else store.dispatch(setIsNetworkChanging(false));
-  };
-
-  /** check if there is no pending transaction in mempool
-   *  and get the latest update for account
-   */
-  const watchMemPool = () => {
-    if (intervalId) clearInterval(intervalId);
-    //TODO: this should be enhanced and its only being set after user refresh the wallet
-    // 30 seconds - 3000 milliseconds
-    const interval = 30 * 1000;
-
-    intervalId = setInterval(() => {
-      const { activeAccount, accounts } = store.getState().vault;
-
-      if (
-        !accounts[activeAccount].address ||
-        !accounts[activeAccount].transactions
-      ) {
-        clearInterval(intervalId);
-
-        return;
-      }
-
-      getLatestUpdate(true);
-    }, interval);
-  };
-
+const SysAccountController = (
+  getKeyring: () => KeyringManager
+): ISysAccountController => {
   const setAddress = async (): Promise<string> => {
-    const {
-      accountLatestUpdate: { address },
-    } = await keyringManager.getLatestUpdateForAccount();
+    const keyringManager = getKeyring();
+    const { activeAccount } = store.getState().vault;
+    const address = await keyringManager.updateReceivingAddress();
 
     store.dispatch(
-      setActiveAccountProperty({
+      setAccountPropertyByIdAndType({
+        id: activeAccount.id,
+        type: activeAccount.type,
         property: 'address',
         value: String(address),
       })
@@ -170,9 +45,11 @@ const SysAccountController = (): ISysAccountController => {
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
-      const { activeAccount, accounts } = store.getState().vault;
+      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
 
-      const tokenExists = accounts[activeAccount].assets.find(
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.syscoin.find(
         (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
@@ -184,22 +61,31 @@ const SysAccountController = (): ISysAccountController => {
       const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
         ? description
         : '';
-
-      const { data } = await axios.get(ipfsUrl);
-
-      const image = data && data.image ? data.image : '';
-
-      const asset = {
+      const assetInfos = {
         ...token,
+        chainId: activeNetwork.chainId,
         description,
-        image,
-        balance: Number(token.balance) / 10 ** Number(token.decimals),
+        image: '',
+        balance: Number(token.balance) / 10 ** Number(token.decimals) || 0,
       };
+      if (!isEmpty(ipfsUrl)) {
+        const { data } = await axios.get(ipfsUrl, config);
+
+        assetInfos.image = data && data.image ? data.image : '';
+      }
 
       store.dispatch(
-        setActiveAccountProperty({
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
           property: 'assets',
-          value: [...accounts[activeAccount].assets, asset],
+          value: {
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            syscoin: [
+              ...accounts[activeAccount.type][activeAccount.id].assets.syscoin,
+              assetInfos,
+            ],
+          },
         })
       );
     } catch (error) {
@@ -207,15 +93,16 @@ const SysAccountController = (): ISysAccountController => {
     }
   };
 
+  //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
-  const tx = SyscoinTransactions();
+  // const tx = keyringManager.syscoinTransaction;
 
   return {
-    watchMemPool,
+    // watchMemPool,
     trezor,
-    tx,
+    // tx,
     setAddress,
-    getLatestUpdate,
+    // getLatestUpdate,
     saveTokenInfo,
   };
 };
