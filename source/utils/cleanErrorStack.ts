@@ -20,5 +20,5 @@ export default function cleanErrorStack(err: Error) {
     err.stack = `${err.name}: ${err.message}`;
   }
 
-  return { error: { name, message, stack } };
+  return { error: { name, message, stack }, data: { name, message, stack } };
 }

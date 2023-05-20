@@ -17,6 +17,8 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import { omitTransactionObjectData } from 'utils/transactions';
+import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
 import {
   TransactionDetailsComponent,
@@ -28,8 +30,7 @@ import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
   const {
-    refresh,
-    wallet: { account },
+    wallet: { ethereumTransaction, sendAndSaveTransaction },
   } = getController();
 
   const { navigate, alert } = useUtils();
@@ -38,15 +39,16 @@ export const SendTransaction = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
 
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -63,6 +65,7 @@ export const SendTransaction = () => {
     : state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
+  const [confirmedTx, setConfirmedTx] = useState<any>();
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -79,6 +82,13 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
+  const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
+
+  const validatedDataTxWithoutType = {
+    ...omitTransactionObject,
+    data: validateTransactionDataValue(dataTx.data),
+  };
+
   const handleConfirm = async () => {
     const {
       balances: { ethereum },
@@ -89,9 +99,8 @@ export const SendTransaction = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
       setTx({
-        ...tx,
+        ...(validatedDataTxWithoutType as ITxState),
         nonce: customNonce,
         maxPriorityFeePerGas: ethers.utils.parseUnits(
           String(
@@ -109,14 +118,14 @@ export const SendTransaction = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
         ),
       });
       try {
-        const response = await txs.sendFormattedTransaction({
+        const response = await ethereumTransaction.sendFormattedTransaction({
           ...tx,
           nonce: customNonce,
           maxPriorityFeePerGas: ethers.utils.parseUnits(
@@ -135,7 +144,7 @@ export const SendTransaction = () => {
             ),
             9
           ),
-          gasLimit: txs.toBigNumber(
+          gasLimit: ethereumTransaction.toBigNumber(
             Boolean(customFee.isCustom && customFee.gasLimit > 0)
               ? customFee.gasLimit
               : fee.gasLimit
@@ -143,8 +152,10 @@ export const SendTransaction = () => {
         });
         setConfirmed(true);
         setLoading(false);
+        setConfirmedTx(response);
 
-        if (isExternal) dispatchBackgroundEvent(`txSend.${host}`, response);
+        if (isExternal)
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
@@ -169,18 +180,16 @@ export const SendTransaction = () => {
     const getGasAndFunction = async () => {
       try {
         const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          dataTx,
+          validatedDataTxWithoutType as ITransactionParams,
           activeNetwork
         );
         setFee(feeDetails);
         setTx(formTx);
         setCustomNonce(nonce);
       } catch (e) {
+        logError('error getting fees', 'Transaction', e);
         alert.removeAll();
-        alert.error(
-          'The transaction will fail due to wrong parameters, fix it and try again',
-          e
-        );
+        alert.error('The transaction will fail, fix it and try again!', e);
         setTimeout(window.close, 3000);
       }
     };
@@ -199,11 +208,10 @@ export const SendTransaction = () => {
         title="Transaction successful"
         description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
+          sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
-            refresh(true);
             window.close();
           } else {
-            refresh(false);
             navigate('/home');
           }
         }}
@@ -307,7 +315,7 @@ export const SendTransaction = () => {
                 ) : component.component === 'hex' ? (
                   <TransactionHexComponent
                     methodName={decodedTxData.method}
-                    dataHex={dataTx.data}
+                    dataHex={validatedDataTxWithoutType.data}
                   />
                 ) : null}
               </div>
@@ -321,10 +329,8 @@ export const SendTransaction = () => {
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
-                  refresh(true);
                   window.close();
                 } else {
-                  refresh(false);
                   navigate('/home');
                 }
               }}

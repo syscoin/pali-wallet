@@ -3,29 +3,68 @@ import { uniqueId } from 'lodash';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
-export const NetworkMenu: React.FC = () => {
+interface INetworkComponent {
+  setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  setSelectedNetwork: React.Dispatch<
+    React.SetStateAction<{ chain: string; network: INetwork }>
+  >;
+}
+
+export const NetworkMenu: React.FC<INetworkComponent> = (
+  props: INetworkComponent
+) => {
+  const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
   const { wallet } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const {
+    activeAccount: { type: activeAccountType },
+  } = useSelector((state: RootState) => state.vault);
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
+  const activeAccount = useSelector(
+    (state: RootState) =>
+      state.vault.accounts[state.vault.activeAccount.type][
+        state.vault.activeAccount.id
+      ]
+  );
+
   const { navigate } = useUtils();
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    setSelectedNetwork({ network, chain });
+    const cannotContinueWithTrezorAccount =
+      // verify if user are on bitcoinBased network and if current account is Trezor-based
+      (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+      // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+      (Object.keys(networks.ethereum).find(
+        (chainId) => `${activeNetwork.chainId}` === chainId
+      ) &&
+        Object.keys(networks.syscoin).find(
+          (chainId) => `${network.chainId}` === chainId
+        ) &&
+        `${network.slip44}` !== 'undefined' &&
+        activeAccountType === KeyringAccountType.Trezor);
+
     try {
+      if (cannotContinueWithTrezorAccount) {
+        setActiveAccountModalIsOpen(true);
+        return;
+      }
       await wallet.setActiveNetwork(network, chain);
     } catch (networkError) {
       navigate('/home');
@@ -99,6 +138,65 @@ export const NetworkMenu: React.FC = () => {
                   </li>
                 </Menu.Item>
 
+                {!activeAccount.isImported ? (
+                  <Menu.Item>
+                    <Disclosure>
+                      {({ open }) => (
+                        <>
+                          <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                            <Icon
+                              name="dolar"
+                              className="ml-1 mr-4 text-brand-white"
+                            />
+
+                            <span className="px-3 text-base">
+                              UTXO Networks
+                            </span>
+
+                            <Icon
+                              name="select-down"
+                              className={`${
+                                open ? 'transform rotate-180' : ''
+                              } text-brand-white mb-1`}
+                            />
+                          </Disclosure.Button>
+
+                          <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
+                            {Object.values(networks.syscoin).map(
+                              (currentNetwork: INetwork) => (
+                                <li
+                                  key={uniqueId()}
+                                  className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                  onClick={() =>
+                                    handleChangeNetwork(
+                                      currentNetwork,
+                                      'syscoin'
+                                    )
+                                  }
+                                >
+                                  <span className="ml-8 text-left">
+                                    {currentNetwork.label}
+                                  </span>
+
+                                  {isBitcoinBased &&
+                                    activeNetwork.chainId ===
+                                      currentNetwork.chainId && (
+                                      <Icon
+                                        name="check"
+                                        className="mb-1 w-4"
+                                        wrapperClassname="w-6 absolute right-20"
+                                      />
+                                    )}
+                                </li>
+                              )
+                            )}
+                          </Disclosure.Panel>
+                        </>
+                      )}
+                    </Disclosure>
+                  </Menu.Item>
+                ) : null}
+
                 <Menu.Item>
                   <Disclosure>
                     {({ open }) => (
@@ -109,59 +207,7 @@ export const NetworkMenu: React.FC = () => {
                             className="ml-1 mr-4 text-brand-white"
                           />
 
-                          <span className="px-3 text-base">Syscoin core</span>
-
-                          <Icon
-                            name="select-down"
-                            className={`${
-                              open ? 'transform rotate-180' : ''
-                            } text-brand-white mb-1`}
-                          />
-                        </Disclosure.Button>
-
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(networks.syscoin).map(
-                            (currentNetwork: INetwork) => (
-                              <li
-                                key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                                onClick={() =>
-                                  handleChangeNetwork(currentNetwork, 'syscoin')
-                                }
-                              >
-                                <span className="ml-8 text-left">
-                                  {currentNetwork.label}
-                                </span>
-
-                                {isBitcoinBased &&
-                                  activeNetwork.chainId ===
-                                    currentNetwork.chainId && (
-                                    <Icon
-                                      name="check"
-                                      className="mb-1 w-4"
-                                      wrapperClassname="w-6 absolute right-20"
-                                    />
-                                  )}
-                              </li>
-                            )
-                          )}
-                        </Disclosure.Panel>
-                      </>
-                    )}
-                  </Disclosure>
-                </Menu.Item>
-
-                <Menu.Item>
-                  <Disclosure>
-                    {({ open }) => (
-                      <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                          <Icon
-                            name="dolar"
-                            className="ml-1 mr-4 text-brand-white"
-                          />
-
-                          <span className="px-3 text-base">Web3 networks</span>
+                          <span className="px-3 text-base">Web3 Networks</span>
 
                           <Icon
                             name="select-down"
@@ -172,11 +218,15 @@ export const NetworkMenu: React.FC = () => {
                         </Disclosure.Button>
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                          {Object.values(networks.ethereum).map(
-                            (currentNetwork: any) => (
+                          {Object.values(networks.ethereum)
+                            .sort((a, b) =>
+                              a.chainId === 57 ? -1 : b.chainId === 57 ? 1 : 0
+                            )
+
+                            .map((currentNetwork: any) => (
                               <li
                                 key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                className="backface-visibility-hidden flex flex-row items-center justify-start mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,
@@ -193,13 +243,12 @@ export const NetworkMenu: React.FC = () => {
                                     currentNetwork.chainId && (
                                     <Icon
                                       name="check"
-                                      className="mb-1 w-4"
-                                      wrapperClassname="w-6 absolute right-16"
+                                      className="right-0 mb-1 w-4"
+                                      wrapperClassname="w-6 right-16"
                                     />
                                   )}
                               </li>
-                            )
-                          )}
+                            ))}
                         </Disclosure.Panel>
                       </>
                     )}

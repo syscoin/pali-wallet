@@ -1,4 +1,4 @@
-import { INetwork } from '@pollum-io/sysweb3-utils';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ITransactionParams } from 'types/transactions';
 
@@ -9,13 +9,12 @@ export const fetchGasAndDecodeFunction = async (
   activeNetwork: INetwork
 ) => {
   const {
-    wallet: { account },
+    wallet: { ethereumTransaction },
   } = getController();
 
-  const txs = account.eth.tx;
   const { maxFeePerGas, maxPriorityFeePerGas } =
-    await txs.getFeeDataWithDynamicMaxPriorityFeePerGas();
-  const nonce = await txs.getRecommendedNonce(dataTx.from); // This also need possibility for customization
+    await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
+  const nonce = await ethereumTransaction.getRecommendedNonce(dataTx.from); // This also need possibility for customization //todo: adjust to get from new keyringmanager
   const formTx = {
     data: dataTx.data,
     from: dataTx.from,
@@ -27,13 +26,13 @@ export const fetchGasAndDecodeFunction = async (
     maxFeePerGas: dataTx?.maxFeePerGas ? dataTx?.maxFeePerGas : maxFeePerGas,
     nonce: nonce,
     chainId: activeNetwork.chainId,
-    gasLimit: txs.toBigNumber(0),
+    gasLimit: ethereumTransaction.toBigNumber(0), //todo: adjust to get from new keyringmanager
   };
-  const getTxGasLimitResult = await txs.getTxGasLimit(formTx);
+  const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(formTx); //todo: adjust to get from new keyringmanager
   formTx.gasLimit =
     (dataTx?.gas && Number(dataTx?.gas) > Number(getTxGasLimitResult)) ||
     (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(getTxGasLimitResult))
-      ? txs.toBigNumber(dataTx.gas || dataTx.gasLimit)
+      ? ethereumTransaction.toBigNumber(dataTx.gas || dataTx.gasLimit) //todo: adjust to get from new keyringmanager
       : getTxGasLimitResult;
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,

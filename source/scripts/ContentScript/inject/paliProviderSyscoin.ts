@@ -2,12 +2,15 @@ import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
+import { EMITTED_NOTIFICATIONS } from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
   blockExplorerURL: string | null;
   initialized: boolean;
+  isBitcoinBased: boolean;
   isPermanentlyDisconnected: boolean;
+  isTestnet: boolean | undefined;
   isUnlocked: boolean;
   xpub: string | null;
 }
@@ -20,6 +23,8 @@ export class PaliInpageProviderSys extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
+    isTestnet: false,
+    isBitcoinBased: false,
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
@@ -44,7 +49,7 @@ export class PaliInpageProviderSys extends BaseProvider {
         )
       );
     window.addEventListener(
-      'sys_notification',
+      'notification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
         this.emit('walletUpdate');
@@ -58,6 +63,23 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_blockExplorerChanged':
             this._handleActiveBlockExplorer(params);
             break;
+          case 'pali_isTestnet':
+            this._handleIsTestnet(params);
+            break;
+          case 'pali_isBitcoinBased':
+            this._handleIsBitcoinBased(params);
+            break;
+          case EMITTED_NOTIFICATIONS.includes(method):
+            break;
+          // EVM METHODS TO AVOID
+          case 'pali_accountsChanged':
+            break;
+          case 'pali_chainChanged':
+            break;
+          case 'pali_removeProperty':
+            break;
+          case 'pali_addProperty':
+            break;
           default:
             this._handleDisconnect(
               false,
@@ -70,8 +92,19 @@ export class PaliInpageProviderSys extends BaseProvider {
       }
     );
   }
+
+  public async activeExplorer(): Promise<string> {
+    if (!this._sysState.initialized) {
+      await new Promise<void>((resolve) => {
+        this.on('_sysInitialized', () => resolve());
+      });
+    }
+    return this._sysState.blockExplorerURL;
+  }
+
   private _initializeState(initialState?: {
     blockExplorerURL: string | null;
+    isBitcoinBased: boolean;
     isUnlocked: boolean;
     xpub: string;
   }) {
@@ -80,12 +113,14 @@ export class PaliInpageProviderSys extends BaseProvider {
     }
 
     if (initialState) {
-      const { xpub, blockExplorerURL, isUnlocked } = initialState;
+      const { xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
+        initialState;
 
       // EIP-1193 connect
       this._handleConnectedXpub(xpub);
       this._handleActiveBlockExplorer(blockExplorerURL);
       this._handleUnlockStateChanged({ xpub, isUnlocked });
+      this._handleIsBitcoinBased({ isBitcoinBased });
     }
 
     // Mark provider as initialized regardless of whether initial state was
@@ -108,6 +143,19 @@ export class PaliInpageProviderSys extends BaseProvider {
       });
     }
     return this._sysState.isUnlocked;
+  }
+
+  public async isTestnet(): Promise<boolean> {
+    if (!this._sysState.initialized) {
+      await new Promise<void>((resolve) => {
+        this.on('_sysInitialized', () => resolve());
+      });
+    }
+    return this._sysState.isTestnet;
+  }
+
+  public isBitcoinBased(): boolean {
+    return this._sysState.isBitcoinBased;
   }
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
@@ -165,6 +213,16 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
+  }
+  private _handleIsBitcoinBased({
+    isBitcoinBased,
+  }: {
+    isBitcoinBased: boolean;
+  }) {
+    this._sysState.isBitcoinBased = isBitcoinBased;
+  }
+  private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
+    this._sysState.isTestnet = isTestnet;
   }
   private async _isSyscoinChain(): Promise<boolean> {
     let checkExplorer = false;

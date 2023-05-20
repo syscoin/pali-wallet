@@ -17,7 +17,8 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
-    if (controller.wallet.validateSeed(phrase)) {
+    if (controller.wallet.isSeedValid(phrase)) {
+      controller.wallet.setSeed(phrase);
       onRegister();
     }
   };
@@ -53,9 +54,10 @@ const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
 
                 form.setFieldsValue({ phrase: value });
 
-                setSeedIsValid(controller.wallet.validateSeed(value) && value);
+                //todo: we should validate the seed phrase with the new fn
+                setSeedIsValid(controller.wallet.isSeedValid(value) && value);
 
-                if (controller.wallet.validateSeed(value)) {
+                if (controller.wallet.isSeedValid(value)) {
                   return Promise.resolve();
                 }
 

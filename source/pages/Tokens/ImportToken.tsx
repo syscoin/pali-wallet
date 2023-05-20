@@ -1,12 +1,14 @@
 import { Form, Input } from 'antd';
-import { uniqueId } from 'lodash';
+import { isBoolean, isNil, uniqueId } from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
+import { useSelector } from 'react-redux';
 
 import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
@@ -18,8 +20,18 @@ export const ImportToken: FC = () => {
 
   const [list, setList] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [added, setAdded] = useState<boolean>(false);
+  const [error, setError] = useState<boolean>(false);
+
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const handleSearch = (query: string) => {
     setSelected(null);
@@ -38,7 +50,7 @@ export const ImportToken: FC = () => {
   };
 
   const renderTokens = () => {
-    const tokensList = list || getTokenJson();
+    const tokensList = list.length > 0 ? list : getTokenJson();
 
     for (const [key, value] of Object.entries(tokensList)) {
       const tokenValue: any = value;
@@ -67,12 +79,29 @@ export const ImportToken: FC = () => {
   };
 
   const addToken = async (token: ITokenEthProps) => {
+    setIsLoading(true);
     try {
-      await controller.wallet.account.eth.saveTokenInfo(token);
+      const addTokenMethodResponse =
+        await controller.wallet.assets.evm.addEvmDefaultToken(
+          token,
+          activeAccount.address,
+          activeNetwork.url
+        );
+
+      if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
+        setError(true);
+        setIsLoading(false);
+
+        return;
+      }
+
+      await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
 
       setAdded(true);
-    } catch (_error) {
-      setError(Boolean(_error));
+    } catch (submitError) {
+      setError(true);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -114,6 +143,7 @@ export const ImportToken: FC = () => {
 
         <NeutralButton
           type="button"
+          loading={isLoading}
           onClick={
             selected ? () => addToken(selected) : () => navigate('/home')
           }

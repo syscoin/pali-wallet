@@ -1,15 +1,21 @@
 const palette = require('./palette.js');
 
 module.exports = {
-  purge: false,
-  content: ['./source/*/.{html,js,jsx,ts,tsx}'],
-  darkMode: false, // or 'media' or 'class'
+  content: [
+    './source/components/**/*.{html,js,jsx,ts,tsx}',
+    './source/pages/**/*.{html,js,jsx,ts,tsx}',
+    './views/*.html',
+  ],
+  media: false, //darkMode is outdated
   theme: {
     extend: {
       colors: palette,
       boxShadow: {
         btn: '0px 1px 5px rgba(0, 0, 0, 0.25)',
         tooltip: '0px 0px 5px rgba(0, 0, 0, 0.25)',
+      },
+      scale: {
+        103: '1.03',
       },
       inset: {
         '5percent': '5%',

@@ -1,3 +1,5 @@
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import reducer, {
   addDApp,
   removeDApp,
@@ -14,6 +16,7 @@ describe('dapp store actions', () => {
     chain: 'syscoin',
     chainId: 57,
     accountId: 0,
+    accountType: KeyringAccountType.HDAccount,
     date: Date.now(),
   };
 
@@ -34,7 +37,12 @@ describe('dapp store actions', () => {
 
   //* updateDAppAccount
   it('should update the dapp account', () => {
-    const payload = { host: FAKE_DAPP.host, accountId: 1, date: Date.now() };
+    const payload = {
+      host: FAKE_DAPP.host,
+      accountId: 1,
+      accountType: KeyringAccountType.HDAccount,
+      date: Date.now(),
+    };
 
     const customState = reducer(initialState, addDApp(FAKE_DAPP));
     const newState = reducer(customState, updateDAppAccount(payload));

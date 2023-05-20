@@ -17,7 +17,7 @@ interface IFee {
 }
 
 const Fee: React.FC<IFee> = ({ title, onFinish }) => {
-  const { getRecommendedFee } = getController().wallet.account.sys.tx;
+  const { getRecommendedFee } = getController().wallet.syscoinTransaction;
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork

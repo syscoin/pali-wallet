@@ -23,7 +23,7 @@ export const Layout: FC<ILayout> = ({
 
   const url = browser.runtime.getURL('app.html');
 
-  const isConnectPage = title === 'CONNECT WITH';
+  const isConnectPage = title === 'CONNECT ACCOUNT';
 
   return (
     <div className="scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 overflow-y-scroll">

@@ -3,7 +3,12 @@ import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
+import {
+  Layout,
+  PrimaryButton,
+  SecondaryButton,
+  LoadingComponent,
+} from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -24,7 +29,7 @@ const SwitchChain: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      wallet.setActiveNetwork(network, 'ethereum');
+      await wallet.setActiveNetwork(network, 'ethereum');
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
@@ -71,6 +76,11 @@ const SwitchChain: React.FC = () => {
               Switch Network
             </PrimaryButton>
           </div>
+        </div>
+      )}
+      {loading && (
+        <div className="relative top-40 flex items-center justify-center w-full">
+          <LoadingComponent />
         </div>
       )}
     </Layout>

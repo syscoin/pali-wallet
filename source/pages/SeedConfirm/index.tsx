@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/useUtils';
@@ -19,20 +19,36 @@ export const SeedConfirm = () => {
   }: any = useLocation();
 
   const handleConfirm = async () => {
-    await controller.wallet.createWallet(password);
+    if (passed) {
+      controller.wallet.setSeed(createdSeed);
+      await controller.wallet.createWallet(password);
 
-    navigate('/home');
-
-    setPassed(true);
+      navigate('/home');
+    }
   };
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // If the document becomes hidden, navigate to the home page
+      if (document.visibilityState === 'hidden') {
+        navigate('/home');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [navigate]);
 
   return (
     <>
-      {next && !passed ? (
+      {next ? (
         <ConfirmPhrase
           confirmPassed={handleConfirm}
           passed={passed}
           seed={createdSeed}
+          setPassed={setPassed}
         />
       ) : (
         <CreatePhrase password={password} />

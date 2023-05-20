@@ -4,6 +4,7 @@ import React, { ReactNode, FC } from 'react';
 interface IIconButton {
   children: ReactNode;
   className?: string;
+  disabled?: boolean;
   id?: string;
   onClick?: () => any;
   shape?: 'circle' | 'round' | undefined;
@@ -24,6 +25,7 @@ export const IconButton: FC<IIconButton> = ({
   onClick,
   shape = 'circle',
   type = 'primary',
+  disabled = false,
 }) => (
   <AntButton
     className={className}
@@ -31,6 +33,7 @@ export const IconButton: FC<IIconButton> = ({
     onClick={onClick}
     shape={shape}
     type={type}
+    disabled={disabled}
   >
     {children}
   </AntButton>

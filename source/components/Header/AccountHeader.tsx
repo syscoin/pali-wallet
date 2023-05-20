@@ -4,28 +4,225 @@ import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
+import importIcon from 'assets/images/import.png';
+import trezorLogo from 'assets/images/trezorLogo.png';
+import logo from 'assets/images/whiteLogo.png';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
-const AccountMenu: React.FC = () => {
-  const { navigate } = useUtils();
-  const { wallet, dapp } = getController();
+type RenderAccountsListByBitcoinBasedProps = {
+  setActiveAccount: (id: number, type: KeyringAccountType) => Promise<void>;
+};
+
+const RenderAccountsListByBitcoinBased = (
+  props: RenderAccountsListByBitcoinBasedProps
+) => {
+  const { setActiveAccount } = props;
+
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
 
-  const encryptedMnemonic = useSelector(
-    (state: RootState) => state.vault.encryptedMnemonic
+  return (
+    <>
+      {isBitcoinBased ? ( // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
+        <>
+          {Object.values(accounts.HDAccount)
+            .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
+            .map((account, index) => (
+              <li
+                className={`${
+                  index === 0 ? 'py-3.5' : 'py-4'
+                } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                   transition duration-300`}
+                onClick={() =>
+                  setActiveAccount(account.id, KeyringAccountType.HDAccount)
+                }
+                id={`account-${index}`}
+                key={account.id}
+              >
+                <span
+                  style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+                  className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                >
+                  <img src={logo} className="mr-1 w-7"></img>
+                  {account.label} ({ellipsis(account.address, 4, 8)})
+                </span>
+
+                {activeAccount.id === account.id &&
+                  activeAccount.type === KeyringAccountType.HDAccount && (
+                    <Icon
+                      name="check"
+                      className="mb-1 w-4"
+                      wrapperClassname="absolute right-2.5"
+                    />
+                  )}
+              </li>
+            ))}
+
+          {Object.values(accounts.Trezor)
+            .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
+            .map((account, index) => (
+              <li
+                className={`${
+                  index === 0 ? 'py-3.5' : 'py-4'
+                } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
+                    account?.originNetwork.url !== activeNetwork.url
+                      ? 'cursor-not-allowed disabled'
+                      : 'cursor-pointer'
+                  } transform hover:scale-103
+                   transition duration-300`}
+                onClick={() => {
+                  if (account?.originNetwork.url !== activeNetwork.url) {
+                    return;
+                  }
+                  setActiveAccount(account.id, KeyringAccountType.Trezor);
+                }}
+                id={`account-${index}`}
+                key={account.id}
+              >
+                <span
+                  style={{
+                    maxWidth: '16.25rem',
+                    textOverflow: 'ellipsis',
+                  }}
+                  className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                >
+                  <img
+                    src={trezorLogo}
+                    style={{
+                      filter:
+                        'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                    }}
+                    className="mr-1 w-7"
+                  ></img>
+                  {account.label}{' '}
+                  {!(account?.originNetwork.url !== activeNetwork.url) &&
+                    `(${ellipsis(account.address, 4, 8)})`}
+                </span>
+
+                {activeAccount.id === account.id &&
+                  activeAccount.type === KeyringAccountType.Trezor && (
+                    <Icon
+                      name="check"
+                      className="mb-1 w-4"
+                      wrapperClassname="absolute right-2.5"
+                    />
+                  )}
+              </li>
+            ))}
+        </>
+      ) : (
+        Object.entries(accounts).map(
+          ([keyringAccountType, accountTypeAccounts]) => (
+            <div key={keyringAccountType}>
+              {Object.values(accountTypeAccounts)
+                .filter((account) => account.xpub !== '')
+                .map((account, index) => (
+                  <li
+                    className={`${
+                      index === 0 ? 'py-3.5' : 'py-4'
+                    } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
+                    account.isTrezorWallet &&
+                    account?.originNetwork?.isBitcoinBased
+                      ? 'cursor-not-allowed disabled'
+                      : 'cursor-pointer'
+                  } transform hover:scale-103
+                   transition duration-300`}
+                    onClick={() => {
+                      if (
+                        account.isTrezorWallet &&
+                        account?.originNetwork?.isBitcoinBased
+                      ) {
+                        return;
+                      }
+                      setActiveAccount(
+                        account.id,
+                        keyringAccountType as KeyringAccountType
+                      );
+                    }}
+                    id={`account-${index}`}
+                    key={account.id}
+                  >
+                    <span
+                      style={{
+                        maxWidth: '16.25rem',
+                        textOverflow: 'ellipsis',
+                      }}
+                      className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                    >
+                      {account.isImported ? (
+                        <img src={importIcon} className="mr-1 w-7"></img>
+                      ) : account.isTrezorWallet ? (
+                        <img
+                          src={trezorLogo}
+                          style={{
+                            filter:
+                              'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                          }}
+                          className="mr-1 w-7"
+                        ></img>
+                      ) : (
+                        <img src={logo} className="mr-1 w-7"></img>
+                      )}{' '}
+                      {account.label}{' '}
+                      {!(
+                        account.isTrezorWallet &&
+                        account?.originNetwork?.isBitcoinBased
+                      ) && `(${ellipsis(account.address, 4, 8)})`}
+                    </span>
+
+                    {activeAccount.id === account.id &&
+                      activeAccount.type === keyringAccountType && (
+                        <Icon
+                          name="check"
+                          className="mb-1 w-4"
+                          wrapperClassname="absolute right-2.5"
+                        />
+                      )}
+                  </li>
+                ))}
+            </div>
+          )
+        )
+      )}
+    </>
+  );
+};
+
+const AccountMenu: React.FC = () => {
+  const { navigate } = useUtils();
+  const { wallet, dapp } = getController();
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const importedAccounts = Object.values(accounts.Imported);
+  const hdAccounts = Object.values(accounts.HDAccount);
+  const trezorAccounts = Object.values(accounts.Trezor);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const numberOfAccounts = Object.keys(accounts).length;
+  //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
+  const numberOfAccounts = isBitcoinBased
+    ? Object.values(hdAccounts).filter((acc) => acc.isImported === false)
+        .length + Object.keys(trezorAccounts).length
+    : Object.keys(hdAccounts).length +
+      Object.keys(importedAccounts).length +
+      Object.keys(trezorAccounts).length;
 
   let className: string;
   switch (numberOfAccounts) {
@@ -40,7 +237,7 @@ const AccountMenu: React.FC = () => {
       break;
   }
 
-  const setActiveAccount = async (id: number) => {
+  const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
       const tabs = await browser.tabs.query({
         active: true,
@@ -48,10 +245,10 @@ const AccountMenu: React.FC = () => {
       });
       const host = new URL(tabs[0].url).hostname;
       const connectedAccount = dapp.getAccount(host);
-      wallet.setAccount(Number(id), host, connectedAccount);
+      wallet.setAccount(Number(id), type, host, connectedAccount);
       return;
     }
-    wallet.setAccount(Number(id));
+    wallet.setAccount(Number(id), type);
   };
 
   const handleLogout = () => {
@@ -67,7 +264,7 @@ const AccountMenu: React.FC = () => {
       className="absolute right-3 inline-block text-right md:max-w-2xl"
     >
       <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        {encryptedMnemonic && <Icon name="dots" className="z-0" />}
+        <Icon name="dots" className="z-0" />
       </Menu.Button>
 
       <Transition
@@ -127,15 +324,17 @@ const AccountMenu: React.FC = () => {
                   <div
                     className="relative"
                     style={{
-                      paddingTop: `${open ? '45px' : '0px'}`,
+                      paddingTop: `${
+                        open ? `${isBitcoinBased ? '45px' : '94px'}` : '0px'
+                      }`,
                     }}
                   >
                     <Disclosure.Panel
-                      className={`static overflow-y-scroll scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
+                      className={`static overflow-y-scroll overflow-x-hidden scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
                     >
                       <li
                         onClick={() => navigate('/settings/account/new')}
-                        className="backface-visibility-hidden absolute top-0 flex items-center justify-center mb-4 mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-dashed border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                        className="backface-visibility-hidden absolute top-0.5 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
                         id="create-new-account-btn"
                       >
                         <Icon
@@ -146,26 +345,24 @@ const AccountMenu: React.FC = () => {
                         <span>Create new account</span>
                       </li>
 
-                      {Object.values(accounts).map((account, index) => (
+                      {!isBitcoinBased ? (
                         <li
-                          key={account.id}
-                          className="backface-visibility-hidden flex flex-col items-center justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                          onClick={() => setActiveAccount(account.id)}
-                          id={`account-${index}`}
+                          onClick={() => navigate('/settings/account/import')}
+                          className="backface-visibility-hidden absolute top-12 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
+                          id="create-new-account-btn"
                         >
-                          <span>
-                            {account.label} ({ellipsis(account.address, 4, 8)})
-                          </span>
+                          <Icon
+                            name="import"
+                            className="mb-1 mr-3 text-brand-white"
+                          />
 
-                          {activeAccount.id === account.id && (
-                            <Icon
-                              name="check"
-                              className="mb-1 w-4"
-                              wrapperClassname="w-6 absolute right-1"
-                            />
-                          )}
+                          <span>Import account</span>
                         </li>
-                      ))}
+                      ) : null}
+
+                      <RenderAccountsListByBitcoinBased
+                        setActiveAccount={setActiveAccount}
+                      />
                     </Disclosure.Panel>
                   </div>
                 </>
@@ -173,20 +370,22 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/account/hardware')}
-              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-            >
-              <Icon
-                name="partition"
-                className="mb-2 ml-1 mr-2 text-brand-white"
-                id="hardware-wallet-btn"
-              />
+          {
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/account/hardware')}
+                className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+              >
+                <Icon
+                  name="partition"
+                  className="mb-2 ml-1 mr-2 text-brand-white"
+                  id="hardware-wallet-btn"
+                />
 
-              <span className="px-3">Hardware wallet</span>
-            </li>
-          </Menu.Item>
+                <span className="px-3">Hardware wallet</span>
+              </li>
+            </Menu.Item>
+          }
 
           <Menu.Item>
             <li
@@ -208,6 +407,7 @@ export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const { accounts } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
@@ -216,11 +416,15 @@ export const AccountHeader: React.FC = () => {
     const placeholder = document.querySelector('.add-identicon');
     if (!placeholder) return;
 
-    placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
-      backColor: '#07152B',
-      padding: 1,
-    });
-  }, [activeAccount?.address]);
+    placeholder.innerHTML = toSvg(
+      accounts[activeAccount.type][activeAccount.id]?.xpub,
+      50,
+      {
+        backColor: '#07152B',
+        padding: 1,
+      }
+    );
+  }, [accounts[activeAccount.type][activeAccount.id]?.address]);
 
   useEffect(() => {
     if (!copied) return;
@@ -236,13 +440,21 @@ export const AccountHeader: React.FC = () => {
 
         <div className="items-center justify-center px-1 text-brand-white">
           <p className="mb-1 text-base" id="active-account-label">
-            {activeAccount?.label}
+            {accounts[activeAccount.type][activeAccount.id]?.label}
           </p>
-          <p className="text-xs">{ellipsis(activeAccount?.address, 6, 14)}</p>
+          <p className="text-xs">
+            {ellipsis(
+              accounts[activeAccount.type][activeAccount.id]?.address,
+              6,
+              14
+            )}
+          </p>
         </div>
 
         <IconButton
-          onClick={() => copy(activeAccount?.address ?? '')}
+          onClick={() =>
+            copy(accounts[activeAccount.type][activeAccount.id]?.address ?? '')
+          }
           type="primary"
           shape="circle"
           className="mt-3"

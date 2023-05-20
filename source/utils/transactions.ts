@@ -1,6 +1,10 @@
-import { isInteger } from 'lodash';
+import { isInteger, omit } from 'lodash';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+
+import { ITransactionParams, ITxState } from 'types/transactions';
+
+import { formatCurrency, truncate } from './format';
 
 export const getAssetBalance = (
   asset: any,
@@ -19,5 +23,18 @@ export const getAssetBalance = (
     }`;
   }
 
-  return `${asset.balance.toFixed(8)} ${asset.symbol}`;
+  const formattedBalance = truncate(
+    formatCurrency(
+      String(+asset.balance / 10 ** asset.decimals),
+      asset.decimals
+    ),
+    14
+  );
+
+  return `${formattedBalance} ${asset.symbol}`;
 };
+
+export const omitTransactionObjectData = (
+  transaction: ITxState | ITransactionParams,
+  omitArray: Array<string>
+) => omit(transaction, omitArray);

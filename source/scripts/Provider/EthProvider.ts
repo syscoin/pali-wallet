@@ -1,10 +1,7 @@
 import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
-import {
-  web3Provider,
-  setActiveNetwork as setProviderNetwork,
-} from '@pollum-io/sysweb3-network';
+import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
@@ -19,18 +16,46 @@ import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
-
     const tx = params;
 
-    const decodedTx = decodeTransactionData(tx) as IDecodedTx;
+    const validateTxToAddress = await validateEOAAddress(
+      tx.to,
+      store.getState().vault.activeNetwork.url
+    );
 
-    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.internal());
+    const decodedTx = decodeTransactionData(
+      tx,
+      validateTxToAddress
+    ) as IDecodedTx;
 
-    if (!tx.data) {
+    if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
+
+    //Open Send Component
+    if (validateTxToAddress.wallet) {
       const resp = await popupPromise({
         host,
-        data: { tx, external: true },
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/nTokenTx',
+        eventName: 'nTokenTx',
+      });
+
+      return resp;
+    }
+    //Open Contract Interaction component
+    if (validateTxToAddress.contract) {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/ethTx',
+        eventName: 'txSend',
+      });
+      return resp;
+    }
+
+    if (decodedTx.method === 'Contract Deployment') {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
         route: 'tx/send/nTokenTx',
         eventName: 'nTokenTx',
       });
@@ -47,18 +72,9 @@ export const EthProvider = (host: string) => {
       });
       return resp;
     }
-
-    const resp = await popupPromise({
-      host,
-      data: { tx, decodedTx, external: true },
-      route: 'tx/send/ethTx',
-      eventName: 'txSend',
-    });
-    return resp;
   };
 
   const ethSign = async (params: string[]) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
     if (!data.length || data.length < 2 || !data[0] || !data[1])
       throw cleanErrorStack(ethErrors.rpc.invalidParams());
@@ -72,7 +88,6 @@ export const EthProvider = (host: string) => {
   };
 
   const personalSign = async (params: string[]) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
     const data = params;
     if (!data.length || data.length < 2 || !data[0] || !data[1])
       throw cleanErrorStack(ethErrors.rpc.invalidParams());
@@ -138,15 +153,15 @@ export const EthProvider = (host: string) => {
   };
 
   const send = async (args: any[]) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
+    const { ethereumTransaction } = getController().wallet;
 
-    return web3Provider.send(args[0], args);
+    return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
     if (!unrestrictedMethods.find((el) => el === method)) return false;
-    const resp = await web3Provider.send(method, params);
+    const { ethereumTransaction } = getController().wallet;
+    const resp = await ethereumTransaction.web3Provider.send(method, params);
     return resp;
   };
 
@@ -154,8 +169,7 @@ export const EthProvider = (host: string) => {
     blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    setProviderNetwork(store.getState().vault.activeNetwork);
-    const { account } = getController().wallet;
+    const { ethereumTransaction } = getController().wallet;
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
@@ -170,8 +184,8 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
-        return await web3Provider._getAddress(
-          account.eth.tx.verifyPersonalMessage(params[0], params[1])
+        return await ethereumTransaction.web3Provider._getAddress(
+          ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );
       case 'eth_getEncryptionPublicKey':
         return await getEncryptionPubKey(params[0]);
@@ -179,9 +193,11 @@ export const EthProvider = (host: string) => {
         return await decryptMessage(params);
       default:
         try {
-          return await web3Provider.send(method, params);
+          return await ethereumTransaction.web3Provider.send(method, params);
         } catch (error) {
-          throw cleanErrorStack(ethErrors.rpc.internal(error.error.data));
+          throw cleanErrorStack(
+            ethErrors.rpc.internal(error.error.data || error.error.message)
+          );
         }
     }
   };

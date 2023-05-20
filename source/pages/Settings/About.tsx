@@ -53,29 +53,27 @@ const AboutView: FC = () => {
           <p
             id="user-support-btn"
             className="text-brand-white underline text-xs cursor-pointer"
-            onClick={() =>
-              handleRedirect('https://discord.com/invite/8QKeyurHRd')
-            }
+            onClick={() => handleRedirect('https://discord.com/invite/syscoin')}
           >
             Click here to be redirected to Syscoin Discord, please contact
             support team at #pali_support.
           </p>
-          <p className="pt-3 text-brand-white text-xs">
+          <div className="pt-3 text-brand-white text-xs">
             To access the support link, you need to give permission or copy and
             paste the link below
             <div className="flex flex-row mt-2">
-              <p className="pt-1">https://discord.com/invite/8QKeyurHRd</p>
+              <p className="pt-1">https://discord.com/invite/syscoin</p>
               <IconButton
-                onClick={() => copy('https://discord.com/invite/8QKeyurHRd')}
+                onClick={() => copy('https://discord.com/invite/syscoin')}
                 type="primary"
                 shape="circle"
                 className="align-center pl-2"
               >
                 <Icon name="copy" className="text-xs" id="copy-address-btn" />
               </IconButton>
-              {copied && showSuccessAlert()}
+              <>{copied ? showSuccessAlert() : null}</>
             </div>
-          </p>
+          </div>
         </SimpleCard>
 
         <div className="absolute bottom-12 md:static md:mt-3">

@@ -9,7 +9,8 @@ export const CreatePhrase = ({ password }: { password: string }) => {
 
   const navigate = useNavigate();
 
-  const seed = controller.wallet.createSeed();
+  //todo: we need to call keyring manager with the new seed phrase function
+  const seed = controller.wallet.createNewSeed();
 
   return (
     <OnboardingLayout

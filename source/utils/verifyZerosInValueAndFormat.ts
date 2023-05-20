@@ -17,38 +17,33 @@ export const verifyZerosInBalanceAndFormat = (
   balance: number,
   precision: number
 ): string => {
+  if (balance === 0) return '0';
   if (!balance) return;
 
-  const fullValue = removeScientificNotation(balance);
+  const fullValue = removeScientificNotation(balance) as number;
 
-  const quantityOfZerosAfterDot = -Math.floor(
-    Math.log10(fullValue as number) + 1
-  );
-
-  const firstNumber = fullValue.toString().charAt(0);
-
-  const secondValueSplitted =
-    fullValue > 0 &&
-    (fullValue.toString().split('.')[1].charAt(0) as string | false);
-
+  const fullValueStr = fullValue.toString();
+  const firstNumber = fullValueStr.charAt(0);
+  const hasDecimalPoint = fullValueStr.includes('.');
+  let secondValueSplitted: string | false = false;
+  if (hasDecimalPoint) {
+    secondValueSplitted =
+      fullValue > 0 && (fullValueStr.split('.')[1].charAt(0) as string | false);
+  }
   const valuesValidations = [
     Number(firstNumber) === 0 &&
       secondValueSplitted !== false &&
       Number(secondValueSplitted) === 0,
   ];
-
   const defaultPrecisionValidated =
     secondValueSplitted === false ? 0 : precision;
 
   const fractionValidation = valuesValidations.every(
     (validation) => validation === true
   );
-
   const formattedAndTruncatedValue = truncateNumberWithoutRound(
     fullValue,
-    fractionValidation
-      ? quantityOfZerosAfterDot + precision
-      : defaultPrecisionValidated
+    fractionValidation ? precision : defaultPrecisionValidated
   );
 
   return formattedAndTruncatedValue;

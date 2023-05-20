@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useCallback } from 'react';
+import React, { Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -8,20 +8,23 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatDate } from 'utils/index';
 
-export const TransactionsList = () => {
-  const { id } = useSelector((state: RootState) => state.vault.activeAccount);
-  const { chainId } = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const transactions = useSelector(
-    (state: RootState) => state.vault.accounts[id].transactions
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
+export const TransactionsList = ({
+  userTransactions,
+}: {
+  userTransactions: any[]; //todo: adjust type
+}) => {
+  const {
+    activeNetwork: { chainId },
+    isBitcoinBased,
+    activeAccount,
+    accounts,
+  } = useSelector((state: RootState) => state.vault);
+
+  const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
   const { navigate } = useUtils();
 
-  const getTxType = (tx: any) => {
+  const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
       if (tx.tokenType === 'SPTAssetActivate') {
         return 'SPT creation';
@@ -38,7 +41,9 @@ export const TransactionsList = () => {
       return 'Transaction';
     }
 
-    return `Type: ${tx.type}`;
+    const txLabel = isTxSent ? 'Sent' : 'Received';
+
+    return `${txLabel}`;
   };
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
@@ -48,99 +53,129 @@ export const TransactionsList = () => {
     (tx: any, idx: number) =>
       tx === null &&
       tx === undefined &&
-      transactions[idx - 1] === undefined &&
-      transactions[idx - 1] === null &&
+      userTransactions[idx - 1] === undefined &&
+      userTransactions[idx - 1] === null &&
       (idx === 0 ||
         new Date(tx[blocktime] * 1e3).toDateString() !==
-          new Date(transactions[idx - 1][blocktime] * 1e3).toDateString()),
-    [transactions]
+          new Date(userTransactions[idx - 1][blocktime] * 1e3).toDateString()),
+    [userTransactions]
   );
 
-  return (
-    <ul className="pb-14 md:pb-4">
-      {transactions
-        .filter((item: any) => {
-          if (!isBitcoinBased) {
-            return item?.chainId === chainId;
-          }
-          return item !== undefined && item !== null;
-        })
-        .sort((a: any, b: any) => {
-          if (a[blocktime] > b[blocktime]) {
-            return -1;
-          }
-          if (a[blocktime] < b[blocktime]) {
-            return 1;
-          }
-          return 0;
-        })
-        .map((tx: any, idx: number) => {
-          const isConfirmed = tx.confirmations > 0;
-          const timestamp =
-            blocktime &&
-            new Date(tx[blocktime] * 1000).toLocaleTimeString(
-              navigator.language,
-              {
-                hour: '2-digit',
-                minute: '2-digit',
-              }
-            );
-          return (
-            tx[blocktime] && (
-              <Fragment key={uniqueId(tx[txid])}>
-                {isShowedGroupBar(tx, idx) && (
-                  <li className="my-3 text-center text-sm bg-bkg-1">
-                    {formatDate(new Date(tx[blocktime] * 1000).toDateString())}
-                  </li>
+  const filteredTransactions = useMemo(() => {
+    if (!Array.isArray(userTransactions)) {
+      return [];
+    }
+
+    return userTransactions
+      .filter((item: any) => {
+        if (!isBitcoinBased) {
+          return item?.chainId === chainId;
+        }
+        return item !== undefined && item !== null;
+      })
+      .sort((a: any, b: any) => {
+        if (a[blocktime] > b[blocktime]) {
+          return -1;
+        }
+        if (a[blocktime] < b[blocktime]) {
+          return 1;
+        }
+        return 0;
+      });
+  }, [userTransactions, isBitcoinBased, chainId, blocktime]);
+
+  const renderTransaction = (tx, idx) => {
+    const isConfirmed = tx.confirmations > 0;
+    const timestamp =
+      blocktime &&
+      new Date(tx[blocktime] * 1000).toLocaleTimeString(
+        //todo: add day/month/year as well
+        navigator.language,
+        {
+          hour: '2-digit',
+          minute: '2-digit',
+        }
+      );
+
+    const isTxSent = isBitcoinBased
+      ? false
+      : tx.from.toLowerCase() === currentAccount.address;
+
+    return (
+      tx[blocktime] && (
+        <Fragment key={uniqueId(tx[txid])}>
+          {isShowedGroupBar(tx, idx) && (
+            <li className="my-3 text-center text-sm bg-bkg-1">
+              {formatDate(new Date(tx[blocktime] * 1000).toDateString())}
+            </li>
+          )}
+
+          <li className="py-2 border-b border-dashed border-dashed-dark">
+            <div className="relative flex items-center justify-between text-xs">
+              <div className="flex items-center">
+                {!isBitcoinBased && (
+                  <Icon
+                    name={isTxSent ? 'arrow-up' : 'arrow-down'}
+                    className="mx-2"
+                  />
                 )}
+                <div className="flex flex-row">
+                  <div>
+                    <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                <li className="py-2 border-b border-dashed border-dashed-dark">
-                  <div className="relative flex items-center justify-between text-xs">
-                    <div>
-                      <p>{ellipsis(tx[txid], 4, 14)}</p>
-
-                      <p
-                        className={
-                          isConfirmed
-                            ? 'text-warning-success'
-                            : 'text-yellow-300'
-                        }
-                      >
-                        {isConfirmed ? 'Confirmed' : 'Pending'}
-                      </p>
-                    </div>
-
-                    <div
-                      className={`absolute flex ${
-                        isBitcoinBased ? 'right-20 w-20' : 'right-32 w-14'
-                      }`}
-                    >
-                      <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
-                        <p className="text-blue-300">{timestamp}</p>
-
-                        <p>{getTxType(tx)}</p>
-                      </div>
-                    </div>
-
-                    <IconButton
-                      className="w-5"
-                      onClick={() =>
-                        navigate('/home/details', {
-                          state: {
-                            id: null,
-                            hash: tx[txid],
-                          },
-                        })
+                    <p
+                      className={
+                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
                       }
                     >
-                      <Icon name="select" className="text-base" />
-                    </IconButton>
+                      {isConfirmed ? 'Confirmed' : 'Pending'}
+                    </p>
                   </div>
-                </li>
-              </Fragment>
-            )
-          );
-        })}
-    </ul>
+                </div>
+              </div>
+
+              <div
+                className={`absolute flex ${
+                  isBitcoinBased ? 'right-20 w-20' : 'right-28 w-14'
+                }`}
+              >
+                <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
+                  <p className="text-blue-300">{timestamp}</p>
+
+                  <p>{getTxType(tx, isTxSent)}</p>
+                </div>
+              </div>
+
+              <IconButton
+                className="w-5"
+                onClick={() =>
+                  navigate('/home/details', {
+                    state: {
+                      id: null,
+                      hash: tx[txid],
+                    },
+                  })
+                }
+              >
+                <Icon name="select" className="text-base" />
+              </IconButton>
+            </div>
+          </li>
+        </Fragment>
+      )
+    );
+  };
+
+  const TransactionList = useCallback(
+    () => (
+      <ul className="pb-4">
+        {filteredTransactions.map((tx: any, idx: number) =>
+          renderTransaction(tx, idx)
+        )}
+      </ul>
+    ),
+    [userTransactions]
   );
+
+  return <TransactionList />;
 };

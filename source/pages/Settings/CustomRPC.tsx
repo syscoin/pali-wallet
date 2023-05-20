@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, NeutralButton } from 'components/index';
+import { Layout, NeutralButton, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
@@ -58,10 +58,6 @@ const CustomRPCView = () => {
 
       navigate('/settings/networks/edit');
     } catch (error: any) {
-      if (error.message === null || error.message === undefined) {
-        error.message =
-          'Could not add your network, please try a different RPC endpoint';
-      }
       alert.removeAll();
       alert.error(error.message);
 
@@ -73,6 +69,8 @@ const CustomRPCView = () => {
     label: (state && state.selected && state.selected.label) ?? '',
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
+    symbol: (state && state.selected && state.selected.currency) ?? '',
+    explorer: (state && state.selected && state.selected.explorer) ?? '',
   };
 
   useEffect(() => {
@@ -109,21 +107,27 @@ const CustomRPCView = () => {
         >
           <div className="flex gap-x-2 mb-4 text-xs">
             <p className="text-brand-royalblue text-xs">Ethereum</p>
-
-            <Switch
-              checked={isSyscoinRpc}
-              onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-              className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+            <Tooltip
+              content={
+                !!state ? 'Cant change type of network while editing' : ''
+              }
             >
-              <span className="sr-only">Syscoin Network</span>
-              <span
-                className={`${
-                  isSyscoinRpc
-                    ? 'translate-x-6 bg-brand-royalblue'
-                    : 'translate-x-1 bg-brand-deepPink100'
-                } inline-block w-2 h-2 transform rounded-full`}
-              />
-            </Switch>
+              <Switch
+                checked={isSyscoinRpc}
+                onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
+                className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                disabled={!!state}
+              >
+                <span className="sr-only">Syscoin Network</span>
+                <span
+                  className={`${
+                    isSyscoinRpc
+                      ? 'translate-x-6 bg-brand-royalblue'
+                      : 'translate-x-1 bg-brand-deepPink100'
+                  } inline-block w-2 h-2 transform rounded-full`}
+                />
+              </Switch>
+            </Tooltip>
 
             <p className="text-brand-deepPink100 text-xs">Syscoin</p>
           </div>
@@ -135,14 +139,15 @@ const CustomRPCView = () => {
           hasFeedback
           rules={[
             {
-              required: false,
+              required: !isSyscoinRpc,
               message: '',
             },
           ]}
         >
           <Input
             type="text"
-            placeholder="Label (optional)"
+            disabled={state ? state.isDefault : false}
+            placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
             className="input-small relative"
           />
         </Form.Item>
@@ -160,6 +165,16 @@ const CustomRPCView = () => {
               async validator(_, value) {
                 setUrlFieldValue(value);
                 if (isSyscoinRpc) {
+                  const trezorIoRegExp = /trezor\.io/;
+                  if (trezorIoRegExp.test(value)) {
+                    console.error(
+                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
+                    );
+                    alert.error(
+                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
+                    );
+                    return Promise.reject();
+                  }
                   const { valid, coin } = await validateSysRpc(value);
 
                   if (valid || !value) {
@@ -194,9 +209,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder={`${
-              isSyscoinRpc ? 'Trezor Block Explorer' : 'RPC URL'
-            }`}
+            placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
             className="input-small relative"
           />
         </Form.Item>
@@ -243,7 +256,7 @@ const CustomRPCView = () => {
         <Form.Item
           hasFeedback
           className="md:w-full"
-          name="apiUrl"
+          name="explorer"
           rules={[
             {
               required: false,
@@ -253,7 +266,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="API URL (optional)"
+            placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
         </Form.Item>

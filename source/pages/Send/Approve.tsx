@@ -3,8 +3,8 @@ import { ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -33,10 +33,7 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriorityModal';
 
 export const ApproveTransactionComponent = () => {
-  const {
-    refresh,
-    wallet: { account },
-  } = getController();
+  const { wallet } = getController();
 
   const { getFiatAmount } = usePrice();
 
@@ -82,9 +79,10 @@ export const ApproveTransactionComponent = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
@@ -92,7 +90,7 @@ export const ApproveTransactionComponent = () => {
 
   const { state }: { state: any } = useLocation();
 
-  const { host, ...externalTx } = useQueryData();
+  const { host, eventName, ...externalTx } = useQueryData();
 
   const isExternal = Boolean(externalTx.external);
 
@@ -113,9 +111,7 @@ export const ApproveTransactionComponent = () => {
   const [formControl] = Form.useForm();
 
   const openEthExplorer = () => {
-    browser.windows.create({
-      url: `${activeNetwork.explorer}address/${dataTx.to}`,
-    });
+    window.open(`${activeNetwork.explorer}address/${dataTx.to}`, '_blank');
   };
 
   const setFiatPrice = () => {
@@ -154,8 +150,6 @@ export const ApproveTransactionComponent = () => {
     if (activeAccount && balance > 0) {
       setLoading(true);
 
-      const txs = account.eth.tx;
-
       const newDataEncoded = validatedEncodedData();
       const newTxValue = {
         ...tx,
@@ -177,7 +171,7 @@ export const ApproveTransactionComponent = () => {
           ),
           9
         ),
-        gasLimit: txs.toBigNumber(
+        gasLimit: wallet.ethereumTransaction.toBigNumber(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
@@ -185,10 +179,14 @@ export const ApproveTransactionComponent = () => {
       };
 
       try {
-        const response = await txs.sendFormattedTransaction(newTxValue);
+        const response =
+          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
+        if (activeAccountMeta.type === KeyringAccountType.Trezor)
+          wallet.sendAndSaveTransaction(response);
         setConfirmedDefaultModal(true);
         setLoading(false);
-        if (isExternal) dispatchBackgroundEvent(`txApprove.${host}`, response);
+        if (isExternal)
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         logError('error', 'Transaction', error);
@@ -310,7 +308,6 @@ export const ApproveTransactionComponent = () => {
         title="Approve successful"
         description="Your approve has been successfully submitted. You can see more details under activity on your home page."
         onClose={() => {
-          refresh(false);
           if (isExternal) window.close();
           else navigate('/home');
         }}
@@ -546,7 +543,6 @@ export const ApproveTransactionComponent = () => {
                   className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
                   id="send-btn"
                   onClick={() => {
-                    refresh(false);
                     if (isExternal) window.close();
                     else navigate('/home');
                   }}

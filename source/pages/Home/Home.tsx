@@ -1,13 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
-
 import { Header, Icon, Button, Loading } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatNumber } from 'utils/index';
+import { formatNumber, verifyIfIsTestnet } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
@@ -20,57 +18,39 @@ export const Home = () => {
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
   );
-  const lastLogin = useSelector((state: RootState) => state.vault.lastLogin);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const isPendingBalances = useSelector(
-    (state: RootState) => state.vault.isPendingBalances
-  );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+
+  const {
+    accounts,
+    isNetworkChanging,
+    activeAccount,
+    activeNetwork,
+    isBitcoinBased,
+    lastLogin,
+    isLoadingBalances,
+  } = useSelector((state: RootState) => state.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
 
   //* Constants
+  const { url } = activeNetwork;
   const controller = getController();
   const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
-
+    controller.wallet.isUnlocked() &&
+    accounts[activeAccount.type][activeAccount.id].address !== '';
+  const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
-    activeAccount.balances;
+    accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
-
-  //* Functions
-  const setMainOrTestNetwork = async () => {
-    const { url } = activeNetwork;
-
-    const { chain, chainId }: any = isBitcoinBased
-      ? await validateSysRpc(url)
-      : await validateEthRpc(url);
-
-    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
-    setIsTestnet(
-      chain === 'test' ||
-        chain === 'testnet' ||
-        ethTestnetsChainsIds.some(
-          (validationChain) => validationChain === chainId
-        )
-    );
-  };
 
   //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
-    setMainOrTestNetwork();
+    verifyIfIsTestnet(url, isBitcoinBased).then((_isTestnet) =>
+      setIsTestnet(_isTestnet)
+    );
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
   //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
@@ -87,7 +67,7 @@ export const Home = () => {
   }, [
     isUnlocked,
     activeAccount,
-    activeAccount.address,
+    accounts[activeAccount.type][activeAccount.id].address,
     activeNetwork,
     activeNetwork.chainId,
     fiatAsset,
@@ -96,8 +76,11 @@ export const Home = () => {
   ]);
 
   return (
-    <div className="scrollbar-styled h-full bg-bkg-3 overflow-auto">
-      {activeAccount && lastLogin && isUnlocked && !isPendingBalances ? (
+    <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
+      {accounts[activeAccount.type][activeAccount.id] &&
+      lastLogin &&
+      isUnlocked &&
+      !isNetworkChanging ? (
         <>
           <Header accountHeader />
 
@@ -127,6 +110,7 @@ export const Home = () => {
                 onClick={() =>
                   isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
                 }
+                disabled={isLoadingBalances}
               >
                 <Icon
                   name="arrow-up"

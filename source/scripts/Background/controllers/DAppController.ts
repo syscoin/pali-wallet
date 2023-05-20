@@ -1,5 +1,7 @@
 import { Runtime } from 'webextension-polyfill-ts';
 
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -48,17 +50,21 @@ const DAppController = (): IDAppController => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
     _dapps[dapp.host].activeAddress = isBitcoinBased
-      ? accounts[dapp.accountId].xpub
-      : accounts[dapp.accountId].address;
+      ? accounts[dapp.accountType][dapp.accountId].xpub
+      : accounts[dapp.accountType][dapp.accountId].address;
   };
 
-  const requestPermissions = (host: string, accountId: number) => {
+  const requestPermissions = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
     const date = Date.now();
 
-    store.dispatch(updateDAppAccount({ host, accountId, date }));
+    store.dispatch(updateDAppAccount({ host, accountId, accountType, date }));
 
     const { accounts } = store.getState().vault;
-    const account = accounts[accountId];
+    const account = accounts[accountType][accountId];
 
     if (!account) return null;
     const response: any = [{}];
@@ -82,19 +88,23 @@ const DAppController = (): IDAppController => {
     );
   };
 
-  const changeAccount = (host: string, accountId: number) => {
+  const changeAccount = (
+    host: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
-    store.dispatch(updateDAppAccount({ host, accountId, date }));
+    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
     _dapps[host].activeAddress = isBitcoinBased
-      ? accounts[accountId].xpub
-      : accounts[accountId].address;
+      ? accounts[accountType][accountId].xpub
+      : accounts[accountType][accountId].address;
     isBitcoinBased
       ? _dispatchPaliEvent(
           host,
           {
             method: PaliSyscoinEvents.xpubChanged,
-            params: accounts[accountId].xpub,
+            params: accounts[accountType][accountId].xpub,
           },
           PaliSyscoinEvents.xpubChanged
         )
@@ -204,7 +214,7 @@ const DAppController = (): IDAppController => {
     const dapp = store.getState().dapp.dapps[host];
     const { accounts } = store.getState().vault;
     if (!dapp) return null;
-    const account = accounts[dapp.accountId];
+    const account = accounts[dapp.accountType][dapp.accountId];
 
     if (!dapp || !account) return null;
 

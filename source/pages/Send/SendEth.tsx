@@ -19,9 +19,10 @@ export const SendEth = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
   );
+  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [form] = Form.useForm();
 
@@ -68,7 +69,13 @@ export const SendEth = () => {
   };
 
   return (
-    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
+    <Layout
+      title={`SEND ${
+        selectedAsset && selectedAsset.tokenSymbol
+          ? selectedAsset.tokenSymbol
+          : activeNetwork.currency?.toUpperCase()
+      }`}
+    >
       <div>
         <p className="flex flex-col items-center justify-center text-center font-rubik">
           <span className="text-brand-royalblue font-poppins font-thin">
@@ -216,10 +223,9 @@ export const SendEth = () => {
                 </Form.Item>
               ) : null}
             </span>
-
             <Form.Item
               name="amount"
-              className="w-full md:max-w-md"
+              className="w-full"
               hasFeedback
               rules={[
                 {
@@ -261,14 +267,29 @@ export const SendEth = () => {
                 id="amount"
                 className={`
                   ${
-                    hasAccountAssets ? 'mixed-border-input' : 'input-medium'
-                  } flex items-center`}
+                    hasAccountAssets
+                      ? 'mixed-double-border-input'
+                      : 'mixed-right-border-input'
+                  }`}
                 type="number"
                 placeholder={`${
                   selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
                 }`}
               />
             </Form.Item>
+            <span
+              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
+              onClick={() =>
+                form.setFieldValue(
+                  'amount',
+                  selectedAsset
+                    ? selectedAsset.balance
+                    : 0.95 * Number(activeAccount?.balances.ethereum)
+                )
+              }
+            >
+              Max
+            </span>
           </div>
           <div className="absolute bottom-12 md:static md:mt-3">
             <NeutralButton type="submit">Next</NeutralButton>

@@ -8,7 +8,6 @@ import {
   getTokenByContract,
   getAsset,
   txUtils,
-  getFiatValueByToken,
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
@@ -18,18 +17,6 @@ import { IControllerUtils } from 'types/controllers';
 import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
-  let route = '/';
-  let externalRoute = '/';
-
-  const appRoute = (newRoute?: string, external = false) => {
-    if (newRoute) {
-      if (external) externalRoute = newRoute;
-      else route = newRoute;
-    }
-
-    return external ? externalRoute : route;
-  };
-
   const setFiat = async (currency?: string) => {
     if (!currency) {
       const storeCurrency = store.getState().price.fiat.asset;
@@ -44,27 +31,33 @@ const ControllerUtils = (): IControllerUtils => {
       case 'syscoin':
         try {
           const { chain } = await validateSysRpc(activeNetwork.url);
-
-          const getFiatForSys = await getFiatValueByToken(id, currency);
-
-          const price = chain === 'test' ? 0 : getFiatForSys;
-
-          const currencies = await (
-            await fetch(`${ASSET_PRICE_API}/currency`)
-          ).json();
-
-          if (currencies && currencies.rates) {
-            store.dispatch(setCoins(currencies.rates));
+          if (chain !== 'test') {
+            //TODO: add check to verify if the active network has a / by the end of the url
+            const currencies = await (
+              await fetch(`${activeNetwork.url}${ASSET_PRICE_API}`)
+            ).json();
+            if (currencies && currencies.rates) {
+              store.dispatch(setCoins(currencies.rates));
+              if (currencies.rates[currency.toLowerCase()]) {
+                store.dispatch(
+                  setPrices({
+                    asset: currency,
+                    price: currencies.rates[currency.toLowerCase()],
+                  })
+                );
+                return;
+              }
+            }
           }
 
           store.dispatch(
             setPrices({
               asset: currency,
-              price,
+              price: 0,
             })
           );
         } catch (error) {
-          logError('Failed to retrieve asset price', '', error);
+          logError('Failed to retrieve asset price - SYSCOIN UTXO', '', error);
         }
         break;
 
@@ -97,17 +90,16 @@ const ControllerUtils = (): IControllerUtils => {
           ).json();
 
           if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
-            const { id: findCoinSymbolByNetwork } = getCoinList?.find(
+            const findCoinSymbolByNetwork = getCoinList.find(
               (coin) => coin.symbol === activeNetwork.currency
-            );
-
+            )?.id;
             const coins = await (
               await fetch(
                 `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
               )
             ).json();
 
-            const currentNetworkCoinMarket = coins[0].current_price;
+            const currentNetworkCoinMarket = coins[0]?.current_price;
 
             store.dispatch(
               setPrices({
@@ -132,7 +124,7 @@ const ControllerUtils = (): IControllerUtils => {
 
           return;
         } catch (error) {
-          logError('Failed to retrieve asset price', '', error);
+          logError('Failed to retrieve asset price - EVM', '', error);
         }
         break;
     }
@@ -141,7 +133,6 @@ const ControllerUtils = (): IControllerUtils => {
   const txs = txUtils();
 
   return {
-    appRoute,
     setFiat,
     getSearch,
     getAsset,
