@@ -1,25 +1,22 @@
 import { Form } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import TextArea from 'antd/lib/input/TextArea';
-import React, { FC, useState } from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, PrimaryButton } from 'components/index';
 import { getController } from 'utils/browser';
 import { formatSeedPhrase } from 'utils/format';
 
-interface IImportPhrase {
-  onRegister: () => void;
-}
-
-const ImportPhrase: FC<IImportPhrase> = ({ onRegister }) => {
+const ImportPhrase: React.FC = () => {
   const controller = getController();
+  const navigate = useNavigate();
 
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
     if (controller.wallet.isSeedValid(phrase)) {
-      controller.wallet.setSeed(phrase);
-      onRegister();
+      navigate('/create-password-import', { state: { phrase } });
     }
   };
   const [form] = useForm();

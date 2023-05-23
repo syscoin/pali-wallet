@@ -1,23 +1,24 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 
 import { PasswordForm } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
-const CreatePass = () => {
+export const CreatePasswordImport = () => {
   const controller = getController();
+  const { state } = useLocation();
 
   const { navigate } = useUtils();
+  const phrase = state.phrase;
 
   const next = () => navigate('/home');
 
   const onSubmit = async ({ password }: { password: string }) => {
-    await controller.wallet.createWallet(password);
+    await controller.wallet.createWallet(password, phrase);
 
     next();
   };
 
   return <PasswordForm onSubmit={onSubmit} />;
 };
-
-export default CreatePass;

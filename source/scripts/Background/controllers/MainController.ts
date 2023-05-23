@@ -133,10 +133,30 @@ const MainController = (walletState): IMainController => {
     return unlocked;
   };
 
-  const createWallet = async (password: string): Promise<void> => {
+  const createWallet = async (
+    password: string,
+    phrase: string
+  ): Promise<void> => {
     store.dispatch(setIsLoadingBalances(true));
+    const { accounts, activeAccount: activeAccountInfo } =
+      store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
 
-    keyringManager.setWalletPassword(password);
+    const handleWalletInfo = () => {
+      keyringManager.setSeed(phrase);
+      keyringManager.setWalletPassword(password);
+    };
+
+    // set seed and wallet password for the new created wallet.
+    handleWalletInfo();
+
+    if (activeAccount.address !== '') {
+      // if pali already have a wallet, we will forget the previous wallet
+      forgetWallet(password);
+      // and set the new wallet info for KeyringManager class.
+      handleWalletInfo();
+    }
 
     const account =
       (await keyringManager.createKeyringVault()) as IKeyringAccountState;
