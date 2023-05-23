@@ -14,9 +14,14 @@ export const Start = (props: any) => {
   const {
     wallet: { unlock },
   } = getController();
-  const { lastLogin } = useSelector((state: RootState) => state.vault);
+  const { accounts, activeAccount } = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const { isExternal, externalRoute } = props;
+
+  const isFirstStep =
+    accounts[activeAccount.type][activeAccount.id].address === '';
 
   const getStarted = (
     <>
@@ -102,7 +107,7 @@ export const Start = (props: any) => {
 
       <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
 
-      {lastLogin ? unLock : getStarted}
+      {isFirstStep ? getStarted : unLock}
     </div>
   );
 };
