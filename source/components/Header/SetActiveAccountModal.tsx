@@ -125,7 +125,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
                               <p>{acc.label}</p>
 
                               <div className="flex gap-3 items-center justify-center">
-                                <small>{ellipsis(acc.address)}</small>
+                                <small></small>
 
                                 <div
                                   className={`${

@@ -28,6 +28,7 @@ import {
   Phrase,
   ImportAccount,
   RemoveEth,
+  CreatePasswordImport,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
@@ -70,6 +71,7 @@ export const Router = () => {
       <Route path="/" element={<Start />} />
 
       <Route path="create-password" element={<CreatePass />} />
+      <Route path="create-password-import" element={<CreatePasswordImport />} />
       <Route path="import" element={<Import />} />
       <Route path="phrase" element={<SeedConfirm />} />
 
