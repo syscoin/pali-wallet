@@ -28,6 +28,7 @@ import {
   SwitchNeworkUtxoEvm,
   ChangeConnectedAccount,
   SendNTokenTransaction,
+  CreatePasswordImport,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -74,6 +75,7 @@ export const ExternalRoute = () => {
         }
       />
       <Route path="create-password" element={<CreatePass />} />
+      <Route path="create-password-import" element={<CreatePasswordImport />} />
       <Route path="import" element={<Import />} />
       <Route path="phrase" element={<SeedConfirm />} />
 

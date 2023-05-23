@@ -1,14 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 
-import CreatePass from './CreatePass';
 import ImportPhrase from './ImportPhrase';
 
-export const Import = () => {
-  const [registered, setRegistered] = useState<boolean>(false);
+export const Import = () => <ImportPhrase />;
 
-  return registered ? (
-    <CreatePass />
-  ) : (
-    <ImportPhrase onRegister={() => setRegistered(true)} />
-  );
-};
+export * from './CreatePass';

@@ -20,8 +20,7 @@ export const SeedConfirm = () => {
 
   const handleConfirm = async () => {
     if (passed) {
-      controller.wallet.setSeed(createdSeed);
-      await controller.wallet.createWallet(password);
+      await controller.wallet.createWallet(password, createdSeed);
 
       navigate('/home');
     }
