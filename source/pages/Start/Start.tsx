@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -9,6 +9,8 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
+import { ValidationModal } from './Modal';
+
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
@@ -17,6 +19,7 @@ export const Start = (props: any) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
+  const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
 
   const { isExternal, externalRoute } = props;
 
@@ -85,18 +88,22 @@ export const Start = (props: any) => {
           Unlock
         </PrimaryButton>
       </Form>
-      <Link
-        className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300"
-        to="/import"
+      <a
+        className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300 cursor-pointer"
         id="import-wallet-link"
+        onClick={() => setIsOpenValidation(true)}
       >
         Import using wallet seed phrase
-      </Link>
+      </a>
     </>
   );
 
   return (
     <div className="flex flex-col items-center justify-center p-2 pt-20 min-w-full">
+      <ValidationModal
+        setIsOpen={setIsOpenValidation}
+        showModal={isOpenValidation}
+      />
       <p className="mb-2 text-center text-brand-deepPink100 text-lg font-normal tracking-wider">
         WELCOME TO
       </p>
