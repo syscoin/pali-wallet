@@ -4,7 +4,11 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  INetworkType,
+  validateEthRpc,
+  validateSysRpc,
+} from '@pollum-io/sysweb3-network';
 
 import { Layout, NeutralButton, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -53,6 +57,15 @@ const CustomRPCView = () => {
       await controller.wallet.editCustomRpc(customRpc, state.selected);
 
       alert.success('RPC successfully edited.');
+
+      if (!customRpc.isSyscoinRpc) {
+        controller.wallet.ethereumTransaction.setWeb3Provider(customRpc);
+      } else {
+        await controller.wallet.setSignerNetwork(
+          customRpc,
+          INetworkType.Syscoin
+        );
+      }
 
       setLoading(false);
 
