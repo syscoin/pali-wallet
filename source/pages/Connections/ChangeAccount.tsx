@@ -23,16 +23,11 @@ export const ChangeAccount = () => {
     useState<KeyringAccountType>(currentAccountType);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
-    if (id === currentAccountId) return;
     setAccountId(id);
     setCurrentAccountType(type);
   };
 
   const handleChangeAccount = () => {
-    if (accountId === currentAccountId) {
-      window.close();
-      return;
-    }
     //this should be passed to constant instead of being hardcoded
     if (eventName === 'requestPermissions')
       dapp.requestPermissions(host, accountId, accountType);
