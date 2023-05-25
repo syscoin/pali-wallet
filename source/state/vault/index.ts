@@ -61,6 +61,7 @@ export const initialState: IVaultState = {
   isTimerEnabled: true,
   networks: initialNetworksState,
   error: false,
+  isPolling: false,
 };
 
 const VaultState = createSlice({
@@ -371,6 +372,9 @@ const VaultState = createSlice({
 
       state.accounts[type][id].assets.ethereum = updatedTokens;
     },
+    setIsPolling(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isPolling = action.payload;
+    },
   },
 });
 
@@ -402,6 +406,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
+  setIsPolling,
 } = VaultState.actions;
 
 export default VaultState.reducer;

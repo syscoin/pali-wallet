@@ -89,6 +89,7 @@ export interface IMainController extends IKeyringManager {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -96,6 +97,7 @@ export interface IMainController extends IKeyringManager {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling: boolean;
   }) => void;
   updateUserNativeBalance: ({
     isBitcoinBased,

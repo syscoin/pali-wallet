@@ -7,6 +7,7 @@ import store from 'state/store';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
+import { setIsPolling } from 'state/vault';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -181,6 +182,7 @@ async function checkForUpdates() {
 
   //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
   window.controller.wallet.updateAssetsFromCurrentAccount({
+    isPolling: true,
     isBitcoinBased,
     activeNetwork,
     activeAccount,
@@ -196,17 +198,18 @@ function registerListener() {
   }
 
   browser.runtime.onConnect.addListener((port) => {
-    let isPolling = false;
+    const isPolling = store.getState().vault.isPolling;
+    store.dispatch(setIsPolling(false));
 
     if (port.name === 'polling') {
       port.onMessage.addListener((message) => {
         if (message.action === 'startPolling' && !isPolling) {
-          isPolling = true;
+          store.dispatch(setIsPolling(true));
           intervalId = setInterval(checkForUpdates, 15000);
           port.postMessage({ intervalId });
         } else if (message.action === 'stopPolling') {
           clearInterval(intervalId);
-          isPolling = false;
+          store.dispatch(setIsPolling(false));
         }
       });
     }
