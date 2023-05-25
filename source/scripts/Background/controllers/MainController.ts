@@ -890,6 +890,7 @@ const MainController = (walletState): IMainController => {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -897,6 +898,7 @@ const MainController = (walletState): IMainController => {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean | null;
   }) => {
     const { accounts, networks } = store.getState().vault;
 
@@ -939,7 +941,9 @@ const MainController = (walletState): IMainController => {
               return;
             }
 
-            store.dispatch(setIsLoadingAssets(true));
+            if (!isPolling) {
+              store.dispatch(setIsLoadingAssets(true));
+            }
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
