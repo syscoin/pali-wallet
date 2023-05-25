@@ -1938,10 +1938,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
   integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@1.0.454":
-  version "1.0.454"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.454.tgz#13697db46e6fc1da7c72bb9085b57b16a19a03b8"
-  integrity sha512-vavQ/Nd7VAoTu75I5j1U61nPKcDjEZRK+C02ex1DyA929pf7N5wThhWfcAgg0tz4cLMeRUYhNODnVFoC38xTeA==
+"@pollum-io/sysweb3-keyring@1.0.455":
+  version "1.0.455"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.455.tgz#3bbcb566937f81d9e7e8988d9046706732130977"
+  integrity sha512-RCTE9o+Htd7ku+JKmv2+ZEqg8f4pOD6JifPYPyjkZGCpXlXajGq1RlayW/fp2Xoaw5eoWmyEAKUMu1vOoVgwFA==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
