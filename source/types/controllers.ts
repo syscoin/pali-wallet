@@ -100,6 +100,7 @@ export interface IMainController extends IKeyringManager {
     isPolling: boolean;
   }) => void;
   updateUserNativeBalance: ({
+    isPolling,
     isBitcoinBased,
     activeNetwork,
     activeAccount,
@@ -110,6 +111,7 @@ export interface IMainController extends IKeyringManager {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling: boolean;
   }) => void;
   updateUserTransactionsState: ({
     isPolling,

@@ -4,10 +4,10 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
+import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-import { setIsPolling } from 'state/vault';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -167,6 +167,7 @@ async function checkForUpdates() {
 
   //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
   window.controller.wallet.updateUserNativeBalance({
+    isPolling: true,
     isBitcoinBased,
     activeNetwork,
     activeAccount,

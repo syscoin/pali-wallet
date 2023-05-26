@@ -278,6 +278,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
+    getLatestUpdateForCurrentAccount();
     resetPolling();
   };
 
@@ -318,6 +319,7 @@ const MainController = (walletState): IMainController => {
         await utilsController.setFiat();
 
         updateAssetsFromCurrentAccount({
+          isPolling: false,
           isBitcoinBased,
           activeNetwork: network,
           activeAccount: {
@@ -657,7 +659,6 @@ const MainController = (walletState): IMainController => {
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
     updateUserTransactionsState({
-      isPolling: false,
       isBitcoinBased,
       activeAccount,
       activeNetwork,
@@ -689,6 +690,7 @@ const MainController = (walletState): IMainController => {
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const callUpdateTxsMethodBasedByIsBitcoinBased = (
+    isPolling: boolean,
     isBitcoinBased: boolean,
     activeAccount: {
       id: number;
@@ -712,7 +714,9 @@ const MainController = (walletState): IMainController => {
             if (isNil(txs) || isEmpty(txs)) {
               return;
             }
-            store.dispatch(setIsLoadingTxs(true));
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(true));
+            }
 
             store.dispatch(
               setAccountPropertyByIdAndType({
@@ -738,7 +742,9 @@ const MainController = (walletState): IMainController => {
             if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
               return;
             }
-            store.dispatch(setIsLoadingTxs(true));
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(true));
+            }
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
@@ -768,7 +774,7 @@ const MainController = (walletState): IMainController => {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
-    isPolling: boolean;
+    isPolling?: boolean;
   }) => {
     const { accounts } = store.getState().vault;
 
@@ -788,7 +794,10 @@ const MainController = (walletState): IMainController => {
                     activeNetwork.url
                   );
                 if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
-                  store.dispatch(setIsLoadingTxs(true));
+                  if (!isPolling) {
+                    store.dispatch(setIsLoadingTxs(true));
+                  }
+
                   store.dispatch(
                     setAccountPropertyByIdAndType({
                       id: activeAccount.id,
@@ -803,6 +812,7 @@ const MainController = (walletState): IMainController => {
               //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
               case false:
                 callUpdateTxsMethodBasedByIsBitcoinBased(
+                  isPolling,
                   isBitcoinBased,
                   activeAccount,
                   activeNetwork
@@ -979,6 +989,7 @@ const MainController = (walletState): IMainController => {
   //------------------------- NEW BALANCES METHODS -------------------------//
 
   const updateUserNativeBalance = ({
+    isPolling,
     isBitcoinBased,
     activeNetwork,
     activeAccount,
@@ -989,6 +1000,7 @@ const MainController = (walletState): IMainController => {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) => {
     const { accounts } = store.getState().vault;
 
@@ -1013,7 +1025,10 @@ const MainController = (walletState): IMainController => {
             );
 
             if (validateIfCanDispatch) {
-              store.dispatch(setIsLoadingBalances(true));
+              if (!isPolling) {
+                store.dispatch(setIsLoadingBalances(true));
+              }
+
               store.dispatch(
                 setAccountPropertyByIdAndType({
                   id: activeAccount.id,
@@ -1065,10 +1080,10 @@ const MainController = (walletState): IMainController => {
     if (isNetworkChanging || isNil(activeAccountValues.address)) {
       throw new Error('Could not update account while changing network');
     }
-
     Promise.all([
       //First update native balance
       updateUserNativeBalance({
+        isPolling: false,
         isBitcoinBased,
         activeNetwork,
         activeAccount,
@@ -1082,6 +1097,7 @@ const MainController = (walletState): IMainController => {
       }),
       //Later update Assets
       updateAssetsFromCurrentAccount({
+        isPolling: false,
         isBitcoinBased,
         activeNetwork,
         activeAccount,
