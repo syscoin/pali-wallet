@@ -17,7 +17,7 @@ import {
   INetworkType,
 } from '@pollum-io/sysweb3-network';
 
-import { resetPolling } from '..';
+import { setPollingDelay } from '..';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -27,7 +27,6 @@ import {
   createAccount as addAccountToStore,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
-  removeNetwork,
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
@@ -276,10 +275,13 @@ const MainController = (walletState): IMainController => {
     }
 
     //TODO: investigate if here would be a ideal place to add balance update
+
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
 
-    resetPolling();
+    setPollingDelay();
+
+    getLatestUpdateForCurrentAccount();
   };
 
   const setActiveNetwork = async (

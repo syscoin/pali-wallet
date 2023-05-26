@@ -234,8 +234,26 @@ browser.runtime.onMessage.addListener(({ action }) => {
   }
 });
 
+browser.runtime.onMessage.addListener(({ action }) => {
+  if (action === 'setPollingDelay') {
+    const pollingPort = browser.runtime.connect(undefined, { name: 'polling' });
+
+    isListenerRegistered = false;
+    pollingPort.postMessage({ action: 'stopPolling' });
+    console.time();
+    setTimeout(() => {
+      pollingPort.postMessage({ action: 'startPolling' });
+    }, 15000);
+    console.timeEnd();
+  }
+});
+
 export const resetPolling = () => {
   browser.runtime.sendMessage({ action: 'resetPolling' });
+};
+
+export const setPollingDelay = () => {
+  browser.runtime.sendMessage({ action: 'setPollingDelay' });
 };
 
 wrapStore(store, { portName: STORE_PORT });
