@@ -240,11 +240,9 @@ browser.runtime.onMessage.addListener(({ action }) => {
 
     isListenerRegistered = false;
     pollingPort.postMessage({ action: 'stopPolling' });
-    console.time();
     setTimeout(() => {
       pollingPort.postMessage({ action: 'startPolling' });
     }, 15000);
-    console.timeEnd();
   }
 });
 

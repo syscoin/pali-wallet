@@ -7,8 +7,6 @@ import { RootState } from 'state/store';
 
 import { TransactionsList } from './components/Transactions';
 
-const SECONDS = 10000;
-
 export const TransactionsPanel = () => {
   const {
     accounts,
@@ -22,8 +20,6 @@ export const TransactionsPanel = () => {
     () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
     [explorer]
   );
-
-  const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
 
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
@@ -54,14 +50,6 @@ export const TransactionsPanel = () => {
     </div>
   );
 
-  const validateTimeoutError = () => {
-    if (isLoadingTxs) {
-      setTimeout(() => {
-        setInternalLoading(false);
-      }, SECONDS);
-    }
-  };
-
   const OpenTransactionExplorer = useCallback(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
@@ -84,25 +72,17 @@ export const TransactionsPanel = () => {
     );
   }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);
 
-  useEffect(() => {
-    validateTimeoutError();
-    setInternalLoading(isLoadingTxs);
-    return () => {
-      setInternalLoading(false);
-    };
-  }, [isLoadingTxs]);
-
   return (
     <>
-      {internalLoading && !hasTransactions && <LoadingComponent />}
-      {!internalLoading && !hasTransactions && (
+      {isLoadingTxs && <LoadingComponent />}
+      {!isLoadingTxs && !hasTransactions && (
         <div className="w-full text-white">
           <NoTransactionsComponent />
           <OpenTransactionExplorer />
           <Fullscreen />
         </div>
       )}
-      {hasTransactions && (
+      {!isLoadingTxs && hasTransactions && (
         <div className="p-4 w-full text-white text-base bg-bkg-3">
           <TransactionsList
             userTransactions={
