@@ -339,6 +339,9 @@ const MainController = (walletState): IMainController => {
             type: wallet.activeAccountType,
           },
         });
+
+        setPollingDelay();
+
         window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
           method: PaliEvents.chainChanged,
           params: {
@@ -928,17 +931,28 @@ const MainController = (walletState): IMainController => {
                 activeNetwork.chainId,
                 networks
               );
+
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length <
                 currentAccount.assets.ethereum.length ||
-              updatedAssets.syscoin.length <
-                currentAccount.assets.syscoin.length;
+              updatedAssets.syscoin.filter(
+                (assets) => assets.chainId === activeNetwork.chainId
+              ).length <
+                currentAccount.assets.syscoin.filter(
+                  (assets) => assets.chainId === activeNetwork.chainId
+                ).length;
 
             const validateIfUpdatedAssetsStayEmpty =
               (currentAccount.assets.ethereum.length > 0 &&
                 isEmpty(updatedAssets.ethereum)) ||
-              (currentAccount.assets.syscoin.length > 0 &&
-                isEmpty(updatedAssets.syscoin));
+              (currentAccount.assets.syscoin.filter(
+                (assets) => assets.chainId === activeNetwork.chainId
+              ).length > 0 &&
+                isEmpty(
+                  updatedAssets.syscoin.filter(
+                    (assets) => assets.chainId === activeNetwork.chainId
+                  ).length
+                ));
 
             const validateIfBothUpdatedIsEmpty =
               isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);

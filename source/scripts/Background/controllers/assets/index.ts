@@ -18,7 +18,8 @@ const AssetsManager = (): IAssetsManager => {
           const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
             currentAccount.xpub,
             activeNetworkUrl,
-            networkChainId
+            networkChainId,
+            currentAccount.assets.syscoin
           );
 
           return {

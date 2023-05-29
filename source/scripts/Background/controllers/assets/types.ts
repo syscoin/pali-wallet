@@ -31,8 +31,10 @@ export interface ISysAssetsController {
   ) => Promise<boolean | ITokenSysProps>;
   getSysAssetsByXpub: (
     xpub: string,
+
     networkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    currentAssetsInState?: ISysTokensAssetReponse[]
   ) => Promise<ISysTokensAssetReponse[]>;
 }
 

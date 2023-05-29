@@ -1,4 +1,5 @@
-import { isNil } from 'lodash';
+import concat from 'lodash/concat';
+import isNil from 'lodash/isNil';
 import sys from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
@@ -38,7 +39,8 @@ const SysAssetsControler = (): ISysAssetsController => {
   const getSysAssetsByXpub = async (
     xpub: string,
     networkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    currentAssetsInState?: ISysTokensAssetReponse[]
   ): Promise<ISysTokensAssetReponse[]> => {
     try {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
@@ -77,11 +79,7 @@ const SysAssetsControler = (): ISysAssetsController => {
           return { ...asset, chainId: networkChainId };
         });
 
-        const treatedAssets = validateAndManageUserAssets(
-          false,
-          assetsWithChain
-        ) as ISysTokensAssetReponse[];
-        const decodedSysAssets = treatedAssets.map((asset) => ({
+        const decodedSysAssets = assetsWithChain.map((asset) => ({
           ...asset,
           symbol: asset.symbol
             ? decodeURIComponent(
@@ -94,7 +92,18 @@ const SysAssetsControler = (): ISysAssetsController => {
               )
             : '',
         }));
-        return decodedSysAssets;
+
+        const assetsToTreat: ISysTokensAssetReponse[] =
+          currentAssetsInState.length > 0
+            ? concat(decodedSysAssets, currentAssetsInState)
+            : assetsWithChain;
+
+        const treatedAssets = validateAndManageUserAssets(
+          false,
+          assetsToTreat
+        ) as ISysTokensAssetReponse[];
+
+        return treatedAssets;
       }
 
       return [];
