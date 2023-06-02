@@ -27,7 +27,6 @@ import {
   createAccount as addAccountToStore,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
-  removeNetwork,
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
@@ -41,8 +40,9 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
+  setAccountsWithLabelEdited,
 } from 'state/vault';
-import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
+import { IOmmitedAccount, IPaliAccount, PaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -556,6 +556,20 @@ const MainController = (walletState): IMainController => {
     }
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
+  };
+
+  const editAccountLabel = (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    store.dispatch(
+      setAccountsWithLabelEdited({
+        label,
+        accountId,
+        accountType,
+      })
     );
   };
 
@@ -1095,6 +1109,7 @@ const MainController = (walletState): IMainController => {
     unlock, //todo we need to adjust unlock type
     lock,
     createAccount,
+    editAccountLabel,
     account: walletController.account,
     setAccount,
     setAutolockTimer,

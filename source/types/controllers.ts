@@ -25,7 +25,7 @@ import {
   ITransactionsManager,
 } from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
-import { IOmmitedAccount } from 'state/vault/types';
+import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 
 import { ICustomRpcParams } from './transactions';
 
@@ -39,6 +39,11 @@ export interface IMainController extends IKeyringManager {
   assets: IAssetsManager;
   createAccount: (label?: string) => Promise<IKeyringAccountState>;
   createWallet: (password: string, phrase: string) => Promise<void>;
+  editAccountLabel: (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
   editCustomRpc: (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams

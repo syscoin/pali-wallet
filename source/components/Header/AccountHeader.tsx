@@ -4,7 +4,10 @@ import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
 
 import importIcon from 'assets/images/import.png';
 import trezorLogo from 'assets/images/trezorLogo.png';
@@ -370,6 +373,17 @@ const AccountMenu: React.FC = () => {
             </Disclosure>
           </Menu.Item>
 
+          <Menu.Item>
+            <li
+              onClick={() => navigate('/settings/account/manage-accounts')}
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+            >
+              <Icon name="edit" className="mb-2 ml-1 mr-2 text-brand-white" />
+
+              <span className="px-3">Manage Accounts</span>
+            </li>
+          </Menu.Item>
+
           {
             <Menu.Item>
               <li
@@ -408,7 +422,7 @@ export const AccountHeader: React.FC = () => {
     (state: RootState) => state.vault.activeAccount
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
-  const { useCopyClipboard, alert } = useUtils();
+  const { useCopyClipboard, alert, navigate } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
 
@@ -426,6 +440,12 @@ export const AccountHeader: React.FC = () => {
     );
   }, [accounts[activeAccount.type][activeAccount.id]?.address]);
 
+  const editAccount = (account: IKeyringAccountState) => {
+    navigate('/settings/account/edit-account', {
+      state: account,
+    });
+  };
+
   useEffect(() => {
     if (!copied) return;
 
@@ -439,8 +459,21 @@ export const AccountHeader: React.FC = () => {
         <div className="add-identicon ml-1 mr-2 my-2" />
 
         <div className="items-center justify-center px-1 text-brand-white">
-          <p className="mb-1 text-base" id="active-account-label">
+          <p className="mb-1 text-base" id="active-account-label items-center">
             {accounts[activeAccount.type][activeAccount.id]?.label}
+
+            <IconButton
+              onClick={() =>
+                editAccount(accounts[activeAccount.type][activeAccount.id])
+              }
+              type="primary"
+              shape="circle"
+            >
+              <Icon
+                name="edit"
+                className="hover:text-brand-royalblue text-xs ml-1 flex justify-center w-4 h-4"
+              />
+            </IconButton>
           </p>
           <p className="text-xs">
             {ellipsis(

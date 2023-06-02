@@ -29,6 +29,8 @@ import {
   ImportAccount,
   RemoveEth,
   CreatePasswordImport,
+  ManageAccounts,
+  EditAccount,
 } from '../pages';
 import { useUtils } from 'hooks/index';
 import { inactivityTime } from 'scripts/Background';
@@ -144,6 +146,16 @@ export const Router = () => {
           <Route
             path="import"
             element={<ProtectedRoute element={<ImportAccount />} />}
+          />
+
+          <Route
+            path="manage-accounts"
+            element={<ProtectedRoute element={<ManageAccounts />} />}
+          />
+
+          <Route
+            path="edit-account"
+            element={<ProtectedRoute element={<EditAccount />} />}
           />
 
           <Route
