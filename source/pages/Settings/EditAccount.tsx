@@ -7,7 +7,6 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { IPaliAccount } from 'state/vault/types';
 import { getController } from 'utils/browser';
 
 const EditAccountView = () => {

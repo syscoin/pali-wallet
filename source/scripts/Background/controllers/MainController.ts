@@ -42,7 +42,7 @@ import {
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
 } from 'state/vault';
-import { IOmmitedAccount, IPaliAccount, PaliAccount } from 'state/vault/types';
+import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';

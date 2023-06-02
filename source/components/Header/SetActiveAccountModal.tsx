@@ -8,7 +8,6 @@ import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { ellipsis } from 'utils/format';
 
 interface ISetActiveAccountModalProps {
   selectedNetwork: { chain: string; network: INetwork };

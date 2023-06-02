@@ -25,7 +25,7 @@ import {
   ITransactionsManager,
 } from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
-import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
+import { IOmmitedAccount } from 'state/vault/types';
 
 import { ICustomRpcParams } from './transactions';
 
