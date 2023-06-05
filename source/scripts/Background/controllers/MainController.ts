@@ -116,7 +116,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setLastLogin());
   };
 
-  const unlock = async (pwd: string): Promise<boolean> => {
+  const unlockFromController = async (pwd: string): Promise<boolean> => {
     const unlocked = await keyringManager.unlock(pwd);
     if (!unlocked) throw new Error('Invalid password');
     store.dispatch(setLastLogin());
@@ -1092,7 +1092,7 @@ const MainController = (walletState): IMainController => {
   return {
     createWallet,
     forgetWallet,
-    unlock, //todo we need to adjust unlock type
+    unlockFromController,
     lock,
     createAccount,
     account: walletController.account,

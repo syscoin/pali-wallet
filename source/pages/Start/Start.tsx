@@ -14,7 +14,7 @@ import { ValidationModal } from './Modal';
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock },
+    wallet: { unlock, unlockFromController },
   } = getController();
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
@@ -43,7 +43,7 @@ export const Start = (props: any) => {
   );
 
   const onSubmit = async ({ password }: { password: string }) => {
-    await unlock(password);
+    await unlockFromController(password);
     if (!isExternal) return navigate('/home');
     return navigate(externalRoute);
   };
