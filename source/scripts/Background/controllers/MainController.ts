@@ -27,7 +27,6 @@ import {
   createAccount as addAccountToStore,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
-  removeNetwork,
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
@@ -62,9 +61,15 @@ import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
-  const assetsManager = AssetsManager();
-  const transactionsManager = TransactionsManager();
-  const balancesMananger = BalancesManager();
+  let assetsManager = AssetsManager(
+    keyringManager.ethereumTransaction.web3Provider
+  );
+  let transactionsManager = TransactionsManager(
+    keyringManager.ethereumTransaction.web3Provider
+  );
+  let balancesMananger = BalancesManager(
+    keyringManager.ethereumTransaction.web3Provider
+  );
   const cancellablePromises = new CancellablePromises();
 
   let currentPromise: {
@@ -79,6 +84,7 @@ const MainController = (walletState): IMainController => {
       reject: (reason?: any) => void
     ) => void
   ): { cancel: () => void; promise: Promise<T> } => {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     let cancel = () => {};
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
@@ -442,6 +448,15 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      assetsManager = AssetsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
       resolve({
         activeChain,
         chain,
@@ -900,7 +915,7 @@ const MainController = (walletState): IMainController => {
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
   }) => {
-    const { accounts, networks } = store.getState().vault;
+    const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -913,8 +928,7 @@ const MainController = (walletState): IMainController => {
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
-                activeNetwork.chainId,
-                networks
+                activeNetwork.chainId
               );
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length <

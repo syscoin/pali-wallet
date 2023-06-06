@@ -11,14 +11,15 @@ import {
   validateAndManageUserTransactions,
 } from './utils';
 
-const EvmTransactionsController = (): IEvmTransactionsController => {
+const EvmTransactionsController = (
+  web3Provider: ethers.providers.JsonRpcProvider
+): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     currentAccount: IPaliAccount,
-    networkUrl: string,
     startBlock: number,
     endBlock: number
   ) => {
-    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+    const provider = web3Provider;
 
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       provider,
@@ -33,10 +34,9 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const firstRunForProviderTransactions = async (
-    currentAccount: IPaliAccount,
-    networkUrl: string
+    currentAccount: IPaliAccount
   ) => {
-    const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+    const provider = web3Provider;
 
     const latestBlockNumber = await provider.getBlockNumber();
     const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks
@@ -44,7 +44,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
     const txs = await getUserTransactionByDefaultProvider(
       currentAccount,
-      networkUrl,
       fromBlock,
       toBlock
     );
@@ -52,20 +51,15 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     return txs;
   };
 
-  const pollingEvmTransactions = async (
-    currentAccount: IPaliAccount,
-    networkUrl: string,
-    provider: any
-  ) => {
+  const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
     try {
       const queue = new Queue(3);
-      const latestBlockNumber = await provider.getBlockNumber();
+      const latestBlockNumber = await web3Provider.getBlockNumber();
 
       const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
 
       const txs = await getUserTransactionByDefaultProvider(
         currentAccount,
-        networkUrl,
         fromBlock,
         latestBlockNumber
       );
@@ -81,7 +75,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
               }
 
               const getTxTimestamp = await getFormattedEvmTransactionResponse(
-                provider,
+                web3Provider,
                 pollingTx
               );
 

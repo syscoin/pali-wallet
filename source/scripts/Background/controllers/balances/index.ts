@@ -1,10 +1,15 @@
+import { ethers } from 'ethers';
+
 import { IPaliAccount } from 'state/vault/types';
 
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';
 import { IBalancesManager } from './types';
 
-const BalancesManager = (): IBalancesManager => {
+const BalancesManager = (
+  web3Provider: ethers.providers.JsonRpcProvider
+): IBalancesManager => {
+  const evmBalanceController = EvmBalanceController(web3Provider);
   const getBalanceUpdatedForAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
@@ -26,10 +31,7 @@ const BalancesManager = (): IBalancesManager => {
       case false:
         try {
           const getEvmBalance =
-            await EvmBalanceController().getEvmBalanceForAccount(
-              currentAccount,
-              networkUrl
-            );
+            await evmBalanceController.getEvmBalanceForAccount(currentAccount);
 
           return getEvmBalance;
         } catch (evmBalanceError) {
@@ -39,7 +41,7 @@ const BalancesManager = (): IBalancesManager => {
   };
 
   return {
-    evm: EvmBalanceController(),
+    evm: evmBalanceController,
     sys: SyscoinBalanceController(),
     utils: {
       getBalanceUpdatedForAccount,
