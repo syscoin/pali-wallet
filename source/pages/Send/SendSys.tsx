@@ -14,7 +14,7 @@ import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { truncate, isNFT, getAssetBalance } from 'utils/index';
+import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
@@ -60,8 +60,18 @@ export const SendSys = () => {
     ? Object.values(activeAccount.assets.syscoin)
     : [];
 
+  const formattedAssetBalance =
+    selectedAsset &&
+    truncate(
+      formatCurrency(
+        String(+selectedAsset.balance / 10 ** selectedAsset.decimals),
+        selectedAsset.decimals
+      ),
+      14
+    );
+
   const balance = selectedAsset
-    ? selectedAsset.balance
+    ? +formattedAssetBalance
     : Number(activeAccount?.balances.syscoin);
 
   const handleSelectedAsset = (item: number) => {
