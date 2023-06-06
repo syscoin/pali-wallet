@@ -6,6 +6,8 @@ import isEmpty from 'lodash/isEmpty';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
 import store from 'state/store';
 
 import { Queue } from './queue';
@@ -14,7 +16,8 @@ import { ISysTransaction, IEvmTransactionResponse } from './types';
 export const getEvmTransactionTimestamp = async (
   provider:
     | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+    | ethers.providers.JsonRpcProvider
+    | CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const { timestamp } = await provider.getBlock(
@@ -30,7 +33,8 @@ export const getEvmTransactionTimestamp = async (
 export const getFormattedEvmTransactionResponse = async (
   provider:
     | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+    | ethers.providers.JsonRpcProvider
+    | CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const tx = await provider.getTransaction(transaction.hash);
@@ -44,7 +48,8 @@ export const getFormattedEvmTransactionResponse = async (
 export const findUserTxsInProviderByBlocksRange = async (
   provider:
     | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+    | ethers.providers.JsonRpcProvider
+    | CustomJsonRpcProvider,
   userAddress: string,
   startBlock: number,
   endBlock: number

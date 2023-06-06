@@ -1,4 +1,6 @@
-import { ethers } from 'ethers';
+// import { ethers } from 'ethers';
+
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -6,9 +8,7 @@ import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
-const AssetsManager = (
-  web3Provider: ethers.providers.JsonRpcProvider
-): IAssetsManager => {
+const AssetsManager = (web3Provider: CustomJsonRpcProvider): IAssetsManager => {
   const evmAssetsController = EvmAssetsController(web3Provider);
   const updateAssetsFromCurrentAccount = async (
     currentAccount: IPaliAccount,

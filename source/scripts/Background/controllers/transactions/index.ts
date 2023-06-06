@@ -1,4 +1,6 @@
-import { ethers } from 'ethers';
+// import { ethers } from 'ethers';
+
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -7,7 +9,7 @@ import SysTransactionController from './syscoin';
 import { ITransactionsManager } from './types';
 
 const TransactionsManager = (
-  web3Provider: ethers.providers.JsonRpcProvider
+  web3Provider: CustomJsonRpcProvider
 ): ITransactionsManager => {
   const evmTransactionsController = EvmTransactionsController(web3Provider);
   const updateTransactionsFromCurrentAccount = async (

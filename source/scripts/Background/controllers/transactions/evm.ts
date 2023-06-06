@@ -1,5 +1,7 @@
-import { ethers } from 'ethers';
+// import { ethers } from 'ethers';
 import flatMap from 'lodash/flatMap';
+
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -12,7 +14,7 @@ import {
 } from './utils';
 
 const EvmTransactionsController = (
-  web3Provider: ethers.providers.JsonRpcProvider
+  web3Provider: CustomJsonRpcProvider
 ): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
     currentAccount: IPaliAccount,

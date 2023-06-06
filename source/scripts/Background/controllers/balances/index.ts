@@ -1,4 +1,6 @@
-import { ethers } from 'ethers';
+// import { ethers } from 'ethers';
+
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -7,7 +9,7 @@ import SyscoinBalanceController from './syscoin';
 import { IBalancesManager } from './types';
 
 const BalancesManager = (
-  web3Provider: ethers.providers.JsonRpcProvider
+  web3Provider: CustomJsonRpcProvider
 ): IBalancesManager => {
   const evmBalanceController = EvmBalanceController(web3Provider);
   const getBalanceUpdatedForAccount = async (
