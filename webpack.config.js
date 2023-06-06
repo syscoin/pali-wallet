@@ -9,6 +9,11 @@ const webpack = require('webpack');
 const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
 const ZipPlugin = require('zip-webpack-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
+const BundleAnalyzerPlugin =
+  require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const CompressionPlugin = require('compression-webpack-plugin');
+
+const zlib = require('zlib');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -195,6 +200,20 @@ module.exports = {
   },
 
   plugins: [
+    new CompressionPlugin({
+      filename: '[path][base].br',
+      algorithm: 'brotliCompress',
+      test: /\.(js|css|html|svg)$/,
+      compressionOptions: {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]: 11,
+        },
+      },
+      threshold: 10240,
+      minRatio: 0.8,
+      deleteOriginalAssets: false,
+    }),
+    new BundleAnalyzerPlugin(),
     // Plugin to not generate js bundle for manifest entry
     new WextManifestWebpackPlugin(),
     // Generate sourcemaps
