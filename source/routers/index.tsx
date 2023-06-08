@@ -33,7 +33,12 @@ import {
   CreatePasswordImport,
 } from '../pages';
 import { useUtils } from 'hooks/index';
-import { inactivityTime } from 'scripts/Background';
+import {
+  inactivityTime,
+  removeVerifyPaliRequestListener,
+  resetPaliRequestsCount,
+  verifyPaliRequests,
+} from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -66,6 +71,12 @@ export const Router = () => {
   useEffect(() => {
     if (isTimerEnabled) inactivityTime();
   }, []);
+
+  useEffect(() => {
+    if (isNetworkChanging) resetPaliRequestsCount();
+    if (!isBitcoinBased) verifyPaliRequests();
+    if (isBitcoinBased) removeVerifyPaliRequestListener();
+  }, [isBitcoinBased, isNetworkChanging]);
 
   useEffect(() => {
     alert.removeAll();

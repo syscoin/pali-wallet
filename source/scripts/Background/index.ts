@@ -4,10 +4,10 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
+import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-import { setIsPolling } from 'state/vault';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -61,9 +61,36 @@ const handleLogout = () => {
   }
 };
 
+let requestCount = 0;
+const requestCallback = () => {
+  // Increment the request count
+  requestCount++;
+  console.log('Request count:', requestCount);
+};
+const verifyAllPaliRequests = () => {
+  // Define a variable to keep track of the request count
+
+  // Intercept the requests made by the extension
+  browser.webRequest.onCompleted.addListener(requestCallback, { urls: [] });
+};
+
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
-  if (type === 'reset_autolock' && target === 'background') {
-    restartLockTimeout();
+  switch (type) {
+    case 'reset_autolock':
+      if (target === 'background') restartLockTimeout();
+      break;
+    case 'verifyPaliRequests':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        verifyAllPaliRequests();
+      break;
+    case 'resetPaliRequestsCount':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        requestCount = 0;
+      break;
+    case 'removeVerifyPaliRequestListener':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        browser.webRequest.onCompleted.removeListener(requestCallback);
+      break;
   }
 });
 
@@ -235,6 +262,27 @@ browser.runtime.onMessage.addListener(({ action }) => {
 
 export const resetPolling = () => {
   browser.runtime.sendMessage({ action: 'resetPolling' });
+};
+
+export const verifyPaliRequests = () => {
+  browser.runtime.sendMessage({
+    type: 'verifyPaliRequests',
+    target: 'background',
+  });
+};
+
+export const removeVerifyPaliRequestListener = () => {
+  browser.runtime.sendMessage({
+    type: 'removeVerifyPaliRequestListener',
+    target: 'background',
+  });
+};
+
+export const resetPaliRequestsCount = () => {
+  browser.runtime.sendMessage({
+    type: 'resetPaliRequestsCount',
+    target: 'background',
+  });
 };
 
 wrapStore(store, { portName: STORE_PORT });

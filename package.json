@@ -31,7 +31,9 @@
     "test:e2e": "NODE_ENV=test jest tests/e2e",
     "test:e2e:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test:e2e",
     "postinstall": "patch-package",
-    "test-all": "yarn lint && yarn test:unit"
+    "test-all": "yarn lint && yarn test:unit",
+    "generate-hardhat-log": "npx hardhat node --verbose > hardhat.log",
+    "watch-local-rpc": "tail -f hardhat.log"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
@@ -123,6 +125,7 @@
     "@babel/plugin-transform-modules-commonjs": "^7.21.5",
     "@babel/plugin-transform-runtime": "^7.21.4",
     "@babel/preset-env": "^7.21.5",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@types/node": "^18.16.3",
     "@types/react": "^18.2.5",
     "@types/react-dom": "^18.2.3",
@@ -140,6 +143,7 @@
     "eslint-plugin-react-hooks": "^4.2.0",
     "eslint-plugin-typescript-sort-keys": "^2.3.0",
     "fork-ts-checker-webpack-plugin": "^8.0.0",
+    "hardhat": "^2.15.0",
     "html-webpack-plugin": "^5.5.1",
     "husky": "^7.0.4",
     "mini-css-extract-plugin": "^2.7.5",
