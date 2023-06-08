@@ -2,6 +2,8 @@ import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
 import {
   About,
   AutoLock,
@@ -40,8 +42,12 @@ export const Router = () => {
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-  const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
+  const { isTimerEnabled, isBitcoinBased, isNetworkChanging } = useSelector(
+    (state: RootState) => state.vault
+  );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const { serverHasAnError }: CustomJsonRpcProvider =
+    wallet.ethereumTransaction.web3Provider;
   const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
@@ -65,6 +71,20 @@ export const Router = () => {
     alert.removeAll();
     appRoute(pathname);
   }, [pathname]);
+
+  useEffect(() => {
+    if (
+      serverHasAnError &&
+      isUnlocked &&
+      !isBitcoinBased &&
+      !isNetworkChanging
+    ) {
+      alert.removeAll();
+      alert.error(
+        'The RPC provider from network has an error. Pali performance may be affected.'
+      );
+    }
+  }, [serverHasAnError]);
 
   return (
     <Routes>
