@@ -40,8 +40,19 @@ export const methodRequest = async (
       return resp; //Sending back to Dapp non restrictive method response
     }
   }
+  const activeAccountData = accounts[activeAccount.type][activeAccount.id];
   const account = dapp.getAccount(host);
   const isRequestAllowed = dapp.isConnected(host) && account;
+  const isUTXORequestAllowed =
+    isBitcoinBased && !activeAccountData.isTrezorWallet;
+
+  if (!isUTXORequestAllowed) {
+    console.error(
+      'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
+    );
+    return null;
+  }
+
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     return await enable(host, undefined, undefined);
   }
