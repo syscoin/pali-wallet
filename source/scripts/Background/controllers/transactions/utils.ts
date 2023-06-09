@@ -1,4 +1,3 @@
-import { ethers } from 'ethers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -14,10 +13,7 @@ import { Queue } from './queue';
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider
-    | CustomJsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const { timestamp } = await provider.getBlock(
@@ -31,10 +27,7 @@ export const getEvmTransactionTimestamp = async (
 };
 
 export const getFormattedEvmTransactionResponse = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider
-    | CustomJsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const tx = await provider.getTransaction(transaction.hash);
