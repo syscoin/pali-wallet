@@ -1,5 +1,6 @@
 import 'emoji-log';
 import { wrapStore } from 'webext-redux';
+import { WebRequest } from 'webextension-polyfill';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
@@ -62,17 +63,49 @@ const handleLogout = () => {
 };
 
 let requestCount = 0;
-const requestCallback = () => {
-  // Increment the request count
+const requestsPerSecond = {};
+const requestCallback = (details: WebRequest.OnCompletedDetailsType) => {
   requestCount++;
   console.log('Request count:', requestCount);
-};
-const verifyAllPaliRequests = () => {
-  // Define a variable to keep track of the request count
 
-  // Intercept the requests made by the extension
+  // track all requests
+  const currentTime = Math.floor(Date.now() / 1000);
+  if (!requestsPerSecond[currentTime]) {
+    requestsPerSecond[currentTime] = [];
+  }
+
+  requestsPerSecond[currentTime].push(details);
+};
+
+const verifyAllPaliRequests = () => {
+  // get all requests called by extension
   browser.webRequest.onCompleted.addListener(requestCallback, { urls: [] });
 };
+
+// update and show requests per second
+const updateRequestsPerSecond = () => {
+  const { isBitcoinBased } = store.getState().vault;
+  if (!isBitcoinBased && process.env.NODE_ENV === 'development') {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const requestCountPerSecond = requestsPerSecond[currentTime]?.length || 0;
+    console.log('Requests per second:', requestCountPerSecond);
+
+    if (requestsPerSecond[currentTime]) {
+      console.log('//---------REQUESTS IN THIS SECOND---------//');
+      requestsPerSecond[currentTime].forEach(
+        (request: WebRequest.OnCompletedDetailsType, index: number) => {
+          console.log(`Request ${index + 1}:`, request);
+        }
+      );
+      console.log('//----------------------------------------//');
+    }
+
+    requestsPerSecond[currentTime] = [];
+  }
+};
+
+// Interval to perform the information update and display the requests per second every second.
+setInterval(updateRequestsPerSecond, 1000);
 
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
   switch (type) {
