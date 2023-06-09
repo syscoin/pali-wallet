@@ -58,26 +58,7 @@ export const Start = (props: any) => {
         autoComplete="off"
         id="login"
       >
-        <Form.Item
-          name="password"
-          hasFeedback
-          className="w-full"
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                if (await unlock(value)) {
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
-        >
+        <Form.Item name="password" className="w-full">
           <Input.Password
             className="input-small relative"
             placeholder="Enter your password"
