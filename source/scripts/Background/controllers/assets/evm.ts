@@ -206,13 +206,13 @@ const EvmAssetsController = (
               if (vaultAssets.chainId === currentNetworkChainId) {
                 const provider = web3Provider;
 
-                const _contract = new ethers.Contract(
+                const contract = new ethers.Contract(
                   vaultAssets.contractAddress,
                   vaultAssets.isNft ? getErc21Abi() : getErc20Abi(),
                   provider
                 );
 
-                const balanceCallMethod = await _contract.balanceOf(
+                const balanceCallMethod = await contract.balanceOf(
                   account.address
                 );
 

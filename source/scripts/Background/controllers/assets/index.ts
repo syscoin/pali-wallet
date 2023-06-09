@@ -1,5 +1,3 @@
-// import { ethers } from 'ethers';
-
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
