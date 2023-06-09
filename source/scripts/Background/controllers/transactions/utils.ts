@@ -46,10 +46,7 @@ export const getFormattedEvmTransactionResponse = async (
 };
 
 export const findUserTxsInProviderByBlocksRange = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider
-    | CustomJsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   userAddress: string,
   startBlock: number,
   endBlock: number
@@ -59,7 +56,10 @@ export const findUserTxsInProviderByBlocksRange = async (
 
   rangeBlocksToRun.forEach((blockNumber) => {
     queue.execute(async () => {
-      const currentBlock = await provider.getBlockWithTransactions(blockNumber);
+      const currentBlock = await provider.send('eth_getBlockByNumber', [
+        `0x${blockNumber.toString(16)}`,
+        true,
+      ]);
       const filterTxsByAddress = currentBlock.transactions.filter(
         (tx) =>
           tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
