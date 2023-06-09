@@ -540,7 +540,6 @@ const MainController = (walletState): IMainController => {
 
     return network;
   };
-
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
     oldRpc: INetwork
