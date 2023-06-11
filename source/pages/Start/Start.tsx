@@ -20,6 +20,7 @@ export const Start = (props: any) => {
     (state: RootState) => state.vault
   );
   const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { isExternal, externalRoute } = props;
 
@@ -43,7 +44,12 @@ export const Start = (props: any) => {
   );
 
   const onSubmit = async ({ password }: { password: string }) => {
-    await unlock(password);
+    const result = await unlock(password);
+    if (!result) {
+      setErrorMessage('Wrong password');
+      return;
+    }
+    setErrorMessage(null);
     if (!isExternal) return navigate('/home');
     return navigate(externalRoute);
   };
