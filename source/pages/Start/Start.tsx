@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -21,8 +21,6 @@ export const Start = (props: any) => {
   );
   const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [disableButton, setDisableButton] = useState<boolean>(false);
-  const [form] = Form.useForm();
 
   const { isExternal, externalRoute } = props;
 
