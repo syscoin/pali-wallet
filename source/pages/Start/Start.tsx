@@ -14,7 +14,7 @@ import { ValidationModal } from './Modal';
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock, unlockFromController },
+    wallet: { unlockFromController },
   } = getController();
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
