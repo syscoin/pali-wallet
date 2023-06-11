@@ -46,16 +46,22 @@ export const methodRequest = async (
   const isUTXORequestAllowed =
     isBitcoinBased && !activeAccountData.isTrezorWallet;
 
-  if (!isUTXORequestAllowed) {
+  if (
+    !isUTXORequestAllowed &&
+    methodName !== 'changeUTXOEVM' &&
+    methodName !== 'getSysProviderState' &&
+    methodName !== 'getProviderState'
+  ) {
     console.error(
       'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
     );
+    //Todo: we're throwing arbitrary error codes here, later it would be good to check the avaiability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
     throw ethErrors.provider.custom({
-      code: 5100,
+      code: 4874,
       message:
         'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
       data: {
-        code: 5100,
+        code: 4874,
         message:
           'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
       },
