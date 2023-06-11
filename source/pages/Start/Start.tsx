@@ -14,7 +14,7 @@ import { ValidationModal } from './Modal';
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock },
+    wallet: { unlockFromController },
   } = getController();
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
@@ -44,7 +44,7 @@ export const Start = (props: any) => {
   );
 
   const onSubmit = async ({ password }: { password: string }) => {
-    const result = await unlock(password);
+    const result = await unlockFromController(password);
     if (!result) {
       setErrorMessage('Wrong password');
       return;
