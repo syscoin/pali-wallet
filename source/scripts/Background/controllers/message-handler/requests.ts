@@ -50,7 +50,16 @@ export const methodRequest = async (
     console.error(
       'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
     );
-    return null;
+    throw ethErrors.provider.custom({
+      code: 5100,
+      message:
+        'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
+      data: {
+        code: 5100,
+        message:
+          'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
+      },
+    });
   }
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
