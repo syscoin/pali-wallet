@@ -13,7 +13,7 @@ export interface IAssetsManager {
 
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
-  syscoin: ISysTokensAssetReponse[];
+  syscoin: ITokenSysProps[];
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
@@ -38,7 +38,7 @@ export interface ISysAssetsController {
 
 export interface ISysTokensAssetReponse {
   assetGuid: string;
-  balance: string;
+  balance: number;
   chainId?: number;
   decimals: number;
   name: string;

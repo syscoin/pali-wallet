@@ -21,7 +21,7 @@ export const validateAndManageUserAssets = (
   const { assets } = accounts[activeAccount.type][activeAccount.id];
 
   const assetsValueToUse = isForEvm ? assets.ethereum : assets.syscoin;
-
+  //@ts-ignore
   const userClonedAssets = clone(compact(assetsValueToUse));
 
   const tokenPropertyToUseAtGroupBy = isForEvm
