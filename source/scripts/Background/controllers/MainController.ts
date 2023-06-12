@@ -564,6 +564,8 @@ const MainController = (walletState): IMainController => {
     accountId: number,
     accountType: KeyringAccountType
   ) => {
+    keyringManager.updateAccountLabel(label, accountId, accountType);
+
     store.dispatch(
       setAccountsWithLabelEdited({
         label,
