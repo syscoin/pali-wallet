@@ -11,9 +11,7 @@ const ZipPlugin = require('zip-webpack-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const BundleAnalyzerPlugin =
   require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const CompressionPlugin = require('compression-webpack-plugin');
-
-const zlib = require('zlib');
+const SplitChunksPlugin = require('webpack-split-by-path');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -78,6 +76,8 @@ module.exports = {
   output: {
     path: path.join(destPath, targetBrowser),
     filename: 'js/[name].bundle.js',
+    chunkFilename: '[chunkhash].chunk.js',
+    publicPath: '/',
     // delete previous build files -> Use instead clean-webpack-plugin
     clean: true,
   },
@@ -200,19 +200,12 @@ module.exports = {
   },
 
   plugins: [
-    new CompressionPlugin({
-      filename: '[path][base].br',
-      algorithm: 'brotliCompress',
-      test: /\.(js|css|html|svg)$/,
-      compressionOptions: {
-        params: {
-          [zlib.constants.BROTLI_PARAM_QUALITY]: 11,
-        },
+    new SplitChunksPlugin([
+      {
+        name: 'vendors',
+        path: path.join(__dirname, 'node_modules'),
       },
-      threshold: 10240,
-      minRatio: 0.8,
-      deleteOriginalAssets: false,
-    }),
+    ]),
     new BundleAnalyzerPlugin(),
     // Plugin to not generate js bundle for manifest entry
     new WextManifestWebpackPlugin(),

@@ -5087,14 +5087,6 @@ compressible@~2.0.16:
   dependencies:
     mime-db ">= 1.43.0 < 2"
 
-compression-webpack-plugin@^10.0.0:
-  version "10.0.0"
-  resolved "https://registry.yarnpkg.com/compression-webpack-plugin/-/compression-webpack-plugin-10.0.0.tgz#3496af1b0dc792e13efc474498838dbff915c823"
-  integrity sha512-wLXLIBwpul/ALcm7Aj+69X0pYT3BYt6DdPn3qrgBIh9YejV9Bju9ShhlAsjujLyWMo6SAweFIWaUoFmXZNuNrg==
-  dependencies:
-    schema-utils "^4.0.0"
-    serialize-javascript "^6.0.0"
-
 compression@^1.7.1, compression@^1.7.4:
   version "1.7.4"
   resolved "https://registry.yarnpkg.com/compression/-/compression-1.7.4.tgz#95523eff170ca57c29a0ca41e6fe131f41e5bb8f"
@@ -14788,6 +14780,11 @@ webpack-sources@^3.2.3:
   version "3.2.3"
   resolved "https://registry.yarnpkg.com/webpack-sources/-/webpack-sources-3.2.3.tgz#2d4daab8451fd4b240cc27055ff6a0c2ccea0cde"
   integrity sha512-/DyMEOrDgLKKIG0fmvtz+4dUX/3Ghozwgm6iPp8KRhvn+eQf9+Q7GWxVNMk3+uCPWfdXYC4ExGBckIXdFEfH1w==
+
+webpack-split-by-path@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/webpack-split-by-path/-/webpack-split-by-path-2.0.0.tgz#2b6a75301f3695f73d8788d990c4f0c71567e2b0"
+  integrity sha512-RUMOc2nDa5C0d7CLHAHPykUNZLjkCEXXuVbxyLdjID7dH2a3hl2WhD9VZfyHi2FAKJFJK18W+fstTOX2GH4w7Q==
 
 webpack@^5, webpack@^5.82.0:
   version "5.82.1"
