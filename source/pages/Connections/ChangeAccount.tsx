@@ -4,15 +4,16 @@ import { useSelector } from 'react-redux';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, SecondaryButton, PrimaryButton, Icon } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
+  const { alert } = useUtils();
   const { dapp, wallet } = getController();
   const { host, eventName } = useQueryData();
 
@@ -28,11 +29,20 @@ export const ChangeAccount = () => {
   };
 
   const handleChangeAccount = () => {
+    if (accountId === currentAccountId && accountType === currentAccountType) {
+      alert.removeAll();
+      alert.error(
+        'This account is already connected. Please select a different account.'
+      );
+      return;
+    }
     //this should be passed to constant instead of being hardcoded
     if (eventName === 'requestPermissions')
       dapp.requestPermissions(host, accountId, accountType);
     else dapp.changeAccount(host, accountId, accountType);
     wallet.setAccount(accountId, accountType);
+    const response = { accountId, accountType };
+    dispatchBackgroundEvent(`${eventName}.${host}`, response);
     window.close();
   };
 
