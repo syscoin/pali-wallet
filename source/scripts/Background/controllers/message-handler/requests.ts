@@ -43,11 +43,10 @@ export const methodRequest = async (
   const activeAccountData = accounts[activeAccount.type][activeAccount.id];
   const account = dapp.getAccount(host);
   const isRequestAllowed = dapp.isConnected(host) && account;
-  const isUTXORequestAllowed =
-    isBitcoinBased && !activeAccountData.isTrezorWallet;
+  const isTrezorAndUTXO = isBitcoinBased && activeAccountData.isTrezorWallet;
 
   if (
-    !isUTXORequestAllowed &&
+    isTrezorAndUTXO &&
     methodName !== 'changeUTXOEVM' &&
     methodName !== 'getSysProviderState' &&
     methodName !== 'getProviderState'
