@@ -52,6 +52,14 @@ export const TransactionDetailsComponent = (
     alert.success('Address successfully copied');
   }, [copied]);
 
+  const finalFee =
+    +removeScientificNotation(
+      customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas
+    ) /
+    10 ** 9;
+
+  const formattedFinalFee = removeScientificNotation(finalFee);
+
   return (
     <>
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
@@ -95,10 +103,7 @@ export const TransactionDetailsComponent = (
           <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
             Estimated GasFee
             <span className="text-brand-royalblue text-xs">
-              {removeScientificNotation(
-                customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas
-              )}{' '}
-              {activeNetwork.currency?.toUpperCase()}
+              {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
             </span>
           </p>
           <span
@@ -125,8 +130,7 @@ export const TransactionDetailsComponent = (
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           Total (Amount + gas fee)
           <span className="text-brand-royalblue text-xs">
-            {Number(tx.value) / 10 ** 18 +
-              (customFee.isCustom ? customFee.maxFeePerGas : fee.maxFeePerGas)}
+            {Number(tx.value) / 10 ** 18 + finalFee}
           </span>
         </p>
       </div>
