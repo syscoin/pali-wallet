@@ -65,8 +65,14 @@ const handleLogout = () => {
 let requestCount = 0;
 const requestsPerSecond = {};
 const requestCallback = (details: WebRequest.OnCompletedDetailsType) => {
-  requestCount++;
-  console.log('Request count:', requestCount);
+  const {
+    activeNetwork: { url },
+  } = store.getState().vault;
+
+  if (details.url === url) {
+    requestCount++;
+    console.log('Request count:', requestCount);
+  }
 
   // track all requests
   const currentTime = Math.floor(Date.now() / 1000);
