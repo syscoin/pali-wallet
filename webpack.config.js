@@ -4,6 +4,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const path = require('path');
+const fs = require('fs');
 const TerserPlugin = require('terser-webpack-plugin');
 const webpack = require('webpack');
 const WextManifestWebpackPlugin = require('wext-manifest-webpack-plugin');
@@ -11,7 +12,8 @@ const ZipPlugin = require('zip-webpack-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const BundleAnalyzerPlugin =
   require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const SplitChunksPlugin = require('webpack-split-by-path');
+const BreakBundlesPlugin = require('./break-bundles-plugin');
+const generateTemplateContent = require('./generate-webpack-template');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -32,7 +34,7 @@ const getExtensionFileType = (browser) => {
 };
 
 module.exports = {
-  devtool: false, //https://webpack.js.org/configuration/devtool/#root
+  devtool: 'source-map', //https://webpack.js.org/configuration/devtool/#root
 
   stats: {
     all: false,
@@ -76,8 +78,6 @@ module.exports = {
   output: {
     path: path.join(destPath, targetBrowser),
     filename: 'js/[name].bundle.js',
-    chunkFilename: '[chunkhash].chunk.js',
-    publicPath: '/',
     // delete previous build files -> Use instead clean-webpack-plugin
     clean: true,
   },
@@ -200,12 +200,7 @@ module.exports = {
   },
 
   plugins: [
-    new SplitChunksPlugin([
-      {
-        name: 'vendors',
-        path: path.join(__dirname, 'node_modules'),
-      },
-    ]),
+    new BreakBundlesPlugin(),
     new BundleAnalyzerPlugin(),
     // Plugin to not generate js bundle for manifest entry
     new WextManifestWebpackPlugin(),
@@ -220,17 +215,52 @@ module.exports = {
 
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'app.html'),
-      inject: 'body',
-      chunks: ['app'],
-      hash: true,
       filename: 'app.html',
+      inject: false,
+      scriptLoading: 'blocking',
+      minify: false,
+      chunksSortMode: 'none',
+      templateParameters: {
+        folderName: 'app',
+      },
+      templateContent: generateTemplateContent,
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'external.html'),
-      inject: 'body',
-      chunks: ['external'],
-      hash: true,
       filename: 'external.html',
+      inject: false,
+      scriptLoading: 'blocking',
+      minify: false,
+      chunksSortMode: 'none',
+      templateParameters: {
+        folderName: 'external',
+      },
+      templateContent: generateTemplateContent,
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'pali.html'),
+      filename: 'pali.html',
+      inject: false,
+      scriptLoading: 'blocking',
+      minify: false,
+      chunksSortMode: 'none',
+      templateParameters: {
+        folderName: 'pali',
+      },
+      templateContent: generateTemplateContent,
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'background.html'),
+      filename: 'background.html',
+      inject: 'body',
+      chunks: ['webextension'],
+      scriptLoading: 'blocking',
+      minify: false,
+      chunksSortMode: 'none',
+      templateParameters: {
+        folderName: 'background',
+      },
+      templateContent: generateTemplateContent,
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
@@ -238,6 +268,7 @@ module.exports = {
       inject: 'body',
       chunks: ['trezorUSB'],
     }),
+
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     // copy static assets
@@ -252,6 +283,7 @@ module.exports = {
       new TerserPlugin({
         parallel: true,
         terserOptions: {
+          sourceMap: true,
           compress: {
             drop_console: true,
           },
@@ -259,8 +291,6 @@ module.exports = {
             comments: false,
           },
         },
-        // in webpack v5, this configuration is moved to the `optimization.minimizer.terserOptions` property
-        extractComments: false,
       }),
       new ZipPlugin({
         path: destPath,
