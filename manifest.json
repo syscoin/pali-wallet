@@ -17,7 +17,6 @@
     "tabs",
     "storage",
     "activeTab",
-    "webRequest",
     "*://*.eth/",
     "clipboardWrite",
     "unlimitedStorage",

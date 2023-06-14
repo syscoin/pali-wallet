@@ -73,9 +73,11 @@ export const Router = () => {
   }, []);
 
   useEffect(() => {
-    if (isNetworkChanging) resetPaliRequestsCount();
-    if (!isBitcoinBased) verifyPaliRequests();
-    if (isBitcoinBased) removeVerifyPaliRequestListener();
+    if (process.env.NODE_ENV === 'development') {
+      if (isNetworkChanging) resetPaliRequestsCount();
+      if (!isBitcoinBased) verifyPaliRequests();
+      if (isBitcoinBased) removeVerifyPaliRequestListener();
+    }
   }, [isBitcoinBased, isNetworkChanging]);
 
   useEffect(() => {
