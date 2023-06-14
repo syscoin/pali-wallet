@@ -46,21 +46,14 @@ export const findUserTxsInProviderByBlocksRange = async (
 ): Promise<IEvmTransactionResponse[]> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
   const queue = new Queue(3);
-  const localRpcs = [
-    'http://127.0.0.1:8544/',
-    'http://localhost:8544/',
-    'http://127.0.0.1:8545/',
-    'http://localhost:8545/',
-    'http://127.0.0.1:8546/',
-    'http://localhost:8546/',
-  ];
 
   rangeBlocksToRun.forEach((blockNumber) => {
+    if (blockNumber < 0) {
+      blockNumber = blockNumber * -1;
+    }
     queue.execute(async () => {
       const currentBlock = await provider.send('eth_getBlockByNumber', [
-        localRpcs.includes(provider.connection.url)
-          ? 'latest'
-          : `0x${blockNumber.toString(16)}`,
+        `0x${blockNumber.toString(16)}`,
         true,
       ]);
       const filterTxsByAddress = currentBlock.transactions.filter(
