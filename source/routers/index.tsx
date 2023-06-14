@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
@@ -32,6 +32,7 @@ import {
   RemoveEth,
   CreatePasswordImport,
 } from '../pages';
+import { DefaultModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
 import {
   inactivityTime,
@@ -44,6 +45,7 @@ import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
+  const [showModal, setShowModal] = useState<boolean>(false);
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
@@ -92,121 +94,135 @@ export const Router = () => {
       !isBitcoinBased &&
       !isNetworkChanging
     ) {
-      alert.removeAll();
-      alert.error(
-        'The RPC provider from network has an error. Pali performance may be affected.'
-      );
+      setShowModal(true);
     }
   }, [serverHasAnError]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Start />} />
-
-      <Route path="create-password" element={<CreatePass />} />
-      <Route path="create-password-import" element={<CreatePasswordImport />} />
-      <Route path="import" element={<Import />} />
-      <Route path="phrase" element={<SeedConfirm />} />
-
-      <Route path="home" element={<ProtectedRoute element={<Home />} />} />
-      <Route
-        path="home/details"
-        element={<ProtectedRoute element={<DetailsView />} />}
+    <>
+      <DefaultModal
+        show={showModal}
+        title="RPC Error"
+        description="The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue."
+        onClose={() => setShowModal(false)}
       />
+      <Routes>
+        <Route path="/" element={<Start />} />
 
-      <Route
-        path="/receive"
-        element={<ProtectedRoute element={<Receive />} />}
-      />
-
-      <Route
-        path="send/eth"
-        element={<ProtectedRoute element={<SendEth />} />}
-      />
-
-      <Route
-        path="send/sys"
-        element={<ProtectedRoute element={<SendSys />} />}
-      />
-      <Route
-        path="send/confirm"
-        element={<ProtectedRoute element={<SendConfirm />} />}
-      />
-      <Route
-        path="send/edit/gas"
-        element={<ProtectedRoute element={<SendConfirm />} />}
-      />
-
-      {/* /tokens/add */}
-      <Route
-        path="tokens/add"
-        element={<ProtectedRoute element={<AddToken />} />}
-      />
-
-      {/* /settings */}
-      <Route path="settings">
-        <Route path="about" element={<ProtectedRoute element={<About />} />} />
+        <Route path="create-password" element={<CreatePass />} />
         <Route
-          path="autolock"
-          element={<ProtectedRoute element={<AutoLock />} />}
+          path="create-password-import"
+          element={<CreatePasswordImport />}
+        />
+        <Route path="import" element={<Import />} />
+        <Route path="phrase" element={<SeedConfirm />} />
+
+        <Route path="home" element={<ProtectedRoute element={<Home />} />} />
+        <Route
+          path="home/details"
+          element={<ProtectedRoute element={<DetailsView />} />}
+        />
+
+        <Route
+          path="/receive"
+          element={<ProtectedRoute element={<Receive />} />}
+        />
+
+        <Route
+          path="send/eth"
+          element={<ProtectedRoute element={<SendEth />} />}
+        />
+
+        <Route
+          path="send/sys"
+          element={<ProtectedRoute element={<SendSys />} />}
         />
         <Route
-          path="remove-eth"
-          element={<ProtectedRoute element={<RemoveEth />} />}
+          path="send/confirm"
+          element={<ProtectedRoute element={<SendConfirm />} />}
         />
         <Route
-          path="currency"
-          element={<ProtectedRoute element={<Currency />} />}
+          path="send/edit/gas"
+          element={<ProtectedRoute element={<SendConfirm />} />}
         />
+
+        {/* /tokens/add */}
         <Route
-          path="forget-wallet"
-          element={<ProtectedRoute element={<ForgetWallet />} />}
+          path="tokens/add"
+          element={<ProtectedRoute element={<AddToken />} />}
         />
-        <Route path="seed" element={<ProtectedRoute element={<Phrase />} />} />
 
-        {/* /settings/account */}
-        <Route path="account">
+        {/* /settings */}
+        <Route path="settings">
           <Route
-            path="hardware"
-            element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
+            path="about"
+            element={<ProtectedRoute element={<About />} />}
           />
           <Route
-            path="new"
-            element={<ProtectedRoute element={<CreateAccount />} />}
+            path="autolock"
+            element={<ProtectedRoute element={<AutoLock />} />}
           />
           <Route
-            path="import"
-            element={<ProtectedRoute element={<ImportAccount />} />}
+            path="remove-eth"
+            element={<ProtectedRoute element={<RemoveEth />} />}
+          />
+          <Route
+            path="currency"
+            element={<ProtectedRoute element={<Currency />} />}
+          />
+          <Route
+            path="forget-wallet"
+            element={<ProtectedRoute element={<ForgetWallet />} />}
+          />
+          <Route
+            path="seed"
+            element={<ProtectedRoute element={<Phrase />} />}
           />
 
-          <Route
-            path="private-key"
-            element={<ProtectedRoute element={<PrivateKey />} />}
-          />
+          {/* /settings/account */}
+          <Route path="account">
+            <Route
+              path="hardware"
+              element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
+            />
+            <Route
+              path="new"
+              element={<ProtectedRoute element={<CreateAccount />} />}
+            />
+            <Route
+              path="import"
+              element={<ProtectedRoute element={<ImportAccount />} />}
+            />
+
+            <Route
+              path="private-key"
+              element={<ProtectedRoute element={<PrivateKey />} />}
+            />
+          </Route>
+
+          {/* /settings/networks */}
+          <Route path="networks">
+            <Route
+              path="connected-sites"
+              element={<ProtectedRoute element={<ConnectedSites />} />}
+            />
+            <Route
+              path="custom-rpc"
+              element={<ProtectedRoute element={<CustomRPC />} />}
+            />
+            <Route
+              path="edit"
+              element={<ProtectedRoute element={<ManageNetwork />} />}
+            />
+            <Route
+              path="trusted-sites"
+              element={<ProtectedRoute element={<TrustedSites />} />}
+            />
+          </Route>
         </Route>
 
-        {/* /settings/networks */}
-        <Route path="networks">
-          <Route
-            path="connected-sites"
-            element={<ProtectedRoute element={<ConnectedSites />} />}
-          />
-          <Route
-            path="custom-rpc"
-            element={<ProtectedRoute element={<CustomRPC />} />}
-          />
-          <Route
-            path="edit"
-            element={<ProtectedRoute element={<ManageNetwork />} />}
-          />
-          <Route
-            path="trusted-sites"
-            element={<ProtectedRoute element={<TrustedSites />} />}
-          />
-        </Route>
-      </Route>
-
-      <Route path="app.html" element={<Navigate to={{ pathname: '/' }} />} />
-    </Routes>
+        <Route path="app.html" element={<Navigate to={{ pathname: '/' }} />} />
+      </Routes>
+    </>
   );
 };
