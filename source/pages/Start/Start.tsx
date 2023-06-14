@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -14,12 +14,13 @@ import { ValidationModal } from './Modal';
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const {
-    wallet: { unlock },
+    wallet: { unlockFromController },
   } = getController();
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
   const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { isExternal, externalRoute } = props;
 
@@ -43,40 +44,64 @@ export const Start = (props: any) => {
   );
 
   const onSubmit = async ({ password }: { password: string }) => {
-    await unlock(password);
-    if (!isExternal) return navigate('/home');
+    const result = await unlockFromController(password);
+    if (!result) {
+      setErrorMessage('Wrong password');
+      return;
+    }
+    setErrorMessage(null);
+
+    if (!isExternal) {
+      return navigate('/home');
+    }
+
     return navigate(externalRoute);
   };
 
-  const unLock = (
-    <>
-      <Form
-        validateMessages={{ default: '' }}
-        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
-        name="basic"
-        onFinish={onSubmit}
-        autoComplete="off"
-        id="login"
-      >
-        <Form.Item name="password" className="w-full">
-          <Input.Password
-            className="input-small relative"
-            placeholder="Enter your password"
-          />
-        </Form.Item>
+  const unLock = useMemo(
+    () => (
+      <>
+        <Form
+          className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+          name="basic"
+          onFinish={onSubmit}
+          autoComplete="off"
+          id="login"
+        >
+          <Form.Item
+            name="password"
+            className="w-full"
+            validateStatus={errorMessage ? 'error' : 'success'}
+            hasFeedback={!!errorMessage}
+          >
+            <Input.Password
+              className="input-small relative"
+              placeholder="Enter your password"
+              id="password"
+            />
+          </Form.Item>
+          {!!errorMessage && (
+            <p className="m-[-20px] p-0 w-full text-center text-red-600 font-poppins text-xs">
+              {errorMessage}
+            </p>
+          )}
 
-        <PrimaryButton type="submit" id="unlock-btn">
-          Unlock
-        </PrimaryButton>
-      </Form>
-      <a
-        className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300 cursor-pointer"
-        id="import-wallet-link"
-        onClick={() => setIsOpenValidation(true)}
-      >
-        Import using wallet seed phrase
-      </a>
-    </>
+          <Form.Item>
+            <PrimaryButton type="submit" id="unlock-btn">
+              Unlock
+            </PrimaryButton>
+          </Form.Item>
+        </Form>
+        <a
+          className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300 cursor-pointer"
+          id="import-wallet-link"
+          onClick={() => setIsOpenValidation(true)}
+        >
+          Import using wallet seed phrase
+        </a>
+      </>
+    ),
+    [errorMessage]
   );
 
   return (

@@ -40,8 +40,33 @@ export const methodRequest = async (
       return resp; //Sending back to Dapp non restrictive method response
     }
   }
+  const activeAccountData = accounts[activeAccount.type][activeAccount.id];
   const account = dapp.getAccount(host);
   const isRequestAllowed = dapp.isConnected(host) && account;
+  const isTrezorAndUTXO = isBitcoinBased && activeAccountData.isTrezorWallet;
+
+  if (
+    isTrezorAndUTXO &&
+    methodName !== 'changeUTXOEVM' &&
+    methodName !== 'getSysProviderState' &&
+    methodName !== 'getProviderState'
+  ) {
+    console.error(
+      'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
+    );
+    //Todo: we're throwing arbitrary error codes here, later it would be good to check the avaiability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
+    throw ethErrors.provider.custom({
+      code: 4874,
+      message:
+        'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
+      data: {
+        code: 4874,
+        message:
+          'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.',
+      },
+    });
+  }
+
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     return await enable(host, undefined, undefined);
   }
