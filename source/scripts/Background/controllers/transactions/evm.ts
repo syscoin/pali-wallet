@@ -34,24 +34,6 @@ const EvmTransactionsController = (
     return treatedTxs as IEvmTransactionResponse[];
   };
 
-  const firstRunForProviderTransactions = async (
-    currentAccount: IPaliAccount
-  ) => {
-    const provider = web3Provider;
-
-    const latestBlockNumber = await provider.getBlockNumber();
-    const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks
-    const toBlock = latestBlockNumber;
-
-    const txs = await getUserTransactionByDefaultProvider(
-      currentAccount,
-      fromBlock,
-      toBlock
-    );
-
-    return txs;
-  };
-
   const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
     try {
       const queue = new Queue(3);
@@ -99,7 +81,6 @@ const EvmTransactionsController = (
 
   return {
     getUserTransactionByDefaultProvider,
-    firstRunForProviderTransactions,
     pollingEvmTransactions,
   };
 };
