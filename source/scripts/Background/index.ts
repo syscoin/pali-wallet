@@ -1,6 +1,5 @@
 import 'emoji-log';
 import { wrapStore } from 'webext-redux';
-import { WebRequest } from 'webextension-polyfill';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
@@ -64,7 +63,7 @@ const handleLogout = () => {
 
 let requestCount = 0;
 const requestsPerSecond = {};
-const requestCallback = (details: WebRequest.OnCompletedDetailsType) => {
+const requestCallback = (details: any) => {
   const {
     activeNetwork: { url },
   } = store.getState().vault;
@@ -98,11 +97,9 @@ const updateRequestsPerSecond = () => {
 
     if (requestsPerSecond[currentTime]) {
       console.log('//---------REQUESTS IN THIS SECOND---------//');
-      requestsPerSecond[currentTime].forEach(
-        (request: WebRequest.OnCompletedDetailsType, index: number) => {
-          console.log(`Request ${index + 1}:`, request);
-        }
-      );
+      requestsPerSecond[currentTime].forEach((request: any, index: number) => {
+        console.log(`Request ${index + 1}:`, request);
+      });
       console.log('//----------------------------------------//');
     }
 
