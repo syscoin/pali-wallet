@@ -1,3 +1,4 @@
+import { ethers } from 'ethers';
 import dequal from 'fast-deep-equal';
 
 import {
@@ -266,7 +267,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     accounts: unknown[],
     isEthAccounts = false
   ): void {
-    let _accounts = accounts;
+    let _accounts = accounts as any[];
 
     if (!Array.isArray(accounts)) {
       console.error(
@@ -302,11 +303,15 @@ export class PaliInpageProviderEth extends BaseProvider {
         );
       }
 
-      this._state.accounts = _accounts as string[];
+      if (ethers.utils.isHexString(_accounts[0])) {
+        this._state.accounts = _accounts as string[];
+      }
 
       // handle selectedAddress
       if (this.selectedAddress !== _accounts[0]) {
-        this.selectedAddress = (_accounts[0] as string) || null;
+        if (ethers.utils.isHexString(_accounts[0])) {
+          this.selectedAddress = (_accounts[0] as string) || null;
+        }
       }
 
       // finally, after all state has been updated, emit the event
