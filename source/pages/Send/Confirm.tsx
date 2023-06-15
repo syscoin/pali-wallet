@@ -43,7 +43,7 @@ export const SendConfirm = () => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-
+  const networksIncompatibleWithEip1559 = [56, 42, 100];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
@@ -58,6 +58,7 @@ export const SendConfirm = () => {
     gasPrice: 0,
   });
   const [fee, setFee] = useState<IFeeState>();
+  const [gasPrice, setGasPrice] = useState<number>(0);
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
@@ -69,6 +70,20 @@ export const SendConfirm = () => {
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
   );
+
+  const getGasCorrectlyGasPrice = async () => {
+    const correctGasPrice = Boolean(
+      customFee.isCustom && customFee.gasPrice > 0
+    )
+      ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
+      : await wallet.ethereumTransaction.getRecommendedGasPrice();
+    // const gasLimit = await wallet.ethereumTransaction.getTxGasLimit(
+    //   basicTxValues
+    // );
+
+    setGasPrice(Number(correctGasPrice));
+    return Number(correctGasPrice);
+  };
 
   const handleConfirm = async () => {
     const {
@@ -131,12 +146,53 @@ export const SendConfirm = () => {
           try {
             const restTx = omitTransactionObjectData(txObjectState, [
               'chainId',
+              'maxFeePerGas',
+              'maxPriorityFeePerGas',
+              ,
             ]) as ITxState;
 
             const value = ethers.utils.parseUnits(
               String(basicTxValues.amount),
               'ether'
             );
+
+            if (
+              networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+            ) {
+              console.log('entrou aqui');
+              try {
+                await wallet.ethereumTransaction
+                  .sendFormattedTransaction({
+                    ...restTx,
+                    gasPrice: ethers.utils.hexlify(gasPrice),
+                    gasLimit: wallet.ethereumTransaction.toBigNumber(
+                      validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+                    ),
+                  })
+                  .then((response) => {
+                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                      wallet.sendAndSaveTransaction(response);
+                    setConfirmedTx(response);
+                    setConfirmed(true);
+                    setLoading(false);
+                  })
+                  .catch((error) => {
+                    alert.error("Can't complete transaction. Try again later.");
+                    setLoading(false);
+                    throw error;
+                  });
+
+                return;
+              } catch (legacyError: any) {
+                logError('error', 'Transaction', legacyError);
+                console.log({ legacyError });
+                alert.removeAll();
+                alert.error("Can't complete transaction. Try again later.");
+
+                setLoading(false);
+                return legacyError;
+              }
+            }
 
             wallet.ethereumTransaction
               .sendFormattedTransaction({
@@ -314,6 +370,11 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
+    if (networksIncompatibleWithEip1559.includes(activeNetwork.chainId)) {
+      getGasCorrectlyGasPrice();
+
+      return;
+    }
     const abortController = new AbortController();
 
     const getFeeRecomendation = async () => {
@@ -422,7 +483,17 @@ export const SendConfirm = () => {
         setHaveError={setHaveError}
         fee={fee}
       />
-      {Boolean(!isBitcoinBased && basicTxValues && fee) ||
+      {Boolean(
+        !isBitcoinBased &&
+          basicTxValues &&
+          fee &&
+          !networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+      ) ||
+      Boolean(
+        !isBitcoinBased &&
+          basicTxValues &&
+          networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+      ) ||
       Boolean(isBitcoinBased && basicTxValues) ? (
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
@@ -468,7 +539,6 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </p>
-
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               To
               <span className="text-brand-royalblue text-xs">
@@ -502,6 +572,15 @@ export const SendConfirm = () => {
                           ? activeNetwork.currency?.toUpperCase()
                           : activeNetwork.label
                       }`
+                    : !isBitcoinBased &&
+                      networksIncompatibleWithEip1559.includes(
+                        activeNetwork.chainId
+                      )
+                    ? `${removeScientificNotation(gasPrice / 10 ** 18)} ${
+                        activeNetwork.currency
+                          ? activeNetwork.currency.toUpperCase()
+                          : activeNetwork.label
+                      }`
                     : `${removeScientificNotation(getCalculatedFee)} ${
                         activeNetwork.currency
                           ? activeNetwork.currency.toUpperCase()
@@ -509,7 +588,11 @@ export const SendConfirm = () => {
                       }`}
                 </span>
               </p>
-              {!isBitcoinBased && !basicTxValues.token?.isNft ? (
+              {(!isBitcoinBased && !basicTxValues.token?.isNft) ||
+              (!isBitcoinBased &&
+                !networksIncompatibleWithEip1559.includes(
+                  activeNetwork.chainId
+                )) ? (
                 <span
                   className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                   onClick={() => setIsOpenEditFeeModal(true)}
@@ -529,6 +612,13 @@ export const SendConfirm = () => {
                           Number(basicTxValues.fee) +
                           Number(basicTxValues.amount)
                         }`
+                      : !isBitcoinBased &&
+                        networksIncompatibleWithEip1559.includes(
+                          activeNetwork.chainId
+                        )
+                      ? `${removeScientificNotation(
+                          Number(basicTxValues.amount) + gasPrice / 10 ** 18
+                        )}`
                       : `${Number(basicTxValues.amount) + getCalculatedFee}`}
                     &nbsp;
                     {`${
