@@ -123,7 +123,7 @@ export const SendEth = () => {
               id="receiver"
               type="text"
               placeholder="Receiver"
-              className="input-medium flex items-center"
+              className="sender-eth-input flex items-center"
             />
           </Form.Item>
 
