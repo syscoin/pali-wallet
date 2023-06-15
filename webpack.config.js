@@ -12,8 +12,6 @@ const ZipPlugin = require('zip-webpack-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const BundleAnalyzerPlugin =
   require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
-const BreakBundlesPlugin = require('./break-bundles-plugin');
-const generateTemplateContent = require('./generate-webpack-template');
 
 const viewsPath = path.join(__dirname, 'views');
 const sourcePath = path.join(__dirname, 'source');
@@ -34,7 +32,7 @@ const getExtensionFileType = (browser) => {
 };
 
 module.exports = {
-  devtool: 'source-map', //https://webpack.js.org/configuration/devtool/#root
+  devtool: false, //https://webpack.js.org/configuration/devtool/#root
 
   stats: {
     all: false,
@@ -75,11 +73,62 @@ module.exports = {
       'trezor-usb-permissions.ts'
     ),
   },
+
   output: {
     path: path.join(destPath, targetBrowser),
     filename: 'js/[name].bundle.js',
     // delete previous build files -> Use instead clean-webpack-plugin
     clean: true,
+  },
+
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      maxInitialRequests: Infinity,
+      maxAsyncRequests: Infinity,
+      hidePathInfo: false,
+      cacheGroups: {
+        vendors: {
+          name: 'vendors',
+          test: /[\\/]node_modules[\\/]/,
+          priority: -10,
+          minSize: 0,
+          maxSize: 1 * 1024 * 1024,
+          minChunks: 2,
+          reuseExistingChunk: true,
+          enforce: true,
+        },
+        commons: {
+          name: 'commons',
+          priority: -20,
+          minSize: 0,
+          maxSize: 3.5 * 1024 * 1024,
+          minChunks: 2,
+          reuseExistingChunk: true,
+          enforce: true,
+        },
+      },
+    },
+    minimizer: [
+      new CssMinimizerPlugin(),
+      new TerserPlugin({
+        parallel: true,
+        terserOptions: {
+          sourceMap: true,
+          compress: {
+            drop_console: true,
+          },
+          output: {
+            comments: false,
+          },
+        },
+      }),
+      new ZipPlugin({
+        path: destPath,
+        extension: `${getExtensionFileType(targetBrowser)}`,
+        filename: `${targetBrowser}`,
+      }),
+    ],
   },
 
   resolve: {
@@ -200,67 +249,31 @@ module.exports = {
   },
 
   plugins: [
-    new BreakBundlesPlugin(),
     new BundleAnalyzerPlugin(),
-    // Plugin to not generate js bundle for manifest entry
-    new WextManifestWebpackPlugin(),
+    // Plugin to not generate js bundle for manifest entry -> Comment this line if u wanna run the production build
+    // new WextManifestWebpackPlugin(),
     // Generate sourcemaps
     new webpack.SourceMapDevToolPlugin({ filename: false }),
     new ForkTsCheckerWebpackPlugin(),
     // environmental variables
-    new webpack.DefinePlugin({
-      NODE_ENV: JSON.stringify(nodeEnv),
-      TARGET_BROWSER: JSON.stringify(targetBrowser),
+    new webpack.EnvironmentPlugin({
+      NODE_ENV: nodeEnv,
+      TARGET_BROWSER: targetBrowser,
     }),
 
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'app.html'),
+      inject: 'body',
+      chunks: ['app', 'vendors', 'commons'],
+      hash: true,
       filename: 'app.html',
-      inject: false,
-      scriptLoading: 'blocking',
-      minify: false,
-      chunksSortMode: 'none',
-      templateParameters: {
-        folderName: 'app',
-      },
-      templateContent: generateTemplateContent,
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'external.html'),
-      filename: 'external.html',
-      inject: false,
-      scriptLoading: 'blocking',
-      minify: false,
-      chunksSortMode: 'none',
-      templateParameters: {
-        folderName: 'external',
-      },
-      templateContent: generateTemplateContent,
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'pali.html'),
-      filename: 'pali.html',
-      inject: false,
-      scriptLoading: 'blocking',
-      minify: false,
-      chunksSortMode: 'none',
-      templateParameters: {
-        folderName: 'pali',
-      },
-      templateContent: generateTemplateContent,
-    }),
-    new HtmlWebpackPlugin({
-      template: path.join(viewsPath, 'background.html'),
-      filename: 'background.html',
       inject: 'body',
-      chunks: ['webextension'],
-      scriptLoading: 'blocking',
-      minify: false,
-      chunksSortMode: 'none',
-      templateParameters: {
-        folderName: 'background',
-      },
-      templateContent: generateTemplateContent,
+      chunks: ['external', 'vendors', 'commons'],
+      hash: true,
+      filename: 'external.html',
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
@@ -277,28 +290,7 @@ module.exports = {
     }),
     new NodePolyfillPlugin(),
   ],
-  optimization: {
-    minimizer: [
-      new CssMinimizerPlugin(),
-      new TerserPlugin({
-        parallel: true,
-        terserOptions: {
-          sourceMap: true,
-          compress: {
-            drop_console: true,
-          },
-          output: {
-            comments: false,
-          },
-        },
-      }),
-      new ZipPlugin({
-        path: destPath,
-        extension: `${getExtensionFileType(targetBrowser)}`,
-        filename: `${targetBrowser}`,
-      }),
-    ],
-  },
+
   devServer: {
     port: 9090,
     compress: true,
