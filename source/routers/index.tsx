@@ -53,7 +53,7 @@ export const Router = () => {
     (state: RootState) => state.vault
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { serverHasAnError }: CustomJsonRpcProvider =
+  const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
   const isUnlocked = wallet.isUnlocked();
 
@@ -103,7 +103,7 @@ export const Router = () => {
       <DefaultModal
         show={showModal}
         title="RPC Error"
-        description="The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue."
+        description={`The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue. Error: ${errorMessage}`}
         onClose={() => setShowModal(false)}
       />
       <Routes>
