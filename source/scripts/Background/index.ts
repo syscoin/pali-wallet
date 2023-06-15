@@ -4,10 +4,10 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
+import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-import { setIsPolling } from 'state/vault';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -199,13 +199,15 @@ function registerListener() {
 
   browser.runtime.onConnect.addListener((port) => {
     const isPolling = store.getState().vault.isPolling;
+    const isRollux = store.getState().vault.activeNetwork.chainId === 57000;
     store.dispatch(setIsPolling(false));
 
     if (port.name === 'polling') {
       port.onMessage.addListener((message) => {
         if (message.action === 'startPolling' && !isPolling) {
           store.dispatch(setIsPolling(true));
-          intervalId = setInterval(checkForUpdates, 15000);
+          const intervalTime = isRollux ? 2000 : 15000;
+          intervalId = setInterval(checkForUpdates, intervalTime);
           port.postMessage({ intervalId });
         } else if (message.action === 'stopPolling') {
           clearInterval(intervalId);

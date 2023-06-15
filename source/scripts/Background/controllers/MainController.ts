@@ -451,6 +451,7 @@ const MainController = (walletState): IMainController => {
         networkVersion,
         wallet,
       });
+      resetPolling();
     } else {
       reject(
         'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
