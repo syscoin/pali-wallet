@@ -264,32 +264,32 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _handleAccountsChanged(
-    accounts: unknown[],
+    currentAccounts: unknown[],
     isEthAccounts = false
   ): void {
-    let _accounts = accounts as any[];
+    let accounts = currentAccounts as any[];
 
-    if (!Array.isArray(accounts)) {
+    if (!Array.isArray(currentAccounts)) {
       console.error(
         'Pali EthereumProvider: Received invalid accounts parameter. Please report this bug.',
-        accounts
+        currentAccounts
       );
-      _accounts = [];
+      accounts = [];
     }
 
-    for (const account of accounts) {
+    for (const account of currentAccounts) {
       if (typeof account !== 'string' && account !== null) {
         console.error(
           'Pali EthereumProvider: Received non-string account. Please report this bug.',
-          accounts
+          currentAccounts
         );
-        _accounts = [];
+        accounts = [];
         break;
       }
     }
 
     // emit accountsChanged if anything about the accounts array has changed
-    if (!dequal(this._state.accounts, _accounts)) {
+    if (!dequal(this._state.accounts, accounts)) {
       // we should always have the correct accounts even before eth_accounts
       // returns
       if (
@@ -299,24 +299,24 @@ export class PaliInpageProviderEth extends BaseProvider {
       ) {
         console.error(
           `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
-          _accounts
+          accounts
         );
       }
 
-      if (ethers.utils.isHexString(_accounts[0])) {
-        this._state.accounts = _accounts as string[];
+      if (ethers.utils.isHexString(accounts[0])) {
+        this._state.accounts = accounts as string[];
       }
 
       // handle selectedAddress
-      if (this.selectedAddress !== _accounts[0]) {
-        if (ethers.utils.isHexString(_accounts[0])) {
-          this.selectedAddress = (_accounts[0] as string) || null;
+      if (this.selectedAddress !== accounts[0]) {
+        if (ethers.utils.isHexString(accounts[0])) {
+          this.selectedAddress = (accounts[0] as string) || null;
         }
       }
 
       // finally, after all state has been updated, emit the event
       if (this._state.initialized) {
-        this.emit('accountsChanged', _accounts);
+        this.emit('accountsChanged', accounts);
       }
     }
   }
