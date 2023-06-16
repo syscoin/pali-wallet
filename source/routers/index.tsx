@@ -32,7 +32,7 @@ import {
   RemoveEth,
   CreatePasswordImport,
 } from '../pages';
-import { DefaultModal } from 'components/Modal';
+import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
 import {
   inactivityTime,
@@ -110,10 +110,11 @@ export const Router = () => {
 
   return (
     <>
-      <DefaultModal
+      <WarningModal
         show={showModal}
         title="RPC Error"
-        description={`${modalMessage}. \n Provider Error: ${
+        description={`${modalMessage}`}
+        warningMessage={`Provider Error: ${
           errorMessage === 'string' || typeof errorMessage === 'undefined'
             ? errorMessage
             : errorMessage.message
