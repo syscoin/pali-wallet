@@ -77,9 +77,18 @@ export const SendConfirm = () => {
     )
       ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
       : await wallet.ethereumTransaction.getRecommendedGasPrice();
-    // const gasLimit = await wallet.ethereumTransaction.getTxGasLimit(
-    //   basicTxValues
-    // );
+    const gasLimit: any = await wallet.ethereumTransaction.getTxGasLimit(
+      basicTxValues
+    );
+
+    const finalFee = {
+      baseFee: 0,
+      gasPrice: 0,
+      maxFeePerGas: 0,
+      maxPriorityFeePerGas: 0,
+    };
+
+    setFee({ ...finalFee, gasLimit });
 
     setGasPrice(Number(correctGasPrice));
     return Number(correctGasPrice);
@@ -92,7 +101,7 @@ export const SendConfirm = () => {
 
     const balance = isBitcoinBased ? syscoin : ethereum;
 
-    if (activeAccount && balance > 0) {
+    if (activeAccount && balance >= 0) {
       setLoading(true);
 
       // Handle with Syscoin and Ethereum transactions with differentes fee values.
@@ -159,7 +168,6 @@ export const SendConfirm = () => {
             if (
               networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
             ) {
-              console.log('entrou aqui');
               try {
                 await wallet.ethereumTransaction
                   .sendFormattedTransaction({
