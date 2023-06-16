@@ -24,6 +24,8 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
+  INITIAL_FEE,
+  NETWORKS_INCOMPATIBLE_WITH_EIP1559,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -43,7 +45,6 @@ export const SendConfirm = () => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-  const networksIncompatibleWithEip1559 = [56, 42, 100];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
   const { state }: { state: any } = useLocation();
@@ -71,6 +72,13 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit > 0
   );
 
+  const getFormattedFee = (currentFee: number | string) =>
+    `${removeScientificNotation(currentFee)} ${
+      activeNetwork.currency
+        ? activeNetwork.currency?.toUpperCase()
+        : activeNetwork.label
+    }`;
+
   const getGasCorrectlyGasPrice = async () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
@@ -81,14 +89,7 @@ export const SendConfirm = () => {
       basicTxValues
     );
 
-    const finalFee = {
-      baseFee: 0,
-      gasPrice: 0,
-      maxFeePerGas: 0,
-      maxPriorityFeePerGas: 0,
-    };
-
-    setFee({ ...finalFee, gasLimit });
+    setFee({ ...INITIAL_FEE, gasLimit });
 
     setGasPrice(Number(correctGasPrice));
     return Number(correctGasPrice);
@@ -166,7 +167,7 @@ export const SendConfirm = () => {
             );
 
             if (
-              networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+              NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
             ) {
               try {
                 await wallet.ethereumTransaction
@@ -378,7 +379,7 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
-    if (networksIncompatibleWithEip1559.includes(activeNetwork.chainId)) {
+    if (NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)) {
       getGasCorrectlyGasPrice();
 
       return;
@@ -495,12 +496,12 @@ export const SendConfirm = () => {
         !isBitcoinBased &&
           basicTxValues &&
           fee &&
-          !networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+          !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
       ) ||
       Boolean(
         !isBitcoinBased &&
           basicTxValues &&
-          networksIncompatibleWithEip1559.includes(activeNetwork.chainId)
+          NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
       ) ||
       Boolean(isBitcoinBased && basicTxValues) ? (
         <div className="flex flex-col items-center justify-center w-full">
@@ -575,30 +576,18 @@ export const SendConfirm = () => {
                 Estimated GasFee
                 <span className="text-brand-royalblue text-xs">
                   {isBitcoinBased
-                    ? `${removeScientificNotation(basicTxValues.fee)} ${
-                        activeNetwork.currency
-                          ? activeNetwork.currency?.toUpperCase()
-                          : activeNetwork.label
-                      }`
+                    ? getFormattedFee(basicTxValues.fee)
                     : !isBitcoinBased &&
-                      networksIncompatibleWithEip1559.includes(
+                      NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
                         activeNetwork.chainId
                       )
-                    ? `${removeScientificNotation(gasPrice / 10 ** 18)} ${
-                        activeNetwork.currency
-                          ? activeNetwork.currency.toUpperCase()
-                          : activeNetwork.label
-                      }`
-                    : `${removeScientificNotation(getCalculatedFee)} ${
-                        activeNetwork.currency
-                          ? activeNetwork.currency.toUpperCase()
-                          : activeNetwork.label
-                      }`}
+                    ? getFormattedFee(gasPrice / 10 ** 18)
+                    : getFormattedFee(getCalculatedFee)}
                 </span>
               </p>
               {(!isBitcoinBased && !basicTxValues.token?.isNft) ||
               (!isBitcoinBased &&
-                !networksIncompatibleWithEip1559.includes(
+                !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
                   activeNetwork.chainId
                 )) ? (
                 <span
@@ -621,7 +610,7 @@ export const SendConfirm = () => {
                           Number(basicTxValues.amount)
                         }`
                       : !isBitcoinBased &&
-                        networksIncompatibleWithEip1559.includes(
+                        NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
                           activeNetwork.chainId
                         )
                       ? `${removeScientificNotation(
