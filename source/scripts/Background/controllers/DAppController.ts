@@ -119,25 +119,27 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (host: string) => {
-    _dapps[host].activeAddress = null;
-    store.dispatch(removeDApp(host));
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliEvents.accountsChanged,
-        params: [],
-      },
-      PaliEvents.accountsChanged
-    );
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliSyscoinEvents.xpubChanged,
-        params: null,
-      },
-      PaliSyscoinEvents.xpubChanged
-    );
-    return [] as string[];
+    if (_dapps[host]) {
+      _dapps[host].activeAddress = null;
+      store.dispatch(removeDApp(host));
+      _dispatchPaliEvent(
+        host,
+        {
+          method: PaliEvents.accountsChanged,
+          params: [],
+        },
+        PaliEvents.accountsChanged
+      );
+      _dispatchPaliEvent(
+        host,
+        {
+          method: PaliSyscoinEvents.xpubChanged,
+          params: null,
+        },
+        PaliSyscoinEvents.xpubChanged
+      );
+      return [] as string[];
+    }
   };
   //HandleStateChange purpose is to dispatch notifications that are meant to be globally
   //broadcasted to all Dapps on browser being them connected or not
