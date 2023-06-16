@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import isNaN from 'lodash/isNaN';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -82,6 +83,10 @@ export const SendTransaction = () => {
   });
 
   const canGoBack = state?.external ? !state.external : !isExternal;
+
+  const formattedValueAndCurrency = `${Number(tx.value) / 10 ** 18} ${' '} ${
+    tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
+  }`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
@@ -203,12 +208,8 @@ export const SendTransaction = () => {
   }, []); // TODO: add timer
 
   useEffect(() => {
-    if (tx && !Number.isNaN(Number(tx.value))) {
-      setValueAndCurrency(
-        `${Number(tx.value) / 10 ** 18} ${' '} ${
-          tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
-        }`
-      );
+    if (tx && tx.value && !isNaN(Number(tx.value))) {
+      setValueAndCurrency(formattedValueAndCurrency);
     }
   }, [tx]);
 
