@@ -17,6 +17,7 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
+  NETWORKS_INCOMPATIBLE_WITH_EIP1559,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -70,7 +71,9 @@ export const SendNTokenTransaction = () => {
       }
     : externalTx.tx;
 
-  const isLegacyTransaction = Boolean(tx.type === '0x0');
+  const isLegacyTransaction =
+    Boolean(tx.type === '0x0') ||
+    NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId);
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0

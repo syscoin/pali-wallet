@@ -12,15 +12,20 @@ import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { NETWORKS_INCOMPATIBLE_WITH_EIP1559 } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
 
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = params;
-
+    const { activeNetwork } = store.getState().vault;
     const validateTxToAddress = await validateEOAAddress(
       tx.to,
-      store.getState().vault.activeNetwork.url
+      activeNetwork.url
+    );
+
+    const isLegacyTx = NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
+      activeNetwork.chainId
     );
 
     const decodedTx = decodeTransactionData(
@@ -31,7 +36,7 @@ export const EthProvider = (host: string) => {
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     //Open Send Component
-    if (validateTxToAddress.wallet) {
+    if (validateTxToAddress.wallet || isLegacyTx) {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
