@@ -585,18 +585,19 @@ export const SendConfirm = () => {
                     : getFormattedFee(getCalculatedFee)}
                 </span>
               </p>
-              {(!isBitcoinBased && !basicTxValues.token?.isNft) ||
-              (!isBitcoinBased &&
-                !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-                  activeNetwork.chainId
-                )) ? (
-                <span
-                  className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
-                  onClick={() => setIsOpenEditFeeModal(true)}
-                >
-                  EDIT
-                </span>
-              ) : null}
+              {!isBitcoinBased && !basicTxValues.token?.isNft
+                ? !isBitcoinBased &&
+                  !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
+                    activeNetwork.chainId
+                  ) && (
+                    <span
+                      className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
+                      onClick={() => setIsOpenEditFeeModal(true)}
+                    >
+                      EDIT
+                    </span>
+                  )
+                : null}
             </div>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
