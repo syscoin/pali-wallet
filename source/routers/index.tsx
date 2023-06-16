@@ -46,6 +46,7 @@ import { getController } from 'utils/browser';
 import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [modalMessage, setmodalMessage] = useState<string>('');
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
@@ -94,6 +95,15 @@ export const Router = () => {
       !isBitcoinBased &&
       !isNetworkChanging
     ) {
+      if (errorMessage !== 'string' && errorMessage?.code === -32016) {
+        setmodalMessage(
+          'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
+        );
+      } else {
+        setmodalMessage(
+          'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
+        );
+      }
       setShowModal(true);
     }
   }, [serverHasAnError]);
@@ -103,7 +113,11 @@ export const Router = () => {
       <DefaultModal
         show={showModal}
         title="RPC Error"
-        description={`The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue. Error: ${errorMessage}`}
+        description={`${modalMessage}. \n Provider Error: ${
+          errorMessage === 'string' || typeof errorMessage === 'undefined'
+            ? errorMessage
+            : errorMessage.message
+        }`}
         onClose={() => setShowModal(false)}
       />
       <Routes>
