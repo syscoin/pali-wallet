@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
 import { IPaliAccount } from 'state/vault/types';
 import { ONE_MILLION } from 'utils/constants';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
@@ -7,14 +9,13 @@ import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat
 import { IEvmBalanceController } from './types';
 import { zerosRepeatingAtStartOfEvmBalance } from './utils';
 
-const EvmBalanceController = (): IEvmBalanceController => {
-  const getEvmBalanceForAccount = async (
-    currentAccount: IPaliAccount,
-    networkUrl: string
-  ) => {
+const EvmBalanceController = (
+  web3Provider: CustomJsonRpcProvider
+): IEvmBalanceController => {
+  const getEvmBalanceForAccount = async (currentAccount: IPaliAccount) => {
     try {
       //LATER CHANGE THIS TO USE NEW PROVIDER FROM SYSWEB3
-      const provider = new ethers.providers.JsonRpcProvider(networkUrl);
+      const provider = web3Provider;
 
       const getBalance = await provider.getBalance(currentAccount.address);
 

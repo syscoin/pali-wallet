@@ -1,16 +1,18 @@
-import { INetworksVault, IPaliAccount } from 'state/vault/types';
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
+import { IPaliAccount } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
-const AssetsManager = (): IAssetsManager => {
+const AssetsManager = (web3Provider: CustomJsonRpcProvider): IAssetsManager => {
+  const evmAssetsController = EvmAssetsController(web3Provider);
   const updateAssetsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    networkChainId: number,
-    networks: INetworksVault
+    networkChainId: number
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
@@ -31,9 +33,9 @@ const AssetsManager = (): IAssetsManager => {
 
       case false:
         try {
-          const getEvmAssets = await EvmAssetsController().updateAllEvmTokens(
+          const getEvmAssets = await evmAssetsController.updateAllEvmTokens(
             currentAccount,
-            networks
+            networkChainId
           );
 
           return {
@@ -47,7 +49,7 @@ const AssetsManager = (): IAssetsManager => {
   };
 
   return {
-    evm: EvmAssetsController(),
+    evm: evmAssetsController,
     sys: SysAssetsController(),
     utils: {
       updateAssetsFromCurrentAccount,
