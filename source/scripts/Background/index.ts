@@ -2,7 +2,7 @@ import 'emoji-log';
 import { wrapStore } from 'webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { STORE_PORT } from 'constants/index';
+import { ROLLUX_NETWORKS, STORE_PORT } from 'constants/index';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
@@ -61,9 +61,72 @@ const handleLogout = () => {
   }
 };
 
+let requestCount = 0;
+const requestsPerSecond = {};
+const requestCallback = (details: any) => {
+  const {
+    activeNetwork: { url },
+  } = store.getState().vault;
+
+  if (details.url === url) {
+    requestCount++;
+    console.log('Request count:', requestCount);
+  }
+
+  // track all requests
+  const currentTime = Math.floor(Date.now() / 1000);
+  if (!requestsPerSecond[currentTime]) {
+    requestsPerSecond[currentTime] = [];
+  }
+
+  requestsPerSecond[currentTime].push(details);
+};
+
+const verifyAllPaliRequests = () => {
+  // get all requests called by extension
+  browser.webRequest.onCompleted.addListener(requestCallback, { urls: [] });
+};
+
+// update and show requests per second
+const updateRequestsPerSecond = () => {
+  const { isBitcoinBased } = store.getState().vault;
+  if (!isBitcoinBased && process.env.NODE_ENV === 'development') {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const requestCountPerSecond = requestsPerSecond[currentTime]?.length || 0;
+    console.log('Requests per second:', requestCountPerSecond);
+
+    if (requestsPerSecond[currentTime]) {
+      console.log('//---------REQUESTS IN THIS SECOND---------//');
+      requestsPerSecond[currentTime].forEach((request: any, index: number) => {
+        console.log(`Request ${index + 1}:`, request);
+      });
+      console.log('//----------------------------------------//');
+    }
+
+    requestsPerSecond[currentTime] = [];
+  }
+};
+
+// Interval to perform the information update and display the requests per second every second.
+setInterval(updateRequestsPerSecond, 1000);
+
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
-  if (type === 'reset_autolock' && target === 'background') {
-    restartLockTimeout();
+  switch (type) {
+    case 'reset_autolock':
+      if (target === 'background') restartLockTimeout();
+      break;
+    case 'verifyPaliRequests':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        verifyAllPaliRequests();
+      break;
+    case 'resetPaliRequestsCount':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        requestCount = 0;
+      break;
+    case 'removeVerifyPaliRequestListener':
+      if (target === 'background' && process.env.NODE_ENV === 'development')
+        browser.webRequest.onCompleted.removeListener(requestCallback);
+      break;
   }
 });
 
@@ -199,7 +262,9 @@ function registerListener() {
 
   browser.runtime.onConnect.addListener((port) => {
     const isPolling = store.getState().vault.isPolling;
-    const isRollux = store.getState().vault.activeNetwork.chainId === 57000;
+    const isRollux = ROLLUX_NETWORKS.includes(
+      store.getState().vault.activeNetwork.chainId
+    );
     store.dispatch(setIsPolling(false));
 
     if (port.name === 'polling') {
@@ -237,6 +302,27 @@ browser.runtime.onMessage.addListener(({ action }) => {
 
 export const resetPolling = () => {
   browser.runtime.sendMessage({ action: 'resetPolling' });
+};
+
+export const verifyPaliRequests = () => {
+  browser.runtime.sendMessage({
+    type: 'verifyPaliRequests',
+    target: 'background',
+  });
+};
+
+export const removeVerifyPaliRequestListener = () => {
+  browser.runtime.sendMessage({
+    type: 'removeVerifyPaliRequestListener',
+    target: 'background',
+  });
+};
+
+export const resetPaliRequestsCount = () => {
+  browser.runtime.sendMessage({
+    type: 'resetPaliRequestsCount',
+    target: 'background',
+  });
 };
 
 wrapStore(store, { portName: STORE_PORT });

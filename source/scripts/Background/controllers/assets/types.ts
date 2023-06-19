@@ -1,6 +1,4 @@
-import { ethers } from 'ethers';
-
-import { INetworksVault, IPaliAccount } from 'state/vault/types';
+import { IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
@@ -20,8 +18,7 @@ export interface IAssetsManagerUtils {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    networkChainId: number,
-    networks: INetworksVault
+    networkChainId: number
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
 export interface ISysAssetsController {
@@ -63,16 +60,15 @@ export interface IEvmAssetsController {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    provider: ethers.providers.JsonRpcProvider
+    decimals: number
   ) => Promise<IAddCustomTokenResponse>;
   addEvmDefaultToken: (
     token: ITokenEthProps,
-    accountAddress: string,
-    networkUrl: string
+    accountAddress: string
   ) => Promise<ITokenEthProps | boolean>;
   updateAllEvmTokens: (
     account: IPaliAccount,
-    networks: INetworksVault
+
+    currentNetworkChainId: number
   ) => Promise<ITokenEthProps[]>;
 }
