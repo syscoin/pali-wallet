@@ -130,7 +130,8 @@ export const TransactionDetailsComponent = (
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
           Total (Amount + gas fee)
           <span className="text-brand-royalblue text-xs">
-            {Number(tx.value) / 10 ** 18 + finalFee}
+            {Number(tx.value) / 10 ** 18 + finalFee}{' '}
+            {activeNetwork.currency?.toUpperCase()}
           </span>
         </p>
       </div>
