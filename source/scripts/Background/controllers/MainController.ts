@@ -438,8 +438,6 @@ const MainController = (walletState): IMainController => {
       return;
     }
 
-    keyringManager.ethereumTransaction.web3Provider.canGetChainId(true);
-
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
 
