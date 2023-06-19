@@ -102,7 +102,7 @@ module.exports = {
           name: 'commons',
           priority: -20,
           minSize: 0,
-          maxSize: 3.5 * 1024 * 1024,
+          maxSize: 1 * 1024 * 1024,
           minChunks: 2,
           reuseExistingChunk: true,
           enforce: true,
@@ -251,7 +251,7 @@ module.exports = {
   plugins: [
     new BundleAnalyzerPlugin(),
     // Plugin to not generate js bundle for manifest entry -> Comment this line if u wanna run the production build
-    // new WextManifestWebpackPlugin(),
+    new WextManifestWebpackPlugin(),
     // Generate sourcemaps
     new webpack.SourceMapDevToolPlugin({ filename: false }),
     new ForkTsCheckerWebpackPlugin(),
@@ -267,6 +267,7 @@ module.exports = {
       chunks: ['app', 'vendors', 'commons'],
       hash: true,
       filename: 'app.html',
+      minify: nodeEnv === 'production' ? true : false,
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'external.html'),
@@ -274,12 +275,14 @@ module.exports = {
       chunks: ['external', 'vendors', 'commons'],
       hash: true,
       filename: 'external.html',
+      minify: nodeEnv === 'production' ? true : false,
     }),
     new HtmlWebpackPlugin({
       template: path.join(viewsPath, 'trezor-usb-permissions.html'),
       filename: 'trezor-usb-permissions.html',
       inject: 'body',
       chunks: ['trezorUSB'],
+      minify: nodeEnv === 'production' ? true : false,
     }),
 
     // write css file(s) to build folder

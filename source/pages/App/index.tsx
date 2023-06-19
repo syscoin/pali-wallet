@@ -31,6 +31,12 @@ const options = {
   transition: transitions.FADE,
 };
 
+console.log(
+  'store ready',
+  store.ready().then(() => console.log('cheguei aqui'))
+);
+console.log('store', store);
+
 store.ready().then(() => {
   ReactDOM.render(
     <Provider store={store}>
