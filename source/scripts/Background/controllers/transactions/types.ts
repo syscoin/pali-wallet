@@ -93,20 +93,13 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 }
 
 export interface IEvmTransactionsController {
-  firstRunForProviderTransactions: (
-    currentAccount: IPaliAccount,
-    networkUrl: string
-  ) => Promise<IEvmTransactionResponse[]>;
   getUserTransactionByDefaultProvider: (
     currentAccount: IPaliAccount,
-    networkUrl: string,
     startBlock: number,
     endBlock: number
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
-    currentAccount: IPaliAccount,
-    networkUrl: string,
-    provider: any
+    currentAccount: IPaliAccount
   ) => Promise<IEvmTransactionResponse[]>;
 }
 

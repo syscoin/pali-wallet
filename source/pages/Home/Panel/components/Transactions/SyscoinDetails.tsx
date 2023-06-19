@@ -182,7 +182,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
       };
 
       if (String(value).length >= 20) {
-        formattedValue.value = truncate(String(value), 20);
+        formattedValue.value = String(value);
         formattedValue.canCopy = true;
       }
 
@@ -202,7 +202,11 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
               <p>{label}</p>
               <span>
-                <b>{value}</b>
+                {value.length >= 20 ? (
+                  <b>{truncate(value, 20)}</b>
+                ) : (
+                  <b>{value}</b>
+                )}
 
                 {canCopy && (
                   <IconButton onClick={() => copy(value ?? '')}>

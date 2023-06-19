@@ -42,15 +42,12 @@ export const CustomToken = () => {
     setIsLoading(true);
 
     try {
-      const provider = controller.wallet.ethereumTransaction.web3Provider;
-
       const addTokenMethodResponse =
         await controller.wallet.assets.evm.addCustomTokenByType(
           activeAccount.address,
           contractAddress,
           symbol,
-          decimals,
-          provider
+          decimals
         );
 
       if (addTokenMethodResponse.error) {

@@ -90,6 +90,7 @@ export interface IMainController extends IKeyringManager {
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<boolean>;
+  unlockFromController: (pwd: string) => Promise<boolean>;
   updateAssetsFromCurrentAccount: ({
     isBitcoinBased,
     activeNetwork,
