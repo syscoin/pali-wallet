@@ -84,7 +84,8 @@ export const ImportToken: FC = () => {
       const addTokenMethodResponse =
         await controller.wallet.assets.evm.addEvmDefaultToken(
           token,
-          activeAccount.address
+          activeAccount.address,
+          controller.wallet.ethereumTransaction.web3Provider
         );
 
       if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
