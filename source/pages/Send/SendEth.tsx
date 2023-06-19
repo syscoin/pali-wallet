@@ -240,25 +240,30 @@ export const SendEth = () => {
 
                     if (
                       !selectedAsset &&
-                      parseFloat(value) <= parseFloat(balance)
+                      parseFloat(value) <= parseFloat(balance) &&
+                      Number(value) > 0
                     ) {
                       return Promise.resolve();
                     }
 
                     if (
                       Boolean(
-                        selectedAsset && selectedAsset.isNft && value >= 0
+                        selectedAsset &&
+                          selectedAsset.isNft &&
+                          Number(value) > 0
                       ) ||
                       Boolean(
                         selectedAsset &&
                           !selectedAsset.isNft &&
-                          parseFloat(value) <= parseFloat(selectedAsset.balance)
+                          parseFloat(value) <=
+                            parseFloat(selectedAsset.balance) &&
+                          Number(value) > 0
                       )
                     ) {
                       return Promise.resolve();
                     }
 
-                    return Promise.reject();
+                    return Promise.reject('Insufficient funds');
                   },
                 }),
               ]}
