@@ -153,9 +153,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
     //First validate contract address type
     const contractTypeResponse = (await contractChecker(
       contractAddress,
-      web3Provider.connection.url
+      web3Provider
     )) as ISupportsInterfaceProps;
-
     if (String(contractTypeResponse).includes('Invalid contract address')) {
       return {
         error: true,
