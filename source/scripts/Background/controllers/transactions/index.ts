@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -6,7 +6,10 @@ import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
 import { ITransactionsManager } from './types';
 
-const TransactionsManager = (): ITransactionsManager => {
+const TransactionsManager = (
+  web3Provider: CustomJsonRpcProvider
+): ITransactionsManager => {
+  const evmTransactionsController = EvmTransactionsController(web3Provider);
   const updateTransactionsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
@@ -27,15 +30,9 @@ const TransactionsManager = (): ITransactionsManager => {
         }
       case false:
         try {
-          const provider = new ethers.providers.JsonRpcProvider(
-            activeNetworkUrl
-          );
-
           const getEvmTxs =
-            await EvmTransactionsController().pollingEvmTransactions(
-              currentAccount,
-              activeNetworkUrl,
-              provider
+            await evmTransactionsController.pollingEvmTransactions(
+              currentAccount
             );
 
           return getEvmTxs;
@@ -45,7 +42,7 @@ const TransactionsManager = (): ITransactionsManager => {
     }
   };
   return {
-    evm: EvmTransactionsController(),
+    evm: evmTransactionsController,
     sys: SysTransactionController(),
     utils: {
       updateTransactionsFromCurrentAccount,

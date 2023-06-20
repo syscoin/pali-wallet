@@ -5,7 +5,13 @@ import { Header, Icon, Button, Loading } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { formatNumber, verifyIfIsTestnet } from 'utils/index';
+import {
+  ONE_MILLION,
+  ONE_TRILLION,
+  formatMillionNumber,
+  formatNumber,
+  verifyIfIsTestnet,
+} from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
 
@@ -43,6 +49,10 @@ export const Home = () => {
     accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
+
+  const moreThanMillion = actualBalance >= ONE_MILLION;
+
+  const moreThanTrillion = actualBalance > ONE_TRILLION;
 
   //* Effect for set Testnet or not
   useEffect(() => {
@@ -89,12 +99,20 @@ export const Home = () => {
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
                 <p
                   id="home-balance"
-                  className="font-rubik text-5xl font-medium"
+                  className={`font-rubik ${
+                    moreThanTrillion ? 'text-sm' : 'text-5xl'
+                  }  font-medium`}
                 >
-                  {formatNumber(actualBalance || 0)}{' '}
+                  {moreThanMillion
+                    ? formatMillionNumber(actualBalance)
+                    : formatNumber(actualBalance || 0)}{' '}
                 </p>
 
-                <p className="mt-4 font-poppins">
+                <p
+                  className={`${
+                    moreThanTrillion ? 'text-sm' : 'mt-4'
+                  } font-poppins`}
+                >
                   {activeNetwork.currency.toUpperCase()}
                 </p>
               </div>
