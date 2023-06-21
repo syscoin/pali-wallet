@@ -30,10 +30,9 @@ export const ChangeAccount = () => {
 
   const handleChangeAccount = () => {
     if (accountId === currentAccountId && accountType === currentAccountType) {
-      alert.removeAll();
-      alert.error(
-        'This account is already connected. Please select a different account.'
-      );
+      const response = { accountId, accountType };
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+      window.close();
       return;
     }
     //this should be passed to constant instead of being hardcoded
