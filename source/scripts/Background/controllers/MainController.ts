@@ -217,26 +217,42 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsTimerActive(isEnabled));
   };
 
-  const createAccount = async (label?: string): Promise<IPaliAccount> => {
+  const createAccount = async (
+    isBitcoinBased: boolean,
+    label?: string
+  ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
+    let newAccountWithAssets: IPaliAccount;
 
-    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
-      newAccount.xpub
-    );
+    switch (isBitcoinBased) {
+      case true:
+        const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+          newAccount.xpub
+        );
 
-    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
-      newAccount.xpub
-    );
+        const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+          newAccount.xpub
+        );
 
-    const newAccountWithAssets: IPaliAccount = {
-      ...newAccount,
-      assets: {
-        syscoin: initialSysAssetsForAccount,
-        ethereum: [],
-      },
-      transactions: initialTxsForAccount,
-    };
-
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: initialSysAssetsForAccount,
+            ethereum: [],
+          },
+          transactions: initialTxsForAccount,
+        };
+        break;
+      case false:
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: [],
+            ethereum: [],
+          },
+          transactions: [],
+        };
+    }
     store.dispatch(
       addAccountToStore({
         account: newAccountWithAssets,
@@ -249,7 +265,6 @@ const MainController = (walletState): IMainController => {
         type: KeyringAccountType.HDAccount,
       })
     );
-
     return newAccountWithAssets;
   };
 
