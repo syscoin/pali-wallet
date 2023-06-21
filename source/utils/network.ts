@@ -45,11 +45,12 @@ export const isBitcoinBasedNetwork = async ({
 
 export const verifyIfIsTestnet = async (
   networkUrl: string,
-  isBitcoinBased: boolean
+  isBitcoinBased: boolean,
+  isInCooldown: boolean
 ) => {
   const { chain, chainId }: any = isBitcoinBased
     ? await validateSysRpc(networkUrl)
-    : await validateEthRpc(networkUrl);
+    : await validateEthRpc(networkUrl, isInCooldown);
 
   //todo: this can be in some consts file
   const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.

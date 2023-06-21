@@ -17,11 +17,10 @@ import { decodeTransactionData } from 'utils/ethUtil';
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = params;
-
-    const validateTxToAddress = await validateEOAAddress(
-      tx.to,
-      store.getState().vault.activeNetwork.url
-    );
+    const {
+      ethereumTransaction: { web3Provider },
+    } = getController().wallet;
+    const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
 
     const decodedTx = decodeTransactionData(
       tx,
