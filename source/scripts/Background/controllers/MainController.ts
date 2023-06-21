@@ -504,7 +504,7 @@ const MainController = (walletState): IMainController => {
       //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data, web3Provider.isInCooldown);
+        : await getEthRpc(data, false); //Here we are always either edditing the network to add a new RPC or adding a new Network
 
       return formattedNetwork;
     } catch (error) {
