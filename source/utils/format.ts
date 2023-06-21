@@ -57,6 +57,12 @@ export const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
     maximumSignificantDigits: maxSig,
   });
 
+export const formatMillionNumber = (num: number) =>
+  Intl.NumberFormat('en', {
+    notation: 'compact',
+    minimumFractionDigits: 0,
+  }).format(num);
+
 export const formatCurrency = (number: string, precision: number) => {
   if (Number(number) < 1e-6) {
     number = Number(number).toFixed(precision);
