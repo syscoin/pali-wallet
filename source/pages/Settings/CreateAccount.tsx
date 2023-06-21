@@ -1,15 +1,17 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
-
+  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const controller = getController();
   const navigate = useNavigate();
 
@@ -17,6 +19,7 @@ const CreateAccount = () => {
     setLoading(true);
 
     const { address: newAddress } = await controller.wallet.createAccount(
+      isBitcoinBased,
       label
     );
 

@@ -218,40 +218,70 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsTimerActive(isEnabled));
   };
 
-  const createAccount = async (label?: string): Promise<IPaliAccount> => {
+  const createAccount = async (
+    isBitcoinBased: boolean,
+    label?: string
+  ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
 
-    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
-      newAccount.xpub
-    );
+    switch (isBitcoinBased) {
+      case true:
+        const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+          newAccount.xpub
+        );
 
-    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
-      newAccount.xpub
-    );
+        const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+          newAccount.xpub
+        );
 
-    const newAccountWithAssets: IPaliAccount = {
-      ...newAccount,
-      assets: {
-        syscoin: initialSysAssetsForAccount,
-        ethereum: [],
-      },
-      transactions: initialTxsForAccount,
-    };
+        const newAccountWithAssets: IPaliAccount = {
+          ...newAccount,
+          assets: {
+            syscoin: initialSysAssetsForAccount,
+            ethereum: [],
+          },
+          transactions: initialTxsForAccount,
+        };
 
-    store.dispatch(
-      addAccountToStore({
-        account: newAccountWithAssets,
-        accountType: KeyringAccountType.HDAccount,
-      })
-    );
-    store.dispatch(
-      setActiveAccount({
-        id: newAccountWithAssets.id,
-        type: KeyringAccountType.HDAccount,
-      })
-    );
+        store.dispatch(
+          addAccountToStore({
+            account: newAccountWithAssets,
+            accountType: KeyringAccountType.HDAccount,
+          })
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: newAccountWithAssets.id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
 
-    return newAccountWithAssets;
+        return newAccountWithAssets;
+      case false:
+        const newEvmAccountWithAssets: IPaliAccount = {
+          ...newAccount,
+          assets: {
+            syscoin: [],
+            ethereum: [],
+          },
+          transactions: [],
+        };
+
+        store.dispatch(
+          addAccountToStore({
+            account: newEvmAccountWithAssets,
+            accountType: KeyringAccountType.HDAccount,
+          })
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: newEvmAccountWithAssets.id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+
+        return newEvmAccountWithAssets;
+    }
   };
 
   const setAccount = (
