@@ -4,6 +4,7 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, NeutralButton, Tooltip } from 'components/index';
@@ -22,6 +23,8 @@ const CustomRPCView = () => {
 
   const { alert, navigate } = useUtils();
   const controller = getController();
+  const { isInCooldown }: CustomJsonRpcProvider =
+    controller.wallet.ethereumTransaction.web3Provider;
 
   const [form] = useForm();
 
@@ -187,7 +190,8 @@ const CustomRPCView = () => {
                 }
 
                 const { valid, details, hexChainId } = await validateEthRpc(
-                  value
+                  value,
+                  isInCooldown
                 );
 
                 setIsUrlValid(valid);

@@ -9,6 +9,7 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
   IWalletState,
+  CustomJsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -62,12 +63,10 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  let transactionsManager = TransactionsManager(
-    keyringManager.ethereumTransaction.web3Provider
-  );
-  let balancesMananger = BalancesManager(
-    keyringManager.ethereumTransaction.web3Provider
-  );
+  const web3Provider: CustomJsonRpcProvider =
+    keyringManager.ethereumTransaction.web3Provider;
+  let transactionsManager = TransactionsManager(web3Provider);
+  let balancesMananger = BalancesManager(web3Provider);
   const cancellablePromises = new CancellablePromises();
 
   let currentPromise: {
@@ -505,7 +504,7 @@ const MainController = (walletState): IMainController => {
       //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data);
+        : await getEthRpc(data, web3Provider.isInCooldown);
 
       return formattedNetwork;
     } catch (error) {

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
 import { Header, Icon, Button, Loading } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -41,6 +43,8 @@ export const Home = () => {
   //* Constants
   const { url } = activeNetwork;
   const controller = getController();
+  const { isInCooldown }: CustomJsonRpcProvider =
+    controller.wallet.ethereumTransaction.web3Provider;
   const isUnlocked =
     controller.wallet.isUnlocked() &&
     accounts[activeAccount.type][activeAccount.id].address !== '';
@@ -58,7 +62,7 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked) return;
 
-    verifyIfIsTestnet(url, isBitcoinBased).then((_isTestnet) =>
+    verifyIfIsTestnet(url, isBitcoinBased, isInCooldown).then((_isTestnet) =>
       setIsTestnet(_isTestnet)
     );
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
