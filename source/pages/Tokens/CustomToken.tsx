@@ -47,7 +47,8 @@ export const CustomToken = () => {
           activeAccount.address,
           contractAddress,
           symbol,
-          decimals
+          decimals,
+          controller.wallet.ethereumTransaction.web3Provider
         );
 
       if (addTokenMethodResponse.error) {

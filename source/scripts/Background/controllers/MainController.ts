@@ -61,9 +61,7 @@ import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
-  let assetsManager = AssetsManager(
-    keyringManager.ethereumTransaction.web3Provider
-  );
+  const assetsManager = AssetsManager();
   let transactionsManager = TransactionsManager(
     keyringManager.ethereumTransaction.web3Provider
   );
@@ -448,9 +446,6 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
-      assetsManager = AssetsManager(
-        keyringManager.ethereumTransaction.web3Provider
-      );
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
@@ -927,7 +922,8 @@ const MainController = (walletState): IMainController => {
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
-                activeNetwork.chainId
+                activeNetwork.chainId,
+                keyringManager.ethereumTransaction.web3Provider
               );
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length <
