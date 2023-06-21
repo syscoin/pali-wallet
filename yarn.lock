@@ -2085,16 +2085,16 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
   integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@1.0.461":
-  version "1.0.461"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.461.tgz#9d58bbc9592af809212e478704ba902a3451dad8"
-  integrity sha512-vJW/fsHIh7h0tF+wjkdStDttdCwMEjG0ewvTf0idepzQgjyIY0N7JUmUuP241yfY0WMtsmKLNHaYrBVwO3eiOQ==
+"@pollum-io/sysweb3-keyring@1.0.462":
+  version "1.0.462"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.462.tgz#c52f6daf4d772e93f36e2e05bb4eefe632af7ebe"
+  integrity sha512-h4b6/Q0E5LV72GyfehU3Bcd0yRu1uOb8Kle3vlqA7GTT9Nii07oKqAAYDfxj3lUK99fwLkwv2SEOpcCJ3KQABg==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "1.0.26"
     "@pollum-io/sysweb3-network" "1.0.94"
-    "@pollum-io/sysweb3-utils" "1.1.226"
+    "@pollum-io/sysweb3-utils" "1.1.227"
     "@trezor/connect-web" "^9.0.7"
     "@trezor/utxo-lib" "^1.0.4"
     axios "^0.26.1"
@@ -2130,10 +2130,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@1.1.226":
-  version "1.1.226"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.226.tgz#9598cd1f4b4ac9f32dcddd25d5faab49f862970f"
-  integrity sha512-VUpJnKcW4BoFcXzSi2/CadwQP9xKqMKAmLwa7UPeI1WAioJ3J7JAAW27GX7a+MPi9F6vAZdfVFgj1YM8reT8pA==
+"@pollum-io/sysweb3-utils@1.1.227":
+  version "1.1.227"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.227.tgz#3af986bc48f633018e60013d1926b62100477ba7"
+  integrity sha512-5zBc9GvWGc5m8tNa1oWg1FHqAA6j+yCXIC5mpw+63flUZ5vAkboPezEytiW2TWGCXat+H8OYpjTWr5TyKvdPmA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
