@@ -1,3 +1,4 @@
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 import {
   getSearch,
@@ -14,6 +15,7 @@ import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { IControllerUtils } from 'types/controllers';
+import { getController } from 'utils/browser';
 import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
@@ -22,7 +24,9 @@ const ControllerUtils = (): IControllerUtils => {
       const storeCurrency = store.getState().price.fiat.asset;
       currency = storeCurrency || 'usd';
     }
-
+    const controller = getController();
+    const { isInCooldown }: CustomJsonRpcProvider =
+      controller.wallet.ethereumTransaction.web3Provider;
     const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
     const id = isBitcoinBased ? 'syscoin' : 'ethereum';
@@ -63,7 +67,10 @@ const ControllerUtils = (): IControllerUtils => {
 
       case 'ethereum':
         try {
-          const { chain, chainId } = await validateEthRpc(activeNetwork.url);
+          const { chain, chainId } = await validateEthRpc(
+            activeNetwork.url,
+            isInCooldown
+          );
 
           const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 

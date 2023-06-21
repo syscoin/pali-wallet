@@ -4,10 +4,12 @@ import React, { useEffect } from 'react';
 import { useState, FC } from 'react';
 import { useSelector } from 'react-redux';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout } from 'components/index';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 
 import { CustomToken } from './CustomToken';
 import { ImportToken } from './ImportToken';
@@ -19,13 +21,16 @@ export const AddToken: FC = () => {
   const [importCustom, setImportCustom] = useState(false);
   const [isTestnet, setIsTestnet] = useState(false);
 
+  const controller = getController();
+  const { isInCooldown }: CustomJsonRpcProvider =
+    controller.wallet.ethereumTransaction.web3Provider;
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
 
   const verifyIfIsTestnet = async () => {
-    const { chain, chainId } = await validateEthRpc(network.url);
+    const { chain, chainId } = await validateEthRpc(network.url, isInCooldown);
 
     const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
