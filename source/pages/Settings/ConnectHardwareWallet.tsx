@@ -2,6 +2,7 @@ import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
@@ -21,6 +22,9 @@ const ConnectHardwareWalletView: FC = () => {
   const { slip44 } = activeNetwork;
 
   const controller = getController();
+
+  const { isInCooldown }: CustomJsonRpcProvider =
+    controller.wallet.ethereumTransaction.web3Provider;
 
   const handleCreateHardwareWallet = async () => {
     try {
@@ -42,7 +46,7 @@ const ConnectHardwareWalletView: FC = () => {
 
     const { chain }: any = isBitcoinBased
       ? await validateSysRpc(url)
-      : await validateEthRpc(url);
+      : await validateEthRpc(url, isInCooldown);
 
     return Boolean(chain === 'test' || chain === 'testnet');
   };
