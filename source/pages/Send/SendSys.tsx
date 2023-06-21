@@ -63,7 +63,8 @@ export const SendSys = () => {
     ? Object.values(activeAccount.assets.syscoin)
     : [];
 
-  const assetDecimals = selectedAsset.decimals ? selectedAsset.decimals : 8;
+  const assetDecimals =
+    selectedAsset && selectedAsset?.decimals ? selectedAsset.decimals : 8;
 
   const formattedAssetBalance =
     selectedAsset &&
