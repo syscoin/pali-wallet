@@ -222,6 +222,7 @@ const MainController = (walletState): IMainController => {
     label?: string
   ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
+    let newAccountWithAssets: IPaliAccount;
 
     switch (isBitcoinBased) {
       case true:
@@ -233,7 +234,7 @@ const MainController = (walletState): IMainController => {
           newAccount.xpub
         );
 
-        const newAccountWithAssets: IPaliAccount = {
+        newAccountWithAssets = {
           ...newAccount,
           assets: {
             syscoin: initialSysAssetsForAccount,
@@ -241,23 +242,9 @@ const MainController = (walletState): IMainController => {
           },
           transactions: initialTxsForAccount,
         };
-
-        store.dispatch(
-          addAccountToStore({
-            account: newAccountWithAssets,
-            accountType: KeyringAccountType.HDAccount,
-          })
-        );
-        store.dispatch(
-          setActiveAccount({
-            id: newAccountWithAssets.id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-
-        return newAccountWithAssets;
+        break;
       case false:
-        const newEvmAccountWithAssets: IPaliAccount = {
+        newAccountWithAssets = {
           ...newAccount,
           assets: {
             syscoin: [],
@@ -265,22 +252,20 @@ const MainController = (walletState): IMainController => {
           },
           transactions: [],
         };
-
-        store.dispatch(
-          addAccountToStore({
-            account: newEvmAccountWithAssets,
-            accountType: KeyringAccountType.HDAccount,
-          })
-        );
-        store.dispatch(
-          setActiveAccount({
-            id: newEvmAccountWithAssets.id,
-            type: KeyringAccountType.HDAccount,
-          })
-        );
-
-        return newEvmAccountWithAssets;
     }
+    store.dispatch(
+      addAccountToStore({
+        account: newAccountWithAssets,
+        accountType: KeyringAccountType.HDAccount,
+      })
+    );
+    store.dispatch(
+      setActiveAccount({
+        id: newAccountWithAssets.id,
+        type: KeyringAccountType.HDAccount,
+      })
+    );
+    return newAccountWithAssets;
   };
 
   const setAccount = (
