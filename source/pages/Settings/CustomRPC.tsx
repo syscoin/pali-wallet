@@ -191,8 +191,8 @@ const CustomRPCView = () => {
 
                 const { valid, details, hexChainId } = await validateEthRpc(
                   value,
-                  isInCooldown
-                );
+                  false
+                ); //Cooldown doesn't matter on network edition
 
                 setIsUrlValid(valid);
 
