@@ -1,4 +1,3 @@
-import { ethers } from 'ethers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -6,15 +5,15 @@ import isEmpty from 'lodash/isEmpty';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+
 import store from 'state/store';
 
 import { Queue } from './queue';
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const { timestamp } = await provider.getBlock(
@@ -28,9 +27,7 @@ export const getEvmTransactionTimestamp = async (
 };
 
 export const getFormattedEvmTransactionResponse = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
 ) => {
   const tx = await provider.getTransaction(transaction.hash);
@@ -42,9 +39,7 @@ export const getFormattedEvmTransactionResponse = async (
 };
 
 export const findUserTxsInProviderByBlocksRange = async (
-  provider:
-    | ethers.providers.EtherscanProvider
-    | ethers.providers.JsonRpcProvider,
+  provider: CustomJsonRpcProvider,
   userAddress: string,
   startBlock: number,
   endBlock: number
@@ -53,8 +48,14 @@ export const findUserTxsInProviderByBlocksRange = async (
   const queue = new Queue(3);
 
   rangeBlocksToRun.forEach((blockNumber) => {
+    if (blockNumber < 0) {
+      blockNumber = blockNumber * -1;
+    }
     queue.execute(async () => {
-      const currentBlock = await provider.getBlockWithTransactions(blockNumber);
+      const currentBlock = await provider.send('eth_getBlockByNumber', [
+        `0x${blockNumber.toString(16)}`,
+        true,
+      ]);
       const filterTxsByAddress = currentBlock.transactions.filter(
         (tx) =>
           tx?.from?.toLowerCase() === userAddress.toLowerCase() ||

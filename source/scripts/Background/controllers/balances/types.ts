@@ -1,10 +1,7 @@
 import { IPaliAccount } from 'state/vault/types';
 
 export interface IEvmBalanceController {
-  getEvmBalanceForAccount: (
-    currentAccount: IPaliAccount,
-    networkUrl: string
-  ) => Promise<string>;
+  getEvmBalanceForAccount: (currentAccount: IPaliAccount) => Promise<string>;
 }
 
 export interface ISysBalanceController {
