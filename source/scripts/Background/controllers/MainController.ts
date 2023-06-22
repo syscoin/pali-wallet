@@ -333,7 +333,6 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
-        await utilsController.setFiat();
 
         updateAssetsFromCurrentAccount({
           isBitcoinBased,

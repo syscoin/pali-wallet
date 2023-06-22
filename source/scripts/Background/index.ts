@@ -19,7 +19,7 @@ let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
   window.controller = windowController;
-  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  setInterval(window.controller.utils.setFiat, 2 * 60 * 1000);
   if (paliPort) {
     window.controller.dapp.setup(paliPort);
   }
@@ -28,7 +28,6 @@ const onWalletReady = (windowController: IMasterController) => {
 
 if (!window.controller) {
   window.controller = MasterController(onWalletReady);
-  // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -181,8 +180,6 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
-    // window.controller.utils.setFiat();
-
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
       if (timeout) clearTimeout(timeout);
