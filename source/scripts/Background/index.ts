@@ -90,7 +90,14 @@ const verifyAllPaliRequests = () => {
 // update and show requests per second
 const updateRequestsPerSecond = () => {
   const { isBitcoinBased } = store.getState().vault;
-  if (!isBitcoinBased && process.env.NODE_ENV === 'development') {
+  const isWatchRequestsActive =
+    process.env.REACT_APP_WATCH_REQUESTS !== undefined &&
+    process.env.REACT_APP_WATCH_REQUESTS === 'active';
+  if (
+    !isBitcoinBased &&
+    process.env.NODE_ENV === 'development' &&
+    isWatchRequestsActive
+  ) {
     const currentTime = Math.floor(Date.now() / 1000);
     const requestCountPerSecond = requestsPerSecond[currentTime]?.length || 0;
     console.log('Requests per second:', requestCountPerSecond);
