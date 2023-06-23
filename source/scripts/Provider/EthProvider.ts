@@ -8,7 +8,6 @@ import {
   blockingRestrictedMethods,
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
-import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -18,23 +17,22 @@ import { decodeTransactionData } from 'utils/ethUtil';
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = params;
-    const { activeNetwork } = store.getState().vault;
-    const validateTxToAddress = await validateEOAAddress(
-      tx.to,
-      activeNetwork.url
-    );
-
+    const {
+      ethereumTransaction: { web3Provider },
+    } = getController().wallet;
+    const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
+    console.log('Web3Provider status', web3Provider.network.chainId);
     const isLegacyTx = NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-      activeNetwork.chainId
+      web3Provider.network.chainId
     );
-
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
     ) as IDecodedTx;
-
+    console.log('Decoded Tx', decodedTx);
+    console.log('Before the check', validateTxToAddress);
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
-
+    console.log('After the check', validateTxToAddress);
     //Open Send Component
     if (validateTxToAddress.wallet || isLegacyTx) {
       const resp = await popupPromise({
