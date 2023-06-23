@@ -11,8 +11,8 @@ import {
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { NETWORKS_INCOMPATIBLE_WITH_EIP1559 } from 'utils/constants';
 import { decodeTransactionData } from 'utils/ethUtil';
+import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
@@ -22,9 +22,7 @@ export const EthProvider = (host: string) => {
     } = getController().wallet;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     console.log('Web3Provider status', web3Provider.network.chainId);
-    const isLegacyTx = NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-      web3Provider.network.chainId
-    );
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress

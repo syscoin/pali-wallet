@@ -25,7 +25,7 @@ import {
   removeScientificNotation,
   omitTransactionObjectData,
   INITIAL_FEE,
-  NETWORKS_INCOMPATIBLE_WITH_EIP1559,
+  verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -64,6 +64,7 @@ export const SendConfirm = () => {
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [confirmedTx, setConfirmedTx] = useState<any>();
+  const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
 
   const basicTxValues = state.tx;
@@ -166,9 +167,7 @@ export const SendConfirm = () => {
               'ether'
             );
 
-            if (
-              NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
-            ) {
+            if (isEIP1559Compatible === false) {
               try {
                 await wallet.ethereumTransaction
                   .sendFormattedTransaction({
@@ -379,7 +378,7 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
-    if (NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)) {
+    if (isEIP1559Compatible === false) {
       getGasCorrectlyGasPrice();
 
       return;
@@ -433,7 +432,7 @@ export const SendConfirm = () => {
     return () => {
       abortController.abort();
     };
-  }, [basicTxValues, isBitcoinBased]);
+  }, [basicTxValues, isBitcoinBased, isEIP1559Compatible]);
 
   const getCalculatedFee = useMemo(() => {
     const arrayValidation = [
@@ -465,6 +464,17 @@ export const SendConfirm = () => {
     alert.success('Address successfully copied');
   }, [copied]);
 
+  useEffect(() => {
+    const validateEIP1559Compatibility = async () => {
+      const isCompatible = await verifyNetworkEIP1559Compatibility(
+        wallet.ethereumTransaction.web3Provider
+      );
+      setIsEIP1559Compatible(isCompatible);
+    };
+
+    validateEIP1559Compatibility();
+  }, []);
+
   return (
     <Layout title="CONFIRM" canGoBack={true}>
       <DefaultModal
@@ -493,15 +503,10 @@ export const SendConfirm = () => {
         fee={fee}
       />
       {Boolean(
-        !isBitcoinBased &&
-          basicTxValues &&
-          fee &&
-          !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
+        !isBitcoinBased && basicTxValues && fee && isEIP1559Compatible
       ) ||
       Boolean(
-        !isBitcoinBased &&
-          basicTxValues &&
-          NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId)
+        !isBitcoinBased && basicTxValues && isEIP1559Compatible === false
       ) ||
       Boolean(isBitcoinBased && basicTxValues) ? (
         <div className="flex flex-col items-center justify-center w-full">
@@ -577,19 +582,14 @@ export const SendConfirm = () => {
                 <span className="text-brand-royalblue text-xs">
                   {isBitcoinBased
                     ? getFormattedFee(basicTxValues.fee)
-                    : !isBitcoinBased &&
-                      NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-                        activeNetwork.chainId
-                      )
+                    : !isBitcoinBased && isEIP1559Compatible === false
                     ? getFormattedFee(gasPrice / 10 ** 18)
                     : getFormattedFee(getCalculatedFee)}
                 </span>
               </p>
               {!isBitcoinBased && !basicTxValues.token?.isNft
                 ? !isBitcoinBased &&
-                  !NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-                    activeNetwork.chainId
-                  ) && (
+                  isEIP1559Compatible && (
                     <span
                       className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                       onClick={() => setIsOpenEditFeeModal(true)}
@@ -610,10 +610,7 @@ export const SendConfirm = () => {
                           Number(basicTxValues.fee) +
                           Number(basicTxValues.amount)
                         }`
-                      : !isBitcoinBased &&
-                        NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(
-                          activeNetwork.chainId
-                        )
+                      : !isBitcoinBased && isEIP1559Compatible === false
                       ? `${removeScientificNotation(
                           Number(basicTxValues.amount) + gasPrice / 10 ** 18
                         )}`

@@ -17,7 +17,7 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
-  NETWORKS_INCOMPATIBLE_WITH_EIP1559,
+  verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -55,6 +55,8 @@ export const SendNTokenTransaction = () => {
     gasPrice: 0,
   });
   const [confirmedTx, setConfirmedTx] = useState<any>();
+  const [isEIP1559Compatible, setIsEIP1559Compatible] =
+    useState<boolean>(false);
 
   const isExternal = Boolean(externalTx.external);
 
@@ -72,8 +74,7 @@ export const SendNTokenTransaction = () => {
     : externalTx.tx;
 
   const isLegacyTransaction =
-    Boolean(tx.type === '0x0') ||
-    NETWORKS_INCOMPATIBLE_WITH_EIP1559.includes(activeNetwork.chainId);
+    Boolean(tx.type === '0x0') || !isEIP1559Compatible;
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
@@ -263,6 +264,17 @@ export const SendNTokenTransaction = () => {
     alert.removeAll();
     alert.success('Address successfully copied');
   }, [copied]);
+
+  useEffect(() => {
+    const validateEIP1559Compatibility = async () => {
+      const isCompatible = await verifyNetworkEIP1559Compatibility(
+        ethereumTransaction.web3Provider
+      );
+      setIsEIP1559Compatible(isCompatible);
+    };
+
+    validateEIP1559Compatibility();
+  }, []);
   return (
     <Layout title="SEND" canGoBack={!isExternal}>
       <DefaultModal
