@@ -160,15 +160,17 @@ export const shouldInjectProvider = () =>
 
 export const injectScriptFile = (file: string, id: string) => {
   try {
+    const inpage = document.getElementById('inpage');
+    const removeProperty = document.getElementById('removeProperty');
     switch (id) {
       case 'removeProperty':
-        const inpage = document.getElementById('inpage');
         // remove inpage script for not inject the same thing many times
         if (inpage) inpage.remove();
+        if (removeProperty) removeProperty.remove();
         break;
       case 'inpage':
-        const removeProperty = document.getElementById('removeProperty');
         // remove removeEth script for not inject the same thing many times
+        if (inpage) inpage.remove();
         if (removeProperty) removeProperty.remove();
         break;
       default:
@@ -200,6 +202,10 @@ if (shouldInjectProvider()) {
   )
     // inject window.ethereum in browser in first load
     injectScriptFile('js/inpage.bundle.js', 'inpage');
+
+  if (canInjectEthProperty === false) {
+    injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
+  }
 }
 
 start();
