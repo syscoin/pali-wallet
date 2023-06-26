@@ -213,14 +213,6 @@ const EvmAssetsController = (): IEvmAssetsController => {
         async () =>
           await Promise.all(
             account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log(vaultAssets.chainId, currentNetworkChainId);
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log('vaultAssets.chainId === currentNetworkChainId');
-              console.log('vaultAssets.chainId === currentNetworkChainId');
               if (vaultAssets.chainId === currentNetworkChainId) {
                 const provider = web3Provider;
 
