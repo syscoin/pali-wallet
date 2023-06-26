@@ -207,7 +207,16 @@ export const methodRequest = async (
               message: 'Already processing network change. Please wait',
             })
           );
-        throw cleanErrorStack(ethErrors.rpc.internal());
+        throw ethErrors.provider.custom({
+          code: 4902,
+          message:
+            'The chain ID you are looking for has not been integrated into Pali yet. To proceed, you must first make a request for its addition using the wallet_addEthereumChain method.',
+          data: {
+            code: 4902,
+            message:
+              'The chain ID you are looking for has not been integrated into Pali yet. To proceed, you must first make a request for its addition using the wallet_addEthereumChain method.',
+          },
+        });
       case 'getProviderState':
         const providerState = {
           accounts: dapp.getAccount(host)

@@ -9,6 +9,7 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
   IWalletState,
+  CustomJsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -27,7 +28,6 @@ import {
   createAccount as addAccountToStore,
   setNetworks,
   removeNetwork as removeNetworkFromStore,
-  removeNetwork,
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
@@ -63,8 +63,10 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const transactionsManager = TransactionsManager();
-  const balancesMananger = BalancesManager();
+  const web3Provider: CustomJsonRpcProvider =
+    keyringManager.ethereumTransaction.web3Provider;
+  let transactionsManager = TransactionsManager(web3Provider);
+  let balancesMananger = BalancesManager(web3Provider);
   const cancellablePromises = new CancellablePromises();
 
   let currentPromise: {
@@ -79,6 +81,7 @@ const MainController = (walletState): IMainController => {
       reject: (reason?: any) => void
     ) => void
   ): { cancel: () => void; promise: Promise<T> } => {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     let cancel = () => {};
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
@@ -214,26 +217,42 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsTimerActive(isEnabled));
   };
 
-  const createAccount = async (label?: string): Promise<IPaliAccount> => {
+  const createAccount = async (
+    isBitcoinBased: boolean,
+    label?: string
+  ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
+    let newAccountWithAssets: IPaliAccount;
 
-    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
-      newAccount.xpub
-    );
+    switch (isBitcoinBased) {
+      case true:
+        const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+          newAccount.xpub
+        );
 
-    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
-      newAccount.xpub
-    );
+        const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+          newAccount.xpub
+        );
 
-    const newAccountWithAssets: IPaliAccount = {
-      ...newAccount,
-      assets: {
-        syscoin: initialSysAssetsForAccount,
-        ethereum: [],
-      },
-      transactions: initialTxsForAccount,
-    };
-
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: initialSysAssetsForAccount,
+            ethereum: [],
+          },
+          transactions: initialTxsForAccount,
+        };
+        break;
+      case false:
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: [],
+            ethereum: [],
+          },
+          transactions: [],
+        };
+    }
     store.dispatch(
       addAccountToStore({
         account: newAccountWithAssets,
@@ -246,7 +265,6 @@ const MainController = (walletState): IMainController => {
         type: KeyringAccountType.HDAccount,
       })
     );
-
     return newAccountWithAssets;
   };
 
@@ -442,6 +460,12 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
       resolve({
         activeChain,
         chain,
@@ -495,7 +519,7 @@ const MainController = (walletState): IMainController => {
       //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data);
+        : await getEthRpc(data, false); //Here we are always either edditing the network to add a new RPC or adding a new Network
 
       return formattedNetwork;
     } catch (error) {
@@ -899,7 +923,7 @@ const MainController = (walletState): IMainController => {
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
   }) => {
-    const { accounts, networks } = store.getState().vault;
+    const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -913,7 +937,7 @@ const MainController = (walletState): IMainController => {
                 isBitcoinBased,
                 activeNetwork.url,
                 activeNetwork.chainId,
-                networks
+                keyringManager.ethereumTransaction.web3Provider
               );
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length <

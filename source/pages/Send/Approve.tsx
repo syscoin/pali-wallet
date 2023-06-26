@@ -226,9 +226,7 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getTokenName = async (contractAddress: string) => {
-      const getProvider = new ethers.providers.JsonRpcProvider(
-        activeNetwork.url
-      );
+      const getProvider = wallet.ethereumTransaction.web3Provider;
 
       const contractInstance = new ethers.Contract(
         contractAddress,
