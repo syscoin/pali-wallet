@@ -15,6 +15,9 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
+const isWatchRequestsActive =
+  process.env.REACT_APP_WATCH_REQUESTS !== undefined &&
+  process.env.REACT_APP_WATCH_REQUESTS === 'active';
 let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
@@ -68,7 +71,7 @@ const requestCallback = (details: any) => {
     activeNetwork: { url },
   } = store.getState().vault;
 
-  if (details.url === url) {
+  if (details.url === url && isWatchRequestsActive) {
     requestCount++;
     console.log('Request count:', requestCount);
   }
@@ -90,9 +93,6 @@ const verifyAllPaliRequests = () => {
 // update and show requests per second
 const updateRequestsPerSecond = () => {
   const { isBitcoinBased } = store.getState().vault;
-  const isWatchRequestsActive =
-    process.env.REACT_APP_WATCH_REQUESTS !== undefined &&
-    process.env.REACT_APP_WATCH_REQUESTS === 'active';
   if (
     !isBitcoinBased &&
     process.env.NODE_ENV === 'development' &&
