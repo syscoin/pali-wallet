@@ -80,20 +80,21 @@ export const SendConfirm = () => {
         : activeNetwork.label
     }`;
 
-  const getGasCorrectlyGasPrice = async () => {
+  const getLegacyGasPrice = async () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
     )
-      ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
+      ? customFee.gasPrice * 10 ** 9 // Convert to WEI because injected gasPrices comes in GWEI
       : await wallet.ethereumTransaction.getRecommendedGasPrice();
     const gasLimit: any = await wallet.ethereumTransaction.getTxGasLimit(
       basicTxValues
     );
-
-    setFee({ ...INITIAL_FEE, gasLimit });
+    const initialFee = INITIAL_FEE;
+    initialFee.gasPrice = Number(correctGasPrice);
+    setFee({ ...initialFee, gasLimit });
 
     setGasPrice(Number(correctGasPrice));
-    return Number(correctGasPrice);
+    return { gasLimit, gasPrice: Number(correctGasPrice) };
   };
 
   const handleConfirm = async () => {
@@ -172,6 +173,7 @@ export const SendConfirm = () => {
                 await wallet.ethereumTransaction
                   .sendFormattedTransaction({
                     ...restTx,
+                    value,
                     gasPrice: ethers.utils.hexlify(gasPrice),
                     gasLimit: wallet.ethereumTransaction.toBigNumber(
                       validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
@@ -265,6 +267,55 @@ export const SendConfirm = () => {
           switch (basicTxValues.token.isNft) {
             //HANDLE ERC20 TRANSACTION
             case false:
+              if (isEIP1559Compatible === false) {
+                try {
+                  wallet.ethereumTransaction
+                    .sendSignedErc20Transaction({
+                      networkUrl: activeNetwork.url,
+                      receiver: txObjectState.to,
+                      tokenAddress: basicTxValues.token.contractAddress,
+                      tokenAmount: basicTxValues.amount,
+                      isLegacy: !isEIP1559Compatible,
+                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasLimit: wallet.ethereumTransaction.toBigNumber(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                          : fee.gasLimit * 4
+                      ),
+                    })
+                    .then(async (response) => {
+                      if (activeAccountMeta.type === KeyringAccountType.Trezor)
+                        wallet.sendAndSaveTransaction(response);
+                      setConfirmed(true);
+                      setLoading(false);
+                      setConfirmedTx(response);
+
+                      //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                      setTimeout(() => {
+                        callGetLatestUpdateForAccount();
+                      }, 3500);
+                    })
+                    .catch((error) => {
+                      logError('error send ERC20', 'Transaction', error);
+
+                      alert.removeAll();
+                      alert.error(
+                        "Can't complete transaction. Try again later."
+                      );
+                      setLoading(false);
+                    });
+
+                  return;
+                } catch (_erc20Error) {
+                  logError('error send ERC20', 'Transaction', _erc20Error);
+
+                  alert.removeAll();
+                  alert.error("Can't complete transaction. Try again later.");
+
+                  setLoading(false);
+                }
+                break;
+              }
               try {
                 wallet.ethereumTransaction
                   .sendSignedErc20Transaction({
@@ -272,6 +323,7 @@ export const SendConfirm = () => {
                     receiver: txObjectState.to,
                     tokenAddress: basicTxValues.token.contractAddress,
                     tokenAmount: basicTxValues.amount,
+                    isLegacy: !isEIP1559Compatible,
                     maxPriorityFeePerGas: ethers.utils.parseUnits(
                       String(
                         Boolean(
@@ -378,9 +430,22 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (isBitcoinBased) return;
+    if (isEIP1559Compatible === undefined) {
+      return; // Not calculate fees before being aware of EIP1559 compatibility
+    }
     if (isEIP1559Compatible === false) {
-      getGasCorrectlyGasPrice();
-
+      const getLegacyFeeRecomendation = async () => {
+        const { gasLimit, gasPrice: _gasPrice } = await getLegacyGasPrice();
+        const formattedTxObject = {
+          from: basicTxValues.sender,
+          to: basicTxValues.receivingAddress,
+          chainId: activeNetwork.chainId,
+          gasLimit,
+          gasPrice: _gasPrice,
+        };
+        setTxObjectState(formattedTxObject);
+      };
+      getLegacyFeeRecomendation();
       return;
     }
     const abortController = new AbortController();
@@ -389,7 +454,6 @@ export const SendConfirm = () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
           await wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
-
         const initialFeeDetails = {
           maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
           baseFee:
@@ -422,7 +486,7 @@ export const SendConfirm = () => {
         logError('error getting fees', 'Transaction', error);
         alert.error(
           'Error in the proccess to get fee values, please verify your balance and try again later.'
-        );
+        ); //TODO: Fix this alert, as for now this alert is basically useless because we navigate to the previous screen right after and its not being displayed
         navigate(-1);
       }
     };
