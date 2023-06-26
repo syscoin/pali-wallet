@@ -73,7 +73,7 @@ const requestCallback = (details: any) => {
     activeNetwork: { url },
   } = store.getState().vault;
 
-  if (details.url === url && isWatchRequestsActive) {
+  if (details.url.includes(url) && isWatchRequestsActive) {
     requestCount++;
     console.log('Request count:', requestCount);
   }
