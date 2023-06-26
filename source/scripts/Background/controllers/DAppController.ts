@@ -119,6 +119,7 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (host: string) => {
+    if (!_dapps[host]) throw new Error('DApp not connected');
     _dapps[host].activeAddress = null;
     store.dispatch(removeDApp(host));
     _dispatchPaliEvent(

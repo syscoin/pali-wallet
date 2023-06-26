@@ -6,13 +6,14 @@ import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
-const AssetsManager = (web3Provider: CustomJsonRpcProvider): IAssetsManager => {
-  const evmAssetsController = EvmAssetsController(web3Provider);
+const AssetsManager = (): IAssetsManager => {
+  const evmAssetsController = EvmAssetsController();
   const updateAssetsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    web3Provider: CustomJsonRpcProvider
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
@@ -35,7 +36,8 @@ const AssetsManager = (web3Provider: CustomJsonRpcProvider): IAssetsManager => {
         try {
           const getEvmAssets = await evmAssetsController.updateAllEvmTokens(
             currentAccount,
-            networkChainId
+            networkChainId,
+            web3Provider
           );
 
           return {

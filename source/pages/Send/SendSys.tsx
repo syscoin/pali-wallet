@@ -185,7 +185,7 @@ export const SendSys = () => {
             <Input
               type="text"
               placeholder="Receiver"
-              className="input-medium"
+              className="sender-input"
             />
           </Form.Item>
 

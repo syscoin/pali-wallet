@@ -37,7 +37,10 @@ export interface IMainController extends IKeyringManager {
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   addWindowEthProperty: () => void;
   assets: IAssetsManager;
-  createAccount: (label?: string) => Promise<IKeyringAccountState>;
+  createAccount: (
+    isBitcoinBased: boolean,
+    label?: string
+  ) => Promise<IKeyringAccountState>;
   createWallet: (password: string, phrase: string) => Promise<void>;
   editAccountLabel: (
     label: string,
