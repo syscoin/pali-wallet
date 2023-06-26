@@ -8,7 +8,7 @@ import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
   interface Window {
@@ -16,8 +16,10 @@ declare global {
   }
 }
 const isWatchRequestsActive =
-  process.env.REACT_APP_WATCH_REQUESTS !== undefined &&
-  process.env.REACT_APP_WATCH_REQUESTS === 'active';
+  // @ts-ignore
+  browser.runtime.getManifest().environment?.WATCH_REQUESTS !== undefined &&
+  // @ts-ignore
+  browser.runtime.getManifest().environment?.WATCH_REQUESTS === 'active';
 let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
