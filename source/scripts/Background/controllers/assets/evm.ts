@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {
@@ -212,6 +213,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
         async () =>
           await Promise.all(
             account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log(vaultAssets.chainId, currentNetworkChainId);
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log('vaultAssets.chainId === currentNetworkChainId');
+              console.log('vaultAssets.chainId === currentNetworkChainId');
               if (vaultAssets.chainId === currentNetworkChainId) {
                 const provider = web3Provider;
 
@@ -246,10 +255,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         .filter((result) => result.success)
         .map(({ result }) => result);
 
-      return validateAndManageUserAssets(
-        true,
-        updatedTokens
-      ) as ITokenEthProps[];
+      const tokens = updatedTokens.every((entry) => isNil(entry))
+        ? [...account.assets.ethereum]
+        : updatedTokens.filter((entry) => !isNil(entry));
+
+      return validateAndManageUserAssets(true, tokens) as ITokenEthProps[];
     } catch (error) {
       console.error(
         "Pali utils: Couldn't update assets due to the following issue ",
