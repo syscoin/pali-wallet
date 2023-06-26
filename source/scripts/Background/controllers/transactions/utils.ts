@@ -51,7 +51,7 @@ export const findUserTxsInProviderByBlocksRange = async (
     if (blockNumber < 0) {
       blockNumber = blockNumber * -1;
     }
-    const lastBlockNumber = arr[arr.length - 1];
+    const lastBlockNumber = arr[arr.length - 1] + 1; // getBlock returns us the last confirmed block so we add 1 to consider the current pending block
     queue.execute(async () => {
       const currentBlock = await provider.send('eth_getBlockByNumber', [
         `0x${blockNumber.toString(16)}`,
