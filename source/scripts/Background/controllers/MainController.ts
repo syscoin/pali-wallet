@@ -574,6 +574,12 @@ const MainController = (walletState): IMainController => {
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
 
       return newNetwork;
     }
