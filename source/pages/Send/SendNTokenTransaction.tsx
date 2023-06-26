@@ -103,13 +103,16 @@ export const SendNTokenTransaction = () => {
             : await ethereumTransaction.getRecommendedGasPrice();
 
           await ethereumTransaction
-            .sendFormattedTransaction({
-              ...txWithoutType,
-              gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-              gasLimit: ethereumTransaction.toBigNumber(
-                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-              ),
-            })
+            .sendFormattedTransaction(
+              {
+                ...txWithoutType,
+                gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
+                gasLimit: ethereumTransaction.toBigNumber(
+                  validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+                ),
+              },
+              isLegacyTransaction
+            )
             .then((response) => {
               if (activeAccountMeta.type === KeyringAccountType.Trezor)
                 sendAndSaveTransaction(response);
@@ -222,7 +225,10 @@ export const SendNTokenTransaction = () => {
             ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
             : maxPriorityFeePerGas.toNumber() / 10 ** 9,
           gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
-          gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
+          gasPrice: tx?.gasPrice
+            ? Number(tx.gasPrice) / 10 ** 9
+            : Number(await ethereumTransaction.getRecommendedGasPrice()) /
+              10 ** 9,
         };
 
         setFee(feeRecomendation);

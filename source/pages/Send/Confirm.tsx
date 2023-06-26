@@ -171,14 +171,19 @@ export const SendConfirm = () => {
             if (isEIP1559Compatible === false) {
               try {
                 await wallet.ethereumTransaction
-                  .sendFormattedTransaction({
-                    ...restTx,
-                    value,
-                    gasPrice: ethers.utils.hexlify(gasPrice),
-                    gasLimit: wallet.ethereumTransaction.toBigNumber(
-                      validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-                    ),
-                  })
+                  .sendFormattedTransaction(
+                    {
+                      ...restTx,
+                      value,
+                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasLimit: wallet.ethereumTransaction.toBigNumber(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit
+                          : fee.gasLimit
+                      ),
+                    },
+                    !isEIP1559Compatible
+                  )
                   .then((response) => {
                     if (activeAccountMeta.type === KeyringAccountType.Trezor)
                       wallet.sendAndSaveTransaction(response);
@@ -390,7 +395,14 @@ export const SendConfirm = () => {
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
                     tokenAddress: basicTxValues.token.contractAddress,
-                    tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component
+                    tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                    isLegacy: !isEIP1559Compatible,
+                    gasPrice: ethers.utils.hexlify(gasPrice),
+                    gasLimit: wallet.ethereumTransaction.toBigNumber(
+                      validateCustomGasLimit
+                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                        : fee.gasLimit * 4
+                    ),
                   })
                   .then(async (response) => {
                     setConfirmed(true);
