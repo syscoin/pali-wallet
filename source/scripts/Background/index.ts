@@ -19,7 +19,7 @@ let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
   window.controller = windowController;
-  setInterval(window.controller.utils.setFiat, 2 * 60 * 1000);
+  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
   if (paliPort) {
     window.controller.dapp.setup(paliPort);
   }

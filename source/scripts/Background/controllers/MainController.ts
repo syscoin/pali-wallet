@@ -333,6 +333,7 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
+        await utilsController.setFiat(); // TODO: We should just call the asset on network edition and get added networks coins price with one call from the background;
 
         updateAssetsFromCurrentAccount({
           isBitcoinBased,
