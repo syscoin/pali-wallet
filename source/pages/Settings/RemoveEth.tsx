@@ -37,7 +37,8 @@ const RemoveEthView = () => {
         // disconnect from all dapps when remove window.ethereum property
         if (dapps.length) {
           for (const dapp of dapps) {
-            controller.dapp.disconnect(dapp.host);
+            if (controller.dapp.isConnected(dapp.host))
+              controller.dapp.disconnect(dapp.host);
           }
         }
         setConfirmed(true);

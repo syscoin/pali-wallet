@@ -109,6 +109,26 @@ div[role='alert'] {
   @apply input-default p-4 w-80 text-sm;
 }
 
+.sender-input .ant-input {
+  @apply input-default pt-4 pb-4 pl-4 pr-10 w-80 text-sm;
+}
+
+.sender-input .ant-input-suffix {
+  position: absolute !important;
+  right: 3.3rem !important;
+  top: 14.8rem !important;
+}
+
+.sender-eth-input .ant-input {
+  @apply input-default pt-4 pb-4 pl-4 pr-10 w-80 text-sm;
+}
+
+.sender-eth-input .ant-input-suffix {
+  position: absolute !important;
+  right: 3.3rem !important;
+  top: 15.5rem !important;
+}
+
 .input-medium .ant-input-suffix {
   @apply absolute right-14;
 }

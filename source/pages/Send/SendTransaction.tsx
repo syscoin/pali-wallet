@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import isNaN from 'lodash/isNaN';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -73,6 +74,7 @@ export const SendTransaction = () => {
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [valueAndCurrency, setValueAndCurrency] = useState<string>('');
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
@@ -81,6 +83,10 @@ export const SendTransaction = () => {
   });
 
   const canGoBack = state?.external ? !state.external : !isExternal;
+
+  const formattedValueAndCurrency = `${Number(tx.value) / 10 ** 18} ${' '} ${
+    tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
+  }`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
@@ -201,6 +207,12 @@ export const SendTransaction = () => {
     };
   }, []); // TODO: add timer
 
+  useEffect(() => {
+    if (tx && tx.value && !isNaN(Number(tx.value))) {
+      setValueAndCurrency(formattedValueAndCurrency);
+    }
+  }, [tx]);
+
   return (
     <Layout title="Transaction" canGoBack={canGoBack}>
       <DefaultModal
@@ -240,13 +252,7 @@ export const SendTransaction = () => {
 
             <p className="flex flex-col my-8 text-center text-xl">
               Send:
-              <span className="text-brand-royalblue">
-                {`${Number(tx.value) / 10 ** 18} ${' '} ${
-                  tx.token
-                    ? tx.token.symbol
-                    : activeNetwork.currency?.toUpperCase()
-                }`}
-              </span>
+              <span className="text-brand-royalblue">{valueAndCurrency}</span>
             </p>
 
             <p className="flex flex-col text-center text-base">
