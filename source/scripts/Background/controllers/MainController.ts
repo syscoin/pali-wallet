@@ -538,6 +538,7 @@ const MainController = (walletState): IMainController => {
     const networkWithCustomParams = {
       ...network,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -547,7 +548,7 @@ const MainController = (walletState): IMainController => {
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return network;
+    return networkWithCustomParams;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
