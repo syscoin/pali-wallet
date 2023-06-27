@@ -333,7 +333,7 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
-        await utilsController.setFiat();
+        await utilsController.setFiat(); // TODO: We should just call the asset on network edition and get added networks coins price with one call from the background;
 
         updateAssetsFromCurrentAccount({
           isBitcoinBased,
@@ -538,6 +538,7 @@ const MainController = (walletState): IMainController => {
     const networkWithCustomParams = {
       ...network,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -547,7 +548,7 @@ const MainController = (walletState): IMainController => {
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return network;
+    return networkWithCustomParams;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
@@ -574,6 +575,12 @@ const MainController = (walletState): IMainController => {
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
 
       return newNetwork;
     }
