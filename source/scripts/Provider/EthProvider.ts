@@ -31,8 +31,9 @@ export const EthProvider = (host: string) => {
     console.log('Before the check', validateTxToAddress);
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
     console.log('After the check', validateTxToAddress);
+    console.log('Transaction', tx);
     //Open Send Component
-    if (validateTxToAddress.wallet || isLegacyTx) {
+    if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
@@ -53,7 +54,10 @@ export const EthProvider = (host: string) => {
       return resp;
     }
 
-    if (decodedTx.method === 'Contract Deployment') {
+    if (
+      decodedTx.method === 'Contract Deployment' ||
+      decodedTx.method === 'Burn'
+    ) {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },

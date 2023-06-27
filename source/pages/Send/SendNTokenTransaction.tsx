@@ -95,6 +95,13 @@ export const SendNTokenTransaction = () => {
         'type',
       ]) as ITxState;
       if (isLegacyTransaction) {
+        let finalLegacyTx = txWithoutType;
+        if (txWithoutType.maxFeePerGas || txWithoutType.maxPriorityFeePerGas) {
+          finalLegacyTx = omitTransactionObjectData(txWithoutType, [
+            'maxFeePerGas',
+            'maxPriorityFeePerGas',
+          ]) as ITxState;
+        }
         try {
           const getGasCorrectlyGasPrice = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
@@ -105,7 +112,7 @@ export const SendNTokenTransaction = () => {
           await ethereumTransaction
             .sendFormattedTransaction(
               {
-                ...txWithoutType,
+                ...finalLegacyTx,
                 gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
                 gasLimit: ethereumTransaction.toBigNumber(
                   validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
@@ -321,7 +328,7 @@ export const SendNTokenTransaction = () => {
             {externalTx.decodedTx.method !== 'Contract Deployment' ? (
               <span>
                 {`${
-                  Number(tx.value) / 10 ** 18
+                  Number(tx.value ? tx.value : 0) / 10 ** 18
                 } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
               </span>
             ) : (
@@ -389,7 +396,8 @@ export const SendNTokenTransaction = () => {
               {externalTx.decodedTx.method !== 'Contract Deployment' ? (
                 <span className="text-brand-royalblue text-xs">
                   {`${
-                    Number(tx.value) / 10 ** 18 + getCalculatedFee
+                    Number(tx.value ? tx.value : 0) / 10 ** 18 +
+                    getCalculatedFee
                   } ${activeNetwork.currency?.toLocaleUpperCase()}`}
                 </span>
               ) : (
