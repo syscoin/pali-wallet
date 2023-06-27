@@ -76,6 +76,8 @@ export const SendNTokenTransaction = () => {
   const isLegacyTransaction =
     Boolean(tx.type === '0x0') || !isEIP1559Compatible;
 
+  const isHardhat = activeNetwork.chainId === 31337;
+
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
   );
@@ -210,8 +212,15 @@ export const SendNTokenTransaction = () => {
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
           await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
-
-        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
+        const baseTx = {
+          from: tx.from,
+          to: tx.to,
+          value: tx.value,
+        };
+        const formattedTx = isHardhat ? baseTx : tx;
+        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(
+          formattedTx as any
+        );
 
         tx.gasLimit =
           (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
