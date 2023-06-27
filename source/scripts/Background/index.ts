@@ -8,13 +8,18 @@ import { setIsPolling } from 'state/vault';
 import { log } from 'utils/logger';
 
 import MasterController, { IMasterController } from './controllers';
-
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
   interface Window {
     controller: Readonly<IMasterController>;
   }
 }
+const isWatchRequestsActive =
+  // @ts-ignore
+  browser.runtime.getManifest().environment?.WATCH_REQUESTS !== undefined &&
+  // @ts-ignore
+  browser.runtime.getManifest().environment?.WATCH_REQUESTS === 'active';
 let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
@@ -28,7 +33,6 @@ const onWalletReady = (windowController: IMasterController) => {
 
 if (!window.controller) {
   window.controller = MasterController(onWalletReady);
-  // setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
 }
 
 browser.runtime.onInstalled.addListener(() => {
@@ -68,7 +72,7 @@ const requestCallback = (details: any) => {
     activeNetwork: { url },
   } = store.getState().vault;
 
-  if (details.url === url) {
+  if (details.url.includes(url) && isWatchRequestsActive) {
     requestCount++;
     console.log('Request count:', requestCount);
   }
@@ -90,7 +94,11 @@ const verifyAllPaliRequests = () => {
 // update and show requests per second
 const updateRequestsPerSecond = () => {
   const { isBitcoinBased } = store.getState().vault;
-  if (!isBitcoinBased && process.env.NODE_ENV === 'development') {
+  if (
+    !isBitcoinBased &&
+    process.env.NODE_ENV === 'development' &&
+    isWatchRequestsActive
+  ) {
     const currentTime = Math.floor(Date.now() / 1000);
     const requestCountPerSecond = requestsPerSecond[currentTime]?.length || 0;
     console.log('Requests per second:', requestCountPerSecond);
@@ -181,8 +189,6 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
-    // window.controller.utils.setFiat();
-
     port.onDisconnect.addListener(() => {
       handleIsOpen(false);
       if (timeout) clearTimeout(timeout);

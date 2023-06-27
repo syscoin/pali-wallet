@@ -44,7 +44,7 @@ const CustomRPCExternal = () => {
       />
 
       <div className="flex flex-col items-center justify-center w-full">
-        <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
+        <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
           <h2 className="text-center text-lg">
             Allow {host} to add a network ?
           </h2>
@@ -79,6 +79,12 @@ const CustomRPCExternal = () => {
                 Currency Symbol
                 <span className="text-brand-royalblue text-xs">
                   {data.symbol}
+                </span>
+              </p>
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                Explorer URL
+                <span className="text-brand-royalblue text-xs">
+                  {data.apiUrl ?? '-'}
                 </span>
               </p>
             </div>

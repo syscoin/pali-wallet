@@ -104,7 +104,6 @@ const MasterController = (
     const { activeAccount, accounts } = store.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
     callGetLatestUpdateForAccount();
-    utils.setFiat();
   };
 
   /**
