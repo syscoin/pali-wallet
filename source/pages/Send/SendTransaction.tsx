@@ -84,8 +84,8 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
-  const formattedValueAndCurrency = `${Number(tx.value) / 10 ** 18} ${' '} ${
-    tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
+  const formattedValueAndCurrency = `${Number(tx?.value) / 10 ** 18} ${' '} ${
+    tx?.token ? tx?.token?.symbol : activeNetwork.currency?.toUpperCase()
   }`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
