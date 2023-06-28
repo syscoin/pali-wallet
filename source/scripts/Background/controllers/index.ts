@@ -7,11 +7,12 @@ import {
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
 import { IPersistState } from 'state/types';
+import { setNetworks } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
@@ -81,6 +82,23 @@ const MasterController = (
     }
   });
   const initializeMainController = () => {
+    if (!store.getState().vault.networks['ethereum'][570]) {
+      store.dispatch(
+        setNetworks({
+          chain: 'ethereum' as INetworkType,
+          network: {
+            chainId: 570,
+            currency: 'sys',
+            default: true,
+            label: 'Rollux',
+            url: 'https://rpc.rollux.com',
+            apiUrl: 'https://explorer.rollux.com/api',
+            explorer: 'https://explorer.rollux.com/',
+          } as INetwork,
+          isEdit: false,
+        })
+      );
+    }
     const walletState = vaultToWalletState(store.getState().vault);
     dapp = Object.freeze(DAppController());
     wallet = Object.freeze(MainController(walletState));
