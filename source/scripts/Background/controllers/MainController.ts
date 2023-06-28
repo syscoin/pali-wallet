@@ -41,6 +41,7 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
+  setAccountsWithLabelEdited,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -589,6 +590,22 @@ const MainController = (walletState): IMainController => {
     );
   };
 
+  const editAccountLabel = (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    keyringManager.updateAccountLabel(label, accountId, accountType);
+
+    store.dispatch(
+      setAccountsWithLabelEdited({
+        label,
+        accountId,
+        accountType,
+      })
+    );
+  };
+
   const removeKeyringNetwork = (
     chain: INetworkType,
     chainId: number,
@@ -1131,6 +1148,7 @@ const MainController = (walletState): IMainController => {
     unlockFromController,
     lock,
     createAccount,
+    editAccountLabel,
     account: walletController.account,
     setAccount,
     setAutolockTimer,

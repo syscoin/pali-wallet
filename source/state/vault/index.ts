@@ -76,6 +76,18 @@ const VaultState = createSlice({
     ) {
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
     },
+    setAccountsWithLabelEdited(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        label: string;
+      }>
+    ) {
+      const { label, accountId, accountType } = action.payload;
+
+      state.accounts[accountType][accountId].label = label;
+    },
     setNetworkChange(
       state: IVaultState,
       action: PayloadAction<{
@@ -380,6 +392,7 @@ const VaultState = createSlice({
 
 export const {
   setAccounts,
+  setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
