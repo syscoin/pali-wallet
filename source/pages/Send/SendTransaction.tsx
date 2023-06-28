@@ -18,6 +18,7 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import removeScientificNotation from 'utils/removeScientificNotation';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
@@ -84,9 +85,9 @@ export const SendTransaction = () => {
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
-  const formattedValueAndCurrency = `${Number(tx.value) / 10 ** 18} ${' '} ${
-    tx.token ? tx.token.symbol : activeNetwork.currency?.toUpperCase()
-  }`;
+  const formattedValueAndCurrency = `${removeScientificNotation(
+    Number(tx?.value ? tx?.value : 0) / 10 ** 18
+  )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
@@ -208,9 +209,7 @@ export const SendTransaction = () => {
   }, []); // TODO: add timer
 
   useEffect(() => {
-    if (tx && tx.value && !isNaN(Number(tx.value))) {
-      setValueAndCurrency(formattedValueAndCurrency);
-    }
+    setValueAndCurrency(formattedValueAndCurrency);
   }, [tx]);
 
   return (
