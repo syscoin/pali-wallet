@@ -441,7 +441,7 @@ export const AccountHeader: React.FC = () => {
   }, [accounts[activeAccount.type][activeAccount.id]?.address]);
 
   const editAccount = (account: IKeyringAccountState) => {
-    navigate('/settings/account/edit-account', {
+    navigate('/settings/edit-account', {
       state: account,
     });
   };

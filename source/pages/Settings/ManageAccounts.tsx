@@ -14,7 +14,7 @@ const ManageAccountsView = () => {
   const { navigate } = useUtils();
 
   const editAccount = (account: IKeyringAccountState) => {
-    navigate('/settings/account/edit-account', {
+    navigate('/settings/edit-account', {
       state: account,
     });
   };
