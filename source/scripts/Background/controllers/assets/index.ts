@@ -4,7 +4,11 @@ import { IPaliAccount } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
-import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
+import {
+  IAssetsManager,
+  IAssetsManagerUtilsResponse,
+  ISysTokensAssetReponse,
+} from './types';
 
 const AssetsManager = (): IAssetsManager => {
   const evmAssetsController = EvmAssetsController();
@@ -22,7 +26,7 @@ const AssetsManager = (): IAssetsManager => {
             currentAccount.xpub,
             activeNetworkUrl,
             networkChainId,
-            currentAccount.assets.syscoin
+            currentAccount.assets.syscoin as ISysTokensAssetReponse[]
           );
 
           return {
