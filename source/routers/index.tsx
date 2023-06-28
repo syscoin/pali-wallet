@@ -206,10 +206,6 @@ export const Router = () => {
             element={<ProtectedRoute element={<EditAccount />} />}
           />
 
-          <Route
-            path="private-key"
-            element={<ProtectedRoute element={<PrivateKey />} />}
-          />
           {/* /settings/account */}
           <Route path="account">
             <Route
