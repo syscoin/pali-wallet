@@ -1,6 +1,6 @@
-import { ethers } from 'ethers';
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
-import { INetworksVault, IPaliAccount } from 'state/vault/types';
+import { IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
@@ -13,7 +13,7 @@ export interface IAssetsManager {
 
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
-  syscoin: ISysTokensAssetReponse[];
+  syscoin: ITokenSysProps[];
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
@@ -21,7 +21,7 @@ export interface IAssetsManagerUtils {
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networkChainId: number,
-    networks: INetworksVault
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
 export interface ISysAssetsController {
@@ -40,7 +40,7 @@ export interface ISysAssetsController {
 
 export interface ISysTokensAssetReponse {
   assetGuid: string;
-  balance: string;
+  balance: number;
   chainId?: number;
   decimals: number;
   name: string;
@@ -66,15 +66,17 @@ export interface IEvmAssetsController {
     contractAddress: string,
     symbol: string,
     decimals: number,
-    provider: ethers.providers.JsonRpcProvider
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<IAddCustomTokenResponse>;
   addEvmDefaultToken: (
     token: ITokenEthProps,
     accountAddress: string,
-    networkUrl: string
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<ITokenEthProps | boolean>;
   updateAllEvmTokens: (
     account: IPaliAccount,
-    networks: INetworksVault
+
+    currentNetworkChainId: number,
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<ITokenEthProps[]>;
 }

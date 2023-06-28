@@ -11,6 +11,7 @@ export const fetchGasAndDecodeFunction = async (
   const {
     wallet: { ethereumTransaction },
   } = getController();
+  const isHardhat = activeNetwork.chainId === 31337;
 
   const { maxFeePerGas, maxPriorityFeePerGas } =
     await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
@@ -28,7 +29,15 @@ export const fetchGasAndDecodeFunction = async (
     chainId: activeNetwork.chainId,
     gasLimit: ethereumTransaction.toBigNumber(0), //todo: adjust to get from new keyringmanager
   };
-  const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(formTx); //todo: adjust to get from new keyringmanager
+  const baseTx = {
+    from: dataTx.from,
+    to: dataTx.to,
+    value: dataTx?.value ? dataTx.value : 0,
+    data: dataTx.data,
+  } as any;
+  const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(
+    isHardhat ? baseTx : formTx
+  ); //todo: adjust to get from new keyringmanager
   formTx.gasLimit =
     (dataTx?.gas && Number(dataTx?.gas) > Number(getTxGasLimitResult)) ||
     (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(getTxGasLimitResult))

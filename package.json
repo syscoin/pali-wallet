@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
@@ -13,12 +13,13 @@
     "yarn": ">= 1.0.0"
   },
   "scripts": {
-    "dev:chrome": "cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
-    "dev:firefox": "cross-env NODE_ENV=development cross-env TARGET_BROWSER=firefox webpack --watch",
-    "dev:opera": "cross-env NODE_ENV=development cross-env TARGET_BROWSER=opera webpack --watch",
-    "build:chrome": "cross-env NODE_ENV=production cross-env TARGET_BROWSER=chrome webpack",
-    "build:firefox": "cross-env NODE_ENV=production cross-env TARGET_BROWSER=firefox webpack",
-    "build:opera": "cross-env NODE_ENV=production cross-env TARGET_BROWSER=opera webpack",
+    "dev:chrome": "jq 'del(.environment) | .permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
+    "dev-watch-requests:chrome": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end | .environment = {\"WATCH_REQUESTS\": \"active\"}' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
+    "dev:firefox": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=firefox webpack --watch",
+    "dev:opera": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=opera webpack --watch",
+    "build:chrome": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=chrome webpack",
+    "build:firefox": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=firefox webpack",
+    "build:opera": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=opera webpack",
     "build": "yarn run build:chrome && yarn run build:firefox && yarn run build:opera",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
@@ -31,7 +32,9 @@
     "test:e2e": "NODE_ENV=test jest tests/e2e",
     "test:e2e:silent": "NODE_ENV=test ENABLE_CHROME_LOGGING=false yarn test:e2e",
     "postinstall": "patch-package",
-    "test-all": "yarn lint && yarn test:unit"
+    "test-all": "yarn lint && yarn test:unit",
+    "generate-hardhat-log": "npx hardhat node --verbose > hardhat.log",
+    "watch-local-rpc": "tail -f hardhat.log"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
@@ -45,9 +48,9 @@
     "@babel/runtime": "^7.21.5",
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
-    "@pollum-io/sysweb3-keyring": "1.0.455",
-    "@pollum-io/sysweb3-network": "1.0.92",
-    "@pollum-io/sysweb3-utils": "1.1.223",
+    "@pollum-io/sysweb3-keyring": "1.0.465",
+    "@pollum-io/sysweb3-network": "1.0.94",
+    "@pollum-io/sysweb3-utils": "1.1.227",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.235",
@@ -105,7 +108,7 @@
     "redux-watch": "^1.2.0",
     "sass": "^1.62.1",
     "selenium-webdriver": "^4.1.1",
-    "syscoinjs-lib": "^1.0.217",
+    "syscoinjs-lib": "1.0.218",
     "syscointx-js": "^1.0.106",
     "tailwindcss": "^3.3.2",
     "tippy.js": "^6.3.7",
@@ -123,6 +126,7 @@
     "@babel/plugin-transform-modules-commonjs": "^7.21.5",
     "@babel/plugin-transform-runtime": "^7.21.4",
     "@babel/preset-env": "^7.21.5",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@types/node": "^18.16.3",
     "@types/react": "^18.2.5",
     "@types/react-dom": "^18.2.3",
@@ -140,6 +144,7 @@
     "eslint-plugin-react-hooks": "^4.2.0",
     "eslint-plugin-typescript-sort-keys": "^2.3.0",
     "fork-ts-checker-webpack-plugin": "^8.0.0",
+    "hardhat": "^2.15.0",
     "html-webpack-plugin": "^5.5.1",
     "husky": "^7.0.4",
     "mini-css-extract-plugin": "^2.7.5",

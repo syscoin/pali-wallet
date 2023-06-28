@@ -9,6 +9,7 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
   IWalletState,
+  CustomJsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -40,6 +41,7 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
+  setAccountsWithLabelEdited,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -62,8 +64,10 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const transactionsManager = TransactionsManager();
-  const balancesMananger = BalancesManager();
+  const web3Provider: CustomJsonRpcProvider =
+    keyringManager.ethereumTransaction.web3Provider;
+  let transactionsManager = TransactionsManager(web3Provider);
+  let balancesMananger = BalancesManager(web3Provider);
   const cancellablePromises = new CancellablePromises();
 
   let currentPromise: {
@@ -78,6 +82,7 @@ const MainController = (walletState): IMainController => {
       reject: (reason?: any) => void
     ) => void
   ): { cancel: () => void; promise: Promise<T> } => {
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     let cancel = () => {};
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
@@ -115,7 +120,7 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setLastLogin());
   };
 
-  const unlock = async (pwd: string): Promise<boolean> => {
+  const unlockFromController = async (pwd: string): Promise<boolean> => {
     const unlocked = await keyringManager.unlock(pwd);
     if (!unlocked) throw new Error('Invalid password');
     store.dispatch(setLastLogin());
@@ -213,26 +218,42 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsTimerActive(isEnabled));
   };
 
-  const createAccount = async (label?: string): Promise<IPaliAccount> => {
+  const createAccount = async (
+    isBitcoinBased: boolean,
+    label?: string
+  ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
+    let newAccountWithAssets: IPaliAccount;
 
-    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
-      newAccount.xpub
-    );
+    switch (isBitcoinBased) {
+      case true:
+        const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+          newAccount.xpub
+        );
 
-    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
-      newAccount.xpub
-    );
+        const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+          newAccount.xpub
+        );
 
-    const newAccountWithAssets: IPaliAccount = {
-      ...newAccount,
-      assets: {
-        syscoin: initialSysAssetsForAccount,
-        ethereum: [],
-      },
-      transactions: initialTxsForAccount,
-    };
-
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: initialSysAssetsForAccount,
+            ethereum: [],
+          },
+          transactions: initialTxsForAccount,
+        };
+        break;
+      case false:
+        newAccountWithAssets = {
+          ...newAccount,
+          assets: {
+            syscoin: [],
+            ethereum: [],
+          },
+          transactions: [],
+        };
+    }
     store.dispatch(
       addAccountToStore({
         account: newAccountWithAssets,
@@ -245,7 +266,6 @@ const MainController = (walletState): IMainController => {
         type: KeyringAccountType.HDAccount,
       })
     );
-
     return newAccountWithAssets;
   };
 
@@ -318,7 +338,7 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
-        await utilsController.setFiat();
+        await utilsController.setFiat(); // TODO: We should just call the asset on network edition and get added networks coins price with one call from the background;
 
         updateAssetsFromCurrentAccount({
           isPolling: false,
@@ -449,6 +469,12 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
       resolve({
         activeChain,
         chain,
@@ -502,7 +528,7 @@ const MainController = (walletState): IMainController => {
       //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data);
+        : await getEthRpc(data, false); //Here we are always either edditing the network to add a new RPC or adding a new Network
 
       return formattedNetwork;
     } catch (error) {
@@ -521,6 +547,7 @@ const MainController = (walletState): IMainController => {
     const networkWithCustomParams = {
       ...network,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -530,9 +557,8 @@ const MainController = (walletState): IMainController => {
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return network;
+    return networkWithCustomParams;
   };
-
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
     oldRpc: INetwork
@@ -558,11 +584,33 @@ const MainController = (walletState): IMainController => {
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
 
       return newNetwork;
     }
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
+  };
+
+  const editAccountLabel = (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    keyringManager.updateAccountLabel(label, accountId, accountType);
+
+    store.dispatch(
+      setAccountsWithLabelEdited({
+        label,
+        accountId,
+        accountType,
+      })
     );
   };
 
@@ -915,7 +963,7 @@ const MainController = (walletState): IMainController => {
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
   }) => {
-    const { accounts, networks } = store.getState().vault;
+    const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -929,7 +977,7 @@ const MainController = (walletState): IMainController => {
                 isBitcoinBased,
                 activeNetwork.url,
                 activeNetwork.chainId,
-                networks
+                keyringManager.ethereumTransaction.web3Provider
               );
 
             const validateUpdatedAndPreviousAssetsLength =
@@ -957,10 +1005,15 @@ const MainController = (walletState): IMainController => {
             const validateIfBothUpdatedIsEmpty =
               isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
 
+            const validateIfNotNullEthValues = updatedAssets.ethereum.some(
+              (value) => isNil(value)
+            );
+
             const validateIfIsInvalidDispatch =
               validateUpdatedAndPreviousAssetsLength ||
               validateIfUpdatedAssetsStayEmpty ||
-              validateIfBothUpdatedIsEmpty;
+              validateIfBothUpdatedIsEmpty ||
+              validateIfNotNullEthValues;
 
             if (validateIfIsInvalidDispatch) {
               resolve();
@@ -970,6 +1023,7 @@ const MainController = (walletState): IMainController => {
             if (!isPolling) {
               store.dispatch(setIsLoadingAssets(true));
             }
+
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
@@ -1124,9 +1178,10 @@ const MainController = (walletState): IMainController => {
   return {
     createWallet,
     forgetWallet,
-    unlock, //todo we need to adjust unlock type
+    unlockFromController,
     lock,
     createAccount,
+    editAccountLabel,
     account: walletController.account,
     setAccount,
     setAutolockTimer,

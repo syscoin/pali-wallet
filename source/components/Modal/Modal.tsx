@@ -21,6 +21,10 @@ interface IDefaultModal {
   title: string;
 }
 
+interface IWarningModal extends IDefaultModal {
+  warningMessage: string;
+}
+
 interface IErrorModal extends IDefaultModal {
   log: string;
 }
@@ -92,6 +96,40 @@ export const DefaultModal = ({
 
       <div className="mt-2">
         <p className="text-white text-sm">{description}</p>
+      </div>
+
+      <div className="flex items-center justify-center mt-4">
+        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+          {buttonText}
+        </NeutralButton>
+      </div>
+    </div>
+  </Modal>
+);
+
+export const WarningModal = ({
+  buttonText = 'Ok',
+  description = '',
+  warningMessage = '',
+  onClose,
+  show,
+  title = '',
+}: IWarningModal) => (
+  <Modal show={show} onClose={onClose}>
+    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+      <Dialog.Title
+        as="h3"
+        className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
+      >
+        {title}
+      </Dialog.Title>
+
+      <div className="mt-2">
+        <p className="text-white text-sm">{description}</p>
+      </div>
+
+      <div className="mt-2">
+        <p className="text-white text-xs disabled">{warningMessage}</p>
       </div>
 
       <div className="flex items-center justify-center mt-4">

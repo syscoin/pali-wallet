@@ -19,7 +19,7 @@ export const EvmAssetsList = () => {
   const assets = accounts[activeAccount.type][activeAccount.id].assets;
 
   const filteredAssets = assets.ethereum?.filter(
-    (token: any) => token.chainId === chainId
+    (token) => token.chainId === chainId
   );
 
   const { navigate } = useUtils();

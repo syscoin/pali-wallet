@@ -4,6 +4,8 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
+
 export interface IVaultState {
   accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
   activeAccount: {
@@ -45,8 +47,8 @@ export interface IChangingConnectedAccount {
 
 export interface IPaliAccount extends IKeyringAccountState {
   assets: {
-    ethereum: any[]; //TODO: add type
-    syscoin: any[]; //TODO: add type
+    ethereum: ITokenEthProps[];
+    syscoin: ITokenSysProps[];
   };
   transactions: any; //TODO: add type
 }
