@@ -21,17 +21,12 @@ export const EthProvider = (host: string) => {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
-    console.log('Web3Provider status', web3Provider.network.chainId);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
     ) as IDecodedTx;
-    console.log('Decoded Tx', decodedTx);
-    console.log('Before the check', validateTxToAddress);
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
-    console.log('After the check', validateTxToAddress);
-    console.log('Transaction', tx);
     //Open Send Component
     if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
       const resp = await popupPromise({
