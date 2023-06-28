@@ -105,7 +105,7 @@ export const SendNTokenTransaction = () => {
           ]) as ITxState;
         }
         try {
-          const getGasCorrectlyGasPrice = Boolean(
+          const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
@@ -115,7 +115,7 @@ export const SendNTokenTransaction = () => {
             .sendFormattedTransaction(
               {
                 ...finalLegacyTx,
-                gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
+                gasPrice: ethers.utils.hexlify(Number(getLegacyGasFee)),
                 gasLimit: ethereumTransaction.toBigNumber(
                   validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
                 ),
