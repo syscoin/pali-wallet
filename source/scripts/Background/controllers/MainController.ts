@@ -538,6 +538,7 @@ const MainController = (walletState): IMainController => {
     const networkWithCustomParams = {
       ...network,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -547,7 +548,7 @@ const MainController = (walletState): IMainController => {
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return network;
+    return networkWithCustomParams;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
@@ -960,10 +961,15 @@ const MainController = (walletState): IMainController => {
             const validateIfBothUpdatedIsEmpty =
               isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
 
+            const validateIfNotNullEthValues = updatedAssets.ethereum.some(
+              (value) => isNil(value)
+            );
+
             const validateIfIsInvalidDispatch =
               validateUpdatedAndPreviousAssetsLength ||
               validateIfUpdatedAssetsStayEmpty ||
-              validateIfBothUpdatedIsEmpty;
+              validateIfBothUpdatedIsEmpty ||
+              validateIfNotNullEthValues;
 
             if (validateIfIsInvalidDispatch) {
               resolve();
@@ -973,6 +979,7 @@ const MainController = (walletState): IMainController => {
             if (!isPolling) {
               store.dispatch(setIsLoadingAssets(true));
             }
+
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
