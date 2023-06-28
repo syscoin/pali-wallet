@@ -375,7 +375,7 @@ const AccountMenu: React.FC = () => {
 
           <Menu.Item>
             <li
-              onClick={() => navigate('/settings/account/manage-accounts')}
+              onClick={() => navigate('/settings/manage-accounts')}
               className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
             >
               <Icon name="edit" className="mb-2 ml-1 mr-2 text-brand-white" />
