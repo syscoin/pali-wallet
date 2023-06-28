@@ -60,7 +60,7 @@ export const Start = (props: any) => {
 
       return navigate(externalRoute);
     } catch (e) {
-      setErrorMessage(e.message ?? 'Wrong password');
+      setErrorMessage('Wrong password');
     }
   };
 

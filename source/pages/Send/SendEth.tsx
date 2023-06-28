@@ -32,7 +32,7 @@ export const SendEth = () => {
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets.ethereum?.length > 0) {
       const getAsset = activeAccount.assets.ethereum.find(
-        (asset: any) => asset.contractAddress === item
+        (asset) => asset.contractAddress === item
       );
 
       if (getAsset) {
@@ -275,7 +275,7 @@ export const SendEth = () => {
                     hasAccountAssets
                       ? 'mixed-double-border-input'
                       : 'mixed-right-border-input'
-                  }`}
+                  } amount-input`}
                 type="number"
                 placeholder={`${
                   selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'

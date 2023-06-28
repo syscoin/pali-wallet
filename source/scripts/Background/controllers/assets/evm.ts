@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
+import toNumber from 'lodash/toNumber';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {
@@ -246,10 +248,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         .filter((result) => result.success)
         .map(({ result }) => result);
 
-      return validateAndManageUserAssets(
-        true,
-        updatedTokens
-      ) as ITokenEthProps[];
+      const tokens = updatedTokens.some((entry) => isNil(entry))
+        ? [...account.assets.ethereum]
+        : updatedTokens.filter((entry) => !isNil(entry));
+
+      return validateAndManageUserAssets(true, tokens) as ITokenEthProps[];
     } catch (error) {
       console.error(
         "Pali utils: Couldn't update assets due to the following issue ",

@@ -8,11 +8,11 @@ import {
   blockingRestrictedMethods,
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
-import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
+import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
@@ -21,16 +21,19 @@ export const EthProvider = (host: string) => {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
-
+    console.log('Web3Provider status', web3Provider.network.chainId);
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
     ) as IDecodedTx;
-
+    console.log('Decoded Tx', decodedTx);
+    console.log('Before the check', validateTxToAddress);
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
-
+    console.log('After the check', validateTxToAddress);
+    console.log('Transaction', tx);
     //Open Send Component
-    if (validateTxToAddress.wallet) {
+    if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
@@ -51,7 +54,10 @@ export const EthProvider = (host: string) => {
       return resp;
     }
 
-    if (decodedTx.method === 'Contract Deployment') {
+    if (
+      decodedTx.method === 'Contract Deployment' ||
+      decodedTx.method === 'Burn'
+    ) {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },

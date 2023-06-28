@@ -1,3 +1,4 @@
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
@@ -62,4 +63,17 @@ export const verifyIfIsTestnet = async (
         (validationChain) => validationChain === chainId
       )
   );
+};
+
+export const verifyNetworkEIP1559Compatibility = async (
+  web3Provider: CustomJsonRpcProvider
+) => {
+  try {
+    const latestBlock = await web3Provider.getBlock('latest');
+    const isCompatible = latestBlock?.baseFeePerGas !== undefined;
+
+    return isCompatible;
+  } catch (error) {
+    throw new Error(error);
+  }
 };

@@ -48,7 +48,7 @@
     "@babel/runtime": "^7.21.5",
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
-    "@pollum-io/sysweb3-keyring": "1.0.462",
+    "@pollum-io/sysweb3-keyring": "1.0.464",
     "@pollum-io/sysweb3-network": "1.0.94",
     "@pollum-io/sysweb3-utils": "1.1.227",
     "@reduxjs/toolkit": "^1.4.0",
