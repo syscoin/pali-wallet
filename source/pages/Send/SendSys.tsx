@@ -404,7 +404,7 @@ export const SendSys = () => {
             <span
               className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
               onClick={() =>
-                form.setFieldValue('amount', balance - 5 * recommendedFee)
+                form.setFieldValue('amount', balance - 1.01 * recommendedFee)
               }
             >
               Max
