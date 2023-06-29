@@ -91,12 +91,12 @@ backgroundPort.onMessage.addListener(({ id, data }) => {
 });
 
 // set localStorage value for all tabs to persist inject state
-window.addEventListener('storage', (event) => {
-  if (event.key === 'hasEthProperty') {
-    const newValue = event.newValue;
-    localStorage.setItem(event.key, newValue);
-  }
-});
+// window.addEventListener('storage', (event) => {
+//   if (event.key === 'hasEthProperty') {
+//     const newValue = event.newValue;
+//     localStorage.setItem(event.key, newValue);
+//   }
+// });
 
 const doctypeCheck = () => {
   const { doctype } = window.document;

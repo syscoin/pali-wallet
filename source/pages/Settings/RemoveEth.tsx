@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { handleHasEthProperty } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -27,12 +28,14 @@ const RemoveEthView = () => {
       case true:
         controller.wallet.addWindowEthProperty();
         controller.wallet.setHasEthProperty(true);
+        handleHasEthProperty(true);
         setConfirmed(true);
         setLoading(false);
         break;
       case false:
         controller.wallet.removeWindowEthProperty();
         controller.wallet.setHasEthProperty(false);
+        handleHasEthProperty(false);
         const dapps = Object.values(controller.dapp.getAll());
         // disconnect from all dapps when remove window.ethereum property
         if (dapps.length) {

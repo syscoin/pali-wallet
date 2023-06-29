@@ -135,6 +135,19 @@ browser.runtime.onMessage.addListener(async ({ type, target }) => {
       if (target === 'background' && process.env.NODE_ENV === 'development')
         browser.webRequest.onCompleted.removeListener(requestCallback);
       break;
+    case 'addHasEthProperty':
+      if (target === 'background') {
+        window.localStorage.setItem('hasEthProperty', JSON.stringify(true));
+      }
+
+      break;
+
+    case 'removeHasEthProperty':
+      if (target === 'background') {
+        window.localStorage.setItem('hasEthProperty', JSON.stringify(false));
+      }
+
+      break;
   }
 });
 
@@ -319,12 +332,29 @@ export const removeVerifyPaliRequestListener = () => {
     target: 'background',
   });
 };
-
 export const resetPaliRequestsCount = () => {
   browser.runtime.sendMessage({
     type: 'resetPaliRequestsCount',
     target: 'background',
   });
+};
+
+export const handleHasEthProperty = (value: boolean) => {
+  switch (value) {
+    case true:
+      browser.runtime.sendMessage({
+        type: 'addHasEthProperty',
+        target: 'background',
+      });
+      break;
+
+    case false:
+      browser.runtime.sendMessage({
+        type: 'removeHasEthProperty',
+        target: 'background',
+      });
+      break;
+  }
 };
 
 wrapStore(store, { portName: STORE_PORT });
