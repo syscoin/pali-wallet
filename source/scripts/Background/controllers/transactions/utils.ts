@@ -1,3 +1,4 @@
+import { ethers } from 'ethers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -43,42 +44,80 @@ export const findUserTxsInProviderByBlocksRange = async (
   userAddress: string,
   startBlock: number,
   endBlock: number
-): Promise<IEvmTransactionResponse[]> => {
+): Promise<IEvmTransactionResponse[] | any> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
   const queue = new Queue(3);
 
-  rangeBlocksToRun.forEach((blockNumber, _, arr) => {
-    if (blockNumber < 0) {
-      blockNumber = blockNumber * -1;
-    }
-    const lastBlockNumber = arr[arr.length - 1] + 1; // getBlock returns us the last confirmed block so we add 1 to consider the current pending block
-    queue.execute(async () => {
-      const currentBlock = await provider.send('eth_getBlockByNumber', [
-        `0x${blockNumber.toString(16)}`,
-        true,
-      ]);
-      const filterTxsByAddress = currentBlock.transactions
-        .filter(
-          (tx) =>
-            tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
-            tx?.to?.toLowerCase() === userAddress.toLowerCase()
-        )
-        .map((txWithConfirmations) => ({
-          ...txWithConfirmations,
-          chainId: Number(txWithConfirmations.chainId),
-          confirmations:
-            lastBlockNumber - Number(txWithConfirmations.blockNumber),
-        }));
-      return flatMap(filterTxsByAddress);
+  const batchRequest = rangeBlocksToRun.map((blockNumber) =>
+    provider.sendBatch('eth_getBlockByNumber', [
+      `0x${blockNumber.toString(16)}`,
+      true,
+    ])
+  );
+
+  console.log('batchRequest', batchRequest);
+
+  Promise.all(batchRequest)
+    .then((responses) => {
+      // Handle the responses
+      console.log(responses);
+    })
+    .catch((error) => {
+      // Handle any errors
+      console.error(error);
     });
-  });
 
-  const results = await queue.done();
-  const userProviderTxs = results
-    .filter((result) => result.success)
-    .map(({ result }) => result);
+  // console.log('constructBatch', constructBatch);
 
-  return flatMap(userProviderTxs);
+  // const batchResponse = await Promise.all([constructBatch]);
+
+  // console.log('batchResponse', batchResponse);
+
+  // const batchResult = await Promise.all(
+  //   batchResponse.map((res) => {
+  //     console.log('RES', res);
+
+  //     return {
+  //       wait: res.wait(),
+  //       result: res.json(),
+  //     };
+  //   })
+  // );
+
+  // console.log('batchResult', batchResult);
+
+  // rangeBlocksToRun.forEach((blockNumber, _, arr) => {
+  //   if (blockNumber < 0) {
+  //     blockNumber = blockNumber * -1;
+  //   }
+  //   const lastBlockNumber = arr[arr.length - 1] + 1; // getBlock returns us the last confirmed block so we add 1 to consider the current pending block
+  //   queue.execute(async () => {
+  //     const currentBlock = await provider.send('eth_getBlockByNumber', [
+  //       `0x${blockNumber.toString(16)}`,
+  //       true,
+  //     ]);
+  //     const filterTxsByAddress = currentBlock.transactions
+  //       .filter(
+  //         (tx) =>
+  //           tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
+  //           tx?.to?.toLowerCase() === userAddress.toLowerCase()
+  //       )
+  //       .map((txWithConfirmations) => ({
+  //         ...txWithConfirmations,
+  //         chainId: Number(txWithConfirmations.chainId),
+  //         confirmations:
+  //           lastBlockNumber - Number(txWithConfirmations.blockNumber),
+  //       }));
+  //     return flatMap(filterTxsByAddress);
+  //   });
+  // });
+
+  // const results = await queue.done();
+  // const userProviderTxs = results
+  //   .filter((result) => result.success)
+  //   .map(({ result }) => result);
+
+  // return flatMap(userProviderTxs);
 };
 
 export const treatDuplicatedTxs = (
