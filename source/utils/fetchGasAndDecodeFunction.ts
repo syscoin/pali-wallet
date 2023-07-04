@@ -11,8 +11,15 @@ export const fetchGasAndDecodeFunction = async (
   const {
     wallet: { ethereumTransaction },
   } = getController();
+  const currentBlock = await ethereumTransaction.web3Provider.send(
+    'eth_getBlockByNumber',
+    ['latest', false]
+  );
+  const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+  let gasLimitResult = ethereumTransaction.toBigNumber(
+    gasLimitFromCurrentBlock
+  );
   let gasError = false;
-  let gasLimitResult = ethereumTransaction.toBigNumber(21000);
 
   const { maxFeePerGas, maxPriorityFeePerGas } =
     await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
@@ -40,26 +47,6 @@ export const fetchGasAndDecodeFunction = async (
 
   try {
     gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx); //todo: adjust to get from new keyringmanager
-  } catch (error) {
-    console.error(error);
-  }
-
-  try {
-    const currentBlock = await ethereumTransaction.web3Provider.send(
-      'eth_getBlockByNumber',
-      ['latest', false]
-    );
-
-    if (currentBlock?.gasLimit) {
-      const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
-      gasLimitResult = ethereumTransaction.toBigNumber(
-        gasLimitFromCurrentBlock
-      );
-    } else {
-      throw new Error(
-        'It was not possible to estimate gas with tx data, and the current block does not have gasLimit property.'
-      );
-    }
   } catch (error) {
     console.error(error);
     gasError = true;
