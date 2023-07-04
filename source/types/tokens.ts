@@ -30,3 +30,8 @@ export interface ITokenSysProps {
   type?: string;
   updateCapabilityFlags?: number;
 }
+
+export interface IAddCustomTokenMetadataInfos {
+  decimals: number | string; // String to accept empty values
+  symbol: string;
+}
