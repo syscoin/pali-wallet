@@ -36,6 +36,9 @@ export const initialState: IVaultState = {
     id: 0,
     type: KeyringAccountType.HDAccount,
   },
+  advancedSettings: {
+    refresh: false,
+  },
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
   activeNetwork: {
@@ -260,6 +263,18 @@ const VaultState = createSlice({
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
     },
+    setAdvancedSettings(
+      state: IVaultState,
+      action: PayloadAction<{ advancedProperty: string; isActive: boolean }>
+    ) {
+      const { advancedProperty, isActive } = action.payload;
+      if (state.advancedSettings[advancedProperty] !== undefined) {
+        state.advancedSettings = {
+          ...state.advancedSettings,
+          [advancedProperty]: isActive,
+        };
+      }
+    },
     setChangingConnectedAccount(
       state: IVaultState,
       action: PayloadAction<IChangingConnectedAccount>
@@ -419,6 +434,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
+  setAdvancedSettings,
   setIsPolling,
 } = VaultState.actions;
 

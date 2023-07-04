@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import eth from 'assets/images/eth.png';
+import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -14,9 +15,10 @@ import { truncate, getHost } from 'utils/index';
 export const GeneralMenu: React.FC = () => {
   const { wallet, dapp, refresh } = getController();
 
-  const { isChangingConnectedAccount } = useSelector(
-    (state: RootState) => state.vault.changingConnectedAccount
-  );
+  const {
+    changingConnectedAccount: { isChangingConnectedAccount },
+    advancedSettings,
+  } = useSelector((state: RootState) => state.vault);
 
   const { navigate } = useUtils();
 
@@ -92,12 +94,14 @@ export const GeneralMenu: React.FC = () => {
         </div>
       </Tooltip>
 
-      <div
-        onClick={() => refresh()}
-        className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
-      >
-        <Icon name="reload" />
-      </div>
+      {advancedSettings['refresh'] && (
+        <div
+          onClick={() => refresh()}
+          className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
+        >
+          <Icon name="reload" />
+        </div>
+      )}
 
       <Menu.Button as="button" className="mx-1.5">
         <div id="general-settings-button">
@@ -208,6 +212,22 @@ export const GeneralMenu: React.FC = () => {
               />
 
               <span className="px-3">Forget wallet</span>
+            </li>
+          </Menu.Item>
+
+          <Menu.Item>
+            <li
+              onClick={() => navigate('/settings/advanced')}
+              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+            >
+              <img
+                src={slider}
+                width="23px"
+                height="23px"
+                className="ml-1 mr-3 text-brand-white"
+              />
+
+              <span className="px-3">Advanced</span>
             </li>
           </Menu.Item>
         </Menu.Items>
