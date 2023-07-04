@@ -38,8 +38,7 @@ const EvmTransactionsController = (
     try {
       const queue = new Queue(3);
       const latestBlockNumber = await web3Provider.getBlockNumber();
-
-      const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
+      const fromBlock = latestBlockNumber - 30;
 
       const txs = await getUserTransactionByDefaultProvider(
         currentAccount,
