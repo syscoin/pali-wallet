@@ -42,6 +42,26 @@ export const fetchGasAndDecodeFunction = async (
     gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx); //todo: adjust to get from new keyringmanager
   } catch (error) {
     console.error(error);
+  }
+
+  try {
+    const currentBlock = await ethereumTransaction.web3Provider.send(
+      'eth_getBlockByNumber',
+      ['latest', false]
+    );
+
+    if (currentBlock?.gasLimit) {
+      const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+      gasLimitResult = ethereumTransaction.toBigNumber(
+        gasLimitFromCurrentBlock
+      );
+    } else {
+      throw new Error(
+        'It was not possible to estimate gas with tx data, and the current block does not have gasLimit property.'
+      );
+    }
+  } catch (error) {
+    console.error(error);
     gasError = true;
   }
   formTx.gasLimit =
