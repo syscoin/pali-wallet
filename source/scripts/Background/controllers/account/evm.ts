@@ -6,6 +6,7 @@ import { setAccountPropertyByIdAndType } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
+  deleteTokenInfo: (tokenAddress: string) => void;
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
 }
 
@@ -71,8 +72,41 @@ const EthAccountController = (): IEthAccountController => {
     }
   };
 
+  const deleteTokenInfo = (tokenAddress: string) => {
+    try {
+      const { activeAccount, accounts } = store.getState().vault;
+
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.ethereum?.find(
+        (asset: ITokenEthProps) => asset.contractAddress === tokenAddress
+      );
+
+      if (!tokenExists) throw new Error("Token doesn't exists!");
+
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          property: 'assets',
+          value: {
+            ...accounts[activeAccount.type][activeAccount.id].assets,
+            ethereum: accounts[activeAccount.type][
+              activeAccount.id
+            ].assets.ethereum.filter(
+              (currentTokens) => currentTokens.contractAddress !== tokenAddress
+            ),
+          },
+        })
+      );
+    } catch (error) {
+      throw new Error(`Could not delete token. Error: ${error}`);
+    }
+  };
+
   return {
     saveTokenInfo,
+    deleteTokenInfo,
   };
 };
 export default EthAccountController;
