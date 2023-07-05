@@ -1,6 +1,5 @@
 import { Form, Input } from 'antd';
-import * as React from 'react';
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -11,13 +10,20 @@ import {
 import { Card, DefaultModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { IAddCustomTokenMetadataInfos } from 'types/tokens';
+import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
 
 import { CustomTokenErrorModal } from './CustomTokenErrorModal';
 
-export const CustomToken = () => {
+interface ICustomTokenComponentProps {
+  isEdit: boolean;
+  tokenToEdit: ITokenEthProps | null;
+}
+
+export const CustomToken = (props: ICustomTokenComponentProps) => {
   const controller = getController();
+
+  const { isEdit, tokenToEdit } = props;
 
   const [form] = Form.useForm();
   const { navigate } = useUtils();
@@ -55,38 +61,65 @@ export const CustomToken = () => {
   }) => {
     setIsLoading(true);
 
-    try {
-      const addTokenMethodResponse =
-        await controller.wallet.assets.evm.addCustomTokenByType(
-          activeAccount.address,
-          contractAddress,
-          symbol,
-          decimals,
-          controller.wallet.ethereumTransaction.web3Provider
-        );
+    switch (isEdit) {
+      case false:
+        try {
+          const addTokenMethodResponse =
+            await controller.wallet.assets.evm.addCustomTokenByType(
+              activeAccount.address,
+              contractAddress,
+              symbol,
+              decimals,
+              controller.wallet.ethereumTransaction.web3Provider
+            );
 
-      if (addTokenMethodResponse.error) {
-        setIsLoading(false);
-        setErcError({
-          errorType: addTokenMethodResponse.errorType,
-          message: addTokenMethodResponse.message,
-        });
+          if (addTokenMethodResponse.error) {
+            setIsLoading(false);
+            setErcError({
+              errorType: addTokenMethodResponse.errorType,
+              message: addTokenMethodResponse.message,
+            });
 
-        return;
-      }
+            return;
+          }
 
-      await controller.wallet.account.eth.saveTokenInfo(
-        addTokenMethodResponse.tokenToAdd
-      );
+          //Save token at state
+          await controller.wallet.account.eth.saveTokenInfo(
+            addTokenMethodResponse.tokenToAdd
+          );
 
-      setAdded(true);
-    } catch (error) {
-      setErcError({
-        errorType: 'Undefined',
-        message: '',
-      });
-    } finally {
-      setIsLoading(false);
+          setAdded(true);
+        } catch (error) {
+          setErcError({
+            errorType: 'Undefined',
+            message: '',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+        break;
+      case true:
+        try {
+          //Edit token at state
+          const editedToken = {
+            ...tokenToEdit,
+            tokenSymbol: symbol,
+            decimals: Number(decimals),
+          };
+
+          controller.wallet.account.eth.editTokenInfo(editedToken);
+
+          setAdded(true);
+        } catch (error) {
+          console.log('error catch', error);
+          setErcError({
+            errorType: 'Undefined',
+            message: '',
+          });
+        } finally {
+          setIsLoading(false);
+        }
+        break;
     }
   };
 
@@ -123,6 +156,23 @@ export const CustomToken = () => {
     }
   };
 
+  useEffect(() => {
+    if (isEdit) {
+      getTokenStandardMetadata(
+        tokenToEdit.contractAddress,
+        activeAccount.address,
+        controller.wallet.ethereumTransaction.web3Provider
+      ).then((token) => {
+        if (token.decimals && token.tokenSymbol) {
+          setTokenMetadataInfos({
+            symbol: token.tokenSymbol,
+            decimals: token.decimals,
+          });
+        }
+      });
+    }
+  }, [isEdit]);
+
   return (
     <>
       <Form
@@ -132,6 +182,11 @@ export const CustomToken = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         onFinish={handleSubmit}
+        initialValues={{
+          contractAddress: isEdit ? tokenToEdit.contractAddress : '',
+          symbol: isEdit ? tokenToEdit.tokenSymbol : '',
+          decimals: isEdit ? tokenToEdit.decimals : '',
+        }}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
@@ -146,7 +201,11 @@ export const CustomToken = () => {
             },
             () => ({
               async validator(_, value) {
-                if (value && isValidEthereumAddress(value)) {
+                if (isEdit) {
+                  return Promise.resolve();
+                }
+
+                if (!isEdit && value && isValidEthereumAddress(value)) {
                   const { decimals, tokenSymbol } =
                     await getTokenStandardMetadata(
                       value,
@@ -177,8 +236,9 @@ export const CustomToken = () => {
           ]}
         >
           <Input
+            readOnly={isEdit}
             type="text"
-            className="input-small relative"
+            className={`${isEdit && 'cursor-not-allowed'} input-small relative`}
             placeholder="Contract address"
           />
         </Form.Item>
