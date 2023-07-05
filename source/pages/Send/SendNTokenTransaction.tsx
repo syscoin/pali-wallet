@@ -210,11 +210,21 @@ export const SendNTokenTransaction = () => {
     const abortController = new AbortController();
 
     const getInitialFeeRecomendation = async () => {
-      const baseTx = {
-        from: tx.from,
-        to: tx.to,
-        value: tx.value,
-      };
+      const nonce = await ethereumTransaction.getRecommendedNonce(tx.from);
+      const baseTx = transactionDataValidation
+        ? {
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            data: tx.data,
+            nonce,
+          }
+        : {
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            nonce,
+          };
       const currentBlock = await ethereumTransaction.web3Provider.send(
         'eth_getBlockByNumber',
         ['latest', false]
