@@ -264,7 +264,7 @@ export const SendNTokenTransaction = () => {
           maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
             ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
             : maxPriorityFeePerGas.toNumber() / 10 ** 9,
-          gasLimit: tx?.gasLimit ? tx.gasLimit : gasLimitResult,
+          gasLimit: tx.gasLimit,
           gasPrice: tx?.gasPrice
             ? Number(tx.gasPrice) / 10 ** 9
             : Number(await ethereumTransaction.getRecommendedGasPrice()) /
