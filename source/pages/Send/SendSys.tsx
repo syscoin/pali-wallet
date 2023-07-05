@@ -13,8 +13,9 @@ import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
+import { ITokenSysProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { truncate, isNFT, getAssetBalance } from 'utils/index';
+import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
@@ -31,7 +32,9 @@ export const SendSys = () => {
   const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
   const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
   const [ZDAG, setZDAG] = useState<boolean>(false);
-  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
+    null
+  );
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
 
@@ -60,8 +63,21 @@ export const SendSys = () => {
     ? Object.values(activeAccount.assets.syscoin)
     : [];
 
+  const assetDecimals =
+    selectedAsset && selectedAsset?.decimals ? selectedAsset.decimals : 8;
+
+  const formattedAssetBalance =
+    selectedAsset &&
+    truncate(
+      formatCurrency(
+        String(+selectedAsset.balance / 10 ** assetDecimals),
+        selectedAsset.decimals
+      ),
+      14
+    );
+
   const balance = selectedAsset
-    ? selectedAsset.balance
+    ? +formattedAssetBalance
     : Number(activeAccount?.balances.syscoin);
 
   const handleSelectedAsset = (item: number) => {
@@ -185,7 +201,7 @@ export const SendSys = () => {
             <Input
               type="text"
               placeholder="Receiver"
-              className="input-medium"
+              className="sender-input"
             />
           </Form.Item>
 
@@ -388,7 +404,7 @@ export const SendSys = () => {
             <span
               className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
               onClick={() =>
-                form.setFieldValue('amount', balance - 5 * recommendedFee)
+                form.setFieldValue('amount', balance - 1.01 * recommendedFee)
               }
             >
               Max

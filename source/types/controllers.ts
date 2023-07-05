@@ -37,8 +37,16 @@ export interface IMainController extends IKeyringManager {
   addCustomRpc: (rpc: ICustomRpcParams) => Promise<INetwork>;
   addWindowEthProperty: () => void;
   assets: IAssetsManager;
-  createAccount: (label?: string) => Promise<IKeyringAccountState>;
+  createAccount: (
+    isBitcoinBased: boolean,
+    label?: string
+  ) => Promise<IKeyringAccountState>;
   createWallet: (password: string, phrase: string) => Promise<void>;
+  editAccountLabel: (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
   editCustomRpc: (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
@@ -85,6 +93,7 @@ export interface IMainController extends IKeyringManager {
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (pwd: string) => Promise<boolean>;
+  unlockFromController: (pwd: string) => Promise<boolean>;
   updateAssetsFromCurrentAccount: ({
     isBitcoinBased,
     activeNetwork,

@@ -1,3 +1,4 @@
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
@@ -45,11 +46,12 @@ export const isBitcoinBasedNetwork = async ({
 
 export const verifyIfIsTestnet = async (
   networkUrl: string,
-  isBitcoinBased: boolean
+  isBitcoinBased: boolean,
+  isInCooldown: boolean
 ) => {
   const { chain, chainId }: any = isBitcoinBased
     ? await validateSysRpc(networkUrl)
-    : await validateEthRpc(networkUrl);
+    : await validateEthRpc(networkUrl, isInCooldown);
 
   //todo: this can be in some consts file
   const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
@@ -61,4 +63,17 @@ export const verifyIfIsTestnet = async (
         (validationChain) => validationChain === chainId
       )
   );
+};
+
+export const verifyNetworkEIP1559Compatibility = async (
+  web3Provider: CustomJsonRpcProvider
+) => {
+  try {
+    const latestBlock = await web3Provider.getBlock('latest');
+    const isCompatible = latestBlock?.baseFeePerGas !== undefined;
+
+    return isCompatible;
+  } catch (error) {
+    throw new Error(error);
+  }
 };
