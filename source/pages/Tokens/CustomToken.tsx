@@ -111,7 +111,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
           setAdded(true);
         } catch (error) {
-          console.log('error catch', error);
           setErcError({
             errorType: 'Undefined',
             message: '',
@@ -238,7 +237,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           <Input
             readOnly={isEdit}
             type="text"
-            className={`${isEdit && 'cursor-not-allowed'} input-small relative`}
+            disabled={isEdit}
+            className="input-small relative"
             placeholder="Contract address"
           />
         </Form.Item>
