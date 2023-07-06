@@ -62,6 +62,7 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
+  currentBlockNumber: undefined,
 };
 
 const VaultState = createSlice({
@@ -387,6 +388,9 @@ const VaultState = createSlice({
     setIsPolling(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPolling = action.payload;
     },
+    setCurrentBlockNumber(state: IVaultState, action: PayloadAction<number>) {
+      state.currentBlockNumber = action.payload;
+    },
   },
 });
 
@@ -420,6 +424,7 @@ export const {
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
   setIsPolling,
+  setCurrentBlockNumber,
 } = VaultState.actions;
 
 export default VaultState.reducer;

@@ -2,6 +2,8 @@ import flatMap from 'lodash/flatMap';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
+import store from 'state/store';
+import { setCurrentBlockNumber } from 'state/vault';
 import { IPaliAccount } from 'state/vault/types';
 
 import { Queue } from './queue';
@@ -36,9 +38,18 @@ const EvmTransactionsController = (
 
   const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
     try {
+      const currentBlockNumber =
+        store.getState().vault.currentBlockNumber?.number;
+
       const queue = new Queue(3);
       const latestBlockNumber = await web3Provider.getBlockNumber();
-      const fromBlock = latestBlockNumber - 30;
+      const blocksToSearch = currentBlockNumber
+        ? latestBlockNumber - parseInt(currentBlockNumber, 16)
+        : 30;
+
+      console.log('blocksToSearch', blocksToSearch, currentBlockNumber);
+
+      const fromBlock = latestBlockNumber - blocksToSearch;
 
       const txs = await getUserTransactionByDefaultProvider(
         currentAccount,

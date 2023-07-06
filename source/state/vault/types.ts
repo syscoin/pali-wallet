@@ -15,6 +15,7 @@ export interface IVaultState {
   activeChain: INetworkType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
+  currentBlockNumber: any;
   error: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;

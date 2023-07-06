@@ -42,6 +42,7 @@ import {
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
+  setCurrentBlockNumber,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -297,7 +298,7 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-    resetPolling();
+    // resetPolling();
   };
 
   const setActiveNetwork = async (
@@ -453,6 +454,7 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
+    store.dispatch(setCurrentBlockNumber(undefined));
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
 

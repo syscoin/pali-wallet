@@ -13,6 +13,8 @@ import store from 'state/store';
 
 // import { Queue } from './queue';
 import { ISysTransaction, IEvmTransactionResponse } from './types';
+import { setCurrentBlockNumber } from 'state/vault';
+import omit from 'lodash/omit';
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -59,6 +61,11 @@ export const findUserTxsInProviderByBlocksRange = async (
     .then((responses) => {
       // Handle the responses
       console.log(responses);
+      store.dispatch(
+        setCurrentBlockNumber(
+          omit(responses[responses.length - 1] as any, 'transactions') as any
+        )
+      );
 
       return flatMap(
         responses.map((response: any) => {
