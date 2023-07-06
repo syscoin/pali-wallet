@@ -37,6 +37,9 @@ const EthAccountController = (): IEthAccountController => {
 
         web3Token = {
           ...token,
+          tokenSymbol: token.editedSymbolToUse
+            ? token.editedSymbolToUse
+            : token.tokenSymbol,
           balance: token.balance,
           name,
           id: token.contractAddress,
@@ -47,6 +50,9 @@ const EthAccountController = (): IEthAccountController => {
       } else {
         web3Token = {
           ...token,
+          tokenSymbol: token.editedSymbolToUse
+            ? token.editedSymbolToUse
+            : token.tokenSymbol,
           balance: token.balance,
           name: token.tokenSymbol,
           id: token.contractAddress,

@@ -3,6 +3,7 @@ export interface ITokenEthProps {
   chainId?: number;
   contractAddress: string;
   decimals: string | number;
+  editedSymbolToUse?: string;
   id?: string;
   isNft: boolean;
   logo?: string;

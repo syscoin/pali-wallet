@@ -83,9 +83,16 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             return;
           }
 
+          const tokenToAddWithSubmitValues = {
+            ...addTokenMethodResponse.tokenToAdd,
+            decimals: Number(decimals),
+            ...(addTokenMethodResponse.tokenToAdd.tokenSymbol.toUpperCase() !==
+              symbol.toUpperCase() && { editedSymbolToUse: symbol }),
+          };
+
           //Save token at state
           await controller.wallet.account.eth.saveTokenInfo(
-            addTokenMethodResponse.tokenToAdd
+            tokenToAddWithSubmitValues
           );
 
           setAdded(true);
@@ -200,11 +207,15 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             },
             () => ({
               async validator(_, value) {
-                if (isEdit) {
+                const keepValue = Boolean(
+                  tokenDecimalsWarning.error || tokenSymbolWarning.error
+                );
+
+                if (isEdit || keepValue) {
                   return Promise.resolve();
                 }
 
-                if (!isEdit && value && isValidEthereumAddress(value)) {
+                if (value && isValidEthereumAddress(value)) {
                   const { decimals, tokenSymbol } =
                     await getTokenStandardMetadata(
                       value,
