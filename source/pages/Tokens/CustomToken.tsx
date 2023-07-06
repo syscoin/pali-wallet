@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -178,6 +178,32 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       });
     }
   }, [isEdit]);
+
+  useEffect(() => {
+    if (!isEdit || !tokenMetadataInfos) return;
+
+    //Validate when user enter to edit his token to show the original token data
+    if (isEdit && tokenMetadataInfos.decimals && tokenMetadataInfos.symbol) {
+      if (
+        tokenMetadataInfos.symbol.toUpperCase() !==
+        tokenToEdit.tokenSymbol.toUpperCase()
+      ) {
+        setTokenSymbolWarning({
+          error: true,
+          value: tokenToEdit.tokenSymbol,
+        });
+      }
+
+      if (
+        Number(tokenMetadataInfos.decimals) !== Number(tokenToEdit.decimals)
+      ) {
+        setTokenDecimalsWarning({
+          error: true,
+          value: String(tokenToEdit.decimals),
+        });
+      }
+    }
+  }, [isEdit, tokenMetadataInfos]);
 
   return (
     <>
