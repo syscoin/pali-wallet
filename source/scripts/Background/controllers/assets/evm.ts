@@ -2,7 +2,6 @@ import { ethers } from 'ethers';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
-import toNumber from 'lodash/toNumber';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {

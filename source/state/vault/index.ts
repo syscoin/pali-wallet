@@ -11,6 +11,8 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import { ITokenEthProps } from 'types/tokens';
+
 import {
   IChangingConnectedAccount,
   IPaliAccount,
@@ -90,6 +92,21 @@ const VaultState = createSlice({
       const { label, accountId, accountType } = action.payload;
 
       state.accounts[accountType][accountId].label = label;
+    },
+    setEditedEvmToken(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        editedToken: ITokenEthProps;
+        tokenIndex: number;
+      }>
+    ) {
+      const { editedToken, tokenIndex, accountId, accountType } =
+        action.payload;
+
+      state.accounts[accountType][accountId].assets.ethereum[tokenIndex] =
+        editedToken;
     },
     setNetworkChange(
       state: IVaultState,
@@ -418,6 +435,7 @@ export const {
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
+  setEditedEvmToken,
   setNetworkType,
   setNetworkChange,
   setActiveNetwork,
