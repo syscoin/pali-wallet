@@ -1,20 +1,18 @@
-// import { ethers } from 'ethers';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
-// import flatMap from 'lodash/flatMap';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
+import last from 'lodash/last';
+import omit from 'lodash/omit';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-
-// import { Queue } from './queue';
-import { ISysTransaction, IEvmTransactionResponse } from './types';
 import { setCurrentBlockNumber } from 'state/vault';
-import omit from 'lodash/omit';
+
+import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -60,10 +58,10 @@ export const findUserTxsInProviderByBlocksRange = async (
   const userTxs = Promise.all(batchRequest)
     .then((responses) => {
       // Handle the responses
-      console.log(responses);
+
       store.dispatch(
         setCurrentBlockNumber(
-          omit(responses[responses.length - 1] as any, 'transactions') as any
+          omit(last(responses) as any, 'transactions') as any
         )
       );
 

@@ -47,8 +47,6 @@ const EvmTransactionsController = (
         ? latestBlockNumber - parseInt(currentBlockNumber, 16)
         : 30;
 
-      console.log('blocksToSearch', blocksToSearch, currentBlockNumber);
-
       const fromBlock = latestBlockNumber - blocksToSearch;
 
       const txs = await getUserTransactionByDefaultProvider(
