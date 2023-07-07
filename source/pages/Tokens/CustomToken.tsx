@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
 import {
@@ -20,6 +20,11 @@ interface ICustomTokenComponentProps {
   tokenToEdit: ITokenEthProps | null;
 }
 
+const TOKENS_WARNING_INITIAL_VALUE = {
+  error: false,
+  value: '',
+};
+
 export const CustomToken = (props: ICustomTokenComponentProps) => {
   const controller = getController();
 
@@ -36,14 +41,12 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   });
   const [tokenMetadataInfos, setTokenMetadataInfos] =
     useState<IAddCustomTokenMetadataInfos | null>(null);
-  const [tokenDecimalsWarning, setTokenDecimalsWarning] = useState({
-    error: false,
-    value: '',
-  });
-  const [tokenSymbolWarning, setTokenSymbolWarning] = useState({
-    error: false,
-    value: '',
-  });
+  const [tokenDecimalsWarning, setTokenDecimalsWarning] = useState(
+    TOKENS_WARNING_INITIAL_VALUE
+  );
+  const [tokenSymbolWarning, setTokenSymbolWarning] = useState(
+    TOKENS_WARNING_INITIAL_VALUE
+  );
 
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault

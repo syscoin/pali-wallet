@@ -118,19 +118,23 @@ const EthAccountController = (): IEthAccountController => {
 
       if (!tokenExists) throw new Error("Token doesn't exists!");
 
+      const cloneAssets = cloneDeep(
+        accounts[activeAccount.type][activeAccount.id].assets
+      );
+
+      const newAssetsValue = {
+        ...cloneAssets,
+        ethereum: cloneAssets.ethereum.filter(
+          (currentToken) => currentToken.contractAddress !== tokenAddress
+        ),
+      };
+
       store.dispatch(
         setAccountPropertyByIdAndType({
           id: activeAccount.id,
           type: activeAccount.type,
           property: 'assets',
-          value: {
-            ...accounts[activeAccount.type][activeAccount.id].assets,
-            ethereum: accounts[activeAccount.type][
-              activeAccount.id
-            ].assets.ethereum.filter(
-              (currentTokens) => currentTokens.contractAddress !== tokenAddress
-            ),
-          },
+          value: newAssetsValue,
         })
       );
     } catch (error) {
