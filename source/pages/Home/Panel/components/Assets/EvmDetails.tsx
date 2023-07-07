@@ -69,7 +69,10 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
       {formattedAsset.map(({ label, value, canCopy }: any) => {
         const { formatted, stringValue } = value;
         const canRender =
-          label.length > 0 && stringValue.length > 0 && formatted.length > 0;
+          label.length > 0 &&
+          label !== 'Edited Symbol To Use' &&
+          stringValue.length > 0 &&
+          formatted.length > 0;
 
         return (
           <Fragment key={uniqueId(id)}>
