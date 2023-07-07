@@ -34,7 +34,7 @@ const Advanced = () => {
   };
 
   return (
-    <Layout title="MANAGE ETH PROVIDER" id="auto-lock-timer-title">
+    <Layout title="ADVANCED SETTINGS" id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
         Here, you can enable advanced settings in Pali. Use them responsibly and
         at your own risk.
