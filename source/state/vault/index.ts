@@ -265,10 +265,17 @@ const VaultState = createSlice({
     },
     setAdvancedSettings(
       state: IVaultState,
-      action: PayloadAction<{ advancedProperty: string; isActive: boolean }>
+      action: PayloadAction<{
+        advancedProperty: string;
+        isActive: boolean;
+        isFirstTime?: boolean;
+      }>
     ) {
-      const { advancedProperty, isActive } = action.payload;
-      if (state.advancedSettings[advancedProperty] !== undefined) {
+      const { advancedProperty, isActive, isFirstTime } = action.payload;
+      if (
+        state.advancedSettings?.[advancedProperty] !== undefined ||
+        isFirstTime
+      ) {
         state.advancedSettings = {
           ...state.advancedSettings,
           [advancedProperty]: isActive,

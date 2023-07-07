@@ -12,7 +12,7 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
 import { IPersistState } from 'state/types';
-import { setNetworks } from 'state/vault';
+import { setAdvancedSettings, setNetworks } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
@@ -96,6 +96,15 @@ const MasterController = (
             explorer: 'https://explorer.rollux.com/',
           } as INetwork,
           isEdit: false,
+        })
+      );
+    }
+    if (store.getState().vault?.advancedSettings === undefined) {
+      store.dispatch(
+        setAdvancedSettings({
+          advancedProperty: 'refresh',
+          isActive: false,
+          isFirstTime: true,
         })
       );
     }
