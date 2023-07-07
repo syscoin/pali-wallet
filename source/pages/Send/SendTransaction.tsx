@@ -1,5 +1,4 @@
 import { ethers } from 'ethers';
-import isNaN from 'lodash/isNaN';
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -82,6 +81,7 @@ export const SendTransaction = () => {
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
   });
+  const [hasGasError, setHasGasError] = useState<boolean>(false);
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
@@ -186,10 +186,13 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
-        const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          validatedDataTxWithoutType as ITransactionParams,
-          activeNetwork
-        );
+        const { feeDetails, formTx, nonce, gasError } =
+          await fetchGasAndDecodeFunction(
+            validatedDataTxWithoutType as ITransactionParams,
+            activeNetwork
+          );
+
+        setHasGasError(gasError);
         setFee(feeDetails);
         setTx(formTx);
         setCustomNonce(nonce);
@@ -254,12 +257,19 @@ export const SendTransaction = () => {
               <span className="text-brand-royalblue">{valueAndCurrency}</span>
             </p>
 
-            <p className="flex flex-col text-center text-base">
+            <p className="flex flex-col text-center text-base ">
               Method:
               <span className="text-brand-royalblue">
                 {decodedTxData?.method}
               </span>
             </p>
+
+            {hasGasError && (
+              <span className="text-red-600 text-sm my-4">
+                We were not able to estimate gas. There might be an error in the
+                contract and this transaction may fail.
+              </span>
+            )}
           </div>
 
           <div className="my-4 w-full">
