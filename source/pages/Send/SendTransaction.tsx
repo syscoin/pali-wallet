@@ -73,6 +73,7 @@ export const SendTransaction = () => {
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
+  const [hasTxDataError, setHasTxDataError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [valueAndCurrency, setValueAndCurrency] = useState<string>('');
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
@@ -81,7 +82,6 @@ export const SendTransaction = () => {
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
   });
-  const [hasGasError, setHasGasError] = useState<boolean>(false);
 
   const canGoBack = state?.external ? !state.external : !isExternal;
 
@@ -186,13 +186,12 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
-        const { feeDetails, formTx, nonce, gasError } =
+        const { feeDetails, formTx, nonce, isInvalidTxData } =
           await fetchGasAndDecodeFunction(
             validatedDataTxWithoutType as ITransactionParams,
             activeNetwork
           );
-
-        setHasGasError(gasError);
+        setHasTxDataError(isInvalidTxData);
         setFee(feeDetails);
         setTx(formTx);
         setCustomNonce(nonce);
@@ -264,7 +263,7 @@ export const SendTransaction = () => {
               </span>
             </p>
 
-            {hasGasError && (
+            {hasTxDataError && (
               <span className="text-red-600 text-sm my-4">
                 We were not able to estimate gas. There might be an error in the
                 contract and this transaction may fail.

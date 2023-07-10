@@ -57,10 +57,11 @@ export const SendNTokenTransaction = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] =
     useState<boolean>(false);
-  const [gasErrors, setGasErrors] = useState<{
+  const [errors, setErrors] = useState<{
     eip1559GasError: boolean;
     gasLimitError: boolean;
-  }>({ eip1559GasError: false, gasLimitError: false });
+    txDataError: boolean;
+  }>({ eip1559GasError: false, gasLimitError: false, txDataError: false });
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(
@@ -225,6 +226,7 @@ export const SendNTokenTransaction = () => {
             value: tx.value,
             nonce,
           };
+      let isInvalidTxData = false;
       const currentBlock = await ethereumTransaction.web3Provider.send(
         'eth_getBlockByNumber',
         ['latest', false]
@@ -236,8 +238,28 @@ export const SendNTokenTransaction = () => {
       let gasLimitError = false;
       let eip1559GasError = false;
 
+      // verify tx data
       try {
-        gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx as any);
+        if (transactionDataValidation) {
+          // if it run successfully, the contract data is all right.
+          await ethereumTransaction.web3Provider.send('eth_call', [
+            { to: tx.to, data: tx.data },
+            currentBlock.number,
+          ]);
+        }
+      } catch (error) {
+        if (!error.message.includes('reverted')) {
+          isInvalidTxData = true;
+        }
+      }
+
+      try {
+        // if tx data is valid, Pali is able to estimate gas.
+        if (!isInvalidTxData) {
+          gasLimitResult = await ethereumTransaction.getTxGasLimit(
+            baseTx as any
+          );
+        }
       } catch (error) {
         console.error(error);
         gasLimitError = true;
@@ -277,7 +299,11 @@ export const SendNTokenTransaction = () => {
         eip1559GasError = true;
       }
 
-      setGasErrors({ eip1559GasError, gasLimitError });
+      setErrors({
+        eip1559GasError,
+        gasLimitError,
+        txDataError: isInvalidTxData,
+      });
     };
 
     getInitialFeeRecomendation();
@@ -367,13 +393,14 @@ export const SendNTokenTransaction = () => {
             )}
           </p>
 
-          {gasErrors.eip1559GasError ||
-            (gasErrors.gasLimitError && (
-              <span className="text-red-600 text-xs my-4 text-center">
-                We were not able to estimate gas. There might be an error in the
-                contract and this transaction may fail.
-              </span>
-            ))}
+          {(errors.eip1559GasError ||
+            errors.gasLimitError ||
+            errors.txDataError) && (
+            <span className="text-red-600 text-xs my-4 text-center">
+              We were not able to estimate gas. There might be an error in the
+              contract and this transaction may fail.
+            </span>
+          )}
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
