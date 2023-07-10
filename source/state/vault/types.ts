@@ -14,6 +14,9 @@ export interface IVaultState {
   };
   activeChain: INetworkType;
   activeNetwork: INetwork;
+  advancedSettings: {
+    [k: string]: boolean;
+  };
   changingConnectedAccount: IChangingConnectedAccount;
   error: boolean;
   hasEthProperty: boolean;

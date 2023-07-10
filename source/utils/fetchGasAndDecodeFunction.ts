@@ -11,7 +11,15 @@ export const fetchGasAndDecodeFunction = async (
   const {
     wallet: { ethereumTransaction },
   } = getController();
-  const isHardhat = activeNetwork.chainId === 31337;
+  const currentBlock = await ethereumTransaction.web3Provider.send(
+    'eth_getBlockByNumber',
+    ['latest', false]
+  );
+  const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+  let gasLimitResult = ethereumTransaction.toBigNumber(
+    gasLimitFromCurrentBlock
+  );
+  let gasError = false;
 
   const { maxFeePerGas, maxPriorityFeePerGas } =
     await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
@@ -34,15 +42,20 @@ export const fetchGasAndDecodeFunction = async (
     to: dataTx.to,
     value: dataTx?.value ? dataTx.value : 0,
     data: dataTx.data,
+    nonce: nonce,
   } as any;
-  const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(
-    isHardhat ? baseTx : formTx
-  ); //todo: adjust to get from new keyringmanager
+
+  try {
+    gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx); //todo: adjust to get from new keyringmanager
+  } catch (error) {
+    console.error(error);
+    gasError = true;
+  }
   formTx.gasLimit =
-    (dataTx?.gas && Number(dataTx?.gas) > Number(getTxGasLimitResult)) ||
-    (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(getTxGasLimitResult))
+    (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
+    (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(gasLimitResult))
       ? ethereumTransaction.toBigNumber(dataTx.gas || dataTx.gasLimit) //todo: adjust to get from new keyringmanager
-      : getTxGasLimitResult;
+      : gasLimitResult;
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
     baseFee: maxFeePerGas.sub(maxPriorityFeePerGas).toNumber() / 10 ** 9,
@@ -54,5 +67,6 @@ export const fetchGasAndDecodeFunction = async (
     feeDetails,
     formTx,
     nonce,
+    gasError,
   };
 };

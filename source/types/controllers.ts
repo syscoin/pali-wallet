@@ -88,6 +88,7 @@ export interface IMainController extends IKeyringManager {
     connectedAccount?: IOmmitedAccount
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
+  setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
   setAutolockTimer: (minutes: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
