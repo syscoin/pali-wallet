@@ -46,6 +46,16 @@ export const CustomTokenErrorModal = ({
             onClose={() => resetErcErrorState()}
           />
         );
+      case 'TokenExists':
+        return (
+          <ErrorModal
+            show={Boolean(errorType)}
+            title="Token Already Exists"
+            description="Verify the token contract address."
+            log="This token contract is already added in your token list. Try again using another token address!"
+            onClose={() => resetErcErrorState()}
+          />
+        );
     }
   };
 
