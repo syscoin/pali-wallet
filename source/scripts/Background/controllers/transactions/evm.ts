@@ -37,8 +37,7 @@ const EvmTransactionsController = (
 
   const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
     try {
-      const currentBlockNumber =
-        store.getState().vault.currentBlockNumber?.number;
+      const currentBlockNumber = store.getState().vault.currentBlock?.number;
       const currentNetworkChainId =
         store.getState().vault.activeNetwork?.chainId;
       const rpcForbiddenList = [10];
@@ -46,7 +45,7 @@ const EvmTransactionsController = (
       const queue = new Queue(3);
       const latestBlockNumber = await web3Provider.getBlockNumber();
       const blocksToSearch = currentBlockNumber
-        ? latestBlockNumber - parseInt(currentBlockNumber, 16)
+        ? latestBlockNumber - parseInt(String(currentBlockNumber), 16)
         : rpcForbiddenList.includes(currentNetworkChainId)
         ? 10
         : 30;

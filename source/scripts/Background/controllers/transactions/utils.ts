@@ -10,7 +10,7 @@ import uniqWith from 'lodash/uniqWith';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setCurrentBlockNumber } from 'state/vault';
+import { setCurrentBlock } from 'state/vault';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -60,16 +60,14 @@ export const findUserTxsInProviderByBlocksRange = async (
       // Handle the responses
 
       store.dispatch(
-        setCurrentBlockNumber(
-          omit(last(responses) as any, 'transactions') as any
-        )
+        setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
       );
 
       return flatMap(
         responses.map((response: any) => {
           const lastBlockNumber =
             rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
-          const currentBlockNumber = parseInt(response.number, 16);
+          const currentBlock = parseInt(response.number, 16);
 
           const filterTxsByAddress = response.transactions
             .filter(
@@ -80,7 +78,7 @@ export const findUserTxsInProviderByBlocksRange = async (
             .map((txWithConfirmations) => ({
               ...txWithConfirmations,
               chainId: Number(txWithConfirmations.chainId),
-              confirmations: lastBlockNumber - currentBlockNumber,
+              confirmations: lastBlockNumber - currentBlock,
             }));
 
           return flatMap(filterTxsByAddress);

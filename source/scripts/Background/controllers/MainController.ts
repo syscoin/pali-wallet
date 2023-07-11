@@ -41,7 +41,7 @@ import {
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
-  setCurrentBlockNumber,
+  setCurrentBlock,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -452,7 +452,7 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
-    store.dispatch(setCurrentBlockNumber(undefined));
+    store.dispatch(setCurrentBlock(undefined));
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
 

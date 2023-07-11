@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 import {
   IKeyringAccountState,
   KeyringAccountType,
@@ -15,7 +17,7 @@ export interface IVaultState {
   activeChain: INetworkType;
   activeNetwork: INetwork;
   changingConnectedAccount: IChangingConnectedAccount;
-  currentBlockNumber: any; //todo: add type here
+  currentBlock: ethers.providers.Block;
   error: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;

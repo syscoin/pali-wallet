@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { ethers } from 'ethers';
 
 import {
   initialNetworksState,
@@ -62,7 +63,7 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
-  currentBlockNumber: undefined,
+  currentBlock: undefined,
 };
 
 const VaultState = createSlice({
@@ -236,7 +237,7 @@ const VaultState = createSlice({
       state.activeAccount = action.payload;
 
       //reset current block number on changing accounts
-      state.currentBlockNumber = undefined;
+      state.currentBlock = undefined;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
@@ -391,8 +392,11 @@ const VaultState = createSlice({
     setIsPolling(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPolling = action.payload;
     },
-    setCurrentBlockNumber(state: IVaultState, action: PayloadAction<number>) {
-      state.currentBlockNumber = action.payload;
+    setCurrentBlock(
+      state: IVaultState,
+      action: PayloadAction<ethers.providers.Block>
+    ) {
+      state.currentBlock = action.payload;
     },
   },
 });
@@ -427,7 +431,7 @@ export const {
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
   setIsPolling,
-  setCurrentBlockNumber,
+  setCurrentBlock,
 } = VaultState.actions;
 
 export default VaultState.reducer;
