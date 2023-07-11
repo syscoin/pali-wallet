@@ -234,6 +234,9 @@ const VaultState = createSlice({
     ) {
       // const { accountId, accountType } = action.payload;
       state.activeAccount = action.payload;
+
+      //reset current block number on changing accounts
+      state.currentBlockNumber = undefined;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;

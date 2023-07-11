@@ -3,7 +3,6 @@ import flatMap from 'lodash/flatMap';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setCurrentBlockNumber } from 'state/vault';
 import { IPaliAccount } from 'state/vault/types';
 
 import { Queue } from './queue';
@@ -40,11 +39,16 @@ const EvmTransactionsController = (
     try {
       const currentBlockNumber =
         store.getState().vault.currentBlockNumber?.number;
+      const currentNetworkChainId =
+        store.getState().vault.activeNetwork?.chainId;
+      const rpcForbiddenList = [10];
 
       const queue = new Queue(3);
       const latestBlockNumber = await web3Provider.getBlockNumber();
       const blocksToSearch = currentBlockNumber
         ? latestBlockNumber - parseInt(currentBlockNumber, 16)
+        : rpcForbiddenList.includes(currentNetworkChainId)
+        ? 10
         : 30;
 
       const fromBlock = latestBlockNumber - blocksToSearch;
