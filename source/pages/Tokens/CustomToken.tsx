@@ -285,7 +285,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       if (!isForEdit) {
         form.setFieldsValue({
           symbol: tokenSymbol,
-          decimals: decimals,
+          decimals: String(decimals),
         });
       }
 
@@ -404,7 +404,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                   if (requestContractType.type === 'ERC-721') {
                     form.setFieldsValue({
                       symbol: '',
-                      decimals: 0,
+                      decimals: '0',
                     });
 
                     setTokenMetadataInfos({
