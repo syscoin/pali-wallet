@@ -47,20 +47,28 @@ export const findUserTxsInProviderByBlocksRange = async (
   const rangeBlocksToRun = range(startBlock, endBlock);
   const queue = new Queue(3);
 
-  rangeBlocksToRun.forEach((blockNumber) => {
+  rangeBlocksToRun.forEach((blockNumber, _, arr) => {
     if (blockNumber < 0) {
       blockNumber = blockNumber * -1;
     }
+    const lastBlockNumber = arr[arr.length - 1] + 1; // getBlock returns us the last confirmed block so we add 1 to consider the current pending block
     queue.execute(async () => {
       const currentBlock = await provider.send('eth_getBlockByNumber', [
         `0x${blockNumber.toString(16)}`,
         true,
       ]);
-      const filterTxsByAddress = currentBlock.transactions.filter(
-        (tx) =>
-          tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
-          tx?.to?.toLowerCase() === userAddress.toLowerCase()
-      );
+      const filterTxsByAddress = currentBlock.transactions
+        .filter(
+          (tx) =>
+            tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
+            tx?.to?.toLowerCase() === userAddress.toLowerCase()
+        )
+        .map((txWithConfirmations) => ({
+          ...txWithConfirmations,
+          chainId: Number(txWithConfirmations.chainId),
+          confirmations:
+            lastBlockNumber - Number(txWithConfirmations.blockNumber),
+        }));
       return flatMap(filterTxsByAddress);
     });
   });

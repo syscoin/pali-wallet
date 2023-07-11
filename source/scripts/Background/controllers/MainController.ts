@@ -41,6 +41,8 @@ import {
   setIsLoadingAssets,
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
+  setAccountsWithLabelEdited,
+  setAdvancedSettings as setSettings,
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
@@ -98,6 +100,10 @@ const MainController = (walletState): IMainController => {
   };
   const setHasEthProperty = (exist: boolean) => {
     store.dispatch(setEthProperty(exist));
+  };
+
+  const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
+    store.dispatch(setSettings({ advancedProperty, isActive }));
   };
 
   const getKeyringManager = (): KeyringManager => keyringManager;
@@ -333,7 +339,7 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
-        await utilsController.setFiat();
+        await utilsController.setFiat(); // TODO: We should just call the asset on network edition and get added networks coins price with one call from the background;
 
         updateAssetsFromCurrentAccount({
           isBitcoinBased,
@@ -538,6 +544,7 @@ const MainController = (walletState): IMainController => {
     const networkWithCustomParams = {
       ...network,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -547,7 +554,7 @@ const MainController = (walletState): IMainController => {
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return network;
+    return networkWithCustomParams;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
@@ -574,11 +581,33 @@ const MainController = (walletState): IMainController => {
       }
       store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
+      transactionsManager = TransactionsManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
+      balancesMananger = BalancesManager(
+        keyringManager.ethereumTransaction.web3Provider
+      );
 
       return newNetwork;
     }
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
+  };
+
+  const editAccountLabel = (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => {
+    keyringManager.updateAccountLabel(label, accountId, accountType);
+
+    store.dispatch(
+      setAccountsWithLabelEdited({
+        label,
+        accountId,
+        accountType,
+      })
     );
   };
 
@@ -954,10 +983,15 @@ const MainController = (walletState): IMainController => {
             const validateIfBothUpdatedIsEmpty =
               isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
 
+            const validateIfNotNullEthValues = updatedAssets.ethereum.some(
+              (value) => isNil(value)
+            );
+
             const validateIfIsInvalidDispatch =
               validateUpdatedAndPreviousAssetsLength ||
               validateIfUpdatedAssetsStayEmpty ||
-              validateIfBothUpdatedIsEmpty;
+              validateIfBothUpdatedIsEmpty ||
+              validateIfNotNullEthValues;
 
             if (validateIfIsInvalidDispatch) {
               resolve();
@@ -967,6 +1001,7 @@ const MainController = (walletState): IMainController => {
             if (!isPolling) {
               store.dispatch(setIsLoadingAssets(true));
             }
+
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
@@ -1118,6 +1153,8 @@ const MainController = (walletState): IMainController => {
     unlockFromController,
     lock,
     createAccount,
+    editAccountLabel,
+    setAdvancedSettings,
     account: walletController.account,
     setAccount,
     setAutolockTimer,

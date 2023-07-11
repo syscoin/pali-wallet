@@ -24,7 +24,7 @@ export const AssetsPanel = () => {
   );
 
   const ethTokensValidation =
-    assets.ethereum?.filter((token: any) => token.chainId === chainId)
+    assets.ethereum?.filter((token: any) => token?.chainId === chainId)
       ?.length === 0;
 
   const sysAssetsValidation =

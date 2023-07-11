@@ -31,6 +31,9 @@ import {
   ImportAccount,
   RemoveEth,
   CreatePasswordImport,
+  ManageAccounts,
+  EditAccount,
+  Advanced,
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
@@ -182,6 +185,10 @@ export const Router = () => {
             element={<ProtectedRoute element={<RemoveEth />} />}
           />
           <Route
+            path="advanced"
+            element={<ProtectedRoute element={<Advanced />} />}
+          />
+          <Route
             path="currency"
             element={<ProtectedRoute element={<Currency />} />}
           />
@@ -192,6 +199,16 @@ export const Router = () => {
           <Route
             path="seed"
             element={<ProtectedRoute element={<Phrase />} />}
+          />
+
+          <Route
+            path="manage-accounts"
+            element={<ProtectedRoute element={<ManageAccounts />} />}
+          />
+
+          <Route
+            path="edit-account"
+            element={<ProtectedRoute element={<EditAccount />} />}
           />
 
           {/* /settings/account */}

@@ -158,7 +158,7 @@
 
     "react-hooks/rules-of-hooks": "error",
 
-    "@typescript-eslint/ban-ts-comment": "warn",
+    "@typescript-eslint/ban-ts-comment": "off",
     "@typescript-eslint/naming-convention": [
       "warn",
       {

@@ -22,14 +22,14 @@ export const MOCK_ACCOUNT: IPaliAccount = {
     syscoin: [
       {
         type: 'SPTAllocated',
-        assetGuid: 3144265615,
+        assetGuid: '3144265615',
         symbol: 'NikBar',
         balance: 200000000,
         decimals: 8,
       },
       {
         type: 'SPTAllocated',
-        assetGuid: 3569136514,
+        assetGuid: '3569136514',
         symbol: 'ads',
         balance: 100000000,
         decimals: 8,

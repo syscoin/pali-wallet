@@ -42,6 +42,11 @@ export interface IMainController extends IKeyringManager {
     label?: string
   ) => Promise<IKeyringAccountState>;
   createWallet: (password: string, phrase: string) => Promise<void>;
+  editAccountLabel: (
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) => void;
   editCustomRpc: (
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
@@ -83,6 +88,7 @@ export interface IMainController extends IKeyringManager {
     connectedAccount?: IOmmitedAccount
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
+  setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
   setAutolockTimer: (minutes: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;

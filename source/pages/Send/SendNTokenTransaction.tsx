@@ -17,6 +17,7 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
+  verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriorityModal';
@@ -54,7 +55,12 @@ export const SendNTokenTransaction = () => {
     gasPrice: 0,
   });
   const [confirmedTx, setConfirmedTx] = useState<any>();
-
+  const [isEIP1559Compatible, setIsEIP1559Compatible] =
+    useState<boolean>(false);
+  const [gasErrors, setGasErrors] = useState<{
+    eip1559GasError: boolean;
+    gasLimitError: boolean;
+  }>({ eip1559GasError: false, gasLimitError: false });
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(
@@ -70,7 +76,8 @@ export const SendNTokenTransaction = () => {
       }
     : externalTx.tx;
 
-  const isLegacyTransaction = Boolean(tx.type === '0x0');
+  const isLegacyTransaction =
+    Boolean(tx.type === '0x0') || !isEIP1559Compatible;
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
@@ -91,21 +98,31 @@ export const SendNTokenTransaction = () => {
         'type',
       ]) as ITxState;
       if (isLegacyTransaction) {
+        let finalLegacyTx = txWithoutType;
+        if (txWithoutType.maxFeePerGas || txWithoutType.maxPriorityFeePerGas) {
+          finalLegacyTx = omitTransactionObjectData(txWithoutType, [
+            'maxFeePerGas',
+            'maxPriorityFeePerGas',
+          ]) as ITxState;
+        }
         try {
-          const getGasCorrectlyGasPrice = Boolean(
+          const getLegacyGasFee = Boolean(
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
             : await ethereumTransaction.getRecommendedGasPrice();
 
           await ethereumTransaction
-            .sendFormattedTransaction({
-              ...txWithoutType,
-              gasPrice: ethers.utils.hexlify(Number(getGasCorrectlyGasPrice)),
-              gasLimit: ethereumTransaction.toBigNumber(
-                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
-              ),
-            })
+            .sendFormattedTransaction(
+              {
+                ...finalLegacyTx,
+                gasPrice: ethers.utils.hexlify(Number(getLegacyGasFee)),
+                gasLimit: ethereumTransaction.toBigNumber(
+                  validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
+                ),
+              },
+              isLegacyTransaction
+            )
             .then((response) => {
               if (activeAccountMeta.type === KeyringAccountType.Trezor)
                 sendAndSaveTransaction(response);
@@ -193,18 +210,48 @@ export const SendNTokenTransaction = () => {
     const abortController = new AbortController();
 
     const getInitialFeeRecomendation = async () => {
+      const nonce = await ethereumTransaction.getRecommendedNonce(tx.from);
+      const baseTx = transactionDataValidation
+        ? {
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            data: tx.data,
+            nonce,
+          }
+        : {
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            nonce,
+          };
+      const currentBlock = await ethereumTransaction.web3Provider.send(
+        'eth_getBlockByNumber',
+        ['latest', false]
+      );
+      const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+      let gasLimitResult = ethereumTransaction.toBigNumber(
+        gasLimitFromCurrentBlock
+      );
+      let gasLimitError = false;
+      let eip1559GasError = false;
+
+      try {
+        gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx as any);
+      } catch (error) {
+        console.error(error);
+        gasLimitError = true;
+      }
+
+      tx.gasLimit =
+        (tx?.gas && Number(tx?.gas) > Number(gasLimitResult)) ||
+        (tx?.gasLimit && Number(tx?.gasLimit) > Number(gasLimitResult))
+          ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
+          : gasLimitResult;
+
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
           await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
-
-        const getTxGasLimitResult = await ethereumTransaction.getTxGasLimit(tx);
-
-        tx.gasLimit =
-          (tx?.gas && Number(tx?.gas) > Number(getTxGasLimitResult)) ||
-          (tx?.gasLimit && Number(tx?.gasLimit) > Number(getTxGasLimitResult))
-            ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
-            : getTxGasLimitResult;
-
         const feeRecomendation = {
           maxFeePerGas: tx?.maxFeePerGas
             ? Number(tx?.maxFeePerGas) / 10 ** 9
@@ -217,21 +264,20 @@ export const SendNTokenTransaction = () => {
           maxPriorityFeePerGas: tx?.maxPriorityFeePerGas
             ? Number(tx.maxPriorityFeePerGas) / 10 ** 9
             : maxPriorityFeePerGas.toNumber() / 10 ** 9,
-          gasLimit: tx?.gasLimit ? tx.gasLimit : getTxGasLimitResult,
-          gasPrice: tx?.gasPrice ? Number(tx.gasPrice) / 10 ** 9 : 0,
+          gasLimit: tx.gasLimit,
+          gasPrice: tx?.gasPrice
+            ? Number(tx.gasPrice) / 10 ** 9
+            : Number(await ethereumTransaction.getRecommendedGasPrice()) /
+              10 ** 9,
         };
 
         setFee(feeRecomendation);
       } catch (error) {
-        logError('error getting fees', 'Transaction', error);
-        alert.removeAll();
-        alert.error(
-          'Error in the proccess to get fee values,  please verify your balance and try again later.'
-        );
-
-        //Wait enough time to te error be showed to later close the window
-        setTimeout(window.close, 3000);
+        console.error(error);
+        eip1559GasError = true;
       }
+
+      setGasErrors({ eip1559GasError, gasLimitError });
     };
 
     getInitialFeeRecomendation();
@@ -260,6 +306,17 @@ export const SendNTokenTransaction = () => {
     alert.removeAll();
     alert.success('Address successfully copied');
   }, [copied]);
+
+  useEffect(() => {
+    const validateEIP1559Compatibility = async () => {
+      const isCompatible = await verifyNetworkEIP1559Compatibility(
+        ethereumTransaction.web3Provider
+      );
+      setIsEIP1559Compatible(isCompatible);
+    };
+
+    validateEIP1559Compatibility();
+  }, []);
   return (
     <Layout title="SEND" canGoBack={!isExternal}>
       <DefaultModal
@@ -300,7 +357,7 @@ export const SendNTokenTransaction = () => {
             {externalTx.decodedTx.method !== 'Contract Deployment' ? (
               <span>
                 {`${
-                  Number(tx.value) / 10 ** 18
+                  Number(tx.value ? tx.value : 0) / 10 ** 18
                 } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
               </span>
             ) : (
@@ -309,6 +366,14 @@ export const SendNTokenTransaction = () => {
               </span>
             )}
           </p>
+
+          {gasErrors.eip1559GasError ||
+            (gasErrors.gasLimitError && (
+              <span className="text-red-600 text-xs my-4 text-center">
+                We were not able to estimate gas. There might be an error in the
+                contract and this transaction may fail.
+              </span>
+            ))}
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
@@ -329,23 +394,25 @@ export const SendNTokenTransaction = () => {
               </span>
             </p>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              To
-              <span className="text-brand-royalblue text-xs">
-                <Tooltip content={tx.to} childrenClassName="flex">
-                  {ellipsis(tx.to, 7, 15)}
-                  {
-                    <IconButton onClick={() => copy(tx.to ?? '')}>
-                      <Icon
-                        wrapperClassname="flex items-center justify-center"
-                        name="copy"
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  }
-                </Tooltip>
-              </span>
-            </p>
+            {tx.to && (
+              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                To
+                <span className="text-brand-royalblue text-xs">
+                  <Tooltip content={tx.to} childrenClassName="flex">
+                    {ellipsis(tx.to, 7, 15)}
+                    {
+                      <IconButton onClick={() => copy(tx.to ?? '')}>
+                        <Icon
+                          wrapperClassname="flex items-center justify-center"
+                          name="copy"
+                          className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                        />
+                      </IconButton>
+                    }
+                  </Tooltip>
+                </span>
+              </p>
+            )}
 
             <div className="flex flex-row items-center justify-between w-full">
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
@@ -368,7 +435,8 @@ export const SendNTokenTransaction = () => {
               {externalTx.decodedTx.method !== 'Contract Deployment' ? (
                 <span className="text-brand-royalblue text-xs">
                   {`${
-                    Number(tx.value) / 10 ** 18 + getCalculatedFee
+                    Number(tx.value ? tx.value : 0) / 10 ** 18 +
+                    getCalculatedFee
                   } ${activeNetwork.currency?.toLocaleUpperCase()}`}
                 </span>
               ) : (

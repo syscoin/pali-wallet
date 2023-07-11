@@ -17,6 +17,7 @@ import {
 import { getController, dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import removeScientificNotation from 'utils/removeScientificNotation';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
@@ -73,14 +74,20 @@ export const SendTransaction = () => {
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [valueAndCurrency, setValueAndCurrency] = useState<string>('');
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
   });
+  const [hasGasError, setHasGasError] = useState<boolean>(false);
 
   const canGoBack = state?.external ? !state.external : !isExternal;
+
+  const formattedValueAndCurrency = `${removeScientificNotation(
+    Number(tx?.value ? tx?.value : 0) / 10 ** 18
+  )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
@@ -179,10 +186,13 @@ export const SendTransaction = () => {
 
     const getGasAndFunction = async () => {
       try {
-        const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-          validatedDataTxWithoutType as ITransactionParams,
-          activeNetwork
-        );
+        const { feeDetails, formTx, nonce, gasError } =
+          await fetchGasAndDecodeFunction(
+            validatedDataTxWithoutType as ITransactionParams,
+            activeNetwork
+          );
+
+        setHasGasError(gasError);
         setFee(feeDetails);
         setTx(formTx);
         setCustomNonce(nonce);
@@ -200,6 +210,10 @@ export const SendTransaction = () => {
       abortController.abort();
     };
   }, []); // TODO: add timer
+
+  useEffect(() => {
+    setValueAndCurrency(formattedValueAndCurrency);
+  }, [tx]);
 
   return (
     <Layout title="Transaction" canGoBack={canGoBack}>
@@ -240,21 +254,22 @@ export const SendTransaction = () => {
 
             <p className="flex flex-col my-8 text-center text-xl">
               Send:
-              <span className="text-brand-royalblue">
-                {`${Number(tx.value) / 10 ** 18} ${' '} ${
-                  tx.token
-                    ? tx.token.symbol
-                    : activeNetwork.currency?.toUpperCase()
-                }`}
-              </span>
+              <span className="text-brand-royalblue">{valueAndCurrency}</span>
             </p>
 
-            <p className="flex flex-col text-center text-base">
+            <p className="flex flex-col text-center text-base ">
               Method:
               <span className="text-brand-royalblue">
                 {decodedTxData?.method}
               </span>
             </p>
+
+            {hasGasError && (
+              <span className="text-red-600 text-sm my-4">
+                We were not able to estimate gas. There might be an error in the
+                contract and this transaction may fail.
+              </span>
+            )}
           </div>
 
           <div className="my-4 w-full">

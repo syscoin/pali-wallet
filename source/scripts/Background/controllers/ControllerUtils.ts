@@ -104,7 +104,7 @@ const ControllerUtils = (): IControllerUtils => {
               await fetch(
                 `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
               )
-            ).json();
+            ).json(); //This call can be optimized so we get only the info we're interested in
 
             const currentNetworkCoinMarket = coins[0]?.current_price;
 

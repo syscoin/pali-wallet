@@ -11,6 +11,8 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import { ITokenEthProps } from 'types/tokens';
+
 import {
   IChangingConnectedAccount,
   IPaliAccount,
@@ -35,6 +37,9 @@ export const initialState: IVaultState = {
   activeAccount: {
     id: 0,
     type: KeyringAccountType.HDAccount,
+  },
+  advancedSettings: {
+    refresh: false,
   },
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
@@ -75,6 +80,33 @@ const VaultState = createSlice({
       }>
     ) {
       state.accounts = action.payload; //todo: account should be adjusted with the new type and format
+    },
+    setAccountsWithLabelEdited(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        label: string;
+      }>
+    ) {
+      const { label, accountId, accountType } = action.payload;
+
+      state.accounts[accountType][accountId].label = label;
+    },
+    setEditedEvmToken(
+      state: IVaultState,
+      action: PayloadAction<{
+        accountId: number;
+        accountType: KeyringAccountType;
+        editedToken: ITokenEthProps;
+        tokenIndex: number;
+      }>
+    ) {
+      const { editedToken, tokenIndex, accountId, accountType } =
+        action.payload;
+
+      state.accounts[accountType][accountId].assets.ethereum[tokenIndex] =
+        editedToken;
     },
     setNetworkChange(
       state: IVaultState,
@@ -248,6 +280,25 @@ const VaultState = createSlice({
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
     },
+    setAdvancedSettings(
+      state: IVaultState,
+      action: PayloadAction<{
+        advancedProperty: string;
+        isActive: boolean;
+        isFirstTime?: boolean;
+      }>
+    ) {
+      const { advancedProperty, isActive, isFirstTime } = action.payload;
+      if (
+        state.advancedSettings?.[advancedProperty] !== undefined ||
+        isFirstTime
+      ) {
+        state.advancedSettings = {
+          ...state.advancedSettings,
+          [advancedProperty]: isActive,
+        };
+      }
+    },
     setChangingConnectedAccount(
       state: IVaultState,
       action: PayloadAction<IChangingConnectedAccount>
@@ -380,9 +431,11 @@ const VaultState = createSlice({
 
 export const {
   setAccounts,
+  setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
+  setEditedEvmToken,
   setNetworkType,
   setNetworkChange,
   setActiveNetwork,
@@ -406,6 +459,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
+  setAdvancedSettings,
   setIsPolling,
 } = VaultState.actions;
 

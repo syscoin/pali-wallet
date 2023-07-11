@@ -32,7 +32,7 @@ export const SendEth = () => {
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets.ethereum?.length > 0) {
       const getAsset = activeAccount.assets.ethereum.find(
-        (asset: any) => asset.contractAddress === item
+        (asset) => asset.contractAddress === item
       );
 
       if (getAsset) {
@@ -273,7 +273,7 @@ export const SendEth = () => {
                 className={`
                   ${
                     hasAccountAssets
-                      ? 'mixed-double-border-input'
+                      ? 'mixed-double-border-input amount-input'
                       : 'mixed-right-border-input'
                   }`}
                 type="number"
