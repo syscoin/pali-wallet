@@ -53,7 +53,10 @@ export const fetchGasAndDecodeFunction = async (
       currentBlock.number,
     ]);
   } catch (error) {
-    if (!error.message.includes('reverted')) {
+    if (
+      !error.message.includes('reverted') ||
+      !error.message.includes('insufficient')
+    ) {
       isInvalidTxData = true;
     }
   }
