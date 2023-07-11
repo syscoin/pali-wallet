@@ -210,7 +210,7 @@ export class PaliInpageProviderSys extends BaseProvider {
    * @param opts.isUnlocked - The latest isUnlocked value.
    */
   private _handleConnectedXpub(xpub: string | null) {
-    if (!ethers.utils.isHexString(xpub)) {
+    if (!ethers.utils.isHexString(xpub) || xpub === null) {
       this._sysState.xpub = xpub;
     }
   }

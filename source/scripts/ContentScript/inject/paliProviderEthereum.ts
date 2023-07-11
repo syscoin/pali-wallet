@@ -264,9 +264,17 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _handleAccountsChanged(
-    currentAccounts: unknown[],
+    currentAccounts: unknown[] | null,
     isEthAccounts = false
   ): void {
+    if (currentAccounts === null) {
+      this._state.accounts = currentAccounts as any;
+
+      if (this._state.initialized) {
+        this.emit('accountsChanged', currentAccounts as any);
+      }
+      return;
+    }
     let accounts = currentAccounts as any[];
 
     if (!Array.isArray(currentAccounts)) {
