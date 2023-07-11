@@ -242,9 +242,15 @@ export const SendNTokenTransaction = () => {
       try {
         if (transactionDataValidation) {
           // if it run successfully, the contract data is all right.
+          const clonedTx = { ...tx };
+          delete clonedTx.gasLimit;
+          delete clonedTx.gas;
+          delete clonedTx.maxPriorityFeePerGas;
+          delete clonedTx.maxFeePerGas;
+          delete clonedTx.gasPrice;
           await ethereumTransaction.web3Provider.send('eth_call', [
-            { to: tx.to, data: tx.data },
-            currentBlock.number,
+            clonedTx,
+            'latest',
           ]);
         }
       } catch (error) {

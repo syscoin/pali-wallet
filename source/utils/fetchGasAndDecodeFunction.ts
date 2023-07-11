@@ -48,9 +48,17 @@ export const fetchGasAndDecodeFunction = async (
   // verify tx data
   try {
     // if it run successfully, the contract data is all right.
+    const clonedTx = { ...dataTx };
+    delete clonedTx.gasLimit;
+    delete clonedTx.gas;
+    delete clonedTx.maxPriorityFeePerGas;
+    delete clonedTx.maxFeePerGas;
+    if (!dataTx.to) {
+      delete clonedTx.to;
+    }
     await ethereumTransaction.web3Provider.send('eth_call', [
-      { to: dataTx.to, data: dataTx.data },
-      currentBlock.number,
+      clonedTx,
+      'latest',
     ]);
   } catch (error) {
     if (
