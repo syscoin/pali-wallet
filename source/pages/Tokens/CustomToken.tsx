@@ -72,6 +72,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   const isTokenErc20 = tokenContractType.contractType === 'ERC-20';
   const isTokenErc721 = tokenContractType.contractType === 'ERC-721';
 
+  const validatedContractsTypes = ['ERC-1155', 'Unknown'];
+
   const handleSubmit = async ({
     contractAddress,
     symbol,
@@ -353,6 +355,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
+          validateTrigger="onChange"
           name="contractAddress"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -373,7 +376,12 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
                 const validationForEditToken = isEdit || keepValue;
 
-                if (validationForEditToken && isTokenErc721) {
+                if (
+                  (validationForEditToken && isTokenErc721) ||
+                  validatedContractsTypes.some((contracts) =>
+                    tokenContractType.contractType.includes(contracts)
+                  )
+                ) {
                   return Promise.resolve();
                 }
 
@@ -426,6 +434,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         </Form.Item>
 
         <Form.Item
+          validateTrigger="onChange"
           name="symbol"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -473,6 +482,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         </Form.Item>
 
         <Form.Item
+          validateTrigger="onChange"
           name="decimals"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -480,11 +490,20 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             {
               required: true,
               message: 'Please, type token decimals!',
+              pattern: new RegExp(/^[0-9]+$/),
             },
             () => ({
-              async validator(_, value) {
-                if (value === '') {
+              validator(_, value) {
+                if (!value) {
                   return Promise.reject();
+                }
+
+                if (
+                  validatedContractsTypes.some((validation) =>
+                    tokenContractType.contractType.includes(validation)
+                  )
+                ) {
+                  return Promise.resolve();
                 }
 
                 const validationDecimalsWarning = Boolean(
@@ -511,7 +530,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           ]}
         >
           <Input
-            type="number"
+            type="text"
             className="input-small relative"
             placeholder="Token decimal"
           />

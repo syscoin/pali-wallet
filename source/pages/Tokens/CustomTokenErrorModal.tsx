@@ -30,8 +30,8 @@ export const CustomTokenErrorModal = ({
           <ErrorModal
             show={Boolean(errorType)}
             title="No support for ERC-1155"
-            description="At the moment we don't support this type of contracts, but we are working to support ERC-1155 as soon as possible."
-            log={message}
+            description="Try again using another Token Contract Type."
+            log="At the moment we don't support this type of contracts, but we are working to support ERC-1155 as soon as possible."
             onClose={() => resetErcErrorState()}
           />
         );
