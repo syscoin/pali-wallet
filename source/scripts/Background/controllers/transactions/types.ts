@@ -94,13 +94,10 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 
 export interface IEvmTransactionsController {
   getUserTransactionByDefaultProvider: (
-    currentAccount: IPaliAccount,
     startBlock: number,
     endBlock: number
   ) => Promise<IEvmTransactionResponse[]>;
-  pollingEvmTransactions: (
-    currentAccount: IPaliAccount
-  ) => Promise<IEvmTransactionResponse[]>;
+  pollingEvmTransactions: () => Promise<IEvmTransactionResponse[]>;
 }
 
 //------------------------- END EVM TYPES / INTERFACES -------------------------//

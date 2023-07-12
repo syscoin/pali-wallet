@@ -3,7 +3,6 @@ import flatMap from 'lodash/flatMap';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { IPaliAccount } from 'state/vault/types';
 
 import { Queue } from './queue';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
@@ -17,7 +16,6 @@ const EvmTransactionsController = (
   web3Provider: CustomJsonRpcProvider
 ): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
-    currentAccount: IPaliAccount,
     startBlock: number,
     endBlock: number
   ) => {
@@ -25,7 +23,6 @@ const EvmTransactionsController = (
 
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       provider,
-      currentAccount.address,
       startBlock,
       endBlock
     );
@@ -35,7 +32,7 @@ const EvmTransactionsController = (
     return treatedTxs as IEvmTransactionResponse[];
   };
 
-  const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
+  const pollingEvmTransactions = async () => {
     try {
       const currentBlockNumber = store.getState().vault.currentBlock?.number;
       const currentNetworkChainId =
@@ -53,7 +50,6 @@ const EvmTransactionsController = (
       const fromBlock = latestBlockNumber - blocksToSearch;
 
       const txs = await getUserTransactionByDefaultProvider(
-        currentAccount,
         fromBlock,
         latestBlockNumber
       );

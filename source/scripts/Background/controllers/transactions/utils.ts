@@ -7,10 +7,13 @@ import omit from 'lodash/omit';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setCurrentBlock } from 'state/vault';
+import { setAccountPropertyByIdAndType, setCurrentBlock } from 'state/vault';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -42,7 +45,6 @@ export const getFormattedEvmTransactionResponse = async (
 
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
-  userAddress: string,
   startBlock: number,
   endBlock: number
 ): Promise<IEvmTransactionResponse[] | any> => {
@@ -55,43 +57,29 @@ export const findUserTxsInProviderByBlocksRange = async (
     ])
   );
 
-  const userTxs = Promise.all(batchRequest)
-    .then((responses) => {
-      // Handle the responses
+  const responses = await Promise.all(batchRequest);
 
-      store.dispatch(
-        setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
-      );
+  store.dispatch(
+    setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
+  );
 
-      return flatMap(
-        responses.map((response: any) => {
-          const lastBlockNumber =
-            rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
-          const currentBlock = parseInt(response.number, 16);
+  const lastBlockNumber = rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
 
-          const filterTxsByAddress = response.transactions
-            .filter(
-              (tx) =>
-                tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
-                tx?.to?.toLowerCase() === userAddress.toLowerCase()
-            )
-            .map((txWithConfirmations) => ({
-              ...txWithConfirmations,
-              chainId: Number(txWithConfirmations.chainId),
-              confirmations: lastBlockNumber - currentBlock,
-            }));
+  return flatMap(
+    responses.map((response: any) => {
+      const currentBlock = parseInt(response.number, 16);
 
-          return flatMap(filterTxsByAddress);
-        })
-      );
+      const filterTxsByAddress = response.transactions
+        .filter((tx) => tx?.from || tx?.to)
+        .map((txWithConfirmations) => ({
+          ...txWithConfirmations,
+          chainId: Number(txWithConfirmations.chainId),
+          confirmations: lastBlockNumber - currentBlock,
+        }));
+
+      return filterTxsByAddress;
     })
-    .catch((error) => {
-      // Handle any errors
-
-      console.error(error);
-    });
-
-  return userTxs;
+  );
 };
 
 export const treatDuplicatedTxs = (
@@ -151,26 +139,66 @@ export const treatDuplicatedTxs = (
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
 ): IEvmTransactionResponse[] => {
-  //If providedTxs is empty only return an empty array to we don't need to dispatch any Tx or validated it with the userTxs state
+  // If providerTxs is empty, return an empty array
   if (isEmpty(providerTxs)) return [];
 
-  const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+  console.log('providerTxs', providerTxs);
 
-  const { transactions: userTransactions } =
-    accounts[activeAccount.type][activeAccount.id];
+  const { accounts, isBitcoinBased, activeAccount } = store.getState().vault;
 
-  const userClonedArray = clone(
-    isBitcoinBased
-      ? (compact(userTransactions) as ISysTransaction[])
-      : (compact(Object.values(userTransactions)) as IEvmTransactionResponse[])
-  );
+  let userTx;
 
-  const mergeArrays = [
-    ...providerTxs,
-    ...userClonedArray,
-  ] as IEvmTransactionResponse[];
+  for (const accountType in accounts) {
+    for (const accountId in accounts[accountType]) {
+      const account = accounts[accountType][accountId];
+      const userAddress = account.address.toLowerCase();
 
-  const uniqueTxsArray = treatDuplicatedTxs(mergeArrays);
+      if (userAddress !== userAddress.toLowerCase()) {
+        continue;
+      }
 
-  return uniqueTxsArray as IEvmTransactionResponse[];
+      const filteredTxs = providerTxs.filter(
+        (tx) =>
+          tx.from?.toLowerCase() === userAddress ||
+          tx.to?.toLowerCase() === userAddress
+      );
+
+      const updatedTxs = isBitcoinBased
+        ? (compact(account.transactions) as ISysTransaction[])
+        : (compact(
+            Object.values(account.transactions)
+          ) as IEvmTransactionResponse[]);
+
+      updatedTxs.push(
+        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[])
+      );
+
+      if (updatedTxs.length > 0) {
+        const accountTransactions = Array.isArray(account.transactions)
+          ? account.transactions
+          : [];
+        const treatedDuplicatedTx = treatDuplicatedTxs([
+          ...updatedTxs,
+          ...accountTransactions,
+        ]);
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: Number(accountId),
+            type: accountType as KeyringAccountType,
+            property: 'transactions',
+            value: treatedDuplicatedTx,
+          })
+        );
+      }
+
+      if (
+        accountType === activeAccount.type &&
+        Number(accountId) === activeAccount.id
+      ) {
+        userTx = filteredTxs;
+      }
+    }
+  }
+
+  return userTx;
 };
