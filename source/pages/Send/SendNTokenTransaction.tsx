@@ -231,7 +231,9 @@ export const SendNTokenTransaction = () => {
         'eth_getBlockByNumber',
         ['latest', false]
       );
-      const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+      const gasLimitFromCurrentBlock = Math.floor(
+        Number(currentBlock.gasLimit) * 0.95
+      ); //GasLimit from current block with 5% discount, whole limit from block is too much
       let gasLimitResult = ethereumTransaction.toBigNumber(
         gasLimitFromCurrentBlock
       );
@@ -242,9 +244,15 @@ export const SendNTokenTransaction = () => {
       try {
         if (transactionDataValidation) {
           // if it run successfully, the contract data is all right.
+          const clonedTx = { ...tx };
+          delete clonedTx.gasLimit;
+          delete clonedTx.gas;
+          delete clonedTx.maxPriorityFeePerGas;
+          delete clonedTx.maxFeePerGas;
+          delete clonedTx.gasPrice;
           await ethereumTransaction.web3Provider.send('eth_call', [
-            { to: tx.to, data: tx.data },
-            currentBlock.number,
+            clonedTx,
+            'latest',
           ]);
         } else {
           await ethereumTransaction.web3Provider.send('eth_call', [
