@@ -246,6 +246,11 @@ export const SendNTokenTransaction = () => {
             { to: tx.to, data: tx.data },
             currentBlock.number,
           ]);
+        } else {
+          await ethereumTransaction.web3Provider.send('eth_call', [
+            { to: tx.to, from: tx.from, value: tx.value },
+            currentBlock.number,
+          ]);
         }
       } catch (error) {
         if (
@@ -396,12 +401,18 @@ export const SendNTokenTransaction = () => {
             )}
           </p>
 
-          {(errors.eip1559GasError ||
-            errors.gasLimitError ||
-            errors.txDataError) && (
+          {errors.txDataError && (
             <span className="text-red-600 text-xs my-4 text-center">
               We were not able to estimate gas. There might be an error in the
               contract and this transaction may fail.
+            </span>
+          )}
+
+          {(errors.eip1559GasError || errors.gasLimitError) && (
+            <span className="disabled text-xs my-4 text-center">
+              The current RPC provider couldn't estimate the gas for this
+              transaction. Therefore, we'll estimate the gas using the existing
+              block data for your transaction.
             </span>
           )}
 
