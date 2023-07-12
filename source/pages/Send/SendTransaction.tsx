@@ -74,6 +74,7 @@ export const SendTransaction = () => {
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
   const [haveError, setHaveError] = useState<boolean>(false);
   const [hasTxDataError, setHasTxDataError] = useState<boolean>(false);
+  const [hasGasError, setHasGasError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [valueAndCurrency, setValueAndCurrency] = useState<string>('');
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
@@ -183,14 +184,14 @@ export const SendTransaction = () => {
 
   useEffect(() => {
     const abortController = new AbortController();
-
     const getGasAndFunction = async () => {
       try {
-        const { feeDetails, formTx, nonce, isInvalidTxData } =
+        const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
           await fetchGasAndDecodeFunction(
             validatedDataTxWithoutType as ITransactionParams,
             activeNetwork
           );
+        setHasGasError(gasLimitError);
         setHasTxDataError(isInvalidTxData);
         setFee(feeDetails);
         setTx(formTx);
@@ -267,6 +268,14 @@ export const SendTransaction = () => {
               <span className="text-red-600 text-sm my-4">
                 We were not able to estimate gas. There might be an error in the
                 contract and this transaction may fail.
+              </span>
+            )}
+
+            {hasGasError && (
+              <span className="disabled text-xs my-4 text-center">
+                The current RPC provider couldn't estimate the gas for this
+                transaction. Therefore, we'll estimate the gas using the
+                existing block data for your transaction.
               </span>
             )}
           </div>

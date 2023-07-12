@@ -22,7 +22,7 @@ export const fetchGasAndDecodeFunction = async (
     gasLimitFromCurrentBlock
   );
   let isInvalidTxData = false;
-
+  let gasLimitError = false;
   const { maxFeePerGas, maxPriorityFeePerGas } =
     await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
   const nonce = await ethereumTransaction.getRecommendedNonce(dataTx.from); // This also need possibility for customization //todo: adjust to get from new keyringmanager
@@ -63,10 +63,7 @@ export const fetchGasAndDecodeFunction = async (
       'latest',
     ]);
   } catch (error) {
-    if (
-      !error.message.includes('reverted') ||
-      !error.message.includes('insufficient')
-    ) {
+    if (!error.message.includes('reverted')) {
       isInvalidTxData = true;
     }
   }
@@ -78,6 +75,7 @@ export const fetchGasAndDecodeFunction = async (
     }
   } catch (error) {
     console.error(error);
+    gasLimitError = true;
   }
   formTx.gasLimit =
     (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
@@ -96,5 +94,6 @@ export const fetchGasAndDecodeFunction = async (
     formTx,
     nonce,
     isInvalidTxData,
+    gasLimitError,
   };
 };

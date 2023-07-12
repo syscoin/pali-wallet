@@ -261,10 +261,7 @@ export const SendNTokenTransaction = () => {
           ]);
         }
       } catch (error) {
-        if (
-          !error.message.includes('reverted') ||
-          !error.message.includes('insufficient')
-        ) {
+        if (!error.message.includes('reverted')) {
           isInvalidTxData = true;
         }
       }
