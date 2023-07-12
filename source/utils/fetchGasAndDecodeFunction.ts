@@ -15,7 +15,9 @@ export const fetchGasAndDecodeFunction = async (
     'eth_getBlockByNumber',
     ['latest', false]
   );
-  const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+  const gasLimitFromCurrentBlock = Math.floor(
+    Number(currentBlock.gasLimit) * 0.95
+  ); //GasLimit from current block with 5% discount, whole limit from block is too much
   let gasLimitResult = ethereumTransaction.toBigNumber(
     gasLimitFromCurrentBlock
   );
