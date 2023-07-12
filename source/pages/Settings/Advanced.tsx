@@ -4,9 +4,19 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import {
+  Layout,
+  DefaultModal,
+  NeutralButton,
+  ConfirmationModal,
+} from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+
+const WARNING_MESSAGES = {
+  refresh:
+    'The refresh button dispatches multiple requests to the blockchain through an RPC, if you activating this be sure to add in your own paid RPC providers to avoid reaching the public RPCs rate-limit. Use it at your own accountability',
+};
 
 const Advanced = () => {
   const { timer, advancedSettings } = useSelector(
@@ -18,6 +28,11 @@ const Advanced = () => {
     [k: string]: boolean;
   }>(advancedSettings);
   const [loading, setLoading] = useState<boolean>(false);
+  const [confirmationMessage, setConfirmationMessage] = useState<string>('');
+  const [currentAdvancedProperty, setCurrentAdvancedProperty] =
+    useState<string>('');
+  const [isOpenConfirmationModal, setIsOpenConfirmationModal] =
+    useState<boolean>(false);
 
   const controller = getController();
   const navigate = useNavigate();
@@ -33,6 +48,27 @@ const Advanced = () => {
     setLoading(false);
   };
 
+  const handleConfirmAdvancedProp = (propName: string, message: string) => {
+    setCurrentAdvancedProperty(propName);
+    setConfirmationMessage(message);
+
+    if (!enabledProperties[propName]) {
+      setIsOpenConfirmationModal(!isOpenConfirmationModal);
+    } else {
+      setEnabledProperties((prevState) => ({
+        ...prevState,
+        [propName]: !prevState[propName],
+      }));
+    }
+  };
+
+  const handleOnClickModal = () => {
+    setEnabledProperties((prevState) => ({
+      ...prevState,
+      [currentAdvancedProperty]: !prevState[currentAdvancedProperty],
+    }));
+    setIsOpenConfirmationModal(!isOpenConfirmationModal);
+  };
   return (
     <Layout title="ADVANCED SETTINGS" id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
@@ -48,6 +84,14 @@ const Advanced = () => {
         }}
         title="Advanced settings was set successfully"
         description="Your wallet was configured successfully. You can change it at any time."
+      />
+
+      <ConfirmationModal
+        title="Warning"
+        description={confirmationMessage}
+        show={isOpenConfirmationModal}
+        onClose={() => setIsOpenConfirmationModal(!isOpenConfirmationModal)}
+        onClick={() => handleOnClickModal()}
       />
 
       <Form
@@ -77,10 +121,10 @@ const Advanced = () => {
             <Switch
               checked={enabledProperties['refresh']}
               onChange={() =>
-                setEnabledProperties((prevState) => ({
-                  ...prevState,
-                  refresh: !prevState['refresh'],
-                }))
+                handleConfirmAdvancedProp(
+                  'refresh',
+                  WARNING_MESSAGES['refresh']
+                )
               }
               className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
               style={{ margin: '0 auto !important' }}
