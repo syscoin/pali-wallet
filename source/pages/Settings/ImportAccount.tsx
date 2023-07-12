@@ -4,7 +4,13 @@ import { useForm } from 'antd/es/form/Form';
 import React, { Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
+import {
+  Layout,
+  Icon,
+  DefaultModal,
+  NeutralButton,
+  Card,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -57,10 +63,23 @@ const ImportAccountView = () => {
         title="Account imported successfully"
       />
 
-      <p className="mb-2 text-left text-white text-sm md:max-w-full">
-        Imported accounts will not be associated with your originally created
-        Pali account Secret Recovery Phrase.
+      <p className="mb-8 text-center text-white text-sm">
+        Imported accounts won't link to your initial Pali account Secret
+        Recovery Phrase.
       </p>
+      <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-2">
+        <Card type="info" className="border-alert-darkwarning">
+          <div className="text-xs text-alert-darkwarning font-bold mb-2.5">
+            <p>
+              WARNING: Currently, the privateKeys feature is only supported in
+              the EVM/Web3 chains context. Therefore, UTXO networks won't be
+              accessible while using a PrivateKey account. To regain access to
+              UTXO networks, switch to a Pali Native Account or a Trezor
+              Account.
+            </p>
+          </div>
+        </Card>
+      </div>
 
       <p className="mb-2 mt-5 text-left text-white text-sm md:max-w-full">
         Select Type
