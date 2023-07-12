@@ -173,14 +173,10 @@ export const validateAndManageUserTransactions = (
         ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[])
       );
 
-      if (updatedTxs.length > 0) {
-        const accountTransactions = Array.isArray(account.transactions)
-          ? account.transactions
-          : [];
-        const treatedDuplicatedTx = treatDuplicatedTxs([
-          ...updatedTxs,
-          ...accountTransactions,
-        ]);
+      console.log('filteredTxs', filteredTxs, accountId, accountType);
+
+      if (filteredTxs.length > 0) {
+        const treatedDuplicatedTx = treatDuplicatedTxs(updatedTxs);
         store.dispatch(
           setAccountPropertyByIdAndType({
             id: Number(accountId),
