@@ -227,55 +227,56 @@ export const SendNTokenTransaction = () => {
             nonce,
           };
       let isInvalidTxData = false;
-      const currentBlock = await ethereumTransaction.web3Provider.send(
-        'eth_getBlockByNumber',
-        ['latest', false]
-      );
-      const gasLimitFromCurrentBlock = Math.floor(
-        Number(currentBlock.gasLimit) * 0.95
-      ); //GasLimit from current block with 5% discount, whole limit from block is too much
-      let gasLimitResult = ethereumTransaction.toBigNumber(
-        gasLimitFromCurrentBlock
-      );
-      let gasLimitError = false;
+      let gasLimitResult;
       let eip1559GasError = false;
+      let gasLimitError = false;
+      if (tx.gas) {
+        gasLimitResult = ethereumTransaction.toBigNumber(0);
+      } else {
+        const currentBlock = await ethereumTransaction.web3Provider.send(
+          'eth_getBlockByNumber',
+          ['latest', false]
+        );
+        const gasLimitFromCurrentBlock = Math.floor(
+          Number(currentBlock.gasLimit) * 0.95
+        ); //GasLimit from current block with 5% discount, whole limit from block is too much
+        gasLimitResult = ethereumTransaction.toBigNumber(
+          gasLimitFromCurrentBlock
+        );
+        gasLimitError = false;
 
-      // verify tx data
-      try {
-        if (transactionDataValidation) {
-          // if it run successfully, the contract data is all right.
-          const clonedTx = { ...tx };
-          delete clonedTx.gasLimit;
-          delete clonedTx.gas;
-          delete clonedTx.maxPriorityFeePerGas;
-          delete clonedTx.maxFeePerGas;
-          delete clonedTx.gasPrice;
-          await ethereumTransaction.web3Provider.send('eth_call', [
-            clonedTx,
-            'latest',
-          ]);
-        } else {
-          await ethereumTransaction.web3Provider.send('eth_call', [
-            { to: tx.to, from: tx.from, value: tx.value },
-            currentBlock.number,
-          ]);
+        // verify tx data
+        try {
+          if (transactionDataValidation) {
+            // if it run successfully, the contract data is all right.
+            const clonedTx = { ...tx };
+            delete clonedTx.gasLimit;
+            delete clonedTx.gas;
+            delete clonedTx.maxPriorityFeePerGas;
+            delete clonedTx.maxFeePerGas;
+            delete clonedTx.gasPrice;
+            await ethereumTransaction.web3Provider.send('eth_call', [
+              clonedTx,
+              'latest',
+            ]);
+          }
+        } catch (error) {
+          if (!error.message.includes('reverted')) {
+            isInvalidTxData = true;
+          }
         }
-      } catch (error) {
-        if (!error.message.includes('reverted')) {
-          isInvalidTxData = true;
-        }
-      }
 
-      try {
-        // if tx data is valid, Pali is able to estimate gas.
-        if (!isInvalidTxData) {
-          gasLimitResult = await ethereumTransaction.getTxGasLimit(
-            baseTx as any
-          );
+        try {
+          // if tx data is valid, Pali is able to estimate gas.
+          if (!isInvalidTxData) {
+            gasLimitResult = await ethereumTransaction.getTxGasLimit(
+              baseTx as any
+            );
+          }
+        } catch (error) {
+          console.error(error);
+          gasLimitError = true;
         }
-      } catch (error) {
-        console.error(error);
-        gasLimitError = true;
       }
 
       tx.gasLimit =
@@ -283,7 +284,6 @@ export const SendNTokenTransaction = () => {
         (tx?.gasLimit && Number(tx?.gasLimit) > Number(gasLimitResult))
           ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
           : gasLimitResult;
-
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
           await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();

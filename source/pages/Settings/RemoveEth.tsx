@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { Card, Layout, DefaultModal, NeutralButton } from 'components/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -52,10 +52,22 @@ const RemoveEthView = () => {
   return (
     <Layout title="MANAGE ETH PROVIDER" id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
-        To use another ETH wallet, you can disable window.ethereum injected by
-        Pali.
+        Imported accounts won't link to your initial Pali account Secret
+        Recovery Phrase.
       </p>
-
+      <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-8">
+        <Card type="info" className="border-alert-darkwarning">
+          <div className="text-xs text-alert-darkwarning font-bold mb-2.5">
+            <p>
+              WARNING: Currently, the privateKeys feature is only supported in
+              the EVM/Web3 chains context. Therefore, UTXO networks won't be
+              accessible while using a PrivateKey account. To regain access to
+              UTXO networks, switch to a Pali Native Account or a Trezor
+              Account.
+            </p>
+          </div>
+        </Card>
+      </div>
       <DefaultModal
         show={confirmed}
         onClose={() => {

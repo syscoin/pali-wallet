@@ -47,35 +47,39 @@ export const fetchGasAndDecodeFunction = async (
     nonce: nonce,
   } as any;
 
-  // verify tx data
-  try {
-    // if it run successfully, the contract data is all right.
-    const clonedTx = { ...dataTx };
-    delete clonedTx.gasLimit;
-    delete clonedTx.gas;
-    delete clonedTx.maxPriorityFeePerGas;
-    delete clonedTx.maxFeePerGas;
-    if (!dataTx.to) {
-      delete clonedTx.to;
+  if (dataTx.gas) {
+    gasLimitResult = ethereumTransaction.toBigNumber(0);
+  } else {
+    // verify tx data
+    try {
+      // if it run successfully, the contract data is all right.
+      const clonedTx = { ...dataTx };
+      delete clonedTx.gasLimit;
+      delete clonedTx.gas;
+      delete clonedTx.maxPriorityFeePerGas;
+      delete clonedTx.maxFeePerGas;
+      if (!dataTx.to) {
+        delete clonedTx.to;
+      }
+      await ethereumTransaction.web3Provider.send('eth_call', [
+        clonedTx,
+        'latest',
+      ]);
+    } catch (error) {
+      if (!error.message.includes('reverted')) {
+        isInvalidTxData = true;
+      }
     }
-    await ethereumTransaction.web3Provider.send('eth_call', [
-      clonedTx,
-      'latest',
-    ]);
-  } catch (error) {
-    if (!error.message.includes('reverted')) {
-      isInvalidTxData = true;
-    }
-  }
 
-  try {
-    // if tx data is valid, Pali is able to estimate gas.
-    if (!isInvalidTxData) {
-      gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx);
+    try {
+      // if tx data is valid, Pali is able to estimate gas.
+      if (!isInvalidTxData) {
+        gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx);
+      }
+    } catch (error) {
+      console.error(error);
+      gasLimitError = true;
     }
-  } catch (error) {
-    console.error(error);
-    gasLimitError = true;
   }
   formTx.gasLimit =
     (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
