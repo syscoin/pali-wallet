@@ -5,6 +5,8 @@ import { useSelector } from 'react-redux';
 import {
   isValidEthereumAddress,
   getTokenStandardMetadata,
+  contractChecker,
+  ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
 import { Card, DefaultModal, NeutralButton } from 'components/index';
@@ -25,6 +27,13 @@ const TOKENS_WARNING_INITIAL_VALUE = {
   value: '',
 };
 
+const TOKEN_CONTRACT_TYPE_INITIAL_VALUE = {
+  contractType: '',
+  error: false,
+  errorType: '',
+  message: '',
+};
+
 export const CustomToken = (props: ICustomTokenComponentProps) => {
   const controller = getController();
 
@@ -39,6 +48,11 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     errorType: '',
     message: '',
   });
+
+  const [tokenContractType, setTokenContractType] = useState(
+    TOKEN_CONTRACT_TYPE_INITIAL_VALUE
+  );
+
   const [tokenMetadataInfos, setTokenMetadataInfos] =
     useState<IAddCustomTokenMetadataInfos | null>(null);
   const [tokenDecimalsWarning, setTokenDecimalsWarning] = useState(
@@ -52,6 +66,13 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+
+  const web3Provider = controller.wallet.ethereumTransaction.web3Provider;
+
+  const isTokenErc20 = tokenContractType.contractType === 'ERC-20';
+  const isTokenErc721 = tokenContractType.contractType === 'ERC-721';
+
+  const validatedContractsTypes = ['ERC-1155', 'Unknown'];
 
   const handleSubmit = async ({
     contractAddress,
@@ -73,7 +94,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
               contractAddress,
               symbol,
               decimals,
-              controller.wallet.ethereumTransaction.web3Provider
+              web3Provider
             );
 
           if (addTokenMethodResponse.error) {
@@ -100,6 +121,15 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
           setAdded(true);
         } catch (error) {
+          if (String(error).includes('Token already exists')) {
+            setErcError({
+              errorType: 'TokenExists',
+              message: '',
+            });
+
+            return;
+          }
+
           setErcError({
             errorType: 'Undefined',
             message: '',
@@ -146,6 +176,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     });
 
     setTokenMetadataInfos({
+      contractAddress: '',
       symbol: '',
       decimals: '',
     });
@@ -165,48 +196,146 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     }
   };
 
-  useEffect(() => {
-    if (isEdit) {
-      getTokenStandardMetadata(
-        tokenToEdit.contractAddress,
-        activeAccount.address,
-        controller.wallet.ethereumTransaction.web3Provider
-      ).then((token) => {
-        if (token.decimals && token.tokenSymbol) {
+  const getContractType = async (
+    contractValue: string,
+    isForEdit?: boolean
+  ) => {
+    const contractResponse = (await contractChecker(
+      contractValue,
+      web3Provider
+    )) as ISupportsInterfaceProps;
+
+    if (String(contractResponse).includes('Invalid contract address')) {
+      setTokenContractType({
+        contractType: 'Invalid',
+        error: true,
+        errorType: 'Invalid',
+        message:
+          'Invalid contract address. Verify the current contract address or the current network!',
+      });
+      return;
+    }
+
+    switch (contractResponse.type) {
+      case 'ERC-721':
+        setTokenContractType({
+          contractType: 'ERC-721',
+          error: false,
+          errorType: '',
+          message: '',
+        });
+
+        if (isForEdit) {
           setTokenMetadataInfos({
-            symbol: token.tokenSymbol,
-            decimals: token.decimals,
+            contractAddress: contractValue,
+            symbol: '',
+            decimals: 0,
           });
         }
+
+        break;
+
+      case 'ERC-1155':
+        setTokenContractType({
+          contractType: 'ERC-1155',
+          error: true,
+          errorType: 'ERC-1155',
+          message: contractResponse.message,
+        });
+        break;
+      case 'Unknown':
+        setTokenContractType({
+          contractType: 'Unknown',
+          error: true,
+          errorType: 'Unknown',
+          message: contractResponse.message,
+        });
+        break;
+
+      //Default for ERC-20
+      default:
+        setTokenContractType({
+          contractType: 'ERC-20',
+          error: false,
+          errorType: '',
+          message: '',
+        });
+
+        if (isForEdit) {
+          await getErc20TokenValues(contractValue, isForEdit);
+        }
+
+        break;
+    }
+
+    return contractResponse;
+  };
+
+  const getErc20TokenValues = async (
+    tokenAddress: string,
+    isForEdit?: boolean
+  ) => {
+    const { decimals, tokenSymbol } = await getTokenStandardMetadata(
+      tokenAddress,
+      activeAccount.address,
+      web3Provider
+    );
+
+    if (decimals && tokenSymbol) {
+      if (!isForEdit) {
+        form.setFieldsValue({
+          symbol: tokenSymbol,
+          decimals: String(decimals),
+        });
+      }
+
+      setTokenMetadataInfos({
+        contractAddress: tokenAddress,
+        symbol: tokenSymbol,
+        decimals: decimals,
       });
     }
+  };
+
+  useEffect(() => {
+    if (!isEdit) return;
+
+    getContractType(tokenToEdit.contractAddress, isEdit);
   }, [isEdit]);
 
   useEffect(() => {
-    if (!isEdit || !tokenMetadataInfos) return;
+    if (!isEdit || !tokenMetadataInfos || tokenContractType.error) return;
 
-    //Validate when user enter to edit his token to show the original token data
-    if (isEdit && tokenMetadataInfos.decimals && tokenMetadataInfos.symbol) {
-      if (
-        tokenMetadataInfos.symbol.toUpperCase() !==
-        tokenToEdit.tokenSymbol.toUpperCase()
-      ) {
-        setTokenSymbolWarning({
-          error: true,
-          value: tokenToEdit.tokenSymbol,
-        });
-      }
+    const tokenDataValidationForErc20 =
+      isTokenErc20 && tokenMetadataInfos.decimals && tokenMetadataInfos.symbol;
 
-      if (
-        Number(tokenMetadataInfos.decimals) !== Number(tokenToEdit.decimals)
-      ) {
-        setTokenDecimalsWarning({
-          error: true,
-          value: String(tokenToEdit.decimals),
-        });
-      }
+    //Validate when user enter to edit his token to show the original Token data
+    if (
+      Boolean(
+        isEdit &&
+          tokenDataValidationForErc20 &&
+          tokenMetadataInfos.symbol.toUpperCase() !==
+            tokenToEdit.tokenSymbol.toUpperCase()
+      )
+    ) {
+      setTokenSymbolWarning({
+        error: true,
+        value: tokenToEdit.tokenSymbol,
+      });
     }
-  }, [isEdit, tokenMetadataInfos]);
+
+    if (
+      Boolean(
+        isEdit &&
+          Number(tokenMetadataInfos.decimals) !== Number(tokenToEdit.decimals)
+      )
+    ) {
+      setTokenDecimalsWarning({
+        error: true,
+        value: String(tokenToEdit.decimals),
+      });
+    }
+  }, [isEdit, tokenMetadataInfos, tokenContractType]);
 
   return (
     <>
@@ -226,6 +355,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
       >
         <Form.Item
+          validateTrigger="onChange"
           name="contractAddress"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -240,27 +370,47 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                   tokenDecimalsWarning.error || tokenSymbolWarning.error
                 );
 
-                if (isEdit || keepValue) {
+                const normalValidation = Boolean(
+                  value && value.length === 42 && isValidEthereumAddress(value)
+                );
+
+                const validationForEditToken = isEdit || keepValue;
+
+                if (
+                  (validationForEditToken && isTokenErc721) ||
+                  validatedContractsTypes.some((contracts) =>
+                    tokenContractType.contractType.includes(contracts)
+                  )
+                ) {
                   return Promise.resolve();
                 }
 
-                if (value && isValidEthereumAddress(value)) {
-                  const { decimals, tokenSymbol } =
-                    await getTokenStandardMetadata(
-                      value,
-                      activeAccount.address,
-                      controller.wallet.ethereumTransaction.web3Provider
-                    );
+                if (normalValidation) {
+                  const requestContractType = await getContractType(value);
 
-                  if (decimals && tokenSymbol) {
+                  const isSameContractAndAddress =
+                    requestContractType.type ===
+                      tokenContractType.contractType &&
+                    value === tokenMetadataInfos.contractAddress;
+
+                  if (isSameContractAndAddress) {
+                    return Promise.resolve();
+                  }
+
+                  if (requestContractType.type === 'ERC-20') {
+                    await getErc20TokenValues(value);
+                  }
+
+                  if (requestContractType.type === 'ERC-721') {
                     form.setFieldsValue({
-                      symbol: tokenSymbol,
-                      decimals: decimals,
+                      symbol: '',
+                      decimals: '0',
                     });
 
                     setTokenMetadataInfos({
-                      symbol: tokenSymbol,
-                      decimals: decimals,
+                      contractAddress: value,
+                      symbol: '',
+                      decimals: 0,
                     });
                   }
 
@@ -284,6 +434,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         </Form.Item>
 
         <Form.Item
+          validateTrigger="onChange"
           name="symbol"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -298,12 +449,15 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                   return Promise.reject();
                 }
 
-                if (
+                const validationSymbolWarning = Boolean(
                   value &&
-                  tokenMetadataInfos.symbol &&
-                  value.toUpperCase() !==
-                    tokenMetadataInfos.symbol.toUpperCase()
-                ) {
+                    isTokenErc20 &&
+                    tokenMetadataInfos.symbol &&
+                    value.toUpperCase() !==
+                      tokenMetadataInfos.symbol.toUpperCase()
+                );
+
+                if (validationSymbolWarning) {
                   setTokenSymbolWarning({
                     error: true,
                     value: value,
@@ -328,6 +482,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         </Form.Item>
 
         <Form.Item
+          validateTrigger="onChange"
           name="decimals"
           className="md:w-full md:max-w-md"
           hasFeedback
@@ -335,18 +490,29 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             {
               required: true,
               message: 'Please, type token decimals!',
+              pattern: new RegExp(/^[0-9]+$/),
             },
             () => ({
-              async validator(_, value) {
+              validator(_, value) {
                 if (!value) {
                   return Promise.reject();
                 }
 
                 if (
-                  value &&
-                  tokenMetadataInfos.decimals &&
-                  Number(value) !== tokenMetadataInfos.decimals
+                  validatedContractsTypes.some((validation) =>
+                    tokenContractType.contractType.includes(validation)
+                  )
                 ) {
+                  return Promise.resolve();
+                }
+
+                const validationDecimalsWarning = Boolean(
+                  value !== '' &&
+                    tokenMetadataInfos.decimals !== '' &&
+                    Number(value) !== Number(tokenMetadataInfos.decimals)
+                );
+
+                if (validationDecimalsWarning) {
                   setTokenDecimalsWarning({
                     error: true,
                     value: value,
@@ -364,7 +530,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           ]}
         >
           <Input
-            type="number"
+            type="text"
             className="input-small relative"
             placeholder="Token decimal"
           />
