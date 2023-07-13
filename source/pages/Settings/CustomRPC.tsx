@@ -4,7 +4,6 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, NeutralButton, Tooltip } from 'components/index';
@@ -23,8 +22,6 @@ const CustomRPCView = () => {
 
   const { alert, navigate } = useUtils();
   const controller = getController();
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
 
   const [form] = useForm();
 
@@ -75,6 +72,14 @@ const CustomRPCView = () => {
     symbol: (state && state.selected && state.selected.currency) ?? '',
     explorer: (state && state.selected && state.selected.explorer) ?? '',
   };
+
+  const canDisableInputWhenEdit = state ? state.isDefault : false;
+
+  const canDisableDecimalsInput = Boolean(
+    !form.getFieldValue('url') ||
+      isUrlValid ||
+      (state && state.selected && state.selected.chainId)
+  );
 
   useEffect(() => {
     const fieldErrors = form.getFieldError('url');
@@ -149,7 +154,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={state ? state.isDefault : false}
+            disabled={canDisableInputWhenEdit}
             placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
             className="input-small relative"
           />
@@ -231,7 +236,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={!form.getFieldValue('url') || isUrlValid}
+            disabled={canDisableDecimalsInput}
             placeholder="Chain ID"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
@@ -270,6 +275,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
+            disabled={canDisableInputWhenEdit}
             placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />

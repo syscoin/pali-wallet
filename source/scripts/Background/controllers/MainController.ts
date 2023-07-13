@@ -543,6 +543,7 @@ const MainController = (walletState): IMainController => {
 
     const networkWithCustomParams = {
       ...network,
+      default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
       explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
