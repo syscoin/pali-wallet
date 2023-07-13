@@ -57,10 +57,11 @@ export const SendNTokenTransaction = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] =
     useState<boolean>(false);
-  const [gasErrors, setGasErrors] = useState<{
+  const [errors, setErrors] = useState<{
     eip1559GasError: boolean;
     gasLimitError: boolean;
-  }>({ eip1559GasError: false, gasLimitError: false });
+    txDataError: boolean;
+  }>({ eip1559GasError: false, gasLimitError: false, txDataError: false });
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(
@@ -225,22 +226,57 @@ export const SendNTokenTransaction = () => {
             value: tx.value,
             nonce,
           };
-      const currentBlock = await ethereumTransaction.web3Provider.send(
-        'eth_getBlockByNumber',
-        ['latest', false]
-      );
-      const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
-      let gasLimitResult = ethereumTransaction.toBigNumber(
-        gasLimitFromCurrentBlock
-      );
-      let gasLimitError = false;
+      let isInvalidTxData = false;
+      let gasLimitResult;
       let eip1559GasError = false;
+      let gasLimitError = false;
+      if (tx.gas) {
+        gasLimitResult = ethereumTransaction.toBigNumber(0);
+      } else {
+        const currentBlock = await ethereumTransaction.web3Provider.send(
+          'eth_getBlockByNumber',
+          ['latest', false]
+        );
+        const gasLimitFromCurrentBlock = Math.floor(
+          Number(currentBlock.gasLimit) * 0.95
+        ); //GasLimit from current block with 5% discount, whole limit from block is too much
+        gasLimitResult = ethereumTransaction.toBigNumber(
+          gasLimitFromCurrentBlock
+        );
+        gasLimitError = false;
 
-      try {
-        gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx as any);
-      } catch (error) {
-        console.error(error);
-        gasLimitError = true;
+        // verify tx data
+        try {
+          if (transactionDataValidation) {
+            // if it run successfully, the contract data is all right.
+            const clonedTx = { ...tx };
+            delete clonedTx.gasLimit;
+            delete clonedTx.gas;
+            delete clonedTx.maxPriorityFeePerGas;
+            delete clonedTx.maxFeePerGas;
+            delete clonedTx.gasPrice;
+            await ethereumTransaction.web3Provider.send('eth_call', [
+              clonedTx,
+              'latest',
+            ]);
+          }
+        } catch (error) {
+          if (!error.message.includes('reverted')) {
+            isInvalidTxData = true;
+          }
+        }
+
+        try {
+          // if tx data is valid, Pali is able to estimate gas.
+          if (!isInvalidTxData) {
+            gasLimitResult = await ethereumTransaction.getTxGasLimit(
+              baseTx as any
+            );
+          }
+        } catch (error) {
+          console.error(error);
+          gasLimitError = true;
+        }
       }
 
       tx.gasLimit =
@@ -248,7 +284,6 @@ export const SendNTokenTransaction = () => {
         (tx?.gasLimit && Number(tx?.gasLimit) > Number(gasLimitResult))
           ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
           : gasLimitResult;
-
       try {
         const { maxFeePerGas, maxPriorityFeePerGas } =
           await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
@@ -277,7 +312,11 @@ export const SendNTokenTransaction = () => {
         eip1559GasError = true;
       }
 
-      setGasErrors({ eip1559GasError, gasLimitError });
+      setErrors({
+        eip1559GasError,
+        gasLimitError,
+        txDataError: isInvalidTxData,
+      });
     };
 
     getInitialFeeRecomendation();
@@ -367,13 +406,20 @@ export const SendNTokenTransaction = () => {
             )}
           </p>
 
-          {gasErrors.eip1559GasError ||
-            (gasErrors.gasLimitError && (
-              <span className="text-red-600 text-xs my-4 text-center">
-                We were not able to estimate gas. There might be an error in the
-                contract and this transaction may fail.
-              </span>
-            ))}
+          {errors.txDataError && (
+            <span className="text-red-600 text-xs my-4 text-center">
+              We were not able to estimate gas. There might be an error in the
+              contract and this transaction may fail.
+            </span>
+          )}
+
+          {(errors.eip1559GasError || errors.gasLimitError) && (
+            <span className="disabled text-xs my-4 text-center">
+              The current RPC provider couldn't estimate the gas for this
+              transaction. Therefore, we'll estimate the gas using the existing
+              block data for your transaction.
+            </span>
+          )}
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
