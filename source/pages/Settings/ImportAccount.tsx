@@ -128,7 +128,7 @@ const ImportAccountView = () => {
         <div className="flex flex-col items-center justify-center text-center">
           <Form
             validateMessages={{ default: '' }}
-            className="flex flex-col gap-5 items-center justify-center text-center md:w-full"
+            className="flex flex-col gap-5 items-center justify-center text-center md:w-full mb-10"
             name="newaccount"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 16 }}
