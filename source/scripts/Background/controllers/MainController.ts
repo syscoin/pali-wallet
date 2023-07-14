@@ -142,8 +142,11 @@ const MainController = (walletState): IMainController => {
     phrase: string
   ): Promise<void> => {
     store.dispatch(setIsLoadingBalances(true));
-    const { accounts, activeAccount: activeAccountInfo } =
-      store.getState().vault;
+    const {
+      accounts,
+      activeAccount: activeAccountInfo,
+      activeNetwork,
+    } = store.getState().vault;
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
 
@@ -173,13 +176,21 @@ const MainController = (walletState): IMainController => {
       account.xpub
     );
 
+    const adjustedInitialTx = initialTxsForAccount.map((transaction) => ({
+      chainId: activeNetwork.chainId,
+      transaction,
+    }));
+
     const newAccountWithAssets: IPaliAccount = {
       ...account,
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
-      transactions: initialTxsForAccount,
+      transactions: {
+        ethereum: [],
+        syscoin: adjustedInitialTx,
+      },
     };
 
     store.dispatch(setIsLoadingBalances(false));
@@ -220,6 +231,7 @@ const MainController = (walletState): IMainController => {
 
   const createAccount = async (
     isBitcoinBased: boolean,
+    activeNetworkChainId: number,
     label?: string
   ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
@@ -235,13 +247,21 @@ const MainController = (walletState): IMainController => {
           newAccount.xpub
         );
 
+        const adjustedInitialTx = initialTxsForAccount.map((transaction) => ({
+          chainId: activeNetworkChainId,
+          transaction,
+        }));
+
         newAccountWithAssets = {
           ...newAccount,
           assets: {
             syscoin: initialSysAssetsForAccount,
             ethereum: [],
           },
-          transactions: initialTxsForAccount,
+          transactions: {
+            syscoin: adjustedInitialTx,
+            ethereum: [],
+          },
         };
         break;
       case false:
@@ -251,7 +271,10 @@ const MainController = (walletState): IMainController => {
             syscoin: [],
             ethereum: [],
           },
-          transactions: [],
+          transactions: {
+            syscoin: [],
+            ethereum: [],
+          },
         };
     }
     store.dispatch(
@@ -644,7 +667,10 @@ const MainController = (walletState): IMainController => {
         ethereum: [],
         syscoin: [],
       },
-      transactions: [],
+      transactions: {
+        syscoin: [],
+        ethereum: [],
+      },
     } as IPaliAccount;
     store.dispatch(
       setAccounts({
@@ -761,12 +787,23 @@ const MainController = (walletState): IMainController => {
             }
             store.dispatch(setIsLoadingTxs(true));
 
+            const adjustedTx = txs.map((transaction) => ({
+              chainId: activeNetwork.chainId,
+              transaction,
+            }));
+
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: activeAccount.id,
                 type: activeAccount.type,
                 property: 'transactions',
-                value: txs,
+                value: {
+                  syscoin: [
+                    ...currentAccount.transactions.syscoin,
+                    ...adjustedTx,
+                  ],
+                  ethereum: [...currentAccount.transactions.ethereum],
+                },
               })
             );
 
@@ -775,27 +812,38 @@ const MainController = (walletState): IMainController => {
         break;
       case false:
         //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
-        transactionsManager.utils
-          .updateTransactionsFromCurrentAccount(
-            currentAccount,
-            isBitcoinBased,
-            activeNetwork.url
-          )
-          .then((updatedTxs) => {
-            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
-              return;
-            }
-            store.dispatch(setIsLoadingTxs(true));
-            store.dispatch(
-              setAccountPropertyByIdAndType({
-                id: activeAccount.id,
-                type: activeAccount.type,
-                property: 'transactions',
-                value: updatedTxs,
-              })
-            );
-            store.dispatch(setIsLoadingTxs(false));
-          });
+        transactionsManager.utils.updateTransactionsFromCurrentAccount(
+          currentAccount,
+          isBitcoinBased,
+          activeNetwork.url
+        );
+        // .then((updatedTxs) => {
+        //   if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
+        //     return;
+        //   }
+        //   store.dispatch(setIsLoadingTxs(true));
+
+        //   const adjustedTx = updatedTxs.map((transaction) => ({
+        //     chainId: activeNetwork.chainId,
+        //     transaction,
+        //   }));
+
+        //   store.dispatch(
+        //     setAccountPropertyByIdAndType({
+        //       id: activeAccount.id,
+        //       type: activeAccount.type,
+        //       property: 'transactions',
+        //       value: {
+        //         syscoin: [...currentAccount.transactions.syscoin],
+        //         ethereum: [
+        //           ...currentAccount.transactions.ethereum,
+        //           ...adjustedTx,
+        //         ],
+        //       },
+        //     })
+        //   );
+        //   store.dispatch(setIsLoadingTxs(false));
+        // });
         break;
 
       default:
@@ -828,24 +876,34 @@ const MainController = (walletState): IMainController => {
             switch (isPolling) {
               //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
               case true:
-                const updatedTxs =
-                  await transactionsManager.utils.updateTransactionsFromCurrentAccount(
-                    currentAccount,
-                    isBitcoinBased,
-                    activeNetwork.url
-                  );
-                if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
-                  store.dispatch(setIsLoadingTxs(true));
-                  store.dispatch(
-                    setAccountPropertyByIdAndType({
-                      id: activeAccount.id,
-                      type: activeAccount.type,
-                      property: 'transactions',
-                      value: updatedTxs,
-                    })
-                  );
-                  store.dispatch(setIsLoadingTxs(false));
-                }
+                await transactionsManager.utils.updateTransactionsFromCurrentAccount(
+                  currentAccount,
+                  isBitcoinBased,
+                  activeNetwork.url
+                );
+                // if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
+                //   store.dispatch(setIsLoadingTxs(true));
+                //   const adjustedTx = updatedTxs.map((transaction) => ({
+                //     chainId: activeNetwork.chainId,
+                //     transaction,
+                //   }));
+
+                //   store.dispatch(
+                //     setAccountPropertyByIdAndType({
+                //       id: activeAccount.id,
+                //       type: activeAccount.type,
+                //       property: 'transactions',
+                //       value: {
+                //         syscoin: [...currentAccount.transactions.syscoin],
+                //         ethereum: [
+                //           ...currentAccount.transactions.ethereum,
+                //           ...adjustedTx,
+                //         ],
+                //       },
+                //     })
+                //   );
+                //   store.dispatch(setIsLoadingTxs(false));
+                // }
                 break;
               //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
               case false:
@@ -878,7 +936,8 @@ const MainController = (walletState): IMainController => {
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
-    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
+      store.getState().vault;
 
     const { transactions: userTransactions } =
       accounts[activeAccount.type][activeAccount.id];
@@ -890,24 +949,53 @@ const MainController = (walletState): IMainController => {
       ),
     } as IEvmTransactionResponse & ISysTransaction;
 
-    const clonedArrayToAdd = clone(
-      isBitcoinBased
-        ? (compact(userTransactions) as ISysTransaction[])
-        : (compact(
-            Object.values(userTransactions)
-          ) as IEvmTransactionResponse[])
-    );
-
+    const clonedArrayToAdd = isBitcoinBased
+      ? (compact(
+          clone(
+            userTransactions.syscoin
+              .filter((sysTx) => sysTx.chainId === activeNetwork.chainId)
+              .map((sysTransaction) => sysTransaction.transaction)
+          )
+        ) as ISysTransaction[])
+      : (compact(
+          clone(
+            userTransactions.ethereum
+              .filter((evmTx) => evmTx.chainId === activeNetwork.chainId)
+              .map((evmTransaction) => evmTransaction.transaction)
+          )
+        ) as IEvmTransactionResponse[]);
     clonedArrayToAdd.unshift(txWithTimestamp);
 
-    store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: activeAccount.id,
-        type: activeAccount.type,
-        property: 'transactions',
-        value: clonedArrayToAdd,
-      })
-    );
+    const adjustedTx = clonedArrayToAdd.map((transaction) => ({
+      chainId: activeNetwork.chainId,
+      transaction,
+    }));
+
+    if (isBitcoinBased) {
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          property: 'transactions',
+          value: {
+            syscoin: [...adjustedTx],
+            ethereum: [...userTransactions.ethereum],
+          },
+        })
+      );
+    } else {
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          property: 'transactions',
+          value: {
+            syscoin: [...userTransactions.syscoin],
+            ethereum: [...adjustedTx],
+          },
+        })
+      );
+    }
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 

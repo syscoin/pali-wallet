@@ -1,3 +1,4 @@
+import clone from 'lodash/clone';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -29,9 +30,30 @@ export const TransactionsPanel = () => {
 
   const transactions = useMemo(() => {
     const accountTransactions =
-      accounts[activeAccount.type][activeAccount.id].transactions ?? {};
-    return Object.values(accountTransactions);
-  }, [accounts, activeAccount]);
+      accounts[activeAccount.type][activeAccount.id].transactions;
+
+    if (isBitcoinBased) {
+      const adjustedTx = clone(accountTransactions.syscoin);
+
+      console.log('sys adjustedTx', adjustedTx);
+      if (adjustedTx.length > 0) {
+        return adjustedTx
+          .filter((tx) => tx.chainId === chainId)
+          .map((transactionWithChainId) => transactionWithChainId.transaction);
+      }
+    } else {
+      const adjustedTx = clone(accountTransactions.ethereum);
+
+      console.log('evm adjustedTx', adjustedTx);
+      if (adjustedTx.length > 0) {
+        return adjustedTx
+          .filter((tx) => tx.chainId === chainId)
+          .map((transactionWithChainId) => transactionWithChainId.transaction);
+      }
+    }
+
+    return [];
+  }, [accounts, activeAccount, chainId, isBitcoinBased]);
 
   const hasTransactions =
     transactions.length > 0 || previousTransactions.length > 0;

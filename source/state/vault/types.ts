@@ -6,6 +6,10 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import {
+  IEvmTransaction,
+  ISysTransaction,
+} from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 export interface IVaultState {
@@ -53,7 +57,16 @@ export interface IPaliAccount extends IKeyringAccountState {
     ethereum: ITokenEthProps[];
     syscoin: ITokenSysProps[];
   };
-  transactions: any; //TODO: add type
+  transactions: {
+    ethereum: {
+      chainId: number;
+      transaction: IEvmTransaction;
+    }[];
+    syscoin: {
+      chainId: number;
+      transaction: ISysTransaction;
+    }[];
+  };
 }
 export type PaliAccount = {
   [id: number]: IPaliAccount;

@@ -26,7 +26,7 @@ export const initialState: IVaultState = {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
         assets: { ethereum: [], syscoin: [] },
-        transactions: [],
+        transactions: { ethereum: [], syscoin: [] },
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -118,10 +118,7 @@ const VaultState = createSlice({
           state.accounts[accountType][account.id] = {
             ...account,
             assets: mainAccount.assets,
-            //WE CAN BACK THIS WHEN FIX HOW WE HANDLE TXS STATE
-            // transactions: mainAccount.transactions,
-            //WE HAVE TO RESET EVERY ACCOUNT TXS WHEN CHANGE NETWORK TO PREVENT ERRORS TRYING TO READ INCORRECTS TXS FOR NETWORK
-            transactions: [],
+            transactions: mainAccount.transactions,
           };
         }
       }
@@ -318,21 +315,21 @@ const VaultState = createSlice({
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: [], syscoin: [] },
           },
         },
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: [], syscoin: [] },
           },
         },
         [KeyringAccountType.Trezor]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: [], syscoin: [] },
           },
         },
       };

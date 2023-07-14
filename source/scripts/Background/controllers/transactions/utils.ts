@@ -1,3 +1,4 @@
+import { isNil } from 'lodash';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -75,6 +76,7 @@ export const findUserTxsInProviderByBlocksRange = async (
           ...txWithConfirmations,
           chainId: Number(txWithConfirmations.chainId),
           confirmations: lastBlockNumber - currentBlock,
+          timestamp: Number(response.timestamp),
         }));
 
       return filterTxsByAddress;
@@ -103,7 +105,7 @@ export const treatDuplicatedTxs = (
           // Preserve timestamp if available and valid
           if (
             b[TSTAMP_PROP] &&
-            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] < b[TSTAMP_PROP])
+            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] > b[TSTAMP_PROP])
           ) {
             a[TSTAMP_PROP] = b[TSTAMP_PROP];
           }
@@ -118,7 +120,7 @@ export const treatDuplicatedTxs = (
           // Preserve timestamp if available and valid
           if (
             a[TSTAMP_PROP] &&
-            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] < a[TSTAMP_PROP])
+            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] > a[TSTAMP_PROP])
           ) {
             b[TSTAMP_PROP] = a[TSTAMP_PROP];
           }
@@ -142,9 +144,8 @@ export const validateAndManageUserTransactions = (
   // If providerTxs is empty, return an empty array
   if (isEmpty(providerTxs)) return [];
 
-  console.log('providerTxs', providerTxs);
-
-  const { accounts, isBitcoinBased, activeAccount } = store.getState().vault;
+  const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+    store.getState().vault;
 
   let userTx;
 
@@ -153,36 +154,71 @@ export const validateAndManageUserTransactions = (
       const account = accounts[accountType][accountId];
       const userAddress = account.address.toLowerCase();
 
-      if (userAddress !== userAddress.toLowerCase()) {
-        continue;
-      }
-
       const filteredTxs = providerTxs.filter(
         (tx) =>
-          tx.from?.toLowerCase() === userAddress ||
-          tx.to?.toLowerCase() === userAddress
+          (tx.from?.toLowerCase() === userAddress ||
+            tx.to?.toLowerCase() === userAddress) &&
+          !isNil(tx.blockHash) &&
+          !isNil(tx.blockNumber)
       );
+
+      console.log('filteredTxs', filteredTxs);
 
       const updatedTxs = isBitcoinBased
-        ? (compact(account.transactions) as ISysTransaction[])
+        ? (compact(
+            clone(
+              account.transactions.syscoin
+                .filter((sysTx) => sysTx.chainId === activeNetwork.chainId)
+                .map((sysTransaction) => sysTransaction.transaction)
+            )
+          ) as ISysTransaction[])
         : (compact(
-            Object.values(account.transactions)
+            clone(
+              account.transactions.ethereum
+                .filter((evmTx) => evmTx.chainId === activeNetwork.chainId)
+                .map((evmTransaction) => evmTransaction.transaction)
+            )
           ) as IEvmTransactionResponse[]);
 
-      updatedTxs.push(
-        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[])
-      );
+      console.log('updatedTxs', updatedTxs);
 
-      console.log('filteredTxs', filteredTxs, accountId, accountType);
+      const mergedTxs = [
+        ...updatedTxs,
+        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
+      ];
+
+      const uniqueTxs: {
+        [key: string]: IEvmTransactionResponse | ISysTransaction;
+      } = {};
+
+      mergedTxs.forEach((tx: IEvmTransactionResponse) => {
+        const hash = tx.hash;
+        if (
+          !uniqueTxs[hash] ||
+          uniqueTxs[hash].confirmations < tx.confirmations
+        ) {
+          uniqueTxs[hash] = tx;
+        }
+      });
+
+      const uniqueTxsWithChainId = Object.values(uniqueTxs).map((tx) => ({
+        chainId: activeNetwork.chainId,
+        transaction: tx,
+      }));
+
+      const filteredUpdatedTxs = uniqueTxsWithChainId;
 
       if (filteredTxs.length > 0) {
-        const treatedDuplicatedTx = treatDuplicatedTxs(updatedTxs);
+        console.log('if filteredTxs');
         store.dispatch(
           setAccountPropertyByIdAndType({
             id: Number(accountId),
             type: accountType as KeyringAccountType,
             property: 'transactions',
-            value: treatedDuplicatedTx,
+            value: {
+              syscoin: [...account.transactions.syscoin],
+              ethereum: [...filteredUpdatedTxs],
+            },
           })
         );
       }
@@ -191,7 +227,7 @@ export const validateAndManageUserTransactions = (
         accountType === activeAccount.type &&
         Number(accountId) === activeAccount.id
       ) {
-        userTx = filteredTxs;
+        userTx = updatedTxs;
       }
     }
   }

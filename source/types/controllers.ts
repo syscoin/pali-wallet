@@ -39,6 +39,7 @@ export interface IMainController extends IKeyringManager {
   assets: IAssetsManager;
   createAccount: (
     isBitcoinBased: boolean,
+    activeNetworkChainId: number,
     label?: string
   ) => Promise<IKeyringAccountState>;
   createWallet: (password: string, phrase: string) => Promise<void>;
