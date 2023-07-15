@@ -233,10 +233,11 @@ export const SendNTokenTransaction = () => {
       if (tx.gas) {
         gasLimitResult = ethereumTransaction.toBigNumber(0);
       } else {
-        const currentBlock = await ethereumTransaction.web3Provider.send(
-          'eth_getBlockByNumber',
-          ['latest', false]
-        );
+        const currentBlock =
+          await ethereumTransaction.contentScriptWeb3Provider.send(
+            'eth_getBlockByNumber',
+            ['latest', false]
+          );
         const gasLimitFromCurrentBlock = Math.floor(
           Number(currentBlock.gasLimit) * 0.95
         ); //GasLimit from current block with 5% discount, whole limit from block is too much
@@ -255,10 +256,10 @@ export const SendNTokenTransaction = () => {
             delete clonedTx.maxPriorityFeePerGas;
             delete clonedTx.maxFeePerGas;
             delete clonedTx.gasPrice;
-            await ethereumTransaction.web3Provider.send('eth_call', [
-              clonedTx,
-              'latest',
-            ]);
+            await ethereumTransaction.contentScriptWeb3Provider.send(
+              'eth_call',
+              [clonedTx, 'latest']
+            );
           }
         } catch (error) {
           if (!error.message.includes('reverted')) {
@@ -349,7 +350,7 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        ethereumTransaction.web3Provider
+        ethereumTransaction.contentScriptWeb3Provider
       );
       setIsEIP1559Compatible(isCompatible);
     };
