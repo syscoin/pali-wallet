@@ -33,22 +33,18 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id].transactions;
 
     if (isBitcoinBased) {
-      const adjustedTx = clone(accountTransactions.syscoin);
+      const adjustedTx = clone(accountTransactions['syscoin'][chainId]);
 
       console.log('sys adjustedTx', adjustedTx);
       if (adjustedTx.length > 0) {
-        return adjustedTx
-          .filter((tx) => tx.chainId === chainId)
-          .map((transactionWithChainId) => transactionWithChainId.transaction);
+        return adjustedTx;
       }
     } else {
-      const adjustedTx = clone(accountTransactions.ethereum);
+      const adjustedTx = clone(accountTransactions['ethereum'][chainId]);
 
       console.log('evm adjustedTx', adjustedTx);
       if (adjustedTx.length > 0) {
-        return adjustedTx
-          .filter((tx) => tx.chainId === chainId)
-          .map((transactionWithChainId) => transactionWithChainId.transaction);
+        return adjustedTx;
       }
     }
 

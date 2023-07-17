@@ -12,13 +12,13 @@ import { camelCaseToText, ellipsis, truncate } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork: { chainId: activeChainId, url: activeNetworkUrl },
+  } = useSelector((state: RootState) => state.vault);
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+
   const { useCopyClipboard, alert } = useUtils();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
@@ -38,7 +38,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const setTx = async () =>
     setRawTransaction(
-      await controller.utils.getRawTransaction(activeNetwork.url, hash)
+      await controller.utils.getRawTransaction(activeNetworkUrl, hash)
     );
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
               }
             } else {
               controller.utils
-                .getRawTransaction(activeNetwork.url, item.txid)
+                .getRawTransaction(activeNetworkUrl, item.txid)
                 .then((response: any) => {
                   for (const responseVout of response.vout) {
                     if (responseVout.n === item.vout) {
@@ -117,7 +117,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             {truncate(String(Number(addressValue) / 10 ** 8), 18)
               ? truncate(String(Number(addressValue) / 10 ** 8), 18)
               : 0}{' '}
-            {activeNetwork.chainId === 57 ? 'SYS' : 'tSYS'}
+            {activeChainId === 57 ? 'SYS' : 'tSYS'}
           </small>
 
           <IconButton onClick={() => copy(address)}>
@@ -168,7 +168,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions.find((tx: any) => {
+  transactions.syscoin[activeChainId]?.find((tx: any) => {
     if (tx.txid !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {

@@ -13,6 +13,12 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
+  IEvmTransaction,
+  ISysTransaction,
+} from 'scripts/Background/controllers/transactions/types';
+
+import {
+  IChainNumberTransactions,
   IChangingConnectedAccount,
   IPaliAccount,
   IVaultState,
@@ -26,7 +32,7 @@ export const initialState: IVaultState = {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
         assets: { ethereum: [], syscoin: [] },
-        transactions: { ethereum: [], syscoin: [] },
+        transactions: { ethereum: {}, syscoin: {} },
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -315,21 +321,21 @@ const VaultState = createSlice({
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: { ethereum: [], syscoin: [] },
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: { ethereum: [], syscoin: [] },
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Trezor]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: { ethereum: [], syscoin: [] },
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
       };
@@ -395,6 +401,111 @@ const VaultState = createSlice({
     ) {
       state.currentBlock = action.payload;
     },
+
+    setSingleTransactionToState: (
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        networkType: string;
+        transaction: IEvmTransaction | ISysTransaction;
+      }>
+    ) => {
+      const { activeAccount } = state;
+      const { networkType, chainId, transaction } = action.payload;
+      const currentAccount =
+        state.accounts[activeAccount.type][activeAccount.id];
+
+      // Check if the networkType exists in the current account's transactions
+      if (!currentAccount.transactions[networkType]) {
+        currentAccount.transactions[networkType] = {
+          [chainId]: [transaction] as (typeof networkType extends 'ethereum'
+            ? IEvmTransaction
+            : ISysTransaction)[],
+        };
+      } else {
+        // Check if the chainId exists in the current networkType's transactions
+        if (!currentAccount.transactions[networkType][chainId]) {
+          currentAccount.transactions[networkType][chainId] = [
+            transaction,
+          ] as (typeof networkType extends 'ethereum'
+            ? IEvmTransaction
+            : ISysTransaction)[];
+        } else {
+          // If the chainId exists, add the new transaction to the existing chainId array
+          const transactions =
+            currentAccount.transactions[networkType][chainId];
+          if (Array.isArray(transactions)) {
+            // Filter and push the transaction based on the networkType
+            const castedTransaction =
+              networkType === 'ethereum'
+                ? (transaction as IEvmTransaction)
+                : (transaction as ISysTransaction);
+            transactions.push(castedTransaction as any);
+          }
+        }
+      }
+    },
+
+    setMultipleTransactionToState(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        networkType: string;
+        transactions: Array<IEvmTransaction | ISysTransaction>;
+      }>
+    ) {
+      const { activeAccount } = state;
+      const { networkType, chainId, transactions } = action.payload;
+      const currentAccount =
+        state.accounts[activeAccount.type][activeAccount.id];
+
+      // Check if the networkType exists in the current account's transactions
+      if (!currentAccount.transactions[networkType]) {
+        // Cast the array to the correct type based on the networkType
+        const chainTransactions = transactions.map((tx) =>
+          networkType === 'ethereum'
+            ? (tx as IEvmTransaction)
+            : (tx as ISysTransaction)
+        );
+        currentAccount.transactions[networkType] = {
+          [chainId]: chainTransactions as (typeof networkType extends 'ethereum'
+            ? IEvmTransaction
+            : ISysTransaction)[],
+        };
+      } else {
+        // Check if the chainId exists in the current networkType's transactions
+        if (!currentAccount.transactions[networkType][chainId]) {
+          // Create a new array with the correct type based on the networkType
+          const chainTransactions = transactions.map((tx) =>
+            networkType === 'ethereum'
+              ? (tx as IEvmTransaction)
+              : (tx as ISysTransaction)
+          );
+          currentAccount.transactions[networkType][chainId] =
+            chainTransactions as (typeof networkType extends 'ethereum'
+              ? IEvmTransaction
+              : ISysTransaction)[];
+        } else {
+          // If the chainId exists, add the new transactions to the existing chainId array
+          const chainTransactions =
+            currentAccount.transactions[networkType][chainId];
+          if (Array.isArray(chainTransactions)) {
+            // Filter and push the transactions based on the networkType
+            const castedTransactions = transactions.map((tx) =>
+              networkType === 'ethereum'
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction)
+            );
+            currentAccount.transactions[networkType][chainId] = [
+              ...chainTransactions,
+              ...castedTransactions,
+            ] as (typeof networkType extends 'ethereum'
+              ? IEvmTransaction
+              : ISysTransaction)[];
+          }
+        }
+      }
+    },
   },
 });
 
@@ -429,6 +540,8 @@ export const {
   setUpdatedAllErcTokensBalance,
   setIsPolling,
   setCurrentBlock,
+  setSingleTransactionToState,
+  setMultipleTransactionToState,
 } = VaultState.actions;
 
 export default VaultState.reducer;

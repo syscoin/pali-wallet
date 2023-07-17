@@ -57,20 +57,19 @@ export interface IPaliAccount extends IKeyringAccountState {
     ethereum: ITokenEthProps[];
     syscoin: ITokenSysProps[];
   };
-  transactions: {
-    ethereum: {
-      chainId: number;
-      transaction: IEvmTransaction;
-    }[];
-    syscoin: {
-      chainId: number;
-      transaction: ISysTransaction;
-    }[];
-  };
+  transactions: INetworkTypeTransactions;
 }
 export type PaliAccount = {
   [id: number]: IPaliAccount;
 };
+
+export interface INetworkTypeTransactions {
+  [networkType: string]: IChainNumberTransactions;
+}
+
+export interface IChainNumberTransactions {
+  [chainId: number]: IEvmTransaction[] | ISysTransaction[];
+}
 
 export type IOmmitedAccount = Omit<IPaliAccount, 'xprv'>;
 

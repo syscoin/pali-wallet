@@ -14,7 +14,12 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setAccountPropertyByIdAndType, setCurrentBlock } from 'state/vault';
+import {
+  setAccountPropertyByIdAndType,
+  setCurrentBlock,
+  setMultipleTransactionToState,
+  setSingleTransactionToState,
+} from 'state/vault';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -166,18 +171,10 @@ export const validateAndManageUserTransactions = (
 
       const updatedTxs = isBitcoinBased
         ? (compact(
-            clone(
-              account.transactions.syscoin
-                .filter((sysTx) => sysTx.chainId === activeNetwork.chainId)
-                .map((sysTransaction) => sysTransaction.transaction)
-            )
+            clone(account.transactions['syscoin'][activeNetwork.chainId])
           ) as ISysTransaction[])
         : (compact(
-            clone(
-              account.transactions.ethereum
-                .filter((evmTx) => evmTx.chainId === activeNetwork.chainId)
-                .map((evmTransaction) => evmTransaction.transaction)
-            )
+            clone(account.transactions['ethereum'][activeNetwork.chainId])
           ) as IEvmTransactionResponse[]);
 
       console.log('updatedTxs', updatedTxs);
@@ -201,26 +198,29 @@ export const validateAndManageUserTransactions = (
         }
       });
 
-      const uniqueTxsWithChainId = Object.values(uniqueTxs).map((tx) => ({
-        chainId: activeNetwork.chainId,
-        transaction: tx,
-      }));
-
-      const filteredUpdatedTxs = uniqueTxsWithChainId;
+      const finalTxs = Object.values(uniqueTxs);
 
       if (filteredTxs.length > 0) {
         console.log('if filteredTxs');
         store.dispatch(
-          setAccountPropertyByIdAndType({
-            id: Number(accountId),
-            type: accountType as KeyringAccountType,
-            property: 'transactions',
-            value: {
-              syscoin: [...account.transactions.syscoin],
-              ethereum: [...filteredUpdatedTxs],
-            },
+          setMultipleTransactionToState({
+            chainId: activeNetwork.chainId,
+            networkType: 'ethereum',
+            transactions: finalTxs,
           })
         );
+
+        // store.dispatch(
+        //   setAccountPropertyByIdAndType({
+        //     id: Number(accountId),
+        //     type: accountType as KeyringAccountType,
+        //     property: 'transactions',
+        //     value: {
+        //       syscoin: [...account.transactions.syscoin],
+        //       ethereum: [...filteredUpdatedTxs],
+        //     },
+        //   })
+        // );
       }
 
       if (

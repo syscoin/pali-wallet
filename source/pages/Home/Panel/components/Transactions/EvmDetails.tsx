@@ -10,9 +10,11 @@ import { RootState } from 'state/store';
 import { camelCaseToText, truncate } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork: { chainId },
+  } = useSelector((state: RootState) => state.vault);
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
 
@@ -27,7 +29,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions.find((tx: any) => {
+  transactions.ethereum[chainId]?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {

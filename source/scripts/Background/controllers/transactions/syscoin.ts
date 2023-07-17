@@ -39,9 +39,9 @@ const SysTransactionController = (): ISysTransactionsController => {
 
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
-    const syscoinUserTransactions = clone(userTransactions.syscoin)
-      .filter((sysTx) => sysTx.chainId === activeNetwork.chainId)
-      .map((tx) => tx.transaction);
+    const syscoinUserTransactions = clone(
+      userTransactions.syscoin[activeNetwork.chainId]
+    ) as ISysTransaction[];
 
     const mergedArrays = [...getSysTxs, ...syscoinUserTransactions];
 
