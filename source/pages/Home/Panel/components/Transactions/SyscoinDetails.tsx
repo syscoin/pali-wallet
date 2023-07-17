@@ -168,7 +168,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions.syscoin[activeChainId]?.find((tx: any) => {
+  transactions['syscoin'][activeChainId]?.find((tx: any) => {
     if (tx.txid !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {

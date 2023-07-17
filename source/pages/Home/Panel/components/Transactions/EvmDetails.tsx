@@ -29,7 +29,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions.ethereum[chainId]?.find((tx: any) => {
+  transactions['ethereum'][chainId]?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {
