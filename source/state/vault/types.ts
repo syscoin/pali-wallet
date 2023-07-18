@@ -20,6 +20,9 @@ export interface IVaultState {
   };
   activeChain: INetworkType;
   activeNetwork: INetwork;
+  advancedSettings: {
+    [k: string]: boolean;
+  };
   changingConnectedAccount: IChangingConnectedAccount;
   currentBlock: ethers.providers.Block;
   error: boolean;

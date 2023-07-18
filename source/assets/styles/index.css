@@ -119,8 +119,6 @@ div[role='alert'] {
   left: 15rem !important;
 }
 
-
-
 .sender-input .ant-input-suffix {
   position: absolute !important;
   right: 3.3rem !important;
@@ -191,6 +189,11 @@ input[type='number']::-webkit-inner-spin-button {
 
 .ant-input-suffix .anticon-loading {
   @apply text-brand-graylight;
+}
+
+.ant-input-disabled {
+  color: #ffffff4d !important;
+  cursor: not-allowed;
 }
 
 .ant-form-item-feedback-icon {

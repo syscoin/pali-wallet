@@ -41,6 +41,7 @@ import {
   setIsLoadingBalances,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
+  setAdvancedSettings as setSettings,
   setCurrentBlock,
   setMultipleTransactionToState,
   setSingleTransactionToState,
@@ -101,6 +102,10 @@ const MainController = (walletState): IMainController => {
   };
   const setHasEthProperty = (exist: boolean) => {
     store.dispatch(setEthProperty(exist));
+  };
+
+  const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
+    store.dispatch(setSettings({ advancedProperty, isActive }));
   };
 
   const getKeyringManager = (): KeyringManager => keyringManager;
@@ -1249,6 +1254,7 @@ const MainController = (walletState): IMainController => {
     lock,
     createAccount,
     editAccountLabel,
+    setAdvancedSettings,
     account: walletController.account,
     setAccount,
     setAutolockTimer,

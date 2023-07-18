@@ -273,9 +273,9 @@ export const SendEth = () => {
                 className={`
                   ${
                     hasAccountAssets
-                      ? 'mixed-double-border-input'
+                      ? 'mixed-double-border-input amount-input'
                       : 'mixed-right-border-input'
-                  } amount-input`}
+                  }`}
                 type="number"
                 placeholder={`${
                   selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
