@@ -160,8 +160,25 @@ export const inactivityTime = () => {
   events.forEach((event) => (document[event] = resetTimer));
 };
 
+// const paliPorts = {
+//   pali: null,
+// } as { [key: string]: Runtime.Port | null };
+
+// const paliInjectConnections = [];
+
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-  if (port.name === 'pali') handleIsOpen(true);
+  console.log({ port });
+  if (port.name === 'pali') {
+    handleIsOpen(true);
+    // if (paliPorts['pali'] !== null) {
+    //   paliPorts['pali'].disconnect();
+    //   paliPorts['pali'] = port;
+    // }
+    // if (paliPorts['pali'] === null) {
+    //   paliPorts[port.name] = port;
+    // }
+  }
+
   if (port.name === 'pali-inject') {
     port.onMessage.addListener((message) => {
       if (message.action === 'isInjected') {

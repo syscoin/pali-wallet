@@ -5,20 +5,18 @@ import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import watch from 'redux-watch';
-import { Store } from 'webext-redux';
 
 import { ToastAlert } from 'components/index';
-import { STORE_PORT } from 'constants/index';
 import appStore from 'state/store';
 import { log } from 'utils/index';
 
 import App from './App';
+import { paliStore } from './utils';
 
 const app = document.getElementById('app-root');
-const store = new Store({ portName: STORE_PORT });
 
 const w = watch(appStore.getState, 'vault.lastLogin');
-store.subscribe(
+paliStore.subscribe(
   w(() => {
     log('watching webext store');
   })
@@ -31,9 +29,9 @@ const options = {
   transition: transitions.FADE,
 };
 
-store.ready().then(() => {
+paliStore.ready().then(() => {
   ReactDOM.render(
-    <Provider store={store}>
+    <Provider store={paliStore}>
       <AlertProvider template={ToastAlert} {...options}>
         <App />
       </AlertProvider>
