@@ -518,24 +518,27 @@ const VaultState = createSlice({
         [key: string]: IEvmTransactionResponse | ISysTransaction;
       } = {};
 
-      transactions.forEach((tx: IEvmTransactionResponse | ISysTransaction) => {
-        const hash = 'hash' in tx ? tx.hash : tx.txid;
-        if (
-          !uniqueTxs[hash] ||
-          uniqueTxs[hash].confirmations < tx.confirmations
-        ) {
-          uniqueTxs[hash] = tx;
+      const clonedUserTxs =
+        cloneDeep(currentAccount.transactions[networkType][chainId]) || [];
+
+      const transactionsToVerify = [...clonedUserTxs, ...transactions];
+
+      transactionsToVerify.forEach(
+        (tx: IEvmTransactionResponse | ISysTransaction) => {
+          const hash = 'hash' in tx ? tx.hash : tx.txid;
+          if (
+            !uniqueTxs[hash] ||
+            uniqueTxs[hash].confirmations < tx.confirmations
+          ) {
+            uniqueTxs[hash] = tx;
+          }
         }
-      });
+      );
 
       const treatedTxs = Object.values(uniqueTxs);
 
-      console.log('TRANSACTIONS RECEIVED', transactions);
-      console.log('TREATED TXS', treatedTxs);
-
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
-        console.log('HERE 1');
         // Cast the array to the correct type based on the networkType
         const chainTransactions = treatedTxs.map((tx) =>
           networkType === 'ethereum'
