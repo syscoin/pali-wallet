@@ -786,7 +786,8 @@ const MainController = (walletState): IMainController => {
             if (isNil(txs) || isEmpty(txs)) {
               return;
             }
-            store.dispatch(setIsLoadingTxs(true));
+
+            console.log('received txs', txs);
 
             store.dispatch(
               setMultipleTransactionToState({
@@ -815,8 +816,6 @@ const MainController = (walletState): IMainController => {
             //     },
             //   })
             // );
-
-            store.dispatch(setIsLoadingTxs(false));
           });
         break;
       case false:
@@ -885,11 +884,27 @@ const MainController = (walletState): IMainController => {
             switch (isPolling) {
               //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
               case true:
-                await transactionsManager.utils.updateTransactionsFromCurrentAccount(
-                  currentAccount,
-                  isBitcoinBased,
-                  activeNetwork.url
-                );
+                await transactionsManager.utils
+                  .updateTransactionsFromCurrentAccount(
+                    currentAccount,
+                    isBitcoinBased,
+                    activeNetwork.url
+                  )
+                  .then((txs) => {
+                    const canDispatch =
+                      isBitcoinBased && !(isNil(txs) && isEmpty(txs));
+
+                    if (canDispatch) {
+                      store.dispatch(
+                        setMultipleTransactionToState({
+                          chainId: activeNetwork.chainId,
+                          networkType: 'syscoin',
+                          transactions: txs,
+                        })
+                      );
+                    }
+                  });
+
                 // if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
                 //   store.dispatch(setIsLoadingTxs(true));
                 //   const adjustedTx = updatedTxs.map((transaction) => ({

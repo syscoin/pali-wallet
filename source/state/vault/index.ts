@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
+import cloneDeep from 'lodash/cloneDeep';
+import take from 'lodash/take';
 
 import {
   initialNetworksState,
@@ -14,6 +16,7 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   IEvmTransaction,
+  IEvmTransactionResponse,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps } from 'types/tokens';
@@ -470,15 +473,29 @@ const VaultState = createSlice({
             : ISysTransaction)[];
         } else {
           // If the chainId exists, add the new transaction to the existing chainId array
-          const transactions =
-            currentAccount.transactions[networkType][chainId];
-          if (Array.isArray(transactions)) {
-            // Filter and push the transaction based on the networkType
-            const castedTransaction =
-              networkType === 'ethereum'
-                ? (transaction as IEvmTransaction)
-                : (transaction as ISysTransaction);
-            transactions.push(castedTransaction as any);
+          const currentUserTransactions = currentAccount.transactions[
+            networkType
+          ][chainId] as (typeof networkType extends 'ethereum'
+            ? IEvmTransaction
+            : ISysTransaction)[];
+
+          // Check if the array length is 30
+          if (currentUserTransactions.length === 30) {
+            // Create a new array by adding the new transaction at the beginning and limiting to 30 items
+            const updatedTransactions = take(
+              [transaction, ...currentUserTransactions],
+              30
+            );
+
+            currentAccount.transactions[networkType][chainId] =
+              updatedTransactions as IEvmTransaction[] & ISysTransaction[];
+          } else {
+            // If the array length is less than 30, simply push the new transaction
+            currentUserTransactions.push(
+              transaction as typeof networkType extends 'ethereum'
+                ? IEvmTransaction
+                : ISysTransaction
+            );
           }
         }
       }
@@ -497,10 +514,30 @@ const VaultState = createSlice({
       const currentAccount =
         state.accounts[activeAccount.type][activeAccount.id];
 
+      const uniqueTxs: {
+        [key: string]: IEvmTransactionResponse | ISysTransaction;
+      } = {};
+
+      transactions.forEach((tx: IEvmTransactionResponse | ISysTransaction) => {
+        const hash = 'hash' in tx ? tx.hash : tx.txid;
+        if (
+          !uniqueTxs[hash] ||
+          uniqueTxs[hash].confirmations < tx.confirmations
+        ) {
+          uniqueTxs[hash] = tx;
+        }
+      });
+
+      const treatedTxs = Object.values(uniqueTxs);
+
+      console.log('TRANSACTIONS RECEIVED', transactions);
+      console.log('TREATED TXS', treatedTxs);
+
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
+        console.log('HERE 1');
         // Cast the array to the correct type based on the networkType
-        const chainTransactions = transactions.map((tx) =>
+        const chainTransactions = treatedTxs.map((tx) =>
           networkType === 'ethereum'
             ? (tx as IEvmTransaction)
             : (tx as ISysTransaction)
@@ -514,7 +551,7 @@ const VaultState = createSlice({
         // Check if the chainId exists in the current networkType's transactions
         if (!currentAccount.transactions[networkType][chainId]) {
           // Create a new array with the correct type based on the networkType
-          const chainTransactions = transactions.map((tx) =>
+          const chainTransactions = treatedTxs.map((tx) =>
             networkType === 'ethereum'
               ? (tx as IEvmTransaction)
               : (tx as ISysTransaction)
@@ -525,21 +562,23 @@ const VaultState = createSlice({
               : ISysTransaction)[];
         } else {
           // If the chainId exists, add the new transactions to the existing chainId array
-          const chainTransactions =
-            currentAccount.transactions[networkType][chainId];
-          if (Array.isArray(chainTransactions)) {
+          if (Array.isArray(transactions)) {
             // Filter and push the transactions based on the networkType
-            const castedTransactions = transactions.map((tx) =>
+            const castedTransactions = treatedTxs.map((tx) =>
               networkType === 'ethereum'
                 ? (tx as IEvmTransaction)
                 : (tx as ISysTransaction)
             );
-            currentAccount.transactions[networkType][chainId] = [
-              ...chainTransactions,
-              ...castedTransactions,
-            ] as (typeof networkType extends 'ethereum'
-              ? IEvmTransaction
-              : ISysTransaction)[];
+
+            console.log('CASTED TXS', castedTransactions);
+            currentAccount.transactions[networkType][chainId] =
+              //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
+              take(
+                castedTransactions,
+                30
+              ) as (typeof networkType extends 'ethereum'
+                ? IEvmTransaction
+                : ISysTransaction)[];
           }
         }
       }

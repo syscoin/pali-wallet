@@ -177,28 +177,10 @@ export const validateAndManageUserTransactions = (
             clone(account.transactions['ethereum'][activeNetwork.chainId])
           ) as IEvmTransactionResponse[]);
 
-      console.log('updatedTxs', updatedTxs);
-
       const mergedTxs = [
         ...updatedTxs,
         ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
       ];
-
-      const uniqueTxs: {
-        [key: string]: IEvmTransactionResponse | ISysTransaction;
-      } = {};
-
-      mergedTxs.forEach((tx: IEvmTransactionResponse) => {
-        const hash = tx.hash;
-        if (
-          !uniqueTxs[hash] ||
-          uniqueTxs[hash].confirmations < tx.confirmations
-        ) {
-          uniqueTxs[hash] = tx;
-        }
-      });
-
-      const finalTxs = Object.values(uniqueTxs);
 
       if (filteredTxs.length > 0) {
         console.log('if filteredTxs');
@@ -206,21 +188,9 @@ export const validateAndManageUserTransactions = (
           setMultipleTransactionToState({
             chainId: activeNetwork.chainId,
             networkType: 'ethereum',
-            transactions: finalTxs,
+            transactions: mergedTxs,
           })
         );
-
-        // store.dispatch(
-        //   setAccountPropertyByIdAndType({
-        //     id: Number(accountId),
-        //     type: accountType as KeyringAccountType,
-        //     property: 'transactions',
-        //     value: {
-        //       syscoin: [...account.transactions.syscoin],
-        //       ethereum: [...filteredUpdatedTxs],
-        //     },
-        //   })
-        // );
       }
 
       if (

@@ -15,7 +15,7 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
-const isWatchRequestsActive = true;
+const isWatchRequestsActive = false;
 // // @ts-ignore
 // browser.runtime.getManifest().environment?.WATCH_REQUESTS !== undefined &&
 // // @ts-ignore
