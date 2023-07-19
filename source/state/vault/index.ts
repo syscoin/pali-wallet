@@ -178,9 +178,9 @@ const VaultState = createSlice({
         .replace(/\s/g, '')
         .toLocaleLowerCase()}-${network.chainId}`;
 
-      const alreadyExist = Boolean(
-        state.networks[chain][Number(network.chainId)]
-      );
+      const networkKeyIdentifier = network.key ? network.key : network.chainId;
+
+      const alreadyExist = Boolean(state.networks[chain][networkKeyIdentifier]);
 
       if (alreadyExist && !isEdit) {
         const verifyIfRpcOrNameExists = Object.values(
@@ -209,13 +209,15 @@ const VaultState = createSlice({
       }
       state.networks[chain] = {
         ...state.networks[chain],
-        [network.chainId]: network,
+        [networkKeyIdentifier]: network,
       };
 
       if (
         chain === state.activeChain &&
-        state.networks[chain][network.chainId].chainId ===
-          state.activeNetwork.chainId
+        state.networks[chain][networkKeyIdentifier].chainId ===
+          state.activeNetwork.chainId &&
+        state.networks[chain][networkKeyIdentifier].url ===
+          state.activeNetwork.url
       ) {
         state.activeNetwork = network;
       }

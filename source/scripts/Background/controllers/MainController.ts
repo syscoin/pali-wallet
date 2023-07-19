@@ -591,6 +591,7 @@ const MainController = (walletState): IMainController => {
         chainId:
           newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
         default: oldRpc.default,
+        ...(oldRpc?.key && { key: oldRpc.key }),
       } as INetwork;
       if (changedChainId) {
         throw new Error('RPC from a different chainId');
