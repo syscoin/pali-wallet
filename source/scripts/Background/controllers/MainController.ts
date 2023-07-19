@@ -545,7 +545,6 @@ const MainController = (walletState): IMainController => {
     type: string,
     asset: IWatchAssetTokenProps
   ) => {
-    console.log({ type, asset });
     const { activeAccount: activeAccountInfo, accounts } =
       store.getState().vault;
     const activeAccount =
