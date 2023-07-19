@@ -33,6 +33,7 @@ export interface ITokenSysProps {
 }
 
 export interface IAddCustomTokenMetadataInfos {
+  contractAddress: string;
   decimals: number | string; // String to accept empty values
   symbol: string;
 }

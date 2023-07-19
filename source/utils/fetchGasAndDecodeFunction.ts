@@ -15,12 +15,14 @@ export const fetchGasAndDecodeFunction = async (
     'eth_getBlockByNumber',
     ['latest', false]
   );
-  const gasLimitFromCurrentBlock = Number(currentBlock.gasLimit);
+  const gasLimitFromCurrentBlock = Math.floor(
+    Number(currentBlock.gasLimit) * 0.95
+  ); //GasLimit from current block with 5% discount, whole limit from block is too much
   let gasLimitResult = ethereumTransaction.toBigNumber(
     gasLimitFromCurrentBlock
   );
-  let gasError = false;
-
+  let isInvalidTxData = false;
+  let gasLimitError = false;
   const { maxFeePerGas, maxPriorityFeePerGas } =
     await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas(); //todo: adjust to get from new keyringmanager
   const nonce = await ethereumTransaction.getRecommendedNonce(dataTx.from); // This also need possibility for customization //todo: adjust to get from new keyringmanager
@@ -45,16 +47,44 @@ export const fetchGasAndDecodeFunction = async (
     nonce: nonce,
   } as any;
 
-  try {
-    gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx); //todo: adjust to get from new keyringmanager
-  } catch (error) {
-    console.error(error);
-    gasError = true;
+  if (dataTx.gas) {
+    gasLimitResult = ethereumTransaction.toBigNumber(0);
+  } else {
+    // verify tx data
+    try {
+      // if it run successfully, the contract data is all right.
+      const clonedTx = { ...dataTx };
+      delete clonedTx.gasLimit;
+      delete clonedTx.gas;
+      delete clonedTx.maxPriorityFeePerGas;
+      delete clonedTx.maxFeePerGas;
+      if (!dataTx.to) {
+        delete clonedTx.to;
+      }
+      await ethereumTransaction.web3Provider.send('eth_call', [
+        clonedTx,
+        'latest',
+      ]);
+    } catch (error) {
+      if (!error.message.includes('reverted')) {
+        isInvalidTxData = true;
+      }
+    }
+
+    try {
+      // if tx data is valid, Pali is able to estimate gas.
+      if (!isInvalidTxData) {
+        gasLimitResult = await ethereumTransaction.getTxGasLimit(baseTx);
+      }
+    } catch (error) {
+      console.error(error);
+      gasLimitError = true;
+    }
   }
   formTx.gasLimit =
     (dataTx?.gas && Number(dataTx?.gas) > Number(gasLimitResult)) ||
     (dataTx?.gasLimit && Number(dataTx?.gasLimit) > Number(gasLimitResult))
-      ? ethereumTransaction.toBigNumber(dataTx.gas || dataTx.gasLimit) //todo: adjust to get from new keyringmanager
+      ? ethereumTransaction.toBigNumber(dataTx.gas || dataTx.gasLimit)
       : gasLimitResult;
   const feeDetails = {
     maxFeePerGas: maxFeePerGas.toNumber() / 10 ** 9,
@@ -67,6 +97,7 @@ export const fetchGasAndDecodeFunction = async (
     feeDetails,
     formTx,
     nonce,
-    gasError,
+    isInvalidTxData,
+    gasLimitError,
   };
 };
