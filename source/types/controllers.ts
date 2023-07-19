@@ -27,6 +27,7 @@ import {
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
+import { IWatchAssetTokenProps } from './tokens';
 import { ICustomRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
@@ -64,6 +65,10 @@ export interface IMainController extends IKeyringManager {
           }
       >;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  handleWatchAsset: (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => Promise<boolean>;
   importAccountFromPrivateKey: (
     privKey: string,
     label?: string

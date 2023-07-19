@@ -11,6 +11,17 @@ export interface ITokenEthProps {
   tokenSymbol: string;
 }
 
+export interface IWatchAssetTokenProps {
+  address: string;
+  aggregators?: string[];
+  balanceError?: unknown;
+  decimals: number;
+  image?: string;
+  isERC721?: boolean;
+  name?: string;
+  symbol: string;
+}
+
 export interface ITokenSysProps {
   assetGuid?: string;
   balance?: number;

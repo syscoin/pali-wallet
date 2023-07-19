@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
+import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -17,6 +18,7 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
+import { getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
 import { resetPolling } from '..';
 import store from 'state/store';
@@ -46,6 +48,7 @@ import {
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
+import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -535,6 +538,67 @@ const MainController = (walletState): IMainController => {
       throw new Error(
         'Could not add your network, please try a different RPC endpoint'
       );
+    }
+  };
+
+  const handleWatchAsset = async (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => {
+    console.log({ type, asset });
+    const { activeAccount: activeAccountInfo, accounts } =
+      store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    if (asset.address && asset.decimals && asset.image && asset.symbol) {
+      try {
+        const assetToAdd = {
+          tokenSymbol: asset.symbol,
+          contractAddress: asset.address,
+          decimals: Number(asset.decimals),
+          isNft: false,
+          balance: formattedBalance ?? 0,
+          logo: asset.image,
+        } as ITokenEthProps;
+
+        await walletController.account.eth.saveTokenInfo(assetToAdd);
+
+        return true;
+      } catch (error) {
+        throw new Error(error);
+      }
+    }
+
+    if (metadata) {
+      try {
+        const assetToAdd = {
+          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
+          contractAddress: asset.address,
+          decimals: metadata.decimals,
+          isNft: false,
+          balance: formattedBalance,
+        } as ITokenEthProps;
+
+        await walletController.account.eth.saveTokenInfo(assetToAdd);
+
+        return true;
+      } catch (error) {
+        throw new Error(error);
+      }
     }
   };
 
@@ -1155,6 +1219,7 @@ const MainController = (walletState): IMainController => {
     createAccount,
     editAccountLabel,
     setAdvancedSettings,
+    handleWatchAsset,
     account: walletController.account,
     setAccount,
     setAutolockTimer,
