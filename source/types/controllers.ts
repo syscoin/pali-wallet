@@ -27,7 +27,7 @@ import {
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
-import { IWatchAssetTokenProps } from './tokens';
+import { ITokenEthProps, IWatchAssetTokenProps } from './tokens';
 import { ICustomRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
@@ -53,6 +53,10 @@ export interface IMainController extends IKeyringManager {
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
+  getAssetInfo: (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => Promise<ITokenEthProps>;
   getChangeAddress: (accountId: number) => Promise<string>;
   getLatestUpdateForCurrentAccount: () => void;
   getRecommendedFee: (data?: string | boolean) =>

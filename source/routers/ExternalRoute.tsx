@@ -29,6 +29,7 @@ import {
   ChangeConnectedAccount,
   SendNTokenTransaction,
   CreatePasswordImport,
+  ExternalWatchAsset,
 } from '../pages';
 import { useQuery, useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
@@ -96,6 +97,11 @@ export const ExternalRoute = () => {
         <Route
           path="change-active-connected-account"
           element={<ProtectedRoute element={<ChangeConnectedAccount />} />}
+        />
+
+        <Route
+          path="watch-asset"
+          element={<ProtectedRoute element={<ExternalWatchAsset />} />}
         />
 
         <Route

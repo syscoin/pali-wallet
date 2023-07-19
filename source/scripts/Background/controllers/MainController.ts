@@ -18,9 +18,10 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
-import { getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
+import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
 import { resetPolling } from '..';
+import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -563,7 +564,7 @@ const MainController = (walletState): IMainController => {
 
     const formattedBalance = floor(parseFloat(balance), 4);
 
-    if (asset.address && asset.decimals && asset.image && asset.symbol) {
+    if (asset.address && asset.decimals && asset.symbol) {
       try {
         const assetToAdd = {
           tokenSymbol: asset.symbol,
@@ -571,7 +572,7 @@ const MainController = (walletState): IMainController => {
           decimals: Number(asset.decimals),
           isNft: false,
           balance: formattedBalance ?? 0,
-          logo: asset.image,
+          logo: asset?.image,
         } as ITokenEthProps;
 
         await walletController.account.eth.saveTokenInfo(assetToAdd);
@@ -599,6 +600,70 @@ const MainController = (walletState): IMainController => {
         throw new Error(error);
       }
     }
+  };
+
+  const getAssetInfo = async (type: string, asset: IWatchAssetTokenProps) => {
+    const {
+      activeAccount: activeAccountInfo,
+      accounts,
+      activeNetwork,
+    } = store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    let web3Token: ITokenEthProps;
+
+    const assetToAdd = {
+      tokenSymbol: asset.symbol,
+      contractAddress: asset.address,
+      decimals: Number(asset.decimals),
+      isNft: false,
+      balance: formattedBalance ?? 0,
+      logo: asset?.image,
+    } as ITokenEthProps;
+
+    const { coins } = await getSearch(assetToAdd.tokenSymbol);
+
+    if (coins && coins[0]) {
+      const { name, thumb } = coins[0];
+
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : thumb,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    } else {
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name: assetToAdd.tokenSymbol,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : PaliLogo,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    }
+
+    return web3Token;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
@@ -1236,6 +1301,7 @@ const MainController = (walletState): IMainController => {
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
     updateUserTransactionsState,

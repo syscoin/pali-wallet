@@ -164,21 +164,12 @@ export const methodRequest = async (
         if (isBitcoinBased) throw cleanErrorStack(ethErrors.rpc.internal());
         if (!wallet.isUnlocked()) return false;
         try {
-          if (typeof data.params === 'object') {
-            return await wallet.handleWatchAsset(
-              // @ts-ignore
-              data.params.type,
-              // @ts-ignore
-              data.params.options
-            );
-          } else {
-            return await wallet.handleWatchAsset(
-              // @ts-ignore
-              data.params[0].type,
-              // @ts-ignore
-              data.params[0].options
-            );
-          }
+          return popupPromise({
+            host,
+            route: 'watch-asset',
+            eventName: 'watchAsset',
+            data: { asset: data.params },
+          });
         } catch (error) {
           throw ethErrors.provider.custom({
             code: 1000,

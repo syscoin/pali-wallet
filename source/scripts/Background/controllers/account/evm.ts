@@ -56,7 +56,7 @@ const EthAccountController = (): IEthAccountController => {
           balance: token.balance,
           name: token.tokenSymbol,
           id: token.contractAddress,
-          logo: PaliLogo,
+          logo: token?.logo ? token.logo : PaliLogo,
           isNft: token.isNft,
           chainId,
         };
