@@ -69,7 +69,7 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const web3Provider: CustomJsonRpcProvider =
+  let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
   let balancesMananger = BalancesManager(web3Provider);
@@ -470,6 +470,7 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      web3Provider = keyringManager.ethereumTransaction.web3Provider;
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
@@ -564,41 +565,21 @@ const MainController = (walletState): IMainController => {
 
     const formattedBalance = floor(parseFloat(balance), 4);
 
-    if (asset.address && asset.decimals && asset.symbol) {
-      try {
-        const assetToAdd = {
-          tokenSymbol: asset.symbol,
-          contractAddress: asset.address,
-          decimals: Number(asset.decimals),
-          isNft: false,
-          balance: formattedBalance ?? 0,
-          logo: asset?.image,
-        } as ITokenEthProps;
+    try {
+      const assetToAdd = {
+        tokenSymbol: asset.symbol,
+        contractAddress: asset.address,
+        decimals: Number(asset.decimals),
+        isNft: false,
+        balance: formattedBalance ?? 0,
+        logo: asset?.image,
+      } as ITokenEthProps;
 
-        await walletController.account.eth.saveTokenInfo(assetToAdd);
+      await walletController.account.eth.saveTokenInfo(assetToAdd);
 
-        return true;
-      } catch (error) {
-        throw new Error(error);
-      }
-    }
-
-    if (metadata) {
-      try {
-        const assetToAdd = {
-          tokenSymbol: metadata.tokenSymbol.toUpperCase(),
-          contractAddress: asset.address,
-          decimals: metadata.decimals,
-          isNft: false,
-          balance: formattedBalance,
-        } as ITokenEthProps;
-
-        await walletController.account.eth.saveTokenInfo(assetToAdd);
-
-        return true;
-      } catch (error) {
-        throw new Error(error);
-      }
+      return true;
+    } catch (error) {
+      throw new Error(error);
     }
   };
 
