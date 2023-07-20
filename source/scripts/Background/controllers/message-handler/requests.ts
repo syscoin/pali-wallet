@@ -171,16 +171,12 @@ export const methodRequest = async (
             data: { asset: data.params },
           });
         } catch (error) {
-          throw ethErrors.provider.custom({
-            code: 1000,
-            message:
-              'Please verify the asset type. Currently, only ERC20 tokens are supported.',
-            data: {
-              code: 1000,
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidRequest({
               message:
                 'Please verify the asset type. Currently, only ERC20 tokens are supported.',
-            },
-          });
+            })
+          );
         }
 
       case 'addEthereumChain':
