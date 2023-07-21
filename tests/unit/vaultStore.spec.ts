@@ -4,6 +4,7 @@ import {
   initialActiveTrezorAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring'; //todo: initialActiveAccountState does not exist anymore we should adjust it
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { MOCK_ACCOUNT, STATE_W_ACCOUNT } from '../mocks';
 import reducer, {
@@ -205,7 +206,12 @@ describe('Vault store actions', () => {
 
   //* removeNetwork
   it('should remove a network)', () => {
-    const payload = { prefix: 'ethereum', chainId: 4 };
+    const payload = {
+      chain: INetworkType.Ethereum,
+      chainId: 4,
+      label: '',
+      rpcUrl: '',
+    };
     const newState = reducer(initialState, removeNetwork(payload));
 
     expect(newState.networks.ethereum).toBeDefined();

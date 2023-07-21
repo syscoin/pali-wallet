@@ -200,7 +200,6 @@ export const SendConfirm = () => {
                 return;
               } catch (legacyError: any) {
                 logError('error', 'Transaction', legacyError);
-                console.log({ legacyError });
                 alert.removeAll();
                 alert.error("Can't complete transaction. Try again later.");
 

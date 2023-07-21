@@ -74,7 +74,13 @@ export interface IMainController extends IKeyringManager {
   //   index: string
   // ) => Promise<IKeyringAccountState>;
   lock: () => void;
-  removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
+  removeKeyringNetwork: (
+    chain: string,
+    chainId: number,
+    rpcUrl: string,
+    label: string,
+    key?: string
+  ) => void;
   removeWindowEthProperty: () => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;

@@ -543,18 +543,34 @@ const MainController = (walletState): IMainController => {
 
     const networkWithCustomParams = {
       ...network,
+      default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
       explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
-    const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    const chain = data.isSyscoinRpc
+      ? INetworkType.Syscoin
+      : INetworkType.Ethereum;
 
     store.dispatch(
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return networkWithCustomParams;
+    //We need to do that to get the correct network value, we only can know if will have a Key value
+    //inside the state after the dispatch for some network with a chainID that already exists
+    const networksAfterDispatch = store.getState().vault.networks[chain];
+
+    const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
+      (netValues) =>
+        netValues.chainId === networkWithCustomParams.chainId &&
+        netValues.url === networkWithCustomParams.url &&
+        netValues.label === networkWithCustomParams.label
+    );
+
+    keyringManager.addCustomNetwork(chain, findCorrectNetworkValue);
+
+    return findCorrectNetworkValue;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
@@ -575,6 +591,7 @@ const MainController = (walletState): IMainController => {
         chainId:
           newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
         default: oldRpc.default,
+        ...(oldRpc?.key && { key: oldRpc.key }),
       } as INetwork;
       if (changedChainId) {
         throw new Error('RPC from a different chainId');
@@ -614,12 +631,15 @@ const MainController = (walletState): IMainController => {
   const removeKeyringNetwork = (
     chain: INetworkType,
     chainId: number,
+    rpcUrl: string,
+    label: string,
     key?: string
   ) => {
-    //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
-    keyringManager.removeNetwork(chain, chainId);
+    store.dispatch(
+      removeNetworkFromStore({ chain, chainId, rpcUrl, label, key })
+    );
 
-    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId, key }));
+    keyringManager.removeNetwork(chain, chainId, rpcUrl, label, key);
   };
 
   //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
