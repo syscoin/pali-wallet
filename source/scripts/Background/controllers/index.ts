@@ -100,7 +100,10 @@ const MasterController = (
         })
       );
     }
-    if (store.getState().vault.networks['ethereum'][1].default === true) {
+    const isOldState =
+      store.getState()?.vault?.networks?.['ethereum'][1]?.default ?? false;
+
+    if (isOldState) {
       Object.values(initialNetworksState['ethereum']).forEach((network) => {
         store.dispatch(
           setNetworks({
