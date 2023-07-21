@@ -73,9 +73,9 @@ const CustomRPCView = () => {
     explorer: (state && state.selected && state.selected.explorer) ?? '',
   };
 
-  const canDisableInputWhenEdit = state ? state.isDefault : false;
+  const isInputDisableByEditMode = state ? state.isDefault : false;
 
-  const canDisableDecimalsInput = Boolean(
+  const isInputDisabled = Boolean(
     !form.getFieldValue('url') ||
       isUrlValid ||
       (state && state.selected && state.selected.chainId)
@@ -154,7 +154,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={canDisableInputWhenEdit}
+            disabled={isInputDisableByEditMode}
             placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
             className="input-small relative"
           />
@@ -236,7 +236,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={canDisableDecimalsInput}
+            disabled={isInputDisabled}
             placeholder="Chain ID"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
@@ -275,7 +275,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={canDisableInputWhenEdit}
+            disabled={isInputDisabled}
             placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />

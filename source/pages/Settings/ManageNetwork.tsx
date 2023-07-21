@@ -55,7 +55,11 @@ const ManageNetworkView = () => {
         </p>
         {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
-            key={network.chainId}
+            key={
+              network.key
+                ? network.key
+                : `${network.label.trim()}-${network.chainId}`
+            }
             className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
@@ -137,7 +141,11 @@ const ManageNetworkView = () => {
         </p>
         {Object.values(networks.ethereum).map((network: any) => (
           <li
-            key={network.chainId}
+            key={
+              network.key
+                ? network.key
+                : `${network.label.trim()}-${network.chainId}`
+            }
             className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
