@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
+import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -17,8 +18,10 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
+import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
 import { resetPolling } from '..';
+import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -46,6 +49,7 @@ import {
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
+import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -65,7 +69,7 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const web3Provider: CustomJsonRpcProvider =
+  let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
   let balancesMananger = BalancesManager(web3Provider);
@@ -466,6 +470,7 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      web3Provider = keyringManager.ethereumTransaction.web3Provider;
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
@@ -538,23 +543,143 @@ const MainController = (walletState): IMainController => {
     }
   };
 
+  const handleWatchAsset = async (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => {
+    const { activeAccount: activeAccountInfo, accounts } =
+      store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    try {
+      const assetToAdd = {
+        tokenSymbol: asset.symbol,
+        contractAddress: asset.address,
+        decimals: Number(asset.decimals),
+        isNft: false,
+        balance: formattedBalance ?? 0,
+        logo: asset?.image,
+      } as ITokenEthProps;
+
+      await walletController.account.eth.saveTokenInfo(assetToAdd);
+
+      return true;
+    } catch (error) {
+      throw new Error(error);
+    }
+  };
+
+  const getAssetInfo = async (type: string, asset: IWatchAssetTokenProps) => {
+    const {
+      activeAccount: activeAccountInfo,
+      accounts,
+      activeNetwork,
+    } = store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    let web3Token: ITokenEthProps;
+
+    const assetToAdd = {
+      tokenSymbol: asset.symbol,
+      contractAddress: asset.address,
+      decimals: Number(asset.decimals),
+      isNft: false,
+      balance: formattedBalance ?? 0,
+      logo: asset?.image,
+    } as ITokenEthProps;
+
+    const { coins } = await getSearch(assetToAdd.tokenSymbol);
+
+    if (coins && coins[0]) {
+      const { name, thumb } = coins[0];
+
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : thumb,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    } else {
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name: assetToAdd.tokenSymbol,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : PaliLogo,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    }
+
+    return web3Token;
+  };
+
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     const network = await getRpc(data);
 
     const networkWithCustomParams = {
       ...network,
+      default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
       explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
-    const chain = data.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    const chain = data.isSyscoinRpc
+      ? INetworkType.Syscoin
+      : INetworkType.Ethereum;
 
     store.dispatch(
       setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
     );
 
-    return networkWithCustomParams;
+    //We need to do that to get the correct network value, we only can know if will have a Key value
+    //inside the state after the dispatch for some network with a chainID that already exists
+    const networksAfterDispatch = store.getState().vault.networks[chain];
+
+    const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
+      (netValues) =>
+        netValues.chainId === networkWithCustomParams.chainId &&
+        netValues.url === networkWithCustomParams.url &&
+        netValues.label === networkWithCustomParams.label
+    );
+
+    keyringManager.addCustomNetwork(chain, findCorrectNetworkValue);
+
+    return findCorrectNetworkValue;
   };
   const editCustomRpc = async (
     newRpc: ICustomRpcParams,
@@ -575,6 +700,7 @@ const MainController = (walletState): IMainController => {
         chainId:
           newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
         default: oldRpc.default,
+        ...(oldRpc?.key && { key: oldRpc.key }),
       } as INetwork;
       if (changedChainId) {
         throw new Error('RPC from a different chainId');
@@ -614,12 +740,15 @@ const MainController = (walletState): IMainController => {
   const removeKeyringNetwork = (
     chain: INetworkType,
     chainId: number,
+    rpcUrl: string,
+    label: string,
     key?: string
   ) => {
-    //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
-    keyringManager.removeNetwork(chain, chainId);
+    store.dispatch(
+      removeNetworkFromStore({ chain, chainId, rpcUrl, label, key })
+    );
 
-    store.dispatch(removeNetworkFromStore({ prefix: chain, chainId, key }));
+    keyringManager.removeNetwork(chain, chainId, rpcUrl, label, key);
   };
 
   //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
@@ -1155,6 +1284,7 @@ const MainController = (walletState): IMainController => {
     createAccount,
     editAccountLabel,
     setAdvancedSettings,
+    handleWatchAsset,
     account: walletController.account,
     setAccount,
     setAutolockTimer,
@@ -1172,6 +1302,7 @@ const MainController = (walletState): IMainController => {
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
     updateUserTransactionsState,
