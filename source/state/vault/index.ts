@@ -168,11 +168,12 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chain: string;
         isEdit: boolean;
+        isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
       //TODO: refactor, it should just set the network the verification is already done on sysweb3
-      const { chain, network, isEdit } = action.payload;
+      const { chain, network, isEdit, isFirstTime } = action.payload;
 
       const replaceNetworkName = `${network.label
         .replace(/\s/g, '')
@@ -182,7 +183,7 @@ const VaultState = createSlice({
 
       const alreadyExist = Boolean(state.networks[chain][networkKeyIdentifier]);
 
-      if (alreadyExist && !isEdit) {
+      if (alreadyExist && !isEdit && !isFirstTime) {
         const verifyIfRpcOrNameExists = Object.values(
           state.networks[chain]
         ).find(
