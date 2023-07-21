@@ -4,6 +4,7 @@ import { browser, Windows } from 'webextension-polyfill-ts';
 import {
   accountType,
   IKeyringAccountState,
+  initialNetworksState,
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
@@ -98,6 +99,18 @@ const MasterController = (
           isEdit: false,
         })
       );
+    }
+    if (store.getState().vault.networks['ethereum'][1].default === true) {
+      Object.values(initialNetworksState['ethereum']).forEach((network) => {
+        store.dispatch(
+          setNetworks({
+            chain: 'ethereum' as INetworkType,
+            network: network as INetwork,
+            isEdit: false,
+            isFirstTime: true,
+          })
+        );
+      });
     }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(
