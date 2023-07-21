@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
+import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -17,8 +18,10 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
+import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
 import { resetPolling } from '..';
+import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -46,6 +49,7 @@ import {
 } from 'state/vault';
 import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
 import { IMainController } from 'types/controllers';
+import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -65,7 +69,7 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
-  const web3Provider: CustomJsonRpcProvider =
+  let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
   let balancesMananger = BalancesManager(web3Provider);
@@ -466,6 +470,7 @@ const MainController = (walletState): IMainController => {
     const chainId = network.chainId.toString(16);
     const networkVersion = network.chainId;
     if (sucess) {
+      web3Provider = keyringManager.ethereumTransaction.web3Provider;
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
@@ -536,6 +541,110 @@ const MainController = (walletState): IMainController => {
         'Could not add your network, please try a different RPC endpoint'
       );
     }
+  };
+
+  const handleWatchAsset = async (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => {
+    const { activeAccount: activeAccountInfo, accounts } =
+      store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    try {
+      const assetToAdd = {
+        tokenSymbol: asset.symbol,
+        contractAddress: asset.address,
+        decimals: Number(asset.decimals),
+        isNft: false,
+        balance: formattedBalance ?? 0,
+        logo: asset?.image,
+      } as ITokenEthProps;
+
+      await walletController.account.eth.saveTokenInfo(assetToAdd);
+
+      return true;
+    } catch (error) {
+      throw new Error(error);
+    }
+  };
+
+  const getAssetInfo = async (type: string, asset: IWatchAssetTokenProps) => {
+    const {
+      activeAccount: activeAccountInfo,
+      accounts,
+      activeNetwork,
+    } = store.getState().vault;
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
+    if (type !== 'ERC20') {
+      throw new Error(`Asset of type ${type} not supported`);
+    }
+
+    const metadata = await getTokenStandardMetadata(
+      asset.address,
+      activeAccount.address,
+      web3Provider
+    );
+
+    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
+
+    const formattedBalance = floor(parseFloat(balance), 4);
+
+    let web3Token: ITokenEthProps;
+
+    const assetToAdd = {
+      tokenSymbol: asset.symbol,
+      contractAddress: asset.address,
+      decimals: Number(asset.decimals),
+      isNft: false,
+      balance: formattedBalance ?? 0,
+      logo: asset?.image,
+    } as ITokenEthProps;
+
+    const { coins } = await getSearch(assetToAdd.tokenSymbol);
+
+    if (coins && coins[0]) {
+      const { name, thumb } = coins[0];
+
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : thumb,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    } else {
+      web3Token = {
+        ...assetToAdd,
+        tokenSymbol: assetToAdd.tokenSymbol,
+        balance: assetToAdd.balance,
+        name: assetToAdd.tokenSymbol,
+        id: assetToAdd.contractAddress,
+        logo: assetToAdd?.logo ? assetToAdd.logo : PaliLogo,
+        isNft: assetToAdd.isNft,
+        chainId: activeNetwork.chainId,
+      };
+    }
+
+    return web3Token;
   };
 
   const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
@@ -1175,6 +1284,7 @@ const MainController = (walletState): IMainController => {
     createAccount,
     editAccountLabel,
     setAdvancedSettings,
+    handleWatchAsset,
     account: walletController.account,
     setAccount,
     setAutolockTimer,
@@ -1192,6 +1302,7 @@ const MainController = (walletState): IMainController => {
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
     updateUserTransactionsState,
