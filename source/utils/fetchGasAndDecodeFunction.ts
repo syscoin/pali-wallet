@@ -11,7 +11,7 @@ export const fetchGasAndDecodeFunction = async (
   const {
     wallet: { ethereumTransaction },
   } = getController();
-  const currentBlock = await ethereumTransaction.web3Provider.send(
+  const currentBlock = await ethereumTransaction.contentScriptWeb3Provider.send(
     'eth_getBlockByNumber',
     ['latest', false]
   );
@@ -61,7 +61,7 @@ export const fetchGasAndDecodeFunction = async (
       if (!dataTx.to) {
         delete clonedTx.to;
       }
-      await ethereumTransaction.web3Provider.send('eth_call', [
+      await ethereumTransaction.contentScriptWeb3Provider.send('eth_call', [
         clonedTx,
         'latest',
       ]);
