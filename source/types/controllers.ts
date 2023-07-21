@@ -27,6 +27,7 @@ import {
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
+import { ITokenEthProps, IWatchAssetTokenProps } from './tokens';
 import { ICustomRpcParams } from './transactions';
 
 export interface IMainController extends IKeyringManager {
@@ -52,6 +53,10 @@ export interface IMainController extends IKeyringManager {
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
   forgetWallet: (pwd: string) => void;
+  getAssetInfo: (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => Promise<ITokenEthProps>;
   getChangeAddress: (accountId: number) => Promise<string>;
   getLatestUpdateForCurrentAccount: () => void;
   getRecommendedFee: (data?: string | boolean) =>
@@ -64,6 +69,10 @@ export interface IMainController extends IKeyringManager {
           }
       >;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  handleWatchAsset: (
+    type: string,
+    asset: IWatchAssetTokenProps
+  ) => Promise<boolean>;
   importAccountFromPrivateKey: (
     privKey: string,
     label?: string
@@ -74,7 +83,13 @@ export interface IMainController extends IKeyringManager {
   //   index: string
   // ) => Promise<IKeyringAccountState>;
   lock: () => void;
-  removeKeyringNetwork: (chain: string, chainId: number, key?: string) => void;
+  removeKeyringNetwork: (
+    chain: string,
+    chainId: number,
+    rpcUrl: string,
+    label: string,
+    key?: string
+  ) => void;
   removeWindowEthProperty: () => void;
   resolveAccountConflict: () => void;
   resolveError: () => void;
