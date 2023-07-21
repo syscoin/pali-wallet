@@ -73,6 +73,14 @@ const CustomRPCView = () => {
     explorer: (state && state.selected && state.selected.explorer) ?? '',
   };
 
+  const isInputDisableByEditMode = state ? state.isDefault : false;
+
+  const isInputDisabled = Boolean(
+    !form.getFieldValue('url') ||
+      isUrlValid ||
+      (state && state.selected && state.selected.chainId)
+  );
+
   useEffect(() => {
     const fieldErrors = form.getFieldError('url');
     if (urlFieldValue && fieldErrors.length > 0) {
@@ -146,7 +154,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={state ? state.isDefault : false}
+            disabled={isInputDisableByEditMode}
             placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
             className="input-small relative"
           />
@@ -228,7 +236,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={!form.getFieldValue('url') || isUrlValid}
+            disabled={isInputDisabled}
             placeholder="Chain ID"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
@@ -267,6 +275,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
+            disabled={isInputDisabled}
             placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
