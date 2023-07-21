@@ -3,6 +3,7 @@ export interface ITokenEthProps {
   chainId?: number;
   contractAddress: string;
   decimals: string | number;
+  editedSymbolToUse?: string;
   id?: string;
   isNft: boolean;
   logo?: string;
@@ -29,4 +30,10 @@ export interface ITokenSysProps {
   transfers?: number;
   type?: string;
   updateCapabilityFlags?: number;
+}
+
+export interface IAddCustomTokenMetadataInfos {
+  contractAddress: string;
+  decimals: number | string; // String to accept empty values
+  symbol: string;
 }

@@ -33,6 +33,7 @@ import {
   CreatePasswordImport,
   ManageAccounts,
   EditAccount,
+  Advanced,
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
@@ -182,6 +183,10 @@ export const Router = () => {
           <Route
             path="remove-eth"
             element={<ProtectedRoute element={<RemoveEth />} />}
+          />
+          <Route
+            path="advanced"
+            element={<ProtectedRoute element={<Advanced />} />}
           />
           <Route
             path="currency"

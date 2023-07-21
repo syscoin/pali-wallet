@@ -1,11 +1,15 @@
+import cloneDeep from 'lodash/cloneDeep';
+
 import { getSearch } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
-import { setAccountPropertyByIdAndType } from 'state/vault';
+import { setAccountPropertyByIdAndType, setEditedEvmToken } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
+  deleteTokenInfo: (tokenAddress: string) => void;
+  editTokenInfo: (token: ITokenEthProps) => void;
   saveTokenInfo: (token: ITokenEthProps) => Promise<void>;
 }
 
@@ -33,6 +37,9 @@ const EthAccountController = (): IEthAccountController => {
 
         web3Token = {
           ...token,
+          tokenSymbol: token.editedSymbolToUse
+            ? token.editedSymbolToUse
+            : token.tokenSymbol,
           balance: token.balance,
           name,
           id: token.contractAddress,
@@ -43,6 +50,9 @@ const EthAccountController = (): IEthAccountController => {
       } else {
         web3Token = {
           ...token,
+          tokenSymbol: token.editedSymbolToUse
+            ? token.editedSymbolToUse
+            : token.tokenSymbol,
           balance: token.balance,
           name: token.tokenSymbol,
           id: token.contractAddress,
@@ -71,8 +81,71 @@ const EthAccountController = (): IEthAccountController => {
     }
   };
 
+  const editTokenInfo = (token: ITokenEthProps) => {
+    try {
+      const { activeAccount, accounts } = store.getState().vault;
+
+      const cloneArray = cloneDeep(
+        accounts[activeAccount.type][activeAccount.id].assets
+      );
+
+      const findIndex = cloneArray.ethereum.findIndex(
+        (stateToken) => stateToken.contractAddress === token.contractAddress
+      );
+
+      store.dispatch(
+        setEditedEvmToken({
+          accountType: activeAccount.type,
+          accountId: activeAccount.id,
+          tokenIndex: findIndex,
+          editedToken: token,
+        })
+      );
+    } catch (error) {
+      throw new Error(`Could not edit token info. Error: ${error}`);
+    }
+  };
+
+  const deleteTokenInfo = (tokenAddress: string) => {
+    try {
+      const { activeAccount, accounts } = store.getState().vault;
+
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.ethereum?.find(
+        (asset: ITokenEthProps) => asset.contractAddress === tokenAddress
+      );
+
+      if (!tokenExists) throw new Error("Token doesn't exists!");
+
+      const cloneAssets = cloneDeep(
+        accounts[activeAccount.type][activeAccount.id].assets
+      );
+
+      const newAssetsValue = {
+        ...cloneAssets,
+        ethereum: cloneAssets.ethereum.filter(
+          (currentToken) => currentToken.contractAddress !== tokenAddress
+        ),
+      };
+
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          property: 'assets',
+          value: newAssetsValue,
+        })
+      );
+    } catch (error) {
+      throw new Error(`Could not delete token. Error: ${error}`);
+    }
+  };
+
   return {
     saveTokenInfo,
+    editTokenInfo,
+    deleteTokenInfo,
   };
 };
 export default EthAccountController;

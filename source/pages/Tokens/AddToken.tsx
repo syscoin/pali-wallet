@@ -3,6 +3,7 @@ import { Form } from 'antd';
 import React, { useEffect } from 'react';
 import { useState, FC } from 'react';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc } from '@pollum-io/sysweb3-network';
@@ -17,6 +18,8 @@ import { SyscoinImportToken } from './SyscoinImport';
 
 export const AddToken: FC = () => {
   const [form] = Form.useForm();
+
+  const { state } = useLocation();
 
   const [importCustom, setImportCustom] = useState(false);
   const [isTestnet, setIsTestnet] = useState(false);
@@ -49,8 +52,12 @@ export const AddToken: FC = () => {
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
 
+  const isEditToken = Boolean(state && state.contractAddress);
+
+  const validatedTitle = isEditToken ? 'EDIT TOKEN' : 'IMPORT TOKEN';
+
   return (
-    <Layout title="IMPORT TOKEN">
+    <Layout title={validatedTitle}>
       {isBitcoinBased ? (
         <SyscoinImportToken />
       ) : (
@@ -99,10 +106,14 @@ export const AddToken: FC = () => {
                   </div>
                 </Form.Item>
               </Form>
-              {importCustom ? <CustomToken /> : <ImportToken />}
+              {importCustom ? (
+                <CustomToken isEdit={isEditToken} tokenToEdit={null} />
+              ) : (
+                <ImportToken />
+              )}
             </>
           ) : (
-            <CustomToken />
+            <CustomToken isEdit={isEditToken} tokenToEdit={state} />
           )}
         </>
       )}

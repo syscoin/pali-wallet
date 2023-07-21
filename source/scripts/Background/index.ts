@@ -163,6 +163,12 @@ export const inactivityTime = () => {
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'isInjected') {
+        const { hasEthProperty } = store.getState().vault;
+        port.postMessage({ isInjected: hasEthProperty });
+      }
+    });
     if (window.controller?.dapp) {
       window.controller.dapp.setup(port);
     }
