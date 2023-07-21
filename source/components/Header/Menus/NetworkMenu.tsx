@@ -43,6 +43,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       ]
   );
 
+  const activeNetworkValidator = (currentNetwork: INetwork): boolean =>
+    Boolean(
+      activeNetwork.chainId === currentNetwork.chainId &&
+        activeNetwork.url === currentNetwork.url &&
+        activeNetwork.label === currentNetwork.label
+    );
+
   const { navigate } = useUtils();
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
@@ -179,8 +186,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                   </span>
 
                                   {isBitcoinBased &&
-                                    activeNetwork.chainId ===
-                                      currentNetwork.chainId && (
+                                    activeNetworkValidator(currentNetwork) && (
                                       <Icon
                                         name="check"
                                         className="mb-1 w-4"
@@ -239,8 +245,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 </span>
 
                                 {!isBitcoinBased &&
-                                  activeNetwork.chainId ===
-                                    currentNetwork.chainId && (
+                                  activeNetworkValidator(currentNetwork) && (
                                     <Icon
                                       name="check"
                                       className="right-0 mb-1 w-4"
