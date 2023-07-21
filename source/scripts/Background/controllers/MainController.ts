@@ -376,6 +376,14 @@ const MainController = (walletState): IMainController => {
           params: { isBitcoinBased },
         });
 
+        window.controller.dapp.handleBlockExplorerChange(
+          PaliSyscoinEvents.blockExplorerChanged,
+          {
+            method: PaliSyscoinEvents.blockExplorerChanged,
+            params: isBitcoinBased ? network.url : null,
+          }
+        );
+
         switch (isBitcoinBased) {
           case true:
             const isTestnet = verifyIfIsTestnet();
@@ -384,12 +392,46 @@ const MainController = (walletState): IMainController => {
               method: PaliEvents.isTestnet,
               params: { isTestnet },
             });
+
+            window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+              method: PaliEvents.xpubChanged,
+              params:
+                wallet.accounts[wallet.activeAccountType][
+                  wallet.activeAccountId
+                ].xpub,
+            });
+
+            window.controller.dapp.handleStateChange(
+              PaliEvents.accountsChanged,
+              {
+                method: PaliEvents.accountsChanged,
+                params: null,
+              }
+            );
             break;
           case false:
             window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
               method: PaliEvents.isTestnet,
               params: { isTestnet: undefined },
             });
+
+            window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+              method: PaliEvents.xpubChanged,
+              params: null,
+            });
+
+            window.controller.dapp.handleStateChange(
+              PaliEvents.accountsChanged,
+              {
+                method: PaliEvents.accountsChanged,
+                params: [
+                  wallet.accounts[wallet.activeAccountType][
+                    wallet.activeAccountId
+                  ].address,
+                ],
+              }
+            );
+            break;
           default:
             break;
         }
@@ -401,7 +443,12 @@ const MainController = (walletState): IMainController => {
         if (reason === 'Network change cancelled') {
           console.error('User asked to switch network - slow connection');
         } else {
-          const { activeNetwork, isBitcoinBased } = store.getState().vault;
+          const {
+            activeNetwork,
+            isBitcoinBased,
+            accounts,
+            activeAccount: { id: activeAccountId, type: activeAccountType },
+          } = store.getState().vault;
           window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
             method: PaliEvents.chainChanged,
             params: {
@@ -425,12 +472,41 @@ const MainController = (walletState): IMainController => {
                 method: PaliEvents.isTestnet,
                 params: { isTestnet },
               });
+
+              window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+                method: PaliEvents.xpubChanged,
+                params: accounts[activeAccountType][activeAccountId].xpub,
+              });
+
+              window.controller.dapp.handleStateChange(
+                PaliEvents.accountsChanged,
+                {
+                  method: PaliEvents.accountsChanged,
+                  params: null,
+                }
+              );
+
               break;
             case false:
               window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
                 method: PaliEvents.isTestnet,
                 params: { isTestnet: undefined },
               });
+
+              window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+                method: PaliEvents.xpubChanged,
+                params: null,
+              });
+
+              window.controller.dapp.handleStateChange(
+                PaliEvents.accountsChanged,
+                {
+                  method: PaliEvents.accountsChanged,
+                  params: [
+                    accounts[activeAccountType][activeAccountId].address,
+                  ],
+                }
+              );
             default:
               break;
           }

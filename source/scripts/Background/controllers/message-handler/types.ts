@@ -13,6 +13,7 @@ export enum PaliEvents {
   isTestnet = 'pali_isTestnet',
   lockStateChanged = 'pali_unlockStateChanged',
   removeProperty = 'pali_removeProperty',
+  xpubChanged = 'pali_xpubChanged',
 }
 export enum PaliSyscoinEvents {
   blockExplorerChanged = 'pali_blockExplorerChanged',

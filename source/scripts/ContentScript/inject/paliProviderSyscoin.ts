@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
@@ -208,7 +210,9 @@ export class PaliInpageProviderSys extends BaseProvider {
    * @param opts.isUnlocked - The latest isUnlocked value.
    */
   private _handleConnectedXpub(xpub: string | null) {
-    this._sysState.xpub = xpub;
+    if (!ethers.utils.isHexString(xpub) || xpub === null) {
+      this._sysState.xpub = xpub;
+    }
   }
 
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
