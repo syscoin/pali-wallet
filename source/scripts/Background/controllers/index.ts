@@ -4,6 +4,7 @@ import { browser, Windows } from 'webextension-polyfill-ts';
 import {
   accountType,
   IKeyringAccountState,
+  initialNetworksState,
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
@@ -12,7 +13,11 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
 import { IPersistState } from 'state/types';
-import { setAdvancedSettings, setNetworks } from 'state/vault';
+import {
+  setAccountPropertyByIdAndType,
+  setAdvancedSettings,
+  setNetworks,
+} from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
@@ -23,6 +28,8 @@ import {
 import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
 import MainController from './MainController';
+import { clone, compact, isArray } from 'lodash';
+import { ISysTransaction } from './transactions/types';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
@@ -99,6 +106,22 @@ const MasterController = (
         })
       );
     }
+
+    const isNetworkOldState =
+      store.getState()?.vault?.networks?.['ethereum'][1]?.default ?? false;
+
+    if (isNetworkOldState) {
+      Object.values(initialNetworksState['ethereum']).forEach((network) => {
+        store.dispatch(
+          setNetworks({
+            chain: 'ethereum' as INetworkType,
+            network: network as INetwork,
+            isEdit: false,
+            isFirstTime: true,
+          })
+        );
+      });
+    }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(
         setAdvancedSettings({
@@ -107,6 +130,65 @@ const MasterController = (
           isFirstTime: true,
         })
       );
+    }
+
+    const accountsObj = Object.values(store.getState()?.vault?.accounts);
+    const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
+
+    const isTransactionsOldState = accountsObj.some((account) =>
+      Array.isArray(account.transactions)
+    );
+
+    if (isTransactionsOldState) {
+      accountsObj.forEach((account) => {
+        if (Array.isArray(account.transactions)) {
+          if (account.transactions.length > 0) {
+            const updatedTransactions = {
+              ...account.transactions,
+            };
+
+            account.transactions.forEach((tx) => {
+              const txId = isBitcoinBased ? tx.txid : tx.hash;
+              const newTxFormat = isBitcoinBased
+                ? {
+                    syscoin: {
+                      [activeNetwork.chainId]: tx,
+                    },
+                    ethereum: {},
+                  }
+                : {
+                    syscoin: {},
+                    ethereum: {
+                      [activeNetwork.chainId]: tx,
+                    },
+                  };
+
+              updatedTransactions[txId] = newTxFormat;
+            });
+
+            store.dispatch(
+              setAccountPropertyByIdAndType({
+                id: account.id,
+                type: account.type,
+                property: 'transactions',
+                value: updatedTransactions,
+              })
+            );
+          } else {
+            store.dispatch(
+              setAccountPropertyByIdAndType({
+                id: account.id,
+                type: account.type,
+                property: 'transactions',
+                value: {
+                  syscoin: {},
+                  ethereum: {},
+                },
+              })
+            );
+          }
+        }
+      });
     }
     const walletState = vaultToWalletState(store.getState().vault);
     dapp = Object.freeze(DAppController());

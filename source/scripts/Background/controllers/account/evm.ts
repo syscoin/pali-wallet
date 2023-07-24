@@ -41,9 +41,9 @@ const EthAccountController = (): IEthAccountController => {
             ? token.editedSymbolToUse
             : token.tokenSymbol,
           balance: token.balance,
-          name,
+          name: token?.name ? token.name : name,
           id: token.contractAddress,
-          logo: thumb,
+          logo: token?.logo ? token.logo : thumb,
           isNft: token.isNft,
           chainId,
         };
@@ -56,7 +56,7 @@ const EthAccountController = (): IEthAccountController => {
           balance: token.balance,
           name: token.tokenSymbol,
           id: token.contractAddress,
-          logo: PaliLogo,
+          logo: token?.logo ? token.logo : PaliLogo,
           isNft: token.isNft,
           chainId,
         };

@@ -160,6 +160,25 @@ export const methodRequest = async (
         response[0].parentCapability = 'eth_accounts';
 
         return response;
+      case 'watchAsset':
+        if (isBitcoinBased) throw cleanErrorStack(ethErrors.rpc.internal());
+        if (!wallet.isUnlocked()) return false;
+        try {
+          return popupPromise({
+            host,
+            route: 'watch-asset',
+            eventName: 'watchAsset',
+            data: { asset: data.params },
+          });
+        } catch (error) {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidRequest({
+              message:
+                'Please verify the asset type. Currently, only ERC20 tokens are supported.',
+            })
+          );
+        }
+
       case 'addEthereumChain':
         if (isBitcoinBased)
           throw cleanErrorStack(

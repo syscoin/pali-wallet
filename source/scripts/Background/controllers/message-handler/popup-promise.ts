@@ -84,7 +84,8 @@ export const popupPromise = async ({
           route === 'switch-EthChain' ||
           route === 'add-EthChain' ||
           route === 'change-account' ||
-          route === 'switch-UtxoEvm'
+          route === 'switch-UtxoEvm' ||
+          route === 'watch-asset'
         ) {
           resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }
