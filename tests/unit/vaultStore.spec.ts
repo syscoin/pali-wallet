@@ -106,21 +106,30 @@ describe('Vault store actions', () => {
           0: {
             ...initialActiveHdAccountState,
             assets: { syscoin: [], ethereum: [] },
-            transactions: [],
+            transactions: {
+              ethereum: {},
+              syscoin: {},
+            },
           },
         },
         Imported: {
           0: {
             ...initialActiveImportedAccountState,
             assets: { syscoin: [], ethereum: [] },
-            transactions: [],
+            transactions: {
+              ethereum: {},
+              syscoin: {},
+            },
           },
         },
         Trezor: {
           0: {
             ...initialActiveTrezorAccountState,
             assets: { syscoin: [], ethereum: [] },
-            transactions: [],
+            transactions: {
+              ethereum: {},
+              syscoin: {},
+            },
           },
         },
       });

@@ -18,6 +18,7 @@ import {
 } from '@pollum-io/sysweb3-network';
 import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
+import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -1162,8 +1163,7 @@ const MainController = (walletState): IMainController => {
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
-    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
-      store.getState().vault;
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     // const { transactions: userTransactions } =
     //   accounts[activeAccount.type][activeAccount.id];

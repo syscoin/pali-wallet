@@ -41,24 +41,28 @@ export const MOCK_ACCOUNT: IPaliAccount = {
   id: 15,
   isTrezorWallet: false,
   label: 'My account',
-  transactions: [
-    {
-      tokenType: '',
-      txid: 'ce57ad43942302b95f71008176bbf9648933c16bae678ab512f309616643604b',
-      value: 28323000,
-      confirmations: 3830,
-      fees: 283000,
-      blockTime: 1641427017,
+  transactions: {
+    syscoin: {
+      57: [
+        {
+          tokenType: '',
+          txid: 'ce57ad43942302b95f71008176bbf9648933c16bae678ab512f309616643604b',
+          value: 28323000,
+          confirmations: 3830,
+          fees: 283000,
+          blockTime: 1641427017,
+        } as any,
+        {
+          tokenType: '',
+          txid: 'd81f315c74d2ddc1ab6b4b125b968d9236bb646c13e7036f26ecaa1b379f1ed6',
+          value: 29398000,
+          confirmations: 3831,
+          fees: 215000,
+          blockTime: 1641426442,
+        },
+      ],
     },
-    {
-      tokenType: '',
-      txid: 'd81f315c74d2ddc1ab6b4b125b968d9236bb646c13e7036f26ecaa1b379f1ed6',
-      value: 29398000,
-      confirmations: 3831,
-      fees: 215000,
-      blockTime: 1641426442,
-    },
-  ],
+  },
   xprv: MOCK_XPRV,
   xpub: MOCK_XPUB,
   isImported: false,
@@ -67,13 +71,13 @@ export const MOCK_ACCOUNT: IPaliAccount = {
 const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
   ...initialActiveImportedAccountState,
   assets: { ethereum: [], syscoin: [] },
-  transactions: [],
+  transactions: {},
 };
 
 const MOCK_TREZOR_ACCOUNT: IPaliAccount = {
   ...initialActiveTrezorAccountState,
   assets: { ethereum: [], syscoin: [] },
-  transactions: [],
+  transactions: {},
 };
 
 export const STATE_W_ACCOUNT: IVaultState = {

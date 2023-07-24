@@ -167,7 +167,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   };
 
   const formattedTransaction = [];
-
+  // @ts-ignore
   transactions['syscoin'][activeChainId]?.find((tx: any) => {
     if (tx.txid !== hash) return null;
 

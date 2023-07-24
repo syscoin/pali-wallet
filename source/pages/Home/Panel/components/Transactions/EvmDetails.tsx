@@ -28,7 +28,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   }, [copied]);
 
   const formattedTransaction = [];
-
+  //@ts-ignore
   transactions['ethereum'][chainId]?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
 

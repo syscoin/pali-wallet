@@ -28,8 +28,6 @@ import {
 import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
 import MainController from './MainController';
-import { clone, compact, isArray } from 'lodash';
-import { ISysTransaction } from './transactions/types';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
@@ -132,7 +130,15 @@ const MasterController = (
       );
     }
 
-    const accountsObj = Object.values(store.getState()?.vault?.accounts);
+    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
+    const trezorAccounts = Object.values(
+      store.getState().vault.accounts.Trezor
+    );
+    const importedAccounts = Object.values(
+      store.getState().vault.accounts.Imported
+    );
+
+    const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
     const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
 
     const isTransactionsOldState = accountsObj.some((account) =>
@@ -140,7 +146,15 @@ const MasterController = (
     );
 
     if (isTransactionsOldState) {
+      const { activeNetwork } = store.getState().vault;
       accountsObj.forEach((account) => {
+        const accType = (
+          !account.isImported && !account.isTrezorWallet
+            ? 'HDAccount'
+            : account.isTrezorWallet
+            ? 'Trezor'
+            : 'Imported'
+        ) as KeyringAccountType;
         if (Array.isArray(account.transactions)) {
           if (account.transactions.length > 0) {
             const updatedTransactions = {
@@ -169,7 +183,7 @@ const MasterController = (
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
-                type: account.type,
+                type: accType,
                 property: 'transactions',
                 value: updatedTransactions,
               })
@@ -178,7 +192,7 @@ const MasterController = (
             store.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
-                type: account.type,
+                type: accType,
                 property: 'transactions',
                 value: {
                   syscoin: {},
