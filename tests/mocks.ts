@@ -62,6 +62,7 @@ export const MOCK_ACCOUNT: IPaliAccount = {
         },
       ],
     },
+    ethereum: {},
   },
   xprv: MOCK_XPRV,
   xpub: MOCK_XPUB,
@@ -71,13 +72,19 @@ export const MOCK_ACCOUNT: IPaliAccount = {
 const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
   ...initialActiveImportedAccountState,
   assets: { ethereum: [], syscoin: [] },
-  transactions: {},
+  transactions: {
+    ethereum: {},
+    syscoin: {},
+  },
 };
 
 const MOCK_TREZOR_ACCOUNT: IPaliAccount = {
   ...initialActiveTrezorAccountState,
   assets: { ethereum: [], syscoin: [] },
-  transactions: {},
+  transactions: {
+    ethereum: {},
+    syscoin: {},
+  },
 };
 
 export const STATE_W_ACCOUNT: IVaultState = {

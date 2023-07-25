@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
+import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import { getController } from 'utils/browser';
@@ -169,7 +170,11 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions[TransactionsType.Syscoin][activeChainId]?.find((tx: any) => {
+  const syscoinTransactions = transactions[TransactionsType.Syscoin][
+    activeChainId
+  ] as ISysTransaction[];
+
+  syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {
