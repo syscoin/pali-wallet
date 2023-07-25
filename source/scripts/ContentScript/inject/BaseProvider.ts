@@ -121,7 +121,7 @@ export class BaseProvider extends EventEmitter {
     return new Promise<T>((resolve, reject) => {
       this._rpcRequest(
         { method, params },
-        getRpcPromiseCallback(resolve, reject, false)
+        getRpcPromiseCallback(resolve, reject)
       );
     });
   }
