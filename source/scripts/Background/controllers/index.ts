@@ -146,7 +146,10 @@ const MasterController = (
     );
 
     if (isTransactionsOldState) {
-      const { activeNetwork } = store.getState().vault;
+      const {
+        activeNetwork: { chainId },
+      } = store.getState().vault;
+
       accountsObj.forEach((account) => {
         const accType = (
           !account.isImported && !account.isTrezorWallet
@@ -155,29 +158,23 @@ const MasterController = (
             ? 'Trezor'
             : 'Imported'
         ) as KeyringAccountType;
+
         if (Array.isArray(account.transactions)) {
           if (account.transactions.length > 0) {
             const updatedTransactions = {
-              ...account.transactions,
-            };
+              syscoin: {},
+              ethereum: {},
+            } as { [chainType: string]: { [chainId: string]: any } };
 
             account.transactions.forEach((tx) => {
-              const txId = isBitcoinBased ? tx.txid : tx.hash;
-              const newTxFormat = isBitcoinBased
-                ? {
-                    syscoin: {
-                      [activeNetwork.chainId]: tx,
-                    },
-                    ethereum: {},
-                  }
-                : {
-                    syscoin: {},
-                    ethereum: {
-                      [activeNetwork.chainId]: tx,
-                    },
-                  };
+              const currentNetwork = isBitcoinBased ? 'syscoin' : 'ethereum';
+              const currentChainId = isBitcoinBased ? chainId : tx.chainId;
 
-              updatedTransactions[txId] = newTxFormat;
+              updatedTransactions[currentNetwork][currentChainId] = [
+                ...(updatedTransactions[currentNetwork]?.[currentChainId] ??
+                  []),
+                tx,
+              ];
             });
 
             store.dispatch(
