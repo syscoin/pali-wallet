@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
   IconButton,
@@ -25,15 +25,20 @@ const ManageNetworkView = () => {
   const { navigate } = useUtils();
   const { wallet } = getController();
 
-  const removeNetwork = (chain: string, chainId: number, key?: string) =>
-    wallet.removeKeyringNetwork(chain, chainId, key);
+  const removeNetwork = (
+    chain: INetworkType,
+    chainId: number,
+    rpcUrl: string,
+    label: string,
+    key?: string
+  ) => wallet.removeKeyringNetwork(chain, chainId, rpcUrl, label, key);
 
   const editNetwork = ({
     selected,
     chain,
     isDefault,
   }: {
-    chain: string;
+    chain: INetworkType;
     isDefault: boolean;
     selected: INetwork;
   }) => {
@@ -50,7 +55,11 @@ const ManageNetworkView = () => {
         </p>
         {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
-            key={network.chainId}
+            key={
+              network.key
+                ? network.key
+                : `${network.label.trim()}-${network.chainId}`
+            }
             className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
@@ -68,7 +77,7 @@ const ManageNetworkView = () => {
                   onClick={() =>
                     editNetwork({
                       selected: network,
-                      chain: 'syscoin',
+                      chain: INetworkType.Syscoin,
                       isDefault: network.default,
                     })
                   }
@@ -92,7 +101,13 @@ const ManageNetworkView = () => {
                 >
                   <IconButton
                     onClick={() =>
-                      removeNetwork('syscoin', network.chainId, network?.key)
+                      removeNetwork(
+                        INetworkType.Syscoin,
+                        network.chainId,
+                        network.url,
+                        network.label,
+                        network?.key
+                      )
                     }
                     type="primary"
                     shape="circle"
@@ -126,7 +141,11 @@ const ManageNetworkView = () => {
         </p>
         {Object.values(networks.ethereum).map((network: any) => (
           <li
-            key={network.chainId}
+            key={
+              network.key
+                ? network.key
+                : `${network.label.trim()}-${network.chainId}`
+            }
             className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
@@ -143,7 +162,7 @@ const ManageNetworkView = () => {
                 onClick={() =>
                   editNetwork({
                     selected: network,
-                    chain: 'ethereum',
+                    chain: INetworkType.Ethereum,
                     isDefault: network.default,
                   })
                 }
@@ -166,7 +185,15 @@ const ManageNetworkView = () => {
                   }
                 >
                   <IconButton
-                    onClick={() => removeNetwork('ethereum', network.chainId)}
+                    onClick={() =>
+                      removeNetwork(
+                        INetworkType.Ethereum,
+                        network.chainId,
+                        network.url,
+                        network.label,
+                        network?.key
+                      )
+                    }
                     type="primary"
                     shape="circle"
                     disabled={
