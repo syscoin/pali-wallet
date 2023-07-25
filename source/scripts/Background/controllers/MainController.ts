@@ -988,8 +988,6 @@ const MainController = (walletState): IMainController => {
               return;
             }
 
-            console.log('received txs', txs);
-
             store.dispatch(
               setMultipleTransactionToState({
                 chainId: activeNetwork.chainId,

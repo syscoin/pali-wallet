@@ -592,7 +592,6 @@ const VaultState = createSlice({
                 : (tx as ISysTransaction)
             );
 
-            console.log('CASTED TXS', castedTransactions);
             currentAccount.transactions[networkType][chainId] =
               //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
               take(

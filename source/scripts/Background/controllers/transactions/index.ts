@@ -24,8 +24,6 @@ const TransactionsManager = (
               activeNetworkUrl
             );
 
-          console.log('getSysTxs', getSysTxs);
-
           return getSysTxs;
         } catch (sysTxError) {
           return sysTxError;

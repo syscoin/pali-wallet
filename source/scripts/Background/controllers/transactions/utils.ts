@@ -160,8 +160,6 @@ export const validateAndManageUserTransactions = (
           !isNil(tx.blockNumber)
       );
 
-      console.log('filteredTxs', filteredTxs);
-
       const updatedTxs = isBitcoinBased
         ? (compact(
             clone(
@@ -184,7 +182,6 @@ export const validateAndManageUserTransactions = (
       ];
 
       if (filteredTxs.length > 0) {
-        console.log('if filteredTxs');
         store.dispatch(
           setMultipleTransactionToState({
             chainId: activeNetwork.chainId,
