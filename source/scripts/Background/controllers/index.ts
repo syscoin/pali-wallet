@@ -18,7 +18,7 @@ import {
   setAdvancedSettings,
   setNetworks,
 } from 'state/vault';
-import { IVaultState } from 'state/vault/types';
+import { IVaultState, TransactionsType } from 'state/vault/types';
 import {
   IControllerUtils,
   IDAppController,
@@ -87,7 +87,7 @@ const MasterController = (
     }
   });
   const initializeMainController = () => {
-    if (!store.getState().vault.networks['ethereum'][570]) {
+    if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
       store.dispatch(
         setNetworks({
           chain: 'ethereum' as INetworkType,
@@ -106,19 +106,22 @@ const MasterController = (
     }
 
     const isNetworkOldState =
-      store.getState()?.vault?.networks?.['ethereum'][1]?.default ?? false;
+      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+        ?.default ?? false;
 
     if (isNetworkOldState) {
-      Object.values(initialNetworksState['ethereum']).forEach((network) => {
-        store.dispatch(
-          setNetworks({
-            chain: 'ethereum' as INetworkType,
-            network: network as INetwork,
-            isEdit: false,
-            isFirstTime: true,
-          })
-        );
-      });
+      Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
+        (network) => {
+          store.dispatch(
+            setNetworks({
+              chain: 'ethereum' as INetworkType,
+              network: network as INetwork,
+              isEdit: false,
+              isFirstTime: true,
+            })
+          );
+        }
+      );
     }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(

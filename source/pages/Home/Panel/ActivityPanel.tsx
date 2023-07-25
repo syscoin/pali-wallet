@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { Fullscreen } from 'components/Fullscreen';
 import { LoadingComponent } from 'components/Loading';
 import { RootState } from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 
 import { TransactionsList } from './components/Transactions';
 
@@ -32,7 +33,7 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id].transactions;
 
     if (isBitcoinBased) {
-      const sysTxs = accountTransactions['syscoin'][chainId];
+      const sysTxs = accountTransactions[TransactionsType.Syscoin][chainId];
 
       if (sysTxs && sysTxs.length > 0) {
         return sysTxs;
@@ -40,7 +41,7 @@ export const TransactionsPanel = () => {
         return [];
       }
     } else {
-      const ethTxs = accountTransactions['ethereum'][chainId];
+      const ethTxs = accountTransactions[TransactionsType.Ethereum][chainId];
 
       if (ethTxs && ethTxs.length > 0) {
         return ethTxs;

@@ -7,6 +7,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 import { getController } from 'utils/browser';
 import { camelCaseToText, ellipsis, truncate } from 'utils/index';
 
@@ -167,8 +168,8 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   };
 
   const formattedTransaction = [];
-  // @ts-ignore
-  transactions['syscoin'][activeChainId]?.find((tx: any) => {
+
+  transactions[TransactionsType.Syscoin][activeChainId]?.find((tx: any) => {
     if (tx.txid !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {

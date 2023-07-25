@@ -2,6 +2,7 @@ import clone from 'lodash/clone';
 import sys from 'syscoinjs-lib';
 
 import store from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
 import { treatDuplicatedTxs } from './utils';
@@ -40,7 +41,7 @@ const SysTransactionController = (): ISysTransactionsController => {
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
     const syscoinUserTransactions = clone(
-      userTransactions['syscoin'][activeNetwork.chainId]
+      userTransactions[TransactionsType.Syscoin][activeNetwork.chainId]
     ) as ISysTransaction[];
 
     const mergedArrays = [...getSysTxs, ...syscoinUserTransactions];

@@ -60,15 +60,20 @@ export interface IPaliAccount extends IKeyringAccountState {
     ethereum: ITokenEthProps[];
     syscoin: ITokenSysProps[];
   };
-  transactions: INetworkTypeTransactions;
+  transactions: TransactionsNetworkTypeMapping;
 }
 export type PaliAccount = {
   [id: number]: IPaliAccount;
 };
 
-export interface INetworkTypeTransactions {
-  [networkType: string]: IChainNumberTransactions;
+export enum TransactionsType {
+  Ethereum = 'ethereum',
+  Syscoin = 'syscoin',
 }
+
+export type TransactionsNetworkTypeMapping = {
+  [key in TransactionsType]: IChainNumberTransactions;
+};
 
 export interface IChainNumberTransactions {
   [chainId: number]: IEvmTransaction[] | ISysTransaction[];

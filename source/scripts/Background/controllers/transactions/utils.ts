@@ -12,6 +12,7 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
+import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -163,10 +164,18 @@ export const validateAndManageUserTransactions = (
 
       const updatedTxs = isBitcoinBased
         ? (compact(
-            clone(account.transactions['syscoin'][activeNetwork.chainId])
+            clone(
+              account.transactions[TransactionsType.Syscoin][
+                activeNetwork.chainId
+              ]
+            )
           ) as ISysTransaction[])
         : (compact(
-            clone(account.transactions['ethereum'][activeNetwork.chainId])
+            clone(
+              account.transactions[TransactionsType.Ethereum][
+                activeNetwork.chainId
+              ]
+            )
           ) as IEvmTransactionResponse[]);
 
       const mergedTxs = [

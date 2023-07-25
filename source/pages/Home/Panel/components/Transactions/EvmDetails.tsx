@@ -7,6 +7,7 @@ import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, truncate } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
@@ -28,8 +29,8 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   }, [copied]);
 
   const formattedTransaction = [];
-  //@ts-ignore
-  transactions['ethereum'][chainId]?.find((tx: any) => {
+
+  transactions[TransactionsType.Ethereum][chainId]?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {
