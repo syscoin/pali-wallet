@@ -1,8 +1,8 @@
 import { Store } from 'webext-redux';
 
-import { STORE_PORT } from 'constants/index';
+// import { STORE_PORT } from 'constants/index';
 
-class PaliStore extends Store {
+export class PaliStore extends Store {
   [x: string]: any;
   constructor(portName?: string) {
     super({ portName });
@@ -22,5 +22,3 @@ class PaliStore extends Store {
     return this.port;
   }
 }
-
-export const paliStore = new PaliStore(STORE_PORT);

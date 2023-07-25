@@ -7,14 +7,17 @@ import { Provider } from 'react-redux';
 import watch from 'redux-watch';
 
 import { ToastAlert } from 'components/index';
+import { STORE_PORT } from 'constants/index';
 import appStore from 'state/store';
 import { log } from 'utils/index';
 
 import App from './App';
-import { paliStore } from './utils';
+import { PaliStore } from './utils';
 
 const app = document.getElementById('app-root');
-
+const isFullscreen = window.innerWidth > 600;
+const portName = isFullscreen ? 'pali-fullscreen' : STORE_PORT;
+const paliStore = new PaliStore(portName);
 const w = watch(appStore.getState, 'vault.lastLogin');
 paliStore.subscribe(
   w(() => {

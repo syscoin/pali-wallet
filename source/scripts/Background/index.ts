@@ -351,3 +351,4 @@ export const resetPaliRequestsCount = () => {
 };
 
 wrapStore(store, { portName: STORE_PORT });
+wrapStore(store, { portName: 'pali-fullscreen' });

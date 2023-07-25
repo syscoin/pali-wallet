@@ -38,6 +38,14 @@ export const popupPromise = async ({
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
     );
+  const hostCounter = Number(
+    JSON.parse(window.localStorage.getItem('hostCounter')) ?? 0
+  );
+  window.localStorage.setItem('hostCounter', JSON.stringify(hostCounter + 1));
+
+  if (hostCounter > 1) {
+    return;
+  }
   dapp.setHasWindow(host, true);
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   let popup = null;
@@ -76,6 +84,10 @@ export const popupPromise = async ({
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
+        window.localStorage.setItem(
+          'hostCounter',
+          JSON.stringify(hostCounter === 0 ? hostCounter : hostCounter - 1)
+        );
         if (
           route === 'tx/send/ethTx' ||
           route === 'tx/send/approve' ||
