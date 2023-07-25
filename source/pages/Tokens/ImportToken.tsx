@@ -29,10 +29,6 @@ export const ImportToken: FC = () => {
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
   const handleSearch = (query: string) => {
     setSelected(null);
 

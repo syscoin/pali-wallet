@@ -4,11 +4,9 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 
-import { Queue } from './queue';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
-  getFormattedEvmTransactionResponse,
   validateAndManageUserTransactions,
 } from './utils';
 

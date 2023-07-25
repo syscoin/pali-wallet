@@ -46,7 +46,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [ercError, setErcError] = useState({
     errorType: '',
-    message: '',
   });
 
   const [tokenContractType, setTokenContractType] = useState(
@@ -101,7 +100,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             setIsLoading(false);
             setErcError({
               errorType: addTokenMethodResponse.errorType,
-              message: addTokenMethodResponse.message,
             });
 
             return;
@@ -124,7 +122,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           if (String(error).includes('Token already exists')) {
             setErcError({
               errorType: 'TokenExists',
-              message: '',
             });
 
             return;
@@ -132,7 +129,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
           setErcError({
             errorType: 'Undefined',
-            message: '',
           });
         } finally {
           setIsLoading(false);
@@ -153,7 +149,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         } catch (error) {
           setErcError({
             errorType: 'Undefined',
-            message: '',
           });
         } finally {
           setIsLoading(false);
@@ -165,7 +160,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   const resetErcErrorState = () => {
     setErcError({
       errorType: '',
-      message: '',
     });
   };
 
@@ -614,7 +608,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       {ercError.errorType !== '' ? (
         <CustomTokenErrorModal
           errorType={ercError.errorType}
-          message={ercError.message}
           resetErcErrorState={resetErcErrorState}
         />
       ) : null}

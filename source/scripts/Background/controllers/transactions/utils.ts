@@ -1,25 +1,17 @@
-import { isNil } from 'lodash';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
 import last from 'lodash/last';
 import omit from 'lodash/omit';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
-import {
-  CustomJsonRpcProvider,
-  KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import {
-  setAccountPropertyByIdAndType,
-  setCurrentBlock,
-  setMultipleTransactionToState,
-  setSingleTransactionToState,
-} from 'state/vault';
+import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 

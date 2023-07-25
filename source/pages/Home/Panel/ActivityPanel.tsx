@@ -1,4 +1,3 @@
-import clone from 'lodash/clone';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
