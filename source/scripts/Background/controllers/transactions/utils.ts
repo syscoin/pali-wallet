@@ -185,7 +185,7 @@ export const validateAndManageUserTransactions = (
         store.dispatch(
           setMultipleTransactionToState({
             chainId: activeNetwork.chainId,
-            networkType: 'ethereum',
+            networkType: TransactionsType.Ethereum,
             transactions: mergedTxs,
           })
         );

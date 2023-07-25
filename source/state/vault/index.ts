@@ -26,6 +26,7 @@ import {
   IPaliAccount,
   IVaultState,
   PaliAccount,
+  TransactionsType,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -466,7 +467,7 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chainId: number;
-        networkType: string;
+        networkType: TransactionsType;
         transaction: IEvmTransaction | ISysTransaction;
       }>
     ) => {
@@ -478,7 +479,9 @@ const VaultState = createSlice({
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
         currentAccount.transactions[networkType] = {
-          [chainId]: [transaction] as (typeof networkType extends 'ethereum'
+          [chainId]: [
+            transaction,
+          ] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[],
         };
@@ -487,14 +490,14 @@ const VaultState = createSlice({
         if (!currentAccount.transactions[networkType][chainId]) {
           currentAccount.transactions[networkType][chainId] = [
             transaction,
-          ] as (typeof networkType extends 'ethereum'
+          ] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[];
         } else {
           // If the chainId exists, add the new transaction to the existing chainId array
           const currentUserTransactions = currentAccount.transactions[
             networkType
-          ][chainId] as (typeof networkType extends 'ethereum'
+          ][chainId] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[];
 
@@ -511,7 +514,7 @@ const VaultState = createSlice({
           } else {
             // If the array length is less than 30, simply push the new transaction
             currentUserTransactions.push(
-              transaction as typeof networkType extends 'ethereum'
+              transaction as typeof networkType extends TransactionsType.Ethereum
                 ? IEvmTransaction
                 : ISysTransaction
             );
@@ -524,7 +527,7 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chainId: number;
-        networkType: string;
+        networkType: TransactionsType;
         transactions: Array<IEvmTransaction | ISysTransaction>;
       }>
     ) {
@@ -560,26 +563,27 @@ const VaultState = createSlice({
       if (!currentAccount.transactions[networkType]) {
         // Cast the array to the correct type based on the networkType
         const chainTransactions = treatedTxs.map((tx) =>
-          networkType === 'ethereum'
+          networkType === TransactionsType.Ethereum
             ? (tx as IEvmTransaction)
             : (tx as ISysTransaction)
         );
         currentAccount.transactions[networkType] = {
-          [chainId]: chainTransactions as (typeof networkType extends 'ethereum'
-            ? IEvmTransaction
-            : ISysTransaction)[],
+          [chainId]:
+            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
+              ? IEvmTransaction
+              : ISysTransaction)[],
         };
       } else {
         // Check if the chainId exists in the current networkType's transactions
         if (!currentAccount.transactions[networkType][chainId]) {
           // Create a new array with the correct type based on the networkType
           const chainTransactions = treatedTxs.map((tx) =>
-            networkType === 'ethereum'
+            networkType === TransactionsType.Ethereum
               ? (tx as IEvmTransaction)
               : (tx as ISysTransaction)
           );
           currentAccount.transactions[networkType][chainId] =
-            chainTransactions as (typeof networkType extends 'ethereum'
+            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
               : ISysTransaction)[];
         } else {
@@ -587,7 +591,7 @@ const VaultState = createSlice({
           if (Array.isArray(transactions)) {
             // Filter and push the transactions based on the networkType
             const castedTransactions = treatedTxs.map((tx) =>
-              networkType === 'ethereum'
+              networkType === TransactionsType.Ethereum
                 ? (tx as IEvmTransaction)
                 : (tx as ISysTransaction)
             );
@@ -597,7 +601,7 @@ const VaultState = createSlice({
               take(
                 castedTransactions,
                 30
-              ) as (typeof networkType extends 'ethereum'
+              ) as (typeof networkType extends TransactionsType.Ethereum
                 ? IEvmTransaction
                 : ISysTransaction)[];
           }

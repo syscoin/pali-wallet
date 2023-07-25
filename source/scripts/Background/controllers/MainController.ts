@@ -47,7 +47,11 @@ import {
   setMultipleTransactionToState,
   setSingleTransactionToState,
 } from 'state/vault';
-import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
+import {
+  IOmmitedAccount,
+  IPaliAccount,
+  TransactionsType,
+} from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -991,7 +995,7 @@ const MainController = (walletState): IMainController => {
             store.dispatch(
               setMultipleTransactionToState({
                 chainId: activeNetwork.chainId,
-                networkType: 'syscoin',
+                networkType: TransactionsType.Syscoin,
                 transactions: txs,
               })
             );
@@ -1051,7 +1055,7 @@ const MainController = (walletState): IMainController => {
                       store.dispatch(
                         setMultipleTransactionToState({
                           chainId: activeNetwork.chainId,
-                          networkType: 'syscoin',
+                          networkType: TransactionsType.Syscoin,
                           transactions: txs,
                         })
                       );
@@ -1098,7 +1102,9 @@ const MainController = (walletState): IMainController => {
     store.dispatch(
       setSingleTransactionToState({
         chainId: activeNetwork.chainId,
-        networkType: isBitcoinBased ? 'syscoin' : 'ethereum',
+        networkType: isBitcoinBased
+          ? TransactionsType.Syscoin
+          : TransactionsType.Ethereum,
         transaction: txWithTimestamp,
       })
     );
