@@ -78,11 +78,7 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
-  // importTrezorAccount: (
-  //   coin: string,
-  //   slip44: string,
-  //   index: string
-  // ) => Promise<IKeyringAccountState>;
+
   lock: () => void;
   removeKeyringNetwork: (
     chain: string,
@@ -176,8 +172,7 @@ export interface IControllerUtils {
     totalSupply: string;
     updateCapabilityFlags: number;
   }>;
-  // eslint-disable-next-line @typescript-eslint/ban-types
-  getFeeRate: (fee: number) => BigInt;
+  getFeeRate: (fee: number) => bigint;
   getPsbtFromJson: (psbt: JSON) => string;
   getRawTransaction: (explorerUrl: string, txid: string) => any;
   getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
@@ -245,7 +240,6 @@ export interface IDAppController {
   /**
    * Changes the active network
    */
-  // changeActiveBlockExplorer: (blockExplorer: string) => void;
   /**
    * Update state and emit events to all connected dApps
    * @emits PaliSyscoinEvents
@@ -258,7 +252,7 @@ export interface IDAppController {
   /**
    * Changes the active network
    */
-  // changeNetwork: (chainId: number) => void;
+
   /**
    * Update state and emit events to all connected dApps
    * @emits PaliEvents

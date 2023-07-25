@@ -82,7 +82,6 @@ export class BaseProvider extends EventEmitter {
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
     this.wallet = wallet;
-    // this.isUnlocked = this.isUnlocked.bind(this);
   }
 
   //====================

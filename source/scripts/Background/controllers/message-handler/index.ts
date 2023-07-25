@@ -50,7 +50,3 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
     port.postMessage({ id: message.id, data: { error: error } }); //This was altered for better ethereum compability TODO: check on syscoin contentScript side
   }
 };
-
-// export const onDisconnect = (port: Runtime.Port) => {
-
-// };

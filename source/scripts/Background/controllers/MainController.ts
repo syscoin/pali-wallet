@@ -335,8 +335,6 @@ const MainController = (walletState): IMainController => {
       cancelled = true;
     }
 
-    // cancellablePromises.cancelAllPromises();
-
     const promiseWrapper = createCancellablePromise<{
       activeChain: INetworkType;
       chain: string;
@@ -999,26 +997,6 @@ const MainController = (walletState): IMainController => {
                 transactions: txs,
               })
             );
-
-            // const adjustedTx = txs.map((transaction) => ({
-            //   chainId: activeNetwork.chainId,
-            //   transaction,
-            // }));
-
-            // store.dispatch(
-            //   setAccountPropertyByIdAndType({
-            //     id: activeAccount.id,
-            //     type: activeAccount.type,
-            //     property: 'transactions',
-            //     value: {
-            //       syscoin: [
-            //         ...currentAccount.transactions.syscoin,
-            //         ...adjustedTx,
-            //       ],
-            //       ethereum: [...currentAccount.transactions.ethereum],
-            //     },
-            //   })
-            // );
           });
         break;
       case false:
@@ -1028,33 +1006,7 @@ const MainController = (walletState): IMainController => {
           isBitcoinBased,
           activeNetwork.url
         );
-        // .then((updatedTxs) => {
-        //   if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
-        //     return;
-        //   }
-        //   store.dispatch(setIsLoadingTxs(true));
 
-        //   const adjustedTx = updatedTxs.map((transaction) => ({
-        //     chainId: activeNetwork.chainId,
-        //     transaction,
-        //   }));
-
-        //   store.dispatch(
-        //     setAccountPropertyByIdAndType({
-        //       id: activeAccount.id,
-        //       type: activeAccount.type,
-        //       property: 'transactions',
-        //       value: {
-        //         syscoin: [...currentAccount.transactions.syscoin],
-        //         ethereum: [
-        //           ...currentAccount.transactions.ethereum,
-        //           ...adjustedTx,
-        //         ],
-        //       },
-        //     })
-        //   );
-        //   store.dispatch(setIsLoadingTxs(false));
-        // });
         break;
 
       default:
@@ -1108,29 +1060,6 @@ const MainController = (walletState): IMainController => {
                     }
                   });
 
-                // if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
-                //   store.dispatch(setIsLoadingTxs(true));
-                //   const adjustedTx = updatedTxs.map((transaction) => ({
-                //     chainId: activeNetwork.chainId,
-                //     transaction,
-                //   }));
-
-                //   store.dispatch(
-                //     setAccountPropertyByIdAndType({
-                //       id: activeAccount.id,
-                //       type: activeAccount.type,
-                //       property: 'transactions',
-                //       value: {
-                //         syscoin: [...currentAccount.transactions.syscoin],
-                //         ethereum: [
-                //           ...currentAccount.transactions.ethereum,
-                //           ...adjustedTx,
-                //         ],
-                //       },
-                //     })
-                //   );
-                //   store.dispatch(setIsLoadingTxs(false));
-                // }
                 break;
               //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
               case false:
@@ -1148,10 +1077,6 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    // if (cancellablePromises.transactionPromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.TRANSACTION);
-    // }
-
     cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel,
@@ -1164,9 +1089,6 @@ const MainController = (walletState): IMainController => {
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-
-    // const { transactions: userTransactions } =
-    //   accounts[activeAccount.type][activeAccount.id];
 
     const txWithTimestamp = {
       ...tx,
@@ -1182,54 +1104,6 @@ const MainController = (walletState): IMainController => {
         transaction: txWithTimestamp,
       })
     );
-
-    // const clonedArrayToAdd = isBitcoinBased
-    //   ? (compact(
-    //       clone(
-    //         userTransactions.syscoin
-    //           .filter((sysTx) => sysTx.chainId === activeNetwork.chainId)
-    //           .map((sysTransaction) => sysTransaction.transaction)
-    //       )
-    //     ) as ISysTransaction[])
-    //   : (compact(
-    //       clone(
-    //         userTransactions.ethereum
-    //           .filter((evmTx) => evmTx.chainId === activeNetwork.chainId)
-    //           .map((evmTransaction) => evmTransaction.transaction)
-    //       )
-    //     ) as IEvmTransactionResponse[]);
-    // clonedArrayToAdd.unshift(txWithTimestamp);
-
-    // const adjustedTx = clonedArrayToAdd.map((transaction) => ({
-    //   chainId: activeNetwork.chainId,
-    //   transaction,
-    // }));
-
-    // if (isBitcoinBased) {
-    //   store.dispatch(
-    //     setAccountPropertyByIdAndType({
-    //       id: activeAccount.id,
-    //       type: activeAccount.type,
-    //       property: 'transactions',
-    //       value: {
-    //         syscoin: [...adjustedTx],
-    //         ethereum: [...userTransactions.ethereum],
-    //       },
-    //     })
-    //   );
-    // } else {
-    //   store.dispatch(
-    //     setAccountPropertyByIdAndType({
-    //       id: activeAccount.id,
-    //       type: activeAccount.type,
-    //       property: 'transactions',
-    //       value: {
-    //         syscoin: [...userTransactions.syscoin],
-    //         ethereum: [...adjustedTx],
-    //       },
-    //     })
-    //   );
-    // }
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -1336,10 +1210,6 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    // if (cancellablePromises.assetsPromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.ASSETS);
-    // }
-
     cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
       cancel,
@@ -1412,10 +1282,6 @@ const MainController = (walletState): IMainController => {
           }
         }
       );
-
-    // if (cancellablePromises.balancePromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.BALANCE);
-    // }
 
     cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,

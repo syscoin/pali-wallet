@@ -16,10 +16,7 @@ declare global {
   }
 }
 const isWatchRequestsActive = false;
-// // @ts-ignore
-// browser.runtime.getManifest().environment?.WATCH_REQUESTS !== undefined &&
-// // @ts-ignore
-// browser.runtime.getManifest().environment?.WATCH_REQUESTS === 'active';
+
 let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet

@@ -283,7 +283,6 @@ const VaultState = createSlice({
         type: KeyringAccountType;
       }>
     ) {
-      // const { accountId, accountType } = action.payload;
       state.activeAccount = action.payload;
 
       //reset current block number on changing accounts
@@ -291,11 +290,6 @@ const VaultState = createSlice({
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
-      // inject.ethereum.chainId = action.payload.chainId.toString();
-      // inject.ethereum.networkVersion = parseInt(
-      //   action.payload.chainId.toString(),
-      //   16
-      // ).toString();
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;

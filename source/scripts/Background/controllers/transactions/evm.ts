@@ -37,7 +37,6 @@ const EvmTransactionsController = (
         store.getState().vault.activeNetwork?.chainId;
       const rpcForbiddenList = [10];
 
-      // const queue = new Queue(3);
       const latestBlockNumber = await web3Provider.getBlockNumber();
       const adjustedBlock =
         latestBlockNumber - parseInt(String(currentBlockNumber), 16);
@@ -55,32 +54,6 @@ const EvmTransactionsController = (
         fromBlock,
         latestBlockNumber
       );
-
-      // //Doing this we prevent cases that user is receiving TX from other account and the
-      // //RPC don't response the TX with Timestamp properly
-      // queue.execute(
-      //   async () =>
-      //     await Promise.all(
-      //       txs.map(async (pollingTx) => {
-      //         if (pollingTx?.timestamp) {
-      //           return pollingTx;
-      //         }
-
-      //         const getTxTimestamp = await getFormattedEvmTransactionResponse(
-      //           web3Provider,
-      //           pollingTx
-      //         );
-
-      //         return getTxTimestamp;
-      //       })
-      //     )
-      // );
-
-      // const results = await queue.done();
-
-      // const txsWithTimestamp = results
-      //   .filter((result) => result.success)
-      //   .map(({ result }) => result);
 
       return flatMap(txs);
     } catch (error) {
