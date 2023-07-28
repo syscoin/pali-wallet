@@ -41,12 +41,30 @@ const EvmTransactionsController = (
       const adjustedBlock =
         latestBlockNumber - parseInt(String(currentBlockNumber), 16);
 
-      const blocksToSearch =
-        currentBlockNumber && adjustedBlock < 30
-          ? adjustedBlock
-          : rpcForbiddenList.includes(currentNetworkChainId)
-          ? 10
-          : 30;
+      let blocksToSearch;
+
+      if (
+        currentBlockNumber &&
+        currentNetworkChainId &&
+        rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
+        blocksToSearch = Math.min(10, adjustedBlock);
+      } else if (
+        currentNetworkChainId &&
+        rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
+        blocksToSearch = 10;
+      } else if (
+        currentBlockNumber &&
+        adjustedBlock > 0 &&
+        adjustedBlock < 30
+      ) {
+        blocksToSearch = adjustedBlock;
+      } else if (currentBlockNumber && adjustedBlock < 0) {
+        blocksToSearch = 30;
+      } else {
+        blocksToSearch = 30;
+      }
 
       const fromBlock = latestBlockNumber - blocksToSearch;
 
