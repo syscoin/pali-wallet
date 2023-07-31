@@ -920,7 +920,10 @@ const MainController = (walletState): IMainController => {
         ethereum: [],
         syscoin: [],
       },
-      transactions: [],
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
     } as IPaliAccount;
     store.dispatch(
       setAccounts({
