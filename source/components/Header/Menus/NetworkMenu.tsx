@@ -7,6 +7,8 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import arrow from 'assets/images/arrow.png';
+import btcIcon from 'assets/images/btcIcon.png';
+import ethIcon from 'assets/images/ethIcon.png';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -116,101 +118,107 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Items
               as="div"
-              className="absolute z-50 left-0 pb-6 w-72 h-menu text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
+              className="absolute z-50 left-0 pb-6 pt-5 w-72 h-fit text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              <h2
+              {/* <h2
                 className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
                 id="network-settings-title"
               >
                 NETWORK SETTINGS
-              </h2>
-              <div className="scrollbar-styled h-80 overflow-auto">
-                <Menu.Item>
-                  <li
-                    onClick={() =>
-                      navigate('/settings/networks/connected-sites')
-                    }
-                    className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-warning-success hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
-                  >
-                    <Icon
-                      name="globe"
-                      className="mb-1 ml-1 mr-4 text-brand-white"
-                    />
+              </h2> */}
 
-                    <span className="px-3">Connected sites</span>
-                  </li>
-                </Menu.Item>
+              <Menu.Item>
+                <li
+                  onClick={() => navigate('/settings/networks/connected-sites')}
+                  className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-brand-green hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
+                >
+                  <Icon
+                    name="globe"
+                    className="flex items-center ml-1 mr-2 text-brand-white"
+                  />
 
-                <Menu.Item>
-                  <li
-                    onClick={() => navigate('/settings/networks/trusted-sites')}
-                    className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-royalblue hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
-                  >
-                    <Icon
-                      name="warning"
-                      className="mb-1 ml-1 mr-4 text-brand-white"
-                    />
+                  <span className="px-3 text-sm">View connected websites</span>
+                </li>
+              </Menu.Item>
 
-                    <span className="px-3">Trusted sites</span>
-                  </li>
-                </Menu.Item>
+              <Menu.Item>
+                <li
+                  onClick={() => navigate('/settings/networks/trusted-sites')}
+                  className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                >
+                  <Icon
+                    name="check"
+                    className="flex items-center ml-1 mr-2 text-brand-white"
+                  />
 
+                  <span className="px-3 text-sm">Trusted sites</span>
+                </li>
+              </Menu.Item>
+              <div className="scrollbar-styled h-73 overflow-auto">
                 {!activeAccount.isImported ? (
                   <Menu.Item>
-                    <Disclosure>
-                      {({ open }) => (
-                        <>
-                          <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                            <Icon
-                              name="dolar"
-                              className="ml-1 mr-4 text-brand-white"
-                            />
+                    <>
+                      <span className="disabled text-xs flex justify-start px-5 my-3">
+                        NETWORKS
+                      </span>
+                      <Disclosure>
+                        {({ open }) => (
+                          <>
+                            <Disclosure.Button className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                              <img
+                                src={btcIcon}
+                                width="16px"
+                                className="ml-1 flex items-center text-brand-white"
+                              />
 
-                            <span className="px-3 text-base">
-                              UTXO Networks
-                            </span>
+                              <span className="px-3 text-sm">
+                                UTXO Networks
+                              </span>
 
-                            <img
-                              src={arrow}
-                              className={`relative right-2 flex items-center ${
-                                open ? 'transform rotate-180' : ''
-                              } text-brand-white`}
-                              id="network-settings-btn"
-                            />
-                          </Disclosure.Button>
+                              <img
+                                src={arrow}
+                                className={`relative left-5 flex items-center ${
+                                  open ? 'transform rotate-180' : ''
+                                } text-brand-white`}
+                                id="network-settings-btn"
+                              />
+                            </Disclosure.Button>
 
-                          <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
-                            {Object.values(networks.syscoin).map(
-                              (currentNetwork: INetwork) => (
-                                <li
-                                  key={uniqueId()}
-                                  className="backface-visibility-hidden flex flex-col justify-around mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
-                                  onClick={() =>
-                                    handleChangeNetwork(
-                                      currentNetwork,
-                                      'syscoin'
-                                    )
-                                  }
-                                >
-                                  <span className="ml-8 text-left">
-                                    {currentNetwork.label}
-                                  </span>
+                            <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
+                              {Object.values(networks.syscoin).map(
+                                (currentNetwork: INetwork) => (
+                                  <li
+                                    key={uniqueId()}
+                                    className="backface-visibility-hidden flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                    onClick={() =>
+                                      handleChangeNetwork(
+                                        currentNetwork,
+                                        'syscoin'
+                                      )
+                                    }
+                                  >
+                                    <span className="ml-8 text-left">
+                                      {currentNetwork.label}
+                                    </span>
 
-                                  {isBitcoinBased &&
-                                    activeNetworkValidator(currentNetwork) && (
-                                      <Icon
-                                        name="check"
-                                        className="mb-1 w-4"
-                                        wrapperClassname="w-6 absolute right-20"
-                                      />
-                                    )}
-                                </li>
-                              )
-                            )}
-                          </Disclosure.Panel>
-                        </>
-                      )}
-                    </Disclosure>
+                                    {isBitcoinBased &&
+                                      activeNetworkValidator(
+                                        currentNetwork
+                                      ) && (
+                                        <Icon
+                                          name="check"
+                                          className="mb-1 w-4"
+                                          wrapperClassname="w-6 absolute right-20"
+                                        />
+                                      )}
+                                  </li>
+                                )
+                              )}
+                            </Disclosure.Panel>
+                          </>
+                        )}
+                      </Disclosure>
+                    </>
                   </Menu.Item>
                 ) : null}
 
@@ -218,17 +226,18 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   <Disclosure>
                     {({ open }) => (
                       <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                          <Icon
-                            name="dolar"
-                            className="ml-1 mr-4 text-brand-white"
+                        <Disclosure.Button className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                          <img
+                            src={ethIcon}
+                            width="16px"
+                            className="ml-1 flex items-center text-brand-white"
                           />
 
-                          <span className="px-3 text-base">Web3 Networks</span>
+                          <span className="px-3 text-sm">EVM Networks</span>
 
                           <img
                             src={arrow}
-                            className={`relative right-2 flex items-center ${
+                            className={`relative left-5.5 flex items-center ${
                               open ? 'transform rotate-180' : ''
                             } text-brand-white`}
                             id="network-settings-btn"
@@ -244,7 +253,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                             .map((currentNetwork: any) => (
                               <li
                                 key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-row items-center justify-start mt-2 mx-auto p-2.5 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                className="backface-visibility-hidden flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,
@@ -272,28 +281,35 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   </Disclosure>
                 </Menu.Item>
 
+                <span className="disabled text-xs flex justify-start px-5 my-3">
+                  NETWORK SETTINGS
+                </span>
+
                 <Menu.Item>
                   <li
                     onClick={() => navigate('/settings/networks/custom-rpc')}
-                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                    className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                   >
                     <Icon
                       name="appstoreadd"
-                      className="ml-1 mr-4 text-brand-white"
+                      className="ml-1 flex items-center text-brand-white"
                     />
 
-                    <span className="px-3">Custom RPC</span>
+                    <span className="px-3 text-sm">Custom RPC</span>
                   </li>
                 </Menu.Item>
 
                 <Menu.Item>
                   <li
                     onClick={() => navigate('/settings/networks/edit')}
-                    className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                    className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                   >
-                    <Icon name="edit" className="ml-1 mr-4 text-brand-white" />
+                    <Icon
+                      name="edit"
+                      className="ml-1 flex items-center text-brand-white"
+                    />
 
-                    <span className="px-3">Manage networks</span>
+                    <span className="px-3 text-sm">Manage networks</span>
                   </li>
                 </Menu.Item>
               </div>

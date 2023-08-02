@@ -70,7 +70,9 @@ module.exports = {
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
     pink: '#9F0949',
     blue: '#4D76B8',
-
+    blue600: '#162742',
+    blue200: '#4CA1CF',
+    green: '#8EC100',
     black: '#000',
     white: '#fff',
 

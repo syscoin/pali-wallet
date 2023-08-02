@@ -44,6 +44,18 @@ div[role='alert'] {
   top: 1.2rem !important;
 }
 
+.left-5 {
+  left: 5rem !important;
+}
+
+.left-5\.5 {
+  left: 5.5rem !important;
+}
+
+.h-73 {
+  height: 13rem !important;
+}
+
 .scrollbar-styled {
   /* Firefox */
   scrollbar-color: #4ca1cf #739dce;
