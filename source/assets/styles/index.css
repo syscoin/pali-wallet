@@ -40,6 +40,10 @@ div[role='alert'] {
   display: none !important;
 }
 
+.top-1\.2 {
+  top: 1.2rem !important;
+}
+
 .scrollbar-styled {
   /* Firefox */
   scrollbar-color: #4ca1cf #739dce;

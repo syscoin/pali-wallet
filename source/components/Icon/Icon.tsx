@@ -50,6 +50,7 @@ const icons = {
   'external-link': ExternalLinkIcon,
   tag: AntIcons.TagFilled,
   import: AntIcons.ImportOutlined,
+  'hamburger-menu': AntIcons.MenuOutlined,
 };
 
 interface IIcon {

@@ -6,10 +6,12 @@ import { useSelector } from 'react-redux';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import arrow from 'assets/images/arrow.png';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
   setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -42,6 +44,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         state.vault.activeAccount.id
       ]
   );
+
+  const networkType = isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM;
+
+  const bgColor =
+    networkType === NetworkType.UTXO ? 'bg-brand-pink' : 'bg-brand-blue';
 
   const activeNetworkValidator = (currentNetwork: INetwork): boolean =>
     Boolean(
@@ -83,10 +90,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         <>
           <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span>{activeNetwork.label}</span>
+            <span className={`px-2 py-0.4 text-white rounded-full ${bgColor}`}>
+              {networkType}
+            </span>
 
-            <Icon
-              name="select-down"
-              className={`${
+            <img
+              src={arrow}
+              className={`relative right-2 flex items-center ${
                 menuprops.open ? 'transform rotate-180' : ''
               } text-brand-white`}
               id="network-settings-btn"
@@ -160,11 +170,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                               UTXO Networks
                             </span>
 
-                            <Icon
-                              name="select-down"
-                              className={`${
+                            <img
+                              src={arrow}
+                              className={`relative right-2 flex items-center ${
                                 open ? 'transform rotate-180' : ''
-                              } text-brand-white mb-1`}
+                              } text-brand-white`}
+                              id="network-settings-btn"
                             />
                           </Disclosure.Button>
 
@@ -215,11 +226,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                           <span className="px-3 text-base">Web3 Networks</span>
 
-                          <Icon
-                            name="select-down"
-                            className={`${
+                          <img
+                            src={arrow}
+                            className={`relative right-2 flex items-center ${
                               open ? 'transform rotate-180' : ''
-                            } mb-1 text-brand-white`}
+                            } text-brand-white`}
+                            id="network-settings-btn"
                           />
                         </Disclosure.Button>
 

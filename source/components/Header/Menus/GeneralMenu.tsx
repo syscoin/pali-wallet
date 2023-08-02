@@ -89,7 +89,7 @@ export const GeneralMenu: React.FC = () => {
           />
 
           <Badge
-            className={`absolute -right-1 top-1 w-3 h-3 text-warning-${className} bg-warning-${className} rounded-full`}
+            className={`absolute -right-1 top-1.2 w-3 h-3 text-warning-${className} bg-warning-${className} rounded-full`}
           />
         </div>
       </Tooltip>
@@ -106,7 +106,7 @@ export const GeneralMenu: React.FC = () => {
       <Menu.Button as="button" className="mx-1.5">
         <div id="general-settings-button">
           <Icon
-            name="settings"
+            name="hamburger-menu"
             className="hover:text-brand-royalblue text-brand-white"
           />
         </div>
