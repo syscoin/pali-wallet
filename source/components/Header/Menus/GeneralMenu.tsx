@@ -113,7 +113,7 @@ export const GeneralMenu: React.FC = () => {
 
         <Menu.Items
           as="div"
-          className="scrollbar-styled absolute z-50 right-0 pb-6 w-72 h-96 text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+          className="scrollbar-styled absolute z-50 right-0 pb-6 w-72 h-100 text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
         >
           <AccountMenu />
 

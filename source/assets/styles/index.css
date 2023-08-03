@@ -57,6 +57,10 @@ div[role='alert'] {
   margin-left: 0.2rem !important;
 }
 
+.h-100 {
+  height: 35rem !important;
+}
+
 .left-5\.5 {
   left: 5.5rem !important;
 }
