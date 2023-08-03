@@ -1,8 +1,7 @@
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
@@ -14,7 +13,6 @@ import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { getHost, getTabUrl } from 'utils/getHost';
 import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
@@ -27,12 +25,10 @@ interface INetworkComponent {
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
-  const [currentTab, setCurrentTab] = useState({
-    host: '',
-    isConnected: false,
-  });
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
-  const { wallet, dapp } = getController();
+  const { wallet } = getController();
+
+  const { dapps } = useSelector((state: RootState) => state.dapp);
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(
@@ -93,32 +89,15 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     }
   };
 
-  useEffect(() => {
-    let isMounted = true;
+  const hasConnectedDapps = Object.values(dapps).length > 0;
 
-    getTabUrl(browser).then(async (url: string) => {
-      if (!isMounted) return;
-
-      const host = getHost(url);
-      const isConnected = dapp.isConnected(host);
-
-      setCurrentTab({ host, isConnected });
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [wallet.isUnlocked()]);
-
-  const connectedWebsiteTitle = currentTab.isConnected
+  const connectedWebsiteTitle = hasConnectedDapps
     ? 'View connected websites'
     : 'No websites connected';
 
-  const currentBgColor = currentTab.isConnected
-    ? 'bg-brand-green'
-    : 'bg-brand-red';
+  const currentBgColor = hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red';
 
-  const currentBdgColor = currentTab.isConnected
+  const currentBdgColor = hasConnectedDapps
     ? 'border-warning-success'
     : 'border-warning-error';
   return (
