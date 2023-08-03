@@ -2,6 +2,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import ethIcon from 'assets/images/ethIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
@@ -36,7 +37,7 @@ export const GeneralMenu: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    getTabUrl().then(async (url: string) => {
+    getTabUrl(browser).then(async (url: string) => {
       if (!isMounted) return;
 
       const host = getHost(url);
@@ -52,7 +53,7 @@ export const GeneralMenu: React.FC = () => {
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
-      getTabUrl().then(async (url: string) => {
+      getTabUrl(browser).then(async (url: string) => {
         const host = getHost(url);
         const isConnected = dapp.isConnected(host);
 

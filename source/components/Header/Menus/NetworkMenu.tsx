@@ -2,6 +2,7 @@ import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
@@ -95,7 +96,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   useEffect(() => {
     let isMounted = true;
 
-    getTabUrl().then(async (url: string) => {
+    getTabUrl(browser).then(async (url: string) => {
       if (!isMounted) return;
 
       const host = getHost(url);

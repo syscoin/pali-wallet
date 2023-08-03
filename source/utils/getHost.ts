@@ -1,4 +1,4 @@
-import { browser } from 'webextension-polyfill-ts';
+import { Browser } from 'webextension-polyfill-ts';
 
 export const getHost = (url: string): string => {
   if (typeof url === 'string' && url !== '') {
@@ -8,7 +8,7 @@ export const getHost = (url: string): string => {
   return url;
 };
 
-export const getTabUrl = async () => {
+export const getTabUrl = async (browser: Browser) => {
   const windows = await browser.windows.getAll({ populate: true });
 
   for (const window of windows) {
