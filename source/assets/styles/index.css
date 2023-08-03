@@ -44,8 +44,17 @@ div[role='alert'] {
   top: 1.2rem !important;
 }
 
+.py-1\.5 {
+  padding-top: 0.3rem !important;
+  padding-bottom: 0.3rem !important;
+}
+
 .left-5 {
   left: 5rem !important;
+}
+
+.ml-0\.2 {
+  margin-left: 0.2rem !important;
 }
 
 .left-5\.5 {

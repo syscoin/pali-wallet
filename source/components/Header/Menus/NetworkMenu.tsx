@@ -1,18 +1,19 @@
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import arrow from 'assets/images/arrow.png';
-import btcIcon from 'assets/images/btcIcon.png';
-import ethIcon from 'assets/images/ethIcon.png';
+import btcIcon from 'assets/images/btcIcon.svg';
+import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { getHost, getTabUrl } from 'utils/getHost';
 import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
@@ -25,8 +26,12 @@ interface INetworkComponent {
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
+  const [currentTab, setCurrentTab] = useState({
+    host: '',
+    isConnected: false,
+  });
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
-  const { wallet } = getController();
+  const { wallet, dapp } = getController();
 
   const networks = useSelector((state: RootState) => state.vault.networks);
   const isBitcoinBased = useSelector(
@@ -86,6 +91,35 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       navigate('/home');
     }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    getTabUrl().then(async (url: string) => {
+      if (!isMounted) return;
+
+      const host = getHost(url);
+      const isConnected = dapp.isConnected(host);
+
+      setCurrentTab({ host, isConnected });
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [wallet.isUnlocked()]);
+
+  const connectedWebsiteTitle = currentTab.isConnected
+    ? 'View connected websites'
+    : 'No websites connected';
+
+  const currentBgColor = currentTab.isConnected
+    ? 'bg-brand-green'
+    : 'bg-brand-red';
+
+  const currentBdgColor = currentTab.isConnected
+    ? 'border-warning-success'
+    : 'border-warning-error';
   return (
     <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
       {(menuprops) => (
@@ -118,26 +152,19 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Items
               as="div"
-              className="absolute z-50 left-0 pb-6 pt-5 w-72 h-fit text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
+              className="absolute z-50 left-0 pb-6 pt-5 w-72 h-fit text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
             >
-              {/* <h2
-                className="mb-6 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
-                id="network-settings-title"
-              >
-                NETWORK SETTINGS
-              </h2> */}
-
               <Menu.Item>
                 <li
                   onClick={() => navigate('/settings/networks/connected-sites')}
-                  className="flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base bg-brand-green hover:bg-opacity-70 border border-solid border-transparent hover:border-warning-success rounded-full cursor-pointer transition-all duration-200"
+                  className={`flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
                 >
                   <Icon
                     name="globe"
                     className="flex items-center ml-1 mr-2 text-brand-white"
                   />
 
-                  <span className="px-3 text-sm">View connected websites</span>
+                  <span className="px-3 text-sm">{connectedWebsiteTitle}</span>
                 </li>
               </Menu.Item>
 
@@ -184,12 +211,22 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                               />
                             </Disclosure.Button>
 
-                            <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
+                            <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                               {Object.values(networks.syscoin).map(
-                                (currentNetwork: INetwork) => (
+                                (
+                                  currentNetwork: INetwork,
+                                  index: number,
+                                  arr
+                                ) => (
                                   <li
                                     key={uniqueId()}
-                                    className="backface-visibility-hidden flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                    className={`backface-visibility-hidden ${
+                                      index === 0
+                                        ? 'rounded-tl-lg rounded-tr-lg border-b border-dashed border-gray-600 '
+                                        : index === arr.length - 1
+                                        ? 'rounded-bl-lg rounded-br-lg'
+                                        : 'border-b border-dashed border-gray-600'
+                                    } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                     onClick={() =>
                                       handleChangeNetwork(
                                         currentNetwork,
@@ -244,16 +281,22 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm bg-menu-secondary">
+                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                           {Object.values(networks.ethereum)
                             .sort((a, b) =>
                               a.chainId === 57 ? -1 : b.chainId === 57 ? 1 : 0
                             )
 
-                            .map((currentNetwork: any) => (
+                            .map((currentNetwork: any, index: number, arr) => (
                               <li
                                 key={uniqueId()}
-                                className="backface-visibility-hidden flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium bg-menu-secondary active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-105 transition duration-300"
+                                className={`backface-visibility-hidden ${
+                                  index === 0
+                                    ? 'rounded-tl-lg rounded-tr-lg border-b border-dashed border-gray-600 '
+                                    : index === arr.length - 1
+                                    ? 'rounded-bl-lg rounded-br-lg'
+                                    : 'border-b border-dashed border-gray-600'
+                                } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,

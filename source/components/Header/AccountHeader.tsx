@@ -1,4 +1,4 @@
-import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { Menu } from '@headlessui/react';
 import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
@@ -46,10 +46,8 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`${
-                  index === 0 ? 'py-3.5' : 'py-4'
-                } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
-                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none cursor-pointer transform hover:scale-103
+                className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                  font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
                    transition duration-300`}
                 onClick={() =>
                   setActiveAccount(account.id, KeyringAccountType.HDAccount)
@@ -59,10 +57,10 @@ const RenderAccountsListByBitcoinBased = (
               >
                 <span
                   style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                  className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                  className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
                 >
                   <img src={logo} className="mr-1 w-7"></img>
-                  {account.label} ({ellipsis(account.address, 4, 8)})
+                  {account.label} ({ellipsis(account.address, 4, 4)})
                 </span>
 
                 {activeAccount.id === account.id &&
@@ -71,6 +69,7 @@ const RenderAccountsListByBitcoinBased = (
                       name="check"
                       className="mb-1 w-4"
                       wrapperClassname="absolute right-2.5"
+                      color="#8EC100"
                     />
                   )}
               </li>
@@ -80,14 +79,12 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`${
-                  index === 0 ? 'py-3.5' : 'py-4'
-                } w-full  backface-visibility-hidden flex items-center justify-center text-white text-sm 
-                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
+                className={`py-1.5 px-5 w-full  backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                  font-medium active:bg-opacity-40 focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'cursor-not-allowed disabled'
                       : 'cursor-pointer'
-                  } transform hover:scale-103
+                  } transform
                    transition duration-300`}
                 onClick={() => {
                   if (account?.originNetwork.url !== activeNetwork.url) {
@@ -103,7 +100,7 @@ const RenderAccountsListByBitcoinBased = (
                     maxWidth: '16.25rem',
                     textOverflow: 'ellipsis',
                   }}
-                  className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                  className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
                 >
                   <img
                     src={trezorLogo}
@@ -115,7 +112,7 @@ const RenderAccountsListByBitcoinBased = (
                   ></img>
                   {account.label}{' '}
                   {!(account?.originNetwork.url !== activeNetwork.url) &&
-                    `(${ellipsis(account.address, 4, 8)})`}
+                    `(${ellipsis(account.address, 4, 4)})`}
                 </span>
 
                 {activeAccount.id === account.id &&
@@ -124,6 +121,7 @@ const RenderAccountsListByBitcoinBased = (
                       name="check"
                       className="mb-1 w-4"
                       wrapperClassname="absolute right-2.5"
+                      color="#8EC100"
                     />
                   )}
               </li>
@@ -137,15 +135,13 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((account) => account.xpub !== '')
                 .map((account, index) => (
                   <li
-                    className={`${
-                      index === 0 ? 'py-3.5' : 'py-4'
-                    } w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
-                  font-medium bg-menu-secondary hover:bg-bkg-2 active:bg-opacity-40 focus:outline-none ${
+                    className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                  font-medium active:bg-opacity-40 focus:outline-none ${
                     account.isTrezorWallet &&
                     account?.originNetwork?.isBitcoinBased
                       ? 'cursor-not-allowed disabled'
                       : 'cursor-pointer'
-                  } transform hover:scale-103
+                  } transform
                    transition duration-300`}
                     onClick={() => {
                       if (
@@ -167,7 +163,7 @@ const RenderAccountsListByBitcoinBased = (
                         maxWidth: '16.25rem',
                         textOverflow: 'ellipsis',
                       }}
-                      className="w-fit flex items-center justify-center whitespace-nowrap overflow-hidden"
+                      className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
                     >
                       {account.isImported ? (
                         <img src={importIcon} className="mr-1 w-7"></img>
@@ -187,7 +183,7 @@ const RenderAccountsListByBitcoinBased = (
                       {!(
                         account.isTrezorWallet &&
                         account?.originNetwork?.isBitcoinBased
-                      ) && `(${ellipsis(account.address, 4, 8)})`}
+                      ) && `(${ellipsis(account.address, 4, 4)})`}
                     </span>
 
                     {activeAccount.id === account.id &&
@@ -196,6 +192,7 @@ const RenderAccountsListByBitcoinBased = (
                           name="check"
                           className="mb-1 w-4"
                           wrapperClassname="absolute right-2.5"
+                          color="#8EC100"
                         />
                       )}
                   </li>
@@ -208,37 +205,12 @@ const RenderAccountsListByBitcoinBased = (
   );
 };
 
-const AccountMenu: React.FC = () => {
+export const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { wallet, dapp } = getController();
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const importedAccounts = Object.values(accounts.Imported);
-  const hdAccounts = Object.values(accounts.HDAccount);
-  const trezorAccounts = Object.values(accounts.Trezor);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-
-  //Validate number of accounts to display correctly in UI based in isImported parameter ( Importeds by private key )
-  const numberOfAccounts = isBitcoinBased
-    ? Object.values(hdAccounts).filter((acc) => acc.isImported === false)
-        .length + Object.keys(trezorAccounts).length
-    : Object.keys(hdAccounts).length +
-      Object.keys(importedAccounts).length +
-      Object.keys(trezorAccounts).length;
-
-  let className: string;
-  switch (numberOfAccounts) {
-    case 1:
-      className = 'h-16';
-      break;
-    case 2:
-      className = 'h-28';
-      break;
-    default:
-      className = 'h-40';
-      break;
-  }
 
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
@@ -254,166 +226,101 @@ const AccountMenu: React.FC = () => {
     wallet.setAccount(Number(id), type);
   };
 
-  const handleLogout = () => {
-    wallet.lock();
-
-    navigate('/');
-  };
+  const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
 
   return (
-    <Menu
-      id="account-settings-btn"
-      as="div"
-      className="absolute right-3 inline-block text-right md:max-w-2xl"
-    >
-      <Menu.Button className="inline-flex justify-center w-full hover:text-button-primaryhover text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-        <Icon name="dots" className="z-0" />
-      </Menu.Button>
+    <>
+      <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
+        ACCOUNTS
+      </span>
 
-      <Transition
-        as="div"
-        enter="transition ease-out duration-100"
-        enterFrom="transform opacity-0 scale-95"
-        enterTo="opacity-100 scale-100"
-        leave="transition ease-in duration-75"
-        leaveFrom="opacity-100 scale-100"
-        leaveTo="transform opacity-0 scale-95"
-      >
-        <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+      <Menu.Item>
+        <>
+          <RenderAccountsListByBitcoinBased
+            setActiveAccount={setActiveAccount}
+          />
+        </>
+      </Menu.Item>
 
-        <Menu.Items
-          as="div"
-          className="scrollbar-styled absolute z-10 right-0 top-0 w-72 text-center text-brand-white font-poppins bg-menu-primary rounded-2xl focus:outline-none shadow-2xl overflow-auto origin-top-right ring-1 ring-black ring-opacity-5"
+      <span className="disabled text-xs flex justify-start px-5 my-3">
+        ACCOUNTS SETTINGS
+      </span>
+
+      <Menu.Item>
+        <li
+          onClick={() => navigate('/settings/account/new')}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
-          <h2
-            className="mb-3 pb-6 pt-8 w-full text-center text-brand-white bg-menu-primary border-b border-dashed border-dashed-light"
-            id="account-settings-title"
+          <Icon name="appstoreadd" className="mb-1 text-brand-white" />
+
+          <span>Create new account</span>
+        </li>
+      </Menu.Item>
+
+      <Menu.Item>
+        <li
+          onClick={() => navigate('/settings/manage-accounts')}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+        >
+          <Icon name="edit" className="mb-2 text-brand-white" />
+
+          <span>Manage accounts</span>
+        </li>
+      </Menu.Item>
+
+      <Menu.Item>
+        <li
+          onClick={() => navigate('/settings/account/private-key')}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+        >
+          <Icon name="key" className="mb-2 text-brand-white" />
+
+          <span>Your keys</span>
+        </li>
+      </Menu.Item>
+
+      <Menu.Item>
+        <li
+          onClick={() => navigate('/settings/account/hardware')}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+        >
+          <Icon
+            name="partition"
+            className="mb-2 text-brand-white"
+            id="hardware-wallet-btn"
+          />
+
+          <span>Connect Trezor</span>
+        </li>
+      </Menu.Item>
+
+      <Menu.Item>
+        <div className="flex flex-col gap-2">
+          <li
+            onClick={() => {
+              isBitcoinBased ? null : navigate('/settings/account/import');
+            }}
+            className={`py-1.5 ${cursorType} px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
           >
-            ACCOUNT SETTINGS
-          </h2>
+            <Icon
+              name="import"
+              className="mb-1 text-brand-white"
+              opacity={isBitcoinBased ? 0.6 : 1}
+            />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/account/private-key')}
-              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-            >
-              <Icon name="key" className="mb-2 ml-1 mr-2 text-brand-white" />
-
-              <span className="px-3">Your keys</span>
-            </li>
-          </Menu.Item>
-
-          <Menu.Item>
-            <Disclosure>
-              {({ open }) => (
-                <>
-                  <Disclosure.Button className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                    <Icon
-                      name="user"
-                      className="mb-2 ml-1 mr-2 text-brand-white"
-                      id="accounts-btn"
-                    />
-
-                    <span className="px-3 text-base">Accounts</span>
-
-                    <Icon
-                      name="select-down"
-                      className={`${
-                        open ? 'transform rotate-180' : ''
-                      } mb-1 text-brand-white`}
-                    />
-                  </Disclosure.Button>
-
-                  <div
-                    className="relative"
-                    style={{
-                      paddingTop: `${
-                        open ? `${isBitcoinBased ? '45px' : '94px'}` : '0px'
-                      }`,
-                    }}
-                  >
-                    <Disclosure.Panel
-                      className={`static overflow-y-scroll overflow-x-hidden scrollbar-styled pb-2 ${className} text-sm bg-menu-secondary`}
-                    >
-                      <li
-                        onClick={() => navigate('/settings/account/new')}
-                        className="backface-visibility-hidden absolute top-0.5 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
-                        id="create-new-account-btn"
-                      >
-                        <Icon
-                          name="appstoreadd"
-                          className="mb-1 mr-3 text-brand-white"
-                        />
-
-                        <span>Create new account</span>
-                      </li>
-
-                      {!isBitcoinBased ? (
-                        <li
-                          onClick={() => navigate('/settings/account/import')}
-                          className="backface-visibility-hidden absolute top-12 flex items-center justify-center mx-auto p-2.5 w-full text-brand-white text-sm font-medium hover:bg-bkg-2 bg-menu-secondary active:bg-opacity-40 border-b border-solid border-gray-500 focus:outline-none cursor-pointer transform transition duration-300"
-                          id="create-new-account-btn"
-                        >
-                          <Icon
-                            name="import"
-                            className="mb-1 mr-3 text-brand-white"
-                          />
-
-                          <span>Import account</span>
-                        </li>
-                      ) : null}
-
-                      <RenderAccountsListByBitcoinBased
-                        setActiveAccount={setActiveAccount}
-                      />
-                    </Disclosure.Panel>
-                  </div>
-                </>
-              )}
-            </Disclosure>
-          </Menu.Item>
-
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/manage-accounts')}
-              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-            >
-              <Icon name="edit" className="mb-2 ml-1 mr-2 text-brand-white" />
-
-              <span className="px-3">Manage Accounts</span>
-            </li>
-          </Menu.Item>
-
-          {
-            <Menu.Item>
-              <li
-                onClick={() => navigate('/settings/account/hardware')}
-                className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-              >
-                <Icon
-                  name="partition"
-                  className="mb-2 ml-1 mr-2 text-brand-white"
-                  id="hardware-wallet-btn"
-                />
-
-                <span className="px-3">Hardware wallet</span>
-              </li>
-            </Menu.Item>
-          }
-
-          <Menu.Item>
-            <li
-              onClick={handleLogout}
-              className="flex items-center justify-start px-5 py-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
-            >
-              <Icon name="lock" className="mb-2 ml-1 mr-2 text-brand-white" />
-
-              <span className="px-3">Lock</span>
-            </li>
-          </Menu.Item>
-        </Menu.Items>
-      </Transition>
-    </Menu>
+            <span className={isBitcoinBased ? 'disabled' : ''}>
+              Import account
+            </span>
+          </li>
+          {isBitcoinBased && (
+            <span className="disabled text-xs px-5 text-left">
+              Pali is the only extension wallet with UTXO! To import any wallet,
+              you need to change to one EVM network.
+            </span>
+          )}
+        </div>
+      </Menu.Item>
+    </>
   );
 };
 
@@ -495,8 +402,6 @@ export const AccountHeader: React.FC = () => {
           <Icon name="copy" className="text-xs" id="copy-address-btn" />
         </IconButton>
       </div>
-
-      <AccountMenu />
     </div>
   );
 };
