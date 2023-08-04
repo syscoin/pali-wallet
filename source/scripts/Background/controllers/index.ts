@@ -13,7 +13,7 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
 import { IPersistState } from 'state/types';
-import { setAdvancedSettings, setNetworks } from 'state/vault';
+import { setAdvancedSettings, setNetworks, setTimer } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 import {
   IControllerUtils,
@@ -100,6 +100,12 @@ const MasterController = (
         })
       );
     }
+
+    // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
+    if (Number(store.getState().vault.timer) === 5) {
+      store.dispatch(setTimer(30));
+    }
+
     const isOldState =
       store.getState()?.vault?.networks?.['ethereum'][1]?.default ?? false;
 
