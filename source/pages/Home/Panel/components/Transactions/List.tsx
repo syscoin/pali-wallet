@@ -6,6 +6,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 import { ellipsis, formatDate } from 'utils/index';
 
 export const TransactionsList = ({
@@ -13,6 +14,7 @@ export const TransactionsList = ({
 }: {
   userTransactions: any[]; //todo: adjust type
 }) => {
+  const { wallet } = getController();
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
@@ -48,6 +50,15 @@ export const TransactionsList = ({
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
+
+  const cancelTransaction = async (txHash: string, isLegacy?: boolean) => {
+    const cancel = await wallet.ethereumTransaction.cancelSentTransaction(
+      txHash,
+      isLegacy
+    );
+
+    console.log('CANCEL TX', cancel);
+  };
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -146,19 +157,38 @@ export const TransactionsList = ({
                 </div>
               </div>
 
-              <IconButton
-                className="w-5"
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: {
-                      id: null,
-                      hash: tx[txid],
-                    },
-                  })
-                }
-              >
-                <Icon name="select" className="text-base" />
-              </IconButton>
+              <div className="flex justify-between items-center">
+                {!isConfirmed ? (
+                  <IconButton className="w-5">
+                    <Icon name="arrow-up" className="text-base" />
+                  </IconButton>
+                ) : null}
+
+                <IconButton
+                  className="w-5"
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: {
+                        id: null,
+                        hash: tx[txid],
+                      },
+                    })
+                  }
+                >
+                  <Icon name="select" className="text-base" />
+                </IconButton>
+
+                {!isConfirmed ? (
+                  <IconButton
+                    className="w-5"
+                    onClick={() =>
+                      cancelTransaction(tx.hash, tx.type === '0x0')
+                    }
+                  >
+                    <Icon name="close" className="text-base" />
+                  </IconButton>
+                ) : null}
+              </div>
             </div>
           </li>
         </Fragment>
