@@ -33,6 +33,7 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id].transactions;
 
     if (isBitcoinBased) {
+      if (Array.isArray(accountTransactions)) return [];
       const sysTxs = accountTransactions[TransactionsType.Syscoin][chainId];
 
       if (sysTxs && sysTxs.length > 0) {
@@ -41,6 +42,7 @@ export const TransactionsPanel = () => {
         return [];
       }
     } else {
+      if (Array.isArray(accountTransactions)) return [];
       const ethTxs = accountTransactions[TransactionsType.Ethereum][chainId];
 
       if (ethTxs && ethTxs.length > 0) {
