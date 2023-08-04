@@ -6,13 +6,17 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
+import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, truncate } from 'utils/index';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork: { chainId },
+  } = useSelector((state: RootState) => state.vault);
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
 
@@ -27,7 +31,11 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  transactions.find((tx: any) => {
+  const ethereumTransactions = transactions[TransactionsType.Ethereum][
+    chainId
+  ] as IEvmTransaction[];
+
+  ethereumTransactions?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
 
     for (const [key, value] of Object.entries(tx)) {

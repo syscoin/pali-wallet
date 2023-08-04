@@ -174,7 +174,7 @@ export class PaliInpageProviderEth extends BaseProvider {
         try {
           this._rpcRequest(
             { method: methodOrPayload, params: callbackOrArgs },
-            getRpcPromiseCallback(resolve, reject, false)
+            getRpcPromiseCallback(resolve, reject)
           );
         } catch (error) {
           reject(error);

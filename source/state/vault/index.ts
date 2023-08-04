@@ -1,5 +1,7 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { ethers } from 'ethers';
 import cloneDeep from 'lodash/cloneDeep';
+import take from 'lodash/take';
 
 import {
   initialNetworksState,
@@ -12,6 +14,11 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import {
+  IEvmTransaction,
+  IEvmTransactionResponse,
+  ISysTransaction,
+} from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps } from 'types/tokens';
 
 import {
@@ -19,6 +26,7 @@ import {
   IPaliAccount,
   IVaultState,
   PaliAccount,
+  TransactionsType,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -28,7 +36,7 @@ export const initialState: IVaultState = {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
         assets: { ethereum: [], syscoin: [] },
-        transactions: [],
+        transactions: { ethereum: {}, syscoin: {} },
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -68,6 +76,7 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
+  currentBlock: undefined,
 };
 
 const VaultState = createSlice({
@@ -137,10 +146,7 @@ const VaultState = createSlice({
           state.accounts[accountType][account.id] = {
             ...account,
             assets: mainAccount.assets,
-            //WE CAN BACK THIS WHEN FIX HOW WE HANDLE TXS STATE
-            // transactions: mainAccount.transactions,
-            //WE HAVE TO RESET EVERY ACCOUNT TXS WHEN CHANGE NETWORK TO PREVENT ERRORS TRYING TO READ INCORRECTS TXS FOR NETWORK
-            transactions: [],
+            transactions: mainAccount.transactions,
           };
         }
       }
@@ -278,16 +284,13 @@ const VaultState = createSlice({
         type: KeyringAccountType;
       }>
     ) {
-      // const { accountId, accountType } = action.payload;
       state.activeAccount = action.payload;
+
+      //reset current block number on changing accounts
+      state.currentBlock = undefined;
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
-      // inject.ethereum.chainId = action.payload.chainId.toString();
-      // inject.ethereum.networkVersion = parseInt(
-      //   action.payload.chainId.toString(),
-      //   16
-      // ).toString();
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
@@ -379,21 +382,21 @@ const VaultState = createSlice({
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Trezor]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },
-            transactions: [],
+            transactions: { ethereum: {}, syscoin: {} },
           },
         },
       };
@@ -453,6 +456,158 @@ const VaultState = createSlice({
     setIsPolling(state: IVaultState, action: PayloadAction<boolean>) {
       state.isPolling = action.payload;
     },
+    setCurrentBlock(
+      state: IVaultState,
+      action: PayloadAction<ethers.providers.Block>
+    ) {
+      state.currentBlock = action.payload;
+    },
+
+    setSingleTransactionToState: (
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        networkType: TransactionsType;
+        transaction: IEvmTransaction | ISysTransaction;
+      }>
+    ) => {
+      const { activeAccount } = state;
+      const { networkType, chainId, transaction } = action.payload;
+      const currentAccount =
+        state.accounts[activeAccount.type][activeAccount.id];
+
+      // Check if the networkType exists in the current account's transactions
+      if (!currentAccount.transactions[networkType]) {
+        currentAccount.transactions[networkType] = {
+          [chainId]: [
+            transaction,
+          ] as (typeof networkType extends TransactionsType.Ethereum
+            ? IEvmTransaction
+            : ISysTransaction)[],
+        };
+      } else {
+        // Check if the chainId exists in the current networkType's transactions
+        if (!currentAccount.transactions[networkType][chainId]) {
+          currentAccount.transactions[networkType][chainId] = [
+            transaction,
+          ] as (typeof networkType extends TransactionsType.Ethereum
+            ? IEvmTransaction
+            : ISysTransaction)[];
+        } else {
+          // If the chainId exists, add the new transaction to the existing chainId array
+          const currentUserTransactions = currentAccount.transactions[
+            networkType
+          ][chainId] as (typeof networkType extends TransactionsType.Ethereum
+            ? IEvmTransaction
+            : ISysTransaction)[];
+
+          // Check if the array length is 30
+          if (currentUserTransactions.length === 30) {
+            // Create a new array by adding the new transaction at the beginning and limiting to 30 items
+            const updatedTransactions = take(
+              [transaction, ...currentUserTransactions],
+              30
+            );
+
+            currentAccount.transactions[networkType][chainId] =
+              updatedTransactions as IEvmTransaction[] & ISysTransaction[];
+          } else {
+            // If the array length is less than 30, simply push the new transaction
+            currentUserTransactions.push(
+              transaction as typeof networkType extends TransactionsType.Ethereum
+                ? IEvmTransaction
+                : ISysTransaction
+            );
+          }
+        }
+      }
+    },
+
+    setMultipleTransactionToState(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        networkType: TransactionsType;
+        transactions: Array<IEvmTransaction | ISysTransaction>;
+      }>
+    ) {
+      const { activeAccount } = state;
+      const { networkType, chainId, transactions } = action.payload;
+      const currentAccount =
+        state.accounts[activeAccount.type][activeAccount.id];
+
+      const uniqueTxs: {
+        [key: string]: IEvmTransactionResponse | ISysTransaction;
+      } = {};
+
+      const clonedUserTxs =
+        cloneDeep(currentAccount.transactions[networkType][chainId]) || [];
+
+      const transactionsToVerify = [...clonedUserTxs, ...transactions];
+
+      transactionsToVerify.forEach(
+        (tx: IEvmTransactionResponse | ISysTransaction) => {
+          const hash = 'hash' in tx ? tx.hash : tx.txid;
+          if (
+            !uniqueTxs[hash] ||
+            uniqueTxs[hash].confirmations < tx.confirmations
+          ) {
+            uniqueTxs[hash] = tx;
+          }
+        }
+      );
+
+      const treatedTxs = Object.values(uniqueTxs);
+
+      // Check if the networkType exists in the current account's transactions
+      if (!currentAccount.transactions[networkType]) {
+        // Cast the array to the correct type based on the networkType
+        const chainTransactions = treatedTxs.map((tx) =>
+          networkType === TransactionsType.Ethereum
+            ? (tx as IEvmTransaction)
+            : (tx as ISysTransaction)
+        );
+        currentAccount.transactions[networkType] = {
+          [chainId]:
+            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
+              ? IEvmTransaction
+              : ISysTransaction)[],
+        };
+      } else {
+        // Check if the chainId exists in the current networkType's transactions
+        if (!currentAccount.transactions[networkType][chainId]) {
+          // Create a new array with the correct type based on the networkType
+          const chainTransactions = treatedTxs.map((tx) =>
+            networkType === TransactionsType.Ethereum
+              ? (tx as IEvmTransaction)
+              : (tx as ISysTransaction)
+          );
+          currentAccount.transactions[networkType][chainId] =
+            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
+              ? IEvmTransaction
+              : ISysTransaction)[];
+        } else {
+          // If the chainId exists, add the new transactions to the existing chainId array
+          if (Array.isArray(transactions)) {
+            // Filter and push the transactions based on the networkType
+            const castedTransactions = treatedTxs.map((tx) =>
+              networkType === TransactionsType.Ethereum
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction)
+            );
+
+            currentAccount.transactions[networkType][chainId] =
+              //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
+              take(
+                castedTransactions,
+                30
+              ) as (typeof networkType extends TransactionsType.Ethereum
+                ? IEvmTransaction
+                : ISysTransaction)[];
+          }
+        }
+      }
+    },
   },
 });
 
@@ -488,6 +643,9 @@ export const {
   setUpdatedAllErcTokensBalance,
   setAdvancedSettings,
   setIsPolling,
+  setCurrentBlock,
+  setSingleTransactionToState,
+  setMultipleTransactionToState,
 } = VaultState.actions;
 
 export default VaultState.reducer;

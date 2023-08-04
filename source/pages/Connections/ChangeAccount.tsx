@@ -13,7 +13,6 @@ export const ChangeAccount = () => {
   const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
-  const { alert } = useUtils();
   const { dapp, wallet } = getController();
   const { host, eventName } = useQueryData();
 

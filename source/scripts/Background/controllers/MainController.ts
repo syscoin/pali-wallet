@@ -1,6 +1,4 @@
 import { ethErrors } from 'helpers/errors';
-import clone from 'lodash/clone';
-import compact from 'lodash/compact';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
@@ -20,7 +18,6 @@ import {
 } from '@pollum-io/sysweb3-network';
 import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
-import { resetPolling } from '..';
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
@@ -46,8 +43,15 @@ import {
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
   setAdvancedSettings as setSettings,
+  setCurrentBlock,
+  setMultipleTransactionToState,
+  setSingleTransactionToState,
 } from 'state/vault';
-import { IOmmitedAccount, IPaliAccount } from 'state/vault/types';
+import {
+  IOmmitedAccount,
+  IPaliAccount,
+  TransactionsType,
+} from 'state/vault/types';
 import { IMainController } from 'types/controllers';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -151,8 +155,11 @@ const MainController = (walletState): IMainController => {
     phrase: string
   ): Promise<void> => {
     store.dispatch(setIsLoadingBalances(true));
-    const { accounts, activeAccount: activeAccountInfo } =
-      store.getState().vault;
+    const {
+      accounts,
+      activeAccount: activeAccountInfo,
+      activeNetwork,
+    } = store.getState().vault;
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
 
@@ -188,7 +195,12 @@ const MainController = (walletState): IMainController => {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
       },
-      transactions: initialTxsForAccount,
+      transactions: {
+        ethereum: {},
+        syscoin: {
+          [activeNetwork.chainId]: initialTxsForAccount,
+        },
+      },
     };
 
     store.dispatch(setIsLoadingBalances(false));
@@ -229,6 +241,7 @@ const MainController = (walletState): IMainController => {
 
   const createAccount = async (
     isBitcoinBased: boolean,
+    activeNetworkChainId: number,
     label?: string
   ): Promise<IPaliAccount> => {
     const newAccount = await keyringManager.addNewAccount(label);
@@ -250,7 +263,12 @@ const MainController = (walletState): IMainController => {
             syscoin: initialSysAssetsForAccount,
             ethereum: [],
           },
-          transactions: initialTxsForAccount,
+          transactions: {
+            syscoin: {
+              [activeNetworkChainId]: initialTxsForAccount,
+            },
+            ethereum: {},
+          },
         };
         break;
       case false:
@@ -260,7 +278,10 @@ const MainController = (walletState): IMainController => {
             syscoin: [],
             ethereum: [],
           },
-          transactions: [],
+          transactions: {
+            syscoin: {},
+            ethereum: {},
+          },
         };
     }
     store.dispatch(
@@ -306,7 +327,6 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-    resetPolling();
   };
 
   const setActiveNetwork = async (
@@ -318,8 +338,6 @@ const MainController = (walletState): IMainController => {
       currentPromise.cancel();
       cancelled = true;
     }
-
-    // cancellablePromises.cancelAllPromises();
 
     const promiseWrapper = createCancellablePromise<{
       activeChain: INetworkType;
@@ -538,6 +556,7 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setIsNetworkChanging(true));
     store.dispatch(setIsLoadingBalances(true));
+    store.dispatch(setCurrentBlock(undefined));
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
 
@@ -854,7 +873,10 @@ const MainController = (walletState): IMainController => {
         ethereum: [],
         syscoin: [],
       },
-      transactions: [],
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
     } as IPaliAccount;
     store.dispatch(
       setAccounts({
@@ -898,7 +920,10 @@ const MainController = (walletState): IMainController => {
         ethereum: [],
         syscoin: [],
       },
-      transactions: [],
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
     } as IPaliAccount;
     store.dispatch(
       setAccounts({
@@ -969,43 +994,24 @@ const MainController = (walletState): IMainController => {
             if (isNil(txs) || isEmpty(txs)) {
               return;
             }
-            store.dispatch(setIsLoadingTxs(true));
 
             store.dispatch(
-              setAccountPropertyByIdAndType({
-                id: activeAccount.id,
-                type: activeAccount.type,
-                property: 'transactions',
-                value: txs,
+              setMultipleTransactionToState({
+                chainId: activeNetwork.chainId,
+                networkType: TransactionsType.Syscoin,
+                transactions: txs,
               })
             );
-
-            store.dispatch(setIsLoadingTxs(false));
           });
         break;
       case false:
         //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
-        transactionsManager.utils
-          .updateTransactionsFromCurrentAccount(
-            currentAccount,
-            isBitcoinBased,
-            activeNetwork.url
-          )
-          .then((updatedTxs) => {
-            if (isNil(updatedTxs) || isEmpty(updatedTxs)) {
-              return;
-            }
-            store.dispatch(setIsLoadingTxs(true));
-            store.dispatch(
-              setAccountPropertyByIdAndType({
-                id: activeAccount.id,
-                type: activeAccount.type,
-                property: 'transactions',
-                value: updatedTxs,
-              })
-            );
-            store.dispatch(setIsLoadingTxs(false));
-          });
+        transactionsManager.utils.updateTransactionsFromCurrentAccount(
+          currentAccount,
+          isBitcoinBased,
+          activeNetwork.url
+        );
+
         break;
 
       default:
@@ -1038,24 +1044,27 @@ const MainController = (walletState): IMainController => {
             switch (isPolling) {
               //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
               case true:
-                const updatedTxs =
-                  await transactionsManager.utils.updateTransactionsFromCurrentAccount(
+                await transactionsManager.utils
+                  .updateTransactionsFromCurrentAccount(
                     currentAccount,
                     isBitcoinBased,
                     activeNetwork.url
-                  );
-                if (!isNil(updatedTxs) && !isEmpty(updatedTxs)) {
-                  store.dispatch(setIsLoadingTxs(true));
-                  store.dispatch(
-                    setAccountPropertyByIdAndType({
-                      id: activeAccount.id,
-                      type: activeAccount.type,
-                      property: 'transactions',
-                      value: updatedTxs,
-                    })
-                  );
-                  store.dispatch(setIsLoadingTxs(false));
-                }
+                  )
+                  .then((txs) => {
+                    const canDispatch =
+                      isBitcoinBased && !(isNil(txs) && isEmpty(txs));
+
+                    if (canDispatch) {
+                      store.dispatch(
+                        setMultipleTransactionToState({
+                          chainId: activeNetwork.chainId,
+                          networkType: TransactionsType.Syscoin,
+                          transactions: txs,
+                        })
+                      );
+                    }
+                  });
+
                 break;
               //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
               case false:
@@ -1073,10 +1082,6 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    // if (cancellablePromises.transactionPromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.TRANSACTION);
-    // }
-
     cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel,
@@ -1088,10 +1093,7 @@ const MainController = (walletState): IMainController => {
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
-    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
-
-    const { transactions: userTransactions } =
-      accounts[activeAccount.type][activeAccount.id];
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     const txWithTimestamp = {
       ...tx,
@@ -1100,22 +1102,13 @@ const MainController = (walletState): IMainController => {
       ),
     } as IEvmTransactionResponse & ISysTransaction;
 
-    const clonedArrayToAdd = clone(
-      isBitcoinBased
-        ? (compact(userTransactions) as ISysTransaction[])
-        : (compact(
-            Object.values(userTransactions)
-          ) as IEvmTransactionResponse[])
-    );
-
-    clonedArrayToAdd.unshift(txWithTimestamp);
-
     store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: activeAccount.id,
-        type: activeAccount.type,
-        property: 'transactions',
-        value: clonedArrayToAdd,
+      setSingleTransactionToState({
+        chainId: activeNetwork.chainId,
+        networkType: isBitcoinBased
+          ? TransactionsType.Syscoin
+          : TransactionsType.Ethereum,
+        transaction: txWithTimestamp,
       })
     );
   };
@@ -1224,10 +1217,6 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    // if (cancellablePromises.assetsPromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.ASSETS);
-    // }
-
     cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
       cancel,
@@ -1300,10 +1289,6 @@ const MainController = (walletState): IMainController => {
           }
         }
       );
-
-    // if (cancellablePromises.balancePromise) {
-    //   cancellablePromises.cancelPromise(PromiseTargets.BALANCE);
-    // }
 
     cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,

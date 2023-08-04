@@ -323,7 +323,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                       }),
                     ]}
                   >
-                    {/* // taxa de base + taxa de prioridade */}
+                    {/* // base fee + priority fee */}
                     <Input
                       type="number"
                       placeholder="Max fee (GWEI)"

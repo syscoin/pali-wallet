@@ -1,10 +1,6 @@
 // resolve response.result or response, reject errors
 export const getRpcPromiseCallback =
-  (
-    resolve: (value?: any) => void,
-    reject: (error?: Error) => void,
-    unwrapResult = true
-  ) =>
+  (resolve: (value?: any) => void, reject: (error?: Error) => void) =>
   (error: Error, response: any, unwrapResult = true): void => {
     if (response === undefined && (error === undefined || error === null)) {
       resolve(undefined);

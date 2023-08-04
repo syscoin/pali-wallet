@@ -95,14 +95,10 @@ const SysAccountController = (
 
   //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
-  // const tx = keyringManager.syscoinTransaction;
 
   return {
-    // watchMemPool,
     trezor,
-    // tx,
     setAddress,
-    // getLatestUpdate,
     saveTokenInfo,
   };
 };

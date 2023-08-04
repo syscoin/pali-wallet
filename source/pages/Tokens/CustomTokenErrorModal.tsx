@@ -4,11 +4,7 @@ import { useSelector } from 'react-redux';
 import { ErrorModal } from 'components/Modal';
 import { RootState } from 'state/store';
 
-export const CustomTokenErrorModal = ({
-  errorType,
-  message,
-  resetErcErrorState,
-}) => {
+export const CustomTokenErrorModal = ({ errorType, resetErcErrorState }) => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
