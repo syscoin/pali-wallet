@@ -1,8 +1,8 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
+// import { browser } from 'webextension-polyfill-ts';
 
-import { Header, Icon, IconButton, Tooltip } from 'components/index';
+import { Header, Icon, IconButton } from 'components/index';
 
 interface ILayout {
   canGoBack?: boolean;
@@ -21,7 +21,7 @@ export const Layout: FC<ILayout> = ({
 }) => {
   const navigate = useNavigate();
 
-  const url = browser.runtime.getURL('app.html');
+  // const url = browser.runtime.getURL('app.html');
 
   const isConnectPage = title === 'CONNECT ACCOUNT';
 
@@ -30,13 +30,13 @@ export const Layout: FC<ILayout> = ({
       {!titleOnly && canGoBack && <Header />}
 
       <div className="relative flex items-center justify-center px-5 w-full h-20 text-brand-white bg-bkg-3">
-        {!titleOnly && url && canGoBack && (
+        {/* {!titleOnly && url && canGoBack && (
           <Tooltip content="Fullscreen mode">
             <IconButton onClick={() => window.open(url)}>
               <Icon className="text-brand-white sm:hidden" name="desktop" />
             </IconButton>
           </Tooltip>
-        )}
+        )} */}
 
         <p className="mt-2 w-full text-center text-xl" id={id}>
           {title}
