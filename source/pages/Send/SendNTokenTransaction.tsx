@@ -320,12 +320,14 @@ export const SendNTokenTransaction = () => {
       });
     };
 
-    getInitialFeeRecomendation();
+    if (tx) {
+      getInitialFeeRecomendation();
+    }
 
     return () => {
       abortController.abort();
     };
-  }, [tx]);
+  }, []);
 
   const getCalculatedFee = useMemo(() => {
     if (!tx.gasPrice && !fee?.gasLimit && !fee?.maxFeePerGas) return;
