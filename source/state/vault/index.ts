@@ -71,7 +71,7 @@ export const initialState: IVaultState = {
     newConnectedAccount: undefined,
     connectedAccountType: undefined,
   },
-  timer: 5,
+  timer: 30,
   isTimerEnabled: true,
   networks: initialNetworksState,
   error: false,

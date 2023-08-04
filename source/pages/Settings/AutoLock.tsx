@@ -23,7 +23,7 @@ const AutolockView = () => {
   const onSubmit = (data: any) => {
     setLoading(true);
 
-    controller.wallet.setAutolockTimer(data.minutes);
+    controller.wallet.setAutolockTimer(+data.minutes);
     controller.wallet.setIsAutolockEnabled(isEnabled);
 
     setConfirmed(true);
@@ -34,7 +34,7 @@ const AutolockView = () => {
     <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
       <p className="mb-8 text-white text-sm">
         You can set auto lock timer. Default is 5 minutes after no activity.
-        Maximum is 30 minutes.
+        Maximum is 120 minutes.
       </p>
 
       <DefaultModal
@@ -55,7 +55,7 @@ const AutolockView = () => {
         onFinish={onSubmit}
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}
-        initialValues={{ minutes: timer }}
+        initialValues={{ minutes: `${timer}` }}
         autoComplete="off"
       >
         <Form.Item
@@ -67,11 +67,11 @@ const AutolockView = () => {
               required: true,
               message: '',
               min: 1,
-              max: 30,
+              max: 120,
             },
             () => ({
               validator(_, value) {
-                if (value <= 30 && value >= 1) {
+                if (+value <= 120 && +value >= 1) {
                   return Promise.resolve();
                 }
 

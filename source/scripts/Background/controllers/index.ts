@@ -17,6 +17,7 @@ import {
   setAccountPropertyByIdAndType,
   setAdvancedSettings,
   setNetworks,
+  setTimer,
 } from 'state/vault';
 import { IVaultState, TransactionsType } from 'state/vault/types';
 import {
@@ -103,6 +104,11 @@ const MasterController = (
           isEdit: false,
         })
       );
+    }
+
+    // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
+    if (Number(store.getState().vault.timer) === 5) {
+      store.dispatch(setTimer(30));
     }
 
     const isNetworkOldState =
