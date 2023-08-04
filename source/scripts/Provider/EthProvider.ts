@@ -18,10 +18,15 @@ export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = params;
     const {
-      ethereumTransaction: { web3Provider },
+      ethereumTransaction: { contentScriptWeb3Provider },
     } = getController().wallet;
-    const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
-    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
+    const validateTxToAddress = await validateEOAAddress(
+      tx.to,
+      contentScriptWeb3Provider
+    );
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(
+      contentScriptWeb3Provider
+    ));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
@@ -155,13 +160,16 @@ export const EthProvider = (host: string) => {
   const send = async (args: any[]) => {
     const { ethereumTransaction } = getController().wallet;
 
-    return ethereumTransaction.web3Provider.send(args[0], args);
+    return ethereumTransaction.contentScriptWeb3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const { ethereumTransaction } = getController().wallet;
-    const resp = await ethereumTransaction.web3Provider.send(method, params);
+    const resp = await ethereumTransaction.contentScriptWeb3Provider.send(
+      method,
+      params
+    );
     return resp;
   };
 
@@ -184,7 +192,7 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
-        return await ethereumTransaction.web3Provider._getAddress(
+        return await ethereumTransaction.contentScriptWeb3Provider._getAddress(
           ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );
       case 'eth_getEncryptionPublicKey':
@@ -193,7 +201,10 @@ export const EthProvider = (host: string) => {
         return await decryptMessage(params);
       default:
         try {
-          return await ethereumTransaction.web3Provider.send(method, params);
+          return await ethereumTransaction.contentScriptWeb3Provider.send(
+            method,
+            params
+          );
         } catch (error) {
           throw cleanErrorStack(
             ethErrors.rpc.internal(error.error.data || error.error.message)

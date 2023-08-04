@@ -119,26 +119,54 @@ const DAppController = (): IDAppController => {
   };
 
   const disconnect = (host: string) => {
-    if (!_dapps[host]) throw new Error('DApp not connected');
-    _dapps[host].activeAddress = null;
-    store.dispatch(removeDApp(host));
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliEvents.accountsChanged,
-        params: [],
-      },
-      PaliEvents.accountsChanged
-    );
-    _dispatchPaliEvent(
-      host,
-      {
-        method: PaliSyscoinEvents.xpubChanged,
-        params: null,
-      },
-      PaliSyscoinEvents.xpubChanged
-    );
-    return [] as string[];
+    const previousConnectedDapps = getAll();
+    const isInActiveSession = Boolean(_dapps[host]);
+
+    switch (isInActiveSession) {
+      case true:
+        _dapps[host].activeAddress = null;
+        store.dispatch(removeDApp(host));
+        _dispatchPaliEvent(
+          host,
+          {
+            method: PaliEvents.accountsChanged,
+            params: [],
+          },
+          PaliEvents.accountsChanged
+        );
+        _dispatchPaliEvent(
+          host,
+          {
+            method: PaliSyscoinEvents.xpubChanged,
+            params: null,
+          },
+          PaliSyscoinEvents.xpubChanged
+        );
+        break;
+      case false:
+        if (previousConnectedDapps[host]) {
+          store.dispatch(removeDApp(host));
+          _dispatchPaliEvent(
+            host,
+            {
+              method: PaliEvents.accountsChanged,
+              params: [],
+            },
+            PaliEvents.accountsChanged
+          );
+          _dispatchPaliEvent(
+            host,
+            {
+              method: PaliSyscoinEvents.xpubChanged,
+              params: null,
+            },
+            PaliSyscoinEvents.xpubChanged
+          );
+        } else {
+          throw new Error('DApp not connected');
+        }
+        break;
+    }
   };
   //HandleStateChange purpose is to dispatch notifications that are meant to be globally
   //broadcasted to all Dapps on browser being them connected or not

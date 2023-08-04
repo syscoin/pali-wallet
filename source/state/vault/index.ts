@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import cloneDeep from 'lodash/cloneDeep';
 
 import {
   initialNetworksState,
@@ -167,21 +168,22 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chain: string;
         isEdit: boolean;
+        isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
       //TODO: refactor, it should just set the network the verification is already done on sysweb3
-      const { chain, network, isEdit } = action.payload;
+      const { chain, network, isEdit, isFirstTime } = action.payload;
 
       const replaceNetworkName = `${network.label
         .replace(/\s/g, '')
         .toLocaleLowerCase()}-${network.chainId}`;
 
-      const alreadyExist = Boolean(
-        state.networks[chain][Number(network.chainId)]
-      );
+      const networkKeyIdentifier = network.key ? network.key : network.chainId;
 
-      if (alreadyExist && !isEdit) {
+      const alreadyExist = Boolean(state.networks[chain][networkKeyIdentifier]);
+
+      if (alreadyExist && !isEdit && !isFirstTime) {
         const verifyIfRpcOrNameExists = Object.values(
           state.networks[chain]
         ).find(
@@ -208,13 +210,15 @@ const VaultState = createSlice({
       }
       state.networks[chain] = {
         ...state.networks[chain],
-        [network.chainId]: network,
+        [networkKeyIdentifier]: network,
       };
 
       if (
         chain === state.activeChain &&
-        state.networks[chain][network.chainId].chainId ===
-          state.activeNetwork.chainId
+        state.networks[chain][networkKeyIdentifier].chainId ===
+          state.activeNetwork.chainId &&
+        state.networks[chain][networkKeyIdentifier].url ===
+          state.activeNetwork.url
       ) {
         state.activeNetwork = network;
       }
@@ -223,17 +227,40 @@ const VaultState = createSlice({
     },
     removeNetwork(
       state: IVaultState,
-      action: PayloadAction<{ chainId: number; key?: string; prefix: string }>
+      action: PayloadAction<{
+        chain: INetworkType;
+        chainId: number;
+        key?: string;
+        label: string;
+        rpcUrl: string;
+      }>
     ) {
-      const { prefix, chainId } = action.payload;
+      const { chain, chainId, rpcUrl, label, key } = action.payload;
 
-      const updatedNetworks = Object.fromEntries(
-        Object.entries(state.networks[prefix]).filter(
-          ([chainKey]) => Number(chainKey) !== chainId
-        )
+      const cloneNetworkState = cloneDeep(state.networks);
+
+      const updatedNetworks = Object.entries(cloneNetworkState[chain]).reduce(
+        (result, [index, networkValue]) => {
+          const networkTyped = networkValue as INetwork;
+
+          if (key && networkTyped.key === key) {
+            return result; // Skip the network with the provided key
+          }
+
+          if (
+            networkTyped.url === rpcUrl &&
+            networkTyped.chainId === chainId &&
+            networkTyped.label === label
+          ) {
+            return result; // Skip the network that matches the criteria
+          }
+
+          return { ...result, [index]: networkValue }; // Keep the network in the updated object
+        },
+        {}
       );
 
-      state.networks[prefix] = updatedNetworks;
+      state.networks[chain] = updatedNetworks;
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
