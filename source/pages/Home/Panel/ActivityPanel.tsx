@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Fullscreen } from 'components/Fullscreen';
+// import { Fullscreen } from 'components/Fullscreen';
 import { LoadingComponent } from 'components/Loading';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -119,7 +119,7 @@ export const TransactionsPanel = () => {
         <div className="w-full text-white">
           <NoTransactionsComponent />
           <OpenTransactionExplorer />
-          <Fullscreen />
+          {/* <Fullscreen /> */}
         </div>
       )}
       {hasTransactions && (
@@ -132,7 +132,7 @@ export const TransactionsPanel = () => {
           <OpenTransactionExplorer />
         </div>
       )}
-      <Fullscreen />
+      {/* <Fullscreen /> */}
     </>
   );
 };

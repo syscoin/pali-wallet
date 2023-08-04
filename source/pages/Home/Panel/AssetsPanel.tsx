@@ -2,7 +2,7 @@ import React from 'react';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
-import { Fullscreen } from 'components/Fullscreen';
+// import { Fullscreen } from 'components/Fullscreen';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 
@@ -65,7 +65,7 @@ export const AssetsPanel = () => {
         </p>
       </div>
 
-      <Fullscreen />
+      {/* <Fullscreen /> */}
     </div>
   );
 };
