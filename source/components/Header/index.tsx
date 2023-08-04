@@ -1,3 +1,3 @@
 export * from './Header';
-export { AccountHeader } from './AccountHeader';
+export { AccountHeader, AccountMenu } from './AccountHeader';
 export * from './LogoHeader';
