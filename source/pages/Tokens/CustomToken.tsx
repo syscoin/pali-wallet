@@ -526,7 +526,12 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           <Input
             type="text"
             className="input-small relative"
-            placeholder="Token decimal"
+            placeholder={
+              tokenContractType.contractType === 'ERC-20' ||
+              tokenContractType.contractType === ''
+                ? 'Token decimal'
+                : 'Token ID'
+            }
           />
         </Form.Item>
 

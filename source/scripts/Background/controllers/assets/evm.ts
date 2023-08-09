@@ -7,9 +7,12 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {
   ISupportsInterfaceProps,
   contractChecker,
+  getContractType,
+  getERC1155StandardBalance,
   getERC721StandardBalance,
   getErc20Abi,
   getErc21Abi,
+  getErc55Abi,
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
@@ -144,6 +147,62 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
   };
 
+  const handleERC1155Tokens = async (
+    walletAddres: string,
+    contractAddress: string,
+    symbol: string,
+    decimals: number,
+    web3Provider: CustomJsonRpcProvider
+  ): Promise<IAddCustomTokenResponse> => {
+    try {
+      const getBalance = await getERC1155StandardBalance(
+        contractAddress,
+        walletAddres,
+        web3Provider,
+        decimals
+      );
+
+      const balanceToNumber = Number(getBalance);
+
+      const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
+
+      if (
+        typeof balanceToNumber !== 'number' ||
+        Number.isNaN(balanceToNumber) ||
+        Boolean(String(getBalance).includes('Error'))
+      ) {
+        await handleERC20Tokens(
+          walletAddres,
+          contractAddress,
+          decimals,
+          web3Provider
+        );
+
+        return;
+      }
+
+      const nftToAdd = {
+        tokenSymbol: treatedSymbol,
+        contractAddress,
+        decimals,
+        isNft: true,
+        balance: balanceToNumber,
+      } as ITokenEthProps;
+
+      return {
+        error: false,
+        tokenToAdd: nftToAdd,
+        message: 'ERC-1155 Token added',
+      };
+    } catch (error) {
+      console.log({ error });
+      return {
+        error: true,
+        errorType: 'Undefined',
+      };
+    }
+  };
+
   const addCustomTokenByType = async (
     walletAddres: string,
     contractAddress: string,
@@ -179,11 +238,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
           return erc721Error;
         }
       case 'ERC-1155':
-        return {
-          error: true,
-          errorType: 'ERC-1155',
-          message: contractTypeResponse.message,
-        };
+        try {
+          return await handleERC1155Tokens(
+            walletAddres,
+            contractAddress,
+            symbol,
+            decimals,
+            web3Provider
+          );
+        } catch (erc1155Error) {
+          return erc1155Error;
+        }
       // Default will be for cases when contract type will come as Undefined. This type is for ERC-20 cases or contracts that type
       // has not been founded
       default:
@@ -215,16 +280,36 @@ const EvmAssetsController = (): IEvmAssetsController => {
             account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
               if (vaultAssets.chainId === currentNetworkChainId) {
                 const provider = web3Provider;
+                let nftContractType = null;
+                let currentAbi = null;
+
+                currentAbi = getErc20Abi();
+
+                if (vaultAssets.isNft) {
+                  nftContractType = await getContractType(
+                    vaultAssets.contractAddress,
+                    provider
+                  );
+                  currentAbi =
+                    nftContractType.type === 'ERC-721'
+                      ? getErc21Abi()
+                      : getErc55Abi();
+                }
 
                 const contract = new ethers.Contract(
                   vaultAssets.contractAddress,
-                  vaultAssets.isNft ? getErc21Abi() : getErc20Abi(),
+                  currentAbi,
                   provider
                 );
 
-                const balanceCallMethod = await contract.balanceOf(
-                  account.address
-                );
+                const balanceCallMethod =
+                  nftContractType !== null &&
+                  nftContractType.type === 'ERC-1155'
+                    ? await contract.balanceOf(
+                        account.address,
+                        vaultAssets.decimals // for nft tokens, decimals property is the tokenId
+                      )
+                    : await contract.balanceOf(account.address);
 
                 const balance = vaultAssets.isNft
                   ? Number(balanceCallMethod)
