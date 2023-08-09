@@ -7,18 +7,18 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {
   ISupportsInterfaceProps,
   contractChecker,
-  getContractType,
   getERC1155StandardBalance,
   getERC721StandardBalance,
   getErc20Abi,
   getErc21Abi,
   getErc55Abi,
+  getNftStandardMetadata,
   getTokenStandardMetadata,
 } from '@pollum-io/sysweb3-utils';
 
 import { Queue } from '../transactions/queue';
 import { IPaliAccount } from 'state/vault/types';
-import { ITokenEthProps } from 'types/tokens';
+import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
@@ -162,6 +162,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
         decimals
       );
 
+      const { name: collectionName } = await getNftStandardMetadata(
+        contractAddress,
+        web3Provider
+      );
+
       const balanceToNumber = Number(getBalance);
 
       const treatedSymbol = symbol.replaceAll(/\s/g, '').toUpperCase();
@@ -182,11 +187,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
       }
 
       const nftToAdd = {
-        tokenSymbol: treatedSymbol,
         contractAddress,
-        decimals,
+        id: contractAddress,
         isNft: true,
-        balance: balanceToNumber,
+        is1155: true,
+        collectionName,
+        collection: [
+          {
+            balance: balanceToNumber,
+            tokenId: +decimals,
+            tokenSymbol: treatedSymbol,
+          },
+        ],
       } as ITokenEthProps;
 
       return {
@@ -286,12 +298,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
                 currentAbi = getErc20Abi();
 
                 if (vaultAssets.isNft) {
-                  nftContractType = await getContractType(
-                    vaultAssets.contractAddress,
-                    provider
-                  );
+                  nftContractType =
+                    vaultAssets?.is1155 === undefined ? 'ERC-721' : 'ERC-1155';
+
                   currentAbi =
-                    nftContractType.type === 'ERC-721'
+                    nftContractType === 'ERC-721'
                       ? getErc21Abi()
                       : getErc55Abi();
                 }
@@ -302,14 +313,28 @@ const EvmAssetsController = (): IEvmAssetsController => {
                   provider
                 );
 
-                const balanceCallMethod =
-                  nftContractType !== null &&
-                  nftContractType.type === 'ERC-1155'
-                    ? await contract.balanceOf(
+                if (nftContractType === 'ERC-1155') {
+                  const newCollection = (await Promise.all(
+                    vaultAssets.collection.map(async (nft) => {
+                      const balanceCallMethod = await contract.balanceOf(
                         account.address,
-                        vaultAssets.decimals // for nft tokens, decimals property is the tokenId
-                      )
-                    : await contract.balanceOf(account.address);
+                        nft.tokenId
+                      );
+
+                      const balance = Number(balanceCallMethod);
+
+                      return { ...nft, balance };
+                    })
+                  )) as IERC1155Collection[];
+
+                  if (newCollection.length > 0) {
+                    return { ...vaultAssets, collection: newCollection };
+                  }
+                }
+
+                const balanceCallMethod = await contract.balanceOf(
+                  account.address
+                );
 
                 const balance = vaultAssets.isNft
                   ? Number(balanceCallMethod)

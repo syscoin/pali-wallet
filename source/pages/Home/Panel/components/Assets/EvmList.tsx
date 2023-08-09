@@ -44,12 +44,21 @@ export const EvmAssetsList = () => {
                       <img src={`${token.logo}`} alt="token logo" />
                     </div>
                   )}
+                  {token.isNft && token.is1155 && (
+                    <p className="font-rubik">
+                      <span className="text-button-primary font-poppins">
+                        {`- ${token.collectionName}`}
+                      </span>
+                    </p>
+                  )}
 
-                  <p className="font-rubik">
-                    <span className="text-button-primary font-poppins">
-                      {`${token.balance}  ${token.tokenSymbol}`}
-                    </span>
-                  </p>
+                  {token.is1155 === undefined && (
+                    <p className="font-rubik">
+                      <span className="text-button-primary font-poppins">
+                        {`${token.balance}  ${token.tokenSymbol}`}
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between w-16">

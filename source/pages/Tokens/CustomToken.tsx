@@ -84,6 +84,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   }) => {
     setIsLoading(true);
 
+    let tokenToAddWithSubmitValues = null;
+
     switch (isEdit) {
       case false:
         try {
@@ -104,17 +106,55 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
             return;
           }
+          const currentTokens = activeAccount.assets.ethereum;
 
-          const tokenToAddWithSubmitValues = {
-            ...addTokenMethodResponse.tokenToAdd,
-            decimals: Number(decimals),
-            ...(addTokenMethodResponse.tokenToAdd.tokenSymbol.toUpperCase() !==
-              symbol.toUpperCase() && { editedSymbolToUse: symbol }),
-          };
+          switch (tokenContractType.contractType) {
+            case 'ERC-1155':
+              const tokenCollectionIndex = currentTokens.findIndex(
+                (collectionItem) =>
+                  collectionItem.contractAddress === contractAddress
+              );
+
+              if (tokenCollectionIndex === -1) {
+                tokenToAddWithSubmitValues = {
+                  ...addTokenMethodResponse.tokenToAdd,
+                };
+              } else {
+                const collectionItemIndex = currentTokens[
+                  tokenCollectionIndex
+                ].collection.findIndex((item) => item.tokenId === +decimals);
+
+                const currentCollection =
+                  currentTokens[tokenCollectionIndex].collection;
+
+                if (collectionItemIndex !== -1)
+                  throw new Error('Token already exists');
+
+                tokenToAddWithSubmitValues = {
+                  ...addTokenMethodResponse.tokenToAdd,
+                  collection: [
+                    ...currentCollection,
+                    addTokenMethodResponse.tokenToAdd.collection[0],
+                  ],
+                };
+              }
+
+              break;
+            default:
+              tokenToAddWithSubmitValues = {
+                ...addTokenMethodResponse.tokenToAdd,
+                decimals: Number(decimals),
+                ...(addTokenMethodResponse.tokenToAdd.tokenSymbol.toUpperCase() !==
+                  symbol.toUpperCase() && { editedSymbolToUse: symbol }),
+              };
+              break;
+          }
 
           //Save token at state
           await controller.wallet.account.eth.saveTokenInfo(
-            tokenToAddWithSubmitValues
+            tokenToAddWithSubmitValues,
+            tokenContractType.contractType,
+            currentTokens
           );
 
           setAdded(true);
