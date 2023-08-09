@@ -46,7 +46,7 @@ export const SendEth = () => {
   };
 
   const tokenId = form.getFieldValue('amount');
-  const collectionItemSymbol = selectedAsset.collection.find(
+  const collectionItemSymbol = selectedAsset?.collection?.find(
     (item) => item.tokenId === +tokenId
   )?.tokenSymbol;
 

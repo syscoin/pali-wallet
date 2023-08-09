@@ -35,72 +35,80 @@ export const EvmAssetsList = () => {
         <LoadingComponent />
       ) : (
         <>
-          {filteredAssets?.map((token: ITokenEthProps) => (
-            <Fragment key={uniqueId(token.id)}>
-              <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
-                <div className="flex gap-3 items-center justify-start">
-                  {!token.isNft && token.logo && (
-                    <div style={{ maxWidth: '25px', maxHeight: '25px' }}>
-                      <img src={`${token.logo}`} alt="token logo" />
-                    </div>
-                  )}
-                  {token.isNft && token.is1155 && (
-                    <p className="font-rubik">
-                      <span className="text-button-primary font-poppins">
-                        {`- ${token.collectionName}`}
-                      </span>
-                    </p>
-                  )}
+          {filteredAssets?.map((token: ITokenEthProps) => {
+            const btnContainerWidth =
+              token.is1155 === undefined ? 'w-16' : 'w-10';
+            return (
+              <Fragment key={uniqueId(token.id)}>
+                <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
+                  <div className="flex gap-3 items-center justify-start">
+                    {!token.isNft && token.logo && (
+                      <div style={{ maxWidth: '25px', maxHeight: '25px' }}>
+                        <img src={`${token.logo}`} alt="token logo" />
+                      </div>
+                    )}
+                    {token.isNft && token.is1155 && (
+                      <p className="font-rubik">
+                        <span className="text-button-primary font-poppins">
+                          {`- ${token.collectionName}`}
+                        </span>
+                      </p>
+                    )}
 
-                  {token.is1155 === undefined && (
-                    <p className="font-rubik">
-                      <span className="text-button-primary font-poppins">
-                        {`${token.balance}  ${token.tokenSymbol}`}
-                      </span>
-                    </p>
-                  )}
-                </div>
+                    {token.is1155 === undefined && (
+                      <p className="font-rubik">
+                        <span className="text-button-primary font-poppins">
+                          {`${token.balance}  ${token.tokenSymbol}`}
+                        </span>
+                      </p>
+                    )}
+                  </div>
 
-                <div className="flex items-center justify-between w-16">
-                  <Tooltip content="Asset Details">
-                    <IconButton
-                      onClick={() =>
-                        navigate('/home/details', {
-                          state: { id: token.id, hash: null },
-                        })
-                      }
-                    >
-                      <Icon name="select" className="w-4 text-brand-white" />
-                    </IconButton>
-                  </Tooltip>
+                  <div
+                    className={`flex items-center justify-between ${btnContainerWidth}`}
+                  >
+                    <Tooltip content="Asset Details">
+                      <IconButton
+                        onClick={() =>
+                          navigate('/home/details', {
+                            state: { id: token.id, hash: null },
+                          })
+                        }
+                      >
+                        <Icon name="select" className="w-4 text-brand-white" />
+                      </IconButton>
+                    </Tooltip>
 
-                  <Tooltip content="Edit Asset">
-                    <IconButton
-                      onClick={() =>
-                        navigate('/tokens/add', {
-                          state: token,
-                        })
-                      }
-                    >
-                      <Icon name="edit" className="w-4 text-brand-white" />
-                    </IconButton>
-                  </Tooltip>
+                    {token.is1155 === undefined && (
+                      <Tooltip content="Edit Asset">
+                        <IconButton
+                          onClick={() =>
+                            navigate('/tokens/add', {
+                              state: token,
+                            })
+                          }
+                        >
+                          <Icon name="edit" className="w-4 text-brand-white" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
 
-                  <Tooltip content="Delete Asset">
-                    <IconButton
-                      onClick={() =>
-                        controller.wallet.account.eth.deleteTokenInfo(
-                          token.contractAddress
-                        )
-                      }
-                    >
-                      <Icon name="delete" className="w-4 text-brand-white" />
-                    </IconButton>
-                  </Tooltip>
-                </div>
-              </li>
-            </Fragment>
-          ))}
+                    <Tooltip content="Delete Asset">
+                      <IconButton
+                        onClick={() =>
+                          controller.wallet.account.eth.deleteTokenInfo(
+                            token.contractAddress
+                          )
+                        }
+                      >
+                        <Icon name="delete" className="w-4 text-brand-white" />
+                      </IconButton>
+                    </Tooltip>
+                  </div>
+                </li>
+              </Fragment>
+            );
+          })}
         </>
       )}
     </>
