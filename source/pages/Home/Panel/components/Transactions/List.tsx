@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
@@ -6,6 +7,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
+import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis, formatDate } from 'utils/index';
@@ -52,7 +54,7 @@ export const TransactionsList = ({
   const txid = isBitcoinBased ? 'txid' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
-  const cancelTransaction = async (txHash: string, isLegacy?: boolean) => {
+  const cancelTransaction = async (txHash: string, isLegacy: boolean) => {
     const { isCanceled, transaction } =
       await wallet.ethereumTransaction.cancelSentTransaction(txHash, isLegacy);
 
@@ -70,7 +72,7 @@ export const TransactionsList = ({
     }
   };
 
-  const speedUpTransaction = async () => {};
+  const speedUpTransaction = async (txHash: string, isLegacy: boolean) => {};
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -84,19 +86,65 @@ export const TransactionsList = ({
     [userTransactions]
   );
 
+  const convertTransactionValueToCompare = (
+    value:
+      | string
+      | number
+      | { _hex: string; isBigNumber: boolean }
+      | { hex: string; type: string }
+  ): number => {
+    if (typeof value === 'string') {
+      if (value.startsWith('0x')) {
+        return new BigNumber(value).toNumber();
+      } else {
+        return parseFloat(value);
+      }
+    } else if (typeof value === 'number') {
+      return value;
+    } else if ('isBigNumber' in value) {
+      return new BigNumber(value._hex).toNumber();
+    } else if ('type' in value && 'hex' in value) {
+      return new BigNumber(value.hex).toNumber();
+    }
+  };
+
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(userTransactions)) {
       return [];
     }
 
     return userTransactions
-      .filter((item: any) => {
+      .reduce((result: IEvmTransaction[], transaction: IEvmTransaction) => {
         if (!isBitcoinBased) {
-          return item?.chainId === chainId;
+          if (transaction?.chainId === chainId) {
+            const existingTransaction = result.find(
+              (existingItem) =>
+                convertTransactionValueToCompare(existingItem.nonce) ===
+                  convertTransactionValueToCompare(transaction.nonce) &&
+                convertTransactionValueToCompare(existingItem.value as any) > 0
+            );
+
+            if (!existingTransaction) {
+              result.push(transaction);
+            } else if (
+              convertTransactionValueToCompare(transaction.value as any) >
+              convertTransactionValueToCompare(existingTransaction.value as any)
+            ) {
+              result = result.filter(
+                (existingItem) => existingItem !== existingTransaction
+              );
+              result.push(transaction);
+            }
+          }
+        } else {
+          if (transaction !== undefined && transaction !== null) {
+            result.push(transaction);
+          }
         }
-        return item !== undefined && item !== null;
-      })
-      .sort((a: any, b: any) => {
+
+        return result;
+      }, [])
+      .sort((a, b) => {
         if (a[blocktime] > b[blocktime]) {
           return -1;
         }

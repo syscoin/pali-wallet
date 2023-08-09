@@ -36,7 +36,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         title="Cancel Transaction"
         description="Are you sure that you want to cancel this transaction ?"
         onClose={() => setOpenConfirmCancelModal(false)}
-        onClick={() => cancelTransaction(transaction.hash, isLegacyTransaction)}
+        onClick={() => {
+          cancelTransaction(transaction.hash, isLegacyTransaction);
+          setOpenConfirmCancelModal(false);
+        }}
       />
 
       <ConfirmationModal
@@ -45,9 +48,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         title="Speed Up Transaction"
         description="Are you sure that you want to speed up this transaction ?"
         onClose={() => setOpenConfirmSpeedUpModal(false)}
-        onClick={() =>
-          speedUpTransaction(transaction.hash, isLegacyTransaction)
-        }
+        onClick={() => {
+          speedUpTransaction(transaction.hash, isLegacyTransaction);
+          setOpenConfirmSpeedUpModal(false);
+        }}
       />
 
       <Menu as="div" className="relative inline-block text-left">
