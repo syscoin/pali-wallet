@@ -36,6 +36,7 @@ const icons = {
   partition: AntIcons.PartitionOutlined,
   question: AntIcons.QuestionCircleOutlined,
   reload: AntIcons.ReloadOutlined,
+  rise: AntIcons.RiseOutlined,
   select: AntIcons.SelectOutlined,
   'select-down': AntIcons.CaretDownOutlined,
   'select-up': AntIcons.CaretUpOutlined,

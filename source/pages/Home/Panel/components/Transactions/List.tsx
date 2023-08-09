@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
+import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -24,7 +25,7 @@ export const TransactionsList = ({
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
@@ -52,13 +53,24 @@ export const TransactionsList = ({
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const cancelTransaction = async (txHash: string, isLegacy?: boolean) => {
-    const cancel = await wallet.ethereumTransaction.cancelSentTransaction(
-      txHash,
-      isLegacy
-    );
+    const { isCanceled, transaction } =
+      await wallet.ethereumTransaction.cancelSentTransaction(txHash, isLegacy);
 
-    console.log('CANCEL TX', cancel);
+    switch (isCanceled) {
+      case true:
+        alert.removeAll();
+        alert.success('Your transaction was successfully canceled.');
+        break;
+      case false:
+        alert.removeAll();
+        alert.error(
+          'Something went wrong when trying to cancel your Transaction, please try again later!'
+        );
+        break;
+    }
   };
+
+  const speedUpTransaction = async () => {};
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -158,12 +170,6 @@ export const TransactionsList = ({
               </div>
 
               <div className="flex justify-between items-center">
-                {!isConfirmed ? (
-                  <IconButton className="w-5">
-                    <Icon name="arrow-up" className="text-base" />
-                  </IconButton>
-                ) : null}
-
                 <IconButton
                   className="w-5"
                   onClick={() =>
@@ -179,14 +185,11 @@ export const TransactionsList = ({
                 </IconButton>
 
                 {!isConfirmed ? (
-                  <IconButton
-                    className="w-5"
-                    onClick={() =>
-                      cancelTransaction(tx.hash, tx.type === '0x0')
-                    }
-                  >
-                    <Icon name="close" className="text-base" />
-                  </IconButton>
+                  <TransactionOptions
+                    cancelTransaction={cancelTransaction}
+                    speedUpTransaction={speedUpTransaction}
+                    transaction={tx}
+                  />
                 ) : null}
               </div>
             </div>
