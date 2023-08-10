@@ -15,7 +15,11 @@ import store from 'state/store';
 import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
-import { ISysTransaction, IEvmTransactionResponse } from './types';
+import {
+  ISysTransaction,
+  IEvmTransactionResponse,
+  TransactionValueType,
+} from './types';
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -205,11 +209,7 @@ export const validateAndManageUserTransactions = (
 };
 
 export const convertTransactionValueToCompare = (
-  value:
-    | string
-    | number
-    | { _hex: string; isBigNumber: boolean }
-    | { hex: string; type: string }
+  value: TransactionValueType
 ): number => {
   if (typeof value === 'string') {
     if (value.startsWith('0x')) {

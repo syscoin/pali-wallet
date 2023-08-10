@@ -18,6 +18,7 @@ import {
   IEvmTransaction,
   IEvmTransactionResponse,
   ISysTransaction,
+  TransactionValueType,
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
@@ -564,7 +565,11 @@ const VaultState = createSlice({
       if (!currentAccount.transactions[networkType]) {
         // Cast the array to the correct type based on the networkType and value bigger than 0
         const chainTransactions = treatedTxs.filter((tx) => {
-          if (convertTransactionValueToCompare(tx.value as any) === 0) {
+          if (
+            convertTransactionValueToCompare(
+              tx.value as TransactionValueType
+            ) === 0
+          ) {
             return false;
           }
           return networkType === TransactionsType.Ethereum
@@ -582,7 +587,11 @@ const VaultState = createSlice({
         if (!currentAccount.transactions[networkType][chainId]) {
           // Create a new array with the correct type based on the networkType and value bigger than 0
           const chainTransactions = treatedTxs.filter((tx) => {
-            if (convertTransactionValueToCompare(tx.value as any) === 0) {
+            if (
+              convertTransactionValueToCompare(
+                tx.value as TransactionValueType
+              ) === 0
+            ) {
               return false;
             }
             return networkType === TransactionsType.Ethereum
@@ -599,7 +608,11 @@ const VaultState = createSlice({
           if (Array.isArray(transactions)) {
             // Filter and push the transactions based on the networkType and value bigger than 0
             const castedTransactions = treatedTxs.filter((tx) => {
-              if (convertTransactionValueToCompare(tx.value as any) === 0) {
+              if (
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0
+              ) {
                 return false;
               }
               return networkType === TransactionsType.Ethereum

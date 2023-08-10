@@ -24,10 +24,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
 
-  function classNames(...classes) {
-    return classes.filter(Boolean).join(' ');
-  }
-
   return (
     <>
       <ConfirmationModal
@@ -88,10 +84,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
             <Menu.Item>
               {({ active }) => (
                 <li
-                  className={classNames(
-                    active ? 'bg-bkg-3 font-bold' : 'font-normal',
+                  className={`
+                    ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
                     'flex items-center justify-start py-2 px-3 cursor-pointer'
-                  )}
+                  `}
                   onClick={() => setOpenConfirmCancelModal(true)}
                 >
                   <IconButton className="w-5 mr-3">
@@ -104,10 +100,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
             <Menu.Item>
               {({ active }) => (
                 <li
-                  className={classNames(
-                    active ? 'bg-bkg-3 font-bold' : 'font-normal',
+                  className={`
+                    ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
                     'flex items-center justify-start text-brand-white py-2 px-3 cursor-pointer'
-                  )}
+                  `}
                   onClick={() => setOpenConfirmSpeedUpModal(true)}
                 >
                   <IconButton className="w-5 mr-3">

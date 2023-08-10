@@ -94,6 +94,12 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
   wait: (confirmations?: number) => Promise<ITransactionReceipt>;
 }
 
+export type TransactionValueType =
+  | string
+  | number
+  | { _hex: string; isBigNumber: boolean }
+  | { hex: string; type: string };
+
 export interface IEvmTransactionsController {
   getUserTransactionByDefaultProvider: (
     startBlock: number,
