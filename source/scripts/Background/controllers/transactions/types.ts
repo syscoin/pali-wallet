@@ -83,6 +83,8 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
 
   hash: string;
 
+  isCanceled?: boolean;
+
   // The raw transaction
   raw?: string;
 

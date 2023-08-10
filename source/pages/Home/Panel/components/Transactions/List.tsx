@@ -1,5 +1,4 @@
-import BigNumber from 'bignumber.js';
-import { uniqueId } from 'lodash';
+import uniqueId from 'lodash/uniqueId';
 import React, { Fragment, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -7,7 +6,6 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis, formatDate } from 'utils/index';
@@ -55,11 +53,21 @@ export const TransactionsList = ({
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const cancelTransaction = async (txHash: string, isLegacy: boolean) => {
-    const { isCanceled, transaction } =
+    const { isCanceled, error } =
       await wallet.ethereumTransaction.cancelSentTransaction(txHash, isLegacy);
+
+    if (!isCanceled && error) {
+      alert.removeAll();
+      alert.error(
+        'Transaction not found or already confirmed, verify the transaction in the explorer!'
+      );
+
+      return;
+    }
 
     switch (isCanceled) {
       case true:
+        wallet.setEvmTransactionAsCanceled(txHash, chainId);
         alert.removeAll();
         alert.success('Your transaction was successfully canceled.');
         break;
@@ -86,65 +94,19 @@ export const TransactionsList = ({
     [userTransactions]
   );
 
-  const convertTransactionValueToCompare = (
-    value:
-      | string
-      | number
-      | { _hex: string; isBigNumber: boolean }
-      | { hex: string; type: string }
-  ): number => {
-    if (typeof value === 'string') {
-      if (value.startsWith('0x')) {
-        return new BigNumber(value).toNumber();
-      } else {
-        return parseFloat(value);
-      }
-    } else if (typeof value === 'number') {
-      return value;
-    } else if ('isBigNumber' in value) {
-      return new BigNumber(value._hex).toNumber();
-    } else if ('type' in value && 'hex' in value) {
-      return new BigNumber(value.hex).toNumber();
-    }
-  };
-
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(userTransactions)) {
       return [];
     }
 
     return userTransactions
-      .reduce((result: IEvmTransaction[], transaction: IEvmTransaction) => {
+      .filter((item: any) => {
         if (!isBitcoinBased) {
-          if (transaction?.chainId === chainId) {
-            const existingTransaction = result.find(
-              (existingItem) =>
-                convertTransactionValueToCompare(existingItem.nonce) ===
-                  convertTransactionValueToCompare(transaction.nonce) &&
-                convertTransactionValueToCompare(existingItem.value as any) > 0
-            );
-
-            if (!existingTransaction) {
-              result.push(transaction);
-            } else if (
-              convertTransactionValueToCompare(transaction.value as any) >
-              convertTransactionValueToCompare(existingTransaction.value as any)
-            ) {
-              result = result.filter(
-                (existingItem) => existingItem !== existingTransaction
-              );
-              result.push(transaction);
-            }
-          }
-        } else {
-          if (transaction !== undefined && transaction !== null) {
-            result.push(transaction);
-          }
+          return item?.chainId === chainId;
         }
-
-        return result;
-      }, [])
-      .sort((a, b) => {
+        return item !== undefined && item !== null;
+      })
+      .sort((a: any, b: any) => {
         if (a[blocktime] > b[blocktime]) {
           return -1;
         }
@@ -156,6 +118,7 @@ export const TransactionsList = ({
   }, [userTransactions, isBitcoinBased, chainId, blocktime]);
 
   const renderTransaction = (tx, idx) => {
+    const isTxCanceled = tx?.isCanceled === true;
     const isConfirmed = tx.confirmations > 0;
     const timestamp =
       blocktime &&
@@ -194,13 +157,19 @@ export const TransactionsList = ({
                   <div>
                     <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                    <p
-                      className={
-                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
-                      }
-                    >
-                      {isConfirmed ? 'Confirmed' : 'Pending'}
-                    </p>
+                    {isTxCanceled ? (
+                      <p className="text-warning-error">Canceled</p>
+                    ) : (
+                      <p
+                        className={
+                          isConfirmed
+                            ? 'text-warning-success'
+                            : 'text-yellow-300'
+                        }
+                      >
+                        {isConfirmed ? 'Confirmed' : 'Pending'}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -232,7 +201,7 @@ export const TransactionsList = ({
                   <Icon name="select" className="text-base" />
                 </IconButton>
 
-                {!isConfirmed ? (
+                {!isConfirmed && !isTxCanceled ? (
                   <TransactionOptions
                     cancelTransaction={cancelTransaction}
                     speedUpTransaction={speedUpTransaction}

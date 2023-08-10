@@ -54,14 +54,22 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         }}
       />
 
-      <Menu as="div" className="relative inline-block text-left">
-        <div>
-          <Menu.Button>
-            <IconButton className="w-5">
-              <Icon name="dots" className="text-base" />
-            </IconButton>
-          </Menu.Button>
-        </div>
+      <Menu
+        id="transaction-options"
+        as="div"
+        className="relative inline-block text-left"
+      >
+        <Menu.Button
+          className="inline-flex justify-center w-full 
+      hover:text-button-primaryhover text-white text-sm font-medium 
+      hover:bg-opacity-30 rounded-full focus:outline-none 
+      focus-visible:ring-2 focus-visible:ring-white 
+      focus-visible:ring-opacity-75"
+        >
+          <IconButton className="w-5">
+            <Icon name="dots" className="text-base" />
+          </IconButton>
+        </Menu.Button>
 
         <Transition
           as={Fragment}
@@ -73,49 +81,42 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
           leaveTo="transform opacity-0 scale-95"
         >
           <Menu.Items
+            as="div"
             className="absolute right-0 z-10 w-44 origin-top-right rounded-md bg-menu-primary shadow-2xl ring-1 
-        font-poppins ring-black ring-opacity-5 focus:outline-none"
+            font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out"
           >
-            <div>
-              <Menu.Item>
-                {({ active }) => (
-                  <div
-                    className={classNames(
-                      active ? 'bg-bkg-3 font-bold' : 'font-normal',
-                      'flex items-center justify-between py-2 px-3 cursor-pointer'
-                    )}
-                    onClick={() => setOpenConfirmCancelModal(true)}
-                  >
-                    <p className="text-sm text-brand-white">Cancel</p>
-                    <IconButton className="w-5">
-                      <Icon
-                        name="close"
-                        className="text-base text-brand-white"
-                      />
-                    </IconButton>
-                  </div>
-                )}
-              </Menu.Item>
-              <Menu.Item>
-                {({ active }) => (
-                  <div
-                    className={classNames(
-                      active ? 'bg-bkg-3 font-bold' : 'font-normal',
-                      'flex items-center justify-between text-brand-white py-2 px-3 cursor-pointer'
-                    )}
-                    onClick={() => setOpenConfirmSpeedUpModal(true)}
-                  >
-                    <p className="text-sm text-brand-white">Speed Up</p>
-                    <IconButton className="w-5">
-                      <Icon
-                        name="rise"
-                        className="text-base text-brand-white"
-                      />
-                    </IconButton>
-                  </div>
-                )}
-              </Menu.Item>
-            </div>
+            <Menu.Item>
+              {({ active }) => (
+                <li
+                  className={classNames(
+                    active ? 'bg-bkg-3 font-bold' : 'font-normal',
+                    'flex items-center justify-start py-2 px-3 cursor-pointer'
+                  )}
+                  onClick={() => setOpenConfirmCancelModal(true)}
+                >
+                  <IconButton className="w-5 mr-3">
+                    <Icon name="close" className="text-base text-brand-white" />
+                  </IconButton>
+                  <span className="text-sm text-brand-white">Cancel</span>
+                </li>
+              )}
+            </Menu.Item>
+            <Menu.Item>
+              {({ active }) => (
+                <li
+                  className={classNames(
+                    active ? 'bg-bkg-3 font-bold' : 'font-normal',
+                    'flex items-center justify-start text-brand-white py-2 px-3 cursor-pointer'
+                  )}
+                  onClick={() => setOpenConfirmSpeedUpModal(true)}
+                >
+                  <IconButton className="w-5 mr-3">
+                    <Icon name="rise" className="text-base text-brand-white" />
+                  </IconButton>
+                  <span className="text-sm text-brand-white">Speed Up</span>
+                </li>
+              )}
+            </Menu.Item>
           </Menu.Items>
         </Transition>
       </Menu>

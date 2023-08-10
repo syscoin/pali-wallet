@@ -46,6 +46,7 @@ import {
   setCurrentBlock,
   setMultipleTransactionToState,
   setSingleTransactionToState,
+  setTransactionStatusToCanceled,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -969,6 +970,18 @@ const MainController = (walletState): IMainController => {
   };
   //---- END SYS METHODS ----//
 
+  //---- EVM METHODS ----//
+  const setEvmTransactionAsCanceled = (txHash: string, chainID: number) => {
+    store.dispatch(
+      setTransactionStatusToCanceled({
+        txHash,
+        chainID,
+      })
+    );
+  };
+
+  //---- END EVM METHODS ----//
+
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const callUpdateTxsMethodBasedByIsBitcoinBased = (
     isBitcoinBased: boolean,
@@ -1363,6 +1376,7 @@ const MainController = (walletState): IMainController => {
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    setEvmTransactionAsCanceled,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,
