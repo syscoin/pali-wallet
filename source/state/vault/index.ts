@@ -20,6 +20,7 @@ import {
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps } from 'types/tokens';
+import { PaliLanguages } from 'utils/types';
 
 import {
   IChangingConnectedAccount,
@@ -64,6 +65,7 @@ export const initialState: IVaultState = {
   isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
+  language: PaliLanguages.EN,
   isLoadingAssets: false,
   changingConnectedAccount: {
     host: undefined,
@@ -276,6 +278,10 @@ const VaultState = createSlice({
     },
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
+    },
+
+    setLanguage(state: IVaultState, action: PayloadAction<PaliLanguages>) {
+      state.language = action.payload;
     },
     setActiveAccount(
       state: IVaultState,
@@ -627,6 +633,7 @@ export const {
   setIsLoadingTxs,
   setAccountBalances,
   setChangingConnectedAccount,
+  setLanguage,
   setLastLogin,
   setNetworks,
   setTimer,

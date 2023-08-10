@@ -26,6 +26,7 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
+import { PaliLanguages } from 'utils/types';
 
 import { ITokenEthProps, IWatchAssetTokenProps } from './tokens';
 import { ICustomRpcParams } from './transactions';
@@ -78,8 +79,8 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
-
   lock: () => void;
+
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -102,6 +103,7 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
   setAutolockTimer: (minutes: number) => void;
+  setCurrentLanguage: (lang: PaliLanguages) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;

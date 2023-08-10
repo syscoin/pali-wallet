@@ -46,6 +46,7 @@ import {
   setCurrentBlock,
   setMultipleTransactionToState,
   setSingleTransactionToState,
+  setLanguage,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -56,6 +57,7 @@ import { IMainController } from 'types/controllers';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { PaliLanguages } from 'utils/types';
 
 import EthAccountController from './account/evm';
 import SysAccountController from './account/syscoin';
@@ -327,6 +329,10 @@ const MainController = (walletState): IMainController => {
     //TODO: investigate if here would be a ideal place to add balance update
     keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
+  };
+
+  const setCurrentLanguage = (lang: PaliLanguages) => {
+    store.dispatch(setLanguage(lang));
   };
 
   const setActiveNetwork = async (
@@ -1342,6 +1348,7 @@ const MainController = (walletState): IMainController => {
     forgetWallet,
     unlockFromController,
     lock,
+    setCurrentLanguage,
     createAccount,
     editAccountLabel,
     setAdvancedSettings,

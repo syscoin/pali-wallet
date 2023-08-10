@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import ethIcon from 'assets/images/ethIcon.svg';
+import langIcon from 'assets/images/langIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -151,6 +152,21 @@ export const GeneralMenu: React.FC = () => {
           <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
             GENERAL OPTIONS
           </span>
+
+          <Menu.Item>
+            <li
+              onClick={() => navigate('/settings/languages')}
+              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+            >
+              <img
+                src={langIcon}
+                width="16px"
+                className="ml-0.2 text-brand-white"
+              />
+
+              <span>Languages</span>
+            </li>
+          </Menu.Item>
 
           <Menu.Item>
             <li

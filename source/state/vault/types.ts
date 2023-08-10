@@ -11,6 +11,7 @@ import {
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
+import { PaliLanguages } from 'utils/types';
 
 export interface IVaultState {
   accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
@@ -34,6 +35,7 @@ export interface IVaultState {
   isNetworkChanging: boolean;
   isPolling: boolean;
   isTimerEnabled: boolean;
+  language: PaliLanguages;
   lastLogin: number;
   networks: INetworksVault;
   timer: number;
