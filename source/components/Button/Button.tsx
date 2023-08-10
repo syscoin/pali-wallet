@@ -94,6 +94,53 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
   );
 };
 
+export const SecondButton: React.FC<IPrimaryButton> = ({
+  action = false,
+  children,
+  disabled = false,
+  id = '',
+  loading = false,
+  onClick,
+  type = 'submit',
+  width = '36',
+}) => {
+  const closeIcon = (
+    <Icon
+      name="close"
+      wrapperClassname="mb-0.5"
+      className="text-brand-white font-bold"
+    />
+  );
+
+  return (
+    <button
+      className={`tracking-normal cursor-pointer border-2 text-sm leading-4 w-${width} transition-all duration-300 h-10 rounded-full flex justify-center items-center gap-x-2 font-bold 
+        ${
+          disabled || loading
+            ? 'opacity-60 cursor-not-allowed'
+            : 'opacity-100 hover:bg-button-primaryhover'
+        } border-button-primary  text-brand-white w-${width}`}
+      disabled={disabled || loading}
+      onClick={onClick}
+      type={type}
+      id={id}
+    >
+      {loading ? (
+        <Icon
+          name="loading"
+          color="#4d76b8"
+          className="w-6 animate-spin-slow"
+        />
+      ) : (
+        <>
+          {action && closeIcon}
+          {children}
+        </>
+      )}
+    </button>
+  );
+};
+
 export const SecondaryButton: React.FC<IPrimaryButton> = ({
   action = false,
   children,
