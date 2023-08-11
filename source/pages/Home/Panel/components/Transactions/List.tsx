@@ -80,7 +80,36 @@ export const TransactionsList = ({
     }
   };
 
-  const speedUpTransaction = async (txHash: string, isLegacy: boolean) => {};
+  const speedUpTransaction = async (txHash: string, isLegacy: boolean) => {
+    const { isSpeedUp, error, transaction } =
+      await wallet.ethereumTransaction.sendTransactionWithEditedFee(
+        txHash,
+        isLegacy
+      );
+
+    if (!isSpeedUp && error) {
+      alert.removeAll();
+      alert.error(
+        'Transaction not found or already confirmed, verify the transaction in the explorer!'
+      );
+
+      return;
+    }
+
+    switch (isSpeedUp) {
+      case true:
+        wallet.setEvmTransactionAsAccelerated(txHash, chainId, transaction);
+        alert.removeAll();
+        alert.success('Your transaction was successfully accelerated.');
+        break;
+      case false:
+        alert.removeAll();
+        alert.error(
+          'Something went wrong when trying to speed up your Transaction, please try again later!'
+        );
+        break;
+    }
+  };
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>

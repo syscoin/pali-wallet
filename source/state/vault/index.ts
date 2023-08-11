@@ -673,6 +673,42 @@ const VaultState = createSlice({
         isCanceled: true,
       } as IEvmTransactionResponse;
     },
+
+    setTransactionStatusToAccelerated(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainID: number;
+        oldTxHash: string;
+      }>
+    ) {
+      const { oldTxHash, chainID } = action.payload;
+
+      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+
+      const { id, type } = activeAccount;
+
+      if (!state.accounts[type][id]) {
+        throw new Error(
+          'Unable to replace the accelerated Transaction. Account not found'
+        );
+      }
+
+      if (isNetworkChanging || isBitcoinBased) {
+        return;
+      }
+
+      const userTransactions = state.accounts[type][id].transactions[
+        TransactionsType.Ethereum
+      ][chainID] as IEvmTransaction[];
+
+      const removedTx = userTransactions.filter(
+        (tx) => tx.hash !== oldTxHash
+      ) as IEvmTransaction[];
+
+      state.accounts[type][id].transactions[TransactionsType.Ethereum][
+        chainID
+      ] = removedTx;
+    },
   },
 });
 
@@ -712,6 +748,7 @@ export const {
   setSingleTransactionToState,
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
+  setTransactionStatusToAccelerated,
 } = VaultState.actions;
 
 export default VaultState.reducer;

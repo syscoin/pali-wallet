@@ -47,6 +47,7 @@ import {
   setMultipleTransactionToState,
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
+  setTransactionStatusToAccelerated,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -980,6 +981,32 @@ const MainController = (walletState): IMainController => {
     );
   };
 
+  const setEvmTransactionAsAccelerated = (
+    oldTxHash: string,
+    chainID: number,
+    newTxValue: IEvmTransactionResponse
+  ) => {
+    store.dispatch(
+      setTransactionStatusToAccelerated({
+        oldTxHash,
+        chainID,
+      })
+    );
+
+    const transactionWithTimestamp = {
+      ...newTxValue,
+      timestamp: Date.now(),
+    };
+
+    store.dispatch(
+      setSingleTransactionToState({
+        chainId: chainID,
+        networkType: TransactionsType.Ethereum,
+        transaction: transactionWithTimestamp,
+      })
+    );
+  };
+
   //---- END EVM METHODS ----//
 
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
@@ -1377,6 +1404,7 @@ const MainController = (walletState): IMainController => {
     transactions: transactionsManager,
     sendAndSaveTransaction,
     setEvmTransactionAsCanceled,
+    setEvmTransactionAsAccelerated,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,

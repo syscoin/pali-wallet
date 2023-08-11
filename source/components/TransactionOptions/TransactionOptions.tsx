@@ -79,14 +79,14 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
           <Menu.Items
             as="div"
             className="absolute right-0 z-10 w-44 origin-top-right rounded-md bg-menu-primary shadow-2xl ring-1 
-            font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out"
+            font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out cursor-pointer"
           >
             <Menu.Item>
               {({ active }) => (
                 <li
                   className={`
                     ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
-                    'flex items-center justify-start py-2 px-3 cursor-pointer'
+                    flex items-center justify-start py-2 px-3 
                   `}
                   onClick={() => setOpenConfirmCancelModal(true)}
                 >
@@ -102,7 +102,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 <li
                   className={`
                     ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
-                    'flex items-center justify-start text-brand-white py-2 px-3 cursor-pointer'
+                    flex items-center justify-start text-brand-white py-2 px-3
                   `}
                   onClick={() => setOpenConfirmSpeedUpModal(true)}
                 >
