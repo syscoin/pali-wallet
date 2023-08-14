@@ -15,11 +15,8 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
-const isWatchRequestsActive =
-  // @ts-ignore
-  browser.runtime.getManifest().environment?.WATCH_REQUESTS !== undefined &&
-  // @ts-ignore
-  browser.runtime.getManifest().environment?.WATCH_REQUESTS === 'active';
+const isWatchRequestsActive = false;
+
 let paliPort: Runtime.Port;
 const onWalletReady = (windowController: IMasterController) => {
   // Add any code here that depends on the initialized wallet
@@ -297,20 +294,6 @@ registerListener();
 
 const port = browser.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
-
-browser.runtime.onMessage.addListener(({ action }) => {
-  if (action === 'resetPolling') {
-    const pollingPort = browser.runtime.connect(undefined, { name: 'polling' });
-
-    isListenerRegistered = false;
-    pollingPort.postMessage({ action: 'stopPolling' });
-    pollingPort.postMessage({ action: 'startPolling' });
-  }
-});
-
-export const resetPolling = () => {
-  browser.runtime.sendMessage({ action: 'resetPolling' });
-};
 
 export const verifyPaliRequests = () => {
   browser.runtime.sendMessage({

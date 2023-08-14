@@ -68,10 +68,15 @@ module.exports = {
     royalbluemedium: '#4ca1cf',
     blue100: '#4CA1CF',
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
-
+    pink: '#9F0949',
+    blue: '#4D76B8',
+    blue600: '#162742',
+    blue500: '#1E365C',
+    blue200: '#4CA1CF',
+    green: '#8EC100',
     black: '#000',
     white: '#fff',
-
+    red: '#D70000',
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
 

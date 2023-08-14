@@ -27,9 +27,8 @@ export const AddToken: FC = () => {
   const controller = getController();
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
-  const network = useSelector((state: RootState) => state.vault.activeNetwork);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const { isBitcoinBased, activeNetwork: network } = useSelector(
+    (paliState: RootState) => paliState.vault
   );
 
   const verifyIfIsTestnet = async () => {

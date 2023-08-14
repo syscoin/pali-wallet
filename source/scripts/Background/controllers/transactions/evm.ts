@@ -2,13 +2,11 @@ import flatMap from 'lodash/flatMap';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
-import { IPaliAccount } from 'state/vault/types';
+import store from 'state/store';
 
-import { Queue } from './queue';
 import { IEvmTransactionsController, IEvmTransactionResponse } from './types';
 import {
   findUserTxsInProviderByBlocksRange,
-  getFormattedEvmTransactionResponse,
   validateAndManageUserTransactions,
 } from './utils';
 
@@ -16,7 +14,6 @@ const EvmTransactionsController = (
   web3Provider: CustomJsonRpcProvider
 ): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
-    currentAccount: IPaliAccount,
     startBlock: number,
     endBlock: number
   ) => {
@@ -24,7 +21,6 @@ const EvmTransactionsController = (
 
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       provider,
-      currentAccount.address,
       startBlock,
       endBlock
     );
@@ -34,46 +30,50 @@ const EvmTransactionsController = (
     return treatedTxs as IEvmTransactionResponse[];
   };
 
-  const pollingEvmTransactions = async (currentAccount: IPaliAccount) => {
+  const pollingEvmTransactions = async () => {
     try {
-      const queue = new Queue(3);
-      const latestBlockNumber = await web3Provider.getBlockNumber();
+      const currentBlockNumber = store.getState().vault.currentBlock?.number;
+      const currentNetworkChainId =
+        store.getState().vault.activeNetwork?.chainId;
+      const rpcForbiddenList = [10];
 
-      const fromBlock = latestBlockNumber - 30; // Get only the last 30 blocks;
+      const latestBlockNumber = await web3Provider.getBlockNumber();
+      const adjustedBlock =
+        latestBlockNumber - parseInt(String(currentBlockNumber), 16);
+
+      let blocksToSearch;
+
+      if (
+        currentBlockNumber &&
+        currentNetworkChainId &&
+        rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
+        blocksToSearch = Math.min(10, adjustedBlock);
+      } else if (
+        currentNetworkChainId &&
+        rpcForbiddenList.includes(currentNetworkChainId)
+      ) {
+        blocksToSearch = 10;
+      } else if (
+        currentBlockNumber &&
+        adjustedBlock > 0 &&
+        adjustedBlock < 30
+      ) {
+        blocksToSearch = adjustedBlock;
+      } else if (currentBlockNumber && adjustedBlock < 0) {
+        blocksToSearch = 30;
+      } else {
+        blocksToSearch = 30;
+      }
+
+      const fromBlock = latestBlockNumber - blocksToSearch;
 
       const txs = await getUserTransactionByDefaultProvider(
-        currentAccount,
         fromBlock,
         latestBlockNumber
       );
 
-      //Doing this we prevent cases that user is receiving TX from other account and the
-      //RPC don't response the TX with Timestamp properly
-      queue.execute(
-        async () =>
-          await Promise.all(
-            txs.map(async (pollingTx) => {
-              if (pollingTx?.timestamp) {
-                return pollingTx;
-              }
-
-              const getTxTimestamp = await getFormattedEvmTransactionResponse(
-                web3Provider,
-                pollingTx
-              );
-
-              return getTxTimestamp;
-            })
-          )
-      );
-
-      const results = await queue.done();
-
-      const txsWithTimestamp = results
-        .filter((result) => result.success)
-        .map(({ result }) => result);
-
-      return flatMap(txsWithTimestamp);
+      return flatMap(txs);
     } catch (error) {
       console.log(error);
     }

@@ -13,8 +13,13 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
 import { IPersistState } from 'state/types';
-import { setAdvancedSettings, setNetworks } from 'state/vault';
-import { IVaultState } from 'state/vault/types';
+import {
+  setAccountPropertyByIdAndType,
+  setAdvancedSettings,
+  setNetworks,
+  setTimer,
+} from 'state/vault';
+import { IVaultState, TransactionsType } from 'state/vault/types';
 import {
   IControllerUtils,
   IDAppController,
@@ -83,7 +88,7 @@ const MasterController = (
     }
   });
   const initializeMainController = () => {
-    if (!store.getState().vault.networks['ethereum'][570]) {
+    if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
       store.dispatch(
         setNetworks({
           chain: 'ethereum' as INetworkType,
@@ -100,20 +105,29 @@ const MasterController = (
         })
       );
     }
-    const isOldState =
-      store.getState()?.vault?.networks?.['ethereum'][1]?.default ?? false;
 
-    if (isOldState) {
-      Object.values(initialNetworksState['ethereum']).forEach((network) => {
-        store.dispatch(
-          setNetworks({
-            chain: 'ethereum' as INetworkType,
-            network: network as INetwork,
-            isEdit: false,
-            isFirstTime: true,
-          })
-        );
-      });
+    // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
+    if (Number(store.getState().vault.timer) === 5) {
+      store.dispatch(setTimer(30));
+    }
+
+    const isNetworkOldState =
+      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+        ?.default ?? false;
+
+    if (isNetworkOldState) {
+      Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
+        (network) => {
+          store.dispatch(
+            setNetworks({
+              chain: 'ethereum' as INetworkType,
+              network: network as INetwork,
+              isEdit: false,
+              isFirstTime: true,
+            })
+          );
+        }
+      );
     }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(
@@ -123,6 +137,78 @@ const MasterController = (
           isFirstTime: true,
         })
       );
+    }
+
+    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
+    const trezorAccounts = Object.values(
+      store.getState().vault.accounts.Trezor
+    );
+    const importedAccounts = Object.values(
+      store.getState().vault.accounts.Imported
+    );
+
+    const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
+    const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
+
+    const isTransactionsOldState = accountsObj.some((account) =>
+      Array.isArray(account.transactions)
+    );
+
+    if (isTransactionsOldState) {
+      const {
+        activeNetwork: { chainId },
+      } = store.getState().vault;
+
+      accountsObj.forEach((account) => {
+        const accType = (
+          !account.isImported && !account.isTrezorWallet
+            ? 'HDAccount'
+            : account.isTrezorWallet
+            ? 'Trezor'
+            : 'Imported'
+        ) as KeyringAccountType;
+
+        if (Array.isArray(account.transactions)) {
+          if (account.transactions.length > 0) {
+            const updatedTransactions = {
+              syscoin: {},
+              ethereum: {},
+            } as { [chainType: string]: { [chainId: string]: any } };
+
+            account.transactions.forEach((tx) => {
+              const currentNetwork = isBitcoinBased ? 'syscoin' : 'ethereum';
+              const currentChainId = isBitcoinBased ? chainId : tx.chainId;
+
+              updatedTransactions[currentNetwork][currentChainId] = [
+                ...(updatedTransactions[currentNetwork]?.[currentChainId] ??
+                  []),
+                tx,
+              ];
+            });
+
+            store.dispatch(
+              setAccountPropertyByIdAndType({
+                id: account.id,
+                type: accType,
+                property: 'transactions',
+                value: updatedTransactions,
+              })
+            );
+          } else {
+            store.dispatch(
+              setAccountPropertyByIdAndType({
+                id: account.id,
+                type: accType,
+                property: 'transactions',
+                value: {
+                  syscoin: {},
+                  ethereum: {},
+                },
+              })
+            );
+          }
+        }
+      });
     }
     const walletState = vaultToWalletState(store.getState().vault);
     dapp = Object.freeze(DAppController());

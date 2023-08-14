@@ -31,9 +31,7 @@ const TransactionsManager = (
       case false:
         try {
           const getEvmTxs =
-            await evmTransactionsController.pollingEvmTransactions(
-              currentAccount
-            );
+            await evmTransactionsController.pollingEvmTransactions();
 
           return getEvmTxs;
         } catch (evmTxError) {

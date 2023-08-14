@@ -2,14 +2,18 @@ import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
+import isNil from 'lodash/isNil';
+import last from 'lodash/last';
+import omit from 'lodash/omit';
 import range from 'lodash/range';
 import uniqWith from 'lodash/uniqWith';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
+import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
+import { TransactionsType } from 'state/vault/types';
 
-import { Queue } from './queue';
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
@@ -40,45 +44,42 @@ export const getFormattedEvmTransactionResponse = async (
 
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
-  userAddress: string,
   startBlock: number,
   endBlock: number
-): Promise<IEvmTransactionResponse[]> => {
+): Promise<IEvmTransactionResponse[] | any> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
-  const queue = new Queue(3);
 
-  rangeBlocksToRun.forEach((blockNumber, _, arr) => {
-    if (blockNumber < 0) {
-      blockNumber = blockNumber * -1;
-    }
-    const lastBlockNumber = arr[arr.length - 1] + 1; // getBlock returns us the last confirmed block so we add 1 to consider the current pending block
-    queue.execute(async () => {
-      const currentBlock = await provider.send('eth_getBlockByNumber', [
-        `0x${blockNumber.toString(16)}`,
-        true,
-      ]);
-      const filterTxsByAddress = currentBlock.transactions
-        .filter(
-          (tx) =>
-            tx?.from?.toLowerCase() === userAddress.toLowerCase() ||
-            tx?.to?.toLowerCase() === userAddress.toLowerCase()
-        )
+  const batchRequest = rangeBlocksToRun.map((blockNumber) =>
+    provider.sendBatch('eth_getBlockByNumber', [
+      `0x${blockNumber.toString(16)}`,
+      true,
+    ])
+  );
+
+  const responses = await Promise.all(batchRequest);
+
+  store.dispatch(
+    setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
+  );
+
+  const lastBlockNumber = rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
+
+  return flatMap(
+    responses.map((response: any) => {
+      const currentBlock = parseInt(response.number, 16);
+
+      const filterTxsByAddress = response.transactions
+        .filter((tx) => tx?.from || tx?.to)
         .map((txWithConfirmations) => ({
           ...txWithConfirmations,
           chainId: Number(txWithConfirmations.chainId),
-          confirmations:
-            lastBlockNumber - Number(txWithConfirmations.blockNumber),
+          confirmations: lastBlockNumber - currentBlock,
+          timestamp: Number(response.timestamp),
         }));
-      return flatMap(filterTxsByAddress);
-    });
-  });
 
-  const results = await queue.done();
-  const userProviderTxs = results
-    .filter((result) => result.success)
-    .map(({ result }) => result);
-
-  return flatMap(userProviderTxs);
+      return filterTxsByAddress;
+    })
+  );
 };
 
 export const treatDuplicatedTxs = (
@@ -102,7 +103,7 @@ export const treatDuplicatedTxs = (
           // Preserve timestamp if available and valid
           if (
             b[TSTAMP_PROP] &&
-            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] < b[TSTAMP_PROP])
+            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] > b[TSTAMP_PROP])
           ) {
             a[TSTAMP_PROP] = b[TSTAMP_PROP];
           }
@@ -117,7 +118,7 @@ export const treatDuplicatedTxs = (
           // Preserve timestamp if available and valid
           if (
             a[TSTAMP_PROP] &&
-            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] < a[TSTAMP_PROP])
+            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] > a[TSTAMP_PROP])
           ) {
             b[TSTAMP_PROP] = a[TSTAMP_PROP];
           }
@@ -138,26 +139,66 @@ export const treatDuplicatedTxs = (
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
 ): IEvmTransactionResponse[] => {
-  //If providedTxs is empty only return an empty array to we don't need to dispatch any Tx or validated it with the userTxs state
+  // If providerTxs is empty, return an empty array
   if (isEmpty(providerTxs)) return [];
 
-  const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+  const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+    store.getState().vault;
 
-  const { transactions: userTransactions } =
-    accounts[activeAccount.type][activeAccount.id];
+  let userTx;
 
-  const userClonedArray = clone(
-    isBitcoinBased
-      ? (compact(userTransactions) as ISysTransaction[])
-      : (compact(Object.values(userTransactions)) as IEvmTransactionResponse[])
-  );
+  for (const accountType in accounts) {
+    for (const accountId in accounts[accountType]) {
+      const account = accounts[accountType][accountId];
+      const userAddress = account.address.toLowerCase();
 
-  const mergeArrays = [
-    ...providerTxs,
-    ...userClonedArray,
-  ] as IEvmTransactionResponse[];
+      const filteredTxs = providerTxs.filter(
+        (tx) =>
+          (tx.from?.toLowerCase() === userAddress ||
+            tx.to?.toLowerCase() === userAddress) &&
+          !isNil(tx.blockHash) &&
+          !isNil(tx.blockNumber)
+      );
 
-  const uniqueTxsArray = treatDuplicatedTxs(mergeArrays);
+      const updatedTxs = isBitcoinBased
+        ? (compact(
+            clone(
+              account.transactions[TransactionsType.Syscoin][
+                activeNetwork.chainId
+              ]
+            )
+          ) as ISysTransaction[])
+        : (compact(
+            clone(
+              account.transactions[TransactionsType.Ethereum][
+                activeNetwork.chainId
+              ]
+            )
+          ) as IEvmTransactionResponse[]);
 
-  return uniqueTxsArray as IEvmTransactionResponse[];
+      const mergedTxs = [
+        ...updatedTxs,
+        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
+      ];
+
+      if (filteredTxs.length > 0) {
+        store.dispatch(
+          setMultipleTransactionToState({
+            chainId: activeNetwork.chainId,
+            networkType: TransactionsType.Ethereum,
+            transactions: mergedTxs,
+          })
+        );
+      }
+
+      if (
+        accountType === activeAccount.type &&
+        Number(accountId) === activeAccount.id
+      ) {
+        userTx = updatedTxs;
+      }
+    }
+  }
+
+  return userTx;
 };

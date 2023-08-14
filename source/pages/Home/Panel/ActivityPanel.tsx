@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 // import { Fullscreen } from 'components/Fullscreen';
 import { LoadingComponent } from 'components/Loading';
 import { RootState } from 'state/store';
+import { TransactionsType } from 'state/vault/types';
 
 import { TransactionsList } from './components/Transactions';
 
@@ -29,9 +30,28 @@ export const TransactionsPanel = () => {
 
   const transactions = useMemo(() => {
     const accountTransactions =
-      accounts[activeAccount.type][activeAccount.id].transactions ?? {};
-    return Object.values(accountTransactions);
-  }, [accounts, activeAccount]);
+      accounts[activeAccount.type][activeAccount.id].transactions;
+
+    if (isBitcoinBased) {
+      if (Array.isArray(accountTransactions)) return [];
+      const sysTxs = accountTransactions[TransactionsType.Syscoin][chainId];
+
+      if (sysTxs && sysTxs.length > 0) {
+        return sysTxs;
+      } else {
+        return [];
+      }
+    } else {
+      if (Array.isArray(accountTransactions)) return [];
+      const ethTxs = accountTransactions[TransactionsType.Ethereum][chainId];
+
+      if (ethTxs && ethTxs.length > 0) {
+        return ethTxs;
+      } else {
+        return [];
+      }
+    }
+  }, [accounts, activeAccount, chainId, isBitcoinBased]);
 
   const hasTransactions =
     transactions.length > 0 || previousTransactions.length > 0;

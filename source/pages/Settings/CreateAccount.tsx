@@ -11,7 +11,9 @@ import { ellipsis } from 'utils/index';
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
-  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+  const { isBitcoinBased, activeNetwork } = useSelector(
+    (state: RootState) => state.vault
+  );
   const controller = getController();
   const navigate = useNavigate();
 
@@ -20,6 +22,7 @@ const CreateAccount = () => {
 
     const { address: newAddress } = await controller.wallet.createAccount(
       isBitcoinBased,
+      activeNetwork.chainId,
       label
     );
 

@@ -275,7 +275,6 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={isInputDisabled}
             placeholder="Explorer"
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />

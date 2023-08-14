@@ -1,9 +1,15 @@
+import { ethers } from 'ethers';
+
 import {
   IKeyringAccountState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import {
+  IEvmTransaction,
+  ISysTransaction,
+} from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 export interface IVaultState {
@@ -18,6 +24,7 @@ export interface IVaultState {
     [k: string]: boolean;
   };
   changingConnectedAccount: IChangingConnectedAccount;
+  currentBlock: ethers.providers.Block;
   error: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
@@ -53,11 +60,24 @@ export interface IPaliAccount extends IKeyringAccountState {
     ethereum: ITokenEthProps[];
     syscoin: ITokenSysProps[];
   };
-  transactions: any; //TODO: add type
+  transactions: TransactionsNetworkTypeMapping;
 }
 export type PaliAccount = {
   [id: number]: IPaliAccount;
 };
+
+export enum TransactionsType {
+  Ethereum = 'ethereum',
+  Syscoin = 'syscoin',
+}
+
+export type TransactionsNetworkTypeMapping = {
+  [key in TransactionsType]: IChainNumberTransactions;
+};
+
+export interface IChainNumberTransactions {
+  [chainId: number]: IEvmTransaction[] | ISysTransaction[];
+}
 
 export type IOmmitedAccount = Omit<IPaliAccount, 'xprv'>;
 

@@ -82,7 +82,6 @@ export class BaseProvider extends EventEmitter {
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
     this.wallet = wallet;
-    // this.isUnlocked = this.isUnlocked.bind(this);
   }
 
   //====================
@@ -121,7 +120,7 @@ export class BaseProvider extends EventEmitter {
     return new Promise<T>((resolve, reject) => {
       this._rpcRequest(
         { method, params },
-        getRpcPromiseCallback(resolve, reject, false)
+        getRpcPromiseCallback(resolve, reject)
       );
     });
   }
