@@ -4,51 +4,101 @@ import { Fragment } from 'react';
 
 import { ConfirmationModal, Icon, IconButton } from '..';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
+import { IMainController } from 'types/controllers';
+import { UpdateTxAction } from 'utils/transactions';
 
 interface ITransactionOptions {
-  cancelTransaction: (hash: string, isLegacy: boolean) => Promise<void>;
-  speedUpTransaction: (hash: string, isLegacy: boolean) => Promise<void>;
+  alert: any;
+  chainId: number;
+  handleUpdateTransaction: ({
+    updateData,
+  }: {
+    updateData: {
+      alert: any;
+      chainId: number;
+      isLegacy: boolean;
+      txHash: string;
+      updateType: UpdateTxAction;
+      wallet: IMainController;
+    };
+  }) => Promise<void>;
   transaction: IEvmTransaction;
+  wallet: IMainController;
 }
 
 export const TransactionOptions: React.FC<ITransactionOptions> = ({
-  cancelTransaction,
-  speedUpTransaction,
+  handleUpdateTransaction,
   transaction,
+  alert,
+  chainId,
+  wallet,
 }) => {
-  const [openConfirmCancelModal, setOpenConfirmCancelModal] =
-    useState<boolean>(false);
-  const [openConfirmSpeedUpModal, setOpenConfirmSpeedUpModal] =
-    useState<boolean>(false);
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [modalData, setModalData] = useState<{
+    buttonText: string;
+    description: string;
+    onClick: () => void;
+    onClose: () => void;
+    title: string;
+  }>();
 
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
 
+  const handleOnClick = (actionType: UpdateTxAction) => {
+    setIsOpenModal(true);
+
+    switch (actionType) {
+      case UpdateTxAction.Cancel:
+        setModalData({
+          buttonText: 'Confirm',
+          title: 'Cancel Transaction',
+          description:
+            'Are you sure that you want to cancel this transaction ?',
+          onClose: () => setIsOpenModal(false),
+          onClick: () => {
+            handleUpdateTransaction({
+              updateData: {
+                alert,
+                chainId,
+                isLegacy: isLegacyTransaction,
+                txHash: transaction.hash,
+                updateType: UpdateTxAction.Cancel,
+                wallet,
+              },
+            });
+            setIsOpenModal(false);
+          },
+        });
+        break;
+      case UpdateTxAction.SpeedUp:
+        setModalData({
+          buttonText: 'Confirm',
+          title: 'Speed Up Transaction',
+          description:
+            'Are you sure that you want to speed up this transaction ?',
+          onClose: () => setIsOpenModal(false),
+          onClick: () => {
+            handleUpdateTransaction({
+              updateData: {
+                alert,
+                chainId,
+                isLegacy: isLegacyTransaction,
+                txHash: transaction.hash,
+                updateType: UpdateTxAction.SpeedUp,
+                wallet,
+              },
+            });
+            setIsOpenModal(false);
+          },
+        });
+        break;
+    }
+  };
+
   return (
     <>
-      <ConfirmationModal
-        show={openConfirmCancelModal}
-        buttonText="Confirm"
-        title="Cancel Transaction"
-        description="Are you sure that you want to cancel this transaction ?"
-        onClose={() => setOpenConfirmCancelModal(false)}
-        onClick={() => {
-          cancelTransaction(transaction.hash, isLegacyTransaction);
-          setOpenConfirmCancelModal(false);
-        }}
-      />
-
-      <ConfirmationModal
-        show={openConfirmSpeedUpModal}
-        buttonText="Confirm"
-        title="Speed Up Transaction"
-        description="Are you sure that you want to speed up this transaction ?"
-        onClose={() => setOpenConfirmSpeedUpModal(false)}
-        onClick={() => {
-          speedUpTransaction(transaction.hash, isLegacyTransaction);
-          setOpenConfirmSpeedUpModal(false);
-        }}
-      />
+      <ConfirmationModal show={isOpenModal} {...modalData} />
 
       <Menu
         id="transaction-options"
@@ -88,7 +138,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
                     flex items-center justify-start py-2 px-3 
                   `}
-                  onClick={() => setOpenConfirmCancelModal(true)}
+                  onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                 >
                   <IconButton className="w-5 mr-3">
                     <Icon name="close" className="text-base text-brand-white" />
@@ -104,7 +154,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
                     flex items-center justify-start text-brand-white py-2 px-3
                   `}
-                  onClick={() => setOpenConfirmSpeedUpModal(true)}
+                  onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                 >
                   <IconButton className="w-5 mr-3">
                     <Icon name="rise" className="text-base text-brand-white" />

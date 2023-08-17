@@ -8,7 +8,7 @@ import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-import { ellipsis, formatDate } from 'utils/index';
+import { ellipsis, formatDate, handleUpdateTransaction } from 'utils/index';
 
 export const TransactionsList = ({
   userTransactions,
@@ -52,65 +52,6 @@ export const TransactionsList = ({
   const txid = isBitcoinBased ? 'txid' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
-  const cancelTransaction = async (txHash: string, isLegacy: boolean) => {
-    const { isCanceled, error } =
-      await wallet.ethereumTransaction.cancelSentTransaction(txHash, isLegacy);
-
-    if (!isCanceled && error) {
-      alert.removeAll();
-      alert.error(
-        'Transaction not found or already confirmed, verify the transaction in the explorer!'
-      );
-
-      return;
-    }
-
-    switch (isCanceled) {
-      case true:
-        wallet.setEvmTransactionAsCanceled(txHash, chainId);
-        alert.removeAll();
-        alert.success('Your transaction was successfully canceled.');
-        break;
-      case false:
-        alert.removeAll();
-        alert.error(
-          'Something went wrong when trying to cancel your Transaction, please try again later!'
-        );
-        break;
-    }
-  };
-
-  const speedUpTransaction = async (txHash: string, isLegacy: boolean) => {
-    const { isSpeedUp, error, transaction } =
-      await wallet.ethereumTransaction.sendTransactionWithEditedFee(
-        txHash,
-        isLegacy
-      );
-
-    if (!isSpeedUp && error) {
-      alert.removeAll();
-      alert.error(
-        'Transaction not found or already confirmed, verify the transaction in the explorer!'
-      );
-
-      return;
-    }
-
-    switch (isSpeedUp) {
-      case true:
-        wallet.setEvmTransactionAsAccelerated(txHash, chainId, transaction);
-        alert.removeAll();
-        alert.success('Your transaction was successfully accelerated.');
-        break;
-      case false:
-        alert.removeAll();
-        alert.error(
-          'Something went wrong when trying to speed up your Transaction, please try again later!'
-        );
-        break;
-    }
-  };
-
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
       tx === null &&
@@ -145,6 +86,39 @@ export const TransactionsList = ({
         return 0;
       });
   }, [userTransactions, isBitcoinBased, chainId, blocktime]);
+
+  const getTxStatus = useCallback(
+    (isCanceled: boolean, isConfirmed: boolean) => {
+      let className = '';
+      let status = '';
+
+      switch (isCanceled) {
+        case true:
+          className = 'text-warning-error';
+          status = 'Canceled';
+        case false:
+          className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
+          status = isConfirmed ? 'Confirmed' : 'Pending';
+      }
+
+      return <p className={className}>{status}</p>;
+    },
+    [userTransactions]
+  );
+
+  const getTxOptions = (isCanceled: boolean, isConfirmed: boolean, tx: any) => {
+    if (!isCanceled && !isConfirmed) {
+      return (
+        <TransactionOptions
+          handleUpdateTransaction={handleUpdateTransaction}
+          alert={alert}
+          chainId={chainId}
+          wallet={wallet}
+          transaction={tx}
+        />
+      );
+    }
+  };
 
   const renderTransaction = (tx, idx) => {
     const isTxCanceled = tx?.isCanceled === true;
@@ -186,19 +160,7 @@ export const TransactionsList = ({
                   <div>
                     <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                    {isTxCanceled ? (
-                      <p className="text-warning-error">Canceled</p>
-                    ) : (
-                      <p
-                        className={
-                          isConfirmed
-                            ? 'text-warning-success'
-                            : 'text-yellow-300'
-                        }
-                      >
-                        {isConfirmed ? 'Confirmed' : 'Pending'}
-                      </p>
-                    )}
+                    {getTxStatus(isTxCanceled, isConfirmed)}
                   </div>
                 </div>
               </div>
@@ -230,13 +192,7 @@ export const TransactionsList = ({
                   <Icon name="select" className="text-base" />
                 </IconButton>
 
-                {!isConfirmed && !isTxCanceled ? (
-                  <TransactionOptions
-                    cancelTransaction={cancelTransaction}
-                    speedUpTransaction={speedUpTransaction}
-                    transaction={tx}
-                  />
-                ) : null}
+                {getTxOptions(isTxCanceled, isConfirmed, tx)}
               </div>
             </div>
           </li>
@@ -245,15 +201,12 @@ export const TransactionsList = ({
     );
   };
 
-  const TransactionList = useCallback(
-    () => (
-      <ul className="pb-4">
-        {filteredTransactions.map((tx: any, idx: number) =>
-          renderTransaction(tx, idx)
-        )}
-      </ul>
-    ),
-    [userTransactions]
+  const TransactionList = () => (
+    <ul className="pb-4">
+      {filteredTransactions.map((tx: any, idx: number) =>
+        renderTransaction(tx, idx)
+      )}
+    </ul>
   );
 
   return <TransactionList />;
