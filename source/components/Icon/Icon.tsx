@@ -51,6 +51,7 @@ const icons = {
   'external-link': ExternalLinkIcon,
   tag: AntIcons.TagFilled,
   import: AntIcons.ImportOutlined,
+  'hamburger-menu': AntIcons.MenuOutlined,
 };
 
 interface IIcon {
@@ -59,6 +60,7 @@ interface IIcon {
   disabled?: boolean;
   id?: string;
   name: string;
+  opacity?: number;
   rotate?: number;
   size?: number;
   wrapperClassname?: string;
@@ -73,6 +75,7 @@ export const Icon: FC<IIcon> = ({
   size,
   wrapperClassname,
   disabled,
+  opacity,
 }) => {
   const Component = icons[name];
 
@@ -81,7 +84,7 @@ export const Icon: FC<IIcon> = ({
       {Component && (
         <Component
           className={className}
-          style={{ fontSize: size, color }}
+          style={{ fontSize: size, color, opacity }}
           rotate={rotate}
           disabled={disabled}
         />

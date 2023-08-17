@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Fullscreen } from 'components/Fullscreen';
+// import { Fullscreen } from 'components/Fullscreen';
 import { LoadingComponent } from 'components/Loading';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -33,6 +33,7 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id].transactions;
 
     if (isBitcoinBased) {
+      if (Array.isArray(accountTransactions)) return [];
       const sysTxs = accountTransactions[TransactionsType.Syscoin][chainId];
 
       if (sysTxs && sysTxs.length > 0) {
@@ -41,6 +42,7 @@ export const TransactionsPanel = () => {
         return [];
       }
     } else {
+      if (Array.isArray(accountTransactions)) return [];
       const ethTxs = accountTransactions[TransactionsType.Ethereum][chainId];
 
       if (ethTxs && ethTxs.length > 0) {
@@ -117,7 +119,7 @@ export const TransactionsPanel = () => {
         <div className="w-full text-white">
           <NoTransactionsComponent />
           <OpenTransactionExplorer />
-          <Fullscreen />
+          {/* <Fullscreen /> */}
         </div>
       )}
       {hasTransactions && (
@@ -130,7 +132,7 @@ export const TransactionsPanel = () => {
           <OpenTransactionExplorer />
         </div>
       )}
-      <Fullscreen />
+      {/* <Fullscreen /> */}
     </>
   );
 };
