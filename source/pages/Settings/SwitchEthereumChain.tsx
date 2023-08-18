@@ -39,8 +39,8 @@ const SwitchChain: React.FC = () => {
   };
 
   const CurrentChains = () => {
-    let fromChain: any;
-    let toChain: any;
+    let fromChain: React.ReactNode;
+    let toChain: React.ReactNode;
     switch (activeNetwork.chainId) {
       case 1:
         fromChain = <img src={ethChainImg} alt="eth" width="100px" />;
