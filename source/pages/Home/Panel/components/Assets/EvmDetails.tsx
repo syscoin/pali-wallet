@@ -160,7 +160,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
         );
       })}
 
-      {currentAsset.is1155 &&
+      {currentAsset?.is1155 &&
         currentAsset.collection.map((nft) => renderAssetsDisclosure(nft))}
     </>
   );

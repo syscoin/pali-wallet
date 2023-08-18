@@ -37,7 +37,7 @@ export const EvmAssetsList = () => {
         <>
           {filteredAssets?.map((token: ITokenEthProps) => {
             const btnContainerWidth =
-              token.is1155 === undefined ? 'w-16' : 'w-10';
+              token?.is1155 === undefined ? 'w-16' : 'w-10';
             return (
               <Fragment key={uniqueId(token.id)}>
                 <li className="flex items-center justify-between py-3 text-xs border-b border-dashed border-dashed-dark">
@@ -47,7 +47,7 @@ export const EvmAssetsList = () => {
                         <img src={`${token.logo}`} alt="token logo" />
                       </div>
                     )}
-                    {token.isNft && token.is1155 && (
+                    {token.isNft && token?.is1155 && (
                       <p className="font-rubik">
                         <span className="text-button-primary font-poppins">
                           {`- ${token.collectionName}`}
@@ -55,7 +55,7 @@ export const EvmAssetsList = () => {
                       </p>
                     )}
 
-                    {token.is1155 === undefined && (
+                    {token?.is1155 === undefined && (
                       <p className="font-rubik">
                         <span className="text-button-primary font-poppins">
                           {`${token.balance}  ${token.tokenSymbol}`}
@@ -79,7 +79,7 @@ export const EvmAssetsList = () => {
                       </IconButton>
                     </Tooltip>
 
-                    {token.is1155 === undefined && (
+                    {token?.is1155 === undefined && (
                       <Tooltip content="Edit Asset">
                         <IconButton
                           onClick={() =>
