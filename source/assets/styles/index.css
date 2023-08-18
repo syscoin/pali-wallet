@@ -69,6 +69,33 @@ div[role='alert'] {
   height: 13rem !important;
 }
 
+.top-15 {
+  top: 3rem !important;
+}
+
+.bottom-14 {
+  bottom: 5rem !important;
+}
+
+.bg-gradient {
+  background: linear-gradient(
+    109.86deg,
+    #284f94 25.72%,
+    #fe0077 141.55%
+  ) !important;
+}
+
+.bg-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  bottom: 0px;
+  left: 0px;
+  background-image: url('../images/bgPattern.svg') !important;
+  background-blend-mode: overlay !important;
+}
+
 .scrollbar-styled {
   /* Firefox */
   scrollbar-color: #4ca1cf #739dce;
