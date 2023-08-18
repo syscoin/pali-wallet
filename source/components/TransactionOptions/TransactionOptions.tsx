@@ -1,30 +1,10 @@
 import { Menu, Transition } from '@headlessui/react';
-import React, { useState } from 'react';
+import React from 'react';
 import { Fragment } from 'react';
 
-import { ConfirmationModal, Icon, IconButton } from '..';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
-import { IMainController } from 'types/controllers';
+import { Icon, IconButton } from '..';
 import { UpdateTxAction } from 'utils/transactions';
-
-interface ITransactionOptions {
-  alert: any;
-  chainId: number;
-  handleUpdateTransaction: ({
-    updateData,
-  }: {
-    updateData: {
-      alert: any;
-      chainId: number;
-      isLegacy: boolean;
-      txHash: string;
-      updateType: UpdateTxAction;
-      wallet: IMainController;
-    };
-  }) => Promise<void>;
-  transaction: IEvmTransaction;
-  wallet: IMainController;
-}
+import { ITransactionOptions } from 'utils/types';
 
 export const TransactionOptions: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
@@ -32,16 +12,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   alert,
   chainId,
   wallet,
+  setIsOpenModal,
+  setModalData,
 }) => {
-  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  const [modalData, setModalData] = useState<{
-    buttonText: string;
-    description: string;
-    onClick: () => void;
-    onClose: () => void;
-    title: string;
-  }>();
-
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
 
@@ -98,8 +71,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 
   return (
     <>
-      <ConfirmationModal show={isOpenModal} {...modalData} />
-
       <Menu
         id="transaction-options"
         as="div"

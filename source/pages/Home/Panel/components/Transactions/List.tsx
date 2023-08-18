@@ -1,9 +1,10 @@
 import uniqueId from 'lodash/uniqueId';
-import React, { Fragment, useCallback, useMemo } from 'react';
+import React, { Fragment, useCallback, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
+import { ConfirmationModal } from 'components/Modal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -22,6 +23,15 @@ export const TransactionsList = ({
     activeAccount,
     accounts,
   } = useSelector((state: RootState) => state.vault);
+
+  const [modalData, setModalData] = useState<{
+    buttonText: string;
+    description: string;
+    onClick: () => void;
+    onClose: () => void;
+    title: string;
+  }>();
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -115,6 +125,8 @@ export const TransactionsList = ({
           chainId={chainId}
           wallet={wallet}
           transaction={tx}
+          setIsOpenModal={setIsOpenModal}
+          setModalData={setModalData}
         />
       );
     }
@@ -209,5 +221,10 @@ export const TransactionsList = ({
     </ul>
   );
 
-  return <TransactionList />;
+  return (
+    <>
+      <ConfirmationModal show={isOpenModal} {...modalData} />
+      <TransactionList />
+    </>
+  );
 };
