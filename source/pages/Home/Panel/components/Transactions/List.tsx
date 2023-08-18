@@ -1,18 +1,22 @@
-import { uniqueId } from 'lodash';
-import React, { Fragment, useCallback, useMemo } from 'react';
+import uniqueId from 'lodash/uniqueId';
+import React, { Fragment, useCallback, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
+import { ConfirmationModal } from 'components/Modal';
+import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ellipsis, formatDate } from 'utils/index';
+import { getController } from 'utils/browser';
+import { ellipsis, formatDate, handleUpdateTransaction } from 'utils/index';
 
 export const TransactionsList = ({
   userTransactions,
 }: {
   userTransactions: any[]; //todo: adjust type
 }) => {
+  const { wallet } = getController();
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
@@ -20,9 +24,18 @@ export const TransactionsList = ({
     accounts,
   } = useSelector((state: RootState) => state.vault);
 
+  const [modalData, setModalData] = useState<{
+    buttonText: string;
+    description: string;
+    onClick: () => void;
+    onClose: () => void;
+    title: string;
+  }>();
+  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
@@ -84,7 +97,43 @@ export const TransactionsList = ({
       });
   }, [userTransactions, isBitcoinBased, chainId, blocktime]);
 
+  const getTxStatus = useCallback(
+    (isCanceled: boolean, isConfirmed: boolean) => {
+      let className = '';
+      let status = '';
+
+      switch (isCanceled) {
+        case true:
+          className = 'text-warning-error';
+          status = 'Canceled';
+        case false:
+          className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
+          status = isConfirmed ? 'Confirmed' : 'Pending';
+      }
+
+      return <p className={className}>{status}</p>;
+    },
+    [userTransactions]
+  );
+
+  const getTxOptions = (isCanceled: boolean, isConfirmed: boolean, tx: any) => {
+    if (!isCanceled && !isConfirmed) {
+      return (
+        <TransactionOptions
+          handleUpdateTransaction={handleUpdateTransaction}
+          alert={alert}
+          chainId={chainId}
+          wallet={wallet}
+          transaction={tx}
+          setIsOpenModal={setIsOpenModal}
+          setModalData={setModalData}
+        />
+      );
+    }
+  };
+
   const renderTransaction = (tx, idx) => {
+    const isTxCanceled = tx?.isCanceled === true;
     const isConfirmed = tx.confirmations > 0;
     const timestamp =
       blocktime &&
@@ -123,13 +172,7 @@ export const TransactionsList = ({
                   <div>
                     <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                    <p
-                      className={
-                        isConfirmed ? 'text-warning-success' : 'text-yellow-300'
-                      }
-                    >
-                      {isConfirmed ? 'Confirmed' : 'Pending'}
-                    </p>
+                    {getTxStatus(isTxCanceled, isConfirmed)}
                   </div>
                 </div>
               </div>
@@ -146,19 +189,23 @@ export const TransactionsList = ({
                 </div>
               </div>
 
-              <IconButton
-                className="w-5"
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: {
-                      id: null,
-                      hash: tx[txid],
-                    },
-                  })
-                }
-              >
-                <Icon name="select" className="text-base" />
-              </IconButton>
+              <div className="flex justify-between items-center">
+                <IconButton
+                  className="w-5"
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: {
+                        id: null,
+                        hash: tx[txid],
+                      },
+                    })
+                  }
+                >
+                  <Icon name="select" className="text-base" />
+                </IconButton>
+
+                {getTxOptions(isTxCanceled, isConfirmed, tx)}
+              </div>
             </div>
           </li>
         </Fragment>
@@ -166,16 +213,18 @@ export const TransactionsList = ({
     );
   };
 
-  const TransactionList = useCallback(
-    () => (
-      <ul className="pb-4">
-        {filteredTransactions.map((tx: any, idx: number) =>
-          renderTransaction(tx, idx)
-        )}
-      </ul>
-    ),
-    [userTransactions]
+  const TransactionList = () => (
+    <ul className="pb-4">
+      {filteredTransactions.map((tx: any, idx: number) =>
+        renderTransaction(tx, idx)
+      )}
+    </ul>
   );
 
-  return <TransactionList />;
+  return (
+    <>
+      <ConfirmationModal show={isOpenModal} {...modalData} />
+      <TransactionList />
+    </>
+  );
 };

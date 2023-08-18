@@ -18,7 +18,9 @@ import {
   IEvmTransaction,
   IEvmTransactionResponse,
   ISysTransaction,
+  TransactionValueType,
 } from 'scripts/Background/controllers/transactions/types';
+import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
 
 import {
@@ -561,12 +563,19 @@ const VaultState = createSlice({
 
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
-        // Cast the array to the correct type based on the networkType
-        const chainTransactions = treatedTxs.map((tx) =>
-          networkType === TransactionsType.Ethereum
+        // Cast the array to the correct type based on the networkType and value bigger than 0
+        const chainTransactions = treatedTxs.filter((tx) => {
+          if (
+            convertTransactionValueToCompare(
+              tx.value as TransactionValueType
+            ) === 0
+          ) {
+            return false;
+          }
+          return networkType === TransactionsType.Ethereum
             ? (tx as IEvmTransaction)
-            : (tx as ISysTransaction)
-        );
+            : (tx as ISysTransaction);
+        });
         currentAccount.transactions[networkType] = {
           [chainId]:
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
@@ -576,12 +585,20 @@ const VaultState = createSlice({
       } else {
         // Check if the chainId exists in the current networkType's transactions
         if (!currentAccount.transactions[networkType][chainId]) {
-          // Create a new array with the correct type based on the networkType
-          const chainTransactions = treatedTxs.map((tx) =>
-            networkType === TransactionsType.Ethereum
+          // Create a new array with the correct type based on the networkType and value bigger than 0
+          const chainTransactions = treatedTxs.filter((tx) => {
+            if (
+              convertTransactionValueToCompare(
+                tx.value as TransactionValueType
+              ) === 0
+            ) {
+              return false;
+            }
+            return networkType === TransactionsType.Ethereum
               ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction)
-          );
+              : (tx as ISysTransaction);
+          });
+
           currentAccount.transactions[networkType][chainId] =
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
@@ -589,12 +606,19 @@ const VaultState = createSlice({
         } else {
           // If the chainId exists, add the new transactions to the existing chainId array
           if (Array.isArray(transactions)) {
-            // Filter and push the transactions based on the networkType
-            const castedTransactions = treatedTxs.map((tx) =>
-              networkType === TransactionsType.Ethereum
+            // Filter and push the transactions based on the networkType and value bigger than 0
+            const castedTransactions = treatedTxs.filter((tx) => {
+              if (
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0
+              ) {
+                return false;
+              }
+              return networkType === TransactionsType.Ethereum
                 ? (tx as IEvmTransaction)
-                : (tx as ISysTransaction)
-            );
+                : (tx as ISysTransaction);
+            });
 
             currentAccount.transactions[networkType][chainId] =
               //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
@@ -607,6 +631,83 @@ const VaultState = createSlice({
           }
         }
       }
+    },
+
+    setTransactionStatusToCanceled(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainID: number;
+        txHash: string;
+      }>
+    ) {
+      const { txHash, chainID } = action.payload;
+
+      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+
+      const { id, type } = activeAccount;
+
+      if (!state.accounts[type][id]) {
+        throw new Error(
+          'Unable to change Transaction to Canceled. Account not found'
+        );
+      }
+
+      if (isNetworkChanging || isBitcoinBased) {
+        return;
+      }
+
+      const currentUserTransactions = state.accounts[type][id].transactions[
+        TransactionsType.Ethereum
+      ][chainID] as IEvmTransactionResponse[];
+
+      const findTxIndex = currentUserTransactions.findIndex(
+        (tx: IEvmTransactionResponse) => tx.hash === txHash
+      );
+
+      state.accounts[type][id].transactions[TransactionsType.Ethereum][chainID][
+        findTxIndex
+      ] = {
+        ...state.accounts[type][id].transactions[TransactionsType.Ethereum][
+          chainID
+        ][findTxIndex],
+        isCanceled: true,
+      } as IEvmTransactionResponse;
+    },
+
+    setTransactionStatusToAccelerated(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainID: number;
+        oldTxHash: string;
+      }>
+    ) {
+      const { oldTxHash, chainID } = action.payload;
+
+      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+
+      const { id, type } = activeAccount;
+
+      if (!state.accounts[type][id]) {
+        throw new Error(
+          'Unable to replace the accelerated Transaction. Account not found'
+        );
+      }
+
+      if (isNetworkChanging || isBitcoinBased) {
+        return;
+      }
+
+      const userTransactions = state.accounts[type][id].transactions[
+        TransactionsType.Ethereum
+      ][chainID] as IEvmTransaction[];
+
+      const removedTx = userTransactions.filter(
+        (tx) => tx.hash !== oldTxHash
+      ) as IEvmTransaction[];
+
+      state.accounts[type][id].transactions[TransactionsType.Ethereum][
+        chainID
+      ] = removedTx;
     },
   },
 });
@@ -646,6 +747,8 @@ export const {
   setCurrentBlock,
   setSingleTransactionToState,
   setMultipleTransactionToState,
+  setTransactionStatusToCanceled,
+  setTransactionStatusToAccelerated,
 } = VaultState.actions;
 
 export default VaultState.reducer;
