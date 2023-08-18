@@ -80,8 +80,8 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
   confirmations: number;
   // Not optional (as it is in Transaction)
   from: string;
-
   hash: string;
+  input?: string;
 
   isCanceled?: boolean;
 
