@@ -146,7 +146,10 @@ export const SendSys = () => {
   return (
     <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
       <div>
-        <p className="flex flex-col items-center justify-center text-center font-rubik">
+        <p
+          id="balance-text"
+          className="flex flex-col items-center justify-center text-center font-rubik"
+        >
           <span className="text-brand-royalblue font-poppins font-thin">
             Balance
           </span>

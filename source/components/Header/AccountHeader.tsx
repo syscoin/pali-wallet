@@ -52,15 +52,18 @@ const RenderAccountsListByBitcoinBased = (
                 onClick={() =>
                   setActiveAccount(account.id, KeyringAccountType.HDAccount)
                 }
-                id={`account-${index}`}
+                id={`li-account-${index}`}
                 key={account.id}
               >
                 <span
                   style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
                   className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
+                  id={`span-account-${index}`}
                 >
                   <img src={logo} className="mr-1 w-7"></img>
-                  {account.label} ({ellipsis(account.address, 4, 4)})
+                  <p id={`account-${index}`}>
+                    {account.label} ({ellipsis(account.address, 4, 4)})
+                  </p>
                 </span>
 
                 {activeAccount.id === account.id &&
@@ -253,7 +256,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="appstoreadd" className="mb-1 text-brand-white" />
 
-          <span>Create new account</span>
+          <span id="create-new-account">Create new account</span>
         </li>
       </Menu.Item>
 
@@ -264,7 +267,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="edit" className="mb-2 text-brand-white" />
 
-          <span>Manage accounts</span>
+          <span id="manage-accounts">Manage accounts</span>
         </li>
       </Menu.Item>
 
@@ -275,7 +278,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="key" className="mb-2 text-brand-white" />
 
-          <span>Your keys</span>
+          <span id="private-key">Your keys</span>
         </li>
       </Menu.Item>
 
@@ -290,7 +293,7 @@ export const AccountMenu: React.FC = () => {
             id="hardware-wallet-btn"
           />
 
-          <span>Connect Trezor</span>
+          <span id="connect-trezor">Connect Trezor</span>
         </li>
       </Menu.Item>
 
@@ -308,7 +311,10 @@ export const AccountMenu: React.FC = () => {
               opacity={isBitcoinBased ? 0.6 : 1}
             />
 
-            <span className={isBitcoinBased ? 'disabled' : ''}>
+            <span
+              id="import-account"
+              className={isBitcoinBased ? 'disabled' : ''}
+            >
               Import account
             </span>
           </li>

@@ -2,3 +2,7 @@
 . "$(dirname "$0")/_/husky.sh"
 
 tsc --pretty --noEmit
+
+echo "Running tests..."
+
+yarn run test
