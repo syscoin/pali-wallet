@@ -1,7 +1,9 @@
+import { ethers } from 'ethers';
 import { isInteger, omit } from 'lodash';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
+import { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import { IMainController } from 'types/controllers';
 import { ITransactionParams, ITxState } from 'types/transactions';
 
@@ -137,4 +139,16 @@ export const handleUpdateTransaction = async ({
     case UpdateTxAction.SpeedUp:
       return await speedUpTransaction(txHash, isLegacy, chainId, wallet, alert);
   }
+};
+
+export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
+  const safeTransferFromSelector = ethers.utils
+    .id('safeTransferFrom(address,address,uint256,uint256,bytes)')
+    .slice(0, 10);
+
+  if (tx?.input) {
+    return tx.input.startsWith(safeTransferFromSelector);
+  }
+
+  return false;
 };

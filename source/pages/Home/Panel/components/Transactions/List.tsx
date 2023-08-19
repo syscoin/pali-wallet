@@ -106,9 +106,11 @@ export const TransactionsList = ({
         case true:
           className = 'text-warning-error';
           status = 'Canceled';
+          break;
         case false:
           className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
           status = isConfirmed ? 'Confirmed' : 'Pending';
+          break;
       }
 
       return <p className={className}>{status}</p>;
