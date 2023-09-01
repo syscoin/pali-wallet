@@ -206,7 +206,7 @@ export const TransactionsList = ({
                   <Icon name="select" className="text-base" />
                 </IconButton>
 
-                {getTxOptions(isTxCanceled, isConfirmed, tx)}
+                {!isBitcoinBased && getTxOptions(isTxCanceled, isConfirmed, tx)}
               </div>
             </div>
           </li>
