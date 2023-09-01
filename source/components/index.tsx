@@ -10,6 +10,7 @@ export * from './Modal';
 export * from './PasswordForm';
 export * from './ToastAlert';
 export * from './Tooltip';
+export * from './TransactionOptions';
 export * from './Loading';
 export * from './FiatComponent';
 export * from './Fee';

@@ -23,13 +23,22 @@ export const Layout: FC<ILayout> = ({
 
   // const url = browser.runtime.getURL('app.html');
 
+  const isSwitchChainPage = title === 'SWITCH CHAIN';
+  const bgHeader = isSwitchChainPage ? 'bg-gradient' : 'bg-bkg-3';
+
   const isConnectPage = title === 'CONNECT ACCOUNT';
 
   return (
-    <div className="scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 overflow-y-scroll">
+    <div
+      className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 ${
+        isSwitchChainPage ? '' : 'overflow-y-scroll'
+      }`}
+    >
       {!titleOnly && canGoBack && <Header />}
 
-      <div className="relative flex items-center justify-center px-5 w-full h-20 text-brand-white bg-bkg-3">
+      <div
+        className={`relative flex items-center justify-center px-5 w-full h-20 text-brand-white ${bgHeader}`}
+      >
         {/* {!titleOnly && url && canGoBack && (
           <Tooltip content="Fullscreen mode">
             <IconButton onClick={() => window.open(url)}>

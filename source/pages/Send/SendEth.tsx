@@ -11,7 +11,7 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ITokenEthProps } from 'types/tokens';
+import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
@@ -45,6 +45,15 @@ export const SendEth = () => {
     }
   };
 
+  const tokenId = form.getFieldValue('amount');
+  const collectionItemSymbol = selectedAsset?.collection?.find(
+    (item) => item.tokenId === +tokenId
+  )?.tokenSymbol;
+
+  const finalSymbolToNextStep = selectedAsset?.is1155
+    ? collectionItemSymbol || selectedAsset?.collectionName
+    : selectedAsset?.tokenSymbol;
+
   const nextStep = ({ receiver, amount }: any) => {
     try {
       navigate('/send/confirm', {
@@ -56,7 +65,7 @@ export const SendEth = () => {
             token: selectedAsset
               ? {
                   ...selectedAsset,
-                  symbol: selectedAsset.tokenSymbol,
+                  symbol: finalSymbolToNextStep,
                 }
               : null,
           },
@@ -68,25 +77,54 @@ export const SendEth = () => {
     }
   };
 
-  return (
-    <Layout
-      title={`SEND ${
+  const finalBalance = () => {
+    if (selectedAsset?.is1155 === undefined) {
+      const balance = selectedAsset
+        ? getAssetBalance(selectedAsset, activeAccount, false)
+        : `${
+            activeAccount.balances.ethereum
+          } ${activeNetwork.currency?.toUpperCase()}`;
+      return balance;
+    }
+
+    return selectedAsset.collection.map(
+      (nft: IERC1155Collection, index: number, arr: IERC1155Collection[]) =>
+        `${nft.balance} ${nft.tokenSymbol} ${
+          index === arr.length - 1 ? '' : '- '
+        }`
+    );
+  };
+
+  const getLabel = () => {
+    if (selectedAsset?.is1155 === undefined) {
+      return selectedAsset?.tokenSymbol
+        ? selectedAsset?.tokenSymbol.toUpperCase()
+        : activeNetwork.currency.toUpperCase();
+    }
+
+    return selectedAsset?.collectionName.toUpperCase();
+  };
+
+  const getTitle = () => {
+    if (selectedAsset?.is1155 === undefined) {
+      return `SEND ${
         selectedAsset && selectedAsset.tokenSymbol
           ? selectedAsset.tokenSymbol
           : activeNetwork.currency?.toUpperCase()
-      }`}
-    >
+      }`;
+    }
+    return 'SEND NFT';
+  };
+
+  return (
+    <Layout title={getTitle()}>
       <div>
         <p className="flex flex-col items-center justify-center text-center font-rubik">
           <span className="text-brand-royalblue font-poppins font-thin">
             Balance
           </span>
 
-          {selectedAsset
-            ? getAssetBalance(selectedAsset, activeAccount, false)
-            : `${
-                activeAccount.balances.ethereum
-              } ${activeNetwork.currency?.toUpperCase()}`}
+          {finalBalance()}
         </p>
 
         <Form
@@ -150,14 +188,7 @@ export const SendEth = () => {
                         disabled={!hasAccountAssets}
                         className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
                       >
-                        {truncate(
-                          String(
-                            selectedAsset?.tokenSymbol
-                              ? selectedAsset?.tokenSymbol.toUpperCase()
-                              : activeNetwork.currency.toUpperCase()
-                          ),
-                          2
-                        )}
+                        {truncate(String(getLabel()), 2)}
 
                         <ChevronDoubleDownIcon
                           className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
@@ -204,7 +235,11 @@ export const SendEth = () => {
                                             }
                                             className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                           >
-                                            <p>{item.tokenSymbol}</p>
+                                            <p>
+                                              {item.isNft && item?.is1155
+                                                ? item.collectionName
+                                                : item.tokenSymbol}
+                                            </p>
                                             <small>
                                               {item.isNft ? 'NFT' : 'Token'}
                                             </small>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Pali Wallet",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -66,7 +66,6 @@
     }
   ],
   "web_accessible_resources": [
-    "app.html",
     "js/inpage.bundle.js",
     "js/handleWindowProperties.bundle.js",
     "js/pali.bundle.js"
@@ -79,3 +78,4 @@
     }
   }
 }
+

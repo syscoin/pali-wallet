@@ -1,14 +1,13 @@
-import { RightOutlined } from '@ant-design/icons';
 import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-  LoadingComponent,
-} from 'components/index';
+import arrowRight from 'assets/images/arrowRight.svg';
+import ethChainImg from 'assets/images/ethChain.svg';
+import rolluxChainImg from 'assets/images/rolluxChain.png';
+import sysChainImg from 'assets/images/sysChain.svg';
+import { SecondButton } from 'components/Button/Button';
+import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -39,41 +38,96 @@ const SwitchChain: React.FC = () => {
     dispatchBackgroundEvent(`${type}.${host}`, null);
     window.close();
   };
+
+  const CurrentChains = () => {
+    let fromChain: React.ReactNode;
+    let toChain: React.ReactNode;
+    switch (activeNetwork.chainId) {
+      case 1:
+        fromChain = <img src={ethChainImg} alt="eth" width="100px" />;
+        break;
+      case 57:
+        fromChain = <img src={sysChainImg} alt="sys" width="100px" />;
+        break;
+      case 570:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      default:
+        fromChain = (
+          <div
+            className="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
+            style={{ width: '100px', height: '100px' }}
+          >
+            {activeNetwork.label}
+          </div>
+        );
+    }
+
+    switch (network.chainId) {
+      case 1:
+        toChain = <img src={ethChainImg} alt="eth" width="100px" />;
+        break;
+      case 57:
+        toChain = <img src={sysChainImg} alt="sys" width="100px" />;
+        break;
+      case 570:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      default:
+        toChain = (
+          <div
+            className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+            style={{ width: '100px', height: '100px' }}
+          >
+            {network.label}
+          </div>
+        );
+    }
+
+    return (
+      <div className="w-4/5 gap-4 flex items-center align-center flex-row">
+        {fromChain} <img src={arrowRight} alt="arrow" width="50px" /> {toChain}
+      </div>
+    );
+  };
   return (
-    <Layout canGoBack={false} title={'Switch Chain'}>
+    <Layout canGoBack={false} title={'SWITCH CHAIN'}>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="relative top-20 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-            <h2 className="text-center text-lg">
+          <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
+            <h2 className="text-center text-base">
               Allow {host} to switch the network ?
             </h2>
-            <div className="mt-1 px-4 w-full text-center text-xs">
-              <span>
+            <div className="mt-1 px-4 w-full text-center text-sm">
+              <span className="disabled">
                 This will switch the selected network within Pali to a
                 previously added network
               </span>
             </div>
-            <div className="flex flex-col pb-4 pt-4 w-full text-center">
-              <span className="text-sm">
-                {activeNetwork.label}{' '}
-                <RightOutlined className="relative bottom-0.5 text-xl" />{' '}
-                {network.label}
-              </span>
+            <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
+              <CurrentChains />
             </div>
           </div>
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
-            <SecondaryButton type="button" onClick={window.close}>
-              Cancel
-            </SecondaryButton>
+          <div className="absolute bottom-14 flex items-center justify-between px-10 w-full md:max-w-2xl">
+            <SecondButton type="button" onClick={window.close} action={true}>
+              Reject
+            </SecondButton>
 
             <PrimaryButton
               type="submit"
               disabled={confirmed}
               loading={loading}
               onClick={onSubmit}
+              action={true}
             >
-              Switch Network
+              Confirm
             </PrimaryButton>
           </div>
         </div>

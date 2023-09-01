@@ -1,13 +1,23 @@
 export interface ITokenEthProps {
   balance: number;
   chainId?: number;
+  collection?: IERC1155Collection[];
+  collectionName?: string;
   contractAddress: string;
   decimals: string | number;
   editedSymbolToUse?: string;
   id?: string;
+  is1155?: boolean;
   isNft: boolean;
   logo?: string;
   name?: string;
+  tokenId?: number | string;
+  tokenSymbol: string;
+}
+
+export interface IERC1155Collection {
+  balance: number;
+  tokenId: number;
   tokenSymbol: string;
 }
 

@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -14,7 +15,11 @@ import store from 'state/store';
 import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
-import { ISysTransaction, IEvmTransactionResponse } from './types';
+import {
+  ISysTransaction,
+  IEvmTransactionResponse,
+  TransactionValueType,
+} from './types';
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -201,4 +206,22 @@ export const validateAndManageUserTransactions = (
   }
 
   return userTx;
+};
+
+export const convertTransactionValueToCompare = (
+  value: TransactionValueType
+): number => {
+  if (typeof value === 'string') {
+    if (value.startsWith('0x')) {
+      return new BigNumber(value).toNumber();
+    } else {
+      return parseFloat(value);
+    }
+  } else if (typeof value === 'number') {
+    return value;
+  } else if ('isBigNumber' in value) {
+    return new BigNumber(value._hex).toNumber();
+  } else if ('type' in value && 'hex' in value) {
+    return new BigNumber(value.hex).toNumber();
+  }
 };

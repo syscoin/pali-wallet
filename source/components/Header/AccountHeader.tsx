@@ -82,7 +82,7 @@ const RenderAccountsListByBitcoinBased = (
                 className={`py-1.5 px-5 w-full  backface-visibility-hidden flex items-center justify-start text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
-                      ? 'cursor-not-allowed disabled'
+                      ? 'hidden'
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}
@@ -139,7 +139,7 @@ const RenderAccountsListByBitcoinBased = (
                   font-medium active:bg-opacity-40 focus:outline-none ${
                     account.isTrezorWallet &&
                     account?.originNetwork?.isBitcoinBased
-                      ? 'cursor-not-allowed disabled'
+                      ? 'hidden'
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}

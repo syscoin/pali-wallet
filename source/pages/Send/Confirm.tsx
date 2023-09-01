@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { getContractType } from '@pollum-io/sysweb3-utils';
 
 import {
   Layout,
@@ -386,49 +387,128 @@ export const SendConfirm = () => {
               }
               break;
 
-            //HANDLE ERC721 NFTS TRANSACTIONS
+            //HANDLE ERC721/ERC1155 NFTS TRANSACTIONS
             case true:
-              try {
-                wallet.ethereumTransaction
-                  .sendSignedErc721Transaction({
-                    networkUrl: activeNetwork.url,
-                    receiver: txObjectState.to,
-                    tokenAddress: basicTxValues.token.contractAddress,
-                    tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
-                    isLegacy: !isEIP1559Compatible,
-                    gasPrice: ethers.utils.hexlify(gasPrice),
-                    gasLimit: wallet.ethereumTransaction.toBigNumber(
-                      validateCustomGasLimit
-                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                        : fee.gasLimit * 4
-                    ),
-                  })
-                  .then(async (response) => {
-                    setConfirmed(true);
-                    setLoading(false);
-                    setConfirmedTx(response);
+              const { type } = await getContractType(
+                basicTxValues.token.contractAddress,
+                wallet.ethereumTransaction.web3Provider
+              );
+              switch (type) {
+                case 'ERC-721':
+                  try {
+                    wallet.ethereumTransaction
+                      .sendSignedErc721Transaction({
+                        networkUrl: activeNetwork.url,
+                        receiver: txObjectState.to,
+                        tokenAddress: basicTxValues.token.contractAddress,
+                        tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                        isLegacy: !isEIP1559Compatible,
+                        gasPrice: ethers.utils.hexlify(gasPrice),
+                        gasLimit: wallet.ethereumTransaction.toBigNumber(
+                          validateCustomGasLimit
+                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                            : fee.gasLimit * 4
+                        ),
+                      })
+                      .then(async (response) => {
+                        setConfirmed(true);
+                        setLoading(false);
+                        setConfirmedTx(response);
 
-                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                    setTimeout(() => {
-                      callGetLatestUpdateForAccount();
-                    }, 3500);
-                  })
-                  .catch((error) => {
-                    logError('error send ERC721', 'Transaction', error);
+                        //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                        setTimeout(() => {
+                          callGetLatestUpdateForAccount();
+                        }, 3500);
+                      })
+                      .catch((error) => {
+                        logError('error send ERC721', 'Transaction', error);
+
+                        alert.removeAll();
+                        alert.error(
+                          "Can't complete transaction. Try again later."
+                        );
+                        setLoading(false);
+                      });
+
+                    return;
+                  } catch (_erc721Error) {
+                    logError('error send ERC721', 'Transaction', _erc721Error);
 
                     alert.removeAll();
                     alert.error("Can't complete transaction. Try again later.");
+
                     setLoading(false);
-                  });
+                  }
+                case 'ERC-1155':
+                  try {
+                    wallet.ethereumTransaction
+                      .sendSignedErc1155Transaction({
+                        networkUrl: activeNetwork.url,
+                        receiver: txObjectState.to,
+                        tokenAddress: basicTxValues.token.contractAddress,
+                        tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                        isLegacy: !isEIP1559Compatible,
+                        maxPriorityFeePerGas: ethers.utils.parseUnits(
+                          String(
+                            Boolean(
+                              customFee.isCustom &&
+                                customFee.maxPriorityFeePerGas > 0
+                            )
+                              ? customFee.maxPriorityFeePerGas.toFixed(9)
+                              : fee.maxPriorityFeePerGas.toFixed(9)
+                          ),
+                          9
+                        ),
+                        maxFeePerGas: ethers.utils.parseUnits(
+                          String(
+                            Boolean(
+                              customFee.isCustom && customFee.maxFeePerGas > 0
+                            )
+                              ? customFee.maxFeePerGas.toFixed(9)
+                              : fee.maxFeePerGas.toFixed(9)
+                          ),
+                          9
+                        ),
+                        gasPrice: ethers.utils.hexlify(gasPrice),
+                        gasLimit: wallet.ethereumTransaction.toBigNumber(
+                          validateCustomGasLimit
+                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                            : fee.gasLimit * 4
+                        ),
+                      })
+                      .then(async (response) => {
+                        setConfirmed(true);
+                        setLoading(false);
+                        setConfirmedTx(response);
 
-                return;
-              } catch (_erc721Error) {
-                logError('error send ERC721', 'Transaction', _erc721Error);
+                        //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                        setTimeout(() => {
+                          callGetLatestUpdateForAccount();
+                        }, 3500);
+                      })
+                      .catch((error) => {
+                        logError('error send ERC1155', 'Transaction', error);
 
-                alert.removeAll();
-                alert.error("Can't complete transaction. Try again later.");
+                        alert.removeAll();
+                        alert.error(
+                          "Can't complete transaction. Try again later."
+                        );
+                        setLoading(false);
+                      });
 
-                setLoading(false);
+                    return;
+                  } catch (_erc1155Error) {
+                    logError(
+                      'error send ERC1155',
+                      'Transaction',
+                      _erc1155Error
+                    );
+
+                    alert.removeAll();
+                    alert.error("Can't complete transaction. Try again later.");
+
+                    setLoading(false);
+                  }
               }
 
               break;

@@ -1,6 +1,5 @@
-import { Form } from 'antd';
+import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import TextArea from 'antd/lib/input/TextArea';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -63,7 +62,7 @@ const ImportPhrase: React.FC = () => {
             }),
           ]}
         >
-          <TextArea
+          <Input
             className={`${
               !seedIsValid && form.getFieldValue('phrase')
                 ? 'border-warning-error'
