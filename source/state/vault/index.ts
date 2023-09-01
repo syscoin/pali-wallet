@@ -534,7 +534,7 @@ const VaultState = createSlice({
         transactions: Array<IEvmTransaction | ISysTransaction>;
       }>
     ) {
-      const { activeAccount } = state;
+      const { activeAccount, isBitcoinBased } = state;
       const { networkType, chainId, transactions } = action.payload;
       const currentAccount =
         state.accounts[activeAccount.type][activeAccount.id];
@@ -546,7 +546,7 @@ const VaultState = createSlice({
       const clonedUserTxs =
         cloneDeep(currentAccount.transactions[networkType][chainId]) || [];
 
-      const transactionsToVerify = [...clonedUserTxs, ...transactions];
+      const transactionsToVerify = [...transactions, ...clonedUserTxs];
 
       transactionsToVerify.forEach(
         (tx: IEvmTransactionResponse | ISysTransaction) => {
@@ -564,20 +564,23 @@ const VaultState = createSlice({
 
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
+        let chainTransactions = treatedTxs;
         // Cast the array to the correct type based on the networkType and value bigger than 0
-        const chainTransactions = treatedTxs.filter((tx) => {
-          if (
-            convertTransactionValueToCompare(
-              tx.value as TransactionValueType
-            ) === 0 &&
-            !isERC1155Transfer(tx as IEvmTransactionResponse)
-          ) {
-            return false;
-          }
-          return networkType === TransactionsType.Ethereum
-            ? (tx as IEvmTransaction)
-            : (tx as ISysTransaction);
-        });
+        if (!isBitcoinBased) {
+          chainTransactions = treatedTxs.filter((tx) => {
+            if (
+              convertTransactionValueToCompare(
+                tx.value as TransactionValueType
+              ) === 0 &&
+              !isERC1155Transfer(tx as IEvmTransactionResponse)
+            ) {
+              return false;
+            }
+            return networkType === TransactionsType.Ethereum
+              ? (tx as IEvmTransaction)
+              : (tx as ISysTransaction);
+          });
+        }
 
         currentAccount.transactions[networkType] = {
           [chainId]:
@@ -588,40 +591,46 @@ const VaultState = createSlice({
       } else {
         // Check if the chainId exists in the current networkType's transactions
         if (!currentAccount.transactions[networkType][chainId]) {
+          let chainTransactions = treatedTxs;
           // Create a new array with the correct type based on the networkType and value bigger than 0
-          const chainTransactions = treatedTxs.filter((tx) => {
-            if (
-              convertTransactionValueToCompare(
-                tx.value as TransactionValueType
-              ) === 0 &&
-              !isERC1155Transfer(tx as IEvmTransactionResponse)
-            ) {
-              return false;
-            }
-            return networkType === TransactionsType.Ethereum
-              ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction);
-          });
+          if (!isBitcoinBased) {
+            chainTransactions = treatedTxs.filter((tx) => {
+              if (
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0 &&
+                !isERC1155Transfer(tx as IEvmTransactionResponse)
+              ) {
+                return false;
+              }
+              return networkType === TransactionsType.Ethereum
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction);
+            });
+          }
 
           currentAccount.transactions[networkType][chainId] =
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
               : ISysTransaction)[];
         } else {
+          let castedTransactions = treatedTxs;
           // Filter and push the transactions based on the networkType and value bigger than 0
-          const castedTransactions = treatedTxs.filter((tx) => {
-            if (
-              convertTransactionValueToCompare(
-                tx.value as TransactionValueType
-              ) === 0 &&
-              !isERC1155Transfer(tx as IEvmTransactionResponse)
-            ) {
-              return false;
-            }
-            return networkType === TransactionsType.Ethereum
-              ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction);
-          });
+          if (!isBitcoinBased) {
+            castedTransactions = treatedTxs.filter((tx) => {
+              if (
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0 &&
+                !isERC1155Transfer(tx as IEvmTransactionResponse)
+              ) {
+                return false;
+              }
+              return networkType === TransactionsType.Ethereum
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction);
+            });
+          }
 
           currentAccount.transactions[networkType][chainId] =
             //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import arrowRight from 'assets/images/arrowRight.svg';
 import ethChainImg from 'assets/images/ethChain.svg';
+import rolluxChainImg from 'assets/images/rolluxChain.png';
 import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
@@ -48,6 +49,12 @@ const SwitchChain: React.FC = () => {
       case 57:
         fromChain = <img src={sysChainImg} alt="sys" width="100px" />;
         break;
+      case 570:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
       default:
         fromChain = (
           <div
@@ -65,6 +72,12 @@ const SwitchChain: React.FC = () => {
         break;
       case 57:
         toChain = <img src={sysChainImg} alt="sys" width="100px" />;
+        break;
+      case 570:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
         break;
       default:
         toChain = (
