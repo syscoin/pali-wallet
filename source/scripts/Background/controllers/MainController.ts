@@ -47,6 +47,8 @@ import {
   setMultipleTransactionToState,
   setSingleTransactionToState,
   setLanguage,
+  setTransactionStatusToCanceled,
+  setTransactionStatusToAccelerated,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -975,6 +977,44 @@ const MainController = (walletState): IMainController => {
   };
   //---- END SYS METHODS ----//
 
+  //---- EVM METHODS ----//
+  const setEvmTransactionAsCanceled = (txHash: string, chainID: number) => {
+    store.dispatch(
+      setTransactionStatusToCanceled({
+        txHash,
+        chainID,
+      })
+    );
+  };
+
+  const setEvmTransactionAsAccelerated = (
+    oldTxHash: string,
+    chainID: number,
+    newTxValue: IEvmTransactionResponse
+  ) => {
+    store.dispatch(
+      setTransactionStatusToAccelerated({
+        oldTxHash,
+        chainID,
+      })
+    );
+
+    const transactionWithTimestamp = {
+      ...newTxValue,
+      timestamp: Date.now(),
+    };
+
+    store.dispatch(
+      setSingleTransactionToState({
+        chainId: chainID,
+        networkType: TransactionsType.Ethereum,
+        transaction: transactionWithTimestamp,
+      })
+    );
+  };
+
+  //---- END EVM METHODS ----//
+
   //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
   const callUpdateTxsMethodBasedByIsBitcoinBased = (
     isBitcoinBased: boolean,
@@ -1370,6 +1410,8 @@ const MainController = (walletState): IMainController => {
     assets: assetsManager,
     transactions: transactionsManager,
     sendAndSaveTransaction,
+    setEvmTransactionAsCanceled,
+    setEvmTransactionAsAccelerated,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
     updateUserNativeBalance,

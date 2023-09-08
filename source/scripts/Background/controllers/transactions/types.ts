@@ -80,8 +80,10 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
   confirmations: number;
   // Not optional (as it is in Transaction)
   from: string;
-
   hash: string;
+  input?: string;
+
+  isCanceled?: boolean;
 
   // The raw transaction
   raw?: string;
@@ -91,6 +93,12 @@ export interface IEvmTransactionResponse extends IEvmTransaction {
   // This function waits until the transaction has been mined
   wait: (confirmations?: number) => Promise<ITransactionReceipt>;
 }
+
+export type TransactionValueType =
+  | string
+  | number
+  | { _hex: string; isBigNumber: boolean }
+  | { hex: string; type: string };
 
 export interface IEvmTransactionsController {
   getUserTransactionByDefaultProvider: (

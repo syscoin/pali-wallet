@@ -104,6 +104,12 @@ export interface IMainController extends IKeyringManager {
   setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
   setAutolockTimer: (minutes: number) => void;
   setCurrentLanguage: (lang: PaliLanguages) => void;
+  setEvmTransactionAsAccelerated: (
+    oldTxHash: string,
+    chainID: number,
+    newTxValue: IEvmTransactionResponse
+  ) => void;
+  setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;

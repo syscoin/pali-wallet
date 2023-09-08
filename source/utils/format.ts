@@ -50,7 +50,7 @@ export const formatDate = (timestamp: string) => {
   return formatedDate;
 };
 
-export const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
+export const formatNumber = (num: number, min = 4, max = 4, maxSig = 4) =>
   num.toLocaleString(navigator.language, {
     minimumFractionDigits: min,
     maximumFractionDigits: max,
