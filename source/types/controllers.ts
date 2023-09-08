@@ -153,6 +153,18 @@ export interface IMainController extends IKeyringManager {
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) => void;
+  validatePendingEvmTransactions: ({
+    activeAccount,
+    activeNetwork,
+    pendingTransactions,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    pendingTransactions: IEvmTransactionResponse[];
+  }) => void;
 }
 
 export interface IEthTokenDetails {

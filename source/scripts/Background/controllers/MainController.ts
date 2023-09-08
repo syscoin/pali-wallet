@@ -71,6 +71,8 @@ import {
 } from './promises/cancellablesPromises';
 import TransactionsManager from './transactions';
 import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
+import { validateAndManageUserTransactions } from './transactions/utils';
+
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
@@ -1130,6 +1132,33 @@ const MainController = (walletState): IMainController => {
     cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
   };
 
+  const validatePendingEvmTransactions = async ({
+    activeNetwork,
+    activeAccount,
+    pendingTransactions,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    pendingTransactions: IEvmTransactionResponse[];
+  }) => {
+    //todo: we need to ajust validateAndManageUserTransactions to guarantee it will work with no bugs
+    // const { accounts } = store.getState().vault;
+    // const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    const confirmedTx =
+      await transactionsManager.utils.checkPendingTransactions(
+        pendingTransactions
+      );
+
+    if (!!confirmedTx.length) {
+      console.log('confirmedTx', confirmedTx);
+      validateAndManageUserTransactions(confirmedTx);
+    }
+  };
+
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
@@ -1415,6 +1444,7 @@ const MainController = (walletState): IMainController => {
     addWindowEthProperty,
     setHasEthProperty,
     importTrezorAccount,
+    validatePendingEvmTransactions,
     ...keyringManager,
   };
 };
