@@ -1,5 +1,6 @@
 import { LockFilled } from '@ant-design/icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
@@ -34,7 +35,7 @@ const Decrypt: React.FC<ISign> = () => {
   const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const { label, balances, address } = activeAccount;
   const { currency } = activeNetwork;
-
+  const { t } = useTranslation();
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
@@ -43,7 +44,7 @@ const Decrypt: React.FC<ISign> = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Message successfully copied');
+    alert.success(t('transactions.messageCopied'));
   }, [copied]);
 
   const onSubmit = async () => {
@@ -71,28 +72,31 @@ const Decrypt: React.FC<ISign> = () => {
   };
 
   return (
-    <Layout canGoBack={false} title={'Decrypt Request'}>
+    <Layout canGoBack={false} title={t('transactions.decryptRequest')}>
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
-        title="Signature request failed"
-        description="Sorry, we could not submit your request. Try again later."
+        title={t('transactions.signatureFailed')}
+        description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
         buttonText="Ok"
       />
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-row justify-between mb-16 w-full">
-            <p className="font-poppins text-sm">Account: {label}</p>
             <p className="font-poppins text-sm">
-              Balance: {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
+              {t('transactions.account')}: {label}
+            </p>
+            <p className="font-poppins text-sm">
+              {t('send.balance')}:{' '}
+              {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
               {currency.toUpperCase()}
             </p>
           </div>
           <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
             <div className="scrollbar-styled h-fit mt-1 px-4 w-full text-center text-xs overflow-auto">
               <span>
-                {host} would like to read this message to complete your action
+                {host} {t('transactions.wouldLikeTo')}
               </span>
             </div>
 
@@ -106,14 +110,16 @@ const Decrypt: React.FC<ISign> = () => {
                 <span className="w-full break-words opacity-20">{data[0]}</span>
                 <div className="align-center w-fit absolute right-36 top-72 flex flex-col justify-center text-center">
                   <LockFilled className="text-lg" />
-                  <span className="text-center">Decrypt message</span>
+                  <span className="text-center">
+                    {t('transactions.decryptMessage')}
+                  </span>
                 </div>
               </div>
             )}
 
             {decryptedMessage && (
               <div className="flex flex-col w-full">
-                <h1 className="text-lg">Message:</h1>
+                <h1 className="text-lg">{t('transactions.message')}:</h1>
                 <p className="scrollbar-styled font-poppins text-sm overflow-auto">
                   {decryptedMessage}{' '}
                   <IconButton onClick={() => copy(decryptedMessage ?? '')}>
@@ -129,7 +135,7 @@ const Decrypt: React.FC<ISign> = () => {
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -138,7 +144,7 @@ const Decrypt: React.FC<ISign> = () => {
               loading={loading}
               onClick={onSubmit}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

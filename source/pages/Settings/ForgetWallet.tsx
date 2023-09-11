@@ -1,6 +1,7 @@
 import { Form, Input } from 'antd';
 import TextArea from 'antd/lib/input/TextArea';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
@@ -10,7 +11,7 @@ import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
-
+  const { t } = useTranslation();
   const controller = getController();
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -40,13 +41,11 @@ const ForgetWalletView = () => {
   const [form] = Form.useForm();
 
   return (
-    <Layout title="FORGET WALLET">
+    <Layout title={t('menus.forget')}>
       <Card type="info">
         <p>
-          <b className="text-warning-info">WARNING:</b> This will forget the
-          wallet created with your current seed phrase. If in the future you
-          want to use Pali again, you will need to create a new wallet using
-          your seed or creating a new one.
+          <b className="text-warning-info">{t('settings.forgetWarning')}:</b>{' '}
+          {t('settings.thisWillForget')}
         </p>
       </Card>
 
@@ -87,7 +86,7 @@ const ForgetWalletView = () => {
           >
             <Input.Password
               className="input-small relative"
-              placeholder="Enter your password"
+              placeholder={t('settings.enterYourPassword')}
               id="forget_password"
             />
           </Form.Item>
@@ -95,8 +94,7 @@ const ForgetWalletView = () => {
           {hasAccountFunds && (
             <>
               <p className="max-w-xs text-left text-xs leading-4 md:max-w-md">
-                You still have funds in your wallet. Paste your seed phrase
-                below to forget wallet.
+                {t('settings.youStillHave')}
               </p>
 
               <Form.Item
@@ -142,7 +140,7 @@ const ForgetWalletView = () => {
 
           <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
             <PrimaryButton type="button" onClick={() => navigate('/home')}>
-              Cancel
+              {t('buttons.cancel')}
             </PrimaryButton>
 
             <SecondaryButton
@@ -150,7 +148,7 @@ const ForgetWalletView = () => {
               disabled={!isPasswordValid || !isSeedValid}
               id="forget-btn"
             >
-              Forget
+              {t('buttons.forget')}
             </SecondaryButton>
           </div>
         </Form>

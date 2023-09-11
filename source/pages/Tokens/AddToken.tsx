@@ -2,6 +2,7 @@ import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
 import React, { useEffect } from 'react';
 import { useState, FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -30,6 +31,7 @@ export const AddToken: FC = () => {
   const { isBitcoinBased, activeNetwork: network } = useSelector(
     (paliState: RootState) => paliState.vault
   );
+  const { t } = useTranslation();
 
   const verifyIfIsTestnet = async () => {
     const { chain, chainId } = await validateEthRpc(network.url, isInCooldown);
@@ -53,7 +55,9 @@ export const AddToken: FC = () => {
 
   const isEditToken = Boolean(state && state.contractAddress);
 
-  const validatedTitle = isEditToken ? 'EDIT TOKEN' : 'IMPORT TOKEN';
+  const validatedTitle = isEditToken
+    ? t('tokens.editToken')
+    : t('tokens.importToken');
 
   return (
     <Layout title={validatedTitle}>
@@ -84,14 +88,16 @@ export const AddToken: FC = () => {
                   ]}
                 >
                   <div className="flex gap-x-2 my-4 text-xs">
-                    <p className="text-brand-royalblue">Search</p>
+                    <p className="text-brand-royalblue">{t('tokens.search')}</p>
 
                     <Switch
                       checked={importCustom}
                       onChange={() => setImportCustom(!importCustom)}
                       className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
                     >
-                      <span className="sr-only">Search or custom token</span>
+                      <span className="sr-only">
+                        {t('tokens.searchOrCustomToken')}
+                      </span>
                       <span
                         className={`${
                           importCustom
@@ -101,7 +107,9 @@ export const AddToken: FC = () => {
                       />
                     </Switch>
 
-                    <p className="text-brand-deepPink100">Custom token</p>
+                    <p className="text-brand-deepPink100">
+                      {t('token.customToke')}
+                    </p>
                   </div>
                 </Form.Item>
               </Form>

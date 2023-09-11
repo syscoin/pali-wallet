@@ -29,7 +29,23 @@
 		"forget": "Olvidar",
 		"switchNetwork": "Cambiar Red",
 		"unlock": "Desbloquear",
-		"done": "Hecho"
+		"done": "Hecho",
+		"iveWrittenIt": "Lo he anotado",
+		"reject": "Rechazar",
+		"switch": "Cambiar"
+	},
+	"components": {
+		"newPassword": "Nueva contraseña (mín. 8 caracteres)",
+		"confirmPassword": "Confirme la contraseña",
+		"atLeast": "Al menos 8 caracteres, 1 letra minúscula y 1 número.",
+		"doNotForget": "No olvides guardar tu contraseña. Necesitarás esta contraseña para desbloquear tu billetera.",
+		"useRecommendedFee": "Utilice la tarifa recomendada. Deshabilitado para redes SYS porque la tarifa utilizada en las transacciones ya es la recomendada con las condiciones actuales de la red."
+	},
+	"tooltip": {
+		"editAsset": "Editar activo",
+		"assetDetails": "Detalles del activo",
+		"deleteAsset": "Eliminar activo",
+		"clickToOpen": "Haz clic para abrir la imagen NFT"
 	},
 	"header": {
 		"accounts": "CUENTAS",
@@ -48,8 +64,50 @@
 		"ifYouContinueWith": "Si continúas con la cuenta activa, Pali cambiará la cuenta conectada a",
 		"andYouWillNeed": "y deberás iniciar la transacción nuevamente.",
 		"changeActiveAccount": "Cambiar cuenta activa",
-		"itSeemsThatYou": "Parece que estás utilizando actualmente una cuenta basada en Trezor que fue creada específicamente para esta red. Si deseas utilizar una red diferente, puedes cambiar a otra cuenta activa seleccionando una cuenta preferida de Pali."
-		},
+		"itSeemsThatYou": "Parece que estás utilizando actualmente una cuenta basada en Trezor que fue creada específicamente para esta red. Si deseas utilizar una red diferente, puedes cambiar a otra cuenta activa seleccionando una cuenta preferida de Pali.",
+		"thereWasAnError": "Hubo un error al intentar cambiar de red. Inténtalo de nuevo más tarde.",
+		"errorSwitching": "Error al cambiar de redes",
+		"pleaseSelect": "Por favor, selecciona una cuenta.",
+		"speedUp": "Acelerar",
+		"cancelTx": "Cancelar Transacción",
+		"cancelTxMessage": "¿Estás seguro de que quieres cancelar esta transacción?",
+		"speedTx": "Acelerar Transacción",
+		"speedTxMessage": "¿Estás seguro de que quieres acelerar esta transacción?"
+	},
+	"generalMenu": {
+		"wallet": "BILLETERA",
+		"walletSeedPhrase": "Frase semilla de la billetera",
+		"forget": "Olvidar billetera",
+		"generalOptions": "OPCIONES GENERALES",
+		"languages": "Idiomas",
+		"currency": "Moneda",
+		"autolock": "Temporizador de bloqueo automático",
+		"manageEth": "Administrar proveedor ETH",
+		"infoHelp": "Info/Ayuda",
+		"lock": "Bloquear",
+		"advanced": "Avanzado"
+	},
+	"networkMenu": {
+		"viewConnected": "Ver sitios web conectados",
+		"noConnected": "No hay sitios web conectados",
+		"trustedSites": "Sitios de confianza",
+		"networks": "REDES",
+		"utxoNetworks": "Redes UTXO",
+		"evmNetworks": "Redes EVM",
+		"networkSettings": "CONFIGURACIÓN DE RED",
+		"customRpc": "RPC personalizado",
+		"manageNetworks": "Administrar redes"
+	},
+	"accountMenu": {
+		"accounts": "CUENTAS",
+		"accountsSettings": "CONFIGURACIÓN DE CUENTAS",
+		"createNewAccount": "Crear nueva cuenta",
+		"manageAccounts": "Administrar cuentas",
+		"yourKeys": "Tus claves",
+		"connectTrezor": "Conectar Trezor",
+		"importAccount": "Importar cuenta",
+		"importAccMessage": "¡Pali es la única billetera de extensión con UTXO! Para importar cualquier billetera, necesitas cambiar a una red EVM."
+	},
 	"menus": {
 		"wallet": "BILLETERA",
 		"walletSeedPhrase": "Frase semilla de la billetera",
@@ -92,8 +150,14 @@
 		"hashCopied": "Hash copiado",
 		"contractCopied": "Contrato copiado"
 	},
+	"titles": {
+		"assetDetails": "DETALLES DEL ACTIVO",
+		"transactionDetails": "DETALLES DE LA TRANSACCIÓN",
+		"importWallet": "Importar billetera"
+	},
 	"import": {
-		"importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla."
+		"importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla.",
+		"pasteYourWalletSeed": "Pega tu frase semilla de billetera"
 	},
 	"receive": {
 		"receiveTitle": "RECIBIR"
@@ -104,8 +168,23 @@
 		"yourWalletIsReady": "TU BILLETERA ESTÁ LISTA",
 		"youShould": "Debes tener tu frase de recuperación y la contraseña de tu billetera escritas para futuras ocasiones."
 	},
+	"createPhrase": {
+		"recoveryPhrase": "Frase de Recuperación",
+		"whatIsRecoveryPhrase": "Una frase de recuperación es una serie de 12 palabras en un orden específico. Esta combinación de palabras es única para tu billetera. Asegúrate de tener un bolígrafo y papel a mano para anotarla."
+	},
 	"send": {
 		"approve": "Aprobar",
+		"assetGuid": "Guid del activo",
+		"canceled": "Cancelado",
+		"pending": "Pendiente",
+		"confirmed": "Confirmado",
+		"yes": "Si",
+		"no": "No",
+		"viewThis": "Ver este",
+		"asset": "activo",
+		"transaction": "transacción",
+		"explorer": "Explorador?",
+		"on": "en",
 		"cantCompleteApprove": "No se puede completar la aprobación. Inténtalo de nuevo más tarde.",
 		"approveSuccessful": "Aprobación exitosa",
 		"approveSuccessfulMessage": "Tu aprobación se ha enviado con éxito. Puedes ver más detalles en la sección de actividad de tu página de inicio.",
@@ -122,6 +201,11 @@
 		"approvedAmount": "Cantidad Aprobada",
 		"grantedTo": "Concedido a",
 		"data": "Datos",
+		"hex": "Hex",
+		"confirm": "CONFIRMAR",
+		"insufficientFunds": "Fondos insuficientes",
+		"noCustomTokenTrezor": "No se puede enviar un token personalizado con la cuenta Trezor.",
+		"reduceFee": "Por favor, reduce las tarifas para enviar la transacción.",
 		"method": "Método",
 		"cantCompleteTxs": "No se pueden completar las transacciones. Inténtalo de nuevo más tarde.",
 		"feeError": "Error en el proceso para obtener valores de tarifa. Por favor, verifica tu saldo e inténtalo de nuevo más tarde.",
@@ -164,11 +248,18 @@
 		"hexDataCopiado": "Datos HEX copiados exitosamente!",
 		"hexData": "Datos HEX",
 		"copyTxHexData": "Copiar datos HEX de la transacción",
-		"details": "Detalles"
+		"details": "Detalles",
+		"tx": "Transacción"
 	},
 	"settings": {
+		"linkCopied": "Enlace copiado con éxito",
 		"version": "Versión",
 		"userSupport": "Soporte al Usuario",
+		"autolockTitle": "TEMPORIZADOR DE BLOQUEO AUTOMÁTICO",
+		"english": "Inglés",
+		"portuguese": "Portugués",
+		"spanish": "Español",
+		"accountImported": "Cuenta importada con éxito.",
 		"clickHereSupport": "Haz clic aquí para ser redirigido a Syscoin Discord, por favor, contacta al equipo de soporte en #pali_support.",
 		"toAccess": "Para acceder al enlace de soporte, necesitas dar permiso o copiar y pegar el enlace de abajo.",
 		"refreshButtonWarning": "El botón de actualización envía múltiples solicitudes a la cadena de bloques a través de una RPC. Si lo activas, asegúrate de agregar tus propios proveedores de RPC pagados para evitar alcanzar el límite de solicitudes públicas de RPC. Úsalo bajo tu propia responsabilidad.",
@@ -187,6 +278,8 @@
 		"editConnection": "Editar conexión",
 		"deleteConnected": "Eliminar sitio conectado",
 		"permissions": "Permisos",
+		"explorer": "Explorador",
+		"addNewChain": "Agregar Nueva Cadena",
 		"viewTheAddresses": "Ver las direcciones de tus cuentas permitidas",
 		"errorCreatingHardWallet": "Error al crear monedero hardware.",
 		"hardwareWallet": "MONEDERO HARDWARE",
@@ -284,6 +377,8 @@
 		"trustedWebsites": "SITIOS WEB DE CONFIANZA"
 	},
 	"start": {
+		"paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",
+		"ifYouPlan": "Si planeas importar una nueva Frase Secreta de Recuperación, asegúrate de haber anotado la actual para evitar perder los fondos asociados. Recuerda, los tokens personalizados y las cuentas importadas necesitarán ser re-añadidos después del reinicio. Este proceso es irreversible, así que procede con precaución.",
 		"getStarted": "Empezar",
 		"importUsing": "Importar usando la frase de recuperación del monedero",
 		"wrongPassword": "Contraseña incorrecta",
@@ -320,7 +415,9 @@
 		"thisTokenContract": "Este contrato de token ya está agregado en su lista de tokens. ¡Intente nuevamente usando otra dirección de token!",
 		"searchBySymbol": "Buscar por símbolo",
 		"notAvailableInCurrentNetwork": "Este token probablemente no está disponible en la red actual. Verifique la red del token e inténtelo de nuevo.",
-		"tokenNetworkProbably": "La red del token probablemente es diferente de la red actual."
+		"tokenNetworkProbably": "La red del token probablemente es diferente de la red actual.",
+		"couldNotAddTokenToYour": "No se pudo agregar el token a tu billetera. Verifica la red y la guía del activo e inténtalo de nuevo más tarde.",
+		"tokenNotFoundIn": "Token no encontrado en tu XPUB o el token ya está importado."
 	},
 	"transactions": {
 		"messageCopied": "Mensaje copiado con éxito",

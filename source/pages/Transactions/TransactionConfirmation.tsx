@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
@@ -70,6 +71,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const [data, setData] = useState<ITxData[]>([]);
@@ -103,7 +105,9 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     setLoading(true);
 
     if (activeAccount.balances.syscoin <= 0) {
-      const message = `You don't have enough funds to process this transaction. Your actual balance is: ${activeAccount.balances.syscoin}`;
+      const message = `${t('transactions.youDontHave')} ${
+        activeAccount.balances.syscoin
+      }`;
 
       setLoading(false);
       setErrorMsg(message);
@@ -131,20 +135,22 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
-        title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
-        description="Sorry, we could not submit your request. Try again later."
-        log={errorMsg || 'No description provided'}
+        title={`${capitalizeFirstLetter(title.toLowerCase())} ${t(
+          'transactions.requestFailed'
+        )}`}
+        description={t('transactions.sorryWeCould')}
+        log={errorMsg || t('transactions.noDescriptionProvided')}
         buttonText="Ok"
       />
 
       <DefaultModal
         show={submitted}
         onClose={window.close}
-        title={`${capitalizeFirstLetter(
-          title.toLowerCase()
-        )} request successfully submitted`}
-        description="You can check your request under activity on your home screen."
-        buttonText="Got it"
+        title={`${capitalizeFirstLetter(title.toLowerCase())} ${t(
+          'transactions.signatureRequestWasRequest'
+        )}`}
+        description={t('transactions.youCanCheckYour')}
+        buttonText={t('settings.gotIt')}
       />
 
       <div className="flex flex-col items-center justify-center w-full">
@@ -184,7 +190,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
         <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
           <SecondaryButton type="button" onClick={window.close}>
-            Cancel
+            {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
@@ -193,7 +199,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
             loading={loading}
             onClick={onSubmit}
           >
-            Confirm
+            {t('buttons.confirm')}
           </PrimaryButton>
         </div>
       </div>

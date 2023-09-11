@@ -1,9 +1,11 @@
 import { Form, Radio } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { setLanguageInLocalstorage } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { i18next } from 'utils/i18n';
@@ -16,6 +18,7 @@ const Languages = () => {
   const [currentLang, setCurrentLang] = useState<PaliLanguages>(
     PaliLanguages.EN
   );
+  const { t } = useTranslation();
 
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -24,7 +27,7 @@ const Languages = () => {
 
   const onSubmit = () => {
     setLoading(true);
-
+    setLanguageInLocalstorage(currentLang);
     controller.wallet.setCurrentLanguage(currentLang);
 
     i18next.changeLanguage(currentLang);
@@ -33,15 +36,15 @@ const Languages = () => {
   };
 
   return (
-    <Layout title="LANGUAGES" id="auto-lock-timer-title">
+    <Layout title={t('settings.languages')} id="auto-lock-timer-title">
       <DefaultModal
         show={confirmed}
         onClose={() => {
           setConfirmed(false);
           navigate('/home');
         }}
-        title="Language was set successfully"
-        description="Your wallet was configured successfully. You can change it at any time."
+        title={t('settings.languageWasSet')}
+        description={t('settings.yourWalletWasConfigured')}
       />
 
       <Form
@@ -74,21 +77,14 @@ const Languages = () => {
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
                   <label htmlFor="en" className="ml-2 text-sm font-light">
-                    English
+                    {t('settings.english')}
                   </label>
 
                   <Radio value={PaliLanguages.EN} name="en" id="en" />
                 </div>
                 <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
-                  <label htmlFor="pt-br" className="ml-2 text-sm font-light">
-                    Portuguese
-                  </label>
-
-                  <Radio value={PaliLanguages.PT} name="pt-br" id="pt-br" />
-                </div>
-                <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
                   <label htmlFor="es" className="ml-2 text-sm font-light ">
-                    Spanish
+                    {t('settings.spanish')}
                   </label>
 
                   <Radio value={PaliLanguages.ES} name="es" id="es" />
@@ -100,7 +96,7 @@ const Languages = () => {
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

@@ -5,7 +5,9 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
+import { i18next } from 'utils/i18n';
 import { log } from 'utils/logger';
+import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
 /* eslint-disable @typescript-eslint/ban-ts-comment */
@@ -52,8 +54,10 @@ const restartLockTimeout = () => {
 
 const handleIsOpen = (isOpen: boolean) =>
   window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
+
 const handleLogout = () => {
-  const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+  const { isTimerEnabled, language } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+  i18next.changeLanguage(language);
   if (isTimerEnabled) {
     window.controller.wallet.lock();
 
@@ -314,6 +318,10 @@ export const resetPaliRequestsCount = () => {
     type: 'resetPaliRequestsCount',
     target: 'background',
   });
+};
+
+export const setLanguageInLocalstorage = (langague: PaliLanguages) => {
+  window.localStorage.setItem('language', langague);
 };
 
 wrapStore(store, { portName: STORE_PORT });

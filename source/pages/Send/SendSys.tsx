@@ -4,6 +4,7 @@ import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 //todo: update with the new function
@@ -20,7 +21,7 @@ import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-
+  const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -125,7 +126,7 @@ export const SendSys = () => {
       });
     } catch (error) {
       alert.removeAll();
-      alert.error('An internal error has occurred.');
+      alert.error(t('send.internalError'));
     }
   };
 
@@ -144,11 +145,13 @@ export const SendSys = () => {
   }, [selectedAsset, recommendedFee]);
 
   return (
-    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
+    <Layout
+      title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}
+    >
       <div>
         <p className="flex flex-col items-center justify-center text-center font-rubik">
           <span className="text-brand-royalblue font-poppins font-thin">
-            Balance
+            {t('send.balance')}
           </span>
 
           {selectedAsset
@@ -200,7 +203,7 @@ export const SendSys = () => {
           >
             <Input
               type="text"
-              placeholder="Receiver"
+              placeholder={t('send.receiver')}
               className="sender-input"
             />
           </Form.Item>
@@ -255,7 +258,7 @@ export const SendSys = () => {
                               className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                             >
                               <p>SYS</p>
-                              <small>Native</small>
+                              <small>{t('send.native')}</small>
                             </button>
                           </Menu.Item>
 
@@ -317,7 +320,7 @@ export const SendSys = () => {
                   content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
-                    Verify address
+                    {t('send.verifyAddress')}
                   </p>
                 </Tooltip>
 
@@ -326,7 +329,7 @@ export const SendSys = () => {
                   onChange={verifyOnChange}
                   className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
                 >
-                  <span className="sr-only">Verify address</span>
+                  <span className="sr-only">{t('send.verifyAddress')}</span>
                   <span
                     className={`${
                       verifyAddress
@@ -398,7 +401,7 @@ export const SendSys = () => {
               <Input
                 className="mixed-right-border-input"
                 type="number"
-                placeholder="Amount"
+                placeholder={t('send.amount')}
               />
             </Form.Item>
             <span
@@ -425,7 +428,7 @@ export const SendSys = () => {
           </p>
 
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">Next</NeutralButton>
+            <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
           </div>
         </Form>
       </div>

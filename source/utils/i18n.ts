@@ -9,7 +9,10 @@ const LOCALE_VERSION = '1.5.1';
 
 const determineLngFn = (code: string): string => {
   let { language } = i18next;
-
+  const storageLanguage = localStorage.getItem('language');
+  if (storageLanguage) {
+    return storageLanguage;
+  }
   if (!code || code.length === 0) {
     language = defaultLocale;
 
@@ -43,14 +46,12 @@ i18next
       loadPath: `../assets/locales/{{lng}}.json`,
       queryStringParams: { v: LOCALE_VERSION },
     },
-
     react: {
       useSuspense: true,
     },
     load: 'languageOnly',
     lowerCaseLng: true,
     fallbackLng: determineLngFn,
-    preload: [defaultLocale],
     keySeparator: '.',
     interpolation: { escapeValue: false },
   });

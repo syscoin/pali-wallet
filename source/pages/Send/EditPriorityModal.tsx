@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Modal, NeutralButton } from 'components/index';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
@@ -28,7 +29,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     isSendLegacyTransaction,
   } = props;
   const [priority, setPriority] = useState<number>(1);
-
+  const { t } = useTranslation();
   const [form] = Form.useForm();
   const maxFeePerGas = fee?.maxFeePerGas;
   const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
@@ -204,7 +205,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
       <div className="inline-block align-middle p-6 w-full max-w-2xl text-brand-white font-poppins bg-bkg-2 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-poppins text-xs">
-            <span className="font-rubik text-base">Edit fee</span>
+            <span className="font-rubik text-base">{t('send.editFee')}</span>
           </p>
 
           <PriorityBar
@@ -223,7 +224,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
             form={form}
           >
             <div className="flex flex-col items-start justify-center">
-              <span className="mb-1 ml-2.5 font-bold">Gas limit</span>
+              <span className="mb-1 ml-2.5 font-bold">
+                {t('send.gasLimit')}
+              </span>
               <Form.Item
                 name="gasLimit"
                 className="text-left"
@@ -231,7 +234,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                 rules={[
                   {
                     required: false,
-                    message: 'Gas limit need to be greater than 1000',
+                    message: t('send.gasLimitMessage'),
                   },
                   () => ({
                     validator(_, value) {
@@ -247,7 +250,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
               >
                 <Input
                   type="number"
-                  placeholder="Gas limit"
+                  placeholder={t('send.gasLimit')}
                   className="input-extra-small relative"
                   onChange={(e) =>
                     setCustomFee((prevState) => ({
@@ -264,7 +267,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
               <>
                 <div className="flex flex-col items-start justify-center">
                   <span className="mb-1 ml-2.5 font-bold">
-                    Max Priority (GWEI)
+                    {t('send.maxPriority')} (GWEI)
                   </span>
                   <Form.Item
                     name="maxPriorityFeePerGas"
@@ -288,7 +291,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   >
                     <Input
                       type="number"
-                      placeholder="Max priority fee (GWEI)"
+                      placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                       className="input-extra-small relative"
                       onChange={(e) =>
                         setCustomFee((prevState) => ({
@@ -302,7 +305,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                 </div>
 
                 <div className="flex flex-col items-start justify-center">
-                  <span className="mb-1 ml-2.5 font-bold">Max Fee (GWEI)</span>
+                  <span className="mb-1 ml-2.5 font-bold">
+                    {t('send.maxFee')} (GWEI)
+                  </span>
                   <Form.Item
                     name="maxFeePerGas"
                     className="text-left"
@@ -326,7 +331,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     {/* // base fee + priority fee */}
                     <Input
                       type="number"
-                      placeholder="Max fee (GWEI)"
+                      placeholder={`${t('send.maxFee')} (GWEI)`}
                       className="input-extra-small relative"
                       onChange={(e) =>
                         setCustomFee((prevState) => ({
@@ -341,7 +346,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
               </>
             ) : (
               <div className="flex flex-col items-start justify-center">
-                <span className="mb-1 ml-2.5 font-bold">Gas Price (GWEI)</span>
+                <span className="mb-1 ml-2.5 font-bold">
+                  {t('send.gasPrice')} (GWEI)
+                </span>
                 <Form.Item
                   name="gasPrice"
                   className="text-left"
@@ -364,7 +371,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                 >
                   <Input
                     type="number"
-                    placeholder="Max priority fee (GWEI)"
+                    placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                     className="input-extra-small relative"
                     onChange={(e) =>
                       setCustomFee((prevState) => ({
@@ -385,7 +392,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
               id="confirm_btn"
               onClick={handleSubmit}
             >
-              Save
+              {t('buttons.save')}
             </NeutralButton>
           </div>
         </div>

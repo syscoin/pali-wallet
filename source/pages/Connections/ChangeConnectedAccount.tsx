@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
@@ -8,6 +9,7 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeConnectedAccount = () => {
+  const { t } = useTranslation();
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -35,17 +37,19 @@ export const ChangeConnectedAccount = () => {
         <h1 className="text-sm">PALI WALLET</h1>
         <div className="relative top-20 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
           <h2 className="text-center text-sm">
-            The website <b className="text-gray-400">{host}</b> is connected to{' '}
-            {connectedAccount.label} ({ellipsis(connectedAccount.address)}).
-            Your active account is{' '}
+            {t('connections.theWebsite')}{' '}
+            <b className="text-gray-400">{host}</b>{' '}
+            {t('header.hostIsConnected')} {connectedAccount.label} (
+            {ellipsis(connectedAccount.address)}).
+            {t('header.yourAcctiveAccountIs')}{' '}
             {accounts[activeAccount.type][activeAccount.id].label} (
             {ellipsis(accounts[activeAccount.type][activeAccount.id].address)}).
-            With which account you want to proceed?
+            {t('connections.withWitchAccount')}
           </h2>
           <div className="mt-1 px-4 w-full text-center text-xs">
             <span>
-              If you continue with the active account, Pali will change the
-              connected account for <b className="text-gray-400">{host}</b> to{' '}
+              {t('header.ifYouContinueWith')}{' '}
+              <b className="text-gray-400">{host}</b> {t('header.to')}{' '}
               {accounts[activeAccount.type][activeAccount.id].label}.
             </span>
           </div>
@@ -55,7 +59,7 @@ export const ChangeConnectedAccount = () => {
             type="button"
             onClick={() => handleConnectedAccount()}
           >
-            Connected
+            {t('buttons.connected')}
           </SecondaryButton>
 
           <PrimaryButton
@@ -63,7 +67,7 @@ export const ChangeConnectedAccount = () => {
             width="40"
             onClick={() => handleActiveAccount()}
           >
-            Active
+            {t('buttons.active')}
           </PrimaryButton>
         </div>
       </div>

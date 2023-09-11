@@ -2,6 +2,7 @@ import { Form, Input } from 'antd';
 import { isBoolean, isNil } from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
@@ -13,7 +14,7 @@ import { getController } from 'utils/browser';
 
 export const SyscoinImportToken = () => {
   const controller = getController();
-
+  const { t } = useTranslation();
   const [form] = Form.useForm();
   const { navigate } = useUtils();
 
@@ -109,14 +110,14 @@ export const SyscoinImportToken = () => {
           <Input
             type="text"
             className="input-small relative"
-            placeholder="Token symbol"
+            placeholder={t('tokens.tokenSymbol')}
           />
         </Form.Item>
 
         <div className="flex flex-col items-center justify-center w-full">
           <div className="absolute bottom-12 md:static">
             <NeutralButton loading={isLoading} type="submit">
-              Next
+              {t('tokens.next')}
             </NeutralButton>
           </div>
         </div>
@@ -125,10 +126,10 @@ export const SyscoinImportToken = () => {
       {added && (
         <DefaultModal
           show={added}
-          title="Token successfully added"
-          description={`${form.getFieldValue(
-            'symbol'
-          )} was successfully added to your wallet.`}
+          title={t('tokens.tokenSuccessfullyAdded')}
+          description={`${form.getFieldValue('symbol')} ${t(
+            'tokens.wasSucessfullyAdded'
+          )}`}
           onClose={() => navigate('/home')}
         />
       )}
@@ -136,9 +137,9 @@ export const SyscoinImportToken = () => {
       {error && (
         <ErrorModal
           show={Boolean(error)}
-          title="Could not add token"
-          description="Could not add token to your wallet. Check the network and the asset guid and try again later."
-          log="Token not found in your XPUB or token is already imported."
+          title={t('tokens.tokenNotAdded')}
+          description={t('tokens.couldNotAddTokenToYour')}
+          log={t('tokens.tokenNotFoundIn')}
           onClose={() => setError(false)}
         />
       )}

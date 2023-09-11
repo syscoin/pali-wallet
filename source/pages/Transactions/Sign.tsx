@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   DefaultModal,
@@ -16,7 +17,7 @@ interface ISign {
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
   const { host, eventName, ...data } = useQueryData();
-
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -42,24 +43,24 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   };
 
   return (
-    <Layout canGoBack={false} title={'SIGNATURE REQUEST'}>
+    <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
       <DefaultModal
         show={confirmed}
         onClose={window.close}
-        title={'Signature request successfully submitted'}
+        title={t('transaction.signatureRequestWasRequest')}
         description={
           send
-            ? 'The Dapp has your signed psbt'
-            : 'You can check your request under activity on your home screen.'
+            ? t('transactions.theDappHas')
+            : t('transactions.youCanCheckYour')
         }
-        buttonText="Got it"
+        buttonText={t('settings.gotIt')}
       />
 
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
-        title="Signature request failed"
-        description="Sorry, we could not submit your request. Try again later."
+        title={t('transactions.signatureFailed')}
+        description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
         buttonText="Ok"
       />
@@ -72,7 +73,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -81,7 +82,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
               loading={loading}
               onClick={onSubmit}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

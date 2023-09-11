@@ -1,6 +1,7 @@
 import { Menu } from '@headlessui/react';
 import { toSvg } from 'jdenticon';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
@@ -211,7 +212,7 @@ export const AccountMenu: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-
+  const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
       const tabs = await browser.tabs.query({
@@ -231,7 +232,7 @@ export const AccountMenu: React.FC = () => {
   return (
     <>
       <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
-        ACCOUNTS
+        {t('accountMenu.accounts')}
       </span>
 
       <Menu.Item>
@@ -243,7 +244,7 @@ export const AccountMenu: React.FC = () => {
       </Menu.Item>
 
       <span className="disabled text-xs flex justify-start px-5 my-3">
-        ACCOUNTS SETTINGS
+        {t('accountMenu.accountsSettings')}
       </span>
 
       <Menu.Item>
@@ -253,7 +254,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="appstoreadd" className="mb-1 text-brand-white" />
 
-          <span>Create new account</span>
+          <span>{t('accountMenu.createNewAccount')}</span>
         </li>
       </Menu.Item>
 
@@ -264,7 +265,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="edit" className="mb-2 text-brand-white" />
 
-          <span>Manage accounts</span>
+          <span>{t('accountMenu.manageAccounts')}</span>
         </li>
       </Menu.Item>
 
@@ -275,7 +276,7 @@ export const AccountMenu: React.FC = () => {
         >
           <Icon name="key" className="mb-2 text-brand-white" />
 
-          <span>Your keys</span>
+          <span>{t('accountMenu.yourKeys')}</span>
         </li>
       </Menu.Item>
 
@@ -290,7 +291,7 @@ export const AccountMenu: React.FC = () => {
             id="hardware-wallet-btn"
           />
 
-          <span>Connect Trezor</span>
+          <span>{t('accountMenu.connectTrezor')}</span>
         </li>
       </Menu.Item>
 
@@ -309,13 +310,12 @@ export const AccountMenu: React.FC = () => {
             />
 
             <span className={isBitcoinBased ? 'disabled' : ''}>
-              Import account
+              {t('accountMenu.importAccount')}
             </span>
           </li>
           {isBitcoinBased && (
             <span className="disabled text-xs px-5 text-left">
-              Pali is the only extension wallet with UTXO! To import any wallet,
-              you need to change to one EVM network.
+              {t('accountMenu.importAccMessage')}
             </span>
           )}
         </div>
@@ -330,7 +330,7 @@ export const AccountHeader: React.FC = () => {
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert, navigate } = useUtils();
-
+  const { t } = useTranslation();
   const [copied, copy] = useCopyClipboard();
 
   useEffect(() => {
@@ -357,7 +357,7 @@ export const AccountHeader: React.FC = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Address successfully copied');
+    alert.success(t('home.addressCopied'));
   }, [copied]);
 
   return (

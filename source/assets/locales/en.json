@@ -29,7 +29,57 @@
 		"forget": "Forget",
 		"switchNetwork": "Switch Network",
 		"unlock": "Unlock",
-		"done": "Done"
+		"done": "Done",
+		"iveWrittenIt": "I've written it down",
+		"reject": "Reject",
+		"switch": "Switch"
+	},
+	"components": {
+		"newPassword": "New password (min 8 chars)",
+		"confirmPassword": "Confirm password",
+		"atLeast": "At least 8 characters, 1 lower-case and 1 numeral.",
+		"doNotForget": "Do not forget to save your password. You will need this password to unlock your wallet.",
+		"useRecommendedFee": "Use recommended fee. Disabled for SYS networks because the fee used in transactions is already the recommended with current network conditions."
+	},
+	"generalMenu": {
+		"wallet": "WALLET",
+		"walletSeedPhrase": "Wallet Seed Phrase",
+		"forget": "Forget wallet",
+		"generalOptions": "GENERAL OPTIONS",
+		"languages": "Languages",
+		"currency": "Currency",
+		"autolock": "Auto lock timer",
+		"manageEth": "Manage ETH provider",
+		"infoHelp": "Info/Help",
+		"lock": "Lock",
+		"advanced": "Advanced"
+	},
+	"networkMenu": {
+		"viewConnected": "View connected websites",
+		"noConnected": "No connected websites",
+		"trustedSites": "Trusted sites",
+		"networks": "NETWORKS",
+		"utxoNetworks": "UTXO Networks",
+		"evmNetworks": "EVM Networks",
+		"networkSettings": "NETWORK SETTINGS",
+		"customRpc": "Custom RPC",
+		"manageNetworks": "Manage networks"
+	},
+	"accountMenu": {
+		"accounts": "ACCOUNTS",
+		"accountsSettings": "ACCOUNTS SETTINGS",
+		"createNewAccount": "Create new account",
+		"manageAccounts": "Manage accounts",
+		"yourKeys": "Your keys",
+		"connectTrezor": "Connect Trezor",
+		"importAccount": "Import account",
+		"importAccMessage": "Pali is the only extension wallet with UTXO! To import any wallet, you need to change to one EVM network."
+	},
+	"tooltip": {
+		"editAsset": "Edit Asset",
+		"assetDetails": "Asset Details",
+		"deleteAsset": "Delete Asset",
+		"clickToOpen": "Click to open NFT image"
 	},
 	"header": {
 		"accounts": "ACCOUNTS",
@@ -48,7 +98,15 @@
 		"ifYouContinueWith": "If you continue with the active account, Pali will change the connected account for",
 		"andYouWillNeed": "and you will need to start the transaction again.",
 		"changeActiveAccount": "Change active account",
-		"itSeemsThatYou": "It seems that you are currently using a Trezor-based account that was created specifically for this network. If you wish to use a different network, you can switch to another active account by selecting a preferred Pali Account."
+		"itSeemsThatYou": "It seems that you are currently using a Trezor-based account that was created specifically for this network. If you wish to use a different network, you can switch to another active account by selecting a preferred Pali Account.",
+		"thereWasAnError": "There was an error while trying to switch network. Try again later.",
+		"errorSwitching": "Error switching networks",
+		"pleaseSelect": "Please, select an account.",
+		"speedUp": "Speed Up",
+		"cancelTx": "Cancel Transaction",
+		"cancelTxMessage": "Are you sure that you want to cancel this transaction?",
+		"speedTx": "Speed Up Transaction",
+		"speedTxMessage": "Are you sure that you want to speed up this transaction?"
 	},
 	"menus": {
 		"wallet": "WALLET",
@@ -92,8 +150,14 @@
 		"hashCopied": "Hash successfully copied",
 		"contractCopied": "Contract successfully copied"
 	},
+	"titles": {
+		"assetDetails": "ASSET DETAILS",
+		"transactionDetails": "TRANSACTION DETAILS",
+		"importWallet": "Import wallet"
+	},
 	"import": {
-		"importingYourAccount": "Importing your wallet seed automatically import a wallet associated with this seed phrase."
+		"importingYourAccount": "Importing your wallet seed automatically import a wallet associated with this seed phrase.",
+		"pasteYourWalletSeed": "Paste your wallet seed phrase"
 	},
 	"receive": {
 		"receiveTitle": "RECEIVE"
@@ -104,8 +168,24 @@
 		"yourWalletIsReady": "YOUR WALLET IS READY",
 		"youShould": "You should now have your recovery phrase and your wallet password written down for future reference."
 	},
+	"createPhrase": {
+		"recoveryPhrase": "Recovery Phrase",
+		"whatIsRecoveryPhrase": "A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
+	},
 	"send": {
 		"approve": "Approve",
+		"assetGuid": "Asset Guid",
+		"canceled": "Canceled",
+		"pending": "Pending",
+		"confirmed": "Confirmed",
+		"yes": "Yes",
+		"no": "No",
+		"viewThis": "View this",
+		"asset": "asset",
+		"transaction": "transaction",
+		"explorer": "Explorer?",
+		"on": "on",
+		"confirm": "CONFIRM",
 		"cantCompleteApprove": "Can't complete approve. Try again later.",
 		"approveSuccessful": "Approve successful",
 		"approveSuccessfulMessage": "Your approve has been successfully submitted. You can see more details under activity on your home page.",
@@ -123,9 +203,12 @@
 		"grantedTo": "Granted to",
 		"data": "Data",
 		"method": "Method",
+		"hex": "Hex",
+		"reduceFee": "Please, reduce fees to send transaction.",
 		"cantCompleteTxs": "Can't complete transaction. Try again later.",
 		"feeError": "Error in the proccess to get fee values, please verify your balance and try again later.",
 		"txSuccessfull": "Transaction successful",
+		"tx": "Transaction",
 		"txSuccessfullMessage": "Your transaction has been successfully submitted. You can see more details under activity on your home page.",
 		"estimatedGasFee": "Estimated GasFee",
 		"amountAndFee": "Amount + gas fee",
@@ -145,6 +228,7 @@
 		"gasPrice": "Gas Price",
 		"internalError": "An internal error has occurred.",
 		"send": "SEND",
+		"insufficientFunds": "Insufficient funds",
 		"balance": "Balance",
 		"receiver": "Receiver",
 		"native": "Native",
@@ -153,6 +237,7 @@
 		"rpcEstimateError": "The current RPC provider couldn't estimate the gas for this transaction. Therefore, we'll estimate the gas using the existing block data for your transaction.",
 		"from": "From",
 		"to": "To",
+		"noCustomTokenTrezor": "Cannot send custom token with Trezor Account.",
 		"verifyAddress": "Verify address",
 		"enoughFunds": "You don't have enough funds for this transactions.",
 		"txWillFail": "The transaction will fail, fix it and try again!",
@@ -167,8 +252,12 @@
 		"details": "Details"
 	},
 	"settings": {
+		"linkCopied": "Link successfully copied",
 		"version": "Version",
 		"userSupport": "User Support",
+		"advancedTitle": "ADVANCED SETTINGS",
+		"autolockTitle": "AUTO LOCK TIMER",
+		"accountImported": "Account imported successfully",
 		"clickHereSupport": "Click here to be redirected to Syscoin Discord, please contact support team at #pali_support.",
 		"toAccess": "To access the support link, you need to give permission or copy and paste the link below",
 		"refreshButtonWarning": "The refresh button dispatches multiple requests to the blockchain through an RPC, if you activating this be sure to add in your own paid RPC providers to avoid reaching the public RPCs rate-limit. Use it at your own accountability",
@@ -180,6 +269,9 @@
 		"timeSetSuccessfully": "Time set successfully",
 		"yourAutolockWasConfigured": "Your auto lock was configured successfully. You can change it at any time.",
 		"minutes": "Minutes",
+		"english": "English",
+		"portuguese": "Portuguese",
+		"spanish": "Spanish",
 		"enableAutolock": "Enable autolock",
 		"connectedSites": "CONNECTED SITES",
 		"isConnected": "is connected to these sites. They can view your account public information.",
@@ -231,9 +323,11 @@
 		"networkUrl": "Network URL",
 		"currencySymbol": "Currency Symbol",
 		"explorerUrl": "Explorer URL",
+		"explorer": "Explorer",
 		"addNewToken": "Add New Token",
 		"tokenSuccessfullyAdded": "Token successfully added.",
 		"toAddAToken": "to add a token",
+		"addNewChain": "Add New Chain",
 		"thisWillAllowToken": "This will allow this token to be used within Pali.",
 		"paliDoesNotVerifyToken": "Pali does not verify custom tokens.",
 		"tokenName": "Token Name",
@@ -284,6 +378,8 @@
 		"trustedWebsites": "TRUSTED WEBSITES"
 	},
 	"start": {
+		"paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
+		"ifYouPlan": "If you plan to import a new Secret Recovery Phrase, ensure you've noted the current one to avoid losing associated funds. Remember, custom tokens and imported accounts will need to be re-added after the reset. This process is irreversible, so proceed with caution.",
 		"getStarted": "Get started",
 		"importUsing": "Import using wallet seed phrase",
 		"wrongPassword": "Wrong password",
@@ -320,7 +416,9 @@
 		"thisTokenContract": "This token contract is already added in your token list. Try again using another token address!",
 		"searchBySymbol": "Search by symbol",
 		"notAvailableInCurrentNetwork": "This token probably is not available in the current network. Verify the token network and try again.",
-		"tokenNetworkProbably": "Token network probably is different from current network."
+		"tokenNetworkProbably": "Token network probably is different from current network.",
+		"couldNotAddTokenToYour": "Could not add token to your wallet. Check the network and the asset guid and try again later.",
+		"tokenNotFoundIn": "Token not found in your XPUB or token is already imported."
 	},
 	"transactions": {
 		"messageCopied": "Message successfully copied",

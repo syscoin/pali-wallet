@@ -1,5 +1,6 @@
 import { Input, Form } from 'antd';
 import React, { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
@@ -10,7 +11,7 @@ import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
   const controller = getController();
-
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -44,7 +45,7 @@ const PrivateKeyView = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Successfully copied');
+    alert.success(t('settings.successfullyCopied'));
   }, [copied]);
 
   const { url: activeUrl, explorer } = activeNetwork;
@@ -68,10 +69,9 @@ const PrivateKeyView = () => {
       {isBitcoinBased && (
         <Card type="info">
           <p>
-            <b className="text-warning-info">WARNING: </b>
-            This is your account root indexer to check your full balance for{' '}
-            {activeAccount?.label}, it isn't a receiving address. DO NOT SEND
-            FUNDS TO THESE ADDRESSES, YOU WILL LOSE THEM!
+            <b className="text-warning-info">{t('buttons.forgetWarning')}: </b>
+            {t('settings.thisIsYourAccountIndexer')} {activeAccount?.label},{' '}
+            {t('settings.itIsntAReceivingAddress')}
           </p>
         </Card>
       )}
@@ -80,7 +80,7 @@ const PrivateKeyView = () => {
         <CopyCard
           className="my-4"
           onClick={() => copyText(String(activeAccount?.xpub))}
-          label="Your XPUB"
+          label={t('settings.yourXpub')}
         >
           <p>{ellipsis(activeAccount?.xpub, 4, 16)}</p>
         </CopyCard>
@@ -118,7 +118,7 @@ const PrivateKeyView = () => {
         >
           <Input.Password
             className="input-small relative"
-            placeholder="Enter your password"
+            placeholder={t('settings.enterYourPassword')}
           />
         </Form.Item>
       </Form>
@@ -130,7 +130,7 @@ const PrivateKeyView = () => {
                 copyText(getDecryptedPrivateKey(form.getFieldValue('password')))
             : undefined
         }
-        label="Your private key"
+        label={t('settings.yourPrivateKey')}
       >
         <p>
           {valid && activeAccount.xpub
@@ -150,7 +150,7 @@ const PrivateKeyView = () => {
             type="button"
             onClick={() => window.open(explorerLink)}
           >
-            See on explorer
+            {t('settings.seeOnExplorer')}
           </NeutralButton>
         </div>
       )}

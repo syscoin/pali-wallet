@@ -1,6 +1,7 @@
 import { Disclosure, Menu, Transition } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -27,7 +28,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 ) => {
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
   const { wallet } = getController();
-
+  const { t } = useTranslation();
   const { dapps } = useSelector((state: RootState) => state.dapp);
 
   const networks = useSelector((state: RootState) => state.vault.networks);
@@ -92,8 +93,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const hasConnectedDapps = Object.values(dapps).length > 0;
 
   const connectedWebsiteTitle = hasConnectedDapps
-    ? 'View connected websites'
-    : 'No websites connected';
+    ? t('networkMenu.viewConnected')
+    : t('networkMenu.noConnected');
 
   const currentBgColor = hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red';
 
@@ -158,7 +159,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                     className="flex items-center ml-1 mr-2 text-brand-white"
                   />
 
-                  <span className="px-3 text-sm">Trusted sites</span>
+                  <span className="px-3 text-sm">
+                    {t('networkMenu.trustedSites')}
+                  </span>
                 </li>
               </Menu.Item>
               <div className="scrollbar-styled h-73 overflow-auto">
@@ -166,7 +169,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   <Menu.Item>
                     <>
                       <span className="disabled text-xs flex justify-start px-5 my-3">
-                        NETWORKS
+                        {t('networkMenu.networks')}
                       </span>
                       <Disclosure>
                         {({ open }) => (
@@ -179,7 +182,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                               />
 
                               <span className="px-3 text-sm">
-                                UTXO Networks
+                                {t('networkMenu.utxoNetworks')}
                               </span>
 
                               <img
@@ -250,7 +253,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                             className="ml-1 flex items-center text-brand-white"
                           />
 
-                          <span className="px-3 text-sm">EVM Networks</span>
+                          <span className="px-3 text-sm">
+                            {t('networkMenu.evmNetworks')}
+                          </span>
 
                           <img
                             src={arrow}
@@ -305,7 +310,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 </Menu.Item>
 
                 <span className="disabled text-xs flex justify-start px-5 my-3">
-                  NETWORK SETTINGS
+                  {t('networkMenu.networkSettings')}
                 </span>
 
                 <Menu.Item>
@@ -318,7 +323,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                       className="ml-1 flex items-center text-brand-white"
                     />
 
-                    <span className="px-3 text-sm">Custom RPC</span>
+                    <span className="px-3 text-sm">
+                      {t('networkMenu.customRpc')}
+                    </span>
                   </li>
                 </Menu.Item>
 
@@ -332,7 +339,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                       className="ml-1 flex items-center text-brand-white"
                     />
 
-                    <span className="px-3 text-sm">Manage networks</span>
+                    <span className="px-3 text-sm">
+                      {t('networkMenu.manageNetworks')}
+                    </span>
                   </li>
                 </Menu.Item>
               </div>

@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -20,13 +21,15 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const { newNetwork, newChainValue } = data;
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-
+  const { t } = useTranslation();
   const previousChain = newChainValue === 'Ethereum' ? 'Syscoin' : 'Ethereum';
 
   const correctTypeForChainValue =
     newChainValue === 'Ethereum' ? INetworkType.Ethereum : INetworkType.Syscoin;
 
-  const titleValue = `Switch ${previousChain} -> ${newChainValue}`;
+  const titleValue = `${t(
+    'buttons.switch'
+  )} ${previousChain} -> ${newChainValue}`;
 
   const onSubmit = async () => {
     setLoading(true);
@@ -47,47 +50,44 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
       <DefaultModal
         show={confirmed}
         onClose={window.close}
-        title={'Network successfully changed.'}
-        buttonText="Got it"
+        title={t('settings.networkChanged')}
+        buttonText={t('settings.gotIt')}
       />
 
       {!loading ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
             <h2 className="text-center text-lg">
-              Allow {host} to switch the network ?
+              {t('settings.allow')} {host} {t('settings.toSwitchNetwork')}?
             </h2>
             <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
-              <span>
-                This will switch the selected network within Pali to a
-                previously added network
-              </span>
+              <span>{t('settings.thisWillSwitch')}</span>
             </div>
             <div className="flex flex-col items-center justify-center w-full">
               <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Previous Chain Type
+                  {t('settings.previousChainType')}
                   <span className="text-brand-royalblue text-xs">
                     {previousChain}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  New Chain Type
+                  {t('settings.newChainType')}
                   <span className="text-brand-royalblue text-xs">
                     {newChainValue}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  New Network URL
+                  {t('settings.newNetworkUrl')}
                   <span className="text-brand-royalblue text-xs">
                     {newNetwork.url}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  New Network ChainID
+                  {t('settings.newNetworkChainId')}
                   <span className="text-brand-royalblue text-xs">
                     {newNetwork.chainId}
                   </span>
@@ -98,7 +98,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -107,7 +107,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
               loading={loading}
               onClick={onSubmit}
             >
-              Switch Network
+              {t('buttons.switchNetwork')}
             </PrimaryButton>
           </div>
         </div>

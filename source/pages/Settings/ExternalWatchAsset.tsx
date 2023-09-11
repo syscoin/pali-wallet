@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   DefaultModal,
@@ -18,6 +19,7 @@ const ExternalWatchAsset = () => {
   const [assetInfo, setAssetInfo] = useState<ITokenEthProps>();
   const { alert } = useUtils();
   const controller = getController();
+  const { t } = useTranslation();
   const wallet = controller.wallet;
 
   function formatAssetData(asset: any) {
@@ -65,58 +67,58 @@ const ExternalWatchAsset = () => {
   }, []);
 
   return (
-    <Layout canGoBack={false} title={'Add New Token'}>
+    <Layout canGoBack={false} title={t('settings.addNewToken')}>
       <DefaultModal
         show={confirmed}
         onClose={window.close}
-        title={'Token successfully added.'}
-        buttonText="Got it"
+        title={t('settings.tokenSuccessfullyAdded')}
+        buttonText={t('settings.gotIt')}
       />
 
       {assetInfo ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
             <h2 className="text-center text-base">
-              Allow {host} to add a token?
+              {t('settings.allow')} {host} {t('settings.toAddAToken')}?
             </h2>
             <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
-              <span>This will allow this token to be used within Pali.</span>
+              <span>{t('settings.thisWillAllowToken')}</span>
               <span>
-                <b>Pali does not verify custom tokens.</b>
+                <b>{t('settings.paliDoesNotVerifyToken')}</b>
               </span>
             </div>
             <div className="flex flex-col items-center justify-center w-full">
               <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Token Name
+                  {t('settings.tokenName')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.name}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Contract Address
+                  {t('settings.contractAddress')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.contractAddress}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Decimals
+                  {t('settings.decimals')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.decimals}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Balance
+                  {t('settings.balance')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.balance}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  Token Symbol
+                  {t('settings.tokenSymbol')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.tokenSymbol}
                   </span>
@@ -127,7 +129,7 @@ const ExternalWatchAsset = () => {
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -136,7 +138,7 @@ const ExternalWatchAsset = () => {
               loading={loading}
               onClick={() => onSubmit()}
             >
-              Add Token
+              {t('buttons.addToken')}
             </PrimaryButton>
           </div>
         </div>
