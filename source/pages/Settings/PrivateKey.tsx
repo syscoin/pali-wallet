@@ -65,7 +65,7 @@ const PrivateKeyView = () => {
     : `${url}${property}/${value}`;
 
   return (
-    <Layout title="YOUR KEYS">
+    <Layout title={t('accountMenu.yourKeys').toUpperCase()}>
       {isBitcoinBased && (
         <Card type="info">
           <p>

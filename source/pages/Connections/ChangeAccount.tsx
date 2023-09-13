@@ -47,7 +47,11 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={true}>
+    <Layout
+      canGoBack={false}
+      title={t('connections.connectedAccount')}
+      titleOnly={true}
+    >
       <div className="flex flex-col gap-7 items-center justify-center w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>

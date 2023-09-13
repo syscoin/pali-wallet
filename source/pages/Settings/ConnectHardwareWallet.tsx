@@ -88,11 +88,11 @@ const ConnectHardwareWalletView: FC = () => {
               <b>{t('settings.dontHaveWallet')}</b>
               <br />
               <br />
-              {t('settings.orderTrezor"')}
+              {t('settings.orderTrezor')}
             </p>
 
             <p
-              className="mt-2 w-16 hover:text-brand-white text-button-primary cursor-pointer"
+              className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
               onClick={() => window.open('https://trezor.io/')}
             >
               {t('settings.buyNow')}

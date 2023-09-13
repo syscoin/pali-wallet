@@ -38,7 +38,6 @@ export const SendSys = () => {
   );
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
-
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
       await controller.wallet.syscoinTransaction.getRecommendedFee(
@@ -418,7 +417,7 @@ export const SendSys = () => {
 
           <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
             <span className="text-xs">
-              {`With current network conditions we recommendedFee a fee of ${recommendedFee} SYS`}
+              {`${t('transactions.withCurrentNetwork')} ${recommendedFee} SYS`}
             </span>
 
             <span className="mt-0.5 text-brand-white font-rubik text-xs">

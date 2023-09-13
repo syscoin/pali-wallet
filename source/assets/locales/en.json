@@ -338,6 +338,7 @@
 		"forgetWarning": "WARNING",
 		"thisWillForget": "This will forget the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet using your seed or creating a new one.",
 		"enterYourPassword": "Enter your password",
+		"password": "Password",
 		"youStillHave": "You still have funds in your wallet. Paste your seed phrase below to forget wallet.",
 		"importAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase.",
 		"currentlyThePrivate": "Currently, the privateKeys feature is only supported in tSelect Typehe EVM/Web3 chains context. Therefore, UTXO networks won't be accessible while using a PrivateKey account. To regain access to UTXO networks, switch to a Pali Native Account or a Trezor Account.",

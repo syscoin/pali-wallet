@@ -32,7 +32,11 @@ export const ChangeConnectedAccount = () => {
   };
 
   return (
-    <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={true}>
+    <Layout
+      canGoBack={false}
+      title={t('connections.connectedAccount')}
+      titleOnly={true}
+    >
       <div className="flex flex-col items-center justify-center w-full">
         <h1 className="text-sm">PALI WALLET</h1>
         <div className="relative top-20 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">

@@ -67,7 +67,11 @@ export const ConnectWallet = () => {
   }, [isUnlocked]);
 
   return (
-    <Layout canGoBack={false} title="CONNECT ACCOUNT" titleOnly={true}>
+    <Layout
+      canGoBack={false}
+      title={t('connections.connectAccount')}
+      titleOnly={true}
+    >
       <div className="flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>

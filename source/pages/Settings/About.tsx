@@ -27,7 +27,10 @@ const AboutView: FC = () => {
   };
 
   return (
-    <Layout title="INFO & HELP" id="info-help-title">
+    <Layout
+      title={t('generalMenu.infoHelp').toUpperCase()}
+      id="info-help-title"
+    >
       <div className="flex flex-col gap-y-4 w-full text-brand-white text-sm">
         <p>Pali Wallet Browser Extension v2.0</p>
         <p>

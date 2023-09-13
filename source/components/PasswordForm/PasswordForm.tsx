@@ -11,7 +11,7 @@ interface IPasswordForm {
 export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   const { t } = useTranslation();
   return (
-    <OnboardingLayout title="Password">
+    <OnboardingLayout title={t('settings.password')}>
       <Form
         validateMessages={{ default: '' }}
         name="basic"

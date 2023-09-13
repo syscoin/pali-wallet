@@ -12,12 +12,10 @@ import { i18next } from 'utils/i18n';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
-  const { timer } = useSelector((state: RootState) => state.vault);
+  const { timer, language } = useSelector((state: RootState) => state.vault);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [currentLang, setCurrentLang] = useState<PaliLanguages>(
-    PaliLanguages.EN
-  );
+  const [currentLang, setCurrentLang] = useState<PaliLanguages>(language);
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState<boolean>(false);
@@ -73,6 +71,7 @@ const Languages = () => {
             <Radio.Group
               className="w-full"
               onChange={(e) => setCurrentLang(e.target.value)}
+              value={currentLang}
             >
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
