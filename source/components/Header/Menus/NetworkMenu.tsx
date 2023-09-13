@@ -28,7 +28,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 ) => {
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
   const { wallet } = getController();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { language } = i18n;
   const { dapps } = useSelector((state: RootState) => state.dapp);
 
   const networks = useSelector((state: RootState) => state.vault.networks);
@@ -145,7 +146,16 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                     className="flex items-center ml-1 mr-2 text-brand-white"
                   />
 
-                  <span className="px-3 text-sm">{connectedWebsiteTitle}</span>
+                  <span
+                    className={`px-3 ${
+                      language === 'es' &&
+                      connectedWebsiteTitle.includes('No hay')
+                        ? 'text-xs'
+                        : 'text-sm'
+                    }`}
+                  >
+                    {connectedWebsiteTitle}
+                  </span>
                 </li>
               </Menu.Item>
 
