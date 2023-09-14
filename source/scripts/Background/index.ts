@@ -282,8 +282,8 @@ function registerListener() {
 function startPendingTransactionsPolling() {
   pendingTransactionsPollingIntervalId = setInterval(
     checkForPendingTransactionsUpdate,
-    // 2 * 60 * 60 * 1000 //run after 2 hours
-    10000 //todo: 10s just in matter of testing, replace this for the 1-2hour timer
+    2 * 60 * 60 * 1000 //run after 2 hours
+    // 10000 //todo: 10s just in matter of testing, replace this for the 1-2hour timer
   );
 }
 
