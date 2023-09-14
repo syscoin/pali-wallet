@@ -44,15 +44,12 @@ const TransactionsManager = (
     pendingTransactions: IEvmTransactionResponse[]
   ): Promise<IEvmTransactionResponse[]> => {
     console.log('checkPendingTransactions', pendingTransactions);
-    const { currentBlock: stateBlock } = store.getState().vault;
-    const latestBlockNumber = stateBlock
-      ? parseInt(String(stateBlock.number), 16)
-      : await web3Provider.getBlockNumber();
+    const latestBlockNumber = await web3Provider.getBlockNumber();
 
     console.log('latestBlockNumber', latestBlockNumber);
 
     //todo: we'll need to take care if promise.all will not break anything
-    const confirmedTransactions = Promise.all(
+    const confirmedTransactions = await Promise.all(
       pendingTransactions.map(async (transaction) => {
         const tx = await web3Provider.getTransaction(transaction.hash);
         console.log('tx', tx);
@@ -69,7 +66,7 @@ const TransactionsManager = (
     );
 
     console.log('confirmedTransactions', confirmedTransactions);
-    return (await confirmedTransactions).filter((tx) => tx.confirmations > 0);
+    return confirmedTransactions.filter((tx) => tx.confirmations > 0);
   };
   return {
     evm: evmTransactionsController,
