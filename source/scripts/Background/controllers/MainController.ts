@@ -1133,8 +1133,6 @@ const MainController = (walletState): IMainController => {
   };
 
   const validatePendingEvmTransactions = async ({
-    activeNetwork,
-    activeAccount,
     pendingTransactions,
   }: {
     activeAccount: {
@@ -1154,7 +1152,6 @@ const MainController = (walletState): IMainController => {
       );
 
     if (!!confirmedTx.length) {
-      console.log('confirmedTx', confirmedTx);
       validateAndManageUserTransactions(confirmedTx);
     }
   };
