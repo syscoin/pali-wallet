@@ -60,7 +60,9 @@ export const SyscoinAssetsList = () => {
                         <td className="flex items-center text-left">
                           <span
                             className="w-full text-brand-white font-poppins text-xs font-normal"
-                            style={{ width: '72px' }}
+                            style={{
+                              width: 'fit-content',
+                            }}
                           >
                             {t('send.assetGuid')}
                           </span>
