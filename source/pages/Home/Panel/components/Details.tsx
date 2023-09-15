@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ export const DetailsView = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const { t } = useTranslation();
 
   const {
     state: { id, hash },
@@ -46,7 +48,9 @@ export const DetailsView = () => {
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
 
   return (
-    <Layout title={`${isAsset ? 'ASSET DETAILS' : 'TRANSACTION DETAILS'}`}>
+    <Layout
+      title={`${isAsset ? t('titles.assetDetails') : t('transactionDetails')}`}
+    >
       {isLoading ? (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (
@@ -61,8 +65,9 @@ export const DetailsView = () => {
 
           <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
             <p className="font-normal" style={{ lineHeight: '18px' }}>
-              View this {isAsset ? 'asset' : 'transaction'} on{' '}
-              {isBitcoinBased ? 'Syscoin' : ''} Explorer?
+              {t('send.viewThis')}{' '}
+              {isAsset ? t('send.asset') : t('send.transaction')} {t('send.on')}{' '}
+              {isBitcoinBased ? 'Syscoin' : ''} {t('send.explorer')}
             </p>
 
             <Button
@@ -70,7 +75,7 @@ export const DetailsView = () => {
               onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
               className="inline-flex justify-center px-1.5 py-2 text-bkg-blue200 text-base font-semibold bg-bkg-white850 hover:bg-transparent border border-bkg-white850 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
             >
-              Ok
+              {t('buttons.ok')}
             </Button>
           </div>
         </>

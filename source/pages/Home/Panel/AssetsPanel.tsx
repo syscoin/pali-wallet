@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
@@ -9,6 +10,7 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
+  const { t } = useTranslation();
   const { id, type } = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -38,7 +40,7 @@ export const AssetsPanel = () => {
 
   const NoAssetsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      <p>You have no tokens or NFTs.</p>
+      <p>{t('home.youHaveNoTokens')}</p>
     </div>
   );
 
@@ -61,7 +63,7 @@ export const AssetsPanel = () => {
           className="underline text-sm"
           onClick={() => navigate('/tokens/add')}
         >
-          Import Token
+          {t('home.importToken')}
         </p>
       </div>
 

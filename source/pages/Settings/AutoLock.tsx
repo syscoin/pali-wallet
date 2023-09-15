@@ -1,6 +1,7 @@
 import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,7 +11,7 @@ import { getController } from 'utils/browser';
 
 const AutolockView = () => {
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
-
+  const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(isTimerEnabled);
   const [loading, setLoading] = useState<boolean>(false);
@@ -31,10 +32,9 @@ const AutolockView = () => {
   };
 
   return (
-    <Layout title="AUTO LOCK TIMER" id="auto-lock-timer-title">
+    <Layout title={t('settings.autolockTitle')} id="auto-lock-timer-title">
       <p className="mb-8 text-white text-sm">
-        You can set auto lock timer. Default is 5 minutes after no activity.
-        Maximum is 120 minutes.
+        {t('settings.youCanSetAutolock')}
       </p>
 
       <DefaultModal
@@ -43,8 +43,8 @@ const AutolockView = () => {
           setConfirmed(false);
           navigate('/home');
         }}
-        title="Time set successfully"
-        description="Your auto lock was configured successfully. You can change it at any time."
+        title={t('settings.timeSetSuccessfully')}
+        description={t('settings.yourAutolockWasConfigured')}
       />
 
       <Form
@@ -82,7 +82,7 @@ const AutolockView = () => {
         >
           <Input
             type="number"
-            placeholder="Minutes"
+            placeholder={t('settings.minutes')}
             className="input-small relative"
           />
         </Form.Item>
@@ -99,7 +99,7 @@ const AutolockView = () => {
           ]}
         >
           <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
-            <span className="text-sm">Enable autolock</span>
+            <span className="text-sm">{t('settings.enableAutolock')}</span>
             <Switch
               checked={isEnabled}
               onChange={() => setIsEnabled(!isEnabled)}
@@ -119,7 +119,7 @@ const AutolockView = () => {
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

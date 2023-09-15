@@ -1,6 +1,7 @@
 import { Dialog } from '@headlessui/react';
 import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { NeutralButton, Modal } from 'components/index';
 import {
@@ -19,7 +20,7 @@ export const EditApprovedAllowanceValueModal = (
     setCustomApprovedAllowanceAmount,
     setOpenEditFeeModal,
   } = props;
-
+  const { t } = useTranslation();
   const [formControlEditedFee] = Form.useForm();
 
   const [currentRadioChecked, setCurrentRadioChecked] =
@@ -54,12 +55,12 @@ export const EditApprovedAllowanceValueModal = (
             <div className="grid items-center">
               <div className="flex items-center mb-2">
                 <Dialog.Title as="h2" className="text-base font-bold">
-                  Spending limit permission
+                  {t('send.spendingLimit')}
                 </Dialog.Title>
               </div>
 
               <p className="text-left text-brand-graylight text-xs font-thin">
-                Allow {host} to withdraw and spend up to the following amount:
+                {`${t('send.allow')} ${host} ${t('send.toWithdraw')}`}:
               </p>
             </div>
             <Form form={formControlEditedFee} onFinish={onSubmitForm}>
@@ -85,11 +86,13 @@ export const EditApprovedAllowanceValueModal = (
                         htmlFor="proposed_limit"
                         className="ml-2 font-bold"
                       >
-                        Proposed approval limit
+                        {t('send.proposedApprovalLimit')}
                       </label>
                     </div>
                     <div className="flex flex-col gap-y-2 pl-5 text-left">
-                      <span>Spending limit requested by {host}</span>
+                      <span>
+                        {t('send.spendingLimitRequestedBy')} {host}
+                      </span>
                       <span>
                         {customApprovedAllowanceAmount?.defaultAllowanceValue}
                         <span className="ml-1 text-brand-royalblue font-semibold">
@@ -108,11 +111,11 @@ export const EditApprovedAllowanceValueModal = (
                       />
 
                       <label htmlFor="custom_limit" className="ml-2 font-bold">
-                        Custom spending limit
+                        {t('send.customSpendingLimit')}
                       </label>
                     </div>
                     <div className="grid gap-y-2 pl-5">
-                      <span>Enter a maximum spending limit</span>
+                      <span>{t('send.enterAMaximumSpendingLimit')}</span>
                       <Form.Item
                         id="custom_limit_input_value"
                         name="custom_limit_input_value"
@@ -140,7 +143,7 @@ export const EditApprovedAllowanceValueModal = (
 
                   <div className="flex items-center justify-center">
                     <NeutralButton type="submit" id="confirm_btn">
-                      Save
+                      {t('buttons.save')}
                     </NeutralButton>
                   </div>
                 </Radio.Group>

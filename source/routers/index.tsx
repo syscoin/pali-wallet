@@ -34,6 +34,7 @@ import {
   ManageAccounts,
   EditAccount,
   Advanced,
+  Languages,
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
@@ -187,6 +188,10 @@ export const Router = () => {
           <Route
             path="advanced"
             element={<ProtectedRoute element={<Advanced />} />}
+          />
+          <Route
+            path="languages"
+            element={<ProtectedRoute element={<Languages />} />}
           />
           <Route
             path="currency"

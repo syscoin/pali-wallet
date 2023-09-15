@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { IDecodedTx } from 'types/transactions';
 
@@ -8,11 +9,11 @@ interface ITransactionDataProps {
 
 export const TransactionDataComponent = (props: ITransactionDataProps) => {
   const { decodedTx } = props;
-
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center w-full">
       <p className="flex gap-1.5 items-center justify-start w-full text-sm">
-        Method:
+        {t('send.method')}:
         <span className="text-brand-royalblue font-bold">
           {decodedTx.method}
         </span>
@@ -22,7 +23,7 @@ export const TransactionDataComponent = (props: ITransactionDataProps) => {
           className="flex items-center justify-center mt-2 p-4 w-full text-xs rounded-xl"
           style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
         >
-          <p>The decodification for this transaction is not available</p>
+          <p>{t('send.decodificationNotAvailable')}</p>
         </div>
       ) : (
         <pre

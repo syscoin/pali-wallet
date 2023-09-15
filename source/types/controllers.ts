@@ -78,8 +78,8 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
-
   lock: () => void;
+
   removeKeyringNetwork: (
     chain: string,
     chainId: number,

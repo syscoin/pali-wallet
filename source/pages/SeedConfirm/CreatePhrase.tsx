@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, PrimaryButton } from 'components/index';
@@ -6,6 +7,7 @@ import { getController } from 'utils/browser';
 
 export const CreatePhrase = ({ password }: { password: string }) => {
   const controller = getController();
+  const { t } = useTranslation();
 
   const navigate = useNavigate();
 
@@ -14,8 +16,8 @@ export const CreatePhrase = ({ password }: { password: string }) => {
 
   return (
     <OnboardingLayout
-      title="Recovery phrase"
-      tooltipText="A recovery phrase is a series of 12 words in a specific order. This word combination is unique to your wallet. Make sure to have pen and paper ready so you can write it down."
+      title={t('createPhrase.recoveryPhrase')}
+      tooltipText={t('createPhrase.whatIsRecoveryPhrase')}
     >
       <div className="flex flex-col gap-4 items-center justify-center max-w-xs md:max-w-lg">
         {seed && (
@@ -46,7 +48,7 @@ export const CreatePhrase = ({ password }: { password: string }) => {
               })
             }
           >
-            I've written it down
+            {t('buttons.iveWrittenIt')}
           </PrimaryButton>
         </div>
       </div>

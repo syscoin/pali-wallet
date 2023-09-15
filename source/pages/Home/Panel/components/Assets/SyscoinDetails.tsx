@@ -1,5 +1,6 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RiFileCopyLine } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
@@ -15,6 +16,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const { assets } = accounts[activeAccount.type][activeAccount.id];
 
   const [copied, copy] = useCopyClipboard();
@@ -23,7 +25,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Successfully copied');
+    alert.success(t('settings.successfullyCopied'));
   }, [copied]);
 
   const formattedAsset = [];

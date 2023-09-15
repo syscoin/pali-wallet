@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
@@ -21,7 +22,8 @@ export const Start = (props: any) => {
   );
   const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
+  const { t, i18n } = useTranslation();
+  const { language } = i18n;
   const { isExternal, externalRoute } = props;
 
   const isFirstStep =
@@ -48,7 +50,7 @@ export const Start = (props: any) => {
       const result = await unlockFromController(password);
 
       if (!result) {
-        setErrorMessage('Wrong password');
+        setErrorMessage(t('start.wrongPassword'));
         return;
       }
 
@@ -60,7 +62,7 @@ export const Start = (props: any) => {
 
       return navigate(externalRoute);
     } catch (e) {
-      setErrorMessage('Wrong password');
+      setErrorMessage(t('start.wrongPassword'));
     }
   };
 
@@ -81,7 +83,7 @@ export const Start = (props: any) => {
         >
           <Input.Password
             className="input-small relative"
-            placeholder="Enter your password"
+            placeholder={t('settings.enterYourPassword')}
             id="password"
           />
         </Form.Item>
@@ -93,16 +95,18 @@ export const Start = (props: any) => {
 
         <Form.Item>
           <PrimaryButton type="submit" id="unlock-btn">
-            Unlock
+            {t('buttons.unlock')}
           </PrimaryButton>
         </Form.Item>
       </Form>
       <a
-        className="mt-10 hover:text-brand-graylight text-brand-royalblue text-base font-light transition-all duration-300 cursor-pointer"
+        className={`mt-10 hover:text-brand-graylight text-brand-royalblue ${
+          language === 'es' ? 'text-xs' : 'text-base'
+        } font-light transition-all duration-300 cursor-pointer`}
         id="import-wallet-link"
         onClick={() => setIsOpenValidation(true)}
       >
-        Import using wallet seed phrase
+        {t('start.importUsing')}
       </a>
     </>
   );
@@ -114,7 +118,7 @@ export const Start = (props: any) => {
         showModal={isOpenValidation}
       />
       <p className="mb-2 text-center text-brand-deepPink100 text-lg font-normal tracking-wider">
-        WELCOME TO
+        {t('start.welcomeTo')}
       </p>
 
       <h1 className="m-0 text-center text-brand-royalblue font-poppins text-4xl font-bold tracking-wide leading-4">

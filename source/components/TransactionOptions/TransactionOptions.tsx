@@ -1,6 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import React from 'react';
 import { Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon, IconButton } from '..';
 import { UpdateTxAction } from 'utils/transactions';
@@ -17,17 +18,16 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
-
+  const { t } = useTranslation();
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
 
     switch (actionType) {
       case UpdateTxAction.Cancel:
         setModalData({
-          buttonText: 'Confirm',
-          title: 'Cancel Transaction',
-          description:
-            'Are you sure that you want to cancel this transaction ?',
+          buttonText: t('buttons.confirm'),
+          title: t('header.cancelTx'),
+          description: t('header.cancelTxMessage'),
           onClose: () => setIsOpenModal(false),
           onClick: () => {
             handleUpdateTransaction({
@@ -46,10 +46,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         break;
       case UpdateTxAction.SpeedUp:
         setModalData({
-          buttonText: 'Confirm',
-          title: 'Speed Up Transaction',
-          description:
-            'Are you sure that you want to speed up this transaction ?',
+          buttonText: t('buttons.confirm'),
+          title: t('header.speedTx'),
+          description: t('header.speedTxMessage'),
           onClose: () => setIsOpenModal(false),
           onClick: () => {
             handleUpdateTransaction({
@@ -114,7 +113,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   <IconButton className="w-5 mr-3">
                     <Icon name="close" className="text-base text-brand-white" />
                   </IconButton>
-                  <span className="text-sm text-brand-white">Cancel</span>
+                  <span className="text-sm text-brand-white">
+                    {t('buttons.cancel')}
+                  </span>
                 </li>
               )}
             </Menu.Item>
@@ -130,7 +131,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   <IconButton className="w-5 mr-3">
                     <Icon name="rise" className="text-base text-brand-white" />
                   </IconButton>
-                  <span className="text-sm text-brand-white">Speed Up</span>
+                  <span className="text-sm text-brand-white">
+                    {t('header.speedUp')}
+                  </span>
                 </li>
               )}
             </Menu.Item>

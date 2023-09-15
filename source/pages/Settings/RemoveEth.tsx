@@ -1,6 +1,7 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -12,7 +13,7 @@ const RemoveEthView = () => {
   const { timer, hasEthProperty } = useSelector(
     (state: RootState) => state.vault
   );
-
+  const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [loading, setLoading] = useState<boolean>(false);
@@ -50,10 +51,9 @@ const RemoveEthView = () => {
   };
 
   return (
-    <Layout title="MANAGE ETH PROVIDER" id="auto-lock-timer-title">
+    <Layout title={t('settings.manageEthProvider')} id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
-        To use another ETH wallet, you can disable window.ethereum injected by
-        Pali.
+        {t('settings.toUseAnother')}
       </p>
 
       <DefaultModal
@@ -62,8 +62,8 @@ const RemoveEthView = () => {
           setConfirmed(false);
           navigate('/home');
         }}
-        title="Window object set successfully"
-        description="Your wallet was configured successfully. You can change it at any time."
+        title={t('settings.windowObjectWasSet')}
+        description={t('settings.yourWalletWasConfigured')}
       />
 
       <Form
@@ -89,7 +89,9 @@ const RemoveEthView = () => {
           ]}
         >
           <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
-            <span className="text-sm">Enable window.ethereum</span>
+            <span className="text-sm">
+              {t('settings.enableWindowEthereum')}
+            </span>
             <Switch
               checked={isEnabled}
               onChange={() => setIsEnabled(!isEnabled)}
@@ -109,7 +111,7 @@ const RemoveEthView = () => {
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

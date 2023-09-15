@@ -1,5 +1,6 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { IconButton, Icon, LoadingComponent } from 'components/index';
@@ -16,6 +17,7 @@ export const SyscoinAssetsList = () => {
   } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
+  const { t } = useTranslation();
 
   const filteredAssets = assets.syscoin.filter(
     (asset) => asset.chainId === chainId
@@ -58,9 +60,11 @@ export const SyscoinAssetsList = () => {
                         <td className="flex items-center text-left">
                           <span
                             className="w-full text-brand-white font-poppins text-xs font-normal"
-                            style={{ width: '72px' }}
+                            style={{
+                              width: 'fit-content',
+                            }}
                           >
-                            Asset Guid
+                            {t('send.assetGuid')}
                           </span>
                         </td>
 

@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,6 +15,7 @@ const CreateAccount = () => {
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const controller = getController();
   const navigate = useNavigate();
 
@@ -31,7 +33,7 @@ const CreateAccount = () => {
   };
 
   return (
-    <Layout title="CREATE ACCOUNT" id="create-account-title">
+    <Layout title={t('settings.createAccount')} id="create-account-title">
       {address ? (
         <DefaultModal
           show={address !== ''}
@@ -39,7 +41,7 @@ const CreateAccount = () => {
             setAddress('');
             navigate('/home');
           }}
-          title="Your new account has been created"
+          title={t('settings.yourNewAccount')}
           description={`${ellipsis(address)}`}
         />
       ) : (
@@ -66,7 +68,9 @@ const CreateAccount = () => {
             <Input
               type="text"
               className="input-small relative"
-              placeholder="Name your new account (optional)"
+              placeholder={`${t('settings.nameYourNewAccount')} (${t(
+                'settings.optional'
+              )})`}
               id="account-name-input"
             />
           </Form.Item>
@@ -78,7 +82,7 @@ const CreateAccount = () => {
               disabled={loading}
               id="create-btn"
             >
-              Create
+              {t('buttons.create')}
             </NeutralButton>
           </div>
         </Form>

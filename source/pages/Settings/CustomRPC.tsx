@@ -2,6 +2,7 @@ import { Switch } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
@@ -13,7 +14,7 @@ import { getController } from 'utils/browser';
 
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
-
+  const { t } = useTranslation();
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   const [loading, setLoading] = useState(false);
   const [isUrlValid, setIsUrlValid] = useState(false);
@@ -41,7 +42,7 @@ const CustomRPCView = () => {
       if (!state) {
         await controller.wallet.addCustomRpc(customRpc);
 
-        alert.success('RPC successfully added.');
+        alert.success(t('settings.rpcSucessfullyAdded'));
 
         setLoading(false);
 
@@ -52,7 +53,7 @@ const CustomRPCView = () => {
 
       await controller.wallet.editCustomRpc(customRpc, state.selected);
 
-      alert.success('RPC successfully edited.');
+      alert.success(t('settings.rpcSucessfullyEdited'));
 
       setLoading(false);
 
@@ -85,12 +86,12 @@ const CustomRPCView = () => {
     const fieldErrors = form.getFieldError('url');
     if (urlFieldValue && fieldErrors.length > 0) {
       alert.removeAll();
-      alert.error('Invalid RPC URL. Try again.');
+      alert.error(t('settings.invalidRpcUrl'));
     }
   }, [urlFieldValue]);
 
   return (
-    <Layout title="CUSTOM RPC">
+    <Layout title={t('settings.customRpc')}>
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -155,7 +156,9 @@ const CustomRPCView = () => {
           <Input
             type="text"
             disabled={isInputDisableByEditMode}
-            placeholder={`Label ${isSyscoinRpc ? '(optional)' : ''}`}
+            placeholder={`${t('settings.label')} ${
+              isSyscoinRpc ? `(${t('settings.label')})` : ''
+            }`}
             className="input-small relative"
           />
         </Form.Item>
@@ -178,9 +181,7 @@ const CustomRPCView = () => {
                     console.error(
                       "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
                     );
-                    alert.error(
-                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
-                    );
+                    alert.error(t('settings.trezorSiteWarning'));
                     return Promise.reject();
                   }
                   const { valid, coin } = await validateSysRpc(value);
@@ -255,7 +256,7 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="Symbol"
+            placeholder={t('settings.symbol')}
             className={`${
               isSyscoinRpc ? 'hidden' : 'block'
             } input-small relative`}
@@ -275,18 +276,18 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            placeholder="Explorer"
+            placeholder={t('settings.explorer')}
             className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
           />
         </Form.Item>
 
         <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-          You can edit this later if you need on network settings menu.
+          {t('settings.youCanEdit')}
         </p>
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

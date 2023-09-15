@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -9,7 +10,7 @@ const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>(
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
-
+  const { t } = useTranslation();
   const { useCopyClipboard, navigate, alert } = useUtils();
   const controller = getController();
   const [copied, copyText] = useCopyClipboard();
@@ -22,11 +23,11 @@ const PhraseView = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Seed phrase successfully copied');
+    alert.success(t('settings.seedPhraseCopied'));
   }, [copied]);
 
   return (
-    <Layout title="WALLET SEED PHRASE" id="seed-phrase-title">
+    <Layout title={t('settings.walletSeedPhrase')} id="seed-phrase-title">
       <div className="flex flex-col items-center justify-center md:w-full md:max-w-md">
         <Form
           validateMessages={{ default: '' }}
@@ -65,7 +66,7 @@ const PhraseView = () => {
           >
             <Input.Password
               className="input-small relative"
-              placeholder="Enter your password"
+              placeholder={t('settings.enterYourPassword')}
               id="phraseview_password"
             />
           </Form.Item>
@@ -78,7 +79,7 @@ const PhraseView = () => {
               '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
             handleCopySeed()
           }
-          label="Seed Phrase: (click to copy)"
+          label={t('settings.seedPhraseClickTo')}
         >
           <p className="mt-3 text-xs" id="user-phrase">
             {phrase}
@@ -87,15 +88,14 @@ const PhraseView = () => {
 
         <Card type="info">
           <p>
-            <b className="text-warning-info">WARNING:</b> Keep your seed phrase
-            secret! Anyone with your seed phrase can access any account
-            connected to this wallet and steal your assets
+            <b className="text-warning-info">{t('settings.forgetWarning')}:</b>{' '}
+            {t('settings.keepYourSeed')}
           </p>
         </Card>
 
         <div className="absolute bottom-12 md:static md:mt-10">
           <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
+            {t('buttons.close')}
           </NeutralButton>
         </div>
       </div>

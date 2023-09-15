@@ -1,5 +1,6 @@
 import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, NeutralButton } from 'components/index';
@@ -12,6 +13,7 @@ import { ellipsis } from 'utils/index';
 export const Receive = () => {
   const { useCopyClipboard, alert } = useUtils();
   const [isCopied, copyText] = useCopyClipboard();
+  const { t } = useTranslation();
 
   const controller = getController();
 
@@ -63,12 +65,14 @@ export const Receive = () => {
     if (!isCopied) return;
 
     alert.removeAll();
-    alert.success('Address successfully copied');
+    alert.success(t('home.addressCopied'));
   }, [isCopied]);
 
   return (
     <Layout
-      title={`RECEIVE ${activeNetwork.currency?.toUpperCase()}`}
+      title={`${t(
+        'receive.receiveTitle'
+      )} ${activeNetwork.currency?.toUpperCase()}`}
       id="receiveSYS-title"
     >
       {loaded && activeAccount.address ? (
@@ -99,7 +103,7 @@ export const Receive = () => {
               type="button"
               onClick={() => copyText(activeAccount.address)}
             >
-              <span className="text-xs">Copy</span>
+              <span className="text-xs">{t('buttons.copy')}</span>
             </NeutralButton>
           </div>
         </div>
