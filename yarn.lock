@@ -2092,16 +2092,16 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
   integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@^1.0.469":
-  version "1.0.469"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.469.tgz#918c70060bb6870e49a1e197a555bfd2aec68e37"
-  integrity sha512-T6ifuOKwV3xLRA45h9synxy59VcDyEsulCygRCbzXtB1atImxnqQkhpClnobttRg0/Spx7NwBFYKZnj48WNxeQ==
+"@pollum-io/sysweb3-keyring@^1.0.470":
+  version "1.0.470"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.470.tgz#8ced06bc294c49d49ab070ac1a79b131feba9e05"
+  integrity sha512-ktGrC3h7xCZzHjWMKdLvhB6gh1KanlNTowalXEt+FnGdQy6vccQhgm1hi1oliD9TNiiz5Y3DQTyKeE8Ucfkb0g==
   dependencies:
     "@metamask/obs-store" "^7.0.0"
     "@metamask/safe-event-emitter" "^2.0.0"
     "@pollum-io/sysweb3-core" "1.0.26"
     "@pollum-io/sysweb3-network" "1.0.94"
-    "@pollum-io/sysweb3-utils" "^1.1.229"
+    "@pollum-io/sysweb3-utils" "^1.1.230"
     "@trezor/connect-web" "^9.0.7"
     "@trezor/utxo-lib" "^1.0.4"
     axios "^0.26.1"
@@ -2137,10 +2137,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.229":
-  version "1.1.229"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.229.tgz#aa795fcff9c58881b40e14526b6207427a3ec8eb"
-  integrity sha512-QmvL2+/TsyZV/51TyYFipKxX78iTdIK0wiogrtbrAUW9Lth8CuHdj5EKXa4zv3KcG0w0UGFZameBGgCEW5hrVQ==
+"@pollum-io/sysweb3-utils@^1.1.230":
+  version "1.1.230"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.230.tgz#d81a5547679a9b6e7c592d241cfdc9f9733311bc"
+  integrity sha512-TYrRH/+3I1ai6Z5qz5dmLLk1z3CJ6IhXRN0umRJJtnqgHbcOiqmioCl+LUcw7bYOGQWUmFBA9I3OOkRL36hdzw==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
@@ -2152,7 +2152,7 @@
     camelcase-keys "^7.0.2"
     coinselectsyscoin "^1.0.77"
     crypto-js "^4.1.1"
-    eth-object "^1.0.3"
+    eth-object "https://github.com/syscoin/eth-object.git"
     eth-proof "^2.1.6"
     eth-util-lite "^1.0.1"
     ethers "^5.6.4"
