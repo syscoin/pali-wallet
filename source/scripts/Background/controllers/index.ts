@@ -16,7 +16,6 @@ import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAdvancedSettings,
-  setLanguage,
   setNetworks,
   setTimer,
 } from 'state/vault';
@@ -26,7 +25,6 @@ import {
   IDAppController,
   IMainController,
 } from 'types/controllers';
-import { PaliLanguages } from 'utils/types';
 
 import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
@@ -106,9 +104,6 @@ const MasterController = (
           isEdit: false,
         })
       );
-    }
-    if (!store.getState().vault?.language === undefined) {
-      store.dispatch(setLanguage(PaliLanguages.EN));
     }
 
     // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.

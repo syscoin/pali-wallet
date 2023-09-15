@@ -56,8 +56,9 @@ const handleIsOpen = (isOpen: boolean) =>
   window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
 
 const handleLogout = () => {
-  const { isTimerEnabled, language } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
-  i18next.changeLanguage(language);
+  const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+  const currentLanguage = window.localStorage.getItem('language');
+  i18next.changeLanguage(currentLanguage ?? 'en');
   if (isTimerEnabled) {
     window.controller.wallet.lock();
 
