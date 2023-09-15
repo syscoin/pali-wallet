@@ -141,6 +141,7 @@ export const treatDuplicatedTxs = (
     }
   );
 
+//todo: there's a potential issue here when we call this function and the active account has changed
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
 ): IEvmTransactionResponse[] => {

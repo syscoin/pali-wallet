@@ -143,6 +143,9 @@ export interface ISysTransactionsController {
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
 
 export interface ITransactionsManagerUtils {
+  checkPendingTransactions: (
+    pendingTransactions: IEvmTransactionResponse[]
+  ) => Promise<IEvmTransactionResponse[]>;
   updateTransactionsFromCurrentAccount: (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,

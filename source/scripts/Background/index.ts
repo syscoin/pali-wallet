@@ -5,11 +5,13 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
+import { TransactionsType } from 'state/vault/types';
 import { i18next } from 'utils/i18n';
 import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
+import { IEvmTransactionResponse } from './controllers/transactions/types';
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -211,34 +213,10 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 });
 
 async function checkForUpdates() {
-  const {
-    changingConnectedAccount: { isChangingConnectedAccount },
-    isLoadingAssets,
-    isLoadingBalances,
-    isLoadingTxs,
-    isNetworkChanging,
-    lastLogin,
-    accounts,
-    activeAccount,
-    isBitcoinBased,
-    activeNetwork,
-  } = store.getState().vault;
+  const { activeAccount, isBitcoinBased, activeNetwork } =
+    store.getState().vault;
 
-  const verifyIfUserIsNotRegistered = lastLogin === 0;
-
-  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
-
-  const notValidToRunPolling =
-    !hasAccount0Address ||
-    verifyIfUserIsNotRegistered ||
-    isChangingConnectedAccount ||
-    isLoadingAssets ||
-    isLoadingBalances ||
-    isLoadingTxs ||
-    isNetworkChanging;
-
-  if (notValidToRunPolling) {
-    //todo: do we also need to return if walle is unlocked?
+  if (isPollingRunNotValid()) {
     return;
   }
 
@@ -266,7 +244,8 @@ async function checkForUpdates() {
   });
 }
 
-let intervalId;
+let stateIntervalId;
+let pendingTransactionsPollingIntervalId;
 let isListenerRegistered = false;
 
 function registerListener() {
@@ -281,11 +260,21 @@ function registerListener() {
     if (port.name === 'polling') {
       port.onMessage.addListener((message) => {
         if (message.action === 'startPolling' && !isPolling) {
-          store.dispatch(setIsPolling(true));
-          intervalId = setInterval(checkForUpdates, 15000);
-          port.postMessage({ intervalId });
+          // store.dispatch(setIsPolling(true));
+          // stateIntervalId = setInterval(checkForUpdates, 15000);
+          port.postMessage({ stateIntervalId });
         } else if (message.action === 'stopPolling') {
-          clearInterval(intervalId);
+          clearInterval(stateIntervalId);
+          store.dispatch(setIsPolling(false));
+        }
+      });
+    } else if (port.name === 'pendingTransactionsPolling') {
+      port.onMessage.addListener((message) => {
+        if (message.action === 'startPendingTransactionsPolling') {
+          store.dispatch(setIsPolling(true));
+          startPendingTransactionsPolling();
+        } else if (message.action === 'stopPendingTransactionsPolling') {
+          clearInterval(pendingTransactionsPollingIntervalId);
           store.dispatch(setIsPolling(false));
         }
       });
@@ -295,10 +284,66 @@ function registerListener() {
   isListenerRegistered = true;
 }
 
+function startPendingTransactionsPolling() {
+  pendingTransactionsPollingIntervalId = setInterval(
+    checkForPendingTransactionsUpdate,
+    2 * 60 * 60 * 1000 //run after 2 hours
+    // 10000 //todo: 10s just in matter of testing, replace this for the 1-2hour timer
+  );
+}
+
+async function checkForPendingTransactionsUpdate() {
+  const { accounts, activeAccount, activeNetwork, isBitcoinBased } =
+    store.getState().vault;
+
+  if (isPollingRunNotValid() || isBitcoinBased) {
+    return;
+  }
+
+  const currentAccountTransactions =
+    (accounts[activeAccount.type]?.[activeAccount.id]?.transactions[
+      TransactionsType.Ethereum
+    ]?.[activeNetwork.chainId] as IEvmTransactionResponse[]) ?? [];
+
+  const pendingTransactions = currentAccountTransactions?.filter(
+    (transaction) => transaction.confirmations === 0
+  );
+
+  if (pendingTransactions.length === 0) {
+    return;
+  }
+
+  const maxTransactionsToSend = 3;
+
+  const cooldownTimeMs = 60 * 1000; //1 minute
+
+  for (let i = 0; i < pendingTransactions.length; i += maxTransactionsToSend) {
+    const batchTransactions = pendingTransactions.slice(
+      i,
+      i + maxTransactionsToSend
+    );
+
+    window.controller.wallet.validatePendingEvmTransactions({
+      activeNetwork,
+      activeAccount,
+      pendingTransactions: batchTransactions,
+    });
+
+    if (i + maxTransactionsToSend < pendingTransactions.length) {
+      await new Promise((resolve) => setTimeout(resolve, cooldownTimeMs));
+    }
+  }
+}
+
 registerListener();
 
 const port = browser.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
+
+const secondPort = browser.runtime.connect(undefined, {
+  name: 'pendingTransactionsPolling',
+});
+secondPort.postMessage({ action: 'startPendingTransactionsPolling' });
 
 export const verifyPaliRequests = () => {
   browser.runtime.sendMessage({
@@ -326,3 +371,30 @@ export const setLanguageInLocalstorage = (langague: PaliLanguages) => {
 };
 
 wrapStore(store, { portName: STORE_PORT });
+
+const isPollingRunNotValid = () => {
+  const {
+    isNetworkChanging,
+    isLoadingTxs,
+    isLoadingBalances,
+    isLoadingAssets,
+    changingConnectedAccount: { isChangingConnectedAccount },
+    accounts,
+    lastLogin,
+  } = store.getState().vault;
+
+  const verifyIfUserIsNotRegistered = lastLogin === 0;
+
+  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
+
+  const notValidToRunPolling =
+    !hasAccount0Address ||
+    verifyIfUserIsNotRegistered ||
+    isChangingConnectedAccount ||
+    isLoadingAssets ||
+    isLoadingBalances ||
+    isLoadingTxs ||
+    isNetworkChanging;
+
+  return notValidToRunPolling;
+};
