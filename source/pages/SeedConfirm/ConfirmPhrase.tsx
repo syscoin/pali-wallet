@@ -1,5 +1,6 @@
 import shuffle from 'lodash/shuffle';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import {
   Button,
@@ -23,6 +24,7 @@ export const ConfirmPhrase = ({
   const [orgList, setOrgList] = useState<Array<string>>(
     shuffle((seed || '').split(' '))
   );
+  const { t } = useTranslation();
 
   const [newList, setNewList] = useState<Array<string>>([]);
   const { alert } = useUtils();
@@ -45,12 +47,12 @@ export const ConfirmPhrase = ({
     if (newList.toString().replaceAll(',', ' ') === seed) setPassed(true);
     else {
       setPassed(false);
-      alert.error('The seed passed is wrong. Verify it and try again.');
+      alert.error(t('seedConfirm.seedError'));
     }
   };
 
   return (
-    <OnboardingLayout title="Confirm Recovery Phrase">
+    <OnboardingLayout title={t('seedConfirm.confirmRecovery')}>
       <div className="flex flex-col gap-4 items-center justify-center mt-2 text-brand-white transition-all duration-300 ease-in-out">
         <>
           <section className="flex flex-wrap gap-3 items-center justify-center p-3 w-11/12 border-b border-brand-graylight box-border transition-all duration-300 md:w-9/12">
@@ -82,15 +84,15 @@ export const ConfirmPhrase = ({
 
           <div className="absolute bottom-12">
             <PrimaryButton type="button" onClick={handleValidate}>
-              Validate
+              {t('buttons.validate')}
             </PrimaryButton>
           </div>
         </>
 
         <DefaultModal
           show={passed}
-          title="YOUR WALLET IS READY"
-          description="You should now have your recovery phrase and your wallet password written down for future reference."
+          title={t('seedConfirm.yourWalletIsReady')}
+          description={t('seedConfirm.youShould')}
           onClose={confirmPassed}
         />
       </div>

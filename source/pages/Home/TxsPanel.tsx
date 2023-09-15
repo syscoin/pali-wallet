@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { FC, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Button } from 'components/index';
 
@@ -7,6 +8,7 @@ import { AssetsPanel, TransactionsPanel } from './Panel/index';
 
 export const TxsPanel: FC = () => {
   const [isActivity, setActivity] = useState<boolean>(true);
+  const { t } = useTranslation();
 
   return (
     <div className="sm:max-h-max flex flex-col items-center w-full max-h-52">
@@ -17,7 +19,7 @@ export const TxsPanel: FC = () => {
           type="button"
           onClick={() => setActivity(false)}
         >
-          Assets
+          {t('buttons.assets')}
         </Button>
 
         <Button
@@ -26,7 +28,7 @@ export const TxsPanel: FC = () => {
           type="button"
           onClick={() => setActivity(true)}
         >
-          Activity
+          {t('buttons.activity')}
         </Button>
       </div>
 

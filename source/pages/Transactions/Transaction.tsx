@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -11,9 +12,6 @@ import { camelCaseToText } from 'utils/format';
 import Fee from './Fee';
 import TransactionConfirmation from './TransactionConfirmation';
 
-const titleResolver = (txType: string) =>
-  camelCaseToText(txType).toUpperCase() || 'TRANSACTION';
-
 interface ITransaction {
   type: string;
 }
@@ -25,9 +23,10 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
   const navigate = useNavigate();
   const { wallet } = getController();
-
+  const { t } = useTranslation();
   const [fee, setFee] = useState<number>();
-
+  const titleResolver = (txType: string) =>
+    camelCaseToText(txType).toUpperCase() || t('transactions.transaction');
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );

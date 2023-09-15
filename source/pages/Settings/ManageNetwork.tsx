@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
@@ -20,6 +21,7 @@ const ManageNetworkView = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const { t } = useTranslation();
   const SYSCOIN_UTXO_CHAIN_ID = 57;
 
   const { navigate } = useUtils();
@@ -48,10 +50,10 @@ const ManageNetworkView = () => {
   };
 
   return (
-    <Layout title="MANAGE NETWORKS">
+    <Layout title={t('settings.manageNetworks')}>
       <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
         <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          Syscoin Networks
+          {t('settings.syscoinNetworks')}
         </p>
         {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
@@ -95,7 +97,7 @@ const ManageNetworkView = () => {
                   content={
                     network.chainId === activeNetwork.chainId &&
                     network.url === activeNetwork.url
-                      ? 'You cannot remove the active network'
+                      ? t('settings.youCannotRemoveActiveNetwork')
                       : ''
                   }
                 >
@@ -137,7 +139,7 @@ const ManageNetworkView = () => {
         ))}
 
         <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          Ethereum Networks
+          {t('settings.ethereumNetworks')}
         </p>
         {Object.values(networks.ethereum).map((network: any) => (
           <li
@@ -180,7 +182,7 @@ const ManageNetworkView = () => {
                   content={
                     network.chainId === activeNetwork.chainId &&
                     network.url === activeNetwork.url
-                      ? 'You cannot remove the active network'
+                      ? t('settings.youCannotRemoveActiveNetwork')
                       : ''
                   }
                 >
@@ -223,7 +225,7 @@ const ManageNetworkView = () => {
       </ul>
 
       <NeutralButton type="button" onClick={() => navigate('/home')}>
-        Close
+        {t('buttons.close')}
       </NeutralButton>
     </Layout>
   );

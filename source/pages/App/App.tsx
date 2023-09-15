@@ -1,8 +1,8 @@
-import React, { FC, useEffect } from 'react';
+import React, { FC, Suspense, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
-import { Container } from 'components/index';
+import { Container, Loading } from 'components/index';
 import { Router } from 'routers/index';
 
 const App: FC = () => {
@@ -30,13 +30,15 @@ const App: FC = () => {
   // other logic
   return (
     <section className="mx-auto min-w-popup h-full min-h-popup bg-bkg-2 md:max-w-2xl">
-      <Container>
-        <HashRouter>
-          <div className="w-full min-w-popup h-full min-h-popup">
-            <Router />
-          </div>
-        </HashRouter>
-      </Container>
+      <Suspense fallback={<Loading />}>
+        <Container>
+          <HashRouter>
+            <div className="w-full min-w-popup h-full min-h-popup">
+              <Router />
+            </div>
+          </HashRouter>
+        </Container>
+      </Suspense>
     </section>
   );
 };

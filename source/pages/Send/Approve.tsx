@@ -1,6 +1,7 @@
 import { Form } from 'antd';
 import { ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -34,7 +35,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const ApproveTransactionComponent = () => {
   const { wallet } = getController();
-
+  const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
   const { navigate, alert, useCopyClipboard } = useUtils();
@@ -192,7 +193,7 @@ export const ApproveTransactionComponent = () => {
         logError('error', 'Transaction', error);
 
         alert.removeAll();
-        alert.error("Can't complete approve. Try again later.");
+        alert.error(t('send.cantCompleteApprove'));
 
         if (isExternal) setTimeout(window.close, 4000);
         setLoading(false);
@@ -257,7 +258,7 @@ export const ApproveTransactionComponent = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Address successfully copied!');
+    alert.success(t('home.addressCopied'));
   }, [copied]);
 
   useMemo(() => {
@@ -300,11 +301,11 @@ export const ApproveTransactionComponent = () => {
   }, [fiatPrice, calculatedFeeValue]);
 
   return (
-    <Layout title="Approve" canGoBack={canGoBack}>
+    <Layout title={'send.approve'} canGoBack={canGoBack}>
       <DefaultModal
         show={confirmedDefaultModal}
-        title="Approve successful"
-        description="Your approve has been successfully submitted. You can see more details under activity on your home page."
+        title={t('send.approveSuccessful')}
+        description={t('send.approveSuccessfulMessage')}
         onClose={() => {
           if (isExternal) window.close();
           else navigate('/home');
@@ -313,8 +314,8 @@ export const ApproveTransactionComponent = () => {
 
       <DefaultModal
         show={haveError}
-        title="Verify Fields"
-        description="Change fields values and try again."
+        title={t('send.verifyFields')}
+        description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
       />
       <EditPriorityModal
@@ -347,14 +348,13 @@ export const ApproveTransactionComponent = () => {
                 </div>
 
                 <span className="text-brand-white text-lg">
-                  You grant access to your{' '}
+                  {t('send.grantAccess')}{' '}
                   <span className="text-brand-royalblue font-semibold">
                     {approvedTokenInfos?.tokenSymbol}
                   </span>
                 </span>
                 <span className="text-brand-graylight text-sm">
-                  By granting permission, you are authorizing the following
-                  contract to access your funds
+                  {t('send.byGrantingPermission')}
                 </span>
               </div>
 
@@ -389,7 +389,7 @@ export const ApproveTransactionComponent = () => {
                     className="text-blue-300 text-sm"
                     onClick={() => setOpenEditFeeModal(true)}
                   >
-                    Edit permission
+                    {t('send.editPermission')}
                   </button>
                 </div>
               </div>
@@ -405,7 +405,9 @@ export const ApproveTransactionComponent = () => {
                         className="flex items-center justify-center w-4"
                         wrapperClassname="flex items-center justify-center mr-2"
                       />
-                      <h1 className="text-base font-bold">Transaction Fee</h1>
+                      <h1 className="text-base font-bold">
+                        {t('send.transactionFee')}
+                      </h1>
                     </div>
 
                     <button
@@ -413,13 +415,13 @@ export const ApproveTransactionComponent = () => {
                       className="justify-self-end text-blue-300 text-xs"
                       onClick={() => setIsOpenPriority(true)}
                     >
-                      Edit
+                      {t('buttons.edit')}
                     </button>
                   </div>
 
                   <div className="grid grid-cols-2 items-center">
                     <span className="text-brand-graylight text-xs font-thin">
-                      There is a fee associated with this request.
+                      {t('send.thereIsAFee')}
                     </span>
 
                     <p className="flex flex-col items-end text-brand-white text-lg font-bold">
@@ -439,7 +441,8 @@ export const ApproveTransactionComponent = () => {
                     className="text-blue-300 text-sm"
                     onClick={() => setDetailsOpened(!detailsOpened)}
                   >
-                    {detailsOpened ? 'Hide' : 'Show'} full transaction details
+                    {detailsOpened ? t('buttons.hide') : t('buttons.show')}{' '}
+                    {t('send.fullTxDetails')}
                   </button>
                 </div>
               </div>
@@ -458,7 +461,7 @@ export const ApproveTransactionComponent = () => {
                         wrapperClassname="flex items-center justify-center mr-2"
                       />
                       <h2 className="text-base font-bold">
-                        Permission Request
+                        {t('send.permissionRequest')}
                       </h2>
                     </div>
 
@@ -467,16 +470,16 @@ export const ApproveTransactionComponent = () => {
                       className="self-start justify-self-end text-blue-300 text-xs"
                       onClick={() => setOpenEditFeeModal(true)}
                     >
-                      Edit
+                      {t('buttons.edit')}
                     </button>
                   </div>
 
                   <p className="text-brand-graylight text-xs font-thin">
-                    {host} can access and spend up to this maximum amount.
+                    {host} {t('send.canAccess')}
                   </p>
 
                   <div className="grid grid-cols-2 items-center text-sm">
-                    <p className="font-bold">Approved amount:</p>
+                    <p className="font-bold">{t('send.approvedAmount')}:</p>
                     <span>
                       {!customApprovedAllowanceAmount?.isCustom
                         ? customApprovedAllowanceAmount?.defaultAllowanceValue
@@ -488,7 +491,7 @@ export const ApproveTransactionComponent = () => {
                   </div>
 
                   <div className="grid grid-cols-2 items-center text-sm">
-                    <p className="font-bold">Granted to:</p>
+                    <p className="font-bold">{t('send.grantedTo')}:</p>
                     <div className="flex items-center justify-start">
                       <span>{ellipsis(dataTx.to)}</span>
                       <IconButton onClick={() => copy(dataTx?.to)}>
@@ -510,12 +513,12 @@ export const ApproveTransactionComponent = () => {
                         className="flex items-center justify-center w-4"
                         wrapperClassname="flex items-center justify-center mr-2"
                       />
-                      <h3 className="text-base font-bold">Data</h3>
+                      <h3 className="text-base font-bold">{t('send.data')}</h3>
                     </div>
                   </div>
 
                   <p className="text-brand-graylight text-xs font-thin">
-                    Method: {decodedTx?.method}
+                    {t('send.method')}: {decodedTx?.method}
                   </p>
 
                   <div
@@ -551,7 +554,7 @@ export const ApproveTransactionComponent = () => {
                     wrapperClassname="mb-2 mr-2"
                     rotate={45}
                   />
-                  Cancel
+                  {t('buttons.cancel')}
                 </Button>
 
                 <Button
@@ -566,7 +569,7 @@ export const ApproveTransactionComponent = () => {
                     className="w-4"
                     wrapperClassname="mb-2 mr-2"
                   />
-                  Confirm
+                  {t('buttons.confirm')}
                 </Button>
               </div>
             </Form>

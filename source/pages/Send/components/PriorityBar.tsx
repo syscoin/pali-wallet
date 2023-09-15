@@ -1,4 +1,5 @@
 import React, { Dispatch, SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export const PinkBall = () => (
   <div className="w-3 h-3 bg-brand-deepPink100 border-2 border-brand-deepPink100 rounded-full" />
@@ -35,10 +36,11 @@ export const PriorityBar = ({
   onClick: Dispatch<SetStateAction<number>>;
   priority: number;
 }) => {
+  const { t } = useTranslation();
   const values = {
-    0: 'Low',
-    1: 'Medium',
-    2: 'High',
+    0: t('send.low'),
+    1: t('send.medium'),
+    2: t('send.high'),
   };
 
   return (

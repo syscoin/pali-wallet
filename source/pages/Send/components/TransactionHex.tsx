@@ -1,5 +1,6 @@
 import { utils } from 'ethers';
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
@@ -12,6 +13,7 @@ interface ITransactionHexProps {
 
 export const TransactionHexComponent = (props: ITransactionHexProps) => {
   const { methodName, dataHex } = props;
+  const { t } = useTranslation();
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -23,19 +25,19 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('HEX data successfully copied!');
+    alert.success(t('send.hexDataCopied'));
   }, [copied]);
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
       <div className="flex flex-col gap-2 items-center justify-center w-full">
         <p className="flex gap-1.5 items-center justify-start w-full text-sm">
-          Method:
+          {t('send.method')}:
           <span className="text-brand-royalblue font-bold">{methodName}</span>
         </p>
 
         <p className="flex gap-1.5 items-center justify-start w-full text-sm">
-          HEX Data:
+          {t('send.hexData')}:
           <span className="text-brand-royalblue">{hexBytesLength} BYTES</span>
         </p>
       </div>
@@ -65,7 +67,7 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
             className="px-1 text-brand-white hover:text-fields-input-borderfocus"
           />
         </IconButton>
-        <span>Copy transaction HEX data</span>
+        <span>{t('send.copyTxHexData')}</span>
       </div>
     </div>
   );

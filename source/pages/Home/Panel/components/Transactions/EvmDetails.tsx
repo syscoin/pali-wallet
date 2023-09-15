@@ -1,5 +1,6 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -19,6 +20,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   } = useSelector((state: RootState) => state.vault);
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
+  const { t } = useTranslation();
 
   const [copied, copy] = useCopyClipboard();
 
@@ -26,7 +28,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Hash successfully copied');
+    alert.success(t('home.hashCopied'));
   }, [copied]);
 
   const formattedTransaction = [];

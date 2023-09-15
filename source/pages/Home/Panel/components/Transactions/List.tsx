@@ -1,5 +1,6 @@
 import uniqueId from 'lodash/uniqueId';
 import React, { Fragment, useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -17,6 +18,7 @@ export const TransactionsList = ({
   userTransactions: any[]; //todo: adjust type
 }) => {
   const { wallet } = getController();
+  const { t } = useTranslation();
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
@@ -105,11 +107,11 @@ export const TransactionsList = ({
       switch (isCanceled) {
         case true:
           className = 'text-warning-error';
-          status = 'Canceled';
+          status = t('send.canceled');
           break;
         case false:
           className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
-          status = isConfirmed ? 'Confirmed' : 'Pending';
+          status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
 

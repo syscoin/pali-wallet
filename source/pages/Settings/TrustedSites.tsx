@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Layout, NeutralButton } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
@@ -8,7 +9,7 @@ import { truncate } from 'utils/index';
 
 const TrustedSitesView = () => {
   const { navigate } = useUtils();
-
+  const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
   const handleSearch = (typed) => {
@@ -31,7 +32,7 @@ const TrustedSitesView = () => {
   };
 
   return (
-    <Layout title="TRUSTED WEBSITES">
+    <Layout title={t('settings.trustedWebsites')}>
       <Form
         validateMessages={{ default: '' }}
         id="trusted"

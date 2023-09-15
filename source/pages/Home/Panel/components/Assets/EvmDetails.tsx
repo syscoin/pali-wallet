@@ -1,6 +1,7 @@
 import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -18,6 +19,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
   );
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
+  const { t } = useTranslation();
 
   const [copied, copy] = useCopyClipboard();
 
@@ -25,7 +27,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Contract successfully copied');
+    alert.success(t('home.contractCopied'));
   }, [copied]);
 
   const formattedAsset = [];
@@ -74,14 +76,14 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     <>
       <Fragment key={uniqueId(id)}>
         <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>Balance</p>
+          <p>{t('send.balance')}</p>
           <span>
             <b>{currentNft.balance}</b>
           </span>
         </li>
 
         <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>Token Name</p>
+          <p>{t('settings.tokenName')}</p>
           <span>
             <b>{currentNft.tokenSymbol}</b>
           </span>
