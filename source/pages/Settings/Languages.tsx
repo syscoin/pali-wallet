@@ -7,26 +7,25 @@ import { useNavigate } from 'react-router-dom';
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { setLanguageInLocalstorage } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { i18next } from 'utils/i18n';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
-  const { timer, language } = useSelector((state: RootState) => state.vault);
+  const { timer } = useSelector((state: RootState) => state.vault);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [currentLang, setCurrentLang] = useState<PaliLanguages>(language);
+  const currLang = window.localStorage.getItem('language');
+  const [currentLang, setCurrentLang] = useState<PaliLanguages>(
+    (currLang ?? 'en') as PaliLanguages
+  );
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState<boolean>(false);
-
-  const controller = getController();
   const navigate = useNavigate();
 
   const onSubmit = () => {
     setLoading(true);
     setLanguageInLocalstorage(currentLang);
-    controller.wallet.setCurrentLanguage(currentLang);
 
     i18next.changeLanguage(currentLang);
     setConfirmed(true);

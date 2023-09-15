@@ -23,7 +23,6 @@ import {
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
 import { isERC1155Transfer } from 'utils/transactions';
-import { PaliLanguages } from 'utils/types';
 
 import {
   IChangingConnectedAccount,
@@ -68,7 +67,6 @@ export const initialState: IVaultState = {
   isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
-  language: PaliLanguages.EN,
   isLoadingAssets: false,
   changingConnectedAccount: {
     host: undefined,
@@ -283,9 +281,6 @@ const VaultState = createSlice({
       state.lastLogin = Date.now();
     },
 
-    setLanguage(state: IVaultState, action: PayloadAction<PaliLanguages>) {
-      state.language = action.payload;
-    },
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<{
@@ -745,7 +740,6 @@ export const {
   setIsLoadingTxs,
   setAccountBalances,
   setChangingConnectedAccount,
-  setLanguage,
   setLastLogin,
   setNetworks,
   setTimer,
