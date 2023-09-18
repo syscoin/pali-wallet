@@ -69,7 +69,7 @@ const PrivateKeyView = () => {
       {isBitcoinBased && (
         <Card type="info">
           <p>
-            <b className="text-warning-info">{t('buttons.forgetWarning')}: </b>
+            <b className="text-warning-info">{t('settings.forgetWarning')}: </b>
             {t('settings.thisIsYourAccountIndexer')} {activeAccount?.label},{' '}
             {t('settings.itIsntAReceivingAddress')}
           </p>

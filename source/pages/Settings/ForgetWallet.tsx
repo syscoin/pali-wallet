@@ -131,14 +131,14 @@ const ForgetWalletView = () => {
                       ? 'border-warning-error'
                       : 'border-fields-input-border'
                   } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
-                  placeholder="Paste your wallet seed phrase"
+                  placeholder={t('import.pasteYourWalletSeed')}
                   id="forget_seed"
                 />
               </Form.Item>
             </>
           )}
 
-          <div className="absolute bottom-12 flex gap-x-8 justify-between md:static md:gap-x-40">
+          <div className="flex gap-x-8 justify-between md:static md:gap-x-40">
             <PrimaryButton type="button" onClick={() => navigate('/home')}>
               {t('buttons.cancel')}
             </PrimaryButton>

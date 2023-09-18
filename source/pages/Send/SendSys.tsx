@@ -316,7 +316,7 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
+                  content={t('send.paliVerifies')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
                     {t('send.verifyAddress')}
@@ -351,7 +351,7 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
+                  content={t('send.disableThisOption')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
                     Z-DAG

@@ -17,7 +17,7 @@
 		"edit": "Editar",
 		"hide": "Ocultar",
 		"show": "Mostrar",
-		"save": "Salver",
+		"save": "Guardar",
 		"next": "Siguiente",
 		"confirm": "Confirmar",
 		"close": "Cerrar",
@@ -32,7 +32,9 @@
 		"done": "Hecho",
 		"iveWrittenIt": "Lo he anotado",
 		"reject": "Rechazar",
-		"switch": "Cambiar"
+		"switch": "Cambiar",
+		"success": "Correcto",
+		"error": "Erro"
 	},
 	"components": {
 		"newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -157,7 +159,7 @@
 	},
 	"import": {
 		"importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla.",
-		"pasteYourWalletSeed": "Pega tu frase semilla de billetera"
+		"pasteYourWalletSeed": "Escribe tu frase semilla"
 	},
 	"receive": {
 		"receiveTitle": "RECIBIR"
@@ -174,7 +176,9 @@
 	},
 	"send": {
 		"approve": "Aprobar",
-		"assetGuid": "Guid del activo",
+		"assetGuid": "GUID del activo",
+		"paliVerifies": "Pali verifica tu dirección para comprobar si es una dirección SYS válida. Es útil desactivar esta verificación si deseas enviar a tipos específicos de direcciones, como las legado. Solo desactiva esta verificación si estás completamente seguro de lo que estás haciendo.",
+		"disableThisOption": "Desactiva esta opción para Replace-by-fee (RBF) y activa para Z-DAG, una característica exclusiva de Syscoin. Z-DAG permite transacciones más rápidas pero no se debe usar para grandes cantidades.",
 		"canceled": "Cancelado",
 		"pending": "Pendiente",
 		"confirmed": "Confirmado",
@@ -230,7 +234,7 @@
 		"internalError": "Ha ocurrido un error interno.",
 		"send": "ENVIAR",
 		"balance": "Saldo",
-		"receiver": "Receptor",
+		"receiver": "Destinatario",
 		"native": "Nativo",
 		"amount": "Cantidad",
 		"contractEstimateError": "No pudimos estimar el gas. Puede haber un error en el contrato y esta transacción puede fallar.",
@@ -260,6 +264,7 @@
 		"portuguese": "Portugués",
 		"spanish": "Español",
 		"accountImported": "Cuenta importada con éxito.",
+		"advancedTitle": "CONFIGURACIONES AVANZADAS",
 		"clickHereSupport": "Haz clic aquí para ser redirigido a Syscoin Discord, por favor, contacta al equipo de soporte en #pali_support.",
 		"toAccess": "Para acceder al enlace de soporte, necesitas dar permiso o copiar y pegar el enlace de abajo.",
 		"refreshButtonWarning": "El botón de actualización envía múltiples solicitudes a la cadena de bloques a través de una RPC. Si lo activas, asegúrate de agregar tus propios proveedores de RPC pagados para evitar alcanzar el límite de solicitudes públicas de RPC. Úsalo bajo tu propia responsabilidad.",
@@ -326,7 +331,7 @@
 		"currencySymbol": "Símbolo de la moneda",
 		"explorerUrl": "URL del explorador",
 		"addNewToken": "Agregar nuevo token",
-		"tokenSuccessfullyAdded": "Token agregado exitosamente.",
+		"tokenSuccessfullyAdded": "Token agregado correctamente.",
 		"toAddAToken": "para agregar un token",
 		"thisWillAllowToken": "Esto permitirá que este token se use dentro de Pali.",
 		"paliDoesNotVerifyToken": "Pali no verifica tokens personalizados.",
@@ -336,7 +341,7 @@
 		"tokenSymbol": "Símbolo del token",
 		"forgetWallet": "OLVIDAR MONEDERO",
 		"forgetWarning": "ADVERTENCIA",
-		"thisWillForget": "Esto olvidará el monedero creado con tu frase de recuperación actual. Si en el futuro deseas usar Pali nuevamente, deberás crear un nuevo monedero usando tu frase de recuperación actual o creando una nueva.",
+		"thisWillForget": "Esto olvidará el monedero creado con tu frase de recuperación actual. Si en el futuro deseas usar Pali nuevamente, deberás recuperarlo usando tu frase de recuperación actual o crear una nueva cuenta.",
 		"enterYourPassword": "Ingresa tu contraseña",
 		"youStillHave": "Aún tienes fondos en tu monedero. Pega tu frase de recuperación a continuación para olvidar el monedero.",
 		"importAccountsWont": "Las cuentas importadas no estarán vinculadas a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
@@ -402,7 +407,7 @@
 		"originalValue": "Valor original",
 		"formValue": "Valor del formulario",
 		"tokenDecimals": "Decimales del token",
-		"tokenSuccessfullyAdded": "Token agregado exitosamente",
+		"tokenSuccessfullyAdded": "Token agregado correctamente",
 		"wasSucessfullyAdded": "se ha agregado con éxito a su monedero.",
 		"verifyTheCurrentNetwork": "Verificar la red actual",
 		"verifyTheCurrentNetworkMessage": "Este token probablemente no está disponible en la red actual. Verifique la red del token e inténtelo de nuevo.",

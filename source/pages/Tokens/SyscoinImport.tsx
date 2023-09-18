@@ -92,7 +92,7 @@ export const SyscoinImportToken = () => {
           <Input
             type="text"
             className="input-small relative"
-            placeholder="Token Guid"
+            placeholder="Token GUID"
           />
         </Form.Item>
 
@@ -117,7 +117,7 @@ export const SyscoinImportToken = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="absolute bottom-12 md:static">
             <NeutralButton loading={isLoading} type="submit">
-              {t('tokens.next')}
+              {t('buttons.next')}
             </NeutralButton>
           </div>
         </div>
