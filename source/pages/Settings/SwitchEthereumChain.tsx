@@ -103,7 +103,7 @@ const SwitchChain: React.FC = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
             <h2 className="text-center text-base">
-              {t('settings.allow')} {host} {t('settings.toSwitchNetwork')}?
+              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
             </h2>
             <div className="mt-1 px-4 w-full text-center text-sm">
               <span className="disabled">{t('settings.thisWillSwitch')}</span>

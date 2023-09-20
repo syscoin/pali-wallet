@@ -47,7 +47,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       <DefaultModal
         show={confirmed}
         onClose={window.close}
-        title={t('transaction.signatureRequestWasRequest')}
+        title={t('transactions.signatureRequestWasRequest')}
         description={
           send
             ? t('transactions.theDappHas')
