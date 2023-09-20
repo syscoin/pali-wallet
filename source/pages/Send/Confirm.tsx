@@ -117,7 +117,10 @@ export const SendConfirm = () => {
         case isBitcoinBased === true:
           try {
             wallet.syscoinTransaction
-              .sendTransaction(basicTxValues, activeAccount.isTrezorWallet)
+              .sendTransaction(
+                { ...basicTxValues, fee: 0.00001 },
+                activeAccount.isTrezorWallet
+              )
               .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
