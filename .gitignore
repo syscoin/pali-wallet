@@ -12,6 +12,7 @@ chrome
 
 # production
 /build
+/dist
 DS_Store
 
 # misc
