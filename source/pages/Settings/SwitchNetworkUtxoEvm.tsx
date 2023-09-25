@@ -58,7 +58,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
             <h2 className="text-center text-lg">
-              {t('settings.allow')} {host} {t('settings.toSwitchNetwork')}?
+              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
             </h2>
             <div className="flex flex-col mt-1 px-4 w-full text-center text-xs">
               <span>{t('settings.thisWillSwitch')}</span>
