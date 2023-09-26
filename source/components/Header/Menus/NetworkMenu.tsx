@@ -23,6 +23,12 @@ interface INetworkComponent {
   >;
 }
 
+const customSort = (a: INetwork, b: INetwork) => {
+  const order = { 570: 2, 57: 1 };
+
+  return (order[b.chainId] || 0) - (order[a.chainId] || 0);
+};
+
 export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
@@ -278,13 +284,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                           {Object.values(networks.ethereum)
-                            .sort((a, b) => {
-                              if (a.chainId === 570) return -1;
-                              if (b.chainId === 570) return 1;
-                              if (a.chainId === 57) return -1;
-                              if (b.chainId === 57) return 1;
-                              return 0;
-                            })
+                            .sort(customSort)
 
                             .map((currentNetwork: any, index: number, arr) => (
                               <li

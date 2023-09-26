@@ -32,6 +32,8 @@ import {
 
 import { EditPriorityModal } from './EditPriorityModal';
 
+const SYSCOIN_BASIC_FEE = 0.00001;
+
 export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
   const { t } = useTranslation();
@@ -118,7 +120,7 @@ export const SendConfirm = () => {
           try {
             wallet.syscoinTransaction
               .sendTransaction(
-                { ...basicTxValues, fee: 0.00001 },
+                { ...basicTxValues, fee: SYSCOIN_BASIC_FEE },
                 activeAccount.isTrezorWallet
               )
               .then((response) => {
