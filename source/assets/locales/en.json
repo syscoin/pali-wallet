@@ -32,7 +32,9 @@
 		"done": "Done",
 		"iveWrittenIt": "I've written it down",
 		"reject": "Reject",
-		"switch": "Switch"
+		"switch": "Switch",
+		"success": "Success",
+		"error": "Error"
 	},
 	"components": {
 		"newPassword": "New password (min 8 chars)",
@@ -175,6 +177,8 @@
 	"send": {
 		"approve": "Approve",
 		"assetGuid": "Asset Guid",
+		"paliVerifies": "Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing.",
+		"disableThisOption": "Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts.",
 		"canceled": "Canceled",
 		"pending": "Pending",
 		"confirmed": "Confirmed",

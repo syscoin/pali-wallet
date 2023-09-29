@@ -657,7 +657,7 @@ export const SendConfirm = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
-              {`${basicTxValues.token?.isNft ? 'TokenID' : 'Send'}`}
+              {`${basicTxValues.token?.isNft ? 'TokenID' : t('send.send')}`}
             </span>
 
             <span>
@@ -822,7 +822,7 @@ export const SendConfirm = () => {
                   wrapperClassname="mr-2 flex items-center"
                 />
               )}
-              {t('send.confirm')}
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>

@@ -36,6 +36,7 @@ export const SendSys = () => {
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     null
   );
+  const [isLoading, setIsLoading] = useState(false);
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
   const handleGetFee = useCallback(async () => {
@@ -106,15 +107,21 @@ export const SendSys = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = ({ receiver, amount, fee }: any) => {
+  const nextStep = async ({ receiver, amount }: any) => {
     try {
+      setIsLoading(true);
+      const transactionFee =
+        await controller.wallet.syscoinTransaction.getEstimateSysTransactionFee(
+          { amount, receivingAddress: receiver }
+        );
+      setIsLoading(false);
       navigate('/send/confirm', {
         state: {
           tx: {
             sender: activeAccount.address,
             receivingAddress: receiver,
             amount: Number(amount),
-            fee,
+            fee: transactionFee,
             token: selectedAsset
               ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
               : null,
@@ -316,7 +323,7 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
+                  content={t('send.paliVerifies')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
                     {t('send.verifyAddress')}
@@ -351,7 +358,7 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
+                  content={t('send.disableThisOption')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
                     Z-DAG
@@ -427,7 +434,9 @@ export const SendSys = () => {
           </p>
 
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
+            <NeutralButton type="submit" loading={isLoading}>
+              {t('buttons.next')}
+            </NeutralButton>
           </div>
         </Form>
       </div>
