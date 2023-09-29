@@ -57,7 +57,7 @@
 		"yourKeys": "Tus claves",
 		"connectTrezor": "Conectar Trezor",
 		"importAccount": "Importar cuenta",
-		"importAccMessage": "¡Pali es la única billetera de extensión con UTXO! Para importar cualquier billetera, necesitas cambiar a una red EVM.",
+		"importAccMessage": "¡Pali es la única extensión de billetera con UTXO! Para importar cualquier billetera, necesitas cambiar a una red EVM.",
 		"switchActiveAccount": "Cambiar cuenta activa",
 		"yourActiveAccountIs": "Tu cuenta activa es",
 		"hostIsConnected": "está conectado a",
@@ -108,7 +108,7 @@
 		"yourKeys": "Tus claves",
 		"connectTrezor": "Conectar Trezor",
 		"importAccount": "Importar cuenta",
-		"importAccMessage": "¡Pali es la única billetera de extensión con UTXO! Para importar cualquier billetera, necesitas cambiar a una red EVM."
+		"importAccMessage": "¡Pali es la única extensión de billetera con UTXO! Para importar cualquier billetera, necesitas cambiar a una red EVM."
 	},
 	"menus": {
 		"wallet": "BILLETERA",
@@ -289,7 +289,7 @@
 		"errorCreatingHardWallet": "Error al crear monedero hardware.",
 		"hardwareWallet": "MONEDERO HARDWARE",
 		"selectTheHardware": "Selecciona el monedero hardware que desees",
-		"toConnect": "para conectar",
+		"toConnect": "conectar",
 		"toAddAccount": "para agregar una cuenta",
 		"toPali": "a Pali",
 		"dontHaveWallet": "¿No tienes un monedero hardware?",

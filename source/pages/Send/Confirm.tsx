@@ -32,8 +32,6 @@ import {
 
 import { EditPriorityModal } from './EditPriorityModal';
 
-const SYSCOIN_BASIC_FEE = 0.00001;
-
 export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
   const { t } = useTranslation();
@@ -119,10 +117,7 @@ export const SendConfirm = () => {
         case isBitcoinBased === true:
           try {
             wallet.syscoinTransaction
-              .sendTransaction(
-                { ...basicTxValues, fee: SYSCOIN_BASIC_FEE },
-                activeAccount.isTrezorWallet
-              )
+              .sendTransaction(basicTxValues, activeAccount.isTrezorWallet)
               .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
@@ -827,7 +822,7 @@ export const SendConfirm = () => {
                   wrapperClassname="mr-2 flex items-center"
                 />
               )}
-              {t('send.confirm')}
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>

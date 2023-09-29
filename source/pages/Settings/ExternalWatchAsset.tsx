@@ -111,7 +111,7 @@ const ExternalWatchAsset = () => {
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                  {t('settings.balance')}
+                  {t('send.balance')}
                   <span className="text-brand-royalblue text-xs">
                     {assetInfo.balance}
                   </span>

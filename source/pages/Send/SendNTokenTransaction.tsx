@@ -553,7 +553,7 @@ export const SendNTokenTransaction = () => {
                   wrapperClassname="mr-2 flex items-center"
                 />
               )}
-              {t('send.confirm')}
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>
