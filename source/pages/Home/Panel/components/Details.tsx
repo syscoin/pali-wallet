@@ -49,7 +49,9 @@ export const DetailsView = () => {
 
   return (
     <Layout
-      title={`${isAsset ? t('titles.assetDetails') : t('transactionDetails')}`}
+      title={`${
+        isAsset ? t('titles.assetDetails') : t('titles.transactionDetails')
+      }`}
     >
       {isLoading ? (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
