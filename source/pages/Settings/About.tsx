@@ -1,4 +1,5 @@
 import React, { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { version } from '../../../package.json';
 import {
@@ -14,21 +15,27 @@ const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
     window.open(url);
   };
+  const { t } = useTranslation();
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
 
   const showSuccessAlert = () => {
     if (copied) {
       alert.removeAll();
-      alert.success('Link successfully copied');
+      alert.success(t('settings.linkCopied'));
     }
   };
 
   return (
-    <Layout title="INFO & HELP" id="info-help-title">
+    <Layout
+      title={t('generalMenu.infoHelp').toUpperCase()}
+      id="info-help-title"
+    >
       <div className="flex flex-col gap-y-4 w-full text-brand-white text-sm">
         <p>Pali Wallet Browser Extension v2.0</p>
-        <p>Version: {version}</p>
+        <p>
+          {t('settings.version')}: {version}
+        </p>
 
         <p
           className="hover:text-brand-royalblue cursor-pointer transition-all duration-200"
@@ -47,7 +54,7 @@ const AboutView: FC = () => {
               wrapperClassname="w-6"
             />
 
-            <p className="text-sm">User support</p>
+            <p className="text-sm">{t('settings.userSupport')}</p>
           </div>
 
           <p
@@ -55,12 +62,10 @@ const AboutView: FC = () => {
             className="text-brand-white underline text-xs cursor-pointer"
             onClick={() => handleRedirect('https://discord.com/invite/syscoin')}
           >
-            Click here to be redirected to Syscoin Discord, please contact
-            support team at #pali_support.
+            {t('settings.clickHereSupport')}
           </p>
           <div className="pt-3 text-brand-white text-xs">
-            To access the support link, you need to give permission or copy and
-            paste the link below
+            {t('settings.toAccess')}
             <div className="flex flex-row mt-2">
               <p className="pt-1">https://discord.com/invite/syscoin</p>
               <IconButton
@@ -78,7 +83,7 @@ const AboutView: FC = () => {
 
         <div className="absolute bottom-12 md:static md:mt-3">
           <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
+            {t('buttons.close')}
           </NeutralButton>
         </div>
       </div>

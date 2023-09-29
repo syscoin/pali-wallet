@@ -1,5 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
@@ -18,7 +19,7 @@ interface IHeader {
 
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const { wallet, dapp } = getController();
-
+  const { t } = useTranslation();
   const error = useSelector((state: RootState) => state.vault.error);
 
   const activeAccount = useSelector(
@@ -49,9 +50,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     if (error) {
       setNetworkErrorStatus({
         error: true,
-        description:
-          'There was an error while trying to switch network. Try again later.',
-        title: 'Error switching networks',
+        description: t('header.thereWasAnError'),
+        title: t('header.errorSwitching'),
       });
 
       wallet.resolveError();
@@ -85,8 +85,8 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
           />
 
           <ErrorModal
-            title="Error switching networks"
-            description="There was an error while trying to switch network. Try again later."
+            title={t('header.errorSwitching')}
+            description={t('header.thereWasAnError')}
             log={networkErrorStatus.description}
             show={networkErrorStatus.error}
             onClose={() =>
@@ -108,25 +108,26 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                 className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
               >
                 <Icon name="warning" className="mb-2 text-brand-white" />
-                <p>Switch active account</p>
+                <p>{t('header.switchActiveAccount')}</p>
               </Dialog.Title>
 
               <div className="mt-4">
                 <p className="text-brand-white text-sm">
-                  <b className="text-gray-400">{host}</b> is connected to{' '}
-                  {newConnectedAccount ? newConnectedAccount.label : ''}. Your
-                  active account is{' '}
-                  {accounts[activeAccount.type][activeAccount.id].label}. Would
-                  like to continue with the active account?
+                  <b className="text-gray-400">{host}</b>{' '}
+                  {t('header.hostIsConnectedTo')}{' '}
+                  {newConnectedAccount ? newConnectedAccount.label : ''}.{' '}
+                  {t('header.yourActiveAccountIs')}{' '}
+                  {accounts[activeAccount.type][activeAccount.id].label}.{' '}
+                  {t('header.wouldYouLikeTo')}
                 </p>
               </div>
 
               <div className="mt-4">
                 <span className="text-brand-white text-xs">
-                  If you continue with the active account, Pali will change the
-                  connected account for <b className="text-gray-400">{host}</b>{' '}
-                  to {newConnectedAccount ? newConnectedAccount.label : ''} and
-                  you will need to start the transaction again.
+                  {t('header.ifYouContinueWith')}{' '}
+                  <b className="text-gray-400">{host}</b> to{' '}
+                  {newConnectedAccount ? newConnectedAccount.label : ''}{' '}
+                  {t('header.andYouWillNeed')}{' '}
                 </span>
               </div>
 
@@ -137,7 +138,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   type="button"
                   onClick={() => hanldeDisconnectFromDapp()}
                 >
-                  No, cancel
+                  {t('buttons.noCancel')}
                 </SecondaryButton>
 
                 <PrimaryButton
@@ -146,7 +147,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   type="button"
                   onClick={() => handleChangeConnectedAccount()}
                 >
-                  Yes, continue
+                  {t('buttons.yesContinue')}
                 </PrimaryButton>
               </div>
             </div>

@@ -2,6 +2,7 @@ import { Form, Input } from 'antd';
 import { isBoolean, isNil, uniqueId } from 'lodash';
 import React from 'react';
 import { useState, FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { getTokenJson } from '@pollum-io/sysweb3-utils';
@@ -74,6 +75,7 @@ export const ImportToken: FC = () => {
     ));
   };
 
+  const { t } = useTranslation();
   const addToken = async (token: ITokenEthProps) => {
     setIsLoading(true);
     try {
@@ -125,7 +127,7 @@ export const ImportToken: FC = () => {
         >
           <Input
             type="text"
-            placeholder="Search by symbol"
+            placeholder={t('tokens.searchBySymbol')}
             className="input-small relative"
             onChange={(event) => handleSearch(event.target.value)}
           />
@@ -151,8 +153,10 @@ export const ImportToken: FC = () => {
       {added && (
         <DefaultModal
           show={added}
-          title="Token successfully added"
-          description={`${selected.tokenSymbol} was successfully added to your wallet.`}
+          title={t('tokens.tokenSuccessfullyAdded')}
+          description={`${selected.tokenSymbol} ${t(
+            'tokens.wasSucessfullyAdded'
+          )}`}
           onClose={() => navigate('/home')}
         />
       )}
@@ -160,9 +164,9 @@ export const ImportToken: FC = () => {
       {error && (
         <ErrorModal
           show={error}
-          title="Verify the current network"
-          description="This token probably is not available in the current network. Verify the token network and try again."
-          log="Token network probably is different from current network."
+          title={t('tokens.verifyTheCurrentNetwork')}
+          description={t('tokens.verifyTheCurrentNetworkMessage')}
+          log={t('tokens.verifyTheCurrentNetworkMessage')}
           onClose={() => setError(false)}
         />
       )}

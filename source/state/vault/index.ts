@@ -280,6 +280,7 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
+
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<{

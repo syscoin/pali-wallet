@@ -2,6 +2,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, Fragment, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
@@ -14,7 +15,7 @@ const CurrencyView = () => {
   const controller = getController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-
+  const { t } = useTranslation();
   //* Selectors
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -108,18 +109,18 @@ const CurrencyView = () => {
   ]);
 
   return (
-    <Layout title="FIAT CURRENCY" id="fiat-currency-title">
+    <Layout title={t('settings.fiatCurrency')} id="fiat-currency-title">
       <DefaultModal
         show={confirmed}
         onClose={() => navigate('/home')}
-        title="Fiat currency set successfully"
-        description={`Now you will see the values in your wallet in SYS and ${
+        title={t('settings.fiatCurrencySetSuccessfully')}
+        description={`${t('settings.nowYouWill')} ${
           selectedCoin.toUpperCase() || 'USD'
         }`}
       />
 
       <p className="mb-2 text-left text-white text-sm md:max-w-full">
-        Set your preferred currency for displaying the value of your assets.
+        {t('settings.setYourPreferred')}
       </p>
 
       <div className="flex flex-col gap-y-5 items-center justify-center">
@@ -200,13 +201,13 @@ const CurrencyView = () => {
         </div>
 
         <NeutralButton type="button" onClick={handleConfirmCurrencyChange}>
-          Save
+          {t('buttons.save')}
         </NeutralButton>
       </div>
 
       <div className="h-max absolute bottom-0 flex flex-col items-center justify-center mt-6 py-4 w-full max-w-2xl bg-bkg-4">
         <p className="text-left text-white text-sm">
-          Check your balance in different currencies
+          {t('settings.checkYourBalance')}
         </p>
 
         <Form

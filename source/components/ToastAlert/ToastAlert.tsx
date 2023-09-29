@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Icon } from '../Icon';
 
@@ -14,7 +15,7 @@ export const ToastAlert: React.FC<IToastAlert> = ({
   options,
 }) => {
   const isSuccess = options.type === 'success';
-
+  const { t } = useTranslation();
   return (
     <div
       className={`${
@@ -38,7 +39,9 @@ export const ToastAlert: React.FC<IToastAlert> = ({
       </div>
 
       <div className="w-full text-left">
-        <p className="text-sm font-bold">{isSuccess ? 'Success' : 'Error'}</p>
+        <p className="text-sm font-bold">
+          {isSuccess ? t('buttons.success') : t('buttons.error')}
+        </p>
         <p className="my-2 text-xs">{message}</p>
       </div>
     </div>

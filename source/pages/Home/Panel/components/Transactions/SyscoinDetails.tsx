@@ -1,6 +1,7 @@
 import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -22,6 +23,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
 
   const { useCopyClipboard, alert } = useUtils();
+  const { t } = useTranslation();
 
   const [newRecipients, setNewRecipients] = useState<any>({});
   const [newSenders, setNewSenders] = useState<any>({});
@@ -31,7 +33,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const showSuccessAlert = () => {
     if (copied) {
       alert.removeAll();
-      alert.success('Address successfully copied');
+      alert.success(t('home.addressCopied'));
     }
   };
 
@@ -179,7 +181,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);
-      const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
+      const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
 
       const formattedValue = {
         value: typeof value === 'boolean' ? formattedBoolean : value,

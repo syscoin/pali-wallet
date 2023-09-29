@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import arrowRight from 'assets/images/arrowRight.svg';
@@ -24,7 +25,7 @@ const SwitchChain: React.FC = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
   const network = networks.ethereum[chainId];
   const { wallet } = getController();
-
+  const { t } = useTranslation();
   const onSubmit = async () => {
     setLoading(true);
     try {
@@ -102,13 +103,10 @@ const SwitchChain: React.FC = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
             <h2 className="text-center text-base">
-              Allow {host} to switch the network ?
+              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
             </h2>
             <div className="mt-1 px-4 w-full text-center text-sm">
-              <span className="disabled">
-                This will switch the selected network within Pali to a
-                previously added network
-              </span>
+              <span className="disabled">{t('settings.thisWillSwitch')}</span>
             </div>
             <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
               <CurrentChains />
@@ -117,7 +115,7 @@ const SwitchChain: React.FC = () => {
 
           <div className="absolute bottom-14 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondButton type="button" onClick={window.close} action={true}>
-              Reject
+              {t('buttons.reject')}
             </SecondButton>
 
             <PrimaryButton
@@ -127,7 +125,7 @@ const SwitchChain: React.FC = () => {
               onClick={onSubmit}
               action={true}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

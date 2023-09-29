@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 // import { Fullscreen } from 'components/Fullscreen';
@@ -18,7 +19,7 @@ export const TransactionsPanel = () => {
     isBitcoinBased,
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
-
+  const { t } = useTranslation();
   const adjustedExplorer = useMemo(
     () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
     [explorer]
@@ -70,7 +71,7 @@ export const TransactionsPanel = () => {
 
   const NoTransactionsComponent = () => (
     <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      <p>You have no transaction history.</p>
+      <p>{t('home.youHaveNoTxs')}</p>
     </div>
   );
 
@@ -99,7 +100,7 @@ export const TransactionsPanel = () => {
         className="pb-16 w-full underline text-sm font-semibold bg-transparent border-none cursor-pointer"
         onClick={openExplorer}
       >
-        See all your transactions
+        {t('home.seeAllTxs')}
       </button>
     );
   }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);

@@ -4,6 +4,7 @@ import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
@@ -16,6 +17,7 @@ import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -73,7 +75,7 @@ export const SendEth = () => {
       });
     } catch (error) {
       alert.removeAll();
-      alert.error('An internal error has occurred.');
+      alert.error(t('send.internalError"'));
     }
   };
 
@@ -107,13 +109,13 @@ export const SendEth = () => {
 
   const getTitle = () => {
     if (selectedAsset?.is1155 === undefined) {
-      return `SEND ${
+      return `${t('send.send')} ${
         selectedAsset && selectedAsset.tokenSymbol
           ? selectedAsset.tokenSymbol
           : activeNetwork.currency?.toUpperCase()
       }`;
     }
-    return 'SEND NFT';
+    return `${t('send.send')} NFT`;
   };
 
   return (
@@ -121,7 +123,7 @@ export const SendEth = () => {
       <div>
         <p className="flex flex-col items-center justify-center text-center font-rubik">
           <span className="text-brand-royalblue font-poppins font-thin">
-            Balance
+            {t('send.balance')}
           </span>
 
           {finalBalance()}
@@ -160,7 +162,7 @@ export const SendEth = () => {
             <Input
               id="receiver"
               type="text"
-              placeholder="Receiver"
+              placeholder={t('send.receiver')}
               className="sender-eth-input flex items-center"
             />
           </Form.Item>
@@ -216,7 +218,7 @@ export const SendEth = () => {
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
                                 <p>{activeNetwork.currency.toUpperCase()}</p>
-                                <small>Native</small>
+                                <small>{t('send.receiver')}</small>
                               </button>
                             </Menu.Item>
 
@@ -298,7 +300,7 @@ export const SendEth = () => {
                       return Promise.resolve();
                     }
 
-                    return Promise.reject('Insufficient funds');
+                    return Promise.reject(t('send.insufficientFunds'));
                   },
                 }),
               ]}
@@ -313,7 +315,9 @@ export const SendEth = () => {
                   }`}
                 type="number"
                 placeholder={`${
-                  selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
+                  selectedAsset && selectedAsset?.isNft
+                    ? 'Token ID'
+                    : t('send.amount')
                 }`}
               />
             </Form.Item>
@@ -332,7 +336,7 @@ export const SendEth = () => {
             </span>
           </div>
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">Next</NeutralButton>
+            <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
           </div>
         </Form>
       </div>

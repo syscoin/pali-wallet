@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
@@ -21,6 +22,7 @@ export const Home = () => {
   //* Hooks
   const { getFiatAmount } = usePrice();
   const { navigate } = useUtils();
+  const { t } = useTranslation();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
@@ -140,7 +142,7 @@ export const Home = () => {
                   wrapperClassname="mb-2 mr-2"
                   rotate={45}
                 />
-                Send
+                {t('buttons.send')}
               </Button>
 
               <Button
@@ -154,7 +156,7 @@ export const Home = () => {
                   className="w-4"
                   wrapperClassname="mb-2 mr-2"
                 />
-                Receive
+                {t('buttons.receive')}
               </Button>
             </div>
           </section>

@@ -78,8 +78,8 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
-
   lock: () => void;
+
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -152,6 +152,18 @@ export interface IMainController extends IKeyringManager {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
+  }) => void;
+  validatePendingEvmTransactions: ({
+    activeAccount,
+    activeNetwork,
+    pendingTransactions,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    pendingTransactions: IEvmTransactionResponse[];
   }) => void;
 }
 

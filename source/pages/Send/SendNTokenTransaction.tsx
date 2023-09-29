@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -26,7 +27,7 @@ export const SendNTokenTransaction = () => {
   const {
     wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
   } = getController();
-
+  const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
 
@@ -134,7 +135,7 @@ export const SendNTokenTransaction = () => {
                 dispatchBackgroundEvent(`${eventName}.${host}`, response);
             })
             .catch((error) => {
-              alert.error("Can't complete transaction. Try again later.");
+              alert.error(t('send.cantCompleteTxs'));
               setLoading(false);
               throw error;
             });
@@ -144,7 +145,7 @@ export const SendNTokenTransaction = () => {
           logError('error', 'Transaction', legacyError);
 
           alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
+          alert.error(t('send.cantCompleteTxs'));
 
           if (isExternal) setTimeout(window.close, 4000);
           else setLoading(false);
@@ -187,7 +188,7 @@ export const SendNTokenTransaction = () => {
                 dispatchBackgroundEvent(`${eventName}.${host}`, response);
             })
             .catch((error) => {
-              alert.error("Can't complete transaction. Try again later.");
+              alert.error(t('send.cantCompleteTxs'));
               setLoading(false);
               throw error;
             });
@@ -197,7 +198,7 @@ export const SendNTokenTransaction = () => {
           logError('error', 'Transaction', notLegacyError);
 
           alert.removeAll();
-          alert.error("Can't complete transaction. Try again later.");
+          alert.error(t('send.cantCompleteTxs'));
 
           if (isExternal) setTimeout(window.close, 4000);
           else setLoading(false);
@@ -346,7 +347,7 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     if (!copied) return;
     alert.removeAll();
-    alert.success('Address successfully copied');
+    alert.success(t('home.addressCopied'));
   }, [copied]);
 
   useEffect(() => {
@@ -360,11 +361,11 @@ export const SendNTokenTransaction = () => {
     validateEIP1559Compatibility();
   }, []);
   return (
-    <Layout title="SEND" canGoBack={!isExternal}>
+    <Layout title={t('send.send')} canGoBack={!isExternal}>
       <DefaultModal
         show={confirmed}
-        title="Transaction successful"
-        description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
+        title={t('send.txSuccessfull')}
+        description={t('send.txSuccessfullMessage')}
         onClose={() => {
           sendAndSaveTransaction(confirmedTx);
           if (isExternal) window.close();
@@ -374,8 +375,8 @@ export const SendNTokenTransaction = () => {
 
       <DefaultModal
         show={haveError}
-        title="Verify Fields"
-        description="Change fields values and try again."
+        title={t('send.verifyFields')}
+        description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
       />
 
@@ -411,22 +412,19 @@ export const SendNTokenTransaction = () => {
 
           {errors.txDataError && (
             <span className="text-red-600 text-xs my-4 text-center">
-              We were not able to estimate gas. There might be an error in the
-              contract and this transaction may fail.
+              {t('send.contractEstimateError')}
             </span>
           )}
 
           {(errors.eip1559GasError || errors.gasLimitError) && (
             <span className="disabled text-xs my-4 text-center">
-              The current RPC provider couldn't estimate the gas for this
-              transaction. Therefore, we'll estimate the gas using the existing
-              block data for your transaction.
+              {t('send.rpcEstimateError')}
             </span>
           )}
 
           <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              From
+              {t('send.from')}
               <span className="text-brand-royalblue text-xs">
                 <Tooltip content={tx.from} childrenClassName="flex">
                   {ellipsis(tx.from, 7, 15)}
@@ -445,7 +443,7 @@ export const SendNTokenTransaction = () => {
 
             {tx.to && (
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                To
+                {t('send.to')}
                 <span className="text-brand-royalblue text-xs">
                   <Tooltip content={tx.to} childrenClassName="flex">
                     {ellipsis(tx.to, 7, 15)}
@@ -465,7 +463,7 @@ export const SendNTokenTransaction = () => {
 
             <div className="flex flex-row items-center justify-between w-full">
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Estimated GasFee
+                {t('send.estimatedGasFee')}
                 <span className="text-brand-royalblue text-xs">
                   {removeScientificNotation(getCalculatedFee)}{' '}
                   {activeNetwork.currency?.toUpperCase()}
@@ -475,12 +473,12 @@ export const SendNTokenTransaction = () => {
                 className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                 onClick={() => setIsOpen(true)}
               >
-                EDIT
+                {t('buttons.edit')}
               </span>
             </div>
 
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              Total (Amount + gas fee)
+              Total ({t('send.amountAndFee')})
               {externalTx.decodedTx.method !== 'Contract Deployment' ? (
                 <span className="text-brand-royalblue text-xs">
                   {`${
@@ -497,7 +495,7 @@ export const SendNTokenTransaction = () => {
 
             {transactionDataValidation ? (
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Data
+                {t('send.data')}
                 <div
                   className="scrollbar-styled h-fit mb-6 mt-2 px-2.5 py-1 max-w-full max-h-16 break-all text-xs rounded-xl overflow-x-hidden overflow-y-auto"
                   style={{
@@ -527,7 +525,7 @@ export const SendNTokenTransaction = () => {
                 wrapperClassname="mb-2 mr-2"
                 rotate={45}
               />
-              Cancel
+              {t('buttons.cancel')}
             </Button>
 
             <Button
@@ -555,7 +553,7 @@ export const SendNTokenTransaction = () => {
                   wrapperClassname="mr-2 flex items-center"
                 />
               )}
-              Confirm
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>

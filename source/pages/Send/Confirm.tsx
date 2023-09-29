@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -33,7 +34,7 @@ import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
-
+  const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
 
   const activeNetwork = useSelector(
@@ -128,7 +129,7 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error) => {
-                alert.error("Can't complete transaction. Try again later.");
+                alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
               });
@@ -140,15 +141,12 @@ export const SendConfirm = () => {
             if (error && basicTxValues.fee > 0.00001) {
               alert.removeAll();
               alert.error(
-                `${truncate(
-                  String(error.message),
-                  166
-                )} Please, reduce fees to send transaction.`
+                `${truncate(String(error.message), 166)} ${t('send.reduceFee')}`
               );
             }
 
             alert.removeAll();
-            alert.error("Can't complete transaction. Try again later.");
+            alert.error(t('send.cantCompleteTxs'));
 
             setLoading(false);
           }
@@ -193,7 +191,7 @@ export const SendConfirm = () => {
                     setLoading(false);
                   })
                   .catch((error) => {
-                    alert.error("Can't complete transaction. Try again later.");
+                    alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                     throw error;
                   });
@@ -202,7 +200,7 @@ export const SendConfirm = () => {
               } catch (legacyError: any) {
                 logError('error', 'Transaction', legacyError);
                 alert.removeAll();
-                alert.error("Can't complete transaction. Try again later.");
+                alert.error(t('send.cantCompleteTxs'));
 
                 setLoading(false);
                 return legacyError;
@@ -250,7 +248,7 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error: any) => {
-                alert.error("Can't complete transaction. Try again later.");
+                alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
               });
@@ -260,7 +258,7 @@ export const SendConfirm = () => {
             logError('error ETH', 'Transaction', error);
 
             alert.removeAll();
-            alert.error("Can't complete transaction. Try again later.");
+            alert.error(t('send.cantCompleteTxs'));
 
             setLoading(false);
           }
@@ -304,9 +302,7 @@ export const SendConfirm = () => {
                       logError('error send ERC20', 'Transaction', error);
 
                       alert.removeAll();
-                      alert.error(
-                        "Can't complete transaction. Try again later."
-                      );
+                      alert.error(t('send.cantCompleteTxs'));
                       setLoading(false);
                     });
 
@@ -315,7 +311,7 @@ export const SendConfirm = () => {
                   logError('error send ERC20', 'Transaction', _erc20Error);
 
                   alert.removeAll();
-                  alert.error("Can't complete transaction. Try again later.");
+                  alert.error(t('send.cantCompleteTxs'));
 
                   setLoading(false);
                 }
@@ -372,7 +368,7 @@ export const SendConfirm = () => {
                     logError('error send ERC20', 'Transaction', error);
 
                     alert.removeAll();
-                    alert.error("Can't complete transaction. Try again later.");
+                    alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                   });
 
@@ -381,7 +377,7 @@ export const SendConfirm = () => {
                 logError('error send ERC20', 'Transaction', _erc20Error);
 
                 alert.removeAll();
-                alert.error("Can't complete transaction. Try again later.");
+                alert.error(t('send.cantCompleteTxs'));
 
                 setLoading(false);
               }
@@ -424,9 +420,7 @@ export const SendConfirm = () => {
                         logError('error send ERC721', 'Transaction', error);
 
                         alert.removeAll();
-                        alert.error(
-                          "Can't complete transaction. Try again later."
-                        );
+                        alert.error(t('send.cantCompleteTxs'));
                         setLoading(false);
                       });
 
@@ -435,7 +429,7 @@ export const SendConfirm = () => {
                     logError('error send ERC721', 'Transaction', _erc721Error);
 
                     alert.removeAll();
-                    alert.error("Can't complete transaction. Try again later.");
+                    alert.error(t('send.cantCompleteTxs'));
 
                     setLoading(false);
                   }
@@ -490,9 +484,7 @@ export const SendConfirm = () => {
                         logError('error send ERC1155', 'Transaction', error);
 
                         alert.removeAll();
-                        alert.error(
-                          "Can't complete transaction. Try again later."
-                        );
+                        alert.error(t('send.cantCompleteTxs'));
                         setLoading(false);
                       });
 
@@ -505,7 +497,7 @@ export const SendConfirm = () => {
                     );
 
                     alert.removeAll();
-                    alert.error("Can't complete transaction. Try again later.");
+                    alert.error(t('send.cantCompleteTxs'));
 
                     setLoading(false);
                   }
@@ -575,9 +567,7 @@ export const SendConfirm = () => {
         setFee(finalFeeDetails as any);
       } catch (error) {
         logError('error getting fees', 'Transaction', error);
-        alert.error(
-          'Error in the proccess to get fee values, please verify your balance and try again later.'
-        ); //TODO: Fix this alert, as for now this alert is basically useless because we navigate to the previous screen right after and its not being displayed
+        alert.error(t('send.feeError')); //TODO: Fix this alert, as for now this alert is basically useless because we navigate to the previous screen right after and its not being displayed
         navigate(-1);
       }
     };
@@ -616,7 +606,7 @@ export const SendConfirm = () => {
   useEffect(() => {
     if (!copied) return;
     alert.removeAll();
-    alert.success('Address successfully copied');
+    alert.success(t('home.addressCopied'));
   }, [copied]);
 
   useEffect(() => {
@@ -631,11 +621,11 @@ export const SendConfirm = () => {
   }, []);
 
   return (
-    <Layout title="CONFIRM" canGoBack={true}>
+    <Layout title={t('send.confirm')} canGoBack={true}>
       <DefaultModal
         show={confirmed}
-        title="Transaction successful"
-        description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
+        title={t('send.txSuccessfull')}
+        description={t('send.txSuccessfullMessage')}
         onClose={() => {
           wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
@@ -644,8 +634,8 @@ export const SendConfirm = () => {
 
       <DefaultModal
         show={haveError}
-        title="Verify Fields"
-        description="Change fields values and try again."
+        title={t('send.verifyFields')}
+        description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
       />
 
@@ -667,7 +657,7 @@ export const SendConfirm = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center text-center font-rubik">
             <span className="text-brand-royalblue font-poppins font-thin">
-              {`${basicTxValues.token?.isNft ? 'TokenID' : 'Send'}`}
+              {`${basicTxValues.token?.isNft ? 'TokenID' : t('send.send')}`}
             </span>
 
             <span>
@@ -687,7 +677,7 @@ export const SendConfirm = () => {
 
           <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              From
+              {t('send.from')}
               <span className="text-brand-royalblue text-xs">
                 <Tooltip
                   content={basicTxValues.sender}
@@ -709,7 +699,7 @@ export const SendConfirm = () => {
               </span>
             </p>
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-              To
+              {t('send.to')}
               <span className="text-brand-royalblue text-xs">
                 <Tooltip
                   content={basicTxValues.receivingAddress}
@@ -733,7 +723,7 @@ export const SendConfirm = () => {
 
             <div className="flex flex-row items-center justify-between w-full">
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-                Estimated GasFee
+                {t('send.estimatedGasFee')}
                 <span className="text-brand-royalblue text-xs">
                   {isBitcoinBased
                     ? getFormattedFee(basicTxValues.fee)
@@ -749,7 +739,7 @@ export const SendConfirm = () => {
                       className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
-                      EDIT
+                      {t('buttons.edit')}
                     </span>
                   )
                 : null}
@@ -758,7 +748,7 @@ export const SendConfirm = () => {
             <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
               {!basicTxValues.token?.isNft ? (
                 <>
-                  Total (Amount + gas fee)
+                  Total ({t('send.amountAndFee')})
                   <span className="text-brand-royalblue text-xs">
                     {isBitcoinBased
                       ? `${
@@ -804,7 +794,7 @@ export const SendConfirm = () => {
                 wrapperClassname="mr-2 flex items-center"
                 rotate={45}
               />
-              Cancel
+              {t('buttons.cancel')}
             </Button>
 
             <Button
@@ -832,7 +822,7 @@ export const SendConfirm = () => {
                   wrapperClassname="mr-2 flex items-center"
                 />
               )}
-              Confirm
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>

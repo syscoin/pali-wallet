@@ -1,5 +1,6 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -13,7 +14,7 @@ import { getController } from 'utils/browser';
 
 export const EvmAssetsList = () => {
   const controller = getController();
-
+  const { t } = useTranslation();
   const {
     accounts,
     activeAccount,
@@ -67,7 +68,7 @@ export const EvmAssetsList = () => {
                   <div
                     className={`flex items-center justify-between ${btnContainerWidth}`}
                   >
-                    <Tooltip content="Asset Details">
+                    <Tooltip content={t('tooltip.assetDetails')}>
                       <IconButton
                         onClick={() =>
                           navigate('/home/details', {
@@ -80,7 +81,7 @@ export const EvmAssetsList = () => {
                     </Tooltip>
 
                     {token?.is1155 === undefined && (
-                      <Tooltip content="Edit Asset">
+                      <Tooltip content={t('tooltip.editAsset')}>
                         <IconButton
                           onClick={() =>
                             navigate('/tokens/add', {
@@ -93,7 +94,7 @@ export const EvmAssetsList = () => {
                       </Tooltip>
                     )}
 
-                    <Tooltip content="Delete Asset">
+                    <Tooltip content={t('tooltip.deleteAsset')}>
                       <IconButton
                         onClick={() =>
                           controller.wallet.account.eth.deleteTokenInfo(

@@ -1,5 +1,6 @@
 import { Form, Input } from 'antd';
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
@@ -36,7 +37,7 @@ const TOKEN_CONTRACT_TYPE_INITIAL_VALUE = {
 
 export const CustomToken = (props: ICustomTokenComponentProps) => {
   const controller = getController();
-
+  const { t } = useTranslation();
   const { isEdit, tokenToEdit } = props;
 
   const [form] = Form.useForm();
@@ -244,8 +245,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         contractType: 'Invalid',
         error: true,
         errorType: 'Invalid',
-        message:
-          'Invalid contract address. Verify the current contract address or the current network!',
+        message: t('tokens.invalidContractAddress'),
       });
       return;
     }
@@ -396,7 +396,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           rules={[
             {
               required: true,
-              message: 'Please, type token contract address!',
+              message: t('tokens.pleaseTypeContract'),
             },
             () => ({
               async validator(_, value) {
@@ -463,7 +463,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             type="text"
             disabled={isEdit}
             className="input-small relative"
-            placeholder="Contract address"
+            placeholder={t('tokens.contractAddress')}
           />
         </Form.Item>
 
@@ -475,7 +475,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           rules={[
             {
               required: true,
-              message: 'Please, type token symbol!',
+              message: t('tokens.pleaseTypeSymbol'),
             },
             () => ({
               async validator(_, value) {
@@ -511,7 +511,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           <Input
             type="text"
             className="input-small relative"
-            placeholder="Token symbol"
+            placeholder={t('tokens.tokenSymbol')}
           />
         </Form.Item>
 
@@ -523,7 +523,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           rules={[
             {
               required: true,
-              message: 'Please, type token decimals!',
+              message: t('tokens.pleaseTypeDecimals'),
               pattern: new RegExp(/^[0-9]+$/),
             },
             () => ({
@@ -569,7 +569,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             placeholder={
               tokenContractType.contractType === 'ERC-20' ||
               tokenContractType.contractType === ''
-                ? 'Token decimal'
+                ? t('tokens.tokenDecimals')
                 : 'Token ID'
             }
           />
@@ -580,23 +580,20 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             <Card type="info" className="border-alert-darkwarning">
               <div>
                 <div className="text-xs text-alert-darkwarning font-bold mb-2.5">
-                  <p>
-                    You are trying to insert data different from the original
-                    ones, do you want to continue?
-                  </p>
+                  <p>{t('tokens.youAreTrying')}</p>
                 </div>
 
                 <div className="flex flex-col gap-y-2.5">
                   {tokenSymbolWarning.error ? (
                     <div className="flex flex-col">
                       <p className="text-xs text-alert-darkwarning font-bold mb-1">
-                        Token Symbol:{' '}
+                        {t('tokens.tokenSymbol')}:{' '}
                       </p>
                       <span className="text-xs">
-                        Original value: {tokenMetadataInfos.symbol}
+                        {t('tokens.originalValue')}: {tokenMetadataInfos.symbol}
                       </span>
                       <span className="text-xs">
-                        Form value: {tokenSymbolWarning.value}
+                        {t('tokens.formValue')}: {tokenSymbolWarning.value}
                       </span>
                     </div>
                   ) : null}
@@ -604,13 +601,14 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                   {tokenDecimalsWarning.error ? (
                     <div className="flex flex-col">
                       <p className="text-xs text-alert-darkwarning font-bold mb-1">
-                        Token Decimals:
+                        {t('tokens.tokenDecimals')}: :
                       </p>
                       <span className="text-xs">
-                        Original value: {tokenMetadataInfos.decimals}
+                        {t('tokens.originalValue')}:{' '}
+                        {tokenMetadataInfos.decimals}
                       </span>
                       <span className="text-xs">
-                        Form value: {tokenDecimalsWarning.value}
+                        {t('tokens.formValue')}: {tokenDecimalsWarning.value}
                       </span>
                     </div>
                   ) : null}
@@ -633,7 +631,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
               disabled={isLoading}
               loading={isLoading}
             >
-              Next
+              {t('buttons.next')}
             </NeutralButton>
           </div>
         </div>
@@ -642,10 +640,10 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       {added && (
         <DefaultModal
           show={added}
-          title="Token successfully added"
-          description={`${form.getFieldValue(
-            'symbol'
-          )} was successfully added to your wallet.`}
+          title={t('tokens.tokenSuccessfullyAdded')}
+          description={`${form.getFieldValue('symbol')} ${t(
+            'tokens.wasSucessfullyAdded'
+          )}`}
           onClose={() => navigate('/home')}
         />
       )}

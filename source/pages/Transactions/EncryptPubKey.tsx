@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
@@ -11,7 +12,7 @@ interface ISign {
 }
 const EncryptPubKey: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
-
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
@@ -44,28 +45,30 @@ const EncryptPubKey: React.FC<ISign> = () => {
     window.close();
   };
   return (
-    <Layout canGoBack={false} title={'Encryption Public Key Request'}>
+    <Layout canGoBack={false} title={t('transactions.encryptPubKey')}>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-row justify-between mb-16 w-full">
-            <p className="font-poppins text-sm">Account: {label}</p>
             <p className="font-poppins text-sm">
-              Balance: {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
+              {t('transactions.account')}: {label}
+            </p>
+            <p className="font-poppins text-sm">
+              {t('send.balance')}:{' '}
+              {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
               {currency.toUpperCase()}
             </p>
           </div>
           <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
             <div className="scrollbar-styled mt-1 px-4 w-full h-14 text-xs overflow-auto">
               <span>
-                {host} would like your public encryption key. By consenting,
-                this site will be able to compose encrypted messages to you.
+                {host} {t('transactions.wouldLikeYourPubEncryption')}
               </span>
             </div>
           </div>
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -74,7 +77,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
               loading={loading}
               onClick={onSubmit}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

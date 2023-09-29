@@ -1,10 +1,12 @@
 import { Menu, Transition } from '@headlessui/react';
 import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
 import ethIcon from 'assets/images/ethIcon.svg';
+import langIcon from 'assets/images/langIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -19,7 +21,7 @@ export const GeneralMenu: React.FC = () => {
     changingConnectedAccount: { isChangingConnectedAccount },
     advancedSettings,
   } = useSelector((state: RootState) => state.vault);
-
+  const { t } = useTranslation();
   const { navigate } = useUtils();
 
   const [currentTab, setCurrentTab] = useState({
@@ -119,7 +121,7 @@ export const GeneralMenu: React.FC = () => {
           <AccountMenu />
 
           <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
-            WALLET
+            {t('generalMenu.wallet')}
           </span>
 
           <Menu.Item>
@@ -129,7 +131,9 @@ export const GeneralMenu: React.FC = () => {
             >
               <Icon name="wallet" className="mb-1 text-brand-white" />
 
-              <span id="wallet-seed-phrase-btn">Wallet Seed Phrase</span>
+              <span id="wallet-seed-phrase-btn">
+                {t('generalMenu.walletSeedPhrase')}
+              </span>
             </li>
           </Menu.Item>
 
@@ -144,13 +148,28 @@ export const GeneralMenu: React.FC = () => {
                 id="forget-wallet-btn"
               />
 
-              <span>Forget wallet</span>
+              <span>{t('generalMenu.forget')}</span>
             </li>
           </Menu.Item>
 
           <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
-            GENERAL OPTIONS
+            {t('generalMenu.generalOptions')}
           </span>
+
+          <Menu.Item>
+            <li
+              onClick={() => navigate('/settings/languages')}
+              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+            >
+              <img
+                src={langIcon}
+                width="16px"
+                className="ml-0.2 text-brand-white"
+              />
+
+              <span>{t('generalMenu.languages')}</span>
+            </li>
+          </Menu.Item>
 
           <Menu.Item>
             <li
@@ -159,7 +178,7 @@ export const GeneralMenu: React.FC = () => {
             >
               <Icon name="dolar" className="ml-1 text-brand-white" />
 
-              <span>Currency</span>
+              <span>{t('generalMenu.currency')}</span>
             </li>
           </Menu.Item>
 
@@ -170,7 +189,7 @@ export const GeneralMenu: React.FC = () => {
             >
               <Icon name="clock" className="ml-1 text-brand-white" />
 
-              <span>Auto lock timer</span>
+              <span>{t('generalMenu.autolock')}</span>
             </li>
           </Menu.Item>
 
@@ -185,7 +204,7 @@ export const GeneralMenu: React.FC = () => {
                 className="ml-0.2 text-brand-white"
               />
 
-              <span>Manage ETH provider</span>
+              <span>{t('generalMenu.manageEth')}</span>
             </li>
           </Menu.Item>
 
@@ -200,7 +219,7 @@ export const GeneralMenu: React.FC = () => {
                 id="info-help-btn"
               />
 
-              <span>Info/Help</span>
+              <span>{t('generalMenu.infoHelp')}</span>
             </li>
           </Menu.Item>
 
@@ -211,7 +230,7 @@ export const GeneralMenu: React.FC = () => {
             >
               <Icon name="lock" className="mb-2 ml-1 text-brand-white" />
 
-              <span>Lock</span>
+              <span>{t('generalMenu.lock')}</span>
             </li>
           </Menu.Item>
 
@@ -222,7 +241,7 @@ export const GeneralMenu: React.FC = () => {
             >
               <img src={slider} width="20px" className="text-brand-white" />
 
-              <span>Advanced</span>
+              <span>{t('generalMenu.advanced')}</span>
             </li>
           </Menu.Item>
         </Menu.Items>

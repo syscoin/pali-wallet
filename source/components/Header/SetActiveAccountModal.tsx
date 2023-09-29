@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -20,6 +21,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   const { accounts, isBitcoinBased, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const { wallet } = getController();
   const { alert } = useUtils();
 
@@ -36,7 +38,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   const handleChangeAccount = async () => {
     if (accountId === activeAccount.id && accountType === activeAccount.type) {
       alert.removeAll();
-      alert.error('Please, select an account.');
+      alert.error(t('header.pleaseSelect'));
       return;
     }
     wallet.setAccount(accountId, accountType);
@@ -57,12 +59,11 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
       <div className="inline-block align-middle p-6 w-full max-w-2xl text-brand-white font-poppins bg-bkg-2 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
         <div className="flex flex-col items-center justify-center w-full">
           <p className="flex flex-col items-center justify-center mb-5 text-center font-poppins text-xs">
-            <span className="font-rubik text-base">Change active account</span>
+            <span className="font-rubik text-base">
+              {t('header.changeActiveAccount')}
+            </span>
             <span className="font-rubik text-xs">
-              It seems that you are currently using a Trezor-based account that
-              was created specifically for this network. If you wish to use a
-              different network, you can switch to another active account by
-              selecting a preferred Pali Account.
+              {t('header.itSeemsThatYou')}
             </span>
           </p>
 
@@ -151,7 +152,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
 
             <div className="flex items-center justify-between w-full md:max-w-2xl">
               <SecondaryButton type="button" onClick={() => setIsOpen(false)}>
-                Cancel
+                {t('buttons.cancel')}
               </SecondaryButton>
 
               <PrimaryButton
@@ -159,7 +160,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
                 width="40"
                 onClick={() => handleChangeAccount()}
               >
-                Change
+                {t('buttons.change')}
               </PrimaryButton>
             </div>
           </div>
