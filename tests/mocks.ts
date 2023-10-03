@@ -99,5 +99,8 @@ export const STATE_W_ACCOUNT: IVaultState = {
     [KeyringAccountType.Trezor]: {
       [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
     },
+    [KeyringAccountType.Ledger]: {
+      [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
+    },
   },
 };

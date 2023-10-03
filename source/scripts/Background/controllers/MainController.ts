@@ -957,6 +957,65 @@ const MainController = (walletState): IMainController => {
     return importedAccount;
   };
 
+  const importLedgerAccount = async (
+    coin: string,
+    slip44: string,
+    index: string
+  ) => {
+    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+      store.getState().vault;
+    let importedAccount;
+    try {
+      importedAccount = await keyringManager.importLedgerAccount(
+        coin,
+        slip44,
+        index
+      );
+    } catch (error) {
+      console.error(error);
+      throw new Error(
+        'Could not import your account, please try again: ' + error.message
+      );
+    }
+    const paliImp: IPaliAccount = {
+      ...importedAccount,
+      assets: {
+        ethereum: [],
+        syscoin: [],
+      },
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
+    } as IPaliAccount;
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [KeyringAccountType.Ledger]: {
+          ...accounts[KeyringAccountType.Ledger],
+          [paliImp.id]: paliImp,
+        },
+      })
+    );
+    keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
+    store.dispatch(
+      setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
+    );
+    updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeAccount,
+      activeNetwork,
+    });
+    updateAssetsFromCurrentAccount({
+      activeAccount,
+      activeNetwork,
+      isBitcoinBased,
+    });
+
+    return importedAccount;
+  };
+
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
     store.dispatch(setIsLoadingTxs(true));
@@ -1404,6 +1463,7 @@ const MainController = (walletState): IMainController => {
   };
 
   return {
+    importLedgerAccount,
     createWallet,
     forgetWallet,
     unlockFromController,

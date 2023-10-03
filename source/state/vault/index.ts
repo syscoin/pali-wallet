@@ -44,6 +44,7 @@ export const initialState: IVaultState = {
     },
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
     //TODO: add Trezor account type here
   },
   activeAccount: {
@@ -397,6 +398,13 @@ const VaultState = createSlice({
           },
         },
         [KeyringAccountType.Trezor]: {
+          [initialActiveTrezorAccountState.id]: {
+            ...initialActiveTrezorAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: { ethereum: {}, syscoin: {} },
+          },
+        },
+        [KeyringAccountType.Ledger]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },

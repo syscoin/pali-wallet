@@ -12,8 +12,10 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
-  const [selected, setSelected] = useState<boolean>(false);
+  // const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
+  const [selectedHardwareWallet, setSelectedHardwareWallet] =
+    useState('trezor');
   const { activeNetwork, isBitcoinBased, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -30,12 +32,35 @@ const ConnectHardwareWalletView: FC = () => {
 
   const handleCreateHardwareWallet = async () => {
     try {
-      await controller.wallet.importTrezorAccount(
-        isBitcoinBased ? activeNetwork.currency : 'eth',
-        `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-        `${trezorAccounts.length}`
-      );
-      navigate('/home');
+      switch (selectedHardwareWallet) {
+        case 'trezor':
+          await controller.wallet.importTrezorAccount(
+            isBitcoinBased ? activeNetwork.currency : 'eth',
+            `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+            `${trezorAccounts.length}`
+          );
+          navigate('/home');
+          break;
+        case 'ledger':
+          // it only works in fullscreen mode.
+          const LEDGER_USB_VENDOR_ID = '0x2c97';
+          //@ts-ignore
+          const connectedDevices = await window.navigator.hid.requestDevice({
+            filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
+          });
+          const webHidIsConnected = connectedDevices.some(
+            (device: any) => device.vendorId === Number(LEDGER_USB_VENDOR_ID)
+          );
+          if (webHidIsConnected) {
+            await controller.wallet.importLedgerAccount(
+              isBitcoinBased ? activeNetwork.currency : 'eth',
+              `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+              `${trezorAccounts.length}`
+            );
+          }
+          // navigate('/home');
+          break;
+      }
     } catch (error) {
       console.log(error);
       alert.removeAll();
@@ -73,14 +98,25 @@ const ConnectHardwareWalletView: FC = () => {
 
           <p
             className={`${
-              selected
+              selectedHardwareWallet === 'trezor'
                 ? 'bg-bkg-3 border-brand-deepPink'
                 : 'bg-bkg-1 border-brand-royalblue'
             } rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
-            onClick={() => setSelected(!selected)}
+            onClick={() => setSelectedHardwareWallet('trezor')}
             id="trezor-btn"
           >
             Trezor
+          </p>
+          <p
+            className={`${
+              selectedHardwareWallet === 'ledger'
+                ? 'bg-bkg-3 border-brand-deepPink'
+                : 'bg-bkg-1 border-brand-royalblue'
+            } rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
+            onClick={() => setSelectedHardwareWallet('ledger')}
+            id="trezor-btn"
+          >
+            Ledger
           </p>
 
           <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
@@ -144,7 +180,7 @@ const ConnectHardwareWalletView: FC = () => {
           <NeutralButton
             type="button"
             onClick={handleCreateHardwareWallet}
-            disabled={isTestnet || !selected}
+            disabled={isTestnet}
             id="connect-btn"
           >
             <Tooltip content={isTestnet && t('settings.trezorDoesntSupport')}>
