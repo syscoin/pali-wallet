@@ -23,10 +23,15 @@ export const Layout: FC<ILayout> = ({
 
   // const url = browser.runtime.getURL('app.html');
 
-  const isSwitchChainPage = title === 'SWITCH CHAIN';
+  const isSwitchChainPage =
+    title === 'Switch Chain' || title === 'Cambiar Cadena';
   const bgHeader = isSwitchChainPage ? 'bg-gradient' : 'bg-bkg-3';
 
-  const isConnectPage = title === 'CONNECT ACCOUNT';
+  const isConnectPage =
+    title === 'CONNECT ACCOUNT' || title === 'CONECTAR CUENTA';
+
+  const isHardwareWalletPage =
+    title === 'HARDWARE WALLET' || title === 'MONEDERO HARDWARE';
 
   return (
     <div
@@ -34,7 +39,7 @@ export const Layout: FC<ILayout> = ({
         isSwitchChainPage ? '' : 'overflow-y-scroll'
       }`}
     >
-      {!titleOnly && canGoBack && <Header />}
+      {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
 
       <div
         className={`relative flex items-center justify-center px-5 w-full h-20 text-brand-white ${bgHeader}`}
@@ -51,7 +56,7 @@ export const Layout: FC<ILayout> = ({
           {title}
         </p>
 
-        {!titleOnly && canGoBack && (
+        {!titleOnly && canGoBack && !isHardwareWalletPage && (
           <IconButton onClick={() => navigate('/home')}>
             <Icon name="close" />
           </IconButton>

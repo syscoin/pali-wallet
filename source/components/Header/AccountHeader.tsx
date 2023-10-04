@@ -11,6 +11,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 
 import importIcon from 'assets/images/import.png';
+import ledgerLogo from 'assets/images/ledgerLogo.png';
 import trezorLogo from 'assets/images/trezorLogo.png';
 import logo from 'assets/images/whiteLogo.png';
 import { IconButton, Icon } from 'components/index';
@@ -38,7 +39,6 @@ const RenderAccountsListByBitcoinBased = (
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-
   return (
     <>
       {isBitcoinBased ? ( // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
@@ -127,6 +127,58 @@ const RenderAccountsListByBitcoinBased = (
                   )}
               </li>
             ))}
+
+          {Object.values(accounts.Ledger)
+            .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
+            .map((account, index) => (
+              <li
+                className={`py-1.5 px-5 w-full  backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                  font-medium active:bg-opacity-40 focus:outline-none ${
+                    account?.originNetwork.url !== activeNetwork.url
+                      ? 'hidden'
+                      : 'cursor-pointer'
+                  } transform
+                   transition duration-300`}
+                onClick={() => {
+                  if (account?.originNetwork.url !== activeNetwork.url) {
+                    return;
+                  }
+                  setActiveAccount(account.id, KeyringAccountType.Ledger);
+                }}
+                id={`account-${index}`}
+                key={account.id}
+              >
+                <span
+                  style={{
+                    maxWidth: '16.25rem',
+                    textOverflow: 'ellipsis',
+                  }}
+                  className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
+                >
+                  <img
+                    src={ledgerLogo}
+                    style={{
+                      filter:
+                        'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                    }}
+                    className="mr-2 w-7"
+                  ></img>
+                  {account.label}{' '}
+                  {!(account?.originNetwork.url !== activeNetwork.url) &&
+                    `(${ellipsis(account.address, 4, 4)})`}
+                </span>
+
+                {activeAccount.id === account.id &&
+                  activeAccount.type === KeyringAccountType.Ledger && (
+                    <Icon
+                      name="check"
+                      className="mb-1 w-4"
+                      wrapperClassname="absolute right-2.5"
+                      color="#8EC100"
+                    />
+                  )}
+              </li>
+            ))}
         </>
       ) : (
         Object.entries(accounts).map(
@@ -138,16 +190,20 @@ const RenderAccountsListByBitcoinBased = (
                   <li
                     className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none ${
-                    account.isTrezorWallet &&
-                    account?.originNetwork?.isBitcoinBased
+                    (account.isTrezorWallet &&
+                      account?.originNetwork?.isBitcoinBased) ||
+                    (account.isLedgerWallet &&
+                      account?.originNetwork?.isBitcoinBased)
                       ? 'hidden'
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}
                     onClick={() => {
                       if (
-                        account.isTrezorWallet &&
-                        account?.originNetwork?.isBitcoinBased
+                        (account.isTrezorWallet &&
+                          account?.originNetwork?.isBitcoinBased) ||
+                        (account.isLedgerWallet &&
+                          account?.originNetwork?.isBitcoinBased)
                       ) {
                         return;
                       }
@@ -177,13 +233,24 @@ const RenderAccountsListByBitcoinBased = (
                           }}
                           className="mr-1 w-7"
                         ></img>
+                      ) : account.isLedgerWallet ? (
+                        <img
+                          src={ledgerLogo}
+                          style={{
+                            filter:
+                              'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                          }}
+                          className="mr-1 w-7"
+                        ></img>
                       ) : (
                         <img src={logo} className="mr-1 w-7"></img>
                       )}{' '}
                       {account.label}{' '}
                       {!(
-                        account.isTrezorWallet &&
-                        account?.originNetwork?.isBitcoinBased
+                        (account.isTrezorWallet &&
+                          account?.originNetwork?.isBitcoinBased) ||
+                        (account.isLedgerWallet &&
+                          account?.originNetwork?.isBitcoinBased)
                       ) && `(${ellipsis(account.address, 4, 4)})`}
                     </span>
 
@@ -212,6 +279,7 @@ export const AccountMenu: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
+  const url = browser.runtime.getURL('app.html');
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
@@ -282,7 +350,7 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => navigate('/settings/account/hardware')}
+          onClick={() => window.open(url)}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon

@@ -165,6 +165,8 @@ const MasterController = (
             ? 'HDAccount'
             : account.isTrezorWallet
             ? 'Trezor'
+            : account.isLedgerWallet
+            ? 'Ledger'
             : 'Imported'
         ) as KeyringAccountType;
 

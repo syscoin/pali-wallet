@@ -40,6 +40,7 @@ export const MOCK_ACCOUNT: IPaliAccount = {
   balances: { syscoin: 0.48430419, ethereum: 5.1 },
   id: 15,
   isTrezorWallet: false,
+  isLedgerWallet: false,
   label: 'My account',
   transactions: {
     syscoin: {

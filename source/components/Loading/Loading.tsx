@@ -52,7 +52,11 @@ export const Loading = ({
   const connectToSyscoin = async () => {
     setTimeoutError(false);
 
-    if (activeAccount.isImported || activeAccount.isTrezorWallet) {
+    if (
+      activeAccount.isImported ||
+      activeAccount.isTrezorWallet ||
+      activeAccount.isLedgerWallet
+    ) {
       // Set the Default UTX0 account to user can return safely to UTX0 Syscoin Network
       wallet.setActiveAccount(0, KeyringAccountType.HDAccount);
     }

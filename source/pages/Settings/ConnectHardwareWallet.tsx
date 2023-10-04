@@ -6,22 +6,30 @@ import { useSelector } from 'react-redux';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, Icon, Tooltip, NeutralButton } from 'components/index';
+import {
+  Layout,
+  Icon,
+  Tooltip,
+  NeutralButton,
+  DefaultModal,
+  Card,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
-  // const [selected, setSelected] = useState<boolean>(false);
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [selectedHardwareWallet, setSelectedHardwareWallet] =
     useState('trezor');
   const { activeNetwork, isBitcoinBased, accounts } = useSelector(
     (state: RootState) => state.vault
   );
   const { t } = useTranslation();
-  const { alert, navigate } = useUtils();
+  const { alert } = useUtils();
   const trezorAccounts = Object.values(accounts.Trezor);
+  const ledgerAccounts = Object.values(accounts.Ledger);
 
   const { slip44 } = activeNetwork;
 
@@ -29,6 +37,7 @@ const ConnectHardwareWalletView: FC = () => {
 
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
+  const isLedger = selectedHardwareWallet === 'ledger';
 
   const handleCreateHardwareWallet = async () => {
     try {
@@ -39,11 +48,12 @@ const ConnectHardwareWalletView: FC = () => {
             `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
             `${trezorAccounts.length}`
           );
-          navigate('/home');
+          setIsModalOpen(true);
           break;
         case 'ledger':
           // it only works in fullscreen mode.
           const LEDGER_USB_VENDOR_ID = '0x2c97';
+
           //@ts-ignore
           const connectedDevices = await window.navigator.hid.requestDevice({
             filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
@@ -55,14 +65,20 @@ const ConnectHardwareWalletView: FC = () => {
             await controller.wallet.importLedgerAccount(
               isBitcoinBased ? activeNetwork.currency : 'eth',
               `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-              `${trezorAccounts.length}`
+              `${ledgerAccounts.length}`
             );
           }
-          // navigate('/home');
+          setIsModalOpen(true);
           break;
       }
     } catch (error) {
       console.log(error);
+      console.log({ error });
+      if (error.message.includes('Locked device')) {
+        alert.removeAll();
+        alert.error(t('settings.lockedDevice'));
+        return;
+      }
       alert.removeAll();
       alert.error(t('settings.errorCreatingHardWallet'));
     }
@@ -86,6 +102,14 @@ const ConnectHardwareWalletView: FC = () => {
 
   return (
     <Layout title={t('settings.hardwareWallet')} id="hardware-wallet-title">
+      <DefaultModal
+        show={isModalOpen}
+        title={t('settings.walletSelected')}
+        description={t('settings.walletSelectedMessage')}
+        onClose={() => {
+          window.close();
+        }}
+      />
       <div className="flex flex-col items-center justify-center w-full md:max-w-md">
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
           <p className="text-white text-sm">
@@ -119,17 +143,33 @@ const ConnectHardwareWalletView: FC = () => {
             Ledger
           </p>
 
+          {isLedger && (
+            <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-6">
+              <Card type="info" className="border-alert-darkwarning">
+                <div>
+                  <div className="text-xs text-alert-darkwarning font-bold">
+                    <p>{t('settings.dontForget')}</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
           <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
             <p>
               <b>{t('settings.dontHaveWallet')}</b>
               <br />
               <br />
-              {t('settings.orderTrezor')}
+              {isLedger ? t('settings.orderLedger') : t('settings.orderTrezor')}
             </p>
 
             <p
               className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
-              onClick={() => window.open('https://trezor.io/')}
+              onClick={() =>
+                window.open(
+                  isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/'
+                )
+              }
             >
               {t('settings.buyNow')}
             </p>
@@ -176,16 +216,24 @@ const ConnectHardwareWalletView: FC = () => {
           </Disclosure>
         </div>
 
-        <div className="absolute bottom-12 md:static md:mt-6">
+        <div className="absolute bottom-12 md:static md:mt-6 mb-10">
           <NeutralButton
             type="button"
             onClick={handleCreateHardwareWallet}
             disabled={isTestnet}
             id="connect-btn"
           >
-            <Tooltip content={isTestnet && t('settings.trezorDoesntSupport')}>
+            <Tooltip
+              content={
+                isTestnet &&
+                (isLedger
+                  ? t('settings.ledgerDoesntSupport')
+                  : t('settings.trezorDoesntSupport'))
+              }
+            >
               <p>
-                {!trezorAccounts.length
+                {(isLedger && !ledgerAccounts.length) ||
+                (!isLedger && !trezorAccounts.length)
                   ? t('buttons.connect')
                   : t('buttons.addAccount')}
               </p>

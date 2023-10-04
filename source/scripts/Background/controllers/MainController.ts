@@ -962,8 +962,7 @@ const MainController = (walletState): IMainController => {
     slip44: string,
     index: string
   ) => {
-    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
-      store.getState().vault;
+    const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await keyringManager.importLedgerAccount(
@@ -1004,11 +1003,11 @@ const MainController = (walletState): IMainController => {
     updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount,
+      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
     });
     updateAssetsFromCurrentAccount({
-      activeAccount,
+      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
       isBitcoinBased,
     });
