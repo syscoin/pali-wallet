@@ -119,7 +119,8 @@ export const SendConfirm = () => {
             wallet.syscoinTransaction
               .sendTransaction(
                 { ...basicTxValues, fee: 0.00001 },
-                activeAccount.isTrezorWallet
+                activeAccount.isTrezorWallet,
+                activeAccount.isLedgerWallet
               )
               .then((response) => {
                 setConfirmedTx(response);

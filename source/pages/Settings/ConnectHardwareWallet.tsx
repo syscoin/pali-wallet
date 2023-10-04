@@ -33,6 +33,18 @@ const ConnectHardwareWalletView: FC = () => {
 
   const { slip44 } = activeNetwork;
 
+  const isSysUTXOMainnet = isBitcoinBased && activeNetwork.chainId === 57;
+  const ledgerButtonColor = isSysUTXOMainnet
+    ? selectedHardwareWallet === 'ledger'
+      ? 'bg-bkg-3 border-brand-deepPink cursor-pointer'
+      : 'bg-bkg-1 border-brand-royalblue cursor-pointer'
+    : 'disabled cursor-not-allowed';
+
+  const trezorButtonColor =
+    selectedHardwareWallet === 'trezor'
+      ? 'bg-bkg-3 border-brand-deepPink'
+      : 'bg-bkg-1 border-brand-royalblue';
+
   const controller = getController();
 
   const { isInCooldown }: CustomJsonRpcProvider =
@@ -121,27 +133,28 @@ const ConnectHardwareWalletView: FC = () => {
           </p>
 
           <p
-            className={`${
-              selectedHardwareWallet === 'trezor'
-                ? 'bg-bkg-3 border-brand-deepPink'
-                : 'bg-bkg-1 border-brand-royalblue'
-            } rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
+            className={`${trezorButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
             onClick={() => setSelectedHardwareWallet('trezor')}
             id="trezor-btn"
           >
             Trezor
           </p>
-          <p
-            className={`${
-              selectedHardwareWallet === 'ledger'
-                ? 'bg-bkg-3 border-brand-deepPink'
-                : 'bg-bkg-1 border-brand-royalblue'
-            } rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
-            onClick={() => setSelectedHardwareWallet('ledger')}
-            id="trezor-btn"
+          <Tooltip
+            content={!isSysUTXOMainnet ? t('settings.ledgerOnlyAvailable') : ''}
           >
-            Ledger
-          </p>
+            <p
+              className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
+              onClick={() => {
+                if (isSysUTXOMainnet) {
+                  setSelectedHardwareWallet('ledger');
+                  return;
+                }
+              }}
+              id="trezor-btn"
+            >
+              Ledger
+            </p>
+          </Tooltip>
 
           {isLedger && (
             <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-6">
