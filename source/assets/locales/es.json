@@ -34,7 +34,8 @@
 		"reject": "Rechazar",
 		"switch": "Cambiar",
 		"success": "Correcto",
-		"error": "Erro"
+		"error": "Erro",
+		"reconnect": "Reconectar"
 	},
 	"components": {
 		"newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -257,6 +258,10 @@
 		"tx": "Transacción"
 	},
 	"settings": {
+		"ledgerConnectedMessage": "Ledger conectada correctamente.",
+		"ledgerConnected": "Ledger conectada",
+		"ledgerReconnection": "Es necesaria la reconexión de Ledger",
+		"ledgerReconnectionMessage": "Por favor, reconecta tu Ledger.",
 		"ledgerOnlyAvailable": "Ledger solo está disponible en la rede SYS Mainnet UTXO.",
 		"lockedDevice": "Tu Ledger está bloqueado. Desbloquéalo para continuar.",
 		"dontForget": "No olvides abrir la aplicación Syscoin en tu Ledger antes de intentar conectarlo en Pali.",

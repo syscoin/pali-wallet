@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,8 +22,10 @@ import { getController } from 'utils/browser';
 const ConnectHardwareWalletView: FC = () => {
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedHardwareWallet, setSelectedHardwareWallet] =
     useState('trezor');
+  const [isReconnect, setIsReconnect] = useState<boolean>(false);
   const { activeNetwork, isBitcoinBased, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -45,6 +48,14 @@ const ConnectHardwareWalletView: FC = () => {
       ? 'bg-bkg-3 border-brand-deepPink'
       : 'bg-bkg-1 border-brand-royalblue';
 
+  const modalTitle = isReconnect
+    ? t('settings.ledgerConnected')
+    : t('settings.walletSelected');
+
+  const modalDescription = isReconnect
+    ? t('settings.ledgerConnectedMessage')
+    : t('settings.walletSelectedMessage');
+
   const controller = getController();
 
   const { isInCooldown }: CustomJsonRpcProvider =
@@ -52,6 +63,7 @@ const ConnectHardwareWalletView: FC = () => {
   const isLedger = selectedHardwareWallet === 'ledger';
 
   const handleCreateHardwareWallet = async () => {
+    setIsLoading(true);
     try {
       switch (selectedHardwareWallet) {
         case 'trezor':
@@ -61,32 +73,54 @@ const ConnectHardwareWalletView: FC = () => {
             `${trezorAccounts.length}`
           );
           setIsModalOpen(true);
+          setIsLoading(false);
           break;
         case 'ledger':
           // it only works in fullscreen mode.
           const LEDGER_USB_VENDOR_ID = '0x2c97';
 
-          //@ts-ignore
           const connectedDevices = await window.navigator.hid.requestDevice({
             filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
           });
           const webHidIsConnected = connectedDevices.some(
             (device: any) => device.vendorId === Number(LEDGER_USB_VENDOR_ID)
           );
+
+          if (isReconnect) {
+            await controller.wallet.ledgerSigner.connectToLedgerDevice();
+            setIsModalOpen(true);
+            setIsLoading(false);
+            return;
+          }
+
           if (webHidIsConnected) {
             await controller.wallet.importLedgerAccount(
               isBitcoinBased ? activeNetwork.currency : 'eth',
               `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-              `${ledgerAccounts.length}`
+              `${ledgerAccounts.length}`,
+              false
             );
+            setIsModalOpen(true);
+            setIsLoading(false);
           }
-          setIsModalOpen(true);
           break;
       }
     } catch (error) {
-      console.log(error);
-      console.log({ error });
-      if (error.message.includes('Locked device')) {
+      setIsLoading(false);
+      const isAlreadyConnected = error.message.includes('already open.');
+      const isDeviceLocked = error.message.includes('Locked device');
+
+      if (isAlreadyConnected) {
+        await controller.wallet.importLedgerAccount(
+          isBitcoinBased ? activeNetwork.currency : 'eth',
+          `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+          `${ledgerAccounts.length}`,
+          true
+        );
+        setIsModalOpen(true);
+        return;
+      }
+      if (isDeviceLocked) {
         alert.removeAll();
         alert.error(t('settings.lockedDevice'));
         return;
@@ -106,18 +140,44 @@ const ConnectHardwareWalletView: FC = () => {
     return Boolean(chain === 'test' || chain === 'testnet');
   };
 
+  const ButtonLabel = () => {
+    switch (isReconnect) {
+      case true:
+        if (isLedger) {
+          return <p>{t('buttons.reconnect')}</p>;
+        }
+        return <p>{t('buttons.connect')}</p>;
+
+      case false:
+        if (
+          (isLedger && !ledgerAccounts.length) ||
+          (!isLedger && !trezorAccounts.length)
+        ) {
+          return <p>{t('buttons.connect')}</p>;
+        }
+        return <p>{t('buttons.addAccount')}</p>;
+    }
+  };
+
   useEffect(() => {
     verifyIfIsTestnet().then((isTestnetResponse) =>
       setIsTestnet(isTestnetResponse)
     );
   }, [activeNetwork, activeNetwork.chainId]);
 
+  useEffect(() => {
+    const urlSearch = window.location.search;
+    if (urlSearch) {
+      setIsReconnect(true);
+    }
+  }, []);
+
   return (
     <Layout title={t('settings.hardwareWallet')} id="hardware-wallet-title">
       <DefaultModal
         show={isModalOpen}
-        title={t('settings.walletSelected')}
-        description={t('settings.walletSelectedMessage')}
+        title={modalTitle}
+        description={modalDescription}
         onClose={() => {
           window.close();
         }}
@@ -234,6 +294,7 @@ const ConnectHardwareWalletView: FC = () => {
             type="button"
             onClick={handleCreateHardwareWallet}
             disabled={isTestnet}
+            loading={isLoading}
             id="connect-btn"
           >
             <Tooltip
@@ -244,12 +305,7 @@ const ConnectHardwareWalletView: FC = () => {
                   : t('settings.trezorDoesntSupport'))
               }
             >
-              <p>
-                {(isLedger && !ledgerAccounts.length) ||
-                (!isLedger && !trezorAccounts.length)
-                  ? t('buttons.connect')
-                  : t('buttons.addAccount')}
-              </p>
+              <ButtonLabel />
             </Tooltip>
           </NeutralButton>
         </div>

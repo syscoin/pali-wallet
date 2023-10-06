@@ -81,7 +81,8 @@ export interface IMainController extends IKeyringManager {
   importLedgerAccount: (
     coin: string,
     slip44: string,
-    index: string
+    index: string,
+    isAlreadyConnected: boolean
   ) => Promise<any>;
   lock: () => void;
 

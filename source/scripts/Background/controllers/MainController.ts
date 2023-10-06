@@ -960,7 +960,8 @@ const MainController = (walletState): IMainController => {
   const importLedgerAccount = async (
     coin: string,
     slip44: string,
-    index: string
+    index: string,
+    isAlreadyConnected: boolean
   ) => {
     const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
     let importedAccount;
@@ -968,7 +969,8 @@ const MainController = (walletState): IMainController => {
       importedAccount = await keyringManager.importLedgerAccount(
         coin,
         slip44,
-        index
+        index,
+        isAlreadyConnected
       );
     } catch (error) {
       console.error(error);
