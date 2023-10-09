@@ -70,7 +70,13 @@ export const verifyNetworkEIP1559Compatibility = async (
 ) => {
   try {
     const latestBlock = await web3Provider.getBlock('latest');
-    const isCompatible = latestBlock?.baseFeePerGas !== undefined;
+    const baseFeePerGasExistInBlock = latestBlock?.baseFeePerGas !== undefined;
+    let isCompatible = false;
+
+    if (baseFeePerGasExistInBlock) {
+      const isValidEIP1559Fee = Number(latestBlock.baseFeePerGas) !== 0;
+      isCompatible = isValidEIP1559Fee;
+    }
 
     return isCompatible;
   } catch (error) {
