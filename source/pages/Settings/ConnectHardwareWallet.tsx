@@ -26,9 +26,8 @@ const ConnectHardwareWalletView: FC = () => {
   const [selectedHardwareWallet, setSelectedHardwareWallet] =
     useState('trezor');
   const [isReconnect, setIsReconnect] = useState<boolean>(false);
-  const { activeNetwork, isBitcoinBased, accounts } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { activeNetwork, isBitcoinBased, accounts, advancedSettings } =
+    useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const { alert } = useUtils();
   const trezorAccounts = Object.values(accounts.Trezor);
@@ -199,22 +198,26 @@ const ConnectHardwareWalletView: FC = () => {
           >
             Trezor
           </p>
-          <Tooltip
-            content={!isSysUTXOMainnet ? t('settings.ledgerOnlyAvailable') : ''}
-          >
-            <p
-              className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
-              onClick={() => {
-                if (isSysUTXOMainnet) {
-                  setSelectedHardwareWallet('ledger');
-                  return;
-                }
-              }}
-              id="trezor-btn"
+          {advancedSettings?.ledger && (
+            <Tooltip
+              content={
+                !isSysUTXOMainnet ? t('settings.ledgerOnlyAvailable') : ''
+              }
             >
-              Ledger
-            </p>
-          </Tooltip>
+              <p
+                className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
+                onClick={() => {
+                  if (isSysUTXOMainnet) {
+                    setSelectedHardwareWallet('ledger');
+                    return;
+                  }
+                }}
+                id="trezor-btn"
+              >
+                Ledger
+              </p>
+            </Tooltip>
+          )}
 
           {isLedger && (
             <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-6">
@@ -225,6 +228,23 @@ const ConnectHardwareWalletView: FC = () => {
                   </div>
                 </div>
               </Card>
+            </div>
+          )}
+
+          {isLedger && (
+            <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
+              <p>{t('settings.toUseLedger')}</p>
+
+              <p
+                className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
+                onClick={() =>
+                  window.open(
+                    'https://github.com/osiastedian/ledger-app-syscoin'
+                  )
+                }
+              >
+                {t('settings.githubLink')}
+              </p>
             </div>
           )}
 

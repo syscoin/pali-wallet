@@ -15,6 +15,7 @@ import store from 'state/store';
 import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
+  setAccountTypeInAccountsObject,
   setAdvancedSettings,
   setNetworks,
   setTimer,
@@ -129,10 +130,21 @@ const MasterController = (
         }
       );
     }
+
+    if (store.getState().vault?.accounts?.Ledger === undefined) {
+      store.dispatch(setAccountTypeInAccountsObject('Ledger'));
+    }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(
         setAdvancedSettings({
           advancedProperty: 'refresh',
+          isActive: false,
+          isFirstTime: true,
+        })
+      );
+      store.dispatch(
+        setAdvancedSettings({
+          advancedProperty: 'ledger',
           isActive: false,
           isFirstTime: true,
         })

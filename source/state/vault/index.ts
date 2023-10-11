@@ -53,6 +53,7 @@ export const initialState: IVaultState = {
   },
   advancedSettings: {
     refresh: false,
+    ledger: false,
   },
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
@@ -331,6 +332,27 @@ const VaultState = createSlice({
         state.advancedSettings = {
           ...state.advancedSettings,
           [advancedProperty]: isActive,
+        };
+      }
+
+      if (state.advancedSettings?.[advancedProperty] === undefined) {
+        state.advancedSettings = {
+          ...state.advancedSettings,
+          [advancedProperty]: isActive,
+        };
+      }
+    },
+
+    setAccountTypeInAccountsObject(
+      state: IVaultState,
+      action: PayloadAction<string>
+    ) {
+      const accountType = action.payload;
+
+      if (state.accounts?.[accountType] === undefined) {
+        state.accounts = {
+          ...state.accounts,
+          [accountType]: {},
         };
       }
     },
@@ -741,6 +763,7 @@ export const {
   setEditedEvmToken,
   setNetworkType,
   setNetworkChange,
+  setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsLoadingBalances,
