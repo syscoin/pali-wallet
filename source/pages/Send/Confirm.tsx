@@ -43,9 +43,11 @@ export const SendConfirm = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    currentBlock,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -615,7 +617,8 @@ export const SendConfirm = () => {
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        wallet.ethereumTransaction.web3Provider
+        wallet.ethereumTransaction.web3Provider,
+        currentBlock
       );
       setIsEIP1559Compatible(isCompatible);
     };
