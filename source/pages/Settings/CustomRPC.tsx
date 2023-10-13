@@ -212,8 +212,24 @@ const CustomRPCView = () => {
 
                 setIsUrlValid(valid);
 
+                //We have to use the value from the state if exists because we have to validate the
+                //rpc from networks that is already added too
+                if (state && state.selected.chainId) {
+                  const stateChainId = state.selected.chainId;
+
+                  const rpcChainId = details
+                    ? details.chainId
+                    : Number(String(parseInt(hexChainId, 16)));
+
+                  if (stateChainId === rpcChainId) {
+                    return Promise.resolve();
+                  } else {
+                    return Promise.reject();
+                  }
+                }
+
                 //If no RPC was searched yet
-                if (lastRpcChainIdSearched === null) {
+                if (!state && lastRpcChainIdSearched === null) {
                   if ((valid && details) || !value) {
                     populateForm('label', String(details.name));
                     populateForm('chainId', String(details.chainId));
