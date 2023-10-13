@@ -296,6 +296,7 @@ export const SendConfirm = () => {
                       tokenAddress: basicTxValues.token.contractAddress,
                       tokenAmount: basicTxValues.amount,
                       isLegacy: !isEIP1559Compatible,
+                      decimals: basicTxValues?.token?.decimals,
                       gasPrice: ethers.utils.hexlify(gasPrice),
                       gasLimit: wallet.ethereumTransaction.toBigNumber(
                         validateCustomGasLimit
@@ -342,6 +343,7 @@ export const SendConfirm = () => {
                     tokenAddress: basicTxValues.token.contractAddress,
                     tokenAmount: basicTxValues.amount,
                     isLegacy: !isEIP1559Compatible,
+                    decimals: basicTxValues?.token?.decimals,
                     maxPriorityFeePerGas: ethers.utils.parseUnits(
                       String(
                         Boolean(
