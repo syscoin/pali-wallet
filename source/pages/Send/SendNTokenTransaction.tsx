@@ -34,9 +34,11 @@ export const SendNTokenTransaction = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    currentBlock,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
@@ -353,7 +355,8 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        ethereumTransaction.contentScriptWeb3Provider
+        ethereumTransaction.contentScriptWeb3Provider,
+        currentBlock
       );
       setIsEIP1559Compatible(isCompatible);
     };
