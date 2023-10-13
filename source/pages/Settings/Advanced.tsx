@@ -46,7 +46,16 @@ const Advanced = () => {
 
   const WARNING_MESSAGES = {
     refresh: t('settings.refreshButtonWarning'),
+    ledger: t('settings.ledgerBetaWarning'),
   };
+
+  const SETTINGS_TITLES = {
+    refresh: t('settings.enableRefresh'),
+    ledger: t('settings.enableLedger'),
+  };
+
+  const ADVACED_SETTINGS = ['refresh', 'ledger'];
+
   const handleConfirmAdvancedProp = (propName: string, message: string) => {
     setCurrentAdvancedProperty(propName);
     setConfirmationMessage(message);
@@ -103,40 +112,43 @@ const Advanced = () => {
         initialValues={{ minutes: timer }}
         autoComplete="off"
       >
-        <Form.Item
-          id="verify-address-switch"
-          name="verify"
-          className="flex flex-col w-full text-center"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
-            <span className="text-sm">{t('settings.enableRefresh')}</span>
-            <Switch
-              checked={enabledProperties['refresh']}
-              onChange={() =>
-                handleConfirmAdvancedProp(
-                  'refresh',
-                  WARNING_MESSAGES['refresh']
-                )
-              }
-              className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
-              style={{ margin: '0 auto !important' }}
-            >
-              <span
-                className={`${
-                  enabledProperties['refresh']
-                    ? 'translate-x-6 bg-warning-success'
-                    : 'translate-x-1'
-                } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
-              />
-            </Switch>
-          </div>
-        </Form.Item>
+        {ADVACED_SETTINGS.map((propName: string, index: number) => (
+          <Form.Item
+            id="verify-address-switch"
+            name={propName}
+            className="flex flex-col w-full text-center"
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
+            key={index}
+          >
+            <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
+              <span className="text-sm">{SETTINGS_TITLES[propName]}</span>
+              <Switch
+                checked={enabledProperties[propName]}
+                onChange={() =>
+                  handleConfirmAdvancedProp(
+                    propName,
+                    WARNING_MESSAGES[propName]
+                  )
+                }
+                className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
+                style={{ margin: '0 auto !important' }}
+              >
+                <span
+                  className={`${
+                    enabledProperties[propName]
+                      ? 'translate-x-6 bg-warning-success'
+                      : 'translate-x-1'
+                  } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+                />
+              </Switch>
+            </div>
+          </Form.Item>
+        ))}
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>

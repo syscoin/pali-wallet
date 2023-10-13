@@ -44,6 +44,7 @@ export const initialState: IVaultState = {
     },
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
     //TODO: add Trezor account type here
   },
   activeAccount: {
@@ -52,6 +53,7 @@ export const initialState: IVaultState = {
   },
   advancedSettings: {
     refresh: false,
+    ledger: false,
   },
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
@@ -332,6 +334,27 @@ const VaultState = createSlice({
           [advancedProperty]: isActive,
         };
       }
+
+      if (state.advancedSettings?.[advancedProperty] === undefined) {
+        state.advancedSettings = {
+          ...state.advancedSettings,
+          [advancedProperty]: isActive,
+        };
+      }
+    },
+
+    setAccountTypeInAccountsObject(
+      state: IVaultState,
+      action: PayloadAction<string>
+    ) {
+      const accountType = action.payload;
+
+      if (state.accounts?.[accountType] === undefined) {
+        state.accounts = {
+          ...state.accounts,
+          [accountType]: {},
+        };
+      }
     },
     setChangingConnectedAccount(
       state: IVaultState,
@@ -397,6 +420,13 @@ const VaultState = createSlice({
           },
         },
         [KeyringAccountType.Trezor]: {
+          [initialActiveTrezorAccountState.id]: {
+            ...initialActiveTrezorAccountState,
+            assets: { ethereum: [], syscoin: [] },
+            transactions: { ethereum: {}, syscoin: {} },
+          },
+        },
+        [KeyringAccountType.Ledger]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
             assets: { ethereum: [], syscoin: [] },
@@ -733,6 +763,7 @@ export const {
   setEditedEvmToken,
   setNetworkType,
   setNetworkChange,
+  setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsLoadingBalances,
