@@ -74,8 +74,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     setSelectedNetwork({ network, chain });
     const cannotContinueWithTrezorAccount =
-      // verify if user are on bitcoinBased network and if current account is Trezor-based
+      // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
       (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+      (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
       // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
       (Object.keys(networks.ethereum).find(
         (chainId) => `${activeNetwork.chainId}` === chainId

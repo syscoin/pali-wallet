@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getContractType } from '@pollum-io/sysweb3-utils';
@@ -36,16 +37,18 @@ export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
-
+  const url = browser.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    currentBlock,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -68,6 +71,8 @@ export const SendConfirm = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
   const basicTxValues = state.tx;
 
@@ -119,7 +124,8 @@ export const SendConfirm = () => {
             wallet.syscoinTransaction
               .sendTransaction(
                 { ...basicTxValues, fee: 0.00001 },
-                activeAccount.isTrezorWallet
+                activeAccount.isTrezorWallet,
+                activeAccount.isLedgerWallet
               )
               .then((response) => {
                 setConfirmedTx(response);
@@ -132,6 +138,15 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error) => {
+                const isNecessaryReconnect = error.message.includes(
+                  'read properties of undefined'
+                );
+                if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                  setIsReconectModalOpen(true);
+                  setLoading(false);
+                  return;
+                }
+
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
@@ -140,7 +155,6 @@ export const SendConfirm = () => {
             return;
           } catch (error) {
             logError('error SYS', 'Transaction', error);
-
             if (error && basicTxValues.fee > 0.00001) {
               alert.removeAll();
               alert.error(
@@ -617,7 +631,8 @@ export const SendConfirm = () => {
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        wallet.ethereumTransaction.web3Provider
+        wallet.ethereumTransaction.web3Provider,
+        currentBlock
       );
       setIsEIP1559Compatible(isCompatible);
     };
@@ -634,6 +649,17 @@ export const SendConfirm = () => {
         onClose={() => {
           wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
+        }}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
         }}
       />
 

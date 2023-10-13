@@ -40,6 +40,7 @@ export const MOCK_ACCOUNT: IPaliAccount = {
   balances: { syscoin: 0.48430419, ethereum: 5.1 },
   id: 15,
   isTrezorWallet: false,
+  isLedgerWallet: false,
   label: 'My account',
   transactions: {
     syscoin: {
@@ -97,6 +98,9 @@ export const STATE_W_ACCOUNT: IVaultState = {
       [MOCK_IMPORTED_ACCOUNT.id]: MOCK_IMPORTED_ACCOUNT,
     },
     [KeyringAccountType.Trezor]: {
+      [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
+    },
+    [KeyringAccountType.Ledger]: {
       [MOCK_TREZOR_ACCOUNT.id]: MOCK_TREZOR_ACCOUNT,
     },
   },

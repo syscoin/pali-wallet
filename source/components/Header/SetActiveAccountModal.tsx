@@ -63,7 +63,9 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
               {t('header.changeActiveAccount')}
             </span>
             <span className="font-rubik text-xs">
-              {t('header.itSeemsThatYou')}
+              {activeAccount.type === KeyringAccountType.Ledger
+                ? t('header.itSeemsThatYouLedger')
+                : t('header.itSeemsThatYou')}
             </span>
           </p>
 
