@@ -1,3 +1,5 @@
+import { ethers } from 'ethers';
+
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
@@ -66,11 +68,20 @@ export const verifyIfIsTestnet = async (
 };
 
 export const verifyNetworkEIP1559Compatibility = async (
-  web3Provider: CustomJsonRpcProvider
+  web3Provider: CustomJsonRpcProvider,
+  stateBlock?: ethers.providers.Block
 ) => {
   try {
-    const latestBlock = await web3Provider.getBlock('latest');
-    const isCompatible = latestBlock?.baseFeePerGas !== undefined;
+    const latestBlock = stateBlock
+      ? stateBlock
+      : await web3Provider.getBlock('latest');
+    const baseFeePerGasExistInBlock = latestBlock?.baseFeePerGas !== undefined;
+    let isCompatible = false;
+
+    if (baseFeePerGasExistInBlock) {
+      const isValidEIP1559Fee = Number(latestBlock.baseFeePerGas) !== 0;
+      isCompatible = isValidEIP1559Fee;
+    }
 
     return isCompatible;
   } catch (error) {
