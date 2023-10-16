@@ -294,7 +294,7 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenAmount: basicTxValues.amount,
+                      tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
                       decimals: basicTxValues?.token?.decimals,
                       gasPrice: ethers.utils.hexlify(gasPrice),
@@ -341,7 +341,7 @@ export const SendConfirm = () => {
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
                     tokenAddress: basicTxValues.token.contractAddress,
-                    tokenAmount: basicTxValues.amount,
+                    tokenAmount: `${basicTxValues.amount}`,
                     isLegacy: !isEIP1559Compatible,
                     decimals: basicTxValues?.token?.decimals,
                     maxPriorityFeePerGas: ethers.utils.parseUnits(
