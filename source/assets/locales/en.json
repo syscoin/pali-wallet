@@ -263,6 +263,7 @@
 		"ledgerReconnection": "Ledger reconnection is necessary",
 		"ledgerReconnectionMessage": "Please, reconect your Ledger device.",
 		"ledgerOnlyAvailable": "Available only in Sys Mainnet UTXO network.",
+		"ledgerBlindSigning": "Please, enable Blind Signing in the Ledger Ethereum app Settings",
 		"lockedDevice": "Your Ledger is locked. Please, unlock it and try again.",
 		"dontForget": "Don't forget to open the Syscoin App on your Ledger before trying to connect it in Pali.",
 		"dontForgetEvm": "Don't forget to open the Ethereum App on your Ledger before trying to connect it in Pali.",

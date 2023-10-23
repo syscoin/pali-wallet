@@ -198,15 +198,26 @@ const ConnectHardwareWalletView: FC = () => {
             Trezor
           </p>
           {advancedSettings?.ledger && (
-            <p
-              className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
-              onClick={() => {
-                setSelectedHardwareWallet('ledger');
-              }}
-              id="trezor-btn"
+            <Tooltip
+              content={
+                isSysUTXOMainnet || !isBitcoinBased
+                  ? ''
+                  : t('settings.ledgerOnlyAvailable')
+              }
             >
-              Ledger
-            </p>
+              <p
+                className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
+                onClick={() => {
+                  if (isSysUTXOMainnet || !isBitcoinBased) {
+                    setSelectedHardwareWallet('ledger');
+                  }
+                  return;
+                }}
+                id="trezor-btn"
+              >
+                Ledger
+              </p>
+            </Tooltip>
           )}
 
           {isLedger && (
