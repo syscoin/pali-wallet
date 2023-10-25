@@ -35,7 +35,8 @@
 		"switch": "Switch",
 		"success": "Success",
 		"error": "Error",
-		"reconnect": "Reconnect"
+		"reconnect": "Reconnect",
+		"verify": "Verify"
 	},
 	"components": {
 		"newPassword": "New password (min 8 chars)",
@@ -152,7 +153,12 @@
 		"explorer": "Explorer?",
 		"addressCopied": "Address successfully copied",
 		"hashCopied": "Hash successfully copied",
-		"contractCopied": "Contract successfully copied"
+		"contractCopied": "Contract successfully copied",
+		"verifySysAddress": "Verify your SYS address",
+		"verifySysAddressDescription": "Click in button below to verify your SYS address.",
+		"addressVerified": "Address successfully verified",
+		"verificationDeniedByUser": "Verification denied by user.",
+		"clickToVerify": "Click to verify your SYS address."
 	},
 	"titles": {
 		"assetDetails": "ASSET DETAILS",

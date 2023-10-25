@@ -35,7 +35,8 @@
 		"switch": "Cambiar",
 		"success": "Correcto",
 		"error": "Erro",
-		"reconnect": "Reconectar"
+		"reconnect": "Reconectar",
+		"verify": "Verificar"
 	},
 	"components": {
 		"newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -152,7 +153,12 @@
 		"explorer": "Explorador?",
 		"addressCopied": "Dirección copiada",
 		"hashCopied": "Hash copiado",
-		"contractCopied": "Contrato copiado"
+		"contractCopied": "Contrato copiado",
+		"verifySysAddress": "Verifica tu dirección SYS",
+		"verifySysAddressDescription": "Haz clic en el botón de abajo para verificar tu dirección SYS.",
+		"addressVerified": "Dirección verificada con éxito",
+		"verificationDeniedByUser": "Verificación denegada por el usuario.",
+		"clickToVerify": "Haz clic para verificar tu dirección SYS."
 	},
 	"titles": {
 		"assetDetails": "DETALLES DEL ACTIVO",
