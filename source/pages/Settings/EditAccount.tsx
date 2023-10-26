@@ -32,6 +32,8 @@ const EditAccountView = () => {
         ? KeyringAccountType.Imported
         : state.isTrezorWallet
         ? KeyringAccountType.Trezor
+        : state.isLedgerWallet
+        ? KeyringAccountType.Ledger
         : KeyringAccountType.HDAccount;
 
       const accountId = state.id;

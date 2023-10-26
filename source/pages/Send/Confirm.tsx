@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getContractType } from '@pollum-io/sysweb3-utils';
@@ -36,7 +37,7 @@ export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
-
+  const url = browser.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -70,6 +71,8 @@ export const SendConfirm = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
   const basicTxValues = state.tx;
 
@@ -121,7 +124,8 @@ export const SendConfirm = () => {
             wallet.syscoinTransaction
               .sendTransaction(
                 { ...basicTxValues, fee: 0.00001 },
-                activeAccount.isTrezorWallet
+                activeAccount.isTrezorWallet,
+                activeAccount.isLedgerWallet
               )
               .then((response) => {
                 setConfirmedTx(response);
@@ -134,6 +138,23 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error) => {
+                const isNecessaryReconnect = error.message.includes(
+                  'read properties of undefined'
+                );
+                if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                  setIsReconectModalOpen(true);
+                  setLoading(false);
+                  return;
+                }
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
+
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
@@ -142,7 +163,6 @@ export const SendConfirm = () => {
             return;
           } catch (error) {
             logError('error SYS', 'Transaction', error);
-
             if (error && basicTxValues.fee > 0.00001) {
               alert.removeAll();
               alert.error(
@@ -196,6 +216,15 @@ export const SendConfirm = () => {
                     setLoading(false);
                   })
                   .catch((error) => {
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
+
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                     throw error;
@@ -253,6 +282,14 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error: any) => {
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
@@ -282,8 +319,9 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: txObjectState.to,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenAmount: basicTxValues.amount,
+                      tokenAmount: `${basicTxValues.amount}`,
                       isLegacy: !isEIP1559Compatible,
+                      decimals: basicTxValues?.token?.decimals,
                       gasPrice: ethers.utils.hexlify(gasPrice),
                       gasLimit: wallet.ethereumTransaction.toBigNumber(
                         validateCustomGasLimit
@@ -304,6 +342,15 @@ export const SendConfirm = () => {
                       }, 3500);
                     })
                     .catch((error) => {
+                      const isDeviceLocked =
+                        error?.message.includes('Locked device');
+
+                      if (isDeviceLocked) {
+                        alert.removeAll();
+                        alert.error(t('settings.lockedDevice'));
+                        setLoading(false);
+                        return;
+                      }
                       logError('error send ERC20', 'Transaction', error);
 
                       alert.removeAll();
@@ -328,8 +375,9 @@ export const SendConfirm = () => {
                     networkUrl: activeNetwork.url,
                     receiver: txObjectState.to,
                     tokenAddress: basicTxValues.token.contractAddress,
-                    tokenAmount: basicTxValues.amount,
+                    tokenAmount: `${basicTxValues.amount}`,
                     isLegacy: !isEIP1559Compatible,
+                    decimals: basicTxValues?.token?.decimals,
                     maxPriorityFeePerGas: ethers.utils.parseUnits(
                       String(
                         Boolean(
@@ -370,8 +418,17 @@ export const SendConfirm = () => {
                     }, 3500);
                   })
                   .catch((error) => {
-                    logError('error send ERC20', 'Transaction', error);
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
 
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+                    logError('error send ERC20', 'Transaction', error);
+                    console.log({ error });
                     alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
@@ -422,6 +479,15 @@ export const SendConfirm = () => {
                         }, 3500);
                       })
                       .catch((error) => {
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
+                          setLoading(false);
+                          return;
+                        }
                         logError('error send ERC721', 'Transaction', error);
 
                         alert.removeAll();
@@ -486,6 +552,15 @@ export const SendConfirm = () => {
                         }, 3500);
                       })
                       .catch((error) => {
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
+                          setLoading(false);
+                          return;
+                        }
                         logError('error send ERC1155', 'Transaction', error);
 
                         alert.removeAll();
@@ -635,6 +710,17 @@ export const SendConfirm = () => {
         onClose={() => {
           wallet.sendAndSaveTransaction(confirmedTx);
           navigate('/home');
+        }}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
         }}
       />
 

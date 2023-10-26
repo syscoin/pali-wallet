@@ -80,6 +80,13 @@ export const Router = () => {
   }, []);
 
   useEffect(() => {
+    const isFullscreen = window.innerWidth > 600;
+    if (isFullscreen) {
+      navigate('/settings/account/hardware');
+    }
+  }, []);
+
+  useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
       if (isNetworkChanging) resetPaliRequestsCount();
       if (!isBitcoinBased) verifyPaliRequests();
@@ -90,6 +97,10 @@ export const Router = () => {
   useEffect(() => {
     alert.removeAll();
     appRoute(pathname);
+    const isFullscreen = window.innerWidth > 600;
+    if (isFullscreen) {
+      navigate('/settings/account/hardware');
+    }
   }, [pathname]);
 
   useEffect(() => {
