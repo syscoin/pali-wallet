@@ -276,7 +276,10 @@ export const SendSys = () => {
                                       <Menu.Item>
                                         <button
                                           onClick={() => {
-                                            if (activeAccount.isTrezorWallet) {
+                                            if (
+                                              activeAccount.isTrezorWallet ||
+                                              activeAccount.isLedgerWallet
+                                            ) {
                                               alert.removeAll();
                                               alert.error(
                                                 'Cannot send custom token with Trezor Account.'
