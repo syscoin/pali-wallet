@@ -146,6 +146,14 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return;
                 }
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
 
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -228,6 +236,15 @@ export const SendConfirm = () => {
                       setLoading(false);
                       return;
                     }
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
+
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                     throw error;
@@ -299,6 +316,14 @@ export const SendConfirm = () => {
                 }
                 if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
                   setIsReconectModalOpen(true);
+                  setLoading(false);
+                  return;
+                }
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
                 }
@@ -374,6 +399,15 @@ export const SendConfirm = () => {
                         isNecessaryReconnect
                       ) {
                         setIsReconectModalOpen(true);
+                        setLoading(false);
+                        return;
+                      }
+                      const isDeviceLocked =
+                        error?.message.includes('Locked device');
+
+                      if (isDeviceLocked) {
+                        alert.removeAll();
+                        alert.error(t('settings.lockedDevice'));
                         setLoading(false);
                         return;
                       }
@@ -466,7 +500,17 @@ export const SendConfirm = () => {
                       return;
                     }
                     logError('error send ERC20', 'Transaction', error);
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
 
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+                    logError('error send ERC20', 'Transaction', error);
+                    console.log({ error });
                     alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
@@ -537,6 +581,16 @@ export const SendConfirm = () => {
                           isNecessaryReconnect
                         ) {
                           setIsReconectModalOpen(true);
+                          setLoading(false);
+                          return;
+                        }
+
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
@@ -624,6 +678,15 @@ export const SendConfirm = () => {
                           isNecessaryReconnect
                         ) {
                           setIsReconectModalOpen(true);
+                          setLoading(false);
+                          return;
+                        }
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
