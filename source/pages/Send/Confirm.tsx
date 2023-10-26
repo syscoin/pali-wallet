@@ -478,7 +478,6 @@ export const SendConfirm = () => {
                     }, 3500);
                   })
                   .catch((error) => {
-                    console.log({ error });
                     const isNecessaryReconnect = error.message.includes(
                       'read properties of undefined'
                     );
@@ -510,7 +509,6 @@ export const SendConfirm = () => {
                       return;
                     }
                     logError('error send ERC20', 'Transaction', error);
-                    console.log({ error });
                     alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
