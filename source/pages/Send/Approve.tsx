@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
@@ -38,9 +39,12 @@ export const ApproveTransactionComponent = () => {
   const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
+  const url = browser.runtime.getURL('app.html');
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>({
@@ -190,6 +194,23 @@ export const ApproveTransactionComponent = () => {
           dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
+        const isNecessaryReconnect = error.message.includes(
+          'read properties of undefined'
+        );
+        const isNecessaryBlindSigning = error.message.includes(
+          'Please enable Blind signing'
+        );
+        if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+          alert.removeAll();
+          alert.error(t('settings.ledgerBlindSigning'));
+          setLoading(false);
+          return;
+        }
+        if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+          setIsReconectModalOpen(true);
+          setLoading(false);
+          return;
+        }
         logError('error', 'Transaction', error);
 
         alert.removeAll();
@@ -309,6 +330,16 @@ export const ApproveTransactionComponent = () => {
         onClose={() => {
           if (isExternal) window.close();
           else navigate('/home');
+        }}
+      />
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
         }}
       />
 

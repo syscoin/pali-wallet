@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -78,6 +79,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
+
+  const url = browser.runtime.getURL('app.html');
 
   const advancedOptionsArray = [
     'notarydetails',
@@ -122,6 +127,22 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
+      const isNecessaryReconnect = error.message.includes(
+        'read properties of undefined'
+      );
+      const isNecessaryBlindSigning = error.message.includes(
+        'Please enable Blind signing'
+      );
+      if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+        setErrorMsg(t('settings.ledgerBlindSigning'));
+        setLoading(false);
+        return;
+      }
+      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+        setIsReconectModalOpen(true);
+        setLoading(false);
+        return;
+      }
       if (error.message.includes('txVersion'))
         error.message =
           "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.";
@@ -151,6 +172,18 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
         )}`}
         description={t('transactions.youCanCheckYour')}
         buttonText={t('settings.gotIt')}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.close();
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <div className="flex flex-col items-center justify-center w-full">
