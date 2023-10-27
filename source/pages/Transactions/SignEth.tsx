@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
+  DefaultModal,
   ErrorModal,
   Layout,
   PrimaryButton,
@@ -22,6 +24,10 @@ const EthSign: React.FC<ISign> = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
+
+  const url = browser.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -89,6 +95,22 @@ const EthSign: React.FC<ISign> = () => {
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      const isNecessaryReconnect = error.message.includes(
+        'read properties of undefined'
+      );
+      const isNecessaryBlindSigning = error.message.includes(
+        'Please enable Blind signing'
+      );
+      if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+        setErrorMsg(t('settings.ledgerBlindSigning'));
+        setLoading(false);
+        return;
+      }
+      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+        setIsReconectModalOpen(true);
+        setLoading(false);
+        return;
+      }
       console.log(error);
       setErrorMsg(error.message);
 
@@ -115,6 +137,17 @@ const EthSign: React.FC<ISign> = () => {
         description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
         buttonText="Ok"
+      />
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.close();
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       {!loading && (

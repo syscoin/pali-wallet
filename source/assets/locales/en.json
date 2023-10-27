@@ -35,7 +35,8 @@
 		"switch": "Switch",
 		"success": "Success",
 		"error": "Error",
-		"reconnect": "Reconnect"
+		"reconnect": "Reconnect",
+		"verify": "Verify"
 	},
 	"components": {
 		"newPassword": "New password (min 8 chars)",
@@ -152,7 +153,12 @@
 		"explorer": "Explorer?",
 		"addressCopied": "Address successfully copied",
 		"hashCopied": "Hash successfully copied",
-		"contractCopied": "Contract successfully copied"
+		"contractCopied": "Contract successfully copied",
+		"verifySysAddress": "Verify your SYS address",
+		"verifySysAddressDescription": "Click in button below to verify your SYS address.",
+		"addressVerified": "Address successfully verified",
+		"verificationDeniedByUser": "Verification denied by user.",
+		"clickToVerify": "Click to verify your SYS address."
 	},
 	"titles": {
 		"assetDetails": "ASSET DETAILS",
@@ -263,8 +269,10 @@
 		"ledgerReconnection": "Ledger reconnection is necessary",
 		"ledgerReconnectionMessage": "Please, reconect your Ledger device.",
 		"ledgerOnlyAvailable": "Available only in Sys Mainnet UTXO network.",
+		"ledgerBlindSigning": "Please, enable Blind Signing in the Ledger Ethereum app Settings",
 		"lockedDevice": "Your Ledger is locked. Please, unlock it and try again.",
 		"dontForget": "Don't forget to open the Syscoin App on your Ledger before trying to connect it in Pali.",
+		"dontForgetEvm": "Don't forget to open the Ethereum App on your Ledger before trying to connect it in Pali.",
 		"walletSelected": "Wallet successfully selected",
 		"walletSelectedMessage": "Your wallet has been successfully selected. You can see more details under activity on your home page.",
 		"linkCopied": "Link successfully copied",
@@ -283,6 +291,7 @@
 		"enableRefresh": "Enable wallet refresh button",
 		"enableLedger": "Enable Ledger support",
 		"toUseLedger": "To use Ledger with Syscoin, you need to install the Syscoin app. You can do this by following the instructions on the Github repository bellow.",
+		"toUseLedgerEvm": "To use Ledger with EVM-based network, you need to install the Ethereum app in your Ledger.",
 		"githubLink": "Github link",
 		"youCanSetAutolock": "You can set auto lock timer. Default is 5 minutes after no activity. Maximum is 120 minutes.",
 		"timeSetSuccessfully": "Time set successfully",
