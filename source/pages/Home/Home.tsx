@@ -12,8 +12,8 @@ import {
   ONE_MILLION,
   ONE_TRILLION,
   formatMillionNumber,
-  formatNumber,
   verifyIfIsTestnet,
+  formatBalanceDecimals,
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
@@ -89,24 +89,6 @@ export const Home = () => {
     fiatPrice,
     actualBalance,
   ]);
-
-  function formatBalanceDecimals(number) {
-    const numberStr = number.toString();
-    const [integerPart, decimalPart] = numberStr.split('.');
-
-    const integerDigits = integerPart.slice(0, 10);
-
-    const decimalDigits = decimalPart
-      ? decimalPart.slice(0, 10 - integerDigits.length)
-      : '';
-
-    const formattedNumber =
-      decimalDigits.length > 0
-        ? `${integerDigits}.${decimalDigits}`
-        : integerDigits;
-
-    return formattedNumber;
-  }
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
