@@ -35,7 +35,8 @@
 		"switch": "Cambiar",
 		"success": "Correcto",
 		"error": "Erro",
-		"reconnect": "Reconectar"
+		"reconnect": "Reconectar",
+		"verify": "Verificar"
 	},
 	"components": {
 		"newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -152,7 +153,12 @@
 		"explorer": "Explorador?",
 		"addressCopied": "Dirección copiada",
 		"hashCopied": "Hash copiado",
-		"contractCopied": "Contrato copiado"
+		"contractCopied": "Contrato copiado",
+		"verifySysAddress": "Verifica tu dirección SYS",
+		"verifySysAddressDescription": "Haz clic en el botón de abajo para verificar tu dirección SYS.",
+		"addressVerified": "Dirección verificada con éxito",
+		"verificationDeniedByUser": "Verificación denegada por el usuario.",
+		"clickToVerify": "Haz clic para verificar tu dirección SYS."
 	},
 	"titles": {
 		"assetDetails": "DETALLES DEL ACTIVO",
@@ -263,8 +269,10 @@
 		"ledgerReconnection": "Es necesaria la reconexión de Ledger",
 		"ledgerReconnectionMessage": "Por favor, reconecta tu Ledger.",
 		"ledgerOnlyAvailable": "Ledger solo está disponible en la rede SYS Mainnet UTXO.",
+		"ledgerBlindSigning": "Por favor, activa el Blind Signing en la configuración de la aplicación Ledger Ethereum",
 		"lockedDevice": "Tu Ledger está bloqueado. Desbloquéalo para continuar.",
 		"dontForget": "No olvides abrir la aplicación Syscoin en tu Ledger antes de intentar conectarlo en Pali.",
+		"dontForgetEvm": "No olvides abrir la aplicación Ethereum en tu Ledger antes de intentar conectarlo en Pali.",
 		"walletSelected": "Monedero hardware seleccionado",
 		"walletSelectedMessage": "Tu monedero hardware ha sido seleccionado correctamente. Puedes ver más detalles en tu página de inicio.",
 		"linkCopied": "Enlace copiado con éxito",
@@ -286,6 +294,7 @@
 		"enableRefresh": "Habilitar botón de actualización del monedero",
 		"enableLedger": "Habilite el soporte para Ledger",
 		"toUseLedger": "Para usar Ledger con Syscoin, necesita instalar la aplicación Syscoin. Puede hacerlo siguiendo las instrucciones en el repositorio de Github a continuación.",
+		"toUseLedgerEvm": "Para usar Ledger con una red basada en EVM, necesitas instalar la aplicación Ethereum en tu Ledger.",
 		"githubLink": "Enlace de Github",
 		"youCanSetAutolock": "Puedes configurar el temporizador de bloqueo automático. El valor predeterminado es 5 minutos sin actividad. El máximo es 120 minutos.",
 		"timeSetSuccessfully": "La configuración de tiempo se realizó con éxito.",

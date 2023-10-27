@@ -3,6 +3,7 @@ import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
@@ -65,6 +66,10 @@ export const SendNTokenTransaction = () => {
     gasLimitError: boolean;
     txDataError: boolean;
   }>({ eip1559GasError: false, gasLimitError: false, txDataError: false });
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
+
+  const url = browser.runtime.getURL('app.html');
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(
@@ -144,6 +149,23 @@ export const SendNTokenTransaction = () => {
 
           return;
         } catch (legacyError: any) {
+          const isNecessaryReconnect = legacyError.message.includes(
+            'read properties of undefined'
+          );
+          const isNecessaryBlindSigning = legacyError.message.includes(
+            'Please enable Blind signing'
+          );
+          if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+            alert.removeAll();
+            alert.error(t('settings.ledgerBlindSigning'));
+            setLoading(false);
+            return;
+          }
+          if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+            setIsReconectModalOpen(true);
+            setLoading(false);
+            return;
+          }
           logError('error', 'Transaction', legacyError);
 
           alert.removeAll();
@@ -197,6 +219,23 @@ export const SendNTokenTransaction = () => {
 
           return;
         } catch (notLegacyError) {
+          const isNecessaryReconnect = notLegacyError.message.includes(
+            'read properties of undefined'
+          );
+          const isNecessaryBlindSigning = notLegacyError.message.includes(
+            'Please enable Blind signing'
+          );
+          if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+            alert.removeAll();
+            alert.error(t('settings.ledgerBlindSigning'));
+            setLoading(false);
+            return;
+          }
+          if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+            setIsReconectModalOpen(true);
+            setLoading(false);
+            return;
+          }
           logError('error', 'Transaction', notLegacyError);
 
           alert.removeAll();
@@ -236,13 +275,13 @@ export const SendNTokenTransaction = () => {
       if (tx.gas) {
         gasLimitResult = ethereumTransaction.toBigNumber(0);
       } else {
-        const currentBlock =
+        const currentBlockRequest =
           await ethereumTransaction.contentScriptWeb3Provider.send(
             'eth_getBlockByNumber',
             ['latest', false]
           );
         const gasLimitFromCurrentBlock = Math.floor(
-          Number(currentBlock.gasLimit) * 0.95
+          Number(currentBlockRequest.gasLimit) * 0.95
         ); //GasLimit from current block with 5% discount, whole limit from block is too much
         gasLimitResult = ethereumTransaction.toBigNumber(
           gasLimitFromCurrentBlock
@@ -381,6 +420,17 @@ export const SendNTokenTransaction = () => {
         title={t('send.verifyFields')}
         description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <EditPriorityModal

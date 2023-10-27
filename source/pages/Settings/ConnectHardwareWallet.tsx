@@ -36,11 +36,10 @@ const ConnectHardwareWalletView: FC = () => {
   const { slip44 } = activeNetwork;
 
   const isSysUTXOMainnet = isBitcoinBased && activeNetwork.chainId === 57;
-  const ledgerButtonColor = isSysUTXOMainnet
-    ? selectedHardwareWallet === 'ledger'
+  const ledgerButtonColor =
+    selectedHardwareWallet === 'ledger'
       ? 'bg-bkg-3 border-brand-deepPink cursor-pointer'
-      : 'bg-bkg-1 border-brand-royalblue cursor-pointer'
-    : 'disabled cursor-not-allowed';
+      : 'bg-bkg-1 border-brand-royalblue cursor-pointer';
 
   const trezorButtonColor =
     selectedHardwareWallet === 'trezor'
@@ -201,16 +200,18 @@ const ConnectHardwareWalletView: FC = () => {
           {advancedSettings?.ledger && (
             <Tooltip
               content={
-                !isSysUTXOMainnet ? t('settings.ledgerOnlyAvailable') : ''
+                isSysUTXOMainnet || !isBitcoinBased
+                  ? ''
+                  : t('settings.ledgerOnlyAvailable')
               }
             >
               <p
                 className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
                 onClick={() => {
-                  if (isSysUTXOMainnet) {
+                  if (isSysUTXOMainnet || !isBitcoinBased) {
                     setSelectedHardwareWallet('ledger');
-                    return;
                   }
+                  return;
                 }}
                 id="trezor-btn"
               >
@@ -224,7 +225,11 @@ const ConnectHardwareWalletView: FC = () => {
               <Card type="info" className="border-alert-darkwarning">
                 <div>
                   <div className="text-xs text-alert-darkwarning font-bold">
-                    <p>{t('settings.dontForget')}</p>
+                    <p>
+                      {isSysUTXOMainnet
+                        ? t('settings.dontForget')
+                        : t('settings.dontForgetEvm')}
+                    </p>
                   </div>
                 </div>
               </Card>
@@ -233,18 +238,24 @@ const ConnectHardwareWalletView: FC = () => {
 
           {isLedger && (
             <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
-              <p>{t('settings.toUseLedger')}</p>
-
-              <p
-                className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
-                onClick={() =>
-                  window.open(
-                    'https://github.com/osiastedian/ledger-app-syscoin'
-                  )
-                }
-              >
-                {t('settings.githubLink')}
+              <p>
+                {isSysUTXOMainnet
+                  ? t('settings.toUseLedger')
+                  : t('settings.toUseLedgerEvm')}
               </p>
+
+              {isSysUTXOMainnet && (
+                <p
+                  className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
+                  onClick={() =>
+                    window.open(
+                      'https://github.com/osiastedian/ledger-app-syscoin'
+                    )
+                  }
+                >
+                  {t('settings.githubLink')}
+                </p>
+              )}
             </div>
           )}
 
