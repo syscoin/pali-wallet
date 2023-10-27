@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
@@ -36,7 +37,10 @@ export const SendTransaction = () => {
   } = getController();
   const { t } = useTranslation();
   const { navigate, alert } = useUtils();
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
+  const url = browser.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -167,6 +171,23 @@ export const SendTransaction = () => {
           dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
+        const isNecessaryReconnect = error.message.includes(
+          'read properties of undefined'
+        );
+        const isNecessaryBlindSigning = error.message.includes(
+          'Please enable Blind signing'
+        );
+        if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+          alert.removeAll();
+          alert.error(t('settings.ledgerBlindSigning'));
+          setLoading(false);
+          return;
+        }
+        if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+          setIsReconectModalOpen(true);
+          setLoading(false);
+          return;
+        }
         logError('error', 'Transaction', error);
 
         alert.removeAll();
@@ -237,6 +258,17 @@ export const SendTransaction = () => {
         title={t('send.verifyFields')}
         description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <EditPriorityModal
