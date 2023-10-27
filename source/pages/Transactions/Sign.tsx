@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -9,6 +11,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 
 interface ISign {
@@ -21,7 +24,14 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
+  const url = browser.runtime.getURL('app.html');
+  const { activeAccount: activeAccountData, accounts } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
   const onSubmit = async () => {
     const { syscoinTransaction } = getController().wallet;
     const sign = syscoinTransaction.signTransaction;
@@ -36,6 +46,14 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
     } catch (error: any) {
+      const isNecessaryReconnect = error.message.includes(
+        'read properties of undefined'
+      );
+      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+        setIsReconectModalOpen(true);
+        setLoading(false);
+        return;
+      }
       setErrorMsg(error.message);
 
       setTimeout(window.close, 4000);
@@ -54,6 +72,18 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
             : t('transactions.youCanCheckYour')
         }
         buttonText={t('settings.gotIt')}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.close();
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <ErrorModal
