@@ -55,7 +55,6 @@ export const Home = () => {
     accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
-
   const moreThanMillion = actualBalance >= ONE_MILLION;
 
   const moreThanTrillion = actualBalance > ONE_TRILLION;
@@ -91,6 +90,24 @@ export const Home = () => {
     actualBalance,
   ]);
 
+  function formatBalanceDecimals(number) {
+    const numberStr = number.toString();
+    const [integerPart, decimalPart] = numberStr.split('.');
+
+    const integerDigits = integerPart.slice(0, 10);
+
+    const decimalDigits = decimalPart
+      ? decimalPart.slice(0, 10 - integerDigits.length)
+      : '';
+
+    const formattedNumber =
+      decimalDigits.length > 0
+        ? `${integerDigits}.${decimalDigits}`
+        : integerDigits;
+
+    return formattedNumber;
+  }
+
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
@@ -111,7 +128,7 @@ export const Home = () => {
                 >
                   {moreThanMillion
                     ? formatMillionNumber(actualBalance)
-                    : formatNumber(actualBalance || 0)}{' '}
+                    : formatBalanceDecimals(actualBalance || 0)}{' '}
                 </p>
 
                 <p
