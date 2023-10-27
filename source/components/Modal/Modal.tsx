@@ -1,5 +1,6 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ImWarning } from 'react-icons/im';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
@@ -16,6 +17,7 @@ interface IModal {
 interface IDefaultModal {
   buttonText?: string;
   description?: string;
+  isButtonLoading?: boolean;
   onClose?: () => any;
   show?: boolean;
   title: string;
@@ -152,31 +154,40 @@ export const ConfirmationModal = ({
   onClick,
   show,
   title = '',
-}: IConfirmationModal) => (
-  <Modal show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
-      <Dialog.Title
-        as="h3"
-        className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
-      >
-        {title}
-      </Dialog.Title>
+  isButtonLoading = false,
+}: IConfirmationModal) => {
+  const { t } = useTranslation();
+  return (
+    <Modal show={show} onClose={onClose}>
+      <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+        <Dialog.Title
+          as="h3"
+          className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
+        >
+          {title}
+        </Dialog.Title>
 
-      <div className="mt-2">
-        <p className="text-white text-sm">{description}</p>
-      </div>
+        <div className="mt-2">
+          <p className="text-white text-sm">{description}</p>
+        </div>
 
-      <div className="flex items-center justify-center mt-4 gap-4">
-        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
-          Cancel
-        </NeutralButton>
-        <NeutralButton type="button" onClick={onClick} id="got-it-btn">
-          {buttonText}
-        </NeutralButton>
+        <div className="flex items-center justify-center mt-4 gap-4">
+          <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+            {t('buttons.cancel')}
+          </NeutralButton>
+          <NeutralButton
+            type="button"
+            onClick={onClick}
+            id="got-it-btn"
+            loading={isButtonLoading}
+          >
+            {buttonText}
+          </NeutralButton>
+        </div>
       </div>
-    </div>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 export const ErrorModal = ({
   buttonText = 'Ok',

@@ -1,6 +1,6 @@
 import cloneDeep from 'lodash/cloneDeep';
 
-import { getSearch } from '@pollum-io/sysweb3-utils';
+import { getTokenInfoBasedOnNetwork } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
@@ -18,64 +18,6 @@ export interface IEthAccountController {
 }
 
 const EthAccountController = (): IEthAccountController | any => {
-  const getTokenInfoInRollux = async (tokenSymbol: string) => {
-    function convertToRawGitHubUrl(gitHubUrl) {
-      // Replace "github.com" with "raw.githubusercontent.com"
-      const rawGitHubUrl = gitHubUrl.replace(
-        'github.com',
-        'raw.githubusercontent.com'
-      );
-
-      // Remove "blob/" if it exists in the URL
-      return rawGitHubUrl.replace('/blob/', '/').replace('/tree/', '/');
-    }
-
-    const baseUrlToFetch = `https://github.com/syscoin/syscoin-rollux.github.io/tree/master/data/${tokenSymbol}`;
-
-    try {
-      const fetchTokenData = await fetch(baseUrlToFetch);
-
-      const tokenDataJson = await fetchTokenData.json();
-
-      if (tokenDataJson.payload) {
-        const getTokenImage = tokenDataJson.payload.tree.items[1]
-          .name as string;
-
-        const fetchedData = await fetch(
-          convertToRawGitHubUrl(`${baseUrlToFetch}/data.json`)
-        );
-
-        const convertedDataToJSON = await fetchedData.json();
-
-        return {
-          token: convertedDataToJSON as any,
-          imageUrl: getTokenImage
-            ? `${convertToRawGitHubUrl(baseUrlToFetch)}/${getTokenImage}`
-            : '',
-        };
-      }
-    } catch (error) {
-      return {
-        token: null,
-        imageUrl: '',
-      };
-    }
-
-    //We have to search from both because some Tokens has the Logo in SVG and others in PNG
-  };
-
-  const getTokenInfoBySearch = async (tokenSymbol: string) => {
-    try {
-      const { coins } = await getSearch(tokenSymbol);
-
-      if (coins && coins[0]) {
-        return coins[0];
-      }
-    } catch (error) {
-      return null;
-    }
-  };
-
   const saveTokenInfo = async (token: ITokenEthProps, tokenType: string) => {
     const { activeAccount, activeNetwork, accounts } = store.getState().vault;
     const { chainId } = activeNetwork;
@@ -143,75 +85,13 @@ const EthAccountController = (): IEthAccountController | any => {
 
       if (tokenExists) throw new Error('Token already exists');
 
-      const rolluxChainIds = [570, 57000];
+      let web3Token = await getTokenInfoBasedOnNetwork(token, chainId);
 
-      const isRolluxNetwork = rolluxChainIds.some(
-        (rolluxChain) => rolluxChain === activeNetwork.chainId
-      );
-
-      //Fill the let with the default values that can't be different / edited
-      let web3Token: ITokenEthProps = {
-        ...token,
-        tokenSymbol: token.editedSymbolToUse
-          ? token.editedSymbolToUse
-          : token.tokenSymbol,
-        balance: token.balance ? token.balance : 0,
-        id: token.contractAddress,
-        isNft: token.isNft,
-        chainId,
-      };
-
-      switch (isRolluxNetwork) {
-        case true:
-          const fetchTokenData = await getTokenInfoInRollux(token.tokenSymbol);
-
-          if (fetchTokenData.token !== null && fetchTokenData.imageUrl !== '') {
-            web3Token = {
-              ...web3Token,
-              name: fetchTokenData.token.name || token?.name,
-              logo: fetchTokenData.imageUrl || token?.logo,
-            };
-          } else {
-            const tokenResult = await getTokenInfoBySearch(token.tokenSymbol);
-
-            if (tokenResult !== null) {
-              const { name, thumb } = tokenResult;
-
-              web3Token = {
-                ...web3Token,
-                name: token?.name ? token.name : name,
-                logo: token?.logo ? token.logo : thumb,
-              };
-            } else {
-              web3Token = {
-                ...web3Token,
-                name: token.tokenSymbol,
-                logo: token?.logo ? token.logo : PaliLogo,
-              };
-            }
-          }
-          break;
-
-        case false:
-          const tokenResult = await getTokenInfoBySearch(token.tokenSymbol);
-
-          if (tokenResult !== null) {
-            const { name, thumb } = tokenResult;
-
-            web3Token = {
-              ...web3Token,
-              name: token?.name ? token.name : name,
-              logo: token?.logo ? token.logo : thumb,
-            };
-          } else {
-            web3Token = {
-              ...web3Token,
-              name: token.tokenSymbol,
-              logo: token?.logo ? token.logo : PaliLogo,
-            };
-          }
-
-          break;
+      if (web3Token.logo === '') {
+        web3Token = {
+          ...web3Token,
+          logo: PaliLogo,
+        };
       }
 
       store.dispatch(
