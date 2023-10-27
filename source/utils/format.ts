@@ -75,6 +75,24 @@ export const formatCurrency = (number: string, precision: number) => {
   }).format();
 };
 
+export const formatBalanceDecimals = (number: number | string) => {
+  const numberStr: string = number.toString();
+  const [integerPart, decimalPart] = numberStr.split('.');
+
+  const integerDigits: string = integerPart.slice(0, 10);
+
+  const decimalDigits: string = decimalPart
+    ? decimalPart.slice(0, 10 - integerDigits.length)
+    : '';
+
+  const formattedNumber: string =
+    decimalDigits.length > 0
+      ? `${integerDigits}.${decimalDigits}`
+      : integerDigits;
+
+  return formattedNumber;
+};
+
 /**
  * Truncate the `input` if length is greater than `size`
  *

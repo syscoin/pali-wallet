@@ -12,8 +12,8 @@ import {
   ONE_MILLION,
   ONE_TRILLION,
   formatMillionNumber,
-  formatNumber,
   verifyIfIsTestnet,
+  formatBalanceDecimals,
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
@@ -55,7 +55,6 @@ export const Home = () => {
     accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
-
   const moreThanMillion = actualBalance >= ONE_MILLION;
 
   const moreThanTrillion = actualBalance > ONE_TRILLION;
@@ -111,7 +110,7 @@ export const Home = () => {
                 >
                   {moreThanMillion
                     ? formatMillionNumber(actualBalance)
-                    : formatNumber(actualBalance || 0)}{' '}
+                    : formatBalanceDecimals(actualBalance || 0)}{' '}
                 </p>
 
                 <p
