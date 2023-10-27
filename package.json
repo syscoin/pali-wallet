@@ -149,7 +149,7 @@
     "fork-ts-checker-webpack-plugin": "^8.0.0",
     "hardhat": "^2.15.0",
     "html-webpack-plugin": "^5.5.1",
-    "husky": "^8.0.0",
+    "husky": "^7.0.4",
     "mini-css-extract-plugin": "^2.7.5",
     "node-polyfill-webpack-plugin": "^2.0.1",
     "patch-package": "^7.0.0",
