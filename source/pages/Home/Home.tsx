@@ -108,7 +108,7 @@ export const Home = () => {
                 >
                   {moreThanMillion
                     ? formatMillionNumber(actualBalance)
-                    : formatBalanceDecimals(actualBalance || 0)}{' '}
+                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
                 </p>
 
                 <p
@@ -125,7 +125,7 @@ export const Home = () => {
                   ? null
                   : moreThanMillion
                   ? formatMillionNumber(Number(fiatPriceValue))
-                  : formatBalanceDecimals(fiatPriceValue)}
+                  : formatBalanceDecimals(fiatPriceValue, true)}
               </p>
             </div>
 
