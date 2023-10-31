@@ -198,6 +198,7 @@
 		"explorer": "Explorer?",
 		"on": "on",
 		"confirm": "CONFIRM",
+		"maxMessage": "To avoid errors in your transaction, we won't fill the input field with your maximum balance. In case you would like to try send all tokens at once, you can manually edit the value above.",
 		"cantCompleteApprove": "Can't complete approve. Try again later.",
 		"approveSuccessful": "Approve successful",
 		"approveSuccessfulMessage": "Your approve has been successfully submitted. You can see more details under activity on your home page.",
