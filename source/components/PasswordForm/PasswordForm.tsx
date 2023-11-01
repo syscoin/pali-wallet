@@ -2,7 +2,7 @@ import { Form, Input } from 'antd';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { OnboardingLayout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, Button } from 'components/index';
 
 interface IPasswordForm {
   onSubmit: (data: any) => any;
@@ -24,7 +24,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
       >
         <Form.Item
           name="password"
-          className="w-full"
+          className="w-full flex justify-center"
           hasFeedback
           rules={[
             {
@@ -38,14 +38,15 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           ]}
         >
           <Input.Password
-            className="input-small relative"
+            className="custom-input-password relative"
+            id="create-password"
             placeholder={t('components.newPassword')}
           />
         </Form.Item>
 
         <Form.Item
           name="repassword"
-          className="w-full"
+          className="w-full flex justify-center"
           hasFeedback
           dependencies={['password']}
           rules={[
@@ -63,23 +64,28 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           ]}
         >
           <Input.Password
-            className="input-small relative"
+            className="custom-input-password relative"
+            id="create-password"
             placeholder={t('components.confirmPassword')}
           />
         </Form.Item>
 
-        <span className="px-3 w-full text-left text-brand-graylight text-xs">
+        <span className="px-3 w-full text-left text-brand-blue100 text-xs">
           {t('components.atLeast')} {'   '}
         </span>
 
-        <span className="px-3 text-left text-brand-royalblue text-xs">
+        <span className="px-3 text-center text-brand-gray200 text-xs">
           {t('components.doNotForget')}
         </span>
 
         <div className="absolute bottom-12 md:bottom-32">
-          <PrimaryButton type="submit" id="create-password-action">
+          <Button
+            type="submit"
+            id="create-password-action"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white font-base font-medium rounded-2xl"
+          >
             {t('buttons.next')}
-          </PrimaryButton>
+          </Button>
         </div>
       </Form>
     </OnboardingLayout>

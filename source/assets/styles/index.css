@@ -78,11 +78,7 @@ div[role='alert'] {
 }
 
 .bg-gradient {
-  background: linear-gradient(
-    109.86deg,
-    #284f94 25.72%,
-    #fe0077 141.55%
-  ) !important;
+  background: linear-gradient(180deg, #1e365c 0.67%, #061120 19.78%);
 }
 
 .bg-gradient::before {

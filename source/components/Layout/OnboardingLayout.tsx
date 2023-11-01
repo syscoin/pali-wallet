@@ -14,23 +14,25 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
   children,
   tooltipText,
 }) => (
-  <div className="flex flex-col gap-4 items-center justify-center md:pt-20">
-    <LogoHeader />
+  <div className="flex flex-col gap-4 items-center justify-center md:pt-20 bg-gradient">
+    <div className=" w-full h-full bg-[url('../../../source/assets/images/Dots.svg')] flex flex-col items-center justify-center md:pt-20 ">
+      <LogoHeader />
 
-    <section>
-      <div className="flex gap-2 items-center justify-center">
-        <span className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
-          {title}
-        </span>
+      <section>
+        <div className="flex gap-2 items-center justify-center pb-8">
+          <h1 className="text-center text-brand-royalblue text-xl font-bold tracking-normal">
+            {title}
+          </h1>
 
-        {tooltipText && (
-          <Tooltip content={tooltipText}>
-            <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
-          </Tooltip>
-        )}
-      </div>
-    </section>
+          {tooltipText && (
+            <Tooltip content={tooltipText}>
+              <QuestionCircleOutlined className="inline-flex w-3 text-brand-graylight text-sm" />
+            </Tooltip>
+          )}
+        </div>
+      </section>
 
-    <section>{children}</section>
+      <section>{children}</section>
+    </div>{' '}
   </div>
 );

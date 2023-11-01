@@ -70,6 +70,7 @@ module.exports = {
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
     pink: '#9F0949',
     blue: '#4D76B8',
+    blue100: '#C9DEFF',
     blue600: '#162742',
     blue500: '#1E365C',
     blue200: '#4CA1CF',
@@ -81,5 +82,6 @@ module.exports = {
     deepPink100: '#ff3e91',
     gray: '#808080',
     graylight: '#f5f5f5',
+    gray200: '#A2A5AB',
   },
 };

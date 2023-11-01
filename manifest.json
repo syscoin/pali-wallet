@@ -20,7 +20,8 @@
     "*://*.eth/",
     "clipboardWrite",
     "unlimitedStorage",
-    "http://localhost:8545/"
+    "http://localhost:8545/",
+    "webRequest"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "pollum labs",
@@ -47,22 +48,35 @@
     "__firefox__browser_style": false
   },
   "background": {
-    "scripts": ["js/webextension.bundle.js", "js/background.bundle.js"],
+    "scripts": [
+      "js/webextension.bundle.js",
+      "js/background.bundle.js"
+    ],
     "__chrome|opera__persistent": true
   },
   "content_scripts": [
     {
       "all_frames": true,
-      "matches": ["file://*/*", "http://*/*", "https://*/*"],
+      "matches": [
+        "file://*/*",
+        "http://*/*",
+        "https://*/*"
+      ],
       "run_at": "document_start",
-      "js": ["js/webextension.bundle.js", "js/contentScript.bundle.js"]
+      "js": [
+        "js/webextension.bundle.js",
+        "js/contentScript.bundle.js"
+      ]
     },
     {
       "matches": [
         "*://connect.trezor.io/9/popup.html",
         "https://localhost:8088/*"
       ],
-      "js": ["js/webextension.bundle.js", "js/trezorScript.bundle.js"]
+      "js": [
+        "js/webextension.bundle.js",
+        "js/trezorScript.bundle.js"
+      ]
     }
   ],
   "web_accessible_resources": [
@@ -78,4 +92,3 @@
     }
   }
 }
-
