@@ -4,8 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import LogoImage from 'assets/images/logo-s.svg';
-import { PrimaryButton } from 'components/index';
+import { PrimaryButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -77,30 +76,29 @@ export const Start = (props: any) => {
       >
         <Form.Item
           name="password"
-          className="w-full"
+          className="w-full flex justify-center"
           validateStatus={'error'}
           hasFeedback={!!errorMessage}
         >
           <Input.Password
-            className="input-small relative"
+            className="custom-input-password relative"
             placeholder={t('settings.enterYourPassword')}
             id="password"
           />
         </Form.Item>
-        {!!errorMessage && (
-          <p className="m-[-20px] p-0 w-full text-center text-red-600 font-poppins text-xs">
-            {errorMessage}
-          </p>
-        )}
 
         <Form.Item>
-          <PrimaryButton type="submit" id="unlock-btn">
+          <Button
+            id="unlock-btn"
+            type="submit"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white font-base font-medium rounded-2xl"
+          >
             {t('buttons.unlock')}
-          </PrimaryButton>
+          </Button>
         </Form.Item>
       </Form>
       <a
-        className={`mt-10 hover:text-brand-graylight text-brand-royalblue ${
+        className={`mt-10 hover:text-brand-graylight text-[#A2A5AB] ${
           language === 'es' ? 'text-xs' : 'text-base'
         } font-light transition-all duration-300 cursor-pointer`}
         id="import-wallet-link"
@@ -112,20 +110,23 @@ export const Start = (props: any) => {
   );
 
   return (
-    <div className="flex flex-col items-center justify-center p-2 pt-20 min-w-full">
+    <div className="flex flex-col items-center bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
       <ValidationModal
         setIsOpen={setIsOpenValidation}
         showModal={isOpenValidation}
       />
-      <p className="mb-2 text-center text-brand-deepPink100 text-lg font-normal tracking-wider">
+      <p className=" pt-[13rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
         {t('start.welcomeTo')}
       </p>
 
-      <h1 className="m-0 text-center text-brand-royalblue font-poppins text-4xl font-bold tracking-wide leading-4">
-        Pali Wallet
-      </h1>
-
-      <img src={LogoImage} className="my-8 w-52" alt="syscoin" />
+      <div className="flex flex-row gap-3 mb-6">
+        <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
+          Pali
+        </h1>
+        <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
+          Wallet
+        </h1>
+      </div>
 
       {isFirstStep ? getStarted : unLock}
     </div>

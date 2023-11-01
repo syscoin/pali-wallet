@@ -79,7 +79,6 @@ module.exports = {
     red: '#D70000',
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
-
     gray: '#808080',
     graylight: '#f5f5f5',
   },
