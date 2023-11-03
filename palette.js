@@ -74,6 +74,7 @@ module.exports = {
     blue600: '#162742',
     blue500: '#1E365C',
     blue200: '#4CA1CF',
+    blue800: '#07152A',
     green: '#8EC100',
     black: '#000',
     white: '#fff',

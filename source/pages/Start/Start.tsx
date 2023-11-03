@@ -34,7 +34,7 @@ export const Start = (props: any) => {
         id="unlock-btn"
         type="submit"
         onClick={() => navigate('/create-password')}
-        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white font-base font-medium rounded-2xl"
+        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl"
       >
         Get started
       </Button>
@@ -97,7 +97,7 @@ export const Start = (props: any) => {
           <Button
             id="unlock-btn"
             type="submit"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white font-base font-medium rounded-2xl"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base	 font-base font-medium rounded-2xl"
           >
             {t('buttons.unlock')}
           </Button>

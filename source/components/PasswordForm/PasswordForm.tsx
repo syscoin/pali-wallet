@@ -82,7 +82,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           <Button
             type="submit"
             id="create-password-action"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white font-base font-medium rounded-2xl"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl"
           >
             {t('buttons.next')}
           </Button>

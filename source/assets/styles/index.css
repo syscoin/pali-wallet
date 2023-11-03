@@ -88,7 +88,6 @@ div[role='alert'] {
   right: 0px;
   bottom: 0px;
   left: 0px;
-  background-image: url('../images/bgPattern.svg') !important;
   background-blend-mode: overlay !important;
 }
 
