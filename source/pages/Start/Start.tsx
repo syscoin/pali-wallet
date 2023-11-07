@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { PrimaryButton, Button } from 'components/index';
+import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -116,7 +116,7 @@ export const Start = (props: any) => {
   );
 
   return (
-    <div className="flex flex-col items-center bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
       <ValidationModal
         setIsOpen={setIsOpenValidation}
         showModal={isOpenValidation}
