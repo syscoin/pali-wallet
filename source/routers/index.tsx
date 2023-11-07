@@ -51,6 +51,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
+  const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
@@ -60,7 +61,13 @@ export const Router = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
+  const { utf8Error } = wallet;
   const isUnlocked = wallet.isUnlocked();
+
+  useEffect(() => {
+    console.log('utf8 error', utf8Error);
+    setShowUtf8ErrorModal(utf8Error);
+  }, [utf8Error]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts;
@@ -125,6 +132,16 @@ export const Router = () => {
 
   return (
     <>
+      <WarningModal
+        show={showUtf8ErrorModal}
+        title="Malformatted UTF8 Data Error"
+        description={`${modalMessage}`}
+        warningMessage={`Aaaaaa`}
+        onClose={() => {
+          setShowUtf8ErrorModal(false);
+          wallet.lock();
+        }}
+      />
       <WarningModal
         show={showModal}
         title="RPC Error"
