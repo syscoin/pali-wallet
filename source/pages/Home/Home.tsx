@@ -124,7 +124,9 @@ export const Home = () => {
                 {isTestnet
                   ? null
                   : moreThanMillion
-                  ? formatMillionNumber(Number(fiatPriceValue))
+                  ? formatMillionNumber(
+                      Number(fiatPriceValue.match(/[\d\.]+/g)[0])
+                    )
                   : formatBalanceDecimals(fiatPriceValue, true)}
               </p>
             </div>
