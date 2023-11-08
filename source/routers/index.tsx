@@ -61,13 +61,20 @@ export const Router = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
-  const { utf8Error } = wallet;
   const isUnlocked = wallet.isUnlocked();
+  const utf8ErrorData = JSON.parse(
+    window.localStorage.getItem('sysweb3-utf8Error') ??
+      JSON.stringify({ hasUtf8Error: false })
+  );
+
+  const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
   useEffect(() => {
-    console.log('utf8 error', utf8Error);
-    setShowUtf8ErrorModal(utf8Error);
-  }, [utf8Error]);
+    console.log('utf8 error', hasUtf8Error);
+    if (isUnlocked) {
+      setShowUtf8ErrorModal(hasUtf8Error);
+    }
+  }, [hasUtf8Error, isUnlocked]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts;
@@ -140,6 +147,7 @@ export const Router = () => {
         onClose={() => {
           setShowUtf8ErrorModal(false);
           wallet.lock();
+          navigate('/');
         }}
       />
       <WarningModal
