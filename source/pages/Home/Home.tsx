@@ -99,14 +99,14 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          <section className="flex flex-col gap-1 items-center py-14 text-brand-white bg-bkg-1">
+          <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
                 <p
                   id="home-balance"
                   className={`font-rubik ${
-                    moreThanTrillion ? 'text-sm' : 'text-5xl'
-                  }  font-medium`}
+                    moreThanTrillion ? 'text-sm' : 'text-[50px]'
+                  }  font-bold`}
                 >
                   {moreThanMillion
                     ? formatMillionNumber(actualBalance)
@@ -115,20 +115,22 @@ export const Home = () => {
 
                 <p
                   className={`${
-                    moreThanTrillion ? 'text-sm' : 'mt-4'
+                    moreThanTrillion ? 'text-lg' : 'mt-4'
                   } font-poppins`}
                 >
                   {activeNetwork.currency.toUpperCase()}
                 </p>
               </div>
 
-              <p id="fiat-ammount">{isTestnet ? null : fiatPriceValue}</p>
+              <p id="fiat-ammount" className="text-gray-400">
+                {isTestnet ? null : fiatPriceValue}
+              </p>
             </div>
 
-            <div className="flex gap-x-0.5 items-center justify-center pt-8 w-3/4 max-w-md">
+            <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
               <Button
                 type="button"
-                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
+                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
                 id="send-btn"
                 onClick={() =>
                   isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
@@ -136,24 +138,26 @@ export const Home = () => {
                 disabled={isLoadingBalances}
               >
                 <Icon
-                  name="arrow-up"
-                  className="w-4"
-                  wrapperClassname="mb-2 mr-2"
+                  name="ArrowUpBoldIcon"
+                  className="w-5 h-5"
+                  wrapperClassname="mr-2"
                   rotate={45}
+                  isSvg={true}
                 />
                 {t('buttons.send')}
               </Button>
 
               <Button
                 type="button"
-                className="xl:p-18 flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
+                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                 id="receive-btn"
                 onClick={() => navigate('/receive')}
               >
                 <Icon
-                  name="arrow-down"
-                  className="w-4"
-                  wrapperClassname="mb-2 mr-2"
+                  name="ArrowDownLoad"
+                  className="w-5 h-5"
+                  wrapperClassname="mr-2"
+                  isSvg={true}
                 />
                 {t('buttons.receive')}
               </Button>

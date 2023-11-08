@@ -15,7 +15,7 @@ export const OnboardingLayout: FC<IOnboardingLayout> = ({
   tooltipText,
 }) => (
   <div className="flex flex-col gap-4 items-center justify-center md:pt-20 bg-gradient">
-    <div className=" w-full h-max bg-no-repeat bg-[url('../../../source/assets/images/Dots.svg')] flex flex-col items-center justify-center md:pt-20 ">
+    <div className=" w-full h-max bg-no-repeat bg-[url('../../../source/assets/images/Dots.svg')] flex flex-col items-center justify-center md:pt-20 z-20">
       <LogoHeader />
 
       <section>
