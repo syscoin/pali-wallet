@@ -24,7 +24,7 @@ interface IDefaultModal {
 }
 
 interface IWarningModal extends IDefaultModal {
-  warningMessage: string;
+  warningMessage?: string;
 }
 
 interface IConfirmationModal extends IDefaultModal {
@@ -134,9 +134,11 @@ export const WarningModal = ({
         <p className="text-white text-sm">{description}</p>
       </div>
 
-      <div className="mt-2">
-        <p className="text-white text-xs disabled">{warningMessage}</p>
-      </div>
+      {warningMessage && (
+        <div className="mt-2">
+          <p className="text-white text-xs disabled">{warningMessage}</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-center mt-4">
         <NeutralButton type="button" onClick={onClose} id="got-it-btn">
