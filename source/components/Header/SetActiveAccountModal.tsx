@@ -83,6 +83,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
 
                     if (
                       keyringAccountType === KeyringAccountType.Trezor ||
+                      keyringAccountType === KeyringAccountType.Ledger ||
                       keyringAccountType === KeyringAccountType.Imported
                     ) {
                       return null;

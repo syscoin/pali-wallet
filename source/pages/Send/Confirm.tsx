@@ -146,6 +146,14 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return;
                 }
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
 
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
@@ -208,6 +216,35 @@ export const SendConfirm = () => {
                     setLoading(false);
                   })
                   .catch((error) => {
+                    const isNecessaryReconnect = error.message.includes(
+                      'read properties of undefined'
+                    );
+                    const isNecessaryBlindSigning = error.message.includes(
+                      'Please enable Blind signing'
+                    );
+                    if (
+                      activeAccount.isLedgerWallet &&
+                      isNecessaryBlindSigning
+                    ) {
+                      alert.removeAll();
+                      alert.error(t('settings.ledgerBlindSigning'));
+                      setLoading(false);
+                      return;
+                    }
+                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                      setIsReconectModalOpen(true);
+                      setLoading(false);
+                      return;
+                    }
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
+
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                     throw error;
@@ -265,6 +302,31 @@ export const SendConfirm = () => {
                 }, 3500);
               })
               .catch((error: any) => {
+                const isNecessaryReconnect = error.message.includes(
+                  'read properties of undefined'
+                );
+                const isNecessaryBlindSigning = error.message.includes(
+                  'Please enable Blind signing'
+                );
+                if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+                  alert.removeAll();
+                  alert.error(t('settings.ledgerBlindSigning'));
+                  setLoading(false);
+                  return;
+                }
+                if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                  setIsReconectModalOpen(true);
+                  setLoading(false);
+                  return;
+                }
+                const isDeviceLocked = error?.message.includes('Locked device');
+
+                if (isDeviceLocked) {
+                  alert.removeAll();
+                  alert.error(t('settings.lockedDevice'));
+                  setLoading(false);
+                  return;
+                }
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
@@ -317,6 +379,38 @@ export const SendConfirm = () => {
                       }, 3500);
                     })
                     .catch((error) => {
+                      const isNecessaryReconnect = error.message.includes(
+                        'read properties of undefined'
+                      );
+                      const isNecessaryBlindSigning = error.message.includes(
+                        'Please enable Blind signing'
+                      );
+                      if (
+                        activeAccount.isLedgerWallet &&
+                        isNecessaryBlindSigning
+                      ) {
+                        alert.removeAll();
+                        alert.error(t('settings.ledgerBlindSigning'));
+                        setLoading(false);
+                        return;
+                      }
+                      if (
+                        activeAccount.isLedgerWallet &&
+                        isNecessaryReconnect
+                      ) {
+                        setIsReconectModalOpen(true);
+                        setLoading(false);
+                        return;
+                      }
+                      const isDeviceLocked =
+                        error?.message.includes('Locked device');
+
+                      if (isDeviceLocked) {
+                        alert.removeAll();
+                        alert.error(t('settings.lockedDevice'));
+                        setLoading(false);
+                        return;
+                      }
                       logError('error send ERC20', 'Transaction', error);
 
                       alert.removeAll();
@@ -384,8 +478,37 @@ export const SendConfirm = () => {
                     }, 3500);
                   })
                   .catch((error) => {
+                    const isNecessaryReconnect = error.message.includes(
+                      'read properties of undefined'
+                    );
+                    const isNecessaryBlindSigning = error.message.includes(
+                      'Please enable Blind signing'
+                    );
+                    if (
+                      activeAccount.isLedgerWallet &&
+                      isNecessaryBlindSigning
+                    ) {
+                      alert.removeAll();
+                      alert.error(t('settings.ledgerBlindSigning'));
+                      setLoading(false);
+                      return;
+                    }
+                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                      setIsReconectModalOpen(true);
+                      setLoading(false);
+                      return;
+                    }
                     logError('error send ERC20', 'Transaction', error);
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
 
+                    if (isDeviceLocked) {
+                      alert.removeAll();
+                      alert.error(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+                    logError('error send ERC20', 'Transaction', error);
                     alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
@@ -436,6 +559,39 @@ export const SendConfirm = () => {
                         }, 3500);
                       })
                       .catch((error) => {
+                        const isNecessaryReconnect = error.message.includes(
+                          'read properties of undefined'
+                        );
+                        const isNecessaryBlindSigning = error.message.includes(
+                          'Please enable Blind signing'
+                        );
+                        if (
+                          activeAccount.isLedgerWallet &&
+                          isNecessaryBlindSigning
+                        ) {
+                          alert.removeAll();
+                          alert.error(t('settings.ledgerBlindSigning'));
+                          setLoading(false);
+                          return;
+                        }
+                        if (
+                          activeAccount.isLedgerWallet &&
+                          isNecessaryReconnect
+                        ) {
+                          setIsReconectModalOpen(true);
+                          setLoading(false);
+                          return;
+                        }
+
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
+                          setLoading(false);
+                          return;
+                        }
                         logError('error send ERC721', 'Transaction', error);
 
                         alert.removeAll();
@@ -500,6 +656,38 @@ export const SendConfirm = () => {
                         }, 3500);
                       })
                       .catch((error) => {
+                        const isNecessaryReconnect = error.message.includes(
+                          'read properties of undefined'
+                        );
+                        const isNecessaryBlindSigning = error.message.includes(
+                          'Please enable Blind signing'
+                        );
+                        if (
+                          activeAccount.isLedgerWallet &&
+                          isNecessaryBlindSigning
+                        ) {
+                          alert.removeAll();
+                          alert.error(t('settings.ledgerBlindSigning'));
+                          setLoading(false);
+                          return;
+                        }
+                        if (
+                          activeAccount.isLedgerWallet &&
+                          isNecessaryReconnect
+                        ) {
+                          setIsReconectModalOpen(true);
+                          setLoading(false);
+                          return;
+                        }
+                        const isDeviceLocked =
+                          error?.message.includes('Locked device');
+
+                        if (isDeviceLocked) {
+                          alert.removeAll();
+                          alert.error(t('settings.lockedDevice'));
+                          setLoading(false);
+                          return;
+                        }
                         logError('error send ERC1155', 'Transaction', error);
 
                         alert.removeAll();

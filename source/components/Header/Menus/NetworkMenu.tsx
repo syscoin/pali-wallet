@@ -85,7 +85,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           (chainId) => `${network.chainId}` === chainId
         ) &&
         `${network.slip44}` !== 'undefined' &&
-        activeAccountType === KeyringAccountType.Trezor);
+        (activeAccountType === KeyringAccountType.Trezor ||
+          activeAccountType === KeyringAccountType.Ledger));
 
     try {
       if (cannotContinueWithTrezorAccount) {

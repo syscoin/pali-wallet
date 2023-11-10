@@ -19,6 +19,9 @@ const CustomRPCView = () => {
   const [loading, setLoading] = useState(false);
   const [isUrlValid, setIsUrlValid] = useState(false);
   const [urlFieldValue, setUrlFieldValue] = useState('');
+  const [lastRpcChainIdSearched, setLastRpcChainIdSearched] = useState<
+    number | null
+  >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
 
   const { alert, navigate } = useUtils();
@@ -64,6 +67,13 @@ const CustomRPCView = () => {
 
       setLoading(false);
     }
+  };
+
+  const resetFormValues = () => {
+    form.setFieldValue('label', '');
+    form.setFieldValue('chainId', '');
+    form.setFieldValue('symbol', '');
+    form.setFieldValue('explorer', '');
   };
 
   const initialValues = {
@@ -202,14 +212,68 @@ const CustomRPCView = () => {
 
                 setIsUrlValid(valid);
 
-                if ((valid && details) || !value) {
-                  populateForm('label', String(details.name));
-                  populateForm('chainId', String(details.chainId));
+                //We have to use the value from the state if exists because we have to validate the
+                //rpc from networks that is already added too
+                if (state && state.selected.chainId) {
+                  const stateChainId = state.selected.chainId;
 
-                  return Promise.resolve();
-                } else if (valid || !value) {
-                  populateForm('chainId', String(parseInt(hexChainId, 16)));
-                  return Promise.resolve();
+                  const rpcChainId = details
+                    ? details.chainId
+                    : Number(String(parseInt(hexChainId, 16)));
+
+                  if (stateChainId === rpcChainId) {
+                    return Promise.resolve();
+                  } else {
+                    return Promise.reject();
+                  }
+                }
+
+                //If no RPC was searched yet
+                if (!state && lastRpcChainIdSearched === null) {
+                  if ((valid && details) || !value) {
+                    populateForm('label', String(details.name));
+                    populateForm('chainId', String(details.chainId));
+
+                    setLastRpcChainIdSearched(details.chainId);
+
+                    return Promise.resolve();
+                  } else if (valid || !value) {
+                    const chainIdConverted = String(parseInt(hexChainId, 16));
+
+                    populateForm('chainId', chainIdConverted);
+
+                    setLastRpcChainIdSearched(Number(chainIdConverted));
+                    return Promise.resolve();
+                  }
+                } else {
+                  const chainIdConverted = String(parseInt(hexChainId, 16));
+                  //Here if already had search for any RPC we have to validate if the result
+                  //for the new one is for the same chainID or not, if is just keep the older values
+                  //filled and give a valid for the new rpc url
+                  if (
+                    (details && lastRpcChainIdSearched === details.chainId) ||
+                    lastRpcChainIdSearched === Number(chainIdConverted)
+                  ) {
+                    return Promise.resolve();
+                  } else {
+                    //If is not valid we reset the form values and fill with the new and correct ones
+                    resetFormValues();
+
+                    if (valid && details) {
+                      populateForm('label', String(details.name));
+                      populateForm('chainId', String(details.chainId));
+
+                      setLastRpcChainIdSearched(details.chainId);
+
+                      return Promise.resolve();
+                    } else if (valid) {
+                      const chainIdConverted = String(parseInt(hexChainId, 16));
+                      populateForm('chainId', chainIdConverted);
+
+                      setLastRpcChainIdSearched(Number(chainIdConverted));
+                      return Promise.resolve();
+                    }
+                  }
                 }
 
                 return Promise.reject();

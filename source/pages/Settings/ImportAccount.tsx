@@ -61,7 +61,7 @@ const ImportAccountView = () => {
       <DefaultModal
         show={isAccountImported}
         onClose={() => navigate('/home')}
-        title={t('settings.acountImported')}
+        title={t('settings.accountImported')}
       />
 
       <p className="mb-8 text-center text-white text-sm">
