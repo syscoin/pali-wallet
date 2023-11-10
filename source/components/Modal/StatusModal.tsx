@@ -1,6 +1,5 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 interface IModal {
   description?: string;
@@ -17,8 +16,6 @@ export const StatusModal = ({
   title,
   status = '',
 }: IModal) => {
-  const { t } = useTranslation();
-
   const theme = useMemo(() => {
     let bg1: string;
     let bg2: string;
