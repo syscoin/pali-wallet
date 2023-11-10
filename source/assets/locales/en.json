@@ -265,6 +265,8 @@
 		"details": "Details"
 	},
 	"settings": {
+		"bgError": "Background Error",
+		"bgErrorMessage": "We will lock your wallet to fix this issue. Don't worry, all your data will remain safe.",
 		"ledgerConnectedMessage": "Ledger was connected successfully",
 		"ledgerConnected": "Ledger connected",
 		"ledgerReconnection": "Ledger reconnection is necessary",

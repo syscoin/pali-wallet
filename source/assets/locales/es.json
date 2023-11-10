@@ -265,6 +265,8 @@
 		"tx": "Transacción"
 	},
 	"settings": {
+		"bgError": "Error de Fondo",
+		"bgErrorMessage": "Bloquearemos tu cartera para resolver este problema. No te preocupes, todos tus datos permanecerán seguros.",
 		"ledgerConnectedMessage": "Ledger conectada correctamente.",
 		"ledgerConnected": "Ledger conectada",
 		"ledgerReconnection": "Es necesaria la reconexión de Ledger",
