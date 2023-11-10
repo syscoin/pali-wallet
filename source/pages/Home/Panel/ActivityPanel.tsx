@@ -117,14 +117,14 @@ export const TransactionsPanel = () => {
     <>
       {internalLoading && !hasTransactions && <LoadingComponent />}
       {!internalLoading && !hasTransactions && (
-        <div className="w-full text-white">
+        <div className="w-full mt-8 text-white">
           <NoTransactionsComponent />
           <OpenTransactionExplorer />
           {/* <Fullscreen /> */}
         </div>
       )}
       {hasTransactions && (
-        <div className="p-4 w-full text-white text-base bg-bkg-3">
+        <div className="p-4 mt-8 w-full text-white text-base bg-bkg-3">
           <TransactionsList
             userTransactions={
               hasTransactions ? transactions : previousTransactions
