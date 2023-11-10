@@ -54,11 +54,17 @@ const icons = {
   'hamburger-menu': AntIcons.MenuOutlined,
 };
 
+const svgIcons = {
+  ArrowUpBoldIcon: '../../assets/icons/ArrowUp.svg',
+  ArrowDownLoad: '../../assets/icons/ArrowDownLoad.svg',
+};
+
 interface IIcon {
   className?: string;
   color?: string;
   disabled?: boolean;
   id?: string;
+  isSvg?: boolean;
   name: string;
   opacity?: number;
   rotate?: number;
@@ -76,18 +82,22 @@ export const Icon: FC<IIcon> = ({
   wrapperClassname,
   disabled,
   opacity,
+  isSvg,
 }) => {
   const Component = icons[name];
+  const svg = svgIcons[name];
 
   return (
     <div className={wrapperClassname} id={id}>
-      {Component && (
+      {Component && !isSvg ? (
         <Component
           className={className}
           style={{ fontSize: size, color, opacity }}
           rotate={rotate}
           disabled={disabled}
         />
+      ) : (
+        <img className={className} src={svg} />
       )}
     </div>
   );
