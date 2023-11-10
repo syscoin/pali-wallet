@@ -134,7 +134,7 @@ export const WarningModal = ({
         <p className="text-white text-sm">{description}</p>
       </div>
 
-      {warningMessage && (
+      {!!warningMessage && (
         <div className="mt-2">
           <p className="text-white text-xs disabled">{warningMessage}</p>
         </div>

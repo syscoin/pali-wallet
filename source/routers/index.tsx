@@ -72,7 +72,6 @@ export const Router = () => {
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
   useEffect(() => {
-    console.log('utf8 error', hasUtf8Error);
     if (isUnlocked) {
       setShowUtf8ErrorModal(hasUtf8Error);
     }
