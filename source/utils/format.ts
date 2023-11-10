@@ -75,8 +75,15 @@ export const formatCurrency = (number: string, precision: number) => {
   }).format();
 };
 
-export const formatBalanceDecimals = (number: number | string) => {
-  const numberStr: string = number.toString();
+export const formatBalanceDecimals = (
+  number: number | string,
+  hasSymbol: boolean
+) => {
+  const symbol = number.toString().split(' ')[3];
+  const numberStr: string = hasSymbol
+    ? number.toString().split(' ')[1]
+    : number.toString();
+
   const [integerPart, decimalPart] = numberStr.split('.');
 
   const integerDigits: string = integerPart.slice(0, 10);
@@ -90,7 +97,7 @@ export const formatBalanceDecimals = (number: number | string) => {
       ? `${integerDigits}.${decimalDigits}`
       : integerDigits;
 
-  return formattedNumber;
+  return hasSymbol ? `${formattedNumber} ${symbol}` : formattedNumber;
 };
 
 /**

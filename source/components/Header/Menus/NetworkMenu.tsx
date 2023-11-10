@@ -111,12 +111,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     ? 'border-warning-success'
     : 'border-warning-error';
   return (
-    <Menu as="div" className="absolute left-2 inline-block mr-8 text-left">
+    <Menu as="div" className="absolute left-4 inline-block mr-8 text-left">
       {(menuprops) => (
         <>
           <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
-            <span>{activeNetwork.label}</span>
-            <span className={`px-2 py-0.4 text-white rounded-full ${bgColor}`}>
+            <span className="font-light">{activeNetwork.label}</span>
+            <span
+              className={`px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor}`}
+            >
               {networkType}
             </span>
 
