@@ -488,11 +488,14 @@ export const AccountHeader: React.FC = () => {
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
       />
-      <div className="flex items-center w-full text-brand-white">
+      <div className="flex ml-[15px] items-center w-full text-brand-white">
         <div className="add-identicon ml-1 mr-2 my-2" />
 
         <div className="items-center justify-center px-1 text-brand-white">
-          <p className="mb-1 text-base" id="active-account-label items-center">
+          <p
+            className="mb-1 text-base font-medium"
+            id="active-account-label items-center"
+          >
             {accounts[activeAccount.type][activeAccount.id]?.label}
 
             <IconButton

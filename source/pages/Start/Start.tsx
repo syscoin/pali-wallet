@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
-import { PrimaryButton, Button } from 'components/index';
+import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -30,12 +30,18 @@ export const Start = (props: any) => {
 
   const getStarted = (
     <>
-      <PrimaryButton type="submit" onClick={() => navigate('/create-password')}>
+      <Button
+        id="unlock-btn"
+        type="submit"
+        onClick={() => navigate('/create-password')}
+        className="bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl"
+      >
         Get started
-      </PrimaryButton>
-
+      </Button>
       <Link
-        className="mt-20 hover:text-brand-graylight text-brand-royalbluemedium font-poppins text-base font-light transition-all duration-300"
+        className={`mt-9 hover:text-brand-graylight text-[#A2A5AB] ${
+          language === 'es' ? 'text-xs' : 'text-base'
+        } font-light transition-all duration-300 cursor-pointer`}
         to="/import"
         id="import-wallet-link"
       >
@@ -68,7 +74,7 @@ export const Start = (props: any) => {
   const unLock = (
     <>
       <Form
-        className="flex flex-col gap-8 items-center justify-center w-full max-w-xs text-center md:max-w-md"
+        className="flex flex-col gap-6 items-center justify-center w-full max-w-xs text-center md:max-w-md"
         name="basic"
         onFinish={onSubmit}
         autoComplete="off"
@@ -91,14 +97,14 @@ export const Start = (props: any) => {
           <Button
             id="unlock-btn"
             type="submit"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white font-base font-medium rounded-2xl"
+            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base	 font-base font-medium rounded-2xl"
           >
             {t('buttons.unlock')}
           </Button>
         </Form.Item>
       </Form>
       <a
-        className={`mt-10 hover:text-brand-graylight text-[#A2A5AB] ${
+        className={`mt-7 hover:text-brand-graylight text-[#A2A5AB] ${
           language === 'es' ? 'text-xs' : 'text-base'
         } font-light transition-all duration-300 cursor-pointer`}
         id="import-wallet-link"
@@ -110,12 +116,12 @@ export const Start = (props: any) => {
   );
 
   return (
-    <div className="flex flex-col items-center bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
       <ValidationModal
         setIsOpen={setIsOpenValidation}
         showModal={isOpenValidation}
       />
-      <p className=" pt-[13rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
+      <p className=" pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
         {t('start.welcomeTo')}
       </p>
 

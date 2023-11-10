@@ -14,6 +14,9 @@ module.exports = {
         btn: '0px 1px 5px rgba(0, 0, 0, 0.25)',
         tooltip: '0px 0px 5px rgba(0, 0, 0, 0.25)',
       },
+      filter: {
+        blur: 'blur(3.5px)',
+      },
       scale: {
         103: '1.03',
       },
