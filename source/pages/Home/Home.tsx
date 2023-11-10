@@ -104,13 +104,11 @@ export const Home = () => {
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
                 <p
                   id="home-balance"
-                  className={`font-rubik ${
-                    moreThanTrillion ? 'text-sm' : 'text-[50px]'
-                  }  font-bold`}
+                  className={`font-rubik text-5xl font-medium`}
                 >
                   {moreThanMillion
                     ? formatMillionNumber(actualBalance)
-                    : formatBalanceDecimals(actualBalance || 0)}{' '}
+                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
                 </p>
 
                 <p
@@ -122,8 +120,14 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount" className="text-gray-400">
-                {isTestnet ? null : fiatPriceValue}
+              <p id="fiat-ammount">
+                {isTestnet
+                  ? null
+                  : moreThanMillion
+                  ? formatMillionNumber(
+                      Number(fiatPriceValue.match(/[\d\.]+/g)[0])
+                    )
+                  : formatBalanceDecimals(fiatPriceValue, true)}
               </p>
             </div>
 
