@@ -197,6 +197,7 @@
 		"transaction": "transacción",
 		"explorer": "Explorador?",
 		"on": "en",
+		"maxMessage": "Para evitar errores en tu transacción, no completaremos el campo de entrada con tu saldo máximo. Si deseas intentar enviar todos los tokens de una vez, puedes editar el valor manualmente arriba.",
 		"cantCompleteApprove": "No se puede completar la aprobación. Inténtalo de nuevo más tarde.",
 		"approveSuccessful": "Aprobación exitosa",
 		"approveSuccessfulMessage": "Tu aprobación se ha enviado con éxito. Puedes ver más detalles en la sección de actividad de tu página de inicio.",

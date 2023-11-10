@@ -78,11 +78,7 @@ div[role='alert'] {
 }
 
 .bg-gradient {
-  background: linear-gradient(
-    109.86deg,
-    #284f94 25.72%,
-    #fe0077 141.55%
-  ) !important;
+  background: linear-gradient(180deg, #1e365c 0.67%, #061120 19.78%);
 }
 
 .bg-gradient::before {
@@ -92,7 +88,6 @@ div[role='alert'] {
   right: 0px;
   bottom: 0px;
   left: 0px;
-  background-image: url('../images/bgPattern.svg') !important;
   background-blend-mode: overlay !important;
 }
 

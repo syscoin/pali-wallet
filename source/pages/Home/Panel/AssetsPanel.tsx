@@ -39,17 +39,17 @@ export const AssetsPanel = () => {
   const { navigate } = useUtils();
 
   const NoAssetsComponent = () => (
-    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
+    <div className="flex mt-8 items-center justify-center p-3 text-brand-white text-sm">
       <p>{t('home.youHaveNoTokens')}</p>
     </div>
   );
 
   return (
-    <div className="pb-14 w-full">
+    <div className="pb-8 w-full">
       {filterValidation ? (
         <NoAssetsComponent />
       ) : (
-        <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
+        <ul className="pt-4 mt-6 px-4 w-full text-center text-white text-base bg-bkg-3">
           {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}

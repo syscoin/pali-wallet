@@ -52,7 +52,7 @@ export const ChangeAccount = () => {
       title={t('connections.connectedAccount')}
       titleOnly={true}
     >
-      <div className="flex flex-col gap-7 items-center justify-center w-full">
+      <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
@@ -91,7 +91,7 @@ export const ChangeAccount = () => {
               return (
                 <div
                   key={keyringAccountType}
-                  className="h-fit flex flex-col text-center"
+                  className="h-80 overflow-auto scrollbar-styled flex flex-col text-center"
                 >
                   <h3 className="text-sm font-semibold">
                     {keyringAccountType === KeyringAccountType.HDAccount
@@ -99,11 +99,7 @@ export const ChangeAccount = () => {
                       : keyringAccountType}
                   </h3>
                   <ul
-                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-${
-                      accountList.length === 1 || accountList.length === 2
-                        ? 'fit'
-                        : '32'
-                    } overflow-auto`}
+                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-full overflow-auto`}
                   >
                     {accountList.map((acc) => (
                       <li
