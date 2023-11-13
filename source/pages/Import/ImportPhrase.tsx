@@ -17,7 +17,9 @@ const ImportPhrase: React.FC = () => {
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
     if (controller.wallet.isSeedValid(phrase)) {
-      navigate('/create-password-import', { state: { phrase } });
+      navigate('/create-password-import', {
+        state: { phrase, isWalletImported: true },
+      });
     }
   };
   const [form] = useForm();

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
+import { StatusModal } from 'components/Modal/StatusModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -23,12 +25,13 @@ export const Home = () => {
   const { getFiatAmount } = usePrice();
   const { navigate } = useUtils();
   const { t } = useTranslation();
+  const { state } = useLocation();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (state: RootState) => state.price.fiat
   );
-
+  const isWalletImported = state?.isWalletImported;
   const {
     accounts,
     isNetworkChanging,
@@ -41,7 +44,9 @@ export const Home = () => {
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
+  const [showModal, setShowModal] = useState(isWalletImported);
 
+  console.log(showModal);
   //* Constants
   const { url } = activeNetwork;
   const controller = getController();
@@ -89,6 +94,10 @@ export const Home = () => {
     fiatPrice,
     actualBalance,
   ]);
+
+  const closeModal = () => {
+    setShowModal(false);
+  };
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
@@ -167,7 +176,15 @@ export const Home = () => {
               </Button>
             </div>
           </section>
-
+          {isWalletImported && (
+            <StatusModal
+              show={showModal}
+              title={'Congratulations!'}
+              description={t('seedConfirm.seedError')}
+              onClose={closeModal}
+              status="success"
+            />
+          )}
           <TxsPanel />
         </>
       ) : (
