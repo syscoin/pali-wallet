@@ -175,7 +175,7 @@
   "seedConfirm": {
     "seedError": "The seed passed is wrong. Verify it and try again.",
     "confirmRecovery": "Confirm Recovery Phrase",
-    "yourWalletIsReady": "YOUR WALLET IS READY",
+    "yourWalletIsReady": "YOUR WALLET IS READY!",
     "youShould": "You should now have your recovery phrase and your wallet password written down for future reference."
   },
   "createPhrase": {
@@ -198,6 +198,7 @@
     "explorer": "Explorer?",
     "on": "on",
     "confirm": "CONFIRM",
+    "maxMessage": "To avoid errors in your transaction, we won't fill the input field with your maximum balance. In case you would like to try send all tokens at once, you can manually edit the value above.",
     "cantCompleteApprove": "Can't complete approve. Try again later.",
     "approveSuccessful": "Approve successful",
     "approveSuccessfulMessage": "Your approve has been successfully submitted. You can see more details under activity on your home page.",
@@ -264,6 +265,8 @@
     "details": "Details"
   },
   "settings": {
+    "bgError": "Background Error",
+    "bgErrorMessage": "We will lock your wallet to fix this issue. Don't worry, all your data will remain safe.",
     "ledgerConnectedMessage": "Ledger was connected successfully",
     "ledgerConnected": "Ledger connected",
     "ledgerReconnection": "Ledger reconnection is necessary",
@@ -367,7 +370,7 @@
     "forgetWallet": "FORGET WALLET",
     "forgetWarning": "WARNING",
     "thisWillForget": "This will forget the wallet created with your current seed phrase. If in the future you want to use Pali again, you will need to create a new wallet using your seed or creating a new one.",
-    "enterYourPassword": "Please enter your password",
+    "enterYourPassword": "Enter your password",
     "password": "Password",
     "youStillHave": "You still have funds in your wallet. Paste your seed phrase below to forget wallet.",
     "importAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase.",

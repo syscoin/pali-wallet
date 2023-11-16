@@ -2,18 +2,16 @@
   width: 15px;
   height: 15px;
   appearance: none;
-  background-color: transparent; /* Defina sua cor personalizada aqui */
-  border: 1px solid #fff; /* Cor da borda */
+  background-color: transparent;
+  border: 1px solid #fff;
   border-radius: 2px;
   outline: none;
 }
 
-/* Estilize o checkbox quando marcado */
 .custom-checkbox:checked {
-  background-color: transparent; /* Cor personalizada quando marcado */
+  background-color: transparent;
 }
 
-/* Estilize o indicador de verificação (marcado) */
 .custom-checkbox:checked::before {
   content: url('../icons/check.svg');
   display: flex;
@@ -22,5 +20,5 @@
   position: relative;
   bottom: 3px;
   font-size: 0px;
-  color: #8ec100; /* Cor do indicador de verificação quando marcado */
+  color: #8ec100;
 }

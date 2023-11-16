@@ -1,9 +1,11 @@
+//@ts-nocheck
 import { Runtime } from 'webextension-polyfill-ts';
 
 import {
   IKeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
+  IWalletState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 import {
@@ -117,7 +119,13 @@ export interface IMainController extends IKeyringManager {
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   transactions: ITransactionsManager;
-  unlock: (pwd: string) => Promise<boolean>;
+  unlock: (
+    pwd: string,
+    isForPvtKey?: boolean
+  ) => Promise<{
+    canLogin: boolean;
+    wallet?: IWalletState;
+  }>;
   unlockFromController: (pwd: string) => Promise<boolean>;
   updateAssetsFromCurrentAccount: ({
     isBitcoinBased,

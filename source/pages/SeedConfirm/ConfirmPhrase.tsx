@@ -102,17 +102,15 @@ export const ConfirmPhrase = ({
           <StatusModal
             show={showModal}
             title={'Error'}
-            description={'The seed passed is wrong. Verify it and try again.'}
+            description={t('seedConfirm.seedError')}
             onClose={closeModal}
             status="error"
           />
         )}
         <WalletReadyModal
           show={passed}
-          title={'YOUR WALLET IS READY!'}
-          description={
-            'You should now have your recovery phrase and your wallet password written down for future reference.'
-          }
+          title={t('seedConfirm.yourWalletIsReady')}
+          description={t('seedConfirm.youShould')}
           onClose={confirmPassed}
         />
       </div>

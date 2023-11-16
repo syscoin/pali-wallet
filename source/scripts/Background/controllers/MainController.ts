@@ -138,8 +138,18 @@ const MainController = (walletState): IMainController => {
   };
 
   const unlockFromController = async (pwd: string): Promise<boolean> => {
-    const unlocked = await keyringManager.unlock(pwd);
-    if (!unlocked) throw new Error('Invalid password');
+    const { canLogin, wallet } = await keyringManager.unlock(pwd);
+    if (!canLogin) throw new Error('Invalid password');
+
+    if (!isEmpty(wallet)) {
+      store.dispatch(
+        setNetworkChange({
+          activeChain: INetworkType.Syscoin,
+          wallet,
+        })
+      );
+    }
+
     store.dispatch(setLastLogin());
     //TODO: validate contentScripts flow
     window.controller.dapp
@@ -151,7 +161,7 @@ const MainController = (walletState): IMainController => {
         },
       })
       .catch((error) => console.error('Unlock', error));
-    return unlocked;
+    return canLogin;
   };
 
   const createWallet = async (
