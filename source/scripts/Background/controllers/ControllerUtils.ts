@@ -92,32 +92,51 @@ const ControllerUtils = (): IControllerUtils => {
             return;
           }
 
-          const getCoinList = await (
-            await fetch('https://api.coingecko.com/api/v3/coins/list')
-          ).json();
+          // const getCoinList = await (
+          //   await fetch('https://api.coingecko.com/api/v3/coins/list')
+          // ).json();
 
-          if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
-            const findCoinSymbolByNetwork = getCoinList.find(
-              (coin) => coin.symbol === activeNetwork.currency
-            )?.id;
-            const coins = await (
-              await fetch(
-                `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
-              )
-            ).json(); //This call can be optimized so we get only the info we're interested in
+          // if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
+          //   const findCoinSymbolByNetwork = getCoinList.find(
+          //     (coin) => coin.symbol === activeNetwork.currency
+          //   )?.id;
+          //   const coins = await (
+          //     await fetch(
+          //       `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
+          //     )
+          //   ).json(); //This call can be optimized so we get only the info we're interested in
 
-            const currentNetworkCoinMarket = coins[0]?.current_price;
+          //   const currentNetworkCoinMarket = coins[0]?.current_price;
+
+          //   store.dispatch(
+          //     setPrices({
+          //       asset: currency,
+          //       price: currentNetworkCoinMarket ? currentNetworkCoinMarket : 0,
+          //     })
+          //   );
+
+          //   return;
+          // }
+
+          const marketDataResponse = await fetch(
+            `https://api.coingecko.com/api/v3/coins/${activeNetwork.currency}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`
+          );
+
+          console.log('marketDataResponse', marketDataResponse);
+          if (marketDataResponse) {
+            const marketData = await marketDataResponse.json();
+
+            const currentNetworkCoinMarket =
+              marketData.market_data?.current_price?.[currency];
 
             store.dispatch(
               setPrices({
-                asset: currency,
+                asset: activeNetwork.currency,
                 price: currentNetworkCoinMarket ? currentNetworkCoinMarket : 0,
               })
             );
-
             return;
           }
-
           const lastCoinsPrices = store.getState().price.coins;
 
           const findLastCurrencyValue = lastCoinsPrices[currency];
