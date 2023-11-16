@@ -37,6 +37,7 @@ export interface IVaultState {
   lastLogin: number;
   networks: INetworksVault;
   timer: number;
+  coinsList: any[];
 }
 
 export interface INetworksVault {
