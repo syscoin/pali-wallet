@@ -1,38 +1,56 @@
 import { Form, Input } from 'antd';
+import uniq from 'lodash/uniq';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
-import { Layout, NeutralButton } from 'components/index';
-import trustedApps from 'constants/trustedApps.json';
-import { useUtils } from 'hooks/index';
+import { Layout } from 'components/index';
+import trustedAppsArr from 'constants/trustedApps.json';
+import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
 
+const trustedApps = uniq(trustedAppsArr);
+
 const TrustedSitesView = () => {
-  const { navigate } = useUtils();
   const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
+  const [isEmpty, setEmpty] = useState<string>();
+
+  const { accounts, activeAccount } = useSelector(
+    (state: RootState) => state.vault
+  );
 
   const handleSearch = (typed) => {
-    let newList: string[] = [];
+    console.log(typed, 'dds');
 
-    if (typed && typed.length >= 2) {
-      newList = trustedApps.filter((item: string) => {
+    if (typed) {
+      const newList = trustedApps.filter((item: string) => {
         const url = item.toLowerCase();
         const typedValue = typed.toLowerCase();
 
-        return url.includes(typedValue);
+        return url.startsWith(typedValue);
       });
 
       setFilteredSearch(newList);
 
       return;
     }
-
+    setEmpty(typed);
     setFilteredSearch(trustedApps);
+  };
+
+  const validateSearch = (str: string, array: string[]) => {
+    const searchString = array.some((s) => s.startsWith(str));
+
+    return searchString;
   };
 
   return (
     <Layout title={t('settings.trustedWebsites')}>
+      <p className="text-white text-sm font-normal pb-6">
+        {accounts[activeAccount.type][activeAccount.id].label} is connected to
+        these site. They can view your account address.
+      </p>
       <Form
         validateMessages={{ default: '' }}
         id="trusted"
@@ -52,7 +70,8 @@ const TrustedSitesView = () => {
             },
             () => ({
               validator(_, value) {
-                if (!value || value.length <= 2) {
+                const isValueValid = validateSearch(value, trustedApps);
+                if (isValueValid) {
                   return Promise.resolve();
                 }
 
@@ -64,30 +83,24 @@ const TrustedSitesView = () => {
           <Input
             onChange={(event) => handleSearch(event.target.value)}
             type="text"
-            className="input-small relative"
+            className="custom-input-search relative"
             placeholder="Search"
           />
         </Form.Item>
       </Form>
 
       <div className="flex flex-col items-center justify-center w-full">
-        <ul className="scrollbar-styled mb-2 mt-6 w-full h-60 overflow-auto">
+        <ul className="scrollbar-styled my-2 w-full h-[19.5rem] overflow-auto">
           {filteredSearch &&
-            filteredSearch.map((url: string) => (
+            filteredSearch.map((url: string, key: number) => (
               <li
-                key={url}
+                key={`${url}${key}`}
                 className="my-2 py-2 w-full text-xs border-b border-dashed border-gray-500"
               >
                 <p>{truncate(url, 40)}</p>
               </li>
             ))}
         </ul>
-
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
-          </NeutralButton>
-        </div>
       </div>
     </Layout>
   );
