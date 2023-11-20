@@ -12,6 +12,7 @@ module.exports = {
     pink200: '#FF3E91',
     white200: 'rgba(255,255,255, .2)',
     white850: 'rgba(255,255,255, .85)',
+    deepBlue: '#223552',
   },
 
   button: {
@@ -66,7 +67,6 @@ module.exports = {
   brand: {
     royalblue: '#4d76b8',
     royalbluemedium: '#4ca1cf',
-    blue100: '#4CA1CF',
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
     pink: '#9F0949',
     blue: '#4D76B8',
@@ -86,5 +86,6 @@ module.exports = {
     gray: '#808080',
     graylight: '#f5f5f5',
     gray200: '#A2A5AB',
+    gray300: '#808795',
   },
 };
