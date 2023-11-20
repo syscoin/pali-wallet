@@ -26,7 +26,7 @@ export const TxsPanel: FC = () => {
 
         <Button
           className={`flex-1 w-[12.5rem] absolute right-0 p-2 ${
-            isActivity ? 'bg-bkg-3 rounded-tr-[100px]' : 'transparent'
+            isActivity ? 'bg-bkg-3 rounded-tl-[100px]' : 'transparent'
           }`}
           id="activity-btn"
           type="button"
