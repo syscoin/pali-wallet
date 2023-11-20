@@ -1,7 +1,6 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// import { browser } from 'webextension-polyfill-ts';
 import { Header, Icon, IconButton } from 'components/index';
 
 interface ILayout {
@@ -20,8 +19,6 @@ export const Layout: FC<ILayout> = ({
   titleOnly,
 }) => {
   const navigate = useNavigate();
-
-  // const url = browser.runtime.getURL('app.html');
 
   const isSwitchChainPage =
     title === 'Switch Chain' || title === 'Cambiar Cadena';

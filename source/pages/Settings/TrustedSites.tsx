@@ -14,15 +14,12 @@ const trustedApps = uniq(trustedAppsArr);
 const TrustedSitesView = () => {
   const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
-  const [isEmpty, setEmpty] = useState<string>();
 
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
 
   const handleSearch = (typed) => {
-    console.log(typed, 'dds');
-
     if (typed) {
       const newList = trustedApps.filter((item: string) => {
         const url = item.toLowerCase();
@@ -35,7 +32,6 @@ const TrustedSitesView = () => {
 
       return;
     }
-    setEmpty(typed);
     setFilteredSearch(trustedApps);
   };
 
