@@ -1,6 +1,9 @@
 import React, { FC } from 'react';
+import {
+  IoIosArrowBack as BackIcon,
+  IoMdClose as CloseIcon,
+} from 'react-icons/io';
 import { useNavigate } from 'react-router-dom';
-// import { browser } from 'webextension-polyfill-ts';
 
 import { Header, Icon, IconButton } from 'components/index';
 
@@ -33,6 +36,8 @@ export const Layout: FC<ILayout> = ({
   const isHardwareWalletPage =
     title === 'HARDWARE WALLET' || title === 'MONEDERO HARDWARE';
 
+  const isTokenPage = title === 'IMPORT TOKEN' || 'ASSET DETAILS';
+
   return (
     <div
       className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 ${
@@ -42,7 +47,10 @@ export const Layout: FC<ILayout> = ({
       {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
 
       <div
-        className={`relative flex items-center justify-center px-5 w-full h-20 text-brand-white ${bgHeader}`}
+        className={`relative flex items-center justify-center px-5 w-full ${
+          isTokenPage ? 'h-tokenHeader' : 'h-20'
+        } text-brand-white ${isTokenPage ? 'bg-token-gradient' : bgHeader}`}
+        style={{ borderRadius: `${isTokenPage ? '0px 0px 20px 20px' : ''}` }}
       >
         {/* {!titleOnly && url && canGoBack && (
           <Tooltip content="Fullscreen mode">
@@ -52,20 +60,26 @@ export const Layout: FC<ILayout> = ({
           </Tooltip>
         )} */}
 
-        <p className="mt-2 w-full text-center text-xl" id={id}>
+        {!titleOnly && canGoBack && !isHardwareWalletPage && (
+          <IconButton onClick={() => navigate('/home')}>
+            <BackIcon color="text-brand-white" size={24} />
+          </IconButton>
+        )}
+
+        <p className="w-full text-center text-xl" id={id}>
           {title}
         </p>
 
         {!titleOnly && canGoBack && !isHardwareWalletPage && (
           <IconButton onClick={() => navigate('/home')}>
-            <Icon name="close" />
+            <CloseIcon color="text-brand-white" size={24} />
           </IconButton>
         )}
 
         <Icon
           size={36}
           name="select-up"
-          wrapperClassname="absolute -bottom-3 text-center text-bkg-2"
+          wrapperClassname="absolute -bottom-4 text-center text-bkg-2"
           color="#111E33"
         />
       </div>
