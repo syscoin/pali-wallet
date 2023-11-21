@@ -61,11 +61,11 @@ export const SyscoinImportToken = () => {
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex w-full flex-col gap-3 items-center justify-center mt-4 text-center"
       >
         <Form.Item
           name="assetGuid"
-          className="md:w-full md:max-w-md"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -97,8 +97,8 @@ export const SyscoinImportToken = () => {
         </Form.Item>
 
         <Form.Item
-          name="symbol"
-          className="md:w-full md:max-w-md"
+          name="assetSymbol"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -115,8 +115,8 @@ export const SyscoinImportToken = () => {
         </Form.Item>
 
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton loading={isLoading} type="submit">
+          <div className="w-full px-4 absolute bottom-12 md:static">
+            <NeutralButton loading={isLoading} type="submit" fullWidth={true}>
               {t('buttons.next')}
             </NeutralButton>
           </div>

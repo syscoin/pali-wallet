@@ -1,0 +1,39 @@
+/* success */
+.ant-form-item-has-success .anticon-check-circle svg {
+  display: none;
+}
+
+.ant-form-item-has-success .anticon-check-circle::before {
+  content: ' ';
+  display: inline-block;
+  background: transparent url('../icons/input_success_icon.svg') center / 16px
+    16px no-repeat;
+  width: 16px;
+  height: 16px;
+}
+
+/* error */
+.ant-form-item-has-error .anticon-close-circle svg {
+  display: none;
+}
+
+.ant-form-item-has-error .anticon-close-circle::before {
+  content: '';
+  display: inline-block;
+  background: transparent url('../icons/input_error_icon.svg') center / 16px
+    16px no-repeat;
+  width: 16px;
+  height: 16px;
+}
+
+/* inputs border colors */
+
+.ant-input-affix-wrapper .ant-input {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* input with full width */
+#assetGuid,
+#assetSymbol {
+  width: 100% !important;
+}
