@@ -98,6 +98,18 @@ export const Home = () => {
   const closeModal = () => {
     setShowModal(false);
   };
+  const formatFiatAmmount = useMemo(() => {
+    if (isTestnet) {
+      return null;
+    }
+
+    if (moreThanMillion) {
+      const numberValue = Number(fiatPriceValue.match(/[\d\.]+/g)[0]);
+      return formatMillionNumber(numberValue);
+    }
+
+    return formatBalanceDecimals(fiatPriceValue, true);
+  }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
@@ -129,15 +141,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">
-                {isTestnet
-                  ? null
-                  : moreThanMillion
-                  ? formatMillionNumber(
-                      Number(fiatPriceValue.match(/[\d\.]+/g)[0])
-                    )
-                  : formatBalanceDecimals(fiatPriceValue, true)}
-              </p>
+              <p id="fiat-ammount">{formatFiatAmmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">

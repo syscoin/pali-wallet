@@ -1,6 +1,5 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
-// import { browser } from 'webextension-polyfill-ts';
 
 import { Header, Icon, IconButton } from 'components/index';
 
@@ -21,11 +20,11 @@ export const Layout: FC<ILayout> = ({
 }) => {
   const navigate = useNavigate();
 
-  // const url = browser.runtime.getURL('app.html');
-
   const isSwitchChainPage =
     title === 'Switch Chain' || title === 'Cambiar Cadena';
-  const bgHeader = isSwitchChainPage ? 'bg-gradient' : 'bg-bkg-3';
+  const bgHeader = isSwitchChainPage
+    ? 'bg-gradient'
+    : 'bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]';
 
   const isConnectPage =
     title === 'CONNECT ACCOUNT' || title === 'CONECTAR CUENTA';
@@ -40,30 +39,39 @@ export const Layout: FC<ILayout> = ({
       }`}
     >
       {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
-
       <div
-        className={`relative flex items-center justify-center px-5 w-full h-20 text-brand-white ${bgHeader}`}
+        className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white ${bgHeader}`}
       >
-        {/* {!titleOnly && url && canGoBack && (
-          <Tooltip content="Fullscreen mode">
-            <IconButton onClick={() => window.open(url)}>
-              <Icon className="text-brand-white sm:hidden" name="desktop" />
-            </IconButton>
-          </Tooltip>
-        )} */}
+        <img
+          src="../../assets/images/dotsHeader.svg"
+          alt="Descrição da imagem"
+          className="absolute object-cover bg-repeat-x w-full h-full"
+        />
 
-        <p className="mt-2 w-full text-center text-xl" id={id}>
+        {!titleOnly && canGoBack && !isHardwareWalletPage && (
+          <IconButton
+            className="z-50 cursor-pointer"
+            onClick={() => navigate('/home')}
+          >
+            <Icon isSvg={true} name="ArrowLeft" />
+          </IconButton>
+        )}
+
+        <p className="w-full text-center text-base" id={id}>
           {title}
         </p>
 
         {!titleOnly && canGoBack && !isHardwareWalletPage && (
-          <IconButton onClick={() => navigate('/home')}>
-            <Icon name="close" />
+          <IconButton
+            className="z-50 cursor-pointer"
+            onClick={() => navigate('/home')}
+          >
+            <Icon isSvg={true} name="Close" />
           </IconButton>
         )}
 
         <Icon
-          size={36}
+          size={29}
           name="select-up"
           wrapperClassname="absolute -bottom-3 text-center text-bkg-2"
           color="#111E33"
@@ -71,7 +79,7 @@ export const Layout: FC<ILayout> = ({
       </div>
 
       <div
-        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-4 w-full ${
+        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-6 w-full ${
           isConnectPage ? '' : 'md:max-w-sm'
         } text-brand-white bg-bkg-2 sm:max-w-full`}
       >
