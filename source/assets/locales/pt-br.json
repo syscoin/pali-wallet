@@ -281,7 +281,11 @@
     "newChainType": "New Chain Type",
     "newNetworkUrl": "New Network URL",
     "newNetworkChainId": "New Network ChainID",
-    "trustedWebsites": "TRUSTED WEBSITES"
+    "trustedWebsites": "TRUSTED WEBSITES",
+    "importWalletWarning": "IMPORT WALLET WARNING!",
+    "thisActionErases": "This action erases your current wallet.",
+    "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
   },
   "start": {
     "getStarted": "Get started",
