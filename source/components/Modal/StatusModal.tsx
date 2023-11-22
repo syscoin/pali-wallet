@@ -1,5 +1,5 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useMemo } from 'react';
+import React, { Fragment, useCallback, useMemo } from 'react';
 
 interface IModal {
   description?: string;
@@ -29,14 +29,16 @@ export const StatusModal = ({
     return { bg1, bg2, icon };
   }, []);
 
+  const handleOnClose = useCallback(() => {
+    if (onClose) onClose();
+  }, []);
+
   return (
     <Transition appear show={show} as={Fragment}>
       <Dialog
         as="div"
         className={`fixed z-10 inset-0 overflow-y-auto  rounded-[20px]`}
-        onClose={() => {
-          if (onClose) onClose();
-        }}
+        onClose={handleOnClose}
       >
         <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
@@ -76,9 +78,7 @@ export const StatusModal = ({
                   <img
                     src="../../assets/icons/close.svg"
                     className="w-[15px] h-[15px] hover:cursor-pointer"
-                    onClick={() => {
-                      if (onClose) onClose();
-                    }}
+                    onClick={handleOnClose}
                   />
                 </div>
                 <p className="text-white text-left text-sm font-normal">
