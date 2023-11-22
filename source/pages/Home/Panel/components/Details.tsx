@@ -65,21 +65,24 @@ export const DetailsView = () => {
             )}
           </ul>
 
-          <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
-            <p className="font-normal" style={{ lineHeight: '18px' }}>
-              {t('send.viewThis')}{' '}
-              {isAsset ? t('send.asset') : t('send.transaction')} {t('send.on')}{' '}
-              {isBitcoinBased ? 'Syscoin' : ''} {t('send.explorer')}
-            </p>
+          {!isAsset ? (
+            <div className="fixed bottom-0 left-0 right-0 flex gap-x-6 items-center justify-between mx-auto p-4 w-full text-xs bg-bkg-4 md:bottom-8 md:max-w-2xl">
+              <p className="font-normal" style={{ lineHeight: '18px' }}>
+                {t('send.viewThis')}{' '}
+                {isAsset ? t('send.asset') : t('send.transaction')}{' '}
+                {t('send.on')} {isBitcoinBased ? 'Syscoin' : ''}{' '}
+                {t('send.explorer')}
+              </p>
 
-            <Button
-              type="button"
-              onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-              className="inline-flex justify-center px-1.5 py-2 text-bkg-blue200 text-base font-semibold bg-bkg-white850 hover:bg-transparent border border-bkg-white850 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
-            >
-              {t('buttons.ok')}
-            </Button>
-          </div>
+              <Button
+                type="button"
+                onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
+                className="inline-flex justify-center px-1.5 py-2 text-bkg-blue200 text-base font-semibold bg-bkg-white850 hover:bg-transparent border border-bkg-white850 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
+              >
+                {t('buttons.ok')}
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
     </Layout>

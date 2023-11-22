@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import { IconButton, Icon, LoadingComponent } from 'components/index';
+import { IconButton, LoadingComponent } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatCurrency, truncate } from 'utils/index';
