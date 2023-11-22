@@ -54,6 +54,7 @@ const TrustedSitesView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         autoComplete="off"
+        className="w-full"
       >
         <Form.Item
           name="search"
@@ -79,7 +80,7 @@ const TrustedSitesView = () => {
           <Input
             onChange={(event) => handleSearch(event.target.value)}
             type="text"
-            className="custom-input-search relative"
+            className="custom-input-search relative w-full"
             placeholder="Search"
           />
         </Form.Item>
