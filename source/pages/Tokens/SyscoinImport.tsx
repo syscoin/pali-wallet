@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
 import { ErrorModal, NeutralButton, NewDefaultModal } from 'components/index';
+import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -137,13 +138,13 @@ export const SyscoinImportToken = () => {
       </Form>
 
       {added && (
-        <NewDefaultModal
-          show={added}
+        <TokenSuccessfulyAdded
           title={t('tokens.tokenSuccessfullyAdded')}
-          description={`${form.getFieldValue('symbol')} ${t(
+          phraseOne={`${form.getFieldValue('symbol')} ${t(
             'tokens.wasSucessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}
+          show={added}
         />
       )}
 

@@ -5,11 +5,10 @@ import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { Button } from 'components/index';
+import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
-
-import { ValidationModal } from './Modal';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
@@ -117,9 +116,13 @@ export const Start = (props: any) => {
 
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
-      <ValidationModal
-        setIsOpen={setIsOpenValidation}
-        showModal={isOpenValidation}
+      <ImportWalletWarning
+        title={t('settings.importWalletWarning')}
+        phraseOne={t('settings.thisActionErases')}
+        phraseTwo={t('settings.toRestoreThis')}
+        phraseThree={t('settings.allYourSettings')}
+        onClose={setIsOpenValidation}
+        show={isOpenValidation}
       />
       <p className=" pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
         {t('start.welcomeTo')}
