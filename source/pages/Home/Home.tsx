@@ -180,7 +180,7 @@ export const Home = () => {
             <StatusModal
               show={showModal}
               title={'Congratulations!'}
-              description={t('seedConfirm.seedError')}
+              description={'Your wallet was successfully imported.'}
               onClose={closeModal}
               status="success"
             />
