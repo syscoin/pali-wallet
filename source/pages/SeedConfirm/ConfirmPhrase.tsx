@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button, OnboardingLayout } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { WalletReadyModal } from 'components/Modal/WalletReadyModal';
+import { WalletReadyModal } from 'components/Modal/WarningBaseModal';
 
 export const ConfirmPhrase = ({
   passed,
@@ -110,7 +110,7 @@ export const ConfirmPhrase = ({
         <WalletReadyModal
           show={passed}
           title={t('seedConfirm.yourWalletIsReady')}
-          description={t('seedConfirm.youShould')}
+          phraseOne={t('seedConfirm.youShould')}
           onClose={confirmPassed}
         />
       </div>

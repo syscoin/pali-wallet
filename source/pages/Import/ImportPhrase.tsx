@@ -4,11 +4,12 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { OnboardingLayout, PrimaryButton } from 'components/index';
+import { OnboardingLayout, Button } from 'components/index';
 import { getController } from 'utils/browser';
 import { formatSeedPhrase } from 'utils/format';
 
 const ImportPhrase: React.FC = () => {
+  const { TextArea } = Input;
   const controller = getController();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -16,7 +17,9 @@ const ImportPhrase: React.FC = () => {
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
     if (controller.wallet.isSeedValid(phrase)) {
-      navigate('/create-password-import', { state: { phrase } });
+      navigate('/create-password-import', {
+        state: { phrase, isWalletImported: true },
+      });
     }
   };
   const [form] = useForm();
@@ -39,7 +42,6 @@ const ImportPhrase: React.FC = () => {
       >
         <Form.Item
           name="phrase"
-          className="w-full"
           rules={[
             {
               required: true,
@@ -63,30 +65,36 @@ const ImportPhrase: React.FC = () => {
             }),
           ]}
         >
-          <Input
+          <TextArea
+            id="import-wallet-input"
+            rows={3}
             className={`${
               !seedIsValid && form.getFieldValue('phrase')
                 ? 'border-warning-error'
                 : 'border-fields-input-border'
-            } bg-fields-input-primary p-2 pl-4 w-full h-20 text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none`}
+            } bg-fields-input-primary p-[15px] overflow-hidden max-w-[17.5rem] w-[17.5rem] h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
             placeholder={t('import.pasteYourWalletSeed')}
-            id="import-wallet-input"
             onKeyPress={handleKeypress}
           />
         </Form.Item>
 
-        <span className="text-left text-brand-royalblue text-xs font-light">
+        <span className="w-[90%] text-center text-[#A2A5AB] text-xs font-normal">
           {t('import.importingYourAccount')}
         </span>
 
         <div className="absolute bottom-12 md:bottom-80">
-          <PrimaryButton
+          <Button
+            id="import-wallet-action"
             type="submit"
             disabled={!seedIsValid || !form.getFieldValue('phrase')}
-            id="import-wallet-action"
+            className={`${
+              seedIsValid
+                ? 'cursor-pointer opacity-100'
+                : ' cursor-not-allowed opacity-60'
+            } bg-brand-deepPink100 w-[17.5rem] mt-3 h-10 text-white text-base font-base font-medium rounded-2xl`}
           >
             {t('buttons.import')}
-          </PrimaryButton>
+          </Button>
         </div>
       </Form>
     </OnboardingLayout>
