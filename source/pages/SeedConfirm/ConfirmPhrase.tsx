@@ -61,7 +61,7 @@ export const ConfirmPhrase = ({
             {newList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-brand-blue400 rounded-md z-20"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-brand-blue rounded-md z-20"
                 key={phrase}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
@@ -74,7 +74,7 @@ export const ConfirmPhrase = ({
             {orgList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-transparent border border-brand-blue400 rounded-[10px] z-20"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-transparent border border-brand-blue rounded-[10px] z-20"
                 key={phrase}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}

@@ -3,11 +3,12 @@ import { isBoolean, isNil } from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
+import { ErrorModal, NeutralButton, NewDefaultModal } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -113,6 +114,18 @@ export const SyscoinImportToken = () => {
             placeholder={t('tokens.tokenSymbol')}
           />
         </Form.Item>
+        <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
+          <a
+            href=""
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+          >
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              Learn more on docs!
+            </span>
+          </a>
+        </div>
 
         <div className="flex flex-col items-center justify-center w-full">
           <div className="w-full px-4 absolute bottom-12 md:static">
@@ -124,7 +137,7 @@ export const SyscoinImportToken = () => {
       </Form>
 
       {added && (
-        <DefaultModal
+        <NewDefaultModal
           show={added}
           title={t('tokens.tokenSuccessfullyAdded')}
           description={`${form.getFieldValue('symbol')} ${t(

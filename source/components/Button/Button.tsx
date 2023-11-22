@@ -6,6 +6,7 @@ interface IPrimaryButton {
   action?: boolean;
   children?: React.ReactNode;
   disabled?: boolean;
+  extraStyles?: string;
   fullWidth?: boolean;
   id?: string;
   loading?: boolean;
@@ -197,17 +198,20 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
   onClick,
   type = 'button',
   fullWidth = false,
+  extraStyles,
 }) => (
   <button
     className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 ${
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal leading-4 ${
         fullWidth ? 'w-full' : 'w-36'
       } h-10 text-brand-royalblue
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:opacity-90'
-      } border-button-neutral transition-all duration-300 bg-button-neutral  py-2.5`}
+      } border-button-neutral transition-all duration-300 bg-button-neutral  py-2.5 ${
+      extraStyles ? extraStyles : 'text-sm text-brand-royalblue'
+    }`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}
