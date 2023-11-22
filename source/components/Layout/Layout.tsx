@@ -1,8 +1,4 @@
 import React, { FC } from 'react';
-import {
-  IoIosArrowBack as BackIcon,
-  IoMdClose as CloseIcon,
-} from 'react-icons/io';
 import { useNavigate } from 'react-router-dom';
 
 import { Header, Icon, IconButton } from 'components/index';
@@ -35,8 +31,6 @@ export const Layout: FC<ILayout> = ({
 
   const isHardwareWalletPage =
     title === 'HARDWARE WALLET' || title === 'MONEDERO HARDWARE';
-
-  const isTokenPage = title === 'IMPORT TOKEN' || 'ASSET DETAILS';
 
   return (
     <div
