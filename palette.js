@@ -12,6 +12,8 @@ module.exports = {
     pink200: '#FF3E91',
     white200: 'rgba(255,255,255, .2)',
     white850: 'rgba(255,255,255, .85)',
+    headerGradient:
+      'linear-gradient(90deg, rgba(40,79,148,1) 25.72%, rgba(254,0,119,1) 141.55%)',
   },
 
   button: {

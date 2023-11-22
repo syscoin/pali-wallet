@@ -10,6 +10,7 @@ import { STORE_PORT } from 'constants/index';
 import appStore from 'state/store';
 import 'assets/styles/index.css';
 import 'assets/styles/custom-input-password.css';
+import 'assets/styles/custom-input-search.css';
 import 'assets/styles/custom-checkbox.css';
 import 'assets/fonts/index.css';
 import { log } from 'utils/index';
