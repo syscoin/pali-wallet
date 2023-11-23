@@ -44,7 +44,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
       if (isValid) {
         // Create an object with the key and value and unshift it into the array
         const keyValueObject = {
-          key: formattedKey, // Or use 'key' if you want the original key name
+          key: formattedKey,
           value: value,
         };
 

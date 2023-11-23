@@ -57,7 +57,7 @@ export const DetailsView = () => {
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (
         <>
-          <ul className="scrollbar-styled md:max-h-max w-full h-96 text-sm overflow-auto">
+          <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">
             {isAsset ? (
               <AssetDetails id={id} />
             ) : (
