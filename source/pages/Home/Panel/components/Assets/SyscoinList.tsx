@@ -33,11 +33,11 @@ export const SyscoinAssetsList = () => {
           {filteredAssets?.map(
             ({ decimals, balance, symbol, assetGuid }: any) => (
               <Fragment key={uniqueId(String(assetGuid))}>
-                <li className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200">
+                <li className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200">
                   <table className="table-auto w-full">
                     <tbody>
                       <tr className="flex items-center justify-between font-poppins font-normal">
-                        <td className="flex items-center gap-x-2.5">
+                        <td className="flex items-center gap-x-2">
                           <span className="text-brand-white">
                             {truncate(
                               formatCurrency(
