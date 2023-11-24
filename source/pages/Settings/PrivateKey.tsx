@@ -105,7 +105,9 @@ const PrivateKeyView = () => {
             },
             () => ({
               async validator(_, pwd) {
-                if (await controller.wallet.unlock(pwd)) {
+                const { canLogin } = await controller.wallet.unlock(pwd, true);
+
+                if (canLogin) {
                   setValid(true);
 
                   return Promise.resolve();

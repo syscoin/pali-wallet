@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import {
   About,
@@ -51,16 +53,29 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
+  const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
-  const { isTimerEnabled, isBitcoinBased, isNetworkChanging } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { t } = useTranslation();
+  const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
   const isUnlocked = wallet.isUnlocked();
+  const utf8ErrorData = JSON.parse(
+    window.localStorage.getItem('sysweb3-utf8Error') ??
+      JSON.stringify({ hasUtf8Error: false })
+  );
+
+  const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
+
+  useEffect(() => {
+    if (isUnlocked) {
+      setShowUtf8ErrorModal(hasUtf8Error);
+    }
+  }, [hasUtf8Error, isUnlocked]);
 
   useEffect(() => {
     const canProceed = isUnlocked && accounts;
@@ -123,8 +138,30 @@ export const Router = () => {
     }
   }, [serverHasAnError]);
 
+  const SYS_UTXO_MAINNET_NETWORK = {
+    chainId: 57,
+    url: 'https://blockbook.elint.services/',
+    label: 'Syscoin Mainnet',
+    default: true,
+    currency: 'sys',
+    slip44: 57,
+  } as INetwork;
+
   return (
     <>
+      <WarningModal
+        show={showUtf8ErrorModal}
+        title={t('settings.bgError')}
+        description={t('settings.bgErrorMessage')}
+        onClose={async () => {
+          setShowUtf8ErrorModal(false);
+          if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
+            await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
+          }
+          wallet.lock();
+          navigate('/');
+        }}
+      />
       <WarningModal
         show={showModal}
         title="RPC Error"

@@ -11,10 +11,12 @@ export const TxsPanel: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <div className="sm:max-h-max flex flex-col items-center w-full max-h-52">
-      <div className="flex items-center justify-center w-full text-brand-white text-base border-b border-bkg-1">
+    <div className="sm:max-h-max relative bottom-[19px]  flex flex-col items-center w-full max-h-52">
+      <div className="flex  items-center justify-center w-full text-brand-white text-base border-b border-bkg-1">
         <Button
-          className={`flex-1 p-2 ${!isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
+          className={`flex-1 w-[12.5rem] absolute left-0 p-2 ${
+            !isActivity ? 'bg-bkg-3 rounded-tr-[100px]' : 'bg-bkg-1 '
+          }`}
           id="assets-btn"
           type="button"
           onClick={() => setActivity(false)}
@@ -23,7 +25,9 @@ export const TxsPanel: FC = () => {
         </Button>
 
         <Button
-          className={`flex-1 p-2 ${isActivity ? 'bg-bkg-3' : 'bg-bkg-1'}`}
+          className={`flex-1 w-[12.5rem] absolute right-0 p-2 ${
+            isActivity ? 'bg-bkg-3 rounded-tl-[100px]' : 'transparent'
+          }`}
           id="activity-btn"
           type="button"
           onClick={() => setActivity(true)}

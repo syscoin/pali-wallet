@@ -12,6 +12,8 @@ module.exports = {
     pink200: '#FF3E91',
     white200: 'rgba(255,255,255, .2)',
     white850: 'rgba(255,255,255, .85)',
+    headerGradient:
+      'linear-gradient(90deg, rgba(40,79,148,1) 25.72%, rgba(254,0,119,1) 141.55%)',
   },
 
   button: {
@@ -70,17 +72,22 @@ module.exports = {
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
     pink: '#9F0949',
     blue: '#4D76B8',
-    blue600: '#162742',
-    blue500: '#1E365C',
+    blue100: '#C9DEFF',
     blue200: '#4CA1CF',
+    blue400: '#4D76B8',
+    blue500: '#1E365C',
+    blue600: '#162742',
+    blue800: '#07152A',
     green: '#8EC100',
+    darkGreen: '#83b100',
     black: '#000',
     white: '#fff',
     red: '#D70000',
+    redDark: '#c60000',
     deepPink: '#cb2c70',
     deepPink100: '#ff3e91',
-
     gray: '#808080',
     graylight: '#f5f5f5',
+    gray200: '#A2A5AB',
   },
 };

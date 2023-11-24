@@ -2,17 +2,18 @@ import { Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
-import * as React from 'react';
+import React, { useEffect } from 'react';
 import { useState, Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { Layout, NeutralButton } from 'components/index';
+import { Card, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
+import { getController } from 'utils/browser';
 import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
@@ -21,15 +22,28 @@ export const SendEth = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    currentBlock,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [txFees, setTxFees] = useState<{ gasLimit: number; gasPrice: number }>({
+    gasLimit: 0,
+    gasPrice: 0,
+  });
+  const [isMessageVisible, setIsMessageVisible] = useState(false);
   const [form] = Form.useForm();
+  const { wallet } = getController();
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
+
+  const totalMaxNativeTokenValue =
+    +activeAccount?.balances.ethereum - txFees.gasLimit * txFees.gasPrice * 3;
+
+  const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
 
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets.ethereum?.length > 0) {
@@ -117,6 +131,31 @@ export const SendEth = () => {
     }
     return `${t('send.send')} NFT`;
   };
+
+  const getFees = async () => {
+    try {
+      const currentGasPrice =
+        +(await wallet.ethereumTransaction.getRecommendedGasPrice()) / 10 ** 9;
+
+      const currentGasLimit =
+        parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
+
+      setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+    } catch (error) {
+      alert.removeAll();
+      alert.error(t('send.internalError'));
+    }
+  };
+
+  useEffect(() => {
+    getFees();
+  }, []);
+
+  useEffect(() => {
+    if (isMessageVisible) {
+      setTimeout(() => setIsMessageVisible(false), 4000);
+    }
+  }, [isMessageVisible]);
 
   return (
     <Layout title={getTitle()}>
@@ -323,18 +362,32 @@ export const SendEth = () => {
             </Form.Item>
             <span
               className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
-              onClick={() =>
+              onClick={() => {
+                setIsMessageVisible(true);
                 form.setFieldValue(
                   'amount',
                   selectedAsset
                     ? selectedAsset.balance
-                    : 0.95 * Number(activeAccount?.balances.ethereum)
-                )
-              }
+                    : totalMaxNativeTokenValue
+                );
+              }}
             >
               Max
             </span>
           </div>
+
+          <div
+            className={`flex flex-col items-center justify-center w-full md:max-w-full mb-6 transition-all duration-500 ${messageOpacity}`}
+          >
+            <Card type="info" className="border-alert-darkwarning">
+              <div>
+                <div className="text-xs text-alert-darkwarning font-bold">
+                  <p>{t('send.maxMessage')}</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <div className="absolute bottom-12 md:static md:mt-3">
             <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
           </div>
