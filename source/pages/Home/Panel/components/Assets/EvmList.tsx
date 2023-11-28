@@ -18,7 +18,12 @@ import { truncate, formatCurrency } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
-const DefaultEvmAssets = () => {
+interface IDefaultEvmAssets {
+  searchValue: string;
+  sortByValue: string;
+}
+
+const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   const controller = getController();
   const { navigate } = useUtils();
 
@@ -31,9 +36,50 @@ const DefaultEvmAssets = () => {
 
   const assets = accounts[activeAccount.type][activeAccount.id].assets;
 
-  const filteredAssets = assets.ethereum?.filter(
+  const currentChainAssets = assets.ethereum?.filter(
     (token) => token.chainId === chainId
   );
+
+  const assetsSorted = (sortBy: string) => {
+    switch (sortBy) {
+      case 'Name':
+        return currentChainAssets.sort(
+          (a, b) =>
+            a.name.localeCompare(b.name) ||
+            a.tokenSymbol.localeCompare(b.tokenSymbol)
+        );
+      case 'Balance':
+        return currentChainAssets.sort((a, b) => a.balance - b.balance);
+      default:
+        return currentChainAssets;
+    }
+  };
+
+  const assetsFilteredBySearch = currentChainAssets.filter((token) => {
+    const lowercaseSearchValue = searchValue.toLowerCase();
+    const lowercaseTokenName = token.name.toLowerCase();
+    const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
+    const lowercaseContractAddress = token.contractAddress.toLowerCase();
+
+    if (searchValue.startsWith('0x')) {
+      return lowercaseContractAddress.includes(lowercaseSearchValue);
+    } else {
+      return (
+        lowercaseTokenName.includes(lowercaseSearchValue) ||
+        lowercaseTokenSymbol.includes(lowercaseSearchValue)
+      );
+    }
+  });
+
+  const assetsSortedBy = assetsSorted(sortByValue);
+
+  let filteredAssets = currentChainAssets;
+
+  if (searchValue.length > 0) {
+    filteredAssets = assetsFilteredBySearch;
+  } else if (sortByValue.length > 0) {
+    filteredAssets = assetsSortedBy;
+  }
 
   return (
     <>
@@ -134,16 +180,7 @@ export const EvmAssetsList = () => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [sortByValue, setSortyByValue] = useState<string>('');
 
-  const controller = getController();
-  const { navigate } = useUtils();
-
-  const { t } = useTranslation();
-  const {
-    accounts,
-    activeAccount,
-    isLoadingAssets,
-    activeNetwork: { chainId },
-  } = useSelector((state: RootState) => state.vault);
+  const { isLoadingAssets } = useSelector((state: RootState) => state.vault);
 
   return (
     <>
@@ -158,7 +195,10 @@ export const EvmAssetsList = () => {
             setSortyByValue={setSortyByValue}
           />
 
-          <DefaultEvmAssets />
+          <DefaultEvmAssets
+            searchValue={searchValue}
+            sortByValue={sortByValue}
+          />
         </>
       )}
     </>

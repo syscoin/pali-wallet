@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import debounce from 'lodash/debounce';
+import React, { useEffect, useState } from 'react';
 import { CgSearch as SearchIcon } from 'react-icons/cg';
 import { FaRegStickyNote as StickyNoteIcon } from 'react-icons/fa';
 import { MdClose as CloseIcon } from 'react-icons/md';
@@ -39,8 +40,27 @@ export const AssetsHeader = ({
     setIsSearchOpen(!isSearchOpen);
   };
 
+  const delayedSearch = debounce((value) => {
+    setSearchValue(value);
+  }, 300);
+
+  const handleInputChange = (e) => {
+    const { value } = e.target;
+    delayedSearch(value);
+  };
+
   const showDefaultHeader = !isSearchOpen;
 
+  //Guarantee values empty when the filter is closed
+  useEffect(() => {
+    if (!isSearchOpen) {
+      setSearchValue('');
+    }
+
+    if (!isSortByOpen) {
+      setSortyByValue('');
+    }
+  }, [isSearchOpen, isSortByOpen]);
   return (
     <>
       {showDefaultHeader ? (
@@ -105,6 +125,7 @@ export const AssetsHeader = ({
               className="w-full max-h-8 border bg-brand-blue800 border-bkg-white200 font-poppins 
               text-xs font-normal p-4 text-brand-gray200 outline-none"
               style={{ borderRadius: '100px' }}
+              onChange={handleInputChange}
             />
 
             <SearchIcon
@@ -124,14 +145,14 @@ export const AssetsHeader = ({
               SORT BY:
             </h3>
             <li
-              data-id="network"
+              data-id="Balance"
               className="cursor-pointer"
               onClick={(e) => setSortyByValue(e.currentTarget.dataset.id)}
             >
-              <p className="text-sm">Network</p>
+              <p className="text-sm">Balance</p>
             </li>
             <li
-              data-id="name"
+              data-id="Name"
               className="cursor-pointer"
               onClick={(e) => setSortyByValue(e.currentTarget.dataset.id)}
             >
