@@ -187,7 +187,7 @@ export const Router = () => {
         onClose={() => setShowModal(false)}
       />
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Start />} />
 
         <Route path="create-password" element={<CreatePass />} />
         <Route
