@@ -1,8 +1,23 @@
-import React from 'react';
+import { uniqueId } from 'lodash';
+import React, { useState } from 'react';
+import { useSelector } from 'react-redux';
+
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
+
+import { Button } from 'components/Button';
+import { useUtils } from 'hooks/useUtils';
+import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 
 import { useNetworkInfo } from './NetworkInfo';
 
 export const NetworkList = () => {
+  const [selectCurrentNetwork, setSelectCurrentNetwork] = useState({
+    current: null,
+    chain: '',
+  });
+  const { navigate } = useUtils();
   const {
     networkThatNeedsChanging,
     networkDescription,
@@ -10,6 +25,60 @@ export const NetworkList = () => {
     leftLogo,
     rightLogo,
   } = useNetworkInfo();
+  const { wallet } = getController();
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const {
+    activeAccount: { type: activeAccountType },
+  } = useSelector((state: RootState) => state.vault);
+  const networks = useSelector((state: RootState) => state.vault.networks);
+
+  let newNetworks;
+
+  isBitcoinBased
+    ? (newNetworks = Object.values(networks.ethereum))
+    : (newNetworks = Object.values(networks.syscoin));
+
+  const testnetNetworks = newNetworks.filter((objeto) =>
+    objeto.label.includes('Testnet')
+  );
+
+  const mainetNetworks = newNetworks.filter((objeto) =>
+    ['Mainnet', 'NEVM', 'Rollux'].some((substring) =>
+      objeto.label.includes(substring)
+    )
+  );
+
+  const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    const cannotContinueWithTrezorAccount =
+      // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
+      (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+      (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
+      // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+      (Object.keys(networks.ethereum).find(
+        (chainId) => `${activeNetwork.chainId}` === chainId
+      ) &&
+        Object.keys(networks.syscoin).find(
+          (chainId) => `${network.chainId}` === chainId
+        ) &&
+        `${network.slip44}` !== 'undefined' &&
+        (activeAccountType === KeyringAccountType.Trezor ||
+          activeAccountType === KeyringAccountType.Ledger));
+
+    try {
+      if (cannotContinueWithTrezorAccount) {
+        return;
+      }
+      await wallet.setActiveNetwork(network, chain);
+    } catch (networkError) {
+      navigate('/home');
+    }
+  };
 
   return (
     <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
@@ -29,17 +98,47 @@ export const NetworkList = () => {
         <p className="text-brand-gray200 text-xs font-medium mb-2">
           {selectedNetworkText}
         </p>
-        <div className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800">
-          Syscoin NEVM
-        </div>
+        {mainetNetworks.map((currentNetwork: INetwork) => (
+          <div
+            key={uniqueId()}
+            className={`${
+              selectCurrentNetwork.current?.label === currentNetwork.label
+                ? 'bg-brand-blue800'
+                : 'bg-brand-blue600'
+            } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+            onClick={() =>
+              setSelectCurrentNetwork({
+                current: currentNetwork,
+                chain: chainName,
+              })
+            }
+          >
+            {currentNetwork.label}
+          </div>
+        ))}
       </div>
       <div className="flex flex-col">
         <p className="text-brand-gray200 text-xs font-medium mb-2">
           Testnet network:
         </p>
-        <div className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800">
-          Syscoin NEVM
-        </div>
+        {testnetNetworks.map((currentNetwork: INetwork) => (
+          <div
+            key={uniqueId()}
+            className={`${
+              selectCurrentNetwork.current?.label === currentNetwork.label
+                ? 'bg-brand-blue800'
+                : 'bg-brand-blue600'
+            } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+            onClick={() =>
+              setSelectCurrentNetwork({
+                current: currentNetwork,
+                chain: chainName,
+              })
+            }
+          >
+            {currentNetwork.label}
+          </div>
+        ))}
       </div>
       <div className="mt-4">
         <div className="flex justify-center items-center gap-2 mb-4">
@@ -48,9 +147,18 @@ export const NetworkList = () => {
             Add new network
           </span>
         </div>
-        <button className="bg-white rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium">
+        <Button
+          type="submit"
+          onClick={() =>
+            handleChangeNetwork(
+              selectCurrentNetwork.current,
+              selectCurrentNetwork.chain
+            )
+          }
+          className="bg-white rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium"
+        >
           Connect
-        </button>
+        </Button>
       </div>
     </div>
   );
