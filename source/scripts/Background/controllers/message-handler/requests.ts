@@ -73,7 +73,11 @@ export const methodRequest = async (
     return await enable(host, undefined, undefined);
   }
   if (prefix === 'sys' && methodName === 'requestAccounts') {
-    return await enable(host, undefined, undefined, true);
+    try {
+      return await enable(host, undefined, undefined, true);
+    } catch {
+      wallet.openDAppErrorModal(true);
+    }
   }
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -394,13 +398,13 @@ export const enable = async (
       message: 'Connected to Bitcoin based chain',
       data: { code: 4101, message: 'Connected to Bitcoin based chain' },
     });
-  else if (isSyscoinDapp && !isBitcoinBased)
+  else if (isSyscoinDapp && !isBitcoinBased) {
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Ethereum based chain',
       data: { code: 4101, message: 'Connected to Ethereum based chain' },
     });
-
+  }
   const { dapp, wallet } = window.controller;
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];

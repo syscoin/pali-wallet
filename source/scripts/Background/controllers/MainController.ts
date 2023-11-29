@@ -48,6 +48,7 @@ import {
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setOpenDAppErrorModal,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -1248,6 +1249,12 @@ const MainController = (walletState): IMainController => {
       })
     );
   };
+
+  const openDAppErrorModal = (isOpen) => {
+    if (isOpen) {
+      store.dispatch(setOpenDAppErrorModal(true));
+    }
+  };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
   //------------------------- END TRANSACTIONS METHODS -------------------------//
@@ -1514,6 +1521,7 @@ const MainController = (walletState): IMainController => {
     importTrezorAccount,
     validatePendingEvmTransactions,
     ...keyringManager,
+    openDAppErrorModal,
   };
 };
 
