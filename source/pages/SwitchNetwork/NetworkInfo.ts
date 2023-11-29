@@ -29,10 +29,10 @@ export const useNetworkInfo = (): INetworkInfo => {
     networkThatNeedsChanging: NetworkType.EVM,
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
-    networkDescription: 'Unspent Transaction Output',
-    selectedNetworkText: 'Select a UTXO network:',
-    leftLogo: 'assets/images/pinkBitcoin.svg',
-    rightLogo: 'assets/images/sysChainWhite.svg',
+    networkDescription: 'Ethereum Virtual Machine',
+    selectedNetworkText: 'Select an EVM network:',
+    leftLogo: 'assets/images/ethChainDarkBlue.svg',
+    rightLogo: 'assets/images/rolluxChainWhite.svg',
   };
 
   const otherNetworkInfo: INetworkInfo = {
@@ -40,10 +40,10 @@ export const useNetworkInfo = (): INetworkInfo => {
     networkThatNeedsChanging: NetworkType.UTXO,
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
-    networkDescription: 'Ethereum Virtual Machine',
-    selectedNetworkText: 'Select an EVM network:',
-    leftLogo: 'assets/images/ethChainDarkBlue.svg',
-    rightLogo: 'assets/images/rolluxChainWhite.svg',
+    networkDescription: 'Unspent Transaction Output',
+    selectedNetworkText: 'Select a UTXO network:',
+    leftLogo: 'assets/images/pinkBitcoin.svg',
+    rightLogo: 'assets/images/sysChainWhite.svg',
   };
 
   return isBitcoinBased ? utxoNetwork : otherNetworkInfo;

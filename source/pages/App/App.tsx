@@ -29,7 +29,7 @@ const App: FC = () => {
 
   // other logic
   return (
-    <section className="mx-auto min-w-popup h-full min-h-popup bg-[#061120] md:max-w-2xl">
+    <section className="mx-auto min-w-popup h-full min-h-popup bg-brand-blue700 md:max-w-2xl">
       <Suspense fallback={<Loading />}>
         <Container>
           <HashRouter>

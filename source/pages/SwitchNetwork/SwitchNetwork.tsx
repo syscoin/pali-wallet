@@ -44,7 +44,7 @@ export const SwitchNetwork = () => {
   return (
     <>
       <Header accountHeader={false} />
-      <div className="gap-4 w-full flex flex-col justify-center items-center p-6">
+      <div className=" gap-4 w-full flex flex-col justify-center items-center p-6">
         <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
           <img src={'assets/icons/warn.svg'} />
         </div>
