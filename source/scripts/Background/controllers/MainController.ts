@@ -1250,10 +1250,9 @@ const MainController = (walletState): IMainController => {
     );
   };
 
-  const openDAppErrorModal = (isOpen) => {
-    if (isOpen) {
-      store.dispatch(setOpenDAppErrorModal(true));
-    }
+  const openDAppErrorModal = () => {
+    console.log('teste');
+    store.dispatch(setOpenDAppErrorModal(true));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 

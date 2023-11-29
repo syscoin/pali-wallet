@@ -147,8 +147,9 @@ export const Router = () => {
   useEffect(() => {
     if (hasErrorOndAppEVM) {
       console.log('abrir o modal');
+      navigate('switch-network');
     }
-  }, []);
+  }, [hasErrorOndAppEVM]);
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
@@ -186,7 +187,7 @@ export const Router = () => {
         onClose={() => setShowModal(false)}
       />
       <Routes>
-        <Route path="/" element={<SwitchNetwork />} />
+        <Route path="/" element={<Home />} />
 
         <Route path="create-password" element={<CreatePass />} />
         <Route
@@ -224,6 +225,7 @@ export const Router = () => {
           path="send/edit/gas"
           element={<ProtectedRoute element={<SendConfirm />} />}
         />
+        <Route path="switch-network" element={<SwitchNetwork />} />
 
         {/* /tokens/add */}
         <Route
