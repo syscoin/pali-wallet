@@ -40,6 +40,7 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
   removeVerifyPaliRequestListener,
@@ -185,7 +186,7 @@ export const Router = () => {
         onClose={() => setShowModal(false)}
       />
       <Routes>
-        <Route path="/" element={<Start />} />
+        <Route path="/" element={<SwitchNetwork />} />
 
         <Route path="create-password" element={<CreatePass />} />
         <Route
