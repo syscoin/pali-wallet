@@ -7,7 +7,8 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Button } from 'components/Button';
 import { useUtils } from 'hooks/useUtils';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -26,8 +27,8 @@ export const NetworkList = () => {
     rightLogo,
   } = useNetworkInfo();
   const { wallet } = getController();
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const { isBitcoinBased, hasErrorOndAppEVM } = useSelector(
+    (state: RootState) => state.vault
   );
   const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
   const activeNetwork = useSelector(
@@ -71,10 +72,9 @@ export const NetworkList = () => {
           activeAccountType === KeyringAccountType.Ledger));
 
     try {
-      if (cannotContinueWithTrezorAccount) {
-        return;
-      }
+      store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
+      navigate('/home');
     } catch (networkError) {
       navigate('/home');
     }
