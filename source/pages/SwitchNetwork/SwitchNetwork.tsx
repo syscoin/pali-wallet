@@ -1,42 +1,22 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Header } from 'components/Header';
-import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { NetworkType } from 'utils/types';
+
+import { useNetworkInfo } from './NetworkInfo';
+import { NetworkList } from './NetworkList';
 
 export const SwitchNetwork = () => {
-  const { navigate } = useUtils();
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const PINK_COLOR = 'text-brand-pink';
-  const BLUE_COLOR = 'text-brand-blue';
-
-  const utxoNetwork = {
-    connectedNetwork: NetworkType.UTXO,
-    networkThatNeedsChanging: NetworkType.EVM,
-    connectedColor: PINK_COLOR,
-    networkNeedsChangingColor: BLUE_COLOR,
-  };
-
-  const otherNetworkInfo = {
-    connectedNetwork: NetworkType.EVM,
-    networkThatNeedsChanging: NetworkType.UTXO,
-    connectedColor: BLUE_COLOR,
-    networkNeedsChangingColor: PINK_COLOR,
-  };
-
   const {
     connectedNetwork,
     networkThatNeedsChanging,
     connectedColor,
     networkNeedsChangingColor,
-  } = isBitcoinBased ? utxoNetwork : otherNetworkInfo;
+  } = useNetworkInfo();
 
   const networkLabel = useMemo(
     () => <p className="text-xs font-bold text-white">{activeNetwork.label}</p>,
@@ -80,6 +60,7 @@ export const SwitchNetwork = () => {
         <p className="text-[#808795] text-xs underline">
           Learn about UTXO and EVM
         </p>
+        <NetworkList />
       </div>
     </>
   );
