@@ -14,10 +14,29 @@ export const SwitchNetwork = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networkType = isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM;
+  const PINK_COLOR = 'text-brand-pink';
+  const BLUE_COLOR = 'text-brand-blue';
 
-  const textColor =
-    networkType === NetworkType.UTXO ? 'text-brand-pink' : 'text-brand-blue';
+  const utxoNetwork = {
+    connectedNetwork: NetworkType.UTXO,
+    networkThatNeedsChanging: NetworkType.EVM,
+    connectedColor: PINK_COLOR,
+    networkNeedsChangingColor: BLUE_COLOR,
+  };
+
+  const otherNetworkInfo = {
+    connectedNetwork: NetworkType.EVM,
+    networkThatNeedsChanging: NetworkType.UTXO,
+    connectedColor: BLUE_COLOR,
+    networkNeedsChangingColor: PINK_COLOR,
+  };
+
+  const {
+    connectedNetwork,
+    networkThatNeedsChanging,
+    connectedColor,
+    networkNeedsChangingColor,
+  } = isBitcoinBased ? utxoNetwork : otherNetworkInfo;
 
   const networkLabel = useMemo(
     () => <p className="text-xs font-bold text-white">{activeNetwork.label}</p>,
@@ -25,7 +44,20 @@ export const SwitchNetwork = () => {
   );
 
   const networkSymbol = useMemo(
-    () => <p className={`text-xs font-bold ${textColor}`}>{networkType}</p>,
+    () => (
+      <p className={`text-xs font-bold ${connectedColor}`}>
+        {connectedNetwork}
+      </p>
+    ),
+    []
+  );
+
+  const networkSymbolChange = useMemo(
+    () => (
+      <p className={`text-xs font-bold ${networkNeedsChangingColor}`}>
+        {networkThatNeedsChanging}!
+      </p>
+    ),
     []
   );
 
@@ -38,11 +70,13 @@ export const SwitchNetwork = () => {
         </div>
         <span className="text-xs font-medium text-white text-center">
           You are connected on
-          <div className="inline-block ml-1">{networkLabel}</div>
-          <div className="inline-block ml-1">{networkSymbol}</div>, to use this
-          dApp you must change to EVM!
+          <div className="inline-block ml-1 align-middle">{networkLabel}</div>
+          <div className="inline-block ml-1 align-middle">{networkSymbol}</div>,
+          to use this dApp you must change to
+          <div className="inline-block ml-1 align-middle">
+            {networkSymbolChange}
+          </div>
         </span>
-
         <p className="text-[#808795] text-xs underline">
           Learn about UTXO and EVM
         </p>
