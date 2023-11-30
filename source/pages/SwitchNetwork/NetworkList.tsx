@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import networkImg from 'assets/icons/network.svg';
 import { Button } from 'components/Button';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
@@ -74,9 +75,11 @@ export const NetworkList = () => {
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
-      navigate('/home');
+      window.close();
+      // navigate('/home');
     } catch (networkError) {
-      navigate('/home');
+      window.close();
+      // navigate('/home');
     }
   };
 
@@ -142,7 +145,7 @@ export const NetworkList = () => {
       </div>
       <div className="mt-4">
         <div className="flex justify-center items-center gap-2 mb-4">
-          <img src="assets/icons/network.svg" alt="Network Icon" />
+          <img src={networkImg} alt="Network Icon" />
           <span className="underline text-white font-normal text-sm">
             Add new network
           </span>

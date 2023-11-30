@@ -70,10 +70,34 @@ export const methodRequest = async (
   }
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
-    return await enable(host, undefined, undefined, true);
+    try {
+      return await enable(host, undefined, undefined, false);
+    } catch (error) {
+      await popupPromise({
+        host,
+        route: 'switch-network',
+        eventName: 'switchNetwork',
+        data: {},
+      });
+
+      return await enable(host, undefined, undefined, false);
+    }
   }
   if (prefix === 'sys' && methodName === 'requestAccounts') {
-    return await enable(host, undefined, undefined, true);
+    try {
+      return await enable(host, undefined, undefined, true);
+    } catch (error) {
+      if (error.message === 'Connected to Ethereum based chain') {
+        await popupPromise({
+          host,
+          route: 'switch-network',
+          eventName: 'switchNetwork',
+          data: { network: data.network },
+        });
+
+        return await enable(host, undefined, undefined, true);
+      }
+    }
   }
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -390,7 +414,7 @@ export const enable = async (
     window.localStorage.getItem('isPopupOpen')
   );
   if (!isSyscoinDapp && isBitcoinBased) {
-    wallet.openDAppErrorModal();
+    // wallet.openDAppErrorModal();
 
     throw ethErrors.provider.custom({
       code: 4101,
@@ -398,7 +422,7 @@ export const enable = async (
       data: { code: 4101, message: 'Connected to Bitcoin based chain' },
     });
   } else if (isSyscoinDapp && !isBitcoinBased) {
-    wallet.openDAppErrorModal();
+    // wallet.openDAppErrorModal();
 
     throw ethErrors.provider.custom({
       code: 4101,

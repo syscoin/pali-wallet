@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Header } from 'components/Header';
+import warningImg from 'assets/icons/warn.svg';
+// import { Header } from 'components/Header';
+import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -42,11 +44,11 @@ export const SwitchNetwork = () => {
   );
 
   return (
-    <>
-      <Header accountHeader={false} />
-      <div className="gap-4 w-full flex flex-col justify-center items-center p-6">
+    <Layout canGoBack={false} title="Switch Network">
+      {/* <Header accountHeader={false} /> */}
+      <div className="gap-4 w-full flex flex-col justify-center items-center overflow-auto scrollbar-styled h-full">
         <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
-          <img src={'assets/icons/warn.svg'} />
+          <img src={warningImg} />
         </div>
         <span className="text-xs font-medium text-white text-center">
           You are connected on
@@ -62,6 +64,6 @@ export const SwitchNetwork = () => {
         </p>
         <NetworkList />
       </div>
-    </>
+    </Layout>
   );
 };

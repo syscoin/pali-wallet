@@ -2,9 +2,12 @@
 
 import { useSelector } from 'react-redux';
 
+import leftLogoEthChain from 'assets/images/ethChainDarkBlue.svg';
+import leftLogoPinkBitcoin from 'assets/images/pinkBitcoin.svg';
+import rightLogoRolluxChain from 'assets/images/rolluxChainWhite.svg';
+import rightLogoSysWhite from 'assets/images/sysChainWhite.svg';
 import { RootState } from 'state/store';
 import { NetworkType } from 'utils/types';
-
 interface INetworkInfo {
   connectedColor: string;
   connectedNetwork: NetworkType;
@@ -31,8 +34,8 @@ export const useNetworkInfo = (): INetworkInfo => {
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',
     selectedNetworkText: 'Select an EVM network:',
-    leftLogo: 'assets/images/ethChainDarkBlue.svg',
-    rightLogo: 'assets/images/rolluxChainWhite.svg',
+    leftLogo: leftLogoEthChain,
+    rightLogo: rightLogoRolluxChain,
   };
 
   const otherNetworkInfo: INetworkInfo = {
@@ -42,8 +45,8 @@ export const useNetworkInfo = (): INetworkInfo => {
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
     selectedNetworkText: 'Select a UTXO network:',
-    leftLogo: 'assets/images/pinkBitcoin.svg',
-    rightLogo: 'assets/images/sysChainWhite.svg',
+    leftLogo: leftLogoPinkBitcoin,
+    rightLogo: rightLogoSysWhite,
   };
 
   return isBitcoinBased ? utxoNetwork : otherNetworkInfo;
