@@ -76,10 +76,8 @@ export const NetworkList = () => {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
       window.close();
-      // navigate('/home');
     } catch (networkError) {
       window.close();
-      // navigate('/home');
     }
   };
 

@@ -414,16 +414,12 @@ export const enable = async (
     window.localStorage.getItem('isPopupOpen')
   );
   if (!isSyscoinDapp && isBitcoinBased) {
-    // wallet.openDAppErrorModal();
-
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Bitcoin based chain',
       data: { code: 4101, message: 'Connected to Bitcoin based chain' },
     });
   } else if (isSyscoinDapp && !isBitcoinBased) {
-    // wallet.openDAppErrorModal();
-
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Ethereum based chain',

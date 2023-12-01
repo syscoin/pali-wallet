@@ -46,7 +46,7 @@ export const SwitchNetwork = () => {
   return (
     <Layout canGoBack={false} title="Switch Network">
       {/* <Header accountHeader={false} /> */}
-      <div className="gap-4 w-full flex flex-col justify-center items-center overflow-auto scrollbar-styled h-full">
+      <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center scrollbar-styled h-full">
         <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
           <img src={warningImg} />
         </div>
