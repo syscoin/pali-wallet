@@ -64,6 +64,7 @@ export const initialState: IVaultState = {
     default: true,
     currency: 'sys',
     slip44: 57,
+    isTestnet: false,
   },
   isBitcoinBased: true,
   isLoadingBalances: false,
