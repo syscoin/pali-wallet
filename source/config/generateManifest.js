@@ -1,25 +1,19 @@
-/* eslint-disable import/no-extraneous-dependencies */
-import * as dotenv from 'dotenv';
-import * as fs from 'fs';
+/* eslint-disable */
+
+const dotenv = require('dotenv');
+const fs = require('fs');
+
+const { MV2_OPTIONS, MV3_OPTIONS } = require('./consts.js');
 
 dotenv.config();
 
 function generateManifest() {
   console.log(process.env.MANIFEST_TYPE);
-  const manifestOptions = {
-    appName: process.env.APP_NAME || 'DefaultAppNameee',
-  };
-
-  if (process.env.FEATURE_A === 'true') {
-    manifestOptions.featureA = true;
-  }
-
-  if (process.env.FEATURE_B === 'true') {
-    manifestOptions.featureB = true;
-  }
+  const manifestOptions =
+    process.env.MANIFEST_TYPE === 'MV2' ? MV2_OPTIONS : MV3_OPTIONS;
 
   const manifestContent = JSON.stringify(manifestOptions, null, 2);
-  fs.writeFileSync('manifestTest.json', manifestContent);
+  fs.writeFileSync('manifest.json', manifestContent);
 }
 
 generateManifest();

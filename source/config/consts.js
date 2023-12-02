@@ -1,0 +1,166 @@
+/* eslint-disable camelcase */
+const MV2_OPTIONS = {
+  manifest_version: 2,
+  name: 'Pali Wallet',
+  version: '2.0.11',
+  icons: {
+    16: 'assets/icons/favicon-16.png',
+    32: 'assets/icons/favicon-32.png',
+    48: 'assets/icons/favicon-48.png',
+    128: 'assets/icons/favicon-128.png',
+  },
+  description: 'A Non-Custodial Crypto Wallet',
+  short_name: 'pali',
+  permissions: [
+    'http://*/*',
+    'https://*/*',
+    '*://connect.trezor.io/9/*',
+    'tabs',
+    'storage',
+    'activeTab',
+    '*://*.eth/',
+    'clipboardWrite',
+    'unlimitedStorage',
+    'http://localhost:8545/',
+    'webRequest',
+  ],
+  content_security_policy: "script-src 'self'; object-src 'self'",
+  '__chrome|firefox__author': 'pollum labs',
+  __opera__developer: {
+    name: 'pollum labs',
+  },
+  __firefox__applications: {
+    gecko: {
+      id: '{b3e96b5f-b5bf-8b48-846b-52f430365e80}',
+    },
+  },
+  __chrome__minimum_chrome_version: '49',
+  __opera__minimum_opera_version: '36',
+  browser_action: {
+    default_popup: 'app.html',
+    default_icon: {
+      16: 'assets/icons/favicon-16.png',
+      32: 'assets/icons/favicon-32.png',
+      48: 'assets/icons/favicon-48.png',
+      128: 'assets/icons/favicon-128.png',
+    },
+    default_title: 'Pali Wallet',
+    '__chrome|opera__chrome_style': false,
+    __firefox__browser_style: false,
+  },
+  background: {
+    scripts: ['js/webextension.bundle.js', 'js/background.bundle.js'],
+    '__chrome|opera__persistent': true,
+  },
+  content_scripts: [
+    {
+      all_frames: true,
+      matches: ['file://*/*', 'http://*/*', 'https://*/*'],
+      run_at: 'document_start',
+      js: ['js/webextension.bundle.js', 'js/contentScript.bundle.js'],
+    },
+    {
+      matches: [
+        '*://connect.trezor.io/9/popup.html',
+        'https://localhost:8088/*',
+      ],
+      js: ['js/webextension.bundle.js', 'js/trezorScript.bundle.js'],
+    },
+  ],
+  web_accessible_resources: [
+    'js/inpage.bundle.js',
+    'js/handleWindowProperties.bundle.js',
+    'js/pali.bundle.js',
+  ],
+  commands: {
+    _execute_browser_action: {
+      suggested_key: {
+        default: 'Ctrl+Shift+P',
+      },
+    },
+  },
+};
+
+const MV3_OPTIONS = {
+  manifest_version: 3,
+  name: 'Pali Wallet',
+  version: '2.0.11',
+  icons: {
+    16: 'assets/icons/favicon-16.png',
+    32: 'assets/icons/favicon-32.png',
+    48: 'assets/icons/favicon-48.png',
+    128: 'assets/icons/favicon-128.png',
+  },
+  description: 'A Non-Custodial Crypto Wallet',
+  short_name: 'pali',
+  permissions: ['storage', 'activeTab', 'clipboardWrite'],
+  host_permissions: [
+    'http://*/*',
+    'https://*/*',
+    '*://connect.trezor.io/9/*',
+    '*://*.eth/',
+    'http://localhost:8545/',
+  ],
+  action: {
+    default_popup: 'app.html',
+    default_icon: {
+      16: 'assets/icons/favicon-16.png',
+      32: 'assets/icons/favicon-32.png',
+      48: 'assets/icons/favicon-48.png',
+      128: 'assets/icons/favicon-128.png',
+    },
+    default_title: 'Pali Wallet',
+  },
+  background: {
+    service_worker: 'js/background.bundle.js',
+  },
+  content_scripts: [
+    {
+      all_frames: true,
+      matches: ['file://*/*', 'http://*/*', 'https://*/*'],
+      run_at: 'document_start',
+      js: ['js/webextension.bundle.js', 'js/contentScript.bundle.js'],
+    },
+    {
+      matches: [
+        '*://connect.trezor.io/9/popup.html',
+        'https://localhost:8088/*',
+      ],
+      js: ['js/webextension.bundle.js', 'js/trezorScript.bundle.js'],
+    },
+    ,
+  ],
+  web_accessible_resources: [
+    {
+      resources: [
+        'js/inpage.bundle.js',
+        'js/handleWindowProperties.bundle.js',
+        'js/pali.bundle.js',
+      ],
+      matches: ['<all_urls>'],
+    },
+  ],
+  commands: {
+    _execute_action: {
+      suggested_key: {
+        default: 'Ctrl+Shift+P',
+      },
+    },
+  },
+  '__chrome|firefox__author': 'pollum labs',
+  __opera__developer: {
+    name: 'pollum labs',
+  },
+  __firefox__applications: {
+    gecko: {
+      id: '{b3e96b5f-b5bf-8b48-846b-52f430365e80}',
+    },
+  },
+  __chrome__minimum_chrome_version: '49',
+  __opera__minimum_opera_version: '36',
+};
+
+module.exports = {
+  MV2_OPTIONS,
+  MV3_OPTIONS,
+};

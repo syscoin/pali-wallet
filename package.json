@@ -3,7 +3,6 @@
   "version": "2.0.11",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
-  "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syscoin/pali_wallet.git"
@@ -15,7 +14,7 @@
   },
   "scripts": {
     "generate-manifest": "node ./source/config/generateManifest.js",
-    "dev:chrome": "jq 'del(.environment) | .permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
+    "dev:chrome": "yarn generate-manifest && jq 'del(.environment) | .permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
     "dev-watch-requests:chrome": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end | .environment = {\"WATCH_REQUESTS\": \"active\"}' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
     "dev:firefox": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=firefox webpack --watch",
     "dev:opera": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=opera webpack --watch",
