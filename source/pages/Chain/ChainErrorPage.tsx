@@ -9,12 +9,18 @@ import { Button } from 'components/Button';
 import { Header } from 'components/Header';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 
 export const ChainErrorPage = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
   const { navigate } = useUtils();
+  const { wallet } = getController();
+
+  const handleRetryToConnect = async () => {
+    await wallet.setActiveNetwork(activeNetwork, String(activeNetwork.chainId));
+  };
 
   const CurrentChains = () => {
     let toChain: React.ReactNode;
@@ -96,6 +102,7 @@ export const ChainErrorPage = () => {
           <Button
             type="submit"
             className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            onClick={handleRetryToConnect}
           >
             Retry connect
           </Button>

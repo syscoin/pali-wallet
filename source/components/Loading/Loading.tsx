@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from '..';
-import { useUtils } from 'hooks/useUtils';
+import { ChainErrorPage } from 'pages/Chain';
 import { RootState } from 'state/store';
 
 const FIVE_SECONDS = 5000;
@@ -14,8 +14,6 @@ export const Loading = ({
   opacity?: number;
   usePopupSize?: boolean;
 }) => {
-  const { navigate } = useUtils();
-
   const isNetworkChanging = useSelector(
     (state: RootState) => state.vault.isNetworkChanging
   );
@@ -37,23 +35,30 @@ export const Loading = ({
     };
   }, []);
 
-  useEffect(() => {
-    timeoutError ? navigate('/chain-fail-to-connect') : setTimeoutError(false);
-  }, [timeoutError]);
-
   return (
     <>
-      <div
-        className={`${
-          usePopupSize && 'min-w-popup min-h-popup'
-        } relative z-20 flex flex-col items-center justify-center w-full bg-transparent`}
-      >
-        <div
-          className={`flex items-center justify-center opacity-${opacity} ${
-            timeoutError && 'mt-32'
-          } `}
-        >
-          <Icon name="loading" className="text-brand-white animate-spin-slow" />
+      <div>
+        <div>
+          {timeoutError ? (
+            <ChainErrorPage />
+          ) : (
+            <div
+              className={`${
+                usePopupSize && 'min-w-popup min-h-popup'
+              } relative z-20 flex flex-col items-center justify-center w-full bg-transparent`}
+            >
+              <div
+                className={`flex items-center justify-center opacity-${opacity} ${
+                  timeoutError && 'mt-32'
+                } `}
+              >
+                <Icon
+                  name="loading"
+                  className="text-brand-white animate-spin-slow"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
