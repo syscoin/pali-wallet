@@ -40,6 +40,7 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { ChainErrorPage } from 'pages/Chain';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
@@ -51,6 +52,7 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
+
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
@@ -59,13 +61,8 @@ export const Router = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const {
-    isTimerEnabled,
-    isBitcoinBased,
-    isNetworkChanging,
-    activeNetwork,
-    hasErrorOndAppEVM,
-  } = useSelector((state: RootState) => state.vault);
+  const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
@@ -226,6 +223,10 @@ export const Router = () => {
           element={<ProtectedRoute element={<SendConfirm />} />}
         />
         <Route path="switch-network" element={<SwitchNetwork />} />
+        <Route
+          path="chain-fail-to-connect"
+          element={<ProtectedRoute element={<ChainErrorPage />} />}
+        />
 
         {/* /tokens/add */}
         <Route

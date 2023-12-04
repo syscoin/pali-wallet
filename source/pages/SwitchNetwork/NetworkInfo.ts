@@ -1,5 +1,3 @@
-// NetworkInfo.ts
-
 import { useSelector } from 'react-redux';
 
 import leftLogoEthChain from 'assets/images/ethChainDarkBlue.svg';
