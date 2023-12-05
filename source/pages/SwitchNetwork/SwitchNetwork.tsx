@@ -23,7 +23,9 @@ export const SwitchNetwork = () => {
   } = useNetworkInfo();
 
   const networkLabel = useMemo(
-    () => <p className="text-xs font-bold text-white">{activeNetwork.label}</p>,
+    () => (
+      <p className="text-xs font-bold text-white">{activeNetwork?.label}</p>
+    ),
     []
   );
 
@@ -50,7 +52,7 @@ export const SwitchNetwork = () => {
       <Header accountHeader={false} />
       <Layout canGoBack={false} title="Switch Network">
         <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center scrollbar-styled h-full">
-          {!state?.switchingFromTimeError && (
+          {!state || !state?.switchingFromTimeError ? (
             <>
               <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
                 <img src={warningImg} />
@@ -72,8 +74,8 @@ export const SwitchNetwork = () => {
                 Learn about UTXO and EVM
               </p>
             </>
-          )}
-          <NetworkList isChanging={state.switchingFromTimeError} />
+          ) : null}
+          <NetworkList isChanging={state?.switchingFromTimeError} />
         </div>
       </Layout>
     </>

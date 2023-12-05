@@ -369,7 +369,10 @@ const CustomRPCView = () => {
           />
         </Form.Item>
         {state?.isEditing ? (
-          <div className="flex justify-center items-center gap-2">
+          <div
+            className="flex justify-center items-center gap-2 cursor-pointer"
+            onClick={() => (window.location.href = 'https://chainlist.org/')}
+          >
             <img src={checkAtIcon} alt="Check at chainlist" />
             <p className="underline text-center text-white font-poppins text-sm">
               Check chainlist

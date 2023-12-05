@@ -32,7 +32,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     rightLogo,
     filteredNetworks,
   } = useNetworkInfo(selectedNetwork);
-
+  console.log(filteredNetworks, 'filteredNetworks');
   const testnetNetworks = filteredNetworks.filter((obj) =>
     obj.label.includes('Testnet')
   );

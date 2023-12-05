@@ -93,7 +93,12 @@ export const ChainErrorPage = () => {
               className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
               onClick={() =>
                 navigate('/settings/networks/custom-rpc', {
-                  state: { isEditing: true },
+                  state: {
+                    selected: activeNetwork,
+                    chain: activeNetwork.chainId,
+                    isDefault: activeNetwork.default,
+                    isEditing: true,
+                  },
                 })
               }
             >

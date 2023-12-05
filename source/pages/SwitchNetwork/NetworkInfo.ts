@@ -34,13 +34,9 @@ export const useNetworkInfo = (setedNetwork?: string): INetworkInfo => {
   const filteredNetworks = useMemo(() => {
     if (setedNetwork !== '') {
       return setedNetwork === 'EVM'
-        ? Object.values(networks.ethereum)
-        : Object.values(networks.syscoin);
+        ? Object.values(networks.syscoin)
+        : Object.values(networks.ethereum);
     }
-
-    return isBitcoinBased
-      ? Object.values(networks.ethereum)
-      : Object.values(networks.syscoin);
   }, [setedNetwork, isBitcoinBased, networks]);
 
   const utxoNetwork: INetworkInfo = {
@@ -67,11 +63,20 @@ export const useNetworkInfo = (setedNetwork?: string): INetworkInfo => {
     filteredNetworks,
   };
 
-  return setedNetwork
-    ? setedNetwork === 'EVM'
-      ? utxoNetwork
-      : otherNetworkInfo
-    : isBitcoinBased
-    ? utxoNetwork
-    : otherNetworkInfo;
+  let value: any;
+
+  if (setedNetwork) {
+    if (setedNetwork === 'EVM') {
+      value = otherNetworkInfo;
+    } else {
+      value = utxoNetwork;
+    }
+  } else {
+    if (isBitcoinBased) {
+      value = utxoNetwork;
+    } else {
+      value = otherNetworkInfo;
+    }
+  }
+  return value;
 };
