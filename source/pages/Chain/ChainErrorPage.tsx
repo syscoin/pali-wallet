@@ -27,22 +27,22 @@ export const ChainErrorPage = () => {
 
     switch (activeNetwork.chainId) {
       case 1:
-        toChain = <img src={ethChainImg} alt="eth" width="100px" />;
+        toChain = <img src={ethChainImg} alt="eth" width="39px" />;
         break;
       case 57:
-        toChain = <img src={sysChainImg} alt="sys" width="100px" />;
+        toChain = <img src={sysChainImg} alt="sys" width="39px" />;
         break;
       case 570:
-        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
         break;
       case 5700:
-        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
         break;
       default:
         toChain = (
           <div
             className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            style={{ width: '100px', height: '100px' }}
+            style={{ width: '39px', height: '39px' }}
           >
             {activeNetwork.currency}
           </div>
@@ -50,7 +50,7 @@ export const ChainErrorPage = () => {
     }
 
     return (
-      <div className="w-4/5 gap-4 flex items-center align-center flex-row">
+      <div className="gap-4 flex items-center align-center flex-row">
         {toChain}
       </div>
     );
@@ -69,7 +69,7 @@ export const ChainErrorPage = () => {
         <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
           <div className="relative flex mb-4">
             <CurrentChains />
-            <div className="flex flex-col ml-11">
+            <div className="flex flex-col ml-3">
               <h1 className="text-xs font-light text-white">
                 You are trying to connect on:
               </h1>
@@ -86,6 +86,11 @@ export const ChainErrorPage = () => {
             </div>
             <div
               className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+              onClick={() =>
+                navigate('/settings/networks/custom-rpc', {
+                  state: { isEditing: true },
+                })
+              }
             >
               Edit RPC of current network
             </div>

@@ -35,30 +35,32 @@ export const Loading = ({
     };
   }, []);
 
+  useEffect(() => {
+    timeoutError
+      ? (window.location.hash = '/chain-fail-to-connect')
+      : setTimeoutError(false);
+  }, [timeoutError]);
+
   return (
     <>
       <div>
         <div>
-          {timeoutError ? (
-            <ChainErrorPage />
-          ) : (
+          <div
+            className={`${
+              usePopupSize && 'min-w-popup min-h-popup'
+            } relative z-20 flex flex-col items-center justify-center w-full bg-transparent`}
+          >
             <div
-              className={`${
-                usePopupSize && 'min-w-popup min-h-popup'
-              } relative z-20 flex flex-col items-center justify-center w-full bg-transparent`}
+              className={`flex items-center justify-center opacity-${opacity} ${
+                timeoutError && 'mt-32'
+              } `}
             >
-              <div
-                className={`flex items-center justify-center opacity-${opacity} ${
-                  timeoutError && 'mt-32'
-                } `}
-              >
-                <Icon
-                  name="loading"
-                  className="text-brand-white animate-spin-slow"
-                />
-              </div>
+              <Icon
+                name="loading"
+                className="text-brand-white animate-spin-slow"
+              />
             </div>
-          )}
+          </div>
         </div>
       </div>
     </>

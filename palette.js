@@ -71,6 +71,7 @@ module.exports = {
     blue100: '#4CA1CF',
     assetGuidText: 'rgba(133, 182, 255, 0.6)',
     pink: '#9F0949',
+    pink200: '#FF3E91',
     blue: '#4D76B8',
     blue100: '#C9DEFF',
     blue200: '#4CA1CF',
