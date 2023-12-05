@@ -81,6 +81,11 @@ export const ChainErrorPage = () => {
           <div className="flex flex-col mb-2">
             <div
               className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+              onClick={() =>
+                navigate('/switch-network', {
+                  state: { switchingFromTimeError: true },
+                })
+              }
             >
               Go to another network
             </div>

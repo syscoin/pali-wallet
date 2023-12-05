@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from '..';
-import { ChainErrorPage } from 'pages/Chain';
 import { RootState } from 'state/store';
 
 const FIVE_SECONDS = 5000;
