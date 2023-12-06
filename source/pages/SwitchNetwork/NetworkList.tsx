@@ -46,31 +46,27 @@ export const NetworkList = () => {
     ? (newNetworks = Object.values(networks.ethereum))
     : (newNetworks = Object.values(networks.syscoin));
 
-  const testnetNetworks = newNetworks.filter((objeto) =>
-    objeto.label.includes('Testnet')
-  );
+  const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
 
-  const mainetNetworks = newNetworks.filter((objeto) =>
-    ['Mainnet', 'NEVM', 'Rollux'].some((substring) =>
-      objeto.label.includes(substring)
-    )
+  const mainetNetworks = newNetworks.filter(
+    (objeto) => objeto?.isTestnet !== true
   );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
-    const cannotContinueWithTrezorAccount =
-      // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
-      (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
-      (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
-      // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
-      (Object.keys(networks.ethereum).find(
-        (chainId) => `${activeNetwork.chainId}` === chainId
-      ) &&
-        Object.keys(networks.syscoin).find(
-          (chainId) => `${network.chainId}` === chainId
-        ) &&
-        `${network.slip44}` !== 'undefined' &&
-        (activeAccountType === KeyringAccountType.Trezor ||
-          activeAccountType === KeyringAccountType.Ledger));
+    // const cannotContinueWithTrezorAccount =
+    //   // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
+    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
+    //   // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+    //   (Object.keys(networks.ethereum).find(
+    //     (chainId) => `${activeNetwork.chainId}` === chainId
+    //   ) &&
+    //     Object.keys(networks.syscoin).find(
+    //       (chainId) => `${network.chainId}` === chainId
+    //     ) &&
+    //     `${network.slip44}` !== 'undefined' &&
+    //     (activeAccountType === KeyringAccountType.Trezor ||
+    //       activeAccountType === KeyringAccountType.Ledger));
 
     try {
       store.dispatch(setOpenDAppErrorModal(false));
