@@ -1,8 +1,6 @@
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
-import { detectCollectibles } from '@pollum-io/sysweb3-utils';
-
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
