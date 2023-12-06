@@ -7,6 +7,7 @@ import ethChainImg from 'assets/images/ethChain.svg';
 import rolluxChainImg from 'assets/images/rolluxChain.png';
 import sysChainImg from 'assets/images/sysChain.svg';
 import { RootState } from 'state/store';
+import { getController } from 'utils/browser';
 
 export const EvmNftsList = () => {
   const {
@@ -77,7 +78,7 @@ export const EvmNftsList = () => {
 
   useEffect(() => {
     getUserNfts();
-  }, [userAddress, chainId]);
+  }, [userAddress, activeNetwork.chainId]);
 
   return (
     <div className="flex flex-col gap-6 mt-6">

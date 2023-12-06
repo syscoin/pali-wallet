@@ -55,6 +55,16 @@ export interface IMainController extends IKeyringManager {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
+  fetchAndUpdateNftsState: ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => Promise<void>;
   forgetWallet: (pwd: string) => void;
   getAssetInfo: (
     type: string,
@@ -86,8 +96,8 @@ export interface IMainController extends IKeyringManager {
     index: string,
     isAlreadyConnected: boolean
   ) => Promise<any>;
-  lock: () => void;
 
+  lock: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -110,11 +120,6 @@ export interface IMainController extends IKeyringManager {
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
   setAutolockTimer: (minutes: number) => void;
-  setEvmTransactionAsAccelerated: (
-    oldTxHash: string,
-    chainID: number,
-    newTxValue: IEvmTransactionResponse
-  ) => void;
   setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
@@ -141,6 +146,11 @@ export interface IMainController extends IKeyringManager {
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) => void;
+  setEvmTransactionAsAccelerated: (
+    oldTxHash: string,
+    chainID: number,
+    newTxValue: IEvmTransactionResponse
+  ) => void;
   updateUserNativeBalance: ({
     isBitcoinBased,
     activeNetwork,
