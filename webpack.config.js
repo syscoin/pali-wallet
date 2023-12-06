@@ -103,18 +103,18 @@ module.exports = {
   },
 
   module: {
-    rules: [
+    defaultRules: [
       {
-        type: 'javascript/auto', // prevent webpack handling json with its own loaders,
-        test: /manifest\.json$/,
-        use: {
-          loader: 'wext-manifest-loader',
-          options: {
-            usePackageJSONVersion: true, // set to false to not use package.json version for manifest
-          },
-        },
-        exclude: /node_modules/,
+        type: 'javascript/auto',
+        resolve: {},
       },
+      {
+        test: /\.json$/i,
+        type: 'json',
+      },
+    ],
+
+    rules: [
       {
         test: /\.txt$/i,
         type: 'asset/source', // replaced raw-loader
@@ -231,6 +231,22 @@ module.exports = {
     // copy static assets
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: './manifest.json',
+          to: path.join(__dirname, 'build/chrome'),
+          force: true,
+          transform: function (content, path) {
+            return Buffer.from(
+              JSON.stringify({
+                ...JSON.parse(content.toString()),
+              })
+            );
+          },
+        },
+      ],
     }),
     new NodePolyfillPlugin(),
   ],

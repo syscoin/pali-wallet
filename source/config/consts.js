@@ -25,17 +25,8 @@ const MV2_OPTIONS = {
     'webRequest',
   ],
   content_security_policy: "script-src 'self'; object-src 'self'",
-  '__chrome|firefox__author': 'pollum labs',
-  __opera__developer: {
-    name: 'pollum labs',
-  },
-  __firefox__applications: {
-    gecko: {
-      id: '{b3e96b5f-b5bf-8b48-846b-52f430365e80}',
-    },
-  },
-  __chrome__minimum_chrome_version: '49',
-  __opera__minimum_opera_version: '36',
+  author: 'pollum labs',
+  minimum_chrome_version: '49',
   browser_action: {
     default_popup: 'app.html',
     default_icon: {
@@ -45,12 +36,11 @@ const MV2_OPTIONS = {
       128: 'assets/icons/favicon-128.png',
     },
     default_title: 'Pali Wallet',
-    '__chrome|opera__chrome_style': false,
-    __firefox__browser_style: false,
+    chrome_style: false,
   },
   background: {
     scripts: ['js/webextension.bundle.js', 'js/background.bundle.js'],
-    '__chrome|opera__persistent': true,
+    persistent: true,
   },
   content_scripts: [
     {
@@ -93,7 +83,7 @@ const MV3_OPTIONS = {
   },
   description: 'A Non-Custodial Crypto Wallet',
   short_name: 'pali',
-  permissions: ['storage', 'activeTab', 'clipboardWrite'],
+  permissions: ['storage', 'activeTab', 'clipboardWrite', 'unlimitedStorage'],
   host_permissions: [
     'http://*/*',
     'https://*/*',
@@ -101,6 +91,11 @@ const MV3_OPTIONS = {
     '*://*.eth/',
     'http://localhost:8545/',
   ],
+  content_security_policy: {
+    extension_pages: "script-src 'self'; object-src 'self'",
+  },
+  author: 'pollum labs',
+  minimum_chrome_version: '49',
   action: {
     default_popup: 'app.html',
     default_icon: {
@@ -128,7 +123,6 @@ const MV3_OPTIONS = {
       ],
       js: ['js/webextension.bundle.js', 'js/trezorScript.bundle.js'],
     },
-    ,
   ],
   web_accessible_resources: [
     {
@@ -147,17 +141,6 @@ const MV3_OPTIONS = {
       },
     },
   },
-  '__chrome|firefox__author': 'pollum labs',
-  __opera__developer: {
-    name: 'pollum labs',
-  },
-  __firefox__applications: {
-    gecko: {
-      id: '{b3e96b5f-b5bf-8b48-846b-52f430365e80}',
-    },
-  },
-  __chrome__minimum_chrome_version: '49',
-  __opera__minimum_opera_version: '36',
 };
 
 module.exports = {
