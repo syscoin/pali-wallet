@@ -1054,11 +1054,20 @@ const MainController = (walletState): IMainController => {
     return fetchedNfts;
   };
 
-  const updateNftsState = async (nfts: INftsStructure[]) => {
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+  const fetchAndUpdateNftsState = async ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => {
+    const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    const { currentPromise: assetsPromise, cancel } =
+    const { currentPromise: nftsPromises, cancel } =
       cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
@@ -1069,6 +1078,7 @@ const MainController = (walletState): IMainController => {
               activeNetwork.chainId,
               activeNetwork.url
             );
+
             const validateUpdatedAndPreviousNftsLength =
               updatedNfts.length < currentAccount.assets.nfts.length;
 
@@ -1112,12 +1122,12 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    cancellablePromises.setPromise(PromiseTargets.ASSETS, {
-      assetsPromise,
+    cancellablePromises.setPromise(PromiseTargets.NFTS, {
+      nftsPromises,
       cancel,
     });
 
-    cancellablePromises.runPromise(PromiseTargets.ASSETS);
+    cancellablePromises.runPromise(PromiseTargets.NFTS);
   };
 
   //---- END NFTS METHODS ----//
@@ -1599,6 +1609,7 @@ const MainController = (walletState): IMainController => {
     setEvmTransactionAsAccelerated,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
+    fetchAndUpdateNftsState,
     updateUserNativeBalance,
     updateUserTransactionsState,
     getLatestUpdateForCurrentAccount,

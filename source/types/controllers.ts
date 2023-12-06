@@ -55,6 +55,16 @@ export interface IMainController extends IKeyringManager {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
+  fetchAndUpdateNftsState: ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => Promise<void>;
   forgetWallet: (pwd: string) => void;
   getAssetInfo: (
     type: string,
@@ -86,7 +96,6 @@ export interface IMainController extends IKeyringManager {
     index: string,
     isAlreadyConnected: boolean
   ) => Promise<any>;
-  lock: () => void;
 
   removeKeyringNetwork: (
     chain: string,
@@ -141,6 +150,7 @@ export interface IMainController extends IKeyringManager {
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) => void;
+  lock: () => void;
   updateUserNativeBalance: ({
     isBitcoinBased,
     activeNetwork,
