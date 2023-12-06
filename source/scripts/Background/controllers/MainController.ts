@@ -16,7 +16,11 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
-import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
+import {
+  INftsStructure,
+  getSearch,
+  getTokenStandardMetadata,
+} from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
@@ -40,6 +44,7 @@ import {
   initialState,
   setIsLoadingAssets,
   setIsLoadingBalances,
+  setIsLoadingNfts,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
   setAdvancedSettings as setSettings,
@@ -48,6 +53,7 @@ import {
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setUpdatedNftsToState,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -65,6 +71,7 @@ import AssetsManager from './assets';
 import BalancesManager from './balances';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
   PromiseTargets,
@@ -77,6 +84,7 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
+  const nftsController = NftsController();
   let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
@@ -208,6 +216,7 @@ const MainController = (walletState): IMainController => {
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
+        nfts: [],
       },
       transactions: {
         ethereum: {},
@@ -276,6 +285,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: initialSysAssetsForAccount,
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {
@@ -291,6 +301,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: [],
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {},
@@ -1026,6 +1037,90 @@ const MainController = (walletState): IMainController => {
 
     return importedAccount;
   };
+
+  //---- NFTS METHODS ----//
+
+  const getUserNftsByNetwork = async (
+    userAddress: string,
+    chainId: number,
+    rpcUrl: string
+  ) => {
+    const fetchedNfts = await nftsController.getUserNfts(
+      userAddress,
+      chainId,
+      rpcUrl
+    );
+
+    return fetchedNfts;
+  };
+
+  const updateNftsState = async (nfts: INftsStructure[]) => {
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    const { currentPromise: assetsPromise, cancel } =
+      cancellablePromises.createCancellablePromise<void>(
+        async (resolve, reject) => {
+          try {
+            store.dispatch(setIsLoadingNfts(true));
+
+            const updatedNfts = await getUserNftsByNetwork(
+              currentAccount.address,
+              activeNetwork.chainId,
+              activeNetwork.url
+            );
+            const validateUpdatedAndPreviousNftsLength =
+              updatedNfts.length < currentAccount.assets.nfts.length;
+
+            const validateIfUpdatedNftsStayEmpty =
+              currentAccount.assets.nfts.length > 0 && isEmpty(updatedNfts);
+
+            const validateIfNftsUpdatedIsEmpty = isEmpty(updatedNfts);
+
+            const validateIfNotNullNftsValues = updatedNfts.some((value) =>
+              isNil(value)
+            );
+
+            const validateIfIsInvalidDispatch =
+              validateUpdatedAndPreviousNftsLength ||
+              validateIfUpdatedNftsStayEmpty ||
+              validateIfNftsUpdatedIsEmpty ||
+              validateIfNotNullNftsValues;
+
+            if (validateIfIsInvalidDispatch) {
+              resolve();
+              return;
+            }
+
+            store.dispatch(
+              setUpdatedNftsToState({
+                id: activeAccount.id,
+                type: activeAccount.type,
+                updatedNfts,
+              })
+            );
+
+            store.dispatch(setIsLoadingNfts(false));
+            resolve();
+          } catch (error) {
+            if (error && store.getState().vault.isLoadingNfts) {
+              store.dispatch(setIsLoadingNfts(false));
+            }
+
+            reject(error);
+          }
+        }
+      );
+
+    cancellablePromises.setPromise(PromiseTargets.ASSETS, {
+      assetsPromise,
+      cancel,
+    });
+
+    cancellablePromises.runPromise(PromiseTargets.ASSETS);
+  };
+
+  //---- END NFTS METHODS ----//
 
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {

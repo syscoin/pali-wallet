@@ -17,6 +17,7 @@ import { getController } from 'utils/browser';
 import { truncate, formatCurrency } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
+import { EvmNftsList } from './EvmNftsList';
 
 interface IDefaultEvmAssets {
   searchValue: string;
@@ -195,10 +196,14 @@ export const EvmAssetsList = () => {
             setSortyByValue={setSortyByValue}
           />
 
-          <DefaultEvmAssets
-            searchValue={searchValue}
-            sortByValue={sortByValue}
-          />
+          {isCoinSelected ? (
+            <DefaultEvmAssets
+              searchValue={searchValue}
+              sortByValue={sortByValue}
+            />
+          ) : (
+            <EvmNftsList />
+          )}
         </>
       )}
     </>
