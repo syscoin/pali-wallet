@@ -1098,6 +1098,7 @@ const MainController = (walletState): IMainController => {
               validateIfNotNullNftsValues;
 
             if (validateIfIsInvalidDispatch) {
+              store.dispatch(setIsLoadingNfts(false));
               resolve();
               return;
             }

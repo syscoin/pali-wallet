@@ -8,6 +8,7 @@ import {
 } from 'react-icons/all';
 import { useSelector } from 'react-redux';
 
+import { EvmNftsList } from '../Nfts/EvmNftsList';
 import { LoadingComponent } from 'components/Loading';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -17,7 +18,6 @@ import { getController } from 'utils/browser';
 import { truncate, formatCurrency } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
-import { EvmNftsList } from './EvmNftsList';
 
 interface IDefaultEvmAssets {
   searchValue: string;
@@ -183,9 +183,11 @@ export const EvmAssetsList = () => {
 
   const { isLoadingAssets } = useSelector((state: RootState) => state.vault);
 
+  const loadingValidation = isCoinSelected && isLoadingAssets;
+
   return (
     <>
-      {isLoadingAssets ? (
+      {loadingValidation ? (
         <LoadingComponent />
       ) : (
         <>

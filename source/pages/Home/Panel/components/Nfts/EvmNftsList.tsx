@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import ethChainImg from 'assets/images/ethChain.svg';
-import rolluxChainImg from 'assets/images/rolluxChain.png';
-import sysChainImg from 'assets/images/sysChain.svg';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
+
+import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
+import { getChainImage } from './GetChainImage';
+
 export const EvmNftsList = () => {
   const controller = getController();
-
+  const { navigate } = useUtils();
   const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
@@ -20,6 +22,10 @@ export const EvmNftsList = () => {
 
   const userAccount = accounts[activeAccount.type][activeAccount.id];
 
+  const userNftsFromCurrentChain = userAccount.assets.nfts.filter(
+    (nft) => Number(nft.chainId) === activeNetwork.chainId
+  );
+
   const getUserNfts = async () => {
     try {
       await controller.wallet.fetchAndUpdateNftsState({
@@ -27,7 +33,7 @@ export const EvmNftsList = () => {
         activeNetwork,
       });
 
-      const groupSameCollection = (data) => {
+      const groupSameCollection = (data: INftsStructure[]) => {
         const groups = {};
 
         data.forEach((item) => {
@@ -43,37 +49,12 @@ export const EvmNftsList = () => {
         return groups;
       };
 
-      const grouped = groupSameCollection(userAccount.assets.nfts);
+      const grouped = groupSameCollection(userNftsFromCurrentChain);
 
       setNftsGrouped(grouped);
     } catch (error) {
       console.error('Erro ao obter NFTs:', error);
     }
-  };
-
-  const getChainImage = (chain) => {
-    let chainImage: string;
-
-    switch (chain) {
-      case 1:
-        chainImage = ethChainImg;
-        break;
-      case 57:
-        chainImage = sysChainImg;
-        break;
-      case 570:
-        chainImage = rolluxChainImg;
-        break;
-      case 5700:
-        chainImage = rolluxChainImg;
-        break;
-      default:
-        <div
-          className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-          style={{ width: '100px', height: '100px' }}
-        ></div>;
-    }
-    return chainImage;
   };
 
   useEffect(() => {
@@ -82,7 +63,7 @@ export const EvmNftsList = () => {
 
   return (
     <div className="flex flex-col gap-6 mt-6">
-      {userAccount.assets.nfts &&
+      {userNftsFromCurrentChain &&
         Object.entries(nftsGrouped).map(([collections, nfts]) => (
           <div
             key={collections}
@@ -113,7 +94,12 @@ export const EvmNftsList = () => {
                 <img
                   key={index}
                   id="nft-image"
-                  className="rounded-[10px] w-[153px] h-[153px]"
+                  className="rounded-[10px] w-[153px] h-[153px] cursor-pointer"
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: { nftId: data.token_id, nftAddress: data.address },
+                    })
+                  }
                   src={data?.image_preview_url}
                 />
               ))}
