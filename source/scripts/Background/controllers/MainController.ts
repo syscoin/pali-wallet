@@ -1045,6 +1045,8 @@ const MainController = (walletState): IMainController => {
     chainId: number,
     rpcUrl: string
   ) => {
+    if (chainId !== 57 && chainId !== 570) return [];
+
     const fetchedNfts = await nftsController.getUserNfts(
       userAddress,
       chainId,
@@ -1078,6 +1080,8 @@ const MainController = (walletState): IMainController => {
               activeNetwork.chainId,
               activeNetwork.url
             );
+
+            console.log('updatedNfts', updatedNfts);
 
             const validateUpdatedAndPreviousNftsLength =
               updatedNfts.length < currentAccount.assets.nfts.length;
