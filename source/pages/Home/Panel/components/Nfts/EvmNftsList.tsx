@@ -10,6 +10,8 @@ import { getController } from 'utils/browser';
 import { getChainImage } from './GetChainImage';
 
 export const EvmNftsList = () => {
+  const videoFormats = ['.mp4', '.webm', '.avi', '.mp3'];
+
   const controller = getController();
   const { navigate } = useUtils();
   const { accounts, activeAccount, activeNetwork } = useSelector(
@@ -50,7 +52,6 @@ export const EvmNftsList = () => {
       };
 
       const grouped = groupSameCollection(userNftsFromCurrentChain);
-
       setNftsGrouped(grouped);
     } catch (error) {
       console.error('Erro ao obter NFTs:', error);
@@ -60,6 +61,15 @@ export const EvmNftsList = () => {
   useEffect(() => {
     getUserNfts();
   }, [userAccount.address, activeNetwork.chainId]);
+
+  const handleNavigateToNftDetail = (tokenId, address) => {
+    navigate('/home/details', {
+      state: {
+        nftId: tokenId,
+        nftAddress: address,
+      },
+    });
+  };
 
   return (
     <div className="flex flex-col gap-6 mt-6">
@@ -89,19 +99,36 @@ export const EvmNftsList = () => {
                 {nfts[0]?.collection?.name}
               </div>
             </div>
-            <div className="flex gap-2 items-start">
+
+            <div className="flex gap-2 items-start flex-wrap">
               {nfts.map((data, index) => (
-                <img
-                  key={index}
-                  id="nft-image"
-                  className="rounded-[10px] w-[153px] h-[153px] cursor-pointer"
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: { nftId: data.token_id, nftAddress: data.address },
-                    })
-                  }
-                  src={data?.image_preview_url}
-                />
+                <div key={index} className="rounded-[10px] overflow-hidden">
+                  {videoFormats.some((format) =>
+                    data.image_preview_url.endsWith(format)
+                  ) ? (
+                    <video
+                      className="max-w-none w-[153px] h-[153px] hover:cursor-pointer"
+                      autoPlay
+                      muted
+                      loop
+                      onClick={() =>
+                        handleNavigateToNftDetail(data.token_id, data.address)
+                      }
+                    >
+                      <source src={data.image_preview_url} type="video/mp4" />
+                      Video not supported
+                    </video>
+                  ) : (
+                    <img
+                      id="nft-image"
+                      className="rounded-[10px] w-[153px] h-[153px] cursor-pointer"
+                      onClick={() =>
+                        handleNavigateToNftDetail(data.token_id, data.address)
+                      }
+                      src={data?.image_preview_url}
+                    />
+                  )}
+                </div>
               ))}
             </div>
             <div id="nft-by" className="overflow-hidden max-w-[100px]">

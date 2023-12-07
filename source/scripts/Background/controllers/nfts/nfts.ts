@@ -15,7 +15,11 @@ const NftsController = () => {
     chainId: number,
     rpcUrl: string
   ) => {
-    const userNfts = await detectCollectibles(userAddress, chainId, rpcUrl);
+    const userNfts = await detectCollectibles(
+      '0xEaA9eD27e5521A2721cBC6C5FE7B790CefEf520b',
+      chainId,
+      rpcUrl
+    );
 
     return validateAndManagerUserNfts(userNfts);
   };
