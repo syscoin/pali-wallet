@@ -32,6 +32,18 @@ export const EthProvider = (host: string) => {
       validateTxToAddress
     ) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
+
+    //Open Contract Interaction component
+    if (validateTxToAddress.contract || !isLegacyTx) {
+      const resp = await popupPromise({
+        host,
+        data: { tx, decodedTx, external: true },
+        route: 'tx/send/ethTx',
+        eventName: 'txSend',
+      });
+      return resp;
+    }
+
     //Open Send Component
     if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
       const resp = await popupPromise({
@@ -41,16 +53,6 @@ export const EthProvider = (host: string) => {
         eventName: 'nTokenTx',
       });
 
-      return resp;
-    }
-    //Open Contract Interaction component
-    if (validateTxToAddress.contract) {
-      const resp = await popupPromise({
-        host,
-        data: { tx, decodedTx, external: true },
-        route: 'tx/send/ethTx',
-        eventName: 'txSend',
-      });
       return resp;
     }
 
