@@ -2273,8 +2273,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
   integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@file:../sysweb3/packages/sysweb3-keyring/dist":
+"@pollum-io/sysweb3-keyring@^1.0.475":
   version "1.0.475"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.475.tgz#418ae5fe36d1714758a284109ed309ad0d2204af"
+  integrity sha512-IvdKpgwf4KFSOfUQew7DCIh6EHi67u51x0ZB3NKsUDTrgyOgsn/tR6kKMnBsZPccY/yiS8OQAojH98u0/+oGlQ==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2283,7 +2285,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@pollum-io/sysweb3-core" "1.0.26"
     "@pollum-io/sysweb3-network" "1.0.94"
-    "@pollum-io/sysweb3-utils" "file:../sysweb3/packages/sysweb3-utils/dist"
+    "@pollum-io/sysweb3-utils" "^1.1.231"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/utxo-lib" "^1.0.12"
     axios "^1.6.0"
@@ -2319,29 +2321,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@/home/gabrielprediger/Projetos/Pollum/Pali/sysweb3/packages/sysweb3-utils/dist":
+"@pollum-io/sysweb3-utils@^1.1.231":
   version "1.1.231"
-  dependencies:
-    "@ethersproject/contracts" "^5.6.2"
-    axios "^0.26.1"
-    bech32 "^2.0.0"
-    bip32 "^3.0.1"
-    bip44-constants "^114.0.0"
-    bip84 "^0.2.7"
-    bitcoinjs-lib "^5.2.0"
-    camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
-    crypto-js "^4.1.1"
-    eth-object "https://github.com/syscoin/eth-object.git"
-    eth-proof "^2.1.6"
-    eth-util-lite "^1.0.1"
-    ethers "^5.6.4"
-    syscoinjs-lib "^1.0.218"
-    syscointx-js "^1.0.106"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-utils@file:../sysweb3/packages/sysweb3-utils/dist":
-  version "1.1.231"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.231.tgz#ba866a276121922e36cb1edecf32e90349771647"
+  integrity sha512-7prNARyaroykOibpCPJpT3O/z815rsNSCrWhrfnlCzjNQvNmVroAmfmvdRzS9JH+9XoO74hWFoIsVCv0wI7l+A==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"

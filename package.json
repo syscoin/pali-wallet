@@ -1,6 +1,6 @@
 {
   "name": "paliwallet",
-  "version": "2.0.11",
+  "version": "2.0.12",
   "description": "A Non-Custodial Crypto Wallet",
   "private": true,
   "repository": {
@@ -48,9 +48,9 @@
     "@babel/runtime": "^7.21.5",
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
-    "@pollum-io/sysweb3-keyring": "/home/gabrielprediger/Projetos/Pollum/Pali/sysweb3/packages/sysweb3-keyring/dist",
+    "@pollum-io/sysweb3-keyring": "^1.0.475",
     "@pollum-io/sysweb3-network": "1.0.94",
-    "@pollum-io/sysweb3-utils": "/home/gabrielprediger/Projetos/Pollum/Pali/sysweb3/packages/sysweb3-utils/dist",
+    "@pollum-io/sysweb3-utils": "^1.1.231",
     "@reduxjs/toolkit": "^1.4.0",
     "@tippyjs/react": "^4.2.6",
     "@types/chrome": "^0.0.235",
