@@ -5,7 +5,7 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import PaliLogo from 'assets/icons/favicon-32.png';
+import PaliLogo from 'assets/icons/pali-blank.png';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';

@@ -68,14 +68,6 @@ export const EvmNftsList = () => {
     });
   };
 
-  const getCollectionImage = (imageUrl?: string): string => {
-    if (imageUrl) {
-      return imageUrl;
-    } else {
-      return dafaultImage;
-    }
-  };
-
   useEffect(() => {
     getUserNfts();
   }, [userAccount.address, activeNetwork.chainId]);
@@ -96,11 +88,11 @@ export const EvmNftsList = () => {
                 <div className="relative">
                   <img
                     className="w-[35px] h-[35px] rounded-[100px]"
-                    src={nfts[0]?.collection?.image_url}
+                    src={nfts[0]?.collection?.image_url || dafaultImage}
                   />
                   <img
                     className="absolute top-[18px] left-[24px] w-[17.246px] h-[17.246px] rounded-[100px]"
-                    src={getChainImage(nfts[0]?.chainId)}
+                    src={nfts[0]?.chainId}
                   />
                 </div>
               )}
@@ -134,7 +126,7 @@ export const EvmNftsList = () => {
                       onClick={() =>
                         handleNavigateToNftDetail(data.token_id, data.address)
                       }
-                      src={getCollectionImage(data?.image_preview_url)}
+                      src={data?.image_preview_url}
                     />
                   )}
                 </div>
