@@ -5,6 +5,7 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
+import PaliLogo from 'assets/icons/favicon-32.png';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -44,12 +45,14 @@ export const NftsDetails = ({
       .toLowerCase()
       .replaceAll(' ', '-');
 
-    return `${defaultUrl}/${collectionNameTransformed}/${label}/${Number(
-      currentNft.token_id
-    )}`;
+    return window.open(
+      `${defaultUrl}/${collectionNameTransformed}/${label}/${Number(
+        currentNft.token_id
+      )}`,
+      '_blank',
+      'noopener, noreferrer'
+    );
   };
-
-  console.log('current nft', currentNft);
 
   const adjustedExplorer = useMemo(
     () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
@@ -66,13 +69,13 @@ export const NftsDetails = ({
   return (
     <>
       {currentNft.address ? (
-        <>
+        <div className="pb-6">
           <div className="w-full flex flex-col items-center justify-center gap-y-4">
             <div>
               <img
                 id={`${currentNft.name}`}
                 className="rounded-[10px] w-[153px] h-[153px]"
-                src={currentNft?.image_preview_url}
+                src={currentNft?.image_preview_url || PaliLogo}
               />
             </div>
 
@@ -106,31 +109,29 @@ export const NftsDetails = ({
             </div>
           </div>
 
-          <div className="w-full flex flex-col gap-y-4">
+          <div className="w-full flex flex-col gap-y-4 my-4">
             <div
               className="w-full bg-brand-blue800 flex flex-col items-start gap-y-3"
               style={{ borderRadius: '20px', padding: '17px 16px' }}
             >
               <p className="font-poppins font-bold text-base">About</p>
 
-              <p className="text-xs font-normal text-justify">
-                {currentNft.description}
-              </p>
+              <p className="text-xs font-normal">{currentNft.description}</p>
 
               <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
                 <p className="text-brand-gray200">Created by:</p>
 
                 <img
                   className="w-6 h-6 rounded-full"
-                  src={currentNft.creator.profile_img_url}
-                  alt={currentNft.creator.user.username}
+                  src={currentNft.creator?.profile_img_url || PaliLogo}
+                  alt={currentNft.creator?.user?.username}
                 />
 
                 <span
                   className="text-ellipsis overflow-hidden text-brand-white"
                   style={{ maxWidth: '60%' }}
                 >
-                  {currentNft.creator.user.username}
+                  {currentNft.creator?.user?.username || 'Luxy User'}
                 </span>
               </div>
             </div>
@@ -146,8 +147,8 @@ export const NftsDetails = ({
               <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
                 <img
                   className="w-6 h-6 rounded-full"
-                  src={currentNft.collection.image_url}
-                  alt={currentNft.collection.name}
+                  src={currentNft.collection?.image_url || PaliLogo}
+                  alt={currentNft.collection?.name}
                 />
 
                 <span className="text-brand-gray200">
@@ -155,8 +156,8 @@ export const NftsDetails = ({
                 </span>
               </div>
 
-              <p className="text-xs font-normal text-justify">
-                {currentNft.collection.description}
+              <p className="text-xs font-normal">
+                {currentNft.collection?.description}
               </p>
             </div>
 
@@ -208,7 +209,7 @@ export const NftsDetails = ({
             </div>
           </div>
 
-          <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100">
+          <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
             <a
               href={`${adjustedExplorer}address/${currentNft.address}`}
               target="_blank"
@@ -223,15 +224,19 @@ export const NftsDetails = ({
           </div>
 
           <div className="flex flex-col items-center justify-center w-full">
-            <div className="w-full">
-              <Button type="button">
-                <a href={openOnLuxy()}>See on LUXY</a>
+            <div className="w-full flex justify-between items-center">
+              <Button
+                type="button"
+                className="h-10 py-2.5 border rounded-full"
+                onClick={() => openOnLuxy()}
+              >
+                See on LUXY
               </Button>
 
               <NeutralButton type="button">{t('buttons.send')}</NeutralButton>
             </div>
           </div>
-        </>
+        </div>
       ) : null}
     </>
   );
