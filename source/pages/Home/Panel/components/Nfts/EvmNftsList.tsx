@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
+import dafaultImage from 'assets/images/pali-blank.png';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -10,7 +11,7 @@ import { getController } from 'utils/browser';
 import { getChainImage } from './GetChainImage';
 
 export const EvmNftsList = () => {
-  const videoFormats = ['.mp4', '.webm', '.avi', '.mp3'];
+  const videoFormats = ['.mp4', '.webm', '.avi', '.ogg'];
 
   const controller = getController();
   const { navigate } = useUtils();
@@ -58,10 +59,6 @@ export const EvmNftsList = () => {
     }
   };
 
-  useEffect(() => {
-    getUserNfts();
-  }, [userAccount.address, activeNetwork.chainId]);
-
   const handleNavigateToNftDetail = (tokenId, address) => {
     navigate('/home/details', {
       state: {
@@ -70,6 +67,18 @@ export const EvmNftsList = () => {
       },
     });
   };
+
+  const getCollectionImage = (imageUrl?: string): string => {
+    if (imageUrl) {
+      return imageUrl;
+    } else {
+      return dafaultImage;
+    }
+  };
+
+  useEffect(() => {
+    getUserNfts();
+  }, [userAccount.address, activeNetwork.chainId]);
 
   return (
     <div className="flex flex-col gap-6 mt-6">
@@ -125,7 +134,7 @@ export const EvmNftsList = () => {
                       onClick={() =>
                         handleNavigateToNftDetail(data.token_id, data.address)
                       }
-                      src={data?.image_preview_url}
+                      src={getCollectionImage(data?.image_preview_url)}
                     />
                   )}
                 </div>
