@@ -59,13 +59,8 @@ export const Router = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const {
-    isTimerEnabled,
-    isBitcoinBased,
-    isNetworkChanging,
-    activeNetwork,
-    hasErrorOndAppEVM,
-  } = useSelector((state: RootState) => state.vault);
+  const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
@@ -143,13 +138,6 @@ export const Router = () => {
       setShowModal(true);
     }
   }, [serverHasAnError]);
-
-  // useEffect(() => {
-  //   if (hasErrorOndAppEVM) {
-  //     console.log('abrir o modal');
-  //     navigate('switch-network');
-  //   }
-  // }, [hasErrorOndAppEVM]);
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,

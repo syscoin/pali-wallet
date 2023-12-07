@@ -2,12 +2,10 @@ import { uniqueId } from 'lodash';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import networkImg from 'assets/icons/network.svg';
 import { Button } from 'components/Button';
-import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
@@ -19,7 +17,6 @@ export const NetworkList = () => {
     current: null,
     chain: '',
   });
-  const { navigate } = useUtils();
   const {
     networkThatNeedsChanging,
     networkDescription,
@@ -28,16 +25,9 @@ export const NetworkList = () => {
     rightLogo,
   } = useNetworkInfo();
   const { wallet } = getController();
-  const { isBitcoinBased, hasErrorOndAppEVM } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const {
-    activeAccount: { type: activeAccountType },
-  } = useSelector((state: RootState) => state.vault);
+
   const networks = useSelector((state: RootState) => state.vault.networks);
 
   let newNetworks;

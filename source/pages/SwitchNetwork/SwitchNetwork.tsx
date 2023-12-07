@@ -2,7 +2,6 @@ import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import warningImg from 'assets/icons/warn.svg';
-// import { Header } from 'components/Header';
 import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';
 
