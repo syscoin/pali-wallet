@@ -92,7 +92,7 @@ export const EvmNftsList = () => {
                   />
                   <img
                     className="absolute top-[18px] left-[24px] w-[17.246px] h-[17.246px] rounded-[100px]"
-                    src={nfts[0]?.chainId}
+                    src={getChainImage(nfts[0]?.chainId)}
                   />
                 </div>
               )}
