@@ -5,7 +5,7 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import PaliLogo from 'assets/icons/pali-blank.png';
+import PaliLogo from 'assets/images/pali-blank.png';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -175,7 +175,9 @@ export const NftsDetails = ({
                   <p className="font-normal text-xs">Token ID</p>
                   <p className="flex items-center font-normal gap-x-1.5 text-xs">
                     <span className="text-brand-white">
-                      {currentNft.token_id}
+                      {currentNft.token_id.length > 9
+                        ? ellipsis(currentNft.token_id)
+                        : currentNft.token_id}
                     </span>
 
                     <CopyIcon
