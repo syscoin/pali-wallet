@@ -1091,11 +1091,15 @@ const MainController = (walletState): IMainController => {
               isNil(value)
             );
 
+            const validateIfIsSameLength =
+              updatedNfts.length === currentAccount.assets.nfts.length;
+
             const validateIfIsInvalidDispatch =
               validateUpdatedAndPreviousNftsLength ||
               validateIfUpdatedNftsStayEmpty ||
               validateIfNftsUpdatedIsEmpty ||
-              validateIfNotNullNftsValues;
+              validateIfNotNullNftsValues ||
+              validateIfIsSameLength;
 
             if (validateIfIsInvalidDispatch) {
               store.dispatch(setIsLoadingNfts(false));

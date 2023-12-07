@@ -15,17 +15,13 @@ const NftsController = () => {
     chainId: number,
     rpcUrl: string
   ) => {
-    const userNfts = await detectCollectibles(
-      '0xEaA9eD27e5521A2721cBC6C5FE7B790CefEf520b',
-      chainId,
-      rpcUrl
-    );
+    const userNfts = await detectCollectibles(userAddress, chainId, rpcUrl);
 
     return validateAndManagerUserNfts(userNfts);
   };
 
   const validateAndManagerUserNfts = (fetchedNfts: INftsStructure[]) => {
-    if (fetchedNfts.length === 0) return [];
+    if (fetchedNfts?.length === 0) return [];
 
     const { accounts, activeAccount } = store.getState().vault;
 
@@ -47,8 +43,10 @@ const NftsController = () => {
       return [];
     }
 
+    const mergedNfts = [...fetchedNfts, ...userClonedNfts];
+
     return uniqWith(
-      flatMap(fetchedNfts),
+      flatMap(mergedNfts),
       (a, b) =>
         a[nftPropertyToUseAtGroupBy[0]] === b[nftPropertyToUseAtGroupBy[0]] &&
         a[nftPropertyToUseAtGroupBy[1]] === b[nftPropertyToUseAtGroupBy[1]] &&
