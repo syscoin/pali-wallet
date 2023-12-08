@@ -141,13 +141,6 @@ export const Router = () => {
     }
   }, [serverHasAnError]);
 
-  // useEffect(() => {
-  //   if (hasErrorOndAppEVM) {
-  //     console.log('abrir o modal');
-  //     navigate('switch-network');
-  //   }
-  // }, [hasErrorOndAppEVM]);
-
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
     url: 'https://blockbook.elint.services/',
