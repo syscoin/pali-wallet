@@ -151,6 +151,7 @@ export interface ITemporaryTransaction {
 export interface ICustomRpcParams {
   apiUrl?: string;
   chainId: number;
+  explorer?: string;
   isSyscoinRpc?: boolean;
   label: string;
   symbol?: string;
