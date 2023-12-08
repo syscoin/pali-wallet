@@ -128,12 +128,12 @@ export const NetworkList = () => {
         ))}
       </div>
       <div className="mt-4">
-        <div className="flex justify-center items-center gap-2 mb-4">
+        {/* <div className="flex justify-center items-center gap-2 mb-4">
           <img src={networkImg} alt="Network Icon" />
           <span className="underline text-white font-normal text-sm">
             Add new network
           </span>
-        </div>
+        </div> */}
         <Button
           type="submit"
           onClick={() =>
