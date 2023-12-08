@@ -7,12 +7,11 @@ import dafaultImage from 'assets/images/pali-blank.png';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { nftsVideoFormats } from 'utils/index';
 
 import { getChainImage } from './GetChainImage';
 
 export const EvmNftsList = () => {
-  const videoFormats = ['.mp4', '.webm', '.avi', '.ogg'];
-
   const controller = getController();
   const { navigate } = useUtils();
   const { accounts, activeAccount, activeNetwork } = useSelector(
@@ -104,7 +103,7 @@ export const EvmNftsList = () => {
             <div className="flex gap-2 items-start flex-wrap">
               {nfts.map((data, index) => (
                 <div key={index} className="rounded-[10px] overflow-hidden">
-                  {videoFormats.some((format) =>
+                  {nftsVideoFormats.some((format) =>
                     data.image_preview_url.endsWith(format)
                   ) ? (
                     <video

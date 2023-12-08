@@ -7,7 +7,12 @@ import { useSelector } from 'react-redux';
 import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { formatCurrency, truncate, camelCaseToText } from 'utils/index';
+import {
+  formatCurrency,
+  truncate,
+  camelCaseToText,
+  syscoinKeysOfInterest,
+} from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { navigate } = useUtils();
@@ -22,21 +27,12 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
   const formattedAsset = [];
 
-  // Define the keys you are interested in
-  const keysOfInterest = [
-    'symbol',
-    'totalReceived',
-    'totalSent',
-    'balance',
-    'decimals',
-  ];
-
   assets.syscoin?.find((asset: any) => {
     if (asset.assetGuid !== id) return null;
 
     for (const [key, value] of Object.entries(asset)) {
       // Check if the key is one of the keys of interest
-      if (!keysOfInterest.includes(key)) continue;
+      if (!syscoinKeysOfInterest.includes(key)) continue;
 
       const formattedKey = camelCaseToText(key);
       const isValid = typeof value !== 'object';

@@ -1,14 +1,13 @@
 import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useMemo } from 'react';
+import React, { Fragment, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import { Icon } from 'components/Icon';
-import { NeutralButton } from 'components/index';
-import { useUtils } from 'hooks/index';
+import { NeutralButton, Icon } from 'components/index';
+import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection } from 'types/tokens';
 import { ellipsis } from 'utils/index';
@@ -34,10 +33,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
   const { explorer } = activeNetwork;
 
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const RenderCollectionItem: React.FC<{ currentNft: IERC1155Collection }> = ({
     currentNft,

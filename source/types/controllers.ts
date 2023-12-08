@@ -97,6 +97,7 @@ export interface IMainController extends IKeyringManager {
     isAlreadyConnected: boolean
   ) => Promise<any>;
 
+  lock: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -150,7 +151,6 @@ export interface IMainController extends IKeyringManager {
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) => void;
-  lock: () => void;
   updateUserNativeBalance: ({
     isBitcoinBased,
     activeNetwork,

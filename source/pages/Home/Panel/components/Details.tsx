@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Layout, Button, Icon } from 'components/index';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 
 import { AssetDetails } from './AssetDetails';
@@ -29,10 +30,7 @@ export const DetailsView = () => {
 
   const { explorer } = activeNetwork;
 
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const openEthExplorer = () => {
     const url = `${adjustedExplorer}${isAsset ? 'address' : 'tx'}/${

@@ -16,11 +16,7 @@ import {
   INetwork,
   INetworkType,
 } from '@pollum-io/sysweb3-network';
-import {
-  INftsStructure,
-  getSearch,
-  getTokenStandardMetadata,
-} from '@pollum-io/sysweb3-utils';
+import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';

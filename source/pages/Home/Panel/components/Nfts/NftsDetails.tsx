@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
@@ -7,7 +7,7 @@ import { useSelector } from 'react-redux';
 
 import PaliLogo from 'assets/images/pali-blank.png';
 import { Button, NeutralButton } from 'components/index';
-import { useUtils } from 'hooks/index';
+import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 
@@ -38,6 +38,8 @@ export const NftsDetails = ({
     (nft) => nft.token_id === nftId && nft.address === nftAddress
   );
 
+  const adjustedExplorer = useAdjustedExplorer(explorer);
+
   const openOnLuxy = () => {
     const defaultUrl = 'https://luxy.io/collections';
 
@@ -53,11 +55,6 @@ export const NftsDetails = ({
       'noopener, noreferrer'
     );
   };
-
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
 
   useEffect(() => {
     if (!copied) return;

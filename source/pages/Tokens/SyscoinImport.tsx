@@ -8,7 +8,7 @@ import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { ErrorModal, NeutralButton, NewDefaultModal } from 'components/index';
+import { ErrorModal, NeutralButton } from 'components/index';
 import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';

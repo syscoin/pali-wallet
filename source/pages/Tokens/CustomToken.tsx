@@ -11,7 +11,7 @@ import {
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
-import { Card, DefaultModal, NeutralButton } from 'components/index';
+import { Card, NeutralButton } from 'components/index';
 import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
