@@ -1,6 +1,7 @@
 import React, { FC } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import dotsImage from 'assets/images/dotsHeader.svg';
 import { Header, Icon, IconButton } from 'components/index';
 
 interface ILayout {
@@ -43,8 +44,8 @@ export const Layout: FC<ILayout> = ({
         className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white ${bgHeader}`}
       >
         <img
-          src="../../assets/images/dotsHeader.svg"
-          alt="Descrição da imagem"
+          src={dotsImage}
+          alt="Image description"
           className="absolute object-cover bg-repeat-x w-full h-full"
         />
 
