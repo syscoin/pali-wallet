@@ -221,6 +221,7 @@ export const methodRequest = async (
             : undefined,
           isSyscoinRpc: false,
           symbol: data.params[0].nativeCurrency.symbol,
+          isTestnet: false,
         };
         const network = await controller.wallet.getRpc(customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
