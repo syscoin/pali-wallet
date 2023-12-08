@@ -40,6 +40,7 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
   removeVerifyPaliRequestListener,
@@ -212,6 +213,7 @@ export const Router = () => {
           path="send/edit/gas"
           element={<ProtectedRoute element={<SendConfirm />} />}
         />
+        <Route path="switch-network" element={<SwitchNetwork />} />
 
         {/* /tokens/add */}
         <Route
