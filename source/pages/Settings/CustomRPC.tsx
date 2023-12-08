@@ -258,21 +258,23 @@ const CustomRPCView = () => {
 
                     return Promise.resolve();
                   } else if (valid || !value) {
-                    const chainIdConverted = String(parseInt(hexChainId, 16));
+                    const chainIdConvertedOne = String(
+                      parseInt(hexChainId, 16)
+                    );
 
-                    populateForm('chainId', chainIdConverted);
+                    populateForm('chainId', chainIdConvertedOne);
 
-                    setLastRpcChainIdSearched(Number(chainIdConverted));
+                    setLastRpcChainIdSearched(Number(chainIdConvertedOne));
                     return Promise.resolve();
                   }
                 } else {
-                  const chainIdConverted = String(parseInt(hexChainId, 16));
+                  const chainIdConvertedTwo = String(parseInt(hexChainId, 16));
                   //Here if already had search for any RPC we have to validate if the result
                   //for the new one is for the same chainID or not, if is just keep the older values
                   //filled and give a valid for the new rpc url
                   if (
                     (details && lastRpcChainIdSearched === details.chainId) ||
-                    lastRpcChainIdSearched === Number(chainIdConverted)
+                    lastRpcChainIdSearched === Number(chainIdConvertedTwo)
                   ) {
                     return Promise.resolve();
                   } else {
@@ -287,10 +289,12 @@ const CustomRPCView = () => {
 
                       return Promise.resolve();
                     } else if (valid) {
-                      const chainIdConverted = String(parseInt(hexChainId, 16));
-                      populateForm('chainId', chainIdConverted);
+                      const chainIdConvertedThree = String(
+                        parseInt(hexChainId, 16)
+                      );
+                      populateForm('chainId', chainIdConvertedThree);
 
-                      setLastRpcChainIdSearched(Number(chainIdConverted));
+                      setLastRpcChainIdSearched(Number(chainIdConvertedThree));
                       return Promise.resolve();
                     }
                   }
