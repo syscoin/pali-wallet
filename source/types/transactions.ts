@@ -153,6 +153,7 @@ export interface ICustomRpcParams {
   chainId: number;
   explorer?: string;
   isSyscoinRpc?: boolean;
+  isTestnet: boolean;
   label: string;
   symbol?: string;
   url: string;
