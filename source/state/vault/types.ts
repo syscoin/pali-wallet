@@ -5,6 +5,7 @@ import {
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
   IEvmTransaction,
@@ -31,6 +32,7 @@ export interface IVaultState {
   isBitcoinBased: boolean;
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;
+  isLoadingNfts: boolean;
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
   isPolling: boolean;
@@ -59,6 +61,7 @@ export interface IChangingConnectedAccount {
 export interface IPaliAccount extends IKeyringAccountState {
   assets: {
     ethereum: ITokenEthProps[];
+    nfts: INftsStructure[];
     syscoin: ITokenSysProps[];
   };
   transactions: TransactionsNetworkTypeMapping;

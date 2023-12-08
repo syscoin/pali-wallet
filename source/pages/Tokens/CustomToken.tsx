@@ -1,6 +1,7 @@
 import { Form, Input } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
 import {
@@ -10,7 +11,8 @@ import {
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
-import { Card, DefaultModal, NeutralButton } from 'components/index';
+import { Card, NeutralButton } from 'components/index';
+import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
@@ -76,12 +78,12 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
   const handleSubmit = async ({
     contractAddress,
-    symbol,
-    decimals,
+    assetSymbol,
+    assetDecimals,
   }: {
+    assetDecimals: number;
+    assetSymbol: string;
     contractAddress: string;
-    decimals: number;
-    symbol: string;
   }) => {
     setIsLoading(true);
 
@@ -94,8 +96,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             await controller.wallet.assets.evm.addCustomTokenByType(
               activeAccount.address,
               contractAddress,
-              symbol,
-              decimals,
+              assetSymbol,
+              assetDecimals,
               web3Provider
             );
 
@@ -123,7 +125,9 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
               } else {
                 const collectionItemIndex = currentTokens[
                   tokenCollectionIndex
-                ].collection.findIndex((item) => item.tokenId === +decimals);
+                ].collection.findIndex(
+                  (item) => item.tokenId === +assetDecimals
+                );
 
                 const currentCollection =
                   currentTokens[tokenCollectionIndex].collection;
@@ -144,9 +148,11 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             default:
               tokenToAddWithSubmitValues = {
                 ...addTokenMethodResponse.tokenToAdd,
-                decimals: Number(decimals),
+                decimals: Number(assetDecimals),
                 ...(addTokenMethodResponse.tokenToAdd.tokenSymbol.toUpperCase() !==
-                  symbol.toUpperCase() && { editedSymbolToUse: symbol }),
+                  assetSymbol.toUpperCase() && {
+                  editedSymbolToUse: assetSymbol,
+                }),
               };
               break;
           }
@@ -180,8 +186,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           //Edit token at state
           const editedToken = {
             ...tokenToEdit,
-            tokenSymbol: symbol,
-            decimals: Number(decimals),
+            tokenSymbol: assetSymbol,
+            decimals: Number(assetDecimals),
           };
 
           controller.wallet.account.eth.editTokenInfo(editedToken);
@@ -206,14 +212,14 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
   const resetAddTokenErrorsAndValues = () => {
     form.setFieldsValue({
-      symbol: '',
-      decimals: '',
+      assetSymbol: '',
+      assetDecimals: '',
     });
 
     setTokenMetadataInfos({
       contractAddress: '',
-      symbol: '',
-      decimals: '',
+      assetSymbol: '',
+      assetDecimals: '',
     });
 
     if (tokenDecimalsWarning.error) {
@@ -262,8 +268,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         if (isForEdit) {
           setTokenMetadataInfos({
             contractAddress: contractValue,
-            symbol: '',
-            decimals: 0,
+            assetSymbol: '',
+            assetDecimals: 0,
           });
         }
 
@@ -318,15 +324,15 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     if (decimals && tokenSymbol) {
       if (!isForEdit) {
         form.setFieldsValue({
-          symbol: tokenSymbol,
-          decimals: String(decimals),
+          assetSymbol: tokenSymbol,
+          assetDecimals: String(decimals),
         });
       }
 
       setTokenMetadataInfos({
         contractAddress: tokenAddress,
-        symbol: tokenSymbol,
-        decimals: decimals,
+        assetSymbol: tokenSymbol,
+        assetDecimals: decimals,
       });
     }
   };
@@ -341,14 +347,16 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     if (!isEdit || !tokenMetadataInfos || tokenContractType.error) return;
 
     const tokenDataValidationForErc20 =
-      isTokenErc20 && tokenMetadataInfos.decimals && tokenMetadataInfos.symbol;
+      isTokenErc20 &&
+      tokenMetadataInfos.assetDecimals &&
+      tokenMetadataInfos.assetSymbol;
 
     //Validate when user enter to edit his token to show the original Token data
     if (
       Boolean(
         isEdit &&
           tokenDataValidationForErc20 &&
-          tokenMetadataInfos.symbol.toUpperCase() !==
+          tokenMetadataInfos.assetSymbol.toUpperCase() !==
             tokenToEdit.tokenSymbol.toUpperCase()
       )
     ) {
@@ -361,7 +369,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     if (
       Boolean(
         isEdit &&
-          Number(tokenMetadataInfos.decimals) !== Number(tokenToEdit.decimals)
+          Number(tokenMetadataInfos.assetDecimals) !==
+            Number(tokenToEdit.decimals)
       )
     ) {
       setTokenDecimalsWarning({
@@ -382,16 +391,16 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         onFinish={handleSubmit}
         initialValues={{
           contractAddress: isEdit ? tokenToEdit.contractAddress : '',
-          symbol: isEdit ? tokenToEdit.tokenSymbol : '',
-          decimals: isEdit ? tokenToEdit.decimals : '',
+          assetSymbol: isEdit ? tokenToEdit.tokenSymbol : '',
+          assetDecimals: isEdit ? tokenToEdit.decimals : '',
         }}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex w-full flex-col gap-3 items-center justify-center mt-4 text-center"
       >
         <Form.Item
           validateTrigger="onChange"
           name="contractAddress"
-          className="md:w-full md:max-w-md"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -437,14 +446,14 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
                   if (requestContractType.type === 'ERC-721') {
                     form.setFieldsValue({
-                      symbol: '',
-                      decimals: '0',
+                      assetSymbol: '',
+                      assetDecimals: '0',
                     });
 
                     setTokenMetadataInfos({
                       contractAddress: value,
-                      symbol: '',
-                      decimals: 0,
+                      assetSymbol: '',
+                      assetDecimals: 0,
                     });
                   }
 
@@ -469,8 +478,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
         <Form.Item
           validateTrigger="onChange"
-          name="symbol"
-          className="md:w-full md:max-w-md"
+          name="assetSymbol"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -486,9 +495,9 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                 const validationSymbolWarning = Boolean(
                   value &&
                     isTokenErc20 &&
-                    tokenMetadataInfos.symbol &&
+                    tokenMetadataInfos.assetSymbol &&
                     value.toUpperCase() !==
-                      tokenMetadataInfos.symbol.toUpperCase()
+                      tokenMetadataInfos.assetSymbol.toUpperCase()
                 );
 
                 if (validationSymbolWarning) {
@@ -517,8 +526,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
         <Form.Item
           validateTrigger="onChange"
-          name="decimals"
-          className="md:w-full md:max-w-md"
+          name="assetDecimals"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -542,8 +551,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
                 const validationDecimalsWarning = Boolean(
                   value !== '' &&
-                    tokenMetadataInfos.decimals !== '' &&
-                    Number(value) !== Number(tokenMetadataInfos.decimals)
+                    tokenMetadataInfos.assetDecimals !== '' &&
+                    Number(value) !== Number(tokenMetadataInfos.assetDecimals)
                 );
 
                 if (validationDecimalsWarning) {
@@ -590,7 +599,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                         {t('tokens.tokenSymbol')}:{' '}
                       </p>
                       <span className="text-xs">
-                        {t('tokens.originalValue')}: {tokenMetadataInfos.symbol}
+                        {t('tokens.originalValue')}:{' '}
+                        {tokenMetadataInfos.assetSymbol}
                       </span>
                       <span className="text-xs">
                         {t('tokens.formValue')}: {tokenSymbolWarning.value}
@@ -605,7 +615,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
                       </p>
                       <span className="text-xs">
                         {t('tokens.originalValue')}:{' '}
-                        {tokenMetadataInfos.decimals}
+                        {tokenMetadataInfos.assetDecimals}
                       </span>
                       <span className="text-xs">
                         {t('tokens.formValue')}: {tokenDecimalsWarning.value}
@@ -618,9 +628,22 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           </div>
         ) : null}
 
+        <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
+          <a
+            href=""
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+          >
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              Learn more on docs!
+            </span>
+          </a>
+        </div>
+
         <div className="flex flex-col items-center justify-center w-full">
           <div
-            className={`${
+            className={`w-full px-4 ${
               tokenDecimalsWarning.error && tokenSymbolWarning.error
                 ? 'bottom-6'
                 : 'bottom-12'
@@ -630,6 +653,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
               type="submit"
               disabled={isLoading}
               loading={isLoading}
+              fullWidth={true}
             >
               {t('buttons.next')}
             </NeutralButton>
@@ -638,10 +662,10 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       </Form>
 
       {added && (
-        <DefaultModal
+        <TokenSuccessfulyAdded
           show={added}
           title={t('tokens.tokenSuccessfullyAdded')}
-          description={`${form.getFieldValue('symbol')} ${t(
+          phraseOne={`${form.getFieldValue('assetSymbol')} ${t(
             'tokens.wasSucessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}

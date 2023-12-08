@@ -10,8 +10,10 @@ module.exports = {
     disabled: '#FFFFFF4D',
     blue200: '#4D76B8',
     pink200: '#FF3E91',
+    blackAlpha: 'rgba(0,0,0,0.08)',
     white200: 'rgba(255,255,255, .2)',
     white850: 'rgba(255,255,255, .85)',
+    deepBlue: '#223552',
     headerGradient:
       'linear-gradient(90deg, rgba(40,79,148,1) 25.72%, rgba(254,0,119,1) 141.55%)',
   },
@@ -75,7 +77,7 @@ module.exports = {
     blue: '#4D76B8',
     blue100: '#C9DEFF',
     blue200: '#4CA1CF',
-    blue400: '#4D76B8',
+    blue400: '#4d76b8',
     blue500: '#1E365C',
     blue600: '#162742',
     blue700: '#111E33',
@@ -91,5 +93,6 @@ module.exports = {
     gray: '#808080',
     graylight: '#F5F5F5',
     gray200: '#A2A5AB',
+    gray300: '#808795',
   },
 };

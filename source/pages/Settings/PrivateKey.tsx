@@ -1,10 +1,10 @@
 import { Input, Form } from 'antd';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
-import { useUtils } from 'hooks/index';
+import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
@@ -50,10 +50,7 @@ const PrivateKeyView = () => {
 
   const { url: activeUrl, explorer } = activeNetwork;
 
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const url = isBitcoinBased ? activeUrl : adjustedExplorer;
 

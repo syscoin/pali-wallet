@@ -55,6 +55,16 @@ export interface IMainController extends IKeyringManager {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
+  fetchAndUpdateNftsState: ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => Promise<void>;
   forgetWallet: (pwd: string) => void;
   getAssetInfo: (
     type: string,

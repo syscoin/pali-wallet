@@ -440,7 +440,7 @@
     "originalValue": "Original value",
     "formValue": "Form value",
     "tokenDecimals": "Token Decimals",
-    "tokenSuccessfullyAdded": "Token successfully added",
+    "tokenSuccessfullyAdded": "Token successfully added!",
     "wasSucessfullyAdded": "was successfully added to your wallet.",
     "verifyTheCurrentNetwork": "Verify the current network",
     "verifyTheCurrentNetworkMessage": "This token probably is not available in the current network. Verify the token network and try again.",
