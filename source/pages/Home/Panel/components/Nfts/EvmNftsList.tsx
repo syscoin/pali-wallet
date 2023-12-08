@@ -24,38 +24,31 @@ export const EvmNftsList = () => {
 
   const userAccount = accounts[activeAccount.type][activeAccount.id];
 
-  const userNftsFromCurrentChain = userAccount.assets.nfts.filter(
-    (nft) => Number(nft.chainId) === activeNetwork.chainId
-  );
-
   const getUserNfts = async () => {
     try {
       await controller.wallet.fetchAndUpdateNftsState({
         activeAccount,
         activeNetwork,
       });
-
-      const groupSameCollection = (data: INftsStructure[]) => {
-        const groups = {};
-
-        data.forEach((item) => {
-          const name = item.address;
-
-          if (!groups[name]) {
-            groups[name] = [];
-          }
-
-          groups[name].push(item);
-        });
-
-        return groups;
-      };
-
-      const grouped = groupSameCollection(userNftsFromCurrentChain);
-      setNftsGrouped(grouped);
     } catch (error) {
       console.error('Erro ao obter NFTs:', error);
     }
+  };
+
+  const groupSameCollection = (nfts: INftsStructure[]) => {
+    const groups = {};
+
+    nfts.forEach((item) => {
+      const name = item.address;
+
+      if (!groups[name]) {
+        groups[name] = [];
+      }
+
+      groups[name].push(item);
+    });
+
+    setNftsGrouped(groups);
   };
 
   const handleNavigateToNftDetail = (tokenId, address) => {
@@ -71,9 +64,17 @@ export const EvmNftsList = () => {
     getUserNfts();
   }, [userAccount.address, activeNetwork.chainId]);
 
+  useEffect(() => {
+    const userNftsFromCurrentChain = userAccount.assets.nfts.filter(
+      (nft) => Number(nft.chainId) === activeNetwork.chainId
+    );
+
+    groupSameCollection(userNftsFromCurrentChain);
+  }, [userAccount.assets.nfts]);
+
   return (
     <div className="flex flex-col gap-6 mt-6">
-      {userNftsFromCurrentChain &&
+      {userAccount.assets.nfts &&
         Object.entries(nftsGrouped).map(([collections, nfts]) => (
           <div
             key={collections}
