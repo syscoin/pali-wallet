@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
-import networkImg from 'assets/icons/network.svg';
 import { Button } from 'components/Button';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
@@ -13,8 +12,8 @@ import { getController } from 'utils/browser';
 import { useNetworkInfo } from './NetworkInfo';
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
+  const { wallet } = getController();
   const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
-
   const [selectCurrentNetwork, setSelectCurrentNetwork] = useState({
     current: null,
     chain: '',
@@ -23,27 +22,45 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     isBitcoinBased ? 'UTXO' : 'EVM'
   );
 
-  const { wallet } = getController();
   const {
     networkThatNeedsChanging,
     networkDescription,
     selectedNetworkText,
     leftLogo,
     rightLogo,
-    filteredNetworks,
-  } = useNetworkInfo(selectedNetwork);
-  console.log(filteredNetworks, 'filteredNetworks');
-  const testnetNetworks = filteredNetworks.filter((obj) =>
-    obj.label.includes('Testnet')
-  );
+  } = useNetworkInfo();
+  const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
 
-  const mainetNetworks = filteredNetworks.filter((obj) =>
-    ['Mainnet', 'NEVM', 'Rollux'].some((substring) =>
-      obj.label.includes(substring)
-    )
+  const networks = useSelector((state: RootState) => state.vault.networks);
+
+  let newNetworks;
+
+  isBitcoinBased
+    ? (newNetworks = Object.values(networks.ethereum))
+    : (newNetworks = Object.values(networks.syscoin));
+
+  const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
+
+  const mainetNetworks = newNetworks.filter(
+    (objeto) => objeto?.isTestnet !== true
   );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    // const cannotContinueWithTrezorAccount =
+    //   // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
+    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
+    //   // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+    //   (Object.keys(networks.ethereum).find(
+    //     (chainId) => `${activeNetwork.chainId}` === chainId
+    //   ) &&
+    //     Object.keys(networks.syscoin).find(
+    //       (chainId) => `${network.chainId}` === chainId
+    //     ) &&
+    //     `${network.slip44}` !== 'undefined' &&
+    //     (activeAccountType === KeyringAccountType.Trezor ||
+    //       activeAccountType === KeyringAccountType.Ledger));
+
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
@@ -52,8 +69,6 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       window.close();
     }
   };
-
-  const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
 
   return (
     <div>
@@ -137,12 +152,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           ))}
         </div>
         <div className="mt-4">
-          <div className="flex justify-center items-center gap-2 mb-4">
+          {/* <div className="flex justify-center items-center gap-2 mb-4">
             <img src={networkImg} alt="Network Icon" />
             <span className="underline text-white font-normal text-sm">
               Add new network
             </span>
-          </div>
+          </div> */}
           <Button
             type="submit"
             onClick={() =>
