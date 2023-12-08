@@ -70,10 +70,34 @@ export const methodRequest = async (
   }
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
-    return await enable(host, undefined, undefined);
+    try {
+      return await enable(host, undefined, undefined, false);
+    } catch (error) {
+      await popupPromise({
+        host,
+        route: 'switch-network',
+        eventName: 'switchNetwork',
+        data: {},
+      });
+
+      return await enable(host, undefined, undefined, false);
+    }
   }
   if (prefix === 'sys' && methodName === 'requestAccounts') {
-    return await enable(host, undefined, undefined, true);
+    try {
+      return await enable(host, undefined, undefined, true);
+    } catch (error) {
+      if (error.message === 'Connected to Ethereum based chain') {
+        await popupPromise({
+          host,
+          route: 'switch-network',
+          eventName: 'switchNetwork',
+          data: { network: data.network },
+        });
+
+        return await enable(host, undefined, undefined, true);
+      }
+    }
   }
 
   if (prefix === 'eth' && methodName === 'accounts') {
@@ -197,6 +221,7 @@ export const methodRequest = async (
             : undefined,
           isSyscoinRpc: false,
           symbol: data.params[0].nativeCurrency.symbol,
+          isTestnet: false,
         };
         const network = await controller.wallet.getRpc(customRPCData);
         if (!chains.ethereum[customRPCData.chainId] && !isBitcoinBased) {
@@ -385,23 +410,23 @@ export const enable = async (
   isSyscoinDapp = false
 ) => {
   const { isBitcoinBased } = store.getState().vault;
+  const { dapp, wallet } = window.controller;
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-  if (!isSyscoinDapp && isBitcoinBased)
+  if (!isSyscoinDapp && isBitcoinBased) {
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Bitcoin based chain',
       data: { code: 4101, message: 'Connected to Bitcoin based chain' },
     });
-  else if (isSyscoinDapp && !isBitcoinBased)
+  } else if (isSyscoinDapp && !isBitcoinBased) {
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Ethereum based chain',
       data: { code: 4101, message: 'Connected to Ethereum based chain' },
     });
-
-  const { dapp, wallet } = window.controller;
+  }
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
 

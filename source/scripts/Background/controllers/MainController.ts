@@ -50,6 +50,7 @@ import {
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setUpdatedNftsToState,
+  setOpenDAppErrorModal,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -770,7 +771,7 @@ const MainController = (walletState): IMainController => {
       ...network,
       default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
-      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data?.explorer ? data.explorer : network?.explorer || '',
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -1358,6 +1359,10 @@ const MainController = (walletState): IMainController => {
       })
     );
   };
+
+  const openDAppErrorModal = () => {
+    store.dispatch(setOpenDAppErrorModal(true));
+  };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
   //------------------------- END TRANSACTIONS METHODS -------------------------//
@@ -1625,6 +1630,7 @@ const MainController = (walletState): IMainController => {
     importTrezorAccount,
     validatePendingEvmTransactions,
     ...keyringManager,
+    openDAppErrorModal,
   };
 };
 

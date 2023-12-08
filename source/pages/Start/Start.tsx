@@ -115,7 +115,7 @@ export const Start = (props: any) => {
   );
 
   return (
-    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-full">
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
       <ImportWalletWarning
         title={t('settings.importWalletWarning')}
         phraseOne={t('settings.thisActionErases')}

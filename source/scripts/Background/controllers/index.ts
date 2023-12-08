@@ -144,6 +144,7 @@ const MasterController = (
             url: 'https://rpc.rollux.com',
             apiUrl: 'https://explorer.rollux.com/api',
             explorer: 'https://explorer.rollux.com/',
+            isTestnet: false,
           } as INetwork,
           isEdit: false,
         })
@@ -159,12 +160,35 @@ const MasterController = (
       store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.default ?? false;
 
-    if (isNetworkOldState) {
+    const isNetworkOldEVMStateWithoutTestnet =
+      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+        ?.isTestnet === undefined;
+
+    const isNetworkOldUTXOStateWithoutTestnet =
+      store.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
+        ?.isTestnet === undefined;
+
+    if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
         (network) => {
           store.dispatch(
             setNetworks({
               chain: 'ethereum' as INetworkType,
+              network: network as INetwork,
+              isEdit: false,
+              isFirstTime: true,
+            })
+          );
+        }
+      );
+    }
+
+    if (isNetworkOldUTXOStateWithoutTestnet) {
+      Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
+        (network) => {
+          store.dispatch(
+            setNetworks({
+              chain: 'syscoin' as INetworkType,
               network: network as INetwork,
               isEdit: false,
               isFirstTime: true,

@@ -27,6 +27,7 @@ export interface IVaultState {
   changingConnectedAccount: IChangingConnectedAccount;
   currentBlock: ethers.providers.Block;
   error: boolean;
+  hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
   isLoadingAssets: boolean;

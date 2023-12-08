@@ -65,7 +65,9 @@ export const initialState: IVaultState = {
     default: true,
     currency: 'sys',
     slip44: 57,
+    isTestnet: false,
   },
+  hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isLoadingBalances: false,
   isNetworkChanging: false,
@@ -317,6 +319,9 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
+    },
+    setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasErrorOndAppEVM = action.payload;
     },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
@@ -788,6 +793,7 @@ export const {
   setIsLoadingAssets,
   setIsLoadingTxs,
   setIsLoadingNfts,
+  setOpenDAppErrorModal,
   setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,

@@ -96,8 +96,8 @@ export interface IMainController extends IKeyringManager {
     index: string,
     isAlreadyConnected: boolean
   ) => Promise<any>;
-
   lock: () => void;
+  openDAppErrorModal: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
