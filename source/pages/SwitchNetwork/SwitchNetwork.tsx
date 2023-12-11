@@ -72,7 +72,7 @@ export const SwitchNetwork = () => {
                   {networkSymbolChange}
                 </div>
               </span>
-              {/* We don't have the link yet */}
+              {/*TODO: We don't have the link yet */}
               {/* <p className="text-[#808795] text-xs underline">
                 {t('switchNetwork.learnAbout')}
               </p> */}
