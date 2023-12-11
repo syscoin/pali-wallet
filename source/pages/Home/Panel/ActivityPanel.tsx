@@ -8,7 +8,8 @@ import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
-import { TransactionsList } from './components/Transactions';
+import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
+import { useTransactionsListConfig } from './components/Transactions/useTransactionsInfos';
 
 const SECONDS = 10000;
 
@@ -114,6 +115,10 @@ export const TransactionsPanel = () => {
     };
   }, [isLoadingTxs]);
 
+  const allTransactions = hasTransactions ? transactions : previousTransactions;
+
+  const userTransactionsInfo = useTransactionsListConfig(allTransactions);
+
   return (
     <>
       {internalLoading && !hasTransactions && <LoadingComponent />}
@@ -126,11 +131,12 @@ export const TransactionsPanel = () => {
       )}
       {hasTransactions && (
         <div className="p-4 mt-8 w-full text-white text-base bg-brand-blue600">
-          <TransactionsList
+          {isBitcoinBased ? <EvmTransactionsList /> : <div />}
+          {/* <TransactionsList
             userTransactions={
               hasTransactions ? transactions : previousTransactions
             }
-          />
+          /> */}
           <OpenTransactionExplorer />
         </div>
       )}
