@@ -29,7 +29,8 @@
     "forget": "Forget",
     "switchNetwork": "Switch Network",
     "unlock": "Unlock",
-    "done": "Done"
+    "done": "Done",
+    "retryConnect": "Tentar conectar novamente"
   },
   "header": {
     "accounts": "ACCOUNTS",
@@ -354,5 +355,16 @@
     "requestFailed": "request failed",
     "noDescriptionProvided": "No description provided",
     "requestSuccessfullySubmitted": "request successfully submitted"
+  },
+  "switchNetwork": {
+    "connectedOn": "Você está conectado em",
+    "toUse": "para usar este dApp, você deve mudar para",
+    "learnAbout": "Saiba mais sobre UTXO e EVM"
+  },
+  "chainError": {
+    "connectionTooLong": "CONEXÃO ESTÁ DEMORANDO MUITO PARA RESPONDER",
+    "tryingToConnectOn": "Você está tentando se conectar em:",
+    "goToAnotherNetwork": "Ir para outra rede",
+    "editCurrentRpc": "Editar RPC da rede atual"
   }
 }

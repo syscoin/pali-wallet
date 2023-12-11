@@ -36,7 +36,8 @@
     "success": "Correcto",
     "error": "Erro",
     "reconnect": "Reconectar",
-    "verify": "Verificar"
+    "verify": "Verificar",
+    "retryConnect": "Reintentar conexión"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -486,5 +487,16 @@
     "requestFailed": "solicitud fallida",
     "noDescriptionProvided": "No se proporcionó una descripción",
     "requestSuccessfullySubmitted": "solicitud enviada con éxito"
+  },
+  "switchNetwork": {
+    "connectedOn": "Estás conectado en",
+    "toUse": "para usar esta dApp, debes cambiar a",
+    "learnAbout": "Aprende sobre UTXO y EVM"
+  },
+  "chainError": {
+    "connectionTooLong": "LA CONEXIÓN ESTÁ TOMANDO DEMASIADO TIEMPO EN RESPONDER",
+    "tryingToConnectOn": "Estás intentando conectarte en:",
+    "goToAnotherNetwork": "Ir a otra red",
+    "editCurrentRpc": "Editar RPC de la red actual"
   }
 }

@@ -36,7 +36,8 @@
     "success": "Success",
     "error": "Error",
     "reconnect": "Reconnect",
-    "verify": "Verify"
+    "verify": "Verify",
+    "retryConnect": "Retry connect"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -486,5 +487,16 @@
     "requestFailed": "request failed",
     "noDescriptionProvided": "No description provided",
     "requestSuccessfullySubmitted": "request successfully submitted"
+  },
+  "switchNetwork": {
+    "connectedOn": "You are connected on",
+    "toUse": "to use this dApp you must change to",
+    "learnAbout": "Learn about UTXO and EVM"
+  },
+  "chainError": {
+    "connectionTooLong": "CONNECTION IS TAKING TOO LONG TO REPLY",
+    "tryingToConnectOn": "You are trying to connect on:",
+    "goToAnotherNetwork": "Go to another network",
+    "editCurrentRpc": "Edit RPC of current network"
   }
 }
