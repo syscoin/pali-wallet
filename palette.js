@@ -85,6 +85,7 @@ module.exports = {
     green: '#8EC100',
     darkGreen: '#83B100',
     black: '#000',
+    orange: '#FE9B07',
     white: '#fff',
     red: '#D70000',
     redDark: '#C60000',
@@ -94,5 +95,6 @@ module.exports = {
     graylight: '#F5F5F5',
     gray200: '#A2A5AB',
     gray300: '#808795',
+    whiteAlpaBlue: '#283851',
   },
 };

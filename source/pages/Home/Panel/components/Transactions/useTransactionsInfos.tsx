@@ -7,12 +7,13 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { handleUpdateTransaction } from 'utils/index';
-
 interface ITransactionsListConfig {
-  currentAccount: any;
+  blocktime: any;
   filteredTransactions: any;
+  formatTimeStamp: any;
   getTxOptions: any;
   getTxStatus: any;
+  getTxStatusIcons: any;
   getTxType: any;
   isShowedGroupBar: any;
   txid: any;
@@ -22,12 +23,11 @@ export const useTransactionsListConfig = (
   userTransactions?: any[]
 ): ITransactionsListConfig => {
   const { wallet } = getController();
+
   const { t } = useTranslation();
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
-    activeAccount,
-    accounts,
   } = useSelector((state: RootState) => state.vault);
 
   const [modalData, setModalData] = useState<{
@@ -38,8 +38,6 @@ export const useTransactionsListConfig = (
     title: string;
   }>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
   const { alert } = useUtils();
 
@@ -63,6 +61,21 @@ export const useTransactionsListConfig = (
     const txLabel = isTxSent ? 'Sent' : 'Received';
 
     return `${txLabel}`;
+  };
+
+  const getTxStatusIcons = (txLabel: string) => {
+    let icon = '';
+
+    switch (txLabel) {
+      case 'Sent':
+        icon = '/assets/icons/ArrowUp.svg';
+        break;
+      case 'Received':
+        icon = '/assets/icons/receivedArrow.svg';
+        break;
+    }
+
+    return <img className="absolute top-[7px] left-[9px]" src={icon} />;
   };
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
@@ -110,16 +123,16 @@ export const useTransactionsListConfig = (
 
       switch (isCanceled) {
         case true:
-          className = 'text-warning-error';
+          className = 'text-brand-redDark';
           status = t('send.canceled');
           break;
         case false:
-          className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
+          className = isConfirmed ? 'text-brand-green' : 'text-brand-orange';
           status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
 
-      return <p className={className}>{status}</p>;
+      return <p className={`text-xs font-normal ${className}`}>{status}</p>;
     },
     [userTransactions]
   );
@@ -140,13 +153,29 @@ export const useTransactionsListConfig = (
     }
   };
 
+  const formatTimeStamp = (timestamp: number) => {
+    const data = new Date(timestamp * 1000);
+
+    const options: Intl.DateTimeFormatOptions = {
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric',
+    };
+
+    const formatedData = new Intl.DateTimeFormat('en-US', options).format(data);
+
+    return formatedData;
+  };
+
   return {
     getTxOptions,
     getTxStatus,
+    getTxStatusIcons,
+    formatTimeStamp,
     filteredTransactions,
     isShowedGroupBar,
     txid,
     getTxType,
-    currentAccount,
+    blocktime,
   };
 };
