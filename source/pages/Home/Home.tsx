@@ -46,7 +46,6 @@ export const Home = () => {
   const [isTestnet, setIsTestnet] = useState(false);
   const [showModal, setShowModal] = useState(isWalletImported);
 
-  console.log(showModal);
   //* Constants
   const { url } = activeNetwork;
   const controller = getController();

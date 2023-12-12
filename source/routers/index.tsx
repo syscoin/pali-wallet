@@ -40,6 +40,8 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { ChainErrorPage } from 'pages/Chain';
+import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
   removeVerifyPaliRequestListener,
@@ -50,6 +52,7 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
+
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
@@ -211,6 +214,11 @@ export const Router = () => {
         <Route
           path="send/edit/gas"
           element={<ProtectedRoute element={<SendConfirm />} />}
+        />
+        <Route path="switch-network" element={<SwitchNetwork />} />
+        <Route
+          path="chain-fail-to-connect"
+          element={<ProtectedRoute element={<ChainErrorPage />} />}
         />
 
         {/* /tokens/add */}

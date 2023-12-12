@@ -74,7 +74,7 @@ export const Layout: FC<ILayout> = ({
         <Icon
           size={29}
           name="select-up"
-          wrapperClassname="absolute -bottom-3 text-center text-bkg-2"
+          wrapperClassname="absolute -bottom-4 text-center text-bkg-2"
           color="#111E33"
         />
       </div>

@@ -54,7 +54,7 @@ export const WalletReadyModal = ({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <div className="rounded-t-[50px] flex flex-col align-bottom justify-end items-center bg-brand-blue400 rounded-lg shadow-md">
+            <div className="rounded-t-[50px] flex flex-col align-bottom justify-end items-center bg-brand-blue rounded-lg shadow-md">
               <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
                 <h1 className="text-white font-medium text-base">{title}</h1>
               </div>

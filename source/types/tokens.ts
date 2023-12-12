@@ -54,7 +54,8 @@ export interface ITokenSysProps {
 }
 
 export interface IAddCustomTokenMetadataInfos {
+  assetDecimals: number | string;
+  // String to accept empty values
+  assetSymbol: string;
   contractAddress: string;
-  decimals: number | string; // String to accept empty values
-  symbol: string;
 }

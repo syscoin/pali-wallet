@@ -1,32 +1,29 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect } from 'react';
+import React, { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RiFileCopyLine } from 'react-icons/ri';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
-import { IconButton } from 'components/IconButton';
+import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { camelCaseToText, truncate } from 'utils/format';
-
-import { NftImage } from './NftImage';
+import {
+  formatCurrency,
+  truncate,
+  camelCaseToText,
+  syscoinKeysOfInterest,
+} from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
-  const { useCopyClipboard, alert } = useUtils();
-  const { accounts, activeAccount } = useSelector(
+  const { navigate } = useUtils();
+
+  const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+
   const { t } = useTranslation();
+
   const { assets } = accounts[activeAccount.type][activeAccount.id];
-
-  const [copied, copy] = useCopyClipboard();
-
-  useEffect(() => {
-    if (!copied) return;
-
-    alert.removeAll();
-    alert.success(t('settings.successfullyCopied'));
-  }, [copied]);
 
   const formattedAsset = [];
 
@@ -34,73 +31,95 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
     if (asset.assetGuid !== id) return null;
 
     for (const [key, value] of Object.entries(asset)) {
+      // Check if the key is one of the keys of interest
+      if (!syscoinKeysOfInterest.includes(key)) continue;
+
       const formattedKey = camelCaseToText(key);
-      const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
-      const formattedAndStringValue =
-        typeof value === 'boolean' ? formattedBoolean : value;
-
-      const formattedValue = {
-        value: {
-          formatted: formattedAndStringValue,
-          stringValue: formattedAndStringValue,
-        },
-        label: formattedKey,
-        canCopy: false,
-      };
-
-      if (String(value).length >= 20) {
-        formattedValue.value.formatted = truncate(String(value), 20);
-        formattedValue.canCopy = true;
-      }
-
       const isValid = typeof value !== 'object';
 
-      if (isValid) formattedAsset.unshift(formattedValue);
+      if (isValid) {
+        // Create an object with the key and value and unshift it into the array
+        const keyValueObject = {
+          key: formattedKey,
+          value: value,
+        };
+
+        formattedAsset.unshift(keyValueObject);
+      }
     }
 
     return formattedAsset;
   });
 
+  const assetSymbol = formattedAsset.find((asset) => asset.key === 'Symbol');
+  const assetDecimals = formattedAsset.find(
+    (asset) => asset.key === 'Decimals'
+  );
+
   const RenderAsset = () => (
     <>
-      {formattedAsset.map(
-        ({ label, value, canCopy }: any, index, totalArray) => {
-          const { formatted, stringValue } = value;
-          const canRender =
-            label.length > 0 && stringValue.length > 0 && formatted.length > 0;
+      <div className="w-full flex items-center justify-center mt-1">
+        <p className="font-poppins font-normal text-lg">{assetSymbol.value}</p>
+      </div>
 
-          return (
+      <div className="mt-4 mb-6">
+        {formattedAsset
+          .filter((asset) => asset.key !== 'Symbol' && asset.key !== 'Decimals')
+          .map((asset, index, totalArray) => (
             <Fragment key={uniqueId(id)}>
-              {label === 'Image' && canRender && (
-                <NftImage imageLink={stringValue} />
-              )}
-
-              {canRender && (
-                <li
-                  className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+              <li
+                className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
               border-dashed border-bkg-white200 cursor-default transition-all duration-300 ${
-                index + 1 === totalArray.length && 'mb-20'
+                index + 1 === totalArray.length && 'border-none'
               } `}
-                >
-                  <p className="font-normal">{label}</p>
-                  <span className="flex items-center font-medium">
-                    {formatted}
-
-                    {canCopy && (
-                      <IconButton
-                        onClick={() => copy(stringValue ?? '')}
-                        className="ml-1"
-                      >
-                        <RiFileCopyLine size={15} color="text-brand-white" />
-                      </IconButton>
+              >
+                <p className="font-normal text-xs">{asset.key}</p>
+                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <span className="text-brand-white">
+                    {truncate(
+                      formatCurrency(
+                        String(asset.value / 10 ** assetDecimals.value),
+                        assetDecimals.value
+                      ),
+                      5,
+                      false
                     )}
                   </span>
-                </li>
-              )}
+
+                  <span className="text-brand-royalbluemedium">
+                    {assetSymbol.value}
+                  </span>
+                </p>
+              </li>
             </Fragment>
-          );
-        }
-      )}
+          ))}
+      </div>
+
+      <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100">
+        <a
+          href={`${activeNetwork.url}asset/${id}`}
+          target="_blank"
+          className="flex items-center justify-center gap-x-2"
+          rel="noreferrer"
+        >
+          <ExternalLinkIcon size={16} />
+          <span className="font-normal font-poppins underline text-sm">
+            View on Explorer
+          </span>
+        </a>
+      </div>
+
+      <div className="flex flex-col items-center justify-center w-full">
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton
+            onClick={() => navigate('/home')}
+            type="button"
+            fullWidth={true}
+          >
+            {t('buttons.close')}
+          </NeutralButton>
+        </div>
+      </div>
     </>
   );
 
