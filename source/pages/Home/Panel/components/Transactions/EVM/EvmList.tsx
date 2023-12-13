@@ -61,19 +61,22 @@ export const EvmTransactionsListComponent = ({
             </div>
           </div>
           <div className="m-auto">
-            <img
-              className="cursor-pointer transition-all hover:opacity-60"
-              src="/assets/icons/detailArrow.svg"
-              onClick={() =>
-                navigate('/home/details', {
-                  state: {
-                    id: null,
-                    hash: tx[txId],
-                  },
-                })
-              }
-            />
-            {/* {getTxOptions(isTxCanceled, isConfirmed, tx)} */}
+            {isConfirmed || isTxCanceled ? (
+              <img
+                className="cursor-pointer transition-all hover:opacity-60"
+                src="/assets/icons/detailArrow.svg"
+                onClick={() =>
+                  navigate('/home/details', {
+                    state: {
+                      id: null,
+                      hash: tx[txId],
+                    },
+                  })
+                }
+              />
+            ) : (
+              getTxOptions(isTxCanceled, isConfirmed, tx[txId])
+            )}
           </div>
         </div>
       </div>

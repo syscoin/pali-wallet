@@ -129,6 +129,7 @@ export const TransactionsList = ({
           chainId={chainId}
           wallet={wallet}
           transaction={tx}
+          isOpen={true}
           setIsOpenModal={setIsOpenModal}
           setModalData={setModalData}
         />

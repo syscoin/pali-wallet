@@ -1,9 +1,10 @@
 import { Menu, Transition } from '@headlessui/react';
-import React from 'react';
+import React, { useState } from 'react';
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Icon, IconButton } from '..';
+import { useUtils } from 'hooks/useUtils';
 import { UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
@@ -19,6 +20,8 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
   const { t } = useTranslation();
+  const { navigate } = useUtils();
+
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
 
@@ -35,7 +38,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 alert,
                 chainId,
                 isLegacy: isLegacyTransaction,
-                txHash: transaction.hash,
+                txHash: String(transaction),
                 updateType: UpdateTxAction.Cancel,
                 wallet,
               },
@@ -56,7 +59,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 alert,
                 chainId,
                 isLegacy: isLegacyTransaction,
-                txHash: transaction.hash,
+                txHash: String(transaction),
                 updateType: UpdateTxAction.SpeedUp,
                 wallet,
               },
@@ -67,7 +70,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         break;
     }
   };
-
   return (
     <>
       <Menu
@@ -83,7 +85,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
       focus-visible:ring-opacity-75"
         >
           <IconButton className="w-5">
-            <Icon name="dots" className="text-base" />
+            <Icon isSvg={true} name="EditTx" className="text-base" />
           </IconButton>
         </Menu.Button>
 
@@ -98,23 +100,37 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         >
           <Menu.Items
             as="div"
-            className="absolute right-0 z-10 w-44 origin-top-right rounded-md bg-menu-primary shadow-2xl ring-1 
+            className="p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
             font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out cursor-pointer"
           >
+            <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
+              PENDING TRANSACTION
+            </h1>
             <Menu.Item>
               {({ active }) => (
                 <li
                   className={`
-                    ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
-                    flex items-center justify-start py-2 px-3 
+                  ${active ? 'font-semibold' : 'font-normal'}
+                  flex items-center justify-start text-brand-white mb-4 w-full
                   `}
-                  onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: {
+                        id: null,
+                        hash: transaction,
+                      },
+                    })
+                  }
                 >
                   <IconButton className="w-5 mr-3">
-                    <Icon name="close" className="text-base text-brand-white" />
+                    <Icon
+                      name="externalLink"
+                      isSvg={true}
+                      className="text-base text-brand-white"
+                    />
                   </IconButton>
                   <span className="text-sm text-brand-white">
-                    {t('buttons.cancel')}
+                    See on the block explorer
                   </span>
                 </li>
               )}
@@ -123,16 +139,41 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
               {({ active }) => (
                 <li
                   className={`
-                    ${active ? 'bg-bkg-3 font-bold' : 'font-normal'}
-                    flex items-center justify-start text-brand-white py-2 px-3
+                  ${active ? 'font-semibold' : 'font-normal'}
+                  flex items-center justify-start text-brand-white mb-4 w-full
                   `}
                   onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                 >
                   <IconButton className="w-5 mr-3">
-                    <Icon name="rise" className="text-base text-brand-white" />
+                    <Icon
+                      name="SpeedUp"
+                      isSvg={true}
+                      className="text-base text-brand-white"
+                    />
                   </IconButton>
                   <span className="text-sm text-brand-white">
                     {t('header.speedUp')}
+                  </span>
+                </li>
+              )}
+            </Menu.Item>
+            <Menu.Item>
+              {({ active }) => (
+                <li
+                  className={`
+                ${active ? 'font-semibold ' : 'font-normal'}
+                flex items-center justify-start w-full `}
+                  onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                >
+                  <IconButton className="w-5 mr-3">
+                    <Icon
+                      name="Trash"
+                      isSvg={true}
+                      className="text-base text-brand-white"
+                    />
+                  </IconButton>
+                  <span className="text-sm text-brand-white">
+                    {t('buttons.cancel')}
                   </span>
                 </li>
               )}
