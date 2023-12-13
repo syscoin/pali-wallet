@@ -1,27 +1,26 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
+import { useTransactionsListConfig } from '../useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
 import { usePrice } from 'hooks/usePrice';
-import { useTransactionsListConfig } from 'hooks/useTransactionsInfos';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { ITransactionInfo } from 'types/useTransactionsInfo';
-import { removeScientificNotation } from 'utils/index';
+import { ITransactionInfoEvm } from 'types/useTransactionsInfo';
 
 export const EvmTransactionsListComponent = ({
   userTransactions,
   tx,
 }: {
-  tx: ITransactionInfo;
-  userTransactions: ITransactionInfo[];
+  tx: ITransactionInfoEvm;
+  userTransactions: ITransactionInfoEvm[];
 }) => {
   const { isBitcoinBased, activeAccount, accounts } = useSelector(
     (state: RootState) => state.vault
   );
   const { navigate } = useUtils();
 
-  const { getTxStatusIcons, getTxStatus, getTxType, txId } =
+  const { getTxStatusIcons, getTxStatus, getTxType, txId, getTxOptions } =
     useTransactionsListConfig(userTransactions);
   const { getFiatAmount } = usePrice();
 
@@ -34,13 +33,17 @@ export const EvmTransactionsListComponent = ({
     ? false
     : tx.from.toLowerCase() === currentAccount.address;
 
+  const tokenValue = !isConfirmed
+    ? typeof tx.value === 'string'
+      ? tx.value
+      : Number(tx.value.hex) / 1e18
+    : Number(tx.value) / 1e18;
+
   return (
     <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
       <div className="flex justify-between py-2 w-full">
         <div className="flex items-center">
-          <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2">
-            {getTxStatusIcons(getTxType(tx, isTxSent))}
-          </div>
+          {getTxStatusIcons(getTxType(tx, isTxSent))}
           <div className="flex flex-col ">
             <div className="text-white text-xs font-normal">
               {getTxType(tx, isTxSent)}
@@ -49,15 +52,15 @@ export const EvmTransactionsListComponent = ({
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex flex-col justify-end">
+          <div className="flex flex-col justify-end items-end">
             <div className="text-white text-xs font-normal">
-              {removeScientificNotation(Number(tx.value) / 10 ** 18)}
+              {Number(tokenValue).toFixed(4)}
             </div>
             <div className="text-brand-gray200 text-xs font-normal">
               ${getFiatAmount(+tx.value / 1e18, 6)}
             </div>
           </div>
-          <div>
+          <div className="m-auto">
             <img
               className="cursor-pointer transition-all hover:opacity-60"
               src="/assets/icons/detailArrow.svg"
@@ -70,6 +73,7 @@ export const EvmTransactionsListComponent = ({
                 })
               }
             />
+            {/* {getTxOptions(isTxCanceled, isConfirmed, tx)} */}
           </div>
         </div>
       </div>
@@ -80,7 +84,7 @@ export const EvmTransactionsListComponent = ({
 export const EvmTransactionsList = ({
   userTransactions,
 }: {
-  userTransactions: ITransactionInfo[];
+  userTransactions: ITransactionInfoEvm[];
 }) => {
   const { filteredTransactions, formatTimeStamp, isOpenModal, modalData } =
     useTransactionsListConfig(userTransactions);

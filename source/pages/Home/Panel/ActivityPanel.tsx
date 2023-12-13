@@ -8,7 +8,9 @@ import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
+import { TransactionsList } from './components/Transactions';
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
+import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 const SECONDS = 10000;
 
@@ -130,10 +132,11 @@ export const TransactionsPanel = () => {
       {hasTransactions && (
         <div className="p-4 mt-8 w-full text-white text-base bg-brand-blue600">
           {isBitcoinBased ? (
-            <div />
+            <UtxoTransactionsList userTransactions={allTransactions} />
           ) : (
             <EvmTransactionsList userTransactions={allTransactions} />
           )}
+          {/* <TransactionsList userTransactions={allTransactions} /> */}
           <OpenTransactionExplorer />
         </div>
       )}

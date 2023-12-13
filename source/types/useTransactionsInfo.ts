@@ -1,4 +1,44 @@
-export interface ITransactionInfo {
+type TransactionVout = {
+  addresses: string[];
+  hex: string;
+  isAddress: boolean;
+  isOwn?: boolean;
+  n: number;
+  spent?: boolean;
+  value: string;
+};
+
+type TransactionVin = {
+  addresses: string[];
+  isAddress: boolean;
+  n: number;
+  sequence: number;
+  txid: string;
+  value: string;
+};
+
+export interface ITransactionInfoUtxo {
+  blockHash: string;
+  blockHeight: number;
+  blockTime: number;
+  confirmations: number;
+  fees: string;
+  hex: string;
+  isCanceled?: boolean;
+  txid: string;
+  value: string;
+  valueIn: string;
+  version: number;
+  vin: TransactionVin[];
+  vout: TransactionVout[];
+}
+
+type valuePending = {
+  hex: string;
+  type: string;
+};
+
+export interface ITransactionInfoEvm {
   accessList: any[];
   blockHash: string;
   blockNumber: string;
@@ -20,7 +60,7 @@ export interface ITransactionInfo {
   transactionIndex: string;
   type: string;
   v: string;
-  value: string;
+  value: string | valuePending;
 }
 
 export type modalDataType = {
@@ -32,18 +72,19 @@ export type modalDataType = {
 };
 export interface ITransactionsListConfig {
   blocktime: string;
-  filteredTransactions: ITransactionInfo[];
+  filteredTransactions: ITransactionInfoEvm[] | ITransactionInfoUtxo[];
   formatTimeStamp: (timestamp: number) => string;
+  formatTimeStampUtxo: (timestamp: number) => JSX.Element;
   getTxOptions: (
     isCanceled: boolean,
     isConfirmed: boolean,
-    tx: ITransactionInfo
+    tx: ITransactionInfoEvm
   ) => JSX.Element | null;
-  getTxStatus: (tisCanceled: boolean, isConfirmed: boolean) => JSX.Element;
+  getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
   getTxStatusIcons: (txLabel: string) => JSX.Element;
   getTxType: (tx: any, isTxSent: boolean) => string;
   isOpenModal: boolean;
-  isShowedGroupBar: (tx: ITransactionInfo, idx: number) => boolean;
+  isShowedGroupBar: (tx: ITransactionInfoEvm, idx: number) => boolean;
   modalData: modalDataType;
   txId: string;
 }

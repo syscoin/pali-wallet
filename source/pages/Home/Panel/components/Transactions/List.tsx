@@ -137,7 +137,6 @@ export const TransactionsList = ({
   };
 
   const renderTransaction = (tx, idx) => {
-    console.log(tx, 'txxxxxxxxxxxx');
     const isTxCanceled = tx?.isCanceled === true;
     const isConfirmed = tx.confirmations > 0;
     const timestamp =

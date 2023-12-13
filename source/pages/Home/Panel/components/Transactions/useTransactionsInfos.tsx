@@ -15,18 +15,19 @@ import { handleUpdateTransaction } from 'utils/index';
 export const useTransactionsListConfig = (
   userTransactions?: any[]
 ): ITransactionsListConfig => {
-  const { wallet } = getController();
-
-  const { t } = useTranslation();
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
+  const { wallet } = getController();
+  const { alert } = useUtils();
+  const { t } = useTranslation();
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
 
-  const { alert } = useUtils();
+  const txId = isBitcoinBased ? 'txId' : 'hash';
+  const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
@@ -62,11 +63,12 @@ export const useTransactionsListConfig = (
         break;
     }
 
-    return <img className="absolute top-[7px] left-[9px]" src={icon} />;
+    return (
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+        <img className="relative" src={icon} alt="Icon" />
+      </div>
+    );
   };
-
-  const txId = isBitcoinBased ? 'txId' : 'hash';
-  const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>
@@ -107,6 +109,8 @@ export const useTransactionsListConfig = (
     (isCanceled: boolean, isConfirmed: boolean) => {
       let className = '';
       let status = '';
+      console.log(isCanceled, 'as');
+      console.log(isConfirmed, 'isConfirmed');
 
       switch (isCanceled) {
         case true:
@@ -118,7 +122,7 @@ export const useTransactionsListConfig = (
           status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
-
+      console.log(status, className);
       return <p className={`text-xs font-normal ${className}`}>{status}</p>;
     },
     [userTransactions]
@@ -154,6 +158,41 @@ export const useTransactionsListConfig = (
     return formatedData;
   };
 
+  const formatTimeStampUtxo = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+
+    const dateFormatOptions: Intl.DateTimeFormatOptions = {
+      month: '2-digit',
+      day: '2-digit',
+      year: '2-digit',
+    };
+
+    const timeFormatOptions: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true,
+    };
+
+    const formattedDate = new Intl.DateTimeFormat(
+      'en-US',
+      dateFormatOptions
+    ).format(date);
+    const formattedTime = new Intl.DateTimeFormat(
+      'en-US',
+      timeFormatOptions
+    ).format(date);
+
+    const dateComponents = formattedDate.split('/');
+    const formattedDateWithHyphen = dateComponents.join('-');
+
+    return (
+      <div className="flex gap-2">
+        <p className="text-xs text-brand-gray200">{formattedDateWithHyphen}</p>
+        <p className="text-xs text-white">{formattedTime}</p>
+      </div>
+    );
+  };
+
   return {
     getTxOptions,
     getTxStatus,
@@ -161,6 +200,7 @@ export const useTransactionsListConfig = (
     isOpenModal,
     modalData,
     formatTimeStamp,
+    formatTimeStampUtxo,
     filteredTransactions,
     isShowedGroupBar,
     txId,
