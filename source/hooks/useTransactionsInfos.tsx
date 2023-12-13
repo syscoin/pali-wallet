@@ -5,19 +5,12 @@ import { useSelector } from 'react-redux';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
+import {
+  ITransactionsListConfig,
+  modalDataType,
+} from 'types/useTransactionsInfo';
 import { getController } from 'utils/browser';
 import { handleUpdateTransaction } from 'utils/index';
-interface ITransactionsListConfig {
-  blocktime: any;
-  filteredTransactions: any;
-  formatTimeStamp: any;
-  getTxOptions: any;
-  getTxStatus: any;
-  getTxStatusIcons: any;
-  getTxType: any;
-  isShowedGroupBar: any;
-  txid: any;
-}
 
 export const useTransactionsListConfig = (
   userTransactions?: any[]
@@ -30,13 +23,7 @@ export const useTransactionsListConfig = (
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
 
-  const [modalData, setModalData] = useState<{
-    buttonText: string;
-    description: string;
-    onClick: () => void;
-    onClose: () => void;
-    title: string;
-  }>();
+  const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
 
   const { alert } = useUtils();
@@ -78,7 +65,7 @@ export const useTransactionsListConfig = (
     return <img className="absolute top-[7px] left-[9px]" src={icon} />;
   };
 
-  const txid = isBitcoinBased ? 'txid' : 'hash';
+  const txId = isBitcoinBased ? 'txId' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const isShowedGroupBar = useCallback(
@@ -171,10 +158,12 @@ export const useTransactionsListConfig = (
     getTxOptions,
     getTxStatus,
     getTxStatusIcons,
+    isOpenModal,
+    modalData,
     formatTimeStamp,
     filteredTransactions,
     isShowedGroupBar,
-    txid,
+    txId,
     getTxType,
     blocktime,
   };

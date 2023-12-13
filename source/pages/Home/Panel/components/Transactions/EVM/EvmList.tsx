@@ -1,28 +1,27 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { useTransactionsListConfig } from '../useTransactionsInfos';
+import { ConfirmationModal } from 'components/Modal';
 import { usePrice } from 'hooks/usePrice';
+import { useTransactionsListConfig } from 'hooks/useTransactionsInfos';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { ITransactionInfo } from 'types/useTransactionsInfo';
 import { removeScientificNotation } from 'utils/index';
 
 export const EvmTransactionsListComponent = ({
   userTransactions,
   tx,
 }: {
-  //TODO: adjust type
-  tx: any;
-  userTransactions: any;
+  tx: ITransactionInfo;
+  userTransactions: ITransactionInfo[];
 }) => {
-  const { t } = useTranslation();
   const { isBitcoinBased, activeAccount, accounts } = useSelector(
     (state: RootState) => state.vault
   );
   const { navigate } = useUtils();
 
-  const { getTxStatusIcons, getTxStatus, getTxType, txid } =
+  const { getTxStatusIcons, getTxStatus, getTxType, txId } =
     useTransactionsListConfig(userTransactions);
   const { getFiatAmount } = usePrice();
 
@@ -55,7 +54,7 @@ export const EvmTransactionsListComponent = ({
               {removeScientificNotation(Number(tx.value) / 10 ** 18)}
             </div>
             <div className="text-brand-gray200 text-xs font-normal">
-              ${getFiatAmount(tx.value / 1e18, 6)}
+              ${getFiatAmount(+tx.value / 1e18, 6)}
             </div>
           </div>
           <div>
@@ -66,7 +65,7 @@ export const EvmTransactionsListComponent = ({
                 navigate('/home/details', {
                   state: {
                     id: null,
-                    hash: tx[txid],
+                    hash: tx[txId],
                   },
                 })
               }
@@ -81,9 +80,9 @@ export const EvmTransactionsListComponent = ({
 export const EvmTransactionsList = ({
   userTransactions,
 }: {
-  userTransactions: any; //TODO: adjust type
+  userTransactions: ITransactionInfo[];
 }) => {
-  const { filteredTransactions, formatTimeStamp } =
+  const { filteredTransactions, formatTimeStamp, isOpenModal, modalData } =
     useTransactionsListConfig(userTransactions);
 
   const groupedTransactions = {};
@@ -98,9 +97,9 @@ export const EvmTransactionsList = ({
     groupedTransactions[formattedDate].push(tx);
   });
 
-  console.log(groupedTransactions, 'groupedArray');
   return (
     <>
+      <ConfirmationModal show={isOpenModal} {...modalData} />
       {Object.entries(groupedTransactions).map(([date, transactions]: any) => (
         <div key={date} className="mb-[20px]">
           <div className="text-xs text-white font-normal">{date}</div>
