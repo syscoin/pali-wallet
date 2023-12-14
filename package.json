@@ -47,6 +47,7 @@
     "@babel/preset-typescript": "^7.21.5",
     "@babel/register": "^7.17.0",
     "@babel/runtime": "^7.21.5",
+    "@eduardoac-skimlinks/webext-redux": "^3.0.1-release-candidate",
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
     "@pollum-io/sysweb3-keyring": "^1.0.476",

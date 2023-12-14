@@ -1,5 +1,6 @@
+/* eslint-disable import/no-extraneous-dependencies */
 import 'emoji-log';
-import { wrapStore } from 'webext-redux';
+import { wrapStore } from '@eduardoac-skimlinks/webext-redux';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';

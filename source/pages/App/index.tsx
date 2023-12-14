@@ -1,3 +1,4 @@
+/* eslint-disable import/no-extraneous-dependencies */
 import 'assets/styles/index.css';
 import 'assets/styles/custom-input-password.css';
 import 'assets/styles/custom-input-search.css';
@@ -5,12 +6,12 @@ import 'assets/styles/custom-checkbox.css';
 import 'assets/styles/custom-form-inputs-styles.css';
 import 'assets/fonts/index.css';
 
+import { Store } from '@eduardoac-skimlinks/webext-redux';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import watch from 'redux-watch';
-import { Store } from 'webext-redux';
 
 import { ToastAlert } from 'components/index';
 import { STORE_PORT } from 'constants/index';
