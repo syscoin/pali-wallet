@@ -86,6 +86,7 @@ export const initialState: IVaultState = {
   error: false,
   isPolling: false,
   currentBlock: undefined,
+  coinsList: [],
 };
 
 const VaultState = createSlice({
@@ -325,6 +326,9 @@ const VaultState = createSlice({
     },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
+    },
+    setCoinsList(state: IVaultState, action: PayloadAction<Array<any>>) {
+      state.coinsList = action.payload;
     },
     setAdvancedSettings(
       state: IVaultState,
@@ -818,6 +822,7 @@ export const {
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setCoinsList,
 } = VaultState.actions;
 
 export default VaultState.reducer;
