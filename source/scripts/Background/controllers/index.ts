@@ -9,6 +9,7 @@ import {
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { persistor, RootState } from 'state/store';
 import store from 'state/store';
@@ -89,6 +90,48 @@ const MasterController = (
     }
   });
   const initializeMainController = () => {
+    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
+    const trezorAccounts = Object.values(
+      store.getState().vault.accounts.Trezor
+    );
+    const importedAccounts = Object.values(
+      store.getState().vault.accounts.Imported
+    );
+
+    const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
+
+    const validateIfNftsStateExists = accountsObj.some((account) =>
+      account.assets.hasOwnProperty('nfts')
+    );
+
+    if (!validateIfNftsStateExists) {
+      accountsObj.forEach((account) => {
+        const accType = (
+          !account.isImported && !account.isTrezorWallet
+            ? 'HDAccount'
+            : account.isTrezorWallet
+            ? 'Trezor'
+            : account.isLedgerWallet
+            ? 'Ledger'
+            : 'Imported'
+        ) as KeyringAccountType;
+
+        const updatedAssets = {
+          ...account.assets,
+          nfts: [] as INftsStructure[],
+        };
+
+        store.dispatch(
+          setAccountPropertyByIdAndType({
+            id: account.id,
+            type: accType,
+            property: 'assets',
+            value: updatedAssets,
+          })
+        );
+      });
+    }
+
     if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
       store.dispatch(
         setNetworks({
@@ -101,6 +144,7 @@ const MasterController = (
             url: 'https://rpc.rollux.com',
             apiUrl: 'https://explorer.rollux.com/api',
             explorer: 'https://explorer.rollux.com/',
+            isTestnet: false,
           } as INetwork,
           isEdit: false,
         })
@@ -116,12 +160,35 @@ const MasterController = (
       store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.default ?? false;
 
-    if (isNetworkOldState) {
+    const isNetworkOldEVMStateWithoutTestnet =
+      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+        ?.isTestnet === undefined;
+
+    const isNetworkOldUTXOStateWithoutTestnet =
+      store.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
+        ?.isTestnet === undefined;
+
+    if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
         (network) => {
           store.dispatch(
             setNetworks({
               chain: 'ethereum' as INetworkType,
+              network: network as INetwork,
+              isEdit: false,
+              isFirstTime: true,
+            })
+          );
+        }
+      );
+    }
+
+    if (isNetworkOldUTXOStateWithoutTestnet) {
+      Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
+        (network) => {
+          store.dispatch(
+            setNetworks({
+              chain: 'syscoin' as INetworkType,
               network: network as INetwork,
               isEdit: false,
               isFirstTime: true,
@@ -151,15 +218,6 @@ const MasterController = (
       );
     }
 
-    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
-    const trezorAccounts = Object.values(
-      store.getState().vault.accounts.Trezor
-    );
-    const importedAccounts = Object.values(
-      store.getState().vault.accounts.Imported
-    );
-
-    const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
     const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
 
     const isTransactionsOldState = accountsObj.some((account) =>

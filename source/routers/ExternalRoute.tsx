@@ -33,6 +33,7 @@ import {
 } from '../pages';
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
+import { SwitchNetwork } from 'pages/SwitchNetwork';
 import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
@@ -107,6 +108,10 @@ export const ExternalRoute = () => {
           <Route
             path="watch-asset"
             element={<ProtectedRoute element={<ExternalWatchAsset />} />}
+          />
+          <Route
+            path="switch-network"
+            element={<ProtectedRoute element={<SwitchNetwork />} />}
           />
 
           <Route

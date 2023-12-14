@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Button, OnboardingLayout } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { WalletReadyModal } from 'components/Modal/WalletReadyModal';
+import { WalletReadyModal } from 'components/Modal/WarningBaseModal';
 
 export const ConfirmPhrase = ({
   passed,
@@ -61,7 +61,7 @@ export const ConfirmPhrase = ({
             {newList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-brand-blue400 rounded-md z-20"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-brand-blue rounded-md z-20"
                 key={phrase}
                 type="button"
                 onClick={() => handleNewPhrase(idx)}
@@ -74,7 +74,7 @@ export const ConfirmPhrase = ({
             {orgList.map((phrase, idx) => (
               <Button
                 useDefaultWidth={false}
-                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-transparent border border-brand-blue400 rounded-[10px] z-20"
+                className="flex gap-4 items-center justify-center px-3 py-1 min-w-xs h-7 text-brand-white text-xs font-normal tracking-normal leading-4 bg-transparent border border-brand-blue rounded-[10px] z-20"
                 key={phrase}
                 type="button"
                 onClick={() => handleOrgPhrase(idx)}
@@ -110,7 +110,7 @@ export const ConfirmPhrase = ({
         <WalletReadyModal
           show={passed}
           title={t('seedConfirm.yourWalletIsReady')}
-          description={t('seedConfirm.youShould')}
+          phraseOne={t('seedConfirm.youShould')}
           onClose={confirmPassed}
         />
       </div>

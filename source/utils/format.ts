@@ -105,10 +105,10 @@ export const formatBalanceDecimals = (
  *
  * Default `size` is 30
  */
-export const truncate = (input: string, size = 30) => {
+export const truncate = (input: string, size = 30, dots = true) => {
   if (input.length < size) return input;
 
-  return `${input.slice(0, size)}...`;
+  return `${input.slice(0, size)} ${dots ? '...' : ''}`;
 };
 
 /**

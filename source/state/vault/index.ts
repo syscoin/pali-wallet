@@ -13,6 +13,7 @@ import {
   initialActiveTrezorAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
   IEvmTransaction,
@@ -38,7 +39,7 @@ export const initialState: IVaultState = {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
-        assets: { ethereum: [], syscoin: [] },
+        assets: { ethereum: [], syscoin: [], nfts: [] },
         transactions: { ethereum: {}, syscoin: {} },
       },
     },
@@ -64,12 +65,15 @@ export const initialState: IVaultState = {
     default: true,
     currency: 'sys',
     slip44: 57,
+    isTestnet: false,
   },
+  hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
   isLoadingAssets: false,
+  isLoadingNfts: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -311,8 +315,14 @@ const VaultState = createSlice({
     setIsLoadingAssets(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingAssets = action.payload;
     },
+    setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingNfts = action.payload;
+    },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
+    },
+    setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasErrorOndAppEVM = action.payload;
     },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
@@ -412,28 +422,28 @@ const VaultState = createSlice({
         [KeyringAccountType.HDAccount]: {
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Trezor]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Ledger]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
@@ -499,6 +509,19 @@ const VaultState = createSlice({
       action: PayloadAction<ethers.providers.Block>
     ) {
       state.currentBlock = action.payload;
+    },
+
+    setUpdatedNftsToState: (
+      state: IVaultState,
+      action: PayloadAction<{
+        id: number;
+        type: KeyringAccountType;
+        updatedNfts: INftsStructure[];
+      }>
+    ) => {
+      const { updatedNfts, id, type } = action.payload;
+
+      state.accounts[type][id].assets.nfts = updatedNfts;
     },
 
     setSingleTransactionToState: (
@@ -773,6 +796,8 @@ export const {
   setIsLoadingBalances,
   setIsLoadingAssets,
   setIsLoadingTxs,
+  setIsLoadingNfts,
+  setOpenDAppErrorModal,
   setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
@@ -789,6 +814,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
+  setUpdatedNftsToState,
   setAdvancedSettings,
   setIsPolling,
   setCurrentBlock,

@@ -35,6 +35,7 @@ export const MOCK_ACCOUNT: IPaliAccount = {
         decimals: 8,
       },
     ],
+    nfts: [],
     ethereum: [],
   },
   balances: { syscoin: 0.48430419, ethereum: 5.1 },
@@ -72,7 +73,7 @@ export const MOCK_ACCOUNT: IPaliAccount = {
 
 const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
   ...initialActiveImportedAccountState,
-  assets: { ethereum: [], syscoin: [] },
+  assets: { ethereum: [], syscoin: [], nfts: [] },
   transactions: {
     ethereum: {},
     syscoin: {},
@@ -81,7 +82,7 @@ const MOCK_IMPORTED_ACCOUNT: IPaliAccount = {
 
 const MOCK_TREZOR_ACCOUNT: IPaliAccount = {
   ...initialActiveTrezorAccountState,
-  assets: { ethereum: [], syscoin: [] },
+  assets: { ethereum: [], syscoin: [], nfts: [] },
   transactions: {
     ethereum: {},
     syscoin: {},

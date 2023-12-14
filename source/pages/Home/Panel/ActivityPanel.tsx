@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-// import { Fullscreen } from 'components/Fullscreen';
 import { LoadingComponent } from 'components/Loading';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
@@ -20,10 +20,7 @@ export const TransactionsPanel = () => {
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
 

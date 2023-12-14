@@ -409,7 +409,11 @@
     "newChainType": "New Chain Type",
     "newNetworkUrl": "New Network URL",
     "newNetworkChainId": "New Network ChainID",
-    "trustedWebsites": "TRUSTED WEBSITES"
+    "trustedWebsites": "TRUSTED WEBSITES",
+    "importWalletWarning": "IMPORT WALLET WARNING!",
+    "thisActionErases": "This action erases your current wallet.",
+    "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
@@ -436,7 +440,7 @@
     "originalValue": "Original value",
     "formValue": "Form value",
     "tokenDecimals": "Token Decimals",
-    "tokenSuccessfullyAdded": "Token successfully added",
+    "tokenSuccessfullyAdded": "Token successfully added!",
     "wasSucessfullyAdded": "was successfully added to your wallet.",
     "verifyTheCurrentNetwork": "Verify the current network",
     "verifyTheCurrentNetworkMessage": "This token probably is not available in the current network. Verify the token network and try again.",
