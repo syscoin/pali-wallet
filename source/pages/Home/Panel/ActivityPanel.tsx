@@ -8,7 +8,6 @@ import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
-import { TransactionsList } from './components/Transactions';
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
@@ -136,7 +135,6 @@ export const TransactionsPanel = () => {
           ) : (
             <EvmTransactionsList userTransactions={allTransactions} />
           )}
-          {/* <TransactionsList userTransactions={allTransactions} /> */}
           <OpenTransactionExplorer />
         </div>
       )}

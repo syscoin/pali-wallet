@@ -19,7 +19,6 @@ export const EvmTransactionsListComponent = ({
     (state: RootState) => state.vault
   );
   const { navigate } = useUtils();
-
   const { getTxStatusIcons, getTxStatus, getTxType, txId, getTxOptions } =
     useTransactionsListConfig(userTransactions);
   const { getFiatAmount } = usePrice();
@@ -43,7 +42,7 @@ export const EvmTransactionsListComponent = ({
     <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
       <div className="flex justify-between py-2 w-full">
         <div className="flex items-center">
-          {getTxStatusIcons(getTxType(tx, isTxSent))}
+          {getTxStatusIcons(getTxType(tx, isTxSent), false)}
           <div className="flex flex-col ">
             <div className="text-white text-xs font-normal">
               {getTxType(tx, isTxSent)}

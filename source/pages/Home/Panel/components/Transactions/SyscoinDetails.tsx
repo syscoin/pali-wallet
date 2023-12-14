@@ -6,20 +6,33 @@ import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
-import { useUtils } from 'hooks/index';
+import { Tooltip } from 'components/Tooltip';
+import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import { getController } from 'utils/browser';
-import { camelCaseToText, ellipsis, truncate } from 'utils/index';
+import {
+  camelCaseToText,
+  ellipsis,
+  formatBalanceDecimals,
+  formatCurrency,
+  truncate,
+} from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
   const {
     accounts,
     activeAccount,
+    isBitcoinBased,
     activeNetwork: { chainId: activeChainId, url: activeNetworkUrl },
   } = useSelector((state: RootState) => state.vault);
+  const { getTxStatusIcons, getTxStatus, getTxType } =
+    useTransactionsListConfig();
+
+  const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
 
   const { useCopyClipboard, alert } = useUtils();
@@ -39,6 +52,11 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const recipients: any = {};
   const senders: any = {};
+  let isTxCanceled: boolean;
+  let isConfirmed: boolean;
+  let isTxSent: boolean;
+  let transactionTx: any;
+  let txValue: string;
 
   const setTx = async () =>
     setRawTransaction(
@@ -107,69 +125,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     }
   }, [rawTransaction]);
 
-  const renderAddresses = (list: any) =>
-    Object.values(list).map(({ address, value: addressValue }: any) => (
-      <li
-        onClick={() => copy(address)}
-        key={uniqueId(hash)}
-        className="flex gap-x-1 items-center justify-between mt-2 p-1 text-xs rounded-lg cursor-pointer transition-all duration-200"
-      >
-        <p>{ellipsis(address) || '...'}</p>
-
-        <div>
-          <small>
-            {truncate(String(Number(addressValue) / 10 ** 8), 18)
-              ? truncate(String(Number(addressValue) / 10 ** 8), 18)
-              : 0}{' '}
-            {activeChainId === 57 ? 'SYS' : 'tSYS'}
-          </small>
-
-          <IconButton onClick={() => copy(address)}>
-            <Icon
-              name="copy"
-              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-            />
-          </IconButton>
-        </div>
-      </li>
-    ));
-
-  const renderAssetsDisclosure = (sender: boolean) => {
-    const list = sender ? newSenders : newRecipients;
-
-    return (
-      <Disclosure>
-        {({ open }) => (
-          <>
-            <div className="px-6">
-              <Disclosure.Button
-                className={`${
-                  open ? 'rounded-t-md' : 'rounded-md'
-                } mt-3 py-2 px-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
-              >
-                {sender ? 'From' : 'To'}
-                <Icon
-                  name="select-down"
-                  className={`${
-                    open ? 'transform rotate-180' : ''
-                  } mb-1 text-brand-white`}
-                />
-              </Disclosure.Button>
-            </div>
-
-            <div className="px-6">
-              <Disclosure.Panel>
-                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
-                  {Object.values(list).length && renderAddresses(list)}
-                </div>
-              </Disclosure.Panel>
-            </div>
-          </>
-        )}
-      </Disclosure>
-    );
-  };
-
   const formattedTransaction = [];
 
   const syscoinTransactions = transactions[TransactionsType.Syscoin][
@@ -178,6 +133,31 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
+
+    console.log(tx, 'tx');
+    transactionTx = tx;
+    txValue = formatBalanceDecimals(tx.value, false);
+    isTxCanceled = tx?.isCanceled === true;
+    isConfirmed = tx.confirmations > 0;
+    isTxSent = isBitcoinBased
+      ? false
+      : tx.from.toLowerCase() === currentAccount.address;
+
+    const vinAddresses = tx.vin[0]?.addresses || [];
+    const vinFormattedValue = {
+      value: vinAddresses.join(', '),
+      label: 'To',
+      canCopy: vinAddresses.length > 0,
+    };
+    formattedTransaction.push(vinFormattedValue);
+
+    const voutAddress = tx.vout[1]?.addresses || [];
+    const voutFormattedValue = {
+      value: voutAddress.join(', '),
+      label: 'From',
+      canCopy: vinAddresses.length > 0,
+    };
+    formattedTransaction.push(voutFormattedValue);
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);
@@ -202,38 +182,60 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     return formattedTransaction;
   });
 
+  const labelsToKeep = [
+    'From',
+    'To',
+    'Block Hash',
+    'Confirmations',
+    'Block Time',
+    'Fees',
+  ];
+  console.log(formattedTransaction, 'formattedTransaction');
+
+  const formattedTransactionDetails = formattedTransaction
+    .filter(({ label }) => labelsToKeep.includes(label))
+    .sort(
+      (a, b) => labelsToKeep.indexOf(a.label) - labelsToKeep.indexOf(b.label)
+    );
+
   const RenderTransaction = () => (
     <>
-      {formattedTransaction.map(({ label, value, canCopy }: any) => (
+      <div className="flex flex-col justify-center items-center w-full mb-2">
+        <p className="text-brand-gray200 text-xs font-light">
+          {getTxType(transactionTx, isTxSent)}
+        </p>
+        <p className="text-white text-base">{Number(txValue) / 10 ** 8} SYS</p>
+        <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
+      </div>
+      {formattedTransactionDetails.map(({ label, value, canCopy }: any) => (
         <Fragment key={uniqueId(hash)}>
           {label.length > 0 && value !== undefined && (
-            <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-              <p>{label}</p>
+            <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
+              <p className="text-xs font-normal text-white">{label}</p>
               <span>
                 {value.length >= 20 ? (
-                  <b>{truncate(value, 20)}</b>
+                  <Tooltip content={value} childrenClassName="flex">
+                    <p className="text-xs font-normal text-white">
+                      {ellipsis(value, 2, 4)}
+                    </p>
+                    {canCopy && (
+                      <IconButton onClick={() => copy(value ?? '')}>
+                        <Icon
+                          wrapperClassname="flex items-center justify-center"
+                          name="copy"
+                          className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+                        />
+                      </IconButton>
+                    )}
+                  </Tooltip>
                 ) : (
-                  <b>{value}</b>
-                )}
-
-                {canCopy && (
-                  <IconButton onClick={() => copy(value ?? '')}>
-                    <Icon
-                      name="copy"
-                      className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                    />
-                  </IconButton>
+                  <p className="text-xs font-normal text-white">{value}</p>
                 )}
               </span>
-            </li>
+            </div>
           )}
         </Fragment>
       ))}
-
-      {renderAssetsDisclosure(false)}
-      {renderAssetsDisclosure(true)}
-
-      {copied && showSuccessAlert()}
     </>
   );
 

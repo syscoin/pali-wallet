@@ -51,7 +51,7 @@ export const useTransactionsListConfig = (
     return `${txLabel}`;
   };
 
-  const getTxStatusIcons = (txLabel: string) => {
+  const getTxStatusIcons = (txLabel: string, isDetail: boolean) => {
     let icon = '';
 
     switch (txLabel) {
@@ -64,9 +64,17 @@ export const useTransactionsListConfig = (
     }
 
     return (
-      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-        <img className="relative" src={icon} alt="Icon" />
-      </div>
+      <>
+        {isDetail ? (
+          <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+            <img className="relative w-[30px] h-[30px]" src={icon} alt="Icon" />
+          </div>
+        ) : (
+          <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+            <img className="relative" src={icon} alt="Icon" />
+          </div>
+        )}
+      </>
     );
   };
 
@@ -109,8 +117,6 @@ export const useTransactionsListConfig = (
     (isCanceled: boolean, isConfirmed: boolean) => {
       let className = '';
       let status = '';
-      console.log(isCanceled, 'as');
-      console.log(isConfirmed, 'isConfirmed');
 
       switch (isCanceled) {
         case true:
@@ -122,7 +128,6 @@ export const useTransactionsListConfig = (
           status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
-      console.log(status, className);
       return <p className={`text-xs font-normal ${className}`}>{status}</p>;
     },
     [userTransactions]

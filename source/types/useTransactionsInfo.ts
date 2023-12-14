@@ -81,7 +81,7 @@ export interface ITransactionsListConfig {
     tx: ITransactionInfoEvm
   ) => JSX.Element | null;
   getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
-  getTxStatusIcons: (txLabel: string) => JSX.Element;
+  getTxStatusIcons: (txLabel: string, isDetail: boolean) => JSX.Element;
   getTxType: (tx: any, isTxSent: boolean) => string;
   isOpenModal: boolean;
   isShowedGroupBar: (tx: ITransactionInfoEvm, idx: number) => boolean;
