@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { IFRAME } from 'trezor-connect';
 
 import { useTransactionsListConfig } from '../useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
+import { StatusModal } from 'components/Modal/StatusModal';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -18,6 +20,8 @@ export const EvmTransactionsListComponent = ({
   const { isBitcoinBased, activeAccount, accounts } = useSelector(
     (state: RootState) => state.vault
   );
+  const [showModal, setShowModal] = useState(false);
+
   const { navigate } = useUtils();
   const { getTxStatusIcons, getTxStatus, getTxType, txId, getTxOptions } =
     useTransactionsListConfig(userTransactions);
@@ -38,8 +42,23 @@ export const EvmTransactionsListComponent = ({
       : Number(tx.value.hex) / 1e18
     : Number(tx.value) / 1e18;
 
+  // useEffect(() => {
+  //   tx.confirmations > 0 ? setShowModal(true) : null;
+  // }, []);
+
+  // const closeModal = () => {
+  //   setShowModal(false);
+  // };
+
   return (
     <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
+      {/* <StatusModal
+        status="success"
+        title="Transaction concluded!"
+        description="Your transaction was successfully concluded, check on blockexplorer!"
+        show={showModal}
+        onClose={closeModal}
+      /> */}
       <div className="flex justify-between py-2 w-full">
         <div className="flex items-center">
           {getTxStatusIcons(getTxType(tx, isTxSent), false)}

@@ -34,7 +34,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   let isConfirmed: boolean;
   let isTxSent: boolean;
   let transactionTx: any;
-  let txValue: string;
+  let txValue: number;
 
   useEffect(() => {
     if (!copied) return;
@@ -51,9 +51,9 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   ethereumTransactions?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
-    console.log(tx);
+
     transactionTx = tx;
-    txValue = formatBalanceDecimals(tx.value, false);
+    txValue = parseInt(tx.value, 16);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
