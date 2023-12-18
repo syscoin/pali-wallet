@@ -9,7 +9,8 @@ const LOCALE_VERSION = '1.5.1';
 
 const determineLngFn = (code: string): string => {
   let { language } = i18next;
-  const storageLanguage = localStorage.getItem('language');
+  // const storageLanguage = chrome.storage.local.get('language');
+  const storageLanguage = 'en';
   if (storageLanguage) {
     return storageLanguage;
   }

@@ -48,8 +48,9 @@ import {
   resetPaliRequestsCount,
   verifyPaliRequests,
 } from 'scripts/Background';
+// import MasterController from 'scripts/Background/controllers';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -57,20 +58,32 @@ export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
   const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
-  const { wallet, appRoute } = getController();
+  // const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
     useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
-    wallet.ethereumTransaction.web3Provider;
-  const isUnlocked = wallet.isUnlocked();
+  // const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
+  //   wallet.ethereumTransaction.web3Provider;
+  const isUnlocked = false;
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
       JSON.stringify({ hasUtf8Error: false })
   );
+
+  // const onWalletReady = (windowController: any) => {
+  //   // Add any code here that depends on the initialized wallet
+  //   window.controller = windowController;
+  //   setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+  //   // if (paliPort) {
+  //   //   window.controller.dapp.setup(paliPort);
+  //   // }
+  //   window.controller.utils.setFiat();
+  // };
+
+  // window.controller = MasterController(onWalletReady);
 
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
@@ -89,8 +102,8 @@ export const Router = () => {
       return;
     }
 
-    const route = appRoute();
-    if (route !== '/') navigate(route);
+    // const route = appRoute();
+    // if (route !== '/') navigate(route);
   }, [isUnlocked]);
 
   useEffect(() => {
@@ -114,32 +127,32 @@ export const Router = () => {
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname);
+    // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
     if (isFullscreen) {
       navigate('/settings/account/hardware');
     }
   }, [pathname]);
 
-  useEffect(() => {
-    if (
-      serverHasAnError &&
-      isUnlocked &&
-      !isBitcoinBased &&
-      !isNetworkChanging
-    ) {
-      if (errorMessage !== 'string' && errorMessage?.code === -32016) {
-        setmodalMessage(
-          'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
-        );
-      } else {
-        setmodalMessage(
-          'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
-        );
-      }
-      setShowModal(true);
-    }
-  }, [serverHasAnError]);
+  // useEffect(() => {
+  //   if (
+  //     // serverHasAnError &&
+  //     isUnlocked &&
+  //     !isBitcoinBased &&
+  //     !isNetworkChanging
+  //   ) {
+  //     // if (errorMessage !== 'string' && errorMessage?.code === -32016) {
+  //     //   setmodalMessage(
+  //     //     'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
+  //     //   );
+  //     // } else {
+  //     //   setmodalMessage(
+  //     //     'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
+  //     //   );
+  //     // }
+  //     setShowModal(true);
+  //   }
+  // }, [serverHasAnError]);
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
@@ -158,10 +171,10 @@ export const Router = () => {
         description={t('settings.bgErrorMessage')}
         onClose={async () => {
           setShowUtf8ErrorModal(false);
-          if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
-            await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
-          }
-          wallet.lock();
+          // if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
+          //   await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
+          // }
+          // wallet.lock();
           navigate('/');
         }}
       />
@@ -170,9 +183,10 @@ export const Router = () => {
         title="RPC Error"
         description={`${modalMessage}`}
         warningMessage={`Provider Error: ${
-          errorMessage === 'string' || typeof errorMessage === 'undefined'
-            ? errorMessage
-            : errorMessage.message
+          // errorMessage === 'string' || typeof errorMessage === 'undefined'
+          //   ? errorMessage
+          //   : errorMessage.message
+          ''
         }`}
         onClose={() => setShowModal(false)}
       />

@@ -34,12 +34,12 @@ import {
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const { wallet, appRoute } = getController();
+  // const { wallet, appRoute } = getController();
   const { navigate, alert } = useUtils();
   const { pathname, search } = useLocation();
 
@@ -48,7 +48,7 @@ export const ExternalRoute = () => {
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 
-  const isUnlocked = wallet.isUnlocked();
+  const isUnlocked = false;
 
   useEffect(() => {
     if (isUnlocked && defaultRoute) {
@@ -57,13 +57,13 @@ export const ExternalRoute = () => {
       return;
     }
 
-    const externalRoute = appRoute(null, true);
-    if (externalRoute !== '/') navigate(externalRoute);
+    // const externalRoute = appRoute(null, true);
+    // if (externalRoute !== '/') navigate(externalRoute);
   }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname + search, true);
+    // appRoute(pathname + search, true);
   }, [pathname]);
 
   return (

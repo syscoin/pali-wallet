@@ -82,6 +82,7 @@ const MasterController = (
   // Subscribe to store updates
   persistor.subscribe(() => {
     const state = store.getState() as RootState & { _persist: IPersistState };
+    chrome.storage.local.set({ ['1']: store.getState() });
     const {
       _persist: { rehydrated },
     } = state;

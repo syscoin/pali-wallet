@@ -8,13 +8,13 @@ import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
-  const {
-    wallet: { unlockFromController },
-  } = getController();
+  // const {
+  //   wallet: { unlockFromController },
+  // } = getController();
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
@@ -51,7 +51,8 @@ export const Start = (props: any) => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     try {
-      const result = await unlockFromController(password);
+      // const result = await unlockFromController(password);
+      const result = { password };
 
       if (!result) {
         setErrorMessage(t('start.wrongPassword'));

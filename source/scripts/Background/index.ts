@@ -23,19 +23,19 @@ declare global {
 const isWatchRequestsActive = false;
 
 let paliPort: Runtime.Port;
-const onWalletReady = (windowController: IMasterController) => {
-  // Add any code here that depends on the initialized wallet
-  window.controller = windowController;
-  setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
-  if (paliPort) {
-    window.controller.dapp.setup(paliPort);
-  }
-  window.controller.utils.setFiat();
-};
+// const onWalletReady = (windowController: IMasterController) => {
+//   // Add any code here that depends on the initialized wallet
+//   window.controller = windowController;
+//   setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
+//   if (paliPort) {
+//     window.controller.dapp.setup(paliPort);
+//   }
+//   window.controller.utils.setFiat();
+// };
 
-if (!window.controller) {
-  window.controller = MasterController(onWalletReady);
-}
+// if (!window.controller) {
+//   window.controller = MasterController(onWalletReady);
+// }
 
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
@@ -43,32 +43,32 @@ browser.runtime.onInstalled.addListener(() => {
 
 let timeout: any;
 
-const restartLockTimeout = () => {
-  const { timer } = store.getState().vault;
+// const restartLockTimeout = () => {
+//   const { timer } = store.getState().vault;
 
-  if (timeout) {
-    clearTimeout(timeout);
-  }
+//   if (timeout) {
+//     clearTimeout(timeout);
+//   }
 
-  timeout = setTimeout(() => {
-    handleLogout();
-  }, timer * 60 * 1000);
-};
+//   timeout = setTimeout(() => {
+//     handleLogout();
+//   }, timer * 60 * 1000);
+// };
 
-const handleIsOpen = (isOpen: boolean) =>
-  window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
+// const handleIsOpen = (isOpen: boolean) =>
+//   window.localStorage.setItem('isPopupOpen', JSON.stringify({ isOpen }));
 
-const handleLogout = () => {
-  const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
-  const currentLanguage = window.localStorage.getItem('language');
-  i18next.changeLanguage(currentLanguage ?? 'en');
-  if (isTimerEnabled) {
-    window.controller.wallet.lock();
+// const handleLogout = () => {
+//   const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
+//   const currentLanguage = window.localStorage.getItem('language');
+//   i18next.changeLanguage(currentLanguage ?? 'en');
+//   if (isTimerEnabled) {
+//     window.controller.wallet.lock();
 
-    // Send a message to the content script
-    browser.runtime.sendMessage({ action: 'logoutFS' });
-  }
-};
+//     // Send a message to the content script
+//     browser.runtime.sendMessage({ action: 'logoutFS' });
+//   }
+// };
 
 let requestCount = 0;
 const requestsPerSecond = {};
@@ -119,6 +119,13 @@ const updateRequestsPerSecond = () => {
     requestsPerSecond[currentTime] = [];
   }
 };
+const getData = async () => {
+  await chrome.storage.local.set({ ['1']: store.getState() });
+  const data = await chrome.storage.local.get('1');
+  console.log({ data });
+};
+
+getData();
 
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
@@ -126,7 +133,7 @@ setInterval(updateRequestsPerSecond, 1000);
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
   switch (type) {
     case 'reset_autolock':
-      if (target === 'background') restartLockTimeout();
+      // if (target === 'background') restartLockTimeout();
       break;
     case 'verifyPaliRequests':
       if (target === 'background' && process.env.NODE_ENV === 'development')
@@ -166,7 +173,7 @@ export const inactivityTime = () => {
 };
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-  if (port.name === 'pali') handleIsOpen(true);
+  // if (port.name === 'pali') handleIsOpen(true);
   if (port.name === 'pali-inject') {
     port.onMessage.addListener((message) => {
       if (message.action === 'isInjected') {
@@ -185,14 +192,14 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
 
   if (timeout) clearTimeout(timeout);
 
-  if (isTimerEnabled) {
-    timeout = setTimeout(() => {
-      handleLogout();
-    }, timer * 60 * 1000);
-  }
+  // if (isTimerEnabled) {
+  //   timeout = setTimeout(() => {
+  //     handleLogout();
+  //   }, timer * 60 * 1000);
+  // }
 
-  if (changingConnectedAccount.isChangingConnectedAccount)
-    window.controller.wallet.resolveAccountConflict();
+  // if (changingConnectedAccount.isChangingConnectedAccount)
+  //   window.controller.wallet.resolveAccountConflict();
 
   const senderUrl = port.sender.url;
 
@@ -201,11 +208,11 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     senderUrl?.includes(browser.runtime.getURL('/external.html'))
   ) {
     port.onDisconnect.addListener(() => {
-      handleIsOpen(false);
+      // handleIsOpen(false);
       if (timeout) clearTimeout(timeout);
       if (isTimerEnabled) {
         timeout = setTimeout(() => {
-          handleLogout();
+          // handleLogout();
         }, timer * 60 * 1000);
       }
       log('pali disconnecting port', 'System');
@@ -213,37 +220,37 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   }
 });
 
-async function checkForUpdates() {
-  const { activeAccount, isBitcoinBased, activeNetwork } =
-    store.getState().vault;
+// async function checkForUpdates() {
+//   const { activeAccount, isBitcoinBased, activeNetwork } =
+//     store.getState().vault;
 
-  if (isPollingRunNotValid()) {
-    return;
-  }
+//   if (isPollingRunNotValid()) {
+//     return;
+//   }
 
-  //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateUserNativeBalance({
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
+//   //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
+//   window.controller.wallet.updateUserNativeBalance({
+//     isBitcoinBased,
+//     activeNetwork,
+//     activeAccount,
+//   });
 
-  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateUserTransactionsState({
-    isPolling: true,
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
+//   //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+//   window.controller.wallet.updateUserTransactionsState({
+//     isPolling: true,
+//     isBitcoinBased,
+//     activeNetwork,
+//     activeAccount,
+//   });
 
-  //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
-  window.controller.wallet.updateAssetsFromCurrentAccount({
-    isPolling: true,
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
-}
+//   //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
+//   window.controller.wallet.updateAssetsFromCurrentAccount({
+//     isPolling: true,
+//     isBitcoinBased,
+//     activeNetwork,
+//     activeAccount,
+//   });
+// }
 
 let stateIntervalId;
 let pendingTransactionsPollingIntervalId;
@@ -262,7 +269,7 @@ function registerListener() {
       port.onMessage.addListener((message) => {
         if (message.action === 'startPolling' && !isPolling) {
           store.dispatch(setIsPolling(true));
-          stateIntervalId = setInterval(checkForUpdates, 15000);
+          // stateIntervalId = setInterval(checkForUpdates, 15000);
           port.postMessage({ stateIntervalId });
         } else if (message.action === 'stopPolling') {
           clearInterval(stateIntervalId);
@@ -324,11 +331,11 @@ async function checkForPendingTransactionsUpdate() {
       i + maxTransactionsToSend
     );
 
-    window.controller.wallet.validatePendingEvmTransactions({
-      activeNetwork,
-      activeAccount,
-      pendingTransactions: batchTransactions,
-    });
+    // window.controller.wallet.validatePendingEvmTransactions({
+    //   activeNetwork,
+    //   activeAccount,
+    //   pendingTransactions: batchTransactions,
+    // });
 
     if (i + maxTransactionsToSend < pendingTransactions.length) {
       await new Promise((resolve) => setTimeout(resolve, cooldownTimeMs));
@@ -368,7 +375,7 @@ export const resetPaliRequestsCount = () => {
 };
 
 export const setLanguageInLocalstorage = (langague: PaliLanguages) => {
-  window.localStorage.setItem('language', langague);
+  // window.localStorage.setItem('language', langague);
 };
 
 wrapStore(store, { portName: STORE_PORT });
