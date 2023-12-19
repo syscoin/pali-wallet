@@ -9,7 +9,7 @@ import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm } from 'types/useTransactionsInfo';
-import { isERC20Transfer } from 'utils/transactions';
+import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
 
 export const EvmTransactionsListComponent = ({
   userTransactions,
@@ -36,13 +36,17 @@ export const EvmTransactionsListComponent = ({
 
   const isTxSent = isBitcoinBased
     ? false
-    : tx.from.toLowerCase() === currentAccount.address;
+    : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
 
   const tokenValue = !isConfirmed
     ? typeof tx.value === 'string'
       ? tx.value
       : Number(tx.value.hex) / 1e18
     : Number(tx.value) / 1e18;
+
+  const finalTxValue = isErc20Tx
+    ? Number(getERC20TransferValue(tx as any)) / 1e18
+    : tokenValue;
 
   const getTokenSymbol = () => {
     if (isErc20Tx) {
@@ -90,7 +94,7 @@ export const EvmTransactionsListComponent = ({
         <div className="flex items-center gap-4">
           <div className="flex flex-col justify-end items-end">
             <div className="text-white text-xs font-normal">
-              {Number(tokenValue).toFixed(4)} {getTokenSymbol()}
+              {Number(finalTxValue).toFixed(4)} {getTokenSymbol()}
             </div>
             <div className="text-brand-gray200 text-xs font-normal">
               ${getFiatAmount(+tx.value / 1e18, 6)}
