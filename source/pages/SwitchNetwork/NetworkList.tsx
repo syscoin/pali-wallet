@@ -41,9 +41,17 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
 
-  const mainetNetworks = newNetworks.filter(
-    (objeto) => objeto?.isTestnet !== true
-  );
+  let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
+
+  mainetNetworks = [
+    ...mainetNetworks.filter((obj) => obj.label === 'Rollux'),
+    ...mainetNetworks.filter(
+      (obj) => obj.currency === 'sys' && obj.label !== 'Rollux'
+    ),
+    ...mainetNetworks.filter(
+      (obj) => obj.currency !== 'sys' && obj.label !== 'Rollux'
+    ),
+  ];
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     // const cannotContinueWithTrezorAccount =
@@ -71,7 +79,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   };
 
   return (
-    <div>
+    <div className="mb-14">
       {isChanging && (
         <div className="flex pl-[20px] gap-2">
           <div
