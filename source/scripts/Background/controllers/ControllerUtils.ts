@@ -36,7 +36,9 @@ const ControllerUtils = (): IControllerUtils => {
       coinsListState?.length > 0
         ? coinsListState
         : await (
-            await fetch('https://api.coingecko.com/api/v3/coins/list')
+            await fetch(
+              'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
+            )
           ).json();
 
     store.dispatch(setCoinsList(coinsList));

@@ -35,12 +35,12 @@ export interface IVaultState {
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
+  isNetworkChanging: boolean;
   isPolling: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
   timer: number;
-  isNetworkChanging: boolean;
 }
 
 export interface INetworksVault {

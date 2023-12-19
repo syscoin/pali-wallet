@@ -10,14 +10,15 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { camelCaseToText, ellipsis, formatBalanceDecimals } from 'utils/index';
-
+import { camelCaseToText, ellipsis } from 'utils/index';
+import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
     accounts,
     activeAccount,
     isBitcoinBased,
-    activeNetwork: { chainId },
+    activeNetwork: { chainId, currency },
+    coinsList,
   } = useSelector((state: RootState) => state.vault);
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -29,12 +30,28 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     useTransactionsListConfig();
 
   const [copied, copy] = useCopyClipboard();
+  const getTokenSymbol = (isErc20Tx: boolean, tx: any) => {
+    if (isErc20Tx) {
+      const token = coinsList.find((coin) =>
+        Object.values(coin?.platforms || {})?.includes(tx?.to)
+      );
+
+      if (token) {
+        return `${token?.symbol}`.toUpperCase();
+      }
+
+      return `${currency || 'SYS'}`.toUpperCase();
+    }
+
+    return `${currency || 'SYS'}`.toUpperCase();
+  };
 
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
   let transactionTx: any;
   let txValue: number;
+  let txSymbol: string;
 
   useEffect(() => {
     if (!copied) return;
@@ -51,9 +68,12 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   ethereumTransactions?.find((tx: any) => {
     if (tx?.hash !== hash) return null;
-
+    const isErc20Tx = isERC20Transfer(tx as any);
     transactionTx = tx;
-    txValue = parseInt(tx.value, 16);
+    txValue = isErc20Tx
+      ? Number(getERC20TransferValue(tx as any)) / 1e18
+      : parseInt(tx.value, 16) / 1e18;
+    txSymbol = getTokenSymbol(isErc20Tx, tx);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
@@ -105,7 +125,9 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
         <p className="text-brand-gray200 text-xs font-light">
           {getTxType(transactionTx, isTxSent)}
         </p>
-        <p className="text-white text-base">{Number(txValue)} SYS</p>
+        <p className="text-white text-base">
+          {Number(txValue)} {txSymbol}
+        </p>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
       {formattedTransactionDetails.map(({ label, value, canCopy }: any) => (
