@@ -152,3 +152,24 @@ export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
 
   return false;
 };
+
+export const isERC20Transfer = (tx: IEvmTransactionResponse) => {
+  const transferSelector = ethers.utils
+    .id('transfer(address,uint256)')
+    .slice(0, 10);
+  const transferFromSelector = ethers.utils
+    .id('transferFrom(address,address,uint256)')
+    .slice(0, 10);
+
+  if (tx?.input) {
+    return (
+      tx.input.startsWith(transferSelector) ||
+      tx.input.startsWith(transferFromSelector)
+    );
+  }
+
+  return false;
+};
+
+export const isTokenTransfer = (tx: IEvmTransactionResponse) =>
+  isERC20Transfer(tx) || isERC1155Transfer(tx);

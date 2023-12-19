@@ -9,6 +9,7 @@ import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm } from 'types/useTransactionsInfo';
+import { isERC20Transfer } from 'utils/transactions';
 
 export const EvmTransactionsListComponent = ({
   userTransactions,
@@ -17,7 +18,7 @@ export const EvmTransactionsListComponent = ({
   tx: ITransactionInfoEvm;
   userTransactions: ITransactionInfoEvm[];
 }) => {
-  const { isBitcoinBased, activeAccount, accounts } = useSelector(
+  const { isBitcoinBased, activeAccount, accounts, coinsList } = useSelector(
     (state: RootState) => state.vault
   );
   const [showModal, setShowModal] = useState(false);
@@ -29,6 +30,7 @@ export const EvmTransactionsListComponent = ({
 
   const isTxCanceled = tx?.isCanceled === true;
   const isConfirmed = tx.confirmations > 0;
+  const isErc20Tx = isERC20Transfer(tx as any);
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -41,6 +43,22 @@ export const EvmTransactionsListComponent = ({
       ? tx.value
       : Number(tx.value.hex) / 1e18
     : Number(tx.value) / 1e18;
+
+  const getTokenSymbol = () => {
+    if (isErc20Tx) {
+      const token = coinsList.find((coin) =>
+        Object.values(coin?.platforms || {})?.includes(tx?.to)
+      );
+
+      if (token) {
+        return `${token?.symbol}`.toUpperCase();
+      }
+
+      return '';
+    }
+
+    return '';
+  };
 
   // useEffect(() => {
   //   tx.confirmations > 0 ? setShowModal(true) : null;
@@ -72,7 +90,7 @@ export const EvmTransactionsListComponent = ({
         <div className="flex items-center gap-4">
           <div className="flex flex-col justify-end items-end">
             <div className="text-white text-xs font-normal">
-              {Number(tokenValue).toFixed(4)}
+              {Number(tokenValue).toFixed(4)} {getTokenSymbol()}
             </div>
             <div className="text-brand-gray200 text-xs font-normal">
               ${getFiatAmount(+tx.value / 1e18, 6)}

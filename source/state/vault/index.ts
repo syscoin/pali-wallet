@@ -23,7 +23,7 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
-import { isERC1155Transfer } from 'utils/transactions';
+import { isTokenTransfer } from 'utils/transactions';
 
 import {
   IChangingConnectedAccount,
@@ -86,6 +86,7 @@ export const initialState: IVaultState = {
   error: false,
   isPolling: false,
   currentBlock: undefined,
+  coinsList: [],
 };
 
 const VaultState = createSlice({
@@ -325,6 +326,9 @@ const VaultState = createSlice({
     },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
+    },
+    setCoinsList(state: IVaultState, action: PayloadAction<Array<any>>) {
+      state.coinsList = action.payload;
     },
     setAdvancedSettings(
       state: IVaultState,
@@ -622,12 +626,12 @@ const VaultState = createSlice({
         // Cast the array to the correct type based on the networkType and value bigger than 0
         if (!isBitcoinBased) {
           chainTransactions = treatedTxs.filter((tx) => {
-            if (
+            const shouldNotBeAdded =
               convertTransactionValueToCompare(
                 tx.value as TransactionValueType
-              ) === 0 &&
-              !isERC1155Transfer(tx as IEvmTransactionResponse)
-            ) {
+              ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+            if (shouldNotBeAdded) {
               return false;
             }
             return networkType === TransactionsType.Ethereum
@@ -649,12 +653,12 @@ const VaultState = createSlice({
           // Create a new array with the correct type based on the networkType and value bigger than 0
           if (!isBitcoinBased) {
             chainTransactions = treatedTxs.filter((tx) => {
-              if (
+              const shouldNotBeAdded =
                 convertTransactionValueToCompare(
                   tx.value as TransactionValueType
-                ) === 0 &&
-                !isERC1155Transfer(tx as IEvmTransactionResponse)
-              ) {
+                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+              if (shouldNotBeAdded) {
                 return false;
               }
               return networkType === TransactionsType.Ethereum
@@ -672,12 +676,12 @@ const VaultState = createSlice({
           // Filter and push the transactions based on the networkType and value bigger than 0
           if (!isBitcoinBased) {
             castedTransactions = treatedTxs.filter((tx) => {
-              if (
+              const shouldNotBeAdded =
                 convertTransactionValueToCompare(
                   tx.value as TransactionValueType
-                ) === 0 &&
-                !isERC1155Transfer(tx as IEvmTransactionResponse)
-              ) {
+                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+              if (shouldNotBeAdded) {
                 return false;
               }
               return networkType === TransactionsType.Ethereum
@@ -818,6 +822,7 @@ export const {
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setCoinsList,
 } = VaultState.actions;
 
 export default VaultState.reducer;

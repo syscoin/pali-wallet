@@ -25,6 +25,7 @@ export interface IVaultState {
     [k: string]: boolean;
   };
   changingConnectedAccount: IChangingConnectedAccount;
+  coinsList: any[];
   currentBlock: ethers.providers.Block;
   error: boolean;
   hasErrorOndAppEVM: boolean;
