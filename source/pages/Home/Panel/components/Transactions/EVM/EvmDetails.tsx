@@ -10,7 +10,11 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { camelCaseToText, ellipsis } from 'utils/index';
+import {
+  camelCaseToText,
+  ellipsis,
+  removeScientificNotation,
+} from 'utils/index';
 import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
@@ -126,7 +130,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
           {getTxType(transactionTx, isTxSent)}
         </p>
         <p className="text-white text-base">
-          {Number(txValue)} {txSymbol}
+          {removeScientificNotation(Number(txValue))} {txSymbol}
         </p>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
