@@ -71,6 +71,8 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   ] as IEvmTransaction[];
 
   ethereumTransactions?.find((tx: any) => {
+    tx.value = !!tx.value?.hex ? tx.value?.hex : tx.value;
+
     if (tx?.hash !== hash) return null;
     const isErc20Tx = isERC20Transfer(tx as any);
     transactionTx = tx;

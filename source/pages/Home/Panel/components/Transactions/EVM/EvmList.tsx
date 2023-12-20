@@ -1,10 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { IFRAME } from 'trezor-connect';
 
 import { useTransactionsListConfig } from '../useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
-import { StatusModal } from 'components/Modal/StatusModal';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -21,7 +19,7 @@ export const EvmTransactionsListComponent = ({
   const { isBitcoinBased, activeAccount, accounts, coinsList } = useSelector(
     (state: RootState) => state.vault
   );
-  const [showModal, setShowModal] = useState(false);
+  // const [showModal, setShowModal] = useState(false);
 
   const { navigate } = useUtils();
   const { getTxStatusIcons, getTxStatus, getTxType, txId, getTxOptions } =
@@ -115,7 +113,7 @@ export const EvmTransactionsListComponent = ({
                 }
               />
             ) : (
-              getTxOptions(isTxCanceled, isConfirmed, tx[txId])
+              getTxOptions(isTxCanceled, isConfirmed, tx)
             )}
           </div>
         </div>
@@ -143,6 +141,10 @@ export const EvmTransactionsList = ({
 
     groupedTransactions[formattedDate].push(tx);
   });
+
+  useEffect(() => {
+    console.log({ isOpenModal, modalData });
+  }, [isOpenModal, modalData]);
 
   return (
     <>

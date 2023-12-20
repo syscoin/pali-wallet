@@ -38,7 +38,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 alert,
                 chainId,
                 isLegacy: isLegacyTransaction,
-                txHash: String(transaction),
+                txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
                 wallet,
               },
@@ -59,7 +59,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 alert,
                 chainId,
                 isLegacy: isLegacyTransaction,
-                txHash: String(transaction),
+                txHash: transaction.hash,
                 updateType: UpdateTxAction.SpeedUp,
                 wallet,
               },
@@ -117,7 +117,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     navigate('/home/details', {
                       state: {
                         id: null,
-                        hash: transaction,
+                        hash: transaction.hash,
                       },
                     })
                   }

@@ -67,7 +67,7 @@ export const DetailsView = () => {
       </div>
     );
   };
-  console.log(hash);
+
   return (
     <Layout
       title={`${
