@@ -105,16 +105,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
 
                 {token?.is1155 === undefined && (
                   <p className="flex items-center gap-x-2">
-                    <span className="text-brand-white">
-                      {truncate(
-                        formatCurrency(
-                          String(token.balance / 10 ** Number(token.decimals)),
-                          Number(token.decimals)
-                        ),
-                        5,
-                        false
-                      )}
-                    </span>
+                    <span className="text-brand-white">{token.balance}</span>
 
                     <span className="text-brand-royalbluemedium">
                       {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
