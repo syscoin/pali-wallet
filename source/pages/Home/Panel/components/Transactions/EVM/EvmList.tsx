@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
+import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
+import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import { getController } from 'utils/browser';
@@ -26,6 +28,7 @@ export const EvmTransactionsList = ({
     accounts,
     coinsList,
     activeNetwork: { chainId },
+    isLastTxConfirmed,
   } = useSelector((state: RootState) => state.vault);
 
   const {
@@ -39,6 +42,7 @@ export const EvmTransactionsList = ({
   } = useTransactionsListConfig(userTransactions);
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState(false);
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const { wallet } = getController();
@@ -55,6 +59,7 @@ export const EvmTransactionsList = ({
     groupedTransactions[formattedDate].push(tx);
   });
 
+  const currentAccount = accounts[activeAccount.type][activeAccount.id];
   const EvmTransactionsListComponent = ({
     tx,
   }: {
@@ -80,8 +85,6 @@ export const EvmTransactionsList = ({
     const isConfirmed = tx.confirmations > 0;
     const isErc20Tx = isERC20Transfer(tx as any);
 
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
     const isTxSent = isBitcoinBased
       ? false
       : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
@@ -98,13 +101,6 @@ export const EvmTransactionsList = ({
 
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
-        {/* <StatusModal
-          status="success"
-          title="Transaction concluded!"
-          description="Your transaction was successfully concluded, check on blockexplorer!"
-          show={showModal}
-          onClose={closeModal}
-        /> */}
         <div className="flex justify-between py-2 w-full">
           <div className="flex items-center">
             {getTxStatusIcons(getTxType(tx, isTxSent), false)}
@@ -149,8 +145,36 @@ export const EvmTransactionsList = ({
     );
   };
 
+  useEffect(() => {
+    const lastIndex = currentAccount.transactions.ethereum[chainId].length - 1;
+    const lastTx = currentAccount.transactions.ethereum[chainId][
+      lastIndex
+    ] as IEvmTransaction;
+
+    if (isLastTxConfirmed?.[chainId]) {
+      return;
+    }
+
+    if (lastTx?.confirmations === 0) {
+      wallet.setIsLastTxConfirmed(chainId, false);
+      return;
+    }
+
+    if (lastTx?.confirmations > 0 && !isLastTxConfirmed?.[chainId]) {
+      setShowModal(true);
+      wallet.setIsLastTxConfirmed(chainId, true);
+    }
+  }, [currentAccount]);
+
   return (
     <>
+      <StatusModal
+        status="success"
+        title="Transaction concluded!"
+        description="Your transaction was successfully concluded, check on explorer!"
+        show={showModal}
+        onClose={() => setShowModal(false)}
+      />
       <ConfirmationModal show={isOpenModal} {...modalData} />
       {Object.entries(groupedTransactions).map(([date, transactions]: any) => (
         <div key={date} className="mb-[20px]">

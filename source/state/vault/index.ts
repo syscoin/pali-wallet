@@ -56,6 +56,7 @@ export const initialState: IVaultState = {
     refresh: false,
     ledger: false,
   },
+  isLastTxConfirmed: {},
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
   activeNetwork: {
@@ -178,6 +179,21 @@ const VaultState = createSlice({
     ) {
       const { account, accountType } = action.payload;
       state.accounts[accountType][account.id] = account;
+    },
+    setIsLastTxConfirmed(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        isFirstTime?: boolean;
+        wasConfirmed: boolean;
+      }>
+    ) {
+      const { chainId, wasConfirmed, isFirstTime } = action.payload;
+      if (isFirstTime) {
+        state.isLastTxConfirmed = {};
+        return;
+      }
+      state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
     setNetworks(
       state: IVaultState,
@@ -823,6 +839,7 @@ export const {
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setCoinsList,
+  setIsLastTxConfirmed,
 } = VaultState.actions;
 
 export default VaultState.reducer;
