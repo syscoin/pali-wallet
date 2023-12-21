@@ -1,7 +1,6 @@
 import React from 'react';
 
 import { useTransactionsListConfig } from '../useTransactionsInfos';
-import { ConfirmationModal } from 'components/Modal';
 import { useUtils } from 'hooks/useUtils';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';
@@ -53,14 +52,12 @@ export const UtxoTransactionsList = ({
 }: {
   userTransactions: ITransactionInfoUtxo[];
 }) => {
-  const { filteredTransactions, isOpenModal, modalData } =
-    useTransactionsListConfig(userTransactions);
+  const { filteredTransactions } = useTransactionsListConfig(userTransactions);
 
   const array = filteredTransactions as ITransactionInfoUtxo[];
 
   return (
     <>
-      <ConfirmationModal show={isOpenModal} {...modalData} />
       {array.map((tx, idx) => (
         <UtxoTransactionsListComponent
           key={idx}

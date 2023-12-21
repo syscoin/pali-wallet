@@ -1,16 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { TransactionOptions } from 'components/TransactionOptions';
-import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import {
-  ITransactionsListConfig,
-  modalDataType,
-} from 'types/useTransactionsInfo';
-import { getController } from 'utils/browser';
-import { handleUpdateTransaction } from 'utils/index';
+import { ITransactionsListConfig } from 'types/useTransactionsInfo';
 
 export const useTransactionsListConfig = (
   userTransactions?: any[]
@@ -19,12 +12,8 @@ export const useTransactionsListConfig = (
     activeNetwork: { chainId },
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
-  const { wallet } = getController();
-  const { alert } = useUtils();
-  const { t } = useTranslation();
 
-  const [modalData, setModalData] = useState<modalDataType>();
-  const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const { t } = useTranslation();
 
   const txId = isBitcoinBased ? 'txId' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
@@ -133,22 +122,6 @@ export const useTransactionsListConfig = (
     [userTransactions]
   );
 
-  const getTxOptions = (isCanceled: boolean, isConfirmed: boolean, tx: any) => {
-    if (!isCanceled && !isConfirmed) {
-      return (
-        <TransactionOptions
-          handleUpdateTransaction={handleUpdateTransaction}
-          alert={alert}
-          chainId={chainId}
-          wallet={wallet}
-          transaction={tx}
-          setIsOpenModal={setIsOpenModal}
-          setModalData={setModalData}
-        />
-      );
-    }
-  };
-
   const formatTimeStamp = (timestamp: number) => {
     const data = new Date(timestamp * 1000);
 
@@ -198,12 +171,25 @@ export const useTransactionsListConfig = (
     );
   };
 
+  const getTokenSymbol = (isErc20Tx: boolean, coinsList: any[], tx: any) => {
+    if (isErc20Tx) {
+      const token = coinsList.find((coin) =>
+        Object.values(coin?.platforms || {})?.includes(tx?.to)
+      );
+
+      if (token) {
+        return `${token?.symbol}`.toUpperCase();
+      }
+
+      return '';
+    }
+
+    return '';
+  };
+
   return {
-    getTxOptions,
     getTxStatus,
     getTxStatusIcons,
-    isOpenModal,
-    modalData,
     formatTimeStamp,
     formatTimeStampUtxo,
     filteredTransactions,
@@ -211,5 +197,6 @@ export const useTransactionsListConfig = (
     txId,
     getTxType,
     blocktime,
+    getTokenSymbol,
   };
 };

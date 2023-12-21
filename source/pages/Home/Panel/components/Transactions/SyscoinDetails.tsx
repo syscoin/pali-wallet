@@ -1,4 +1,3 @@
-import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,13 +11,7 @@ import { ISysTransaction } from 'scripts/Background/controllers/transactions/typ
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import { getController } from 'utils/browser';
-import {
-  camelCaseToText,
-  ellipsis,
-  formatBalanceDecimals,
-  formatCurrency,
-  truncate,
-} from 'utils/index';
+import { camelCaseToText, ellipsis } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const controller = getController();
@@ -28,8 +21,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     isBitcoinBased,
     activeNetwork: { chainId: activeChainId, url: activeNetworkUrl },
   } = useSelector((state: RootState) => state.vault);
-  const { getTxStatusIcons, getTxStatus, getTxType } =
-    useTransactionsListConfig();
+  const { getTxStatus, getTxType } = useTransactionsListConfig();
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -38,8 +30,8 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  const [newRecipients, setNewRecipients] = useState<any>({});
-  const [newSenders, setNewSenders] = useState<any>({});
+  // const [newRecipients, setNewRecipients] = useState<any>({});
+  // const [newSenders, setNewSenders] = useState<any>({});
   const [rawTransaction, setRawTransaction] = useState<any>({});
   const [copied, copy] = useCopyClipboard();
 
@@ -119,11 +111,15 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             }
           }
         }
-        setNewRecipients(recipients);
-        setNewSenders(senders);
+        // setNewRecipients(recipients);
+        // setNewSenders(senders);
       }
     }
   }, [rawTransaction]);
+
+  useEffect(() => {
+    showSuccessAlert();
+  }, [copied]);
 
   const formattedTransaction = [];
 
@@ -133,10 +129,9 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
-
-    console.log(tx, 'tx');
+    console.log({ tx });
     transactionTx = tx;
-    txValue = formatBalanceDecimals(tx.value, false);
+    txValue = tx?.vout[0]?.value || '0';
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
@@ -219,7 +214,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
                       {ellipsis(value, 2, 4)}
                     </p>
                     {canCopy && (
-                      <IconButton onClick={() => copy(value ?? '')}>
+                      <IconButton onClick={() => copy(value)}>
                         <Icon
                           wrapperClassname="flex items-center justify-center"
                           name="copy"

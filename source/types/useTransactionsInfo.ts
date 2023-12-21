@@ -75,16 +75,10 @@ export interface ITransactionsListConfig {
   filteredTransactions: ITransactionInfoEvm[] | ITransactionInfoUtxo[];
   formatTimeStamp: (timestamp: number) => string;
   formatTimeStampUtxo: (timestamp: number) => JSX.Element;
-  getTxOptions: (
-    isCanceled: boolean,
-    isConfirmed: boolean,
-    tx: ITransactionInfoEvm
-  ) => JSX.Element | null;
+  getTokenSymbol: (isErc20Tx: boolean, coinsList: any[], tx: any) => string;
   getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
   getTxStatusIcons: (txLabel: string, isDetail: boolean) => JSX.Element;
   getTxType: (tx: any, isTxSent: boolean) => string;
-  isOpenModal: boolean;
   isShowedGroupBar: (tx: ITransactionInfoEvm, idx: number) => boolean;
-  modalData: modalDataType;
   txId: string;
 }
