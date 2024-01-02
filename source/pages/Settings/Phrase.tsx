@@ -142,7 +142,7 @@ const PhraseView = () => {
           </div>
         </Card>
 
-        <div className="absolute bottom-12 md:static md:mt-10">
+        <div className="my-7">
           <Button
             type="button"
             onClick={() => navigate('/home')}
