@@ -94,5 +94,9 @@ module.exports = {
     graylight: '#F5F5F5',
     gray200: '#A2A5AB',
     gray300: '#808795',
+    yellowInfo: '#FE9B07',
+  },
+  border: {
+    default: 'rgba(255, 255, 255, 0.16)',
   },
 };

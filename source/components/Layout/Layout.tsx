@@ -35,7 +35,7 @@ export const Layout: FC<ILayout> = ({
 
   return (
     <div
-      className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-bkg-2 ${
+      className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700  ${
         isSwitchChainPage ? '' : 'overflow-y-scroll'
       }`}
     >
@@ -82,7 +82,7 @@ export const Layout: FC<ILayout> = ({
       <div
         className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-6 w-full ${
           isConnectPage ? '' : 'md:max-w-sm'
-        } text-brand-white bg-bkg-2 sm:max-w-full`}
+        } text-brand-white bg-brand-blue700 sm:max-w-full`}
       >
         {children}
       </div>

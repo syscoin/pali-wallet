@@ -486,5 +486,10 @@
     "requestFailed": "request failed",
     "noDescriptionProvided": "No description provided",
     "requestSuccessfullySubmitted": "request successfully submitted"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "Imported accounts won’t link to your initial Pali account Secret Recovery Phrase",
+    "stillHaveFunds": "You still have funds in you wallet!",
+    "saveProperly": "Save properly this seed phrase, so you can import this wallet in the future."
   }
 }
