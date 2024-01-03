@@ -22,7 +22,7 @@ export const SimpleCard: React.FC<ISimpleCard> = ({
   onClick,
 }) => (
   <div
-    className={`${className} bg-bkg-4 border-dashed border-brand-royalblue border md:mx-20 mx-6 my-8 p-4 text-xs rounded-lg`}
+    className={`${className} bg-brand-diffBLUE border-dashed border-alpha-whiteAlpha300 border my-8 p-4 text-xs rounded-[20px]`}
     onClick={onClick}
   >
     {children}
