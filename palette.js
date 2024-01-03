@@ -95,4 +95,12 @@ module.exports = {
     gray200: '#A2A5AB',
     gray300: '#808795',
   },
+
+  alpha: {
+    whiteAlpha300: '#FFFFFF29',
+  },
+
+  extraColors: {
+    red: '#D70000',
+  },
 };
