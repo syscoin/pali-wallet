@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import checked from 'assets/icons/greenChecked.svg';
+import { Layout, DefaultModal, NeutralButton, Button } from 'components/index';
 import { setLanguageInLocalstorage } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
@@ -20,6 +21,11 @@ const Languages = () => {
   );
   const { t } = useTranslation();
 
+  const availableLanguages = [
+    { id: 1, name: t('settings.english'), value: PaliLanguages.EN },
+    { id: 2, name: t('settings.spanish'), value: PaliLanguages.ES },
+  ];
+
   const [loading, setLoading] = useState<boolean>(false);
   const navigate = useNavigate();
 
@@ -30,6 +36,10 @@ const Languages = () => {
     i18next.changeLanguage(currentLang);
     setConfirmed(true);
     setLoading(false);
+  };
+
+  const handleLanguageChange = (e, lng) => {
+    setCurrentLang(e.target.value);
   };
 
   return (
@@ -67,36 +77,27 @@ const Languages = () => {
           ]}
         >
           <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
-            <Radio.Group
-              className="w-full"
-              onChange={(e) => setCurrentLang(e.target.value)}
-              value={currentLang}
-            >
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
-                  <label htmlFor="en" className="ml-2 text-sm font-light">
-                    {t('settings.english')}
-                  </label>
-
-                  <Radio value={PaliLanguages.EN} name="en" id="en" />
+            <div className="flex flex-col gap-4 w-full">
+              {availableLanguages.map((lng) => (
+                <div
+                  key={lng.id}
+                  className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2"
+                  onClick={(e) => handleLanguageChange(e, lng.value)}
+                >
+                  <button
+                    value={lng.value}
+                    className="bg-transparent text-sm font-light"
+                  >
+                    {lng.name}
+                  </button>
+                  {currentLang === lng.value && (
+                    <img src={checked} alt={`Selected: ${lng.name}`} />
+                  )}
                 </div>
-                <div className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2">
-                  <label htmlFor="es" className="ml-2 text-sm font-light ">
-                    {t('settings.spanish')}
-                  </label>
-
-                  <Radio value={PaliLanguages.ES} name="es" id="es" />
-                </div>
-              </div>
-            </Radio.Group>
+              ))}
+            </div>
           </div>
         </Form.Item>
-
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
-            {t('buttons.save')}
-          </NeutralButton>
-        </div>
       </Form>
     </Layout>
   );
