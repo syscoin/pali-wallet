@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { useTransactionsListConfig } from '../useTransactionsInfos';
+import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { useUtils } from 'hooks/useUtils';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';

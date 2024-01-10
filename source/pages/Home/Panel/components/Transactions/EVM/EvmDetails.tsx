@@ -3,6 +3,7 @@ import React, { Fragment, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { EvmTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
@@ -16,6 +17,7 @@ import {
   removeScientificNotation,
 } from 'utils/index';
 import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
+
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
     accounts,
@@ -108,20 +110,12 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     return formattedTransaction;
   });
 
-  const labelsToKeep = [
-    'From',
-    'To',
-    'Block Hash',
-    'Confirmations',
-    'Timestamp',
-    'Max Fee Per Gas',
-    'Nonce',
-  ];
-
   const formattedTransactionDetails = formattedTransaction
-    .filter(({ label }) => labelsToKeep.includes(label))
+    .filter(({ label }) => EvmTxDetailsLabelsToKeep.includes(label))
     .sort(
-      (a, b) => labelsToKeep.indexOf(a.label) - labelsToKeep.indexOf(b.label)
+      (a, b) =>
+        EvmTxDetailsLabelsToKeep.indexOf(a.label) -
+        EvmTxDetailsLabelsToKeep.indexOf(b.label)
     );
 
   const RenderTransaction = () => (

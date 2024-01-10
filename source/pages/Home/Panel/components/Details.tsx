@@ -49,25 +49,6 @@ export const DetailsView = () => {
 
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
 
-  const getTxStatusIcons = (txLabel: string) => {
-    let icon = '';
-
-    switch (txLabel) {
-      case 'Sent':
-        icon = '/assets/icons/ArrowUp.svg';
-        break;
-      case 'Received':
-        icon = '/assets/icons/receivedArrow.svg';
-        break;
-    }
-
-    return (
-      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-        <img className="relative" src={icon} alt="Icon" />
-      </div>
-    );
-  };
-
   return (
     <Layout
       title={`${
@@ -78,12 +59,6 @@ export const DetailsView = () => {
           : t('titles.transactionDetails')
       }`}
     >
-      {/* <div className="flex flex-col justify-center items-center w-full mb-2">
-        {isBitcoinBased && getTxStatusIcons(getTxType(tx, isTxSent))}
-        <p className="text-brand-gray200 text-xs font-light">Transaction</p>
-        <p className="text-white text-base">55,000.00 SYS</p>
-        <p className="text-xs font-normal text-brand-green">Confirmed</p>
-      </div> */}
       {isLoading && !isNft ? (
         <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
       ) : (

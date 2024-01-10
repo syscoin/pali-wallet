@@ -3,6 +3,7 @@ import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { UtxoTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
@@ -30,8 +31,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
 
-  // const [newRecipients, setNewRecipients] = useState<any>({});
-  // const [newSenders, setNewSenders] = useState<any>({});
   const [rawTransaction, setRawTransaction] = useState<any>({});
   const [copied, copy] = useCopyClipboard();
 
@@ -111,8 +110,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
             }
           }
         }
-        // setNewRecipients(recipients);
-        // setNewSenders(senders);
       }
     }
   }, [rawTransaction]);
@@ -129,7 +126,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
-    console.log({ tx });
     transactionTx = tx;
     txValue = tx?.vout[0]?.value || '0';
     isTxCanceled = tx?.isCanceled === true;
@@ -177,20 +173,12 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     return formattedTransaction;
   });
 
-  const labelsToKeep = [
-    'From',
-    'To',
-    'Block Hash',
-    'Confirmations',
-    'Block Time',
-    'Fees',
-  ];
-  console.log(formattedTransaction, 'formattedTransaction');
-
   const formattedTransactionDetails = formattedTransaction
-    .filter(({ label }) => labelsToKeep.includes(label))
+    .filter(({ label }) => UtxoTxDetailsLabelsToKeep.includes(label))
     .sort(
-      (a, b) => labelsToKeep.indexOf(a.label) - labelsToKeep.indexOf(b.label)
+      (a, b) =>
+        UtxoTxDetailsLabelsToKeep.indexOf(a.label) -
+        UtxoTxDetailsLabelsToKeep.indexOf(b.label)
     );
 
   const RenderTransaction = () => (

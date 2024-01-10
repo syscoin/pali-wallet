@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { useTransactionsListConfig } from '../useTransactionsInfos';
+import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
