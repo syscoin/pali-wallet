@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const PhraseView = () => {
-  const [phrase, setPhrase] = useState<string>(
+  const [mockedPhrase, setMockedPhrase] = useState<string>(
     '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
   );
   const [visible, setVisible] = useState<boolean>(false);
@@ -25,7 +25,7 @@ const PhraseView = () => {
   }, [copied]);
 
   const handleCopyToClipboard = () => {
-    copyText(phrase);
+    copyText(mockedPhrase);
   };
 
   return (
@@ -56,7 +56,7 @@ const PhraseView = () => {
                   try {
                     const seed = controller.wallet.getSeed(value);
                     if (seed) {
-                      setPhrase(seed);
+                      setMockedPhrase(seed);
 
                       return Promise.resolve();
                     }
@@ -83,7 +83,7 @@ const PhraseView = () => {
               visible ? '' : 'filter blur-sm'
             }`}
           >
-            {phrase.split(' ').map((phrase: string, index: number) => (
+            {mockedPhrase.split(' ').map((phrase: string, index: number) => (
               <p key={index} className="flex text-white text-sm font-light ">
                 {phrase}
               </p>
@@ -119,7 +119,7 @@ const PhraseView = () => {
             <div
               className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer"
               onClick={() => {
-                phrase !==
+                mockedPhrase !==
                   '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
                   handleCopyToClipboard();
                 setIsCopied(true);
