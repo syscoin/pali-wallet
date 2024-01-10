@@ -14,7 +14,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { truncate, getAssetBalance } from 'utils/index';
+import { getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
