@@ -35,9 +35,14 @@ const AutolockView = () => {
   const onSubmit = (data: any) => {
     try {
       setLoading(true);
+      const minimumMinutesPossible = 5;
+      const maximumMinutesPossible = 120;
       const autolockMinutes = +data.minutes;
 
-      if (autolockMinutes < 5 || autolockMinutes > 120) {
+      if (
+        autolockMinutes < minimumMinutesPossible ||
+        autolockMinutes > maximumMinutesPossible
+      ) {
         throw new Error('Value must be between 5 and 120');
       }
       controller.wallet.setAutolockTimer(+data.minutes);
