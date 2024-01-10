@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { NetworkList } from 'pages/SwitchNetwork/NetworkList';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -136,6 +137,7 @@ export const Start = (props: any) => {
           Wallet
         </h1>
       </div>
+      <NetworkList isChanging={null} />
 
       {isFirstStep ? getStarted : unLock}
     </div>

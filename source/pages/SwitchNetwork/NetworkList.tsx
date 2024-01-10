@@ -43,32 +43,18 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
 
-  mainetNetworks = [
-    ...mainetNetworks.filter((obj) => obj.label === 'Rollux'),
-    ...mainetNetworks.filter(
-      (obj) => obj.currency === 'sys' && obj.label !== 'Rollux'
-    ),
-    ...mainetNetworks.filter(
-      (obj) => obj.currency !== 'sys' && obj.label !== 'Rollux'
-    ),
-  ];
+  mainetNetworks = mainetNetworks.sort((a, b) => {
+    const chainIdOrder = [570, 57];
+
+    const getChainIdPriority = (chainId) => {
+      const index = chainIdOrder.indexOf(chainId);
+      return index !== -1 ? index : chainIdOrder.length;
+    };
+
+    return getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId);
+  });
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
-    // const cannotContinueWithTrezorAccount =
-    //   // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
-    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
-    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
-    //   // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
-    //   (Object.keys(networks.ethereum).find(
-    //     (chainId) => `${activeNetwork.chainId}` === chainId
-    //   ) &&
-    //     Object.keys(networks.syscoin).find(
-    //       (chainId) => `${network.chainId}` === chainId
-    //     ) &&
-    //     `${network.slip44}` !== 'undefined' &&
-    //     (activeAccountType === KeyringAccountType.Trezor ||
-    //       activeAccountType === KeyringAccountType.Ledger));
-
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
