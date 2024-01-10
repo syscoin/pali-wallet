@@ -1,11 +1,11 @@
-import { Form, Radio } from 'antd';
+import { Form } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/icons/greenChecked.svg';
-import { Layout, DefaultModal, NeutralButton, Button } from 'components/index';
+import { Layout, DefaultModal } from 'components/index';
 import { setLanguageInLocalstorage } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
@@ -26,19 +26,16 @@ const Languages = () => {
     { id: 2, name: t('settings.spanish'), value: PaliLanguages.ES },
   ];
 
-  const [loading, setLoading] = useState<boolean>(false);
   const navigate = useNavigate();
 
   const onSubmit = () => {
-    setLoading(true);
     setLanguageInLocalstorage(currentLang);
 
     i18next.changeLanguage(currentLang);
     setConfirmed(true);
-    setLoading(false);
   };
 
-  const handleLanguageChange = (e, lng) => {
+  const handleLanguageChange = (e) => {
     setCurrentLang(e.target.value);
   };
 
@@ -82,7 +79,7 @@ const Languages = () => {
                 <div
                   key={lng.id}
                   className="flex items-center justify-between border-b border-dashed border-gray-600 pb-2"
-                  onClick={(e) => handleLanguageChange(e, lng.value)}
+                  onClick={(e) => handleLanguageChange(e)}
                 >
                   <button
                     value={lng.value}
