@@ -43,16 +43,16 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
 
-  mainetNetworks = mainetNetworks.sort((a, b) => {
+  const getChainIdPriority = (chainId) => {
     const chainIdOrder = [570, 57];
 
-    const getChainIdPriority = (chainId) => {
-      const index = chainIdOrder.indexOf(chainId);
-      return index !== -1 ? index : chainIdOrder.length;
-    };
+    const index = chainIdOrder.indexOf(chainId);
+    return index !== -1 ? index : chainIdOrder.length;
+  };
 
-    return getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId);
-  });
+  mainetNetworks = mainetNetworks.sort(
+    (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
+  );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
