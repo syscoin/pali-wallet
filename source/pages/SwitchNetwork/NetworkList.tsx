@@ -8,6 +8,7 @@ import { Button } from 'components/Button';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
+import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
 
@@ -42,13 +43,6 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
 
   let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
-
-  const getChainIdPriority = (chainId) => {
-    const chainIdOrder = [570, 57];
-
-    const index = chainIdOrder.indexOf(chainId);
-    return index !== -1 ? index : chainIdOrder.length;
-  };
 
   mainetNetworks = mainetNetworks.sort(
     (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
