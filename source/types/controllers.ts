@@ -128,6 +128,11 @@ export interface IMainController extends IKeyringManager {
   setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  setIsLastTxConfirmed: (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,

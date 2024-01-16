@@ -18,6 +18,7 @@ import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
   setAdvancedSettings,
+  setIsLastTxConfirmed,
   setNetworks,
   setTimer,
 } from 'state/vault';
@@ -213,6 +214,16 @@ const MasterController = (
         setAdvancedSettings({
           advancedProperty: 'ledger',
           isActive: false,
+          isFirstTime: true,
+        })
+      );
+    }
+
+    if (store.getState().vault?.isLastTxConfirmed === undefined) {
+      store.dispatch(
+        setIsLastTxConfirmed({
+          chainId: 0,
+          wasConfirmed: false,
           isFirstTime: true,
         })
       );

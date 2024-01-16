@@ -32,12 +32,17 @@ const ControllerUtils = (): IControllerUtils => {
 
     const id = isBitcoinBased ? 'syscoin' : 'ethereum';
     const coinsListState = store.getState().vault.coinsList;
-    const coinsList =
-      coinsListState?.length > 0
-        ? coinsListState
-        : await (
-            await fetch('https://api.coingecko.com/api/v3/coins/list')
-          ).json();
+    const isUpToDateCoinArray =
+      coinsListState?.some((item) => item?.platforms !== undefined) &&
+      coinsListState?.length > 0;
+
+    const coinsList = isUpToDateCoinArray
+      ? coinsListState
+      : await (
+          await fetch(
+            'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
+          )
+        ).json();
 
     store.dispatch(setCoinsList(coinsList));
 

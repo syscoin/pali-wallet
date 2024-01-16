@@ -1,0 +1,11 @@
+.custom-autolock-input {
+  display: flex;
+  width: 352px !important;
+  height: 40px;
+  padding: 11px 73px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
