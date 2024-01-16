@@ -146,6 +146,9 @@ export const EvmTransactionsList = ({
   };
 
   useEffect(() => {
+    if (!currentAccount.transactions.ethereum?.[chainId]) {
+      return;
+    }
     const lastIndex = currentAccount.transactions.ethereum[chainId].length - 1;
     const lastTx = currentAccount.transactions.ethereum[chainId][
       lastIndex

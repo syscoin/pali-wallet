@@ -174,7 +174,9 @@ export const useTransactionsListConfig = (
   const getTokenSymbol = (isErc20Tx: boolean, coinsList: any[], tx: any) => {
     if (isErc20Tx) {
       const token = coinsList.find((coin) =>
-        Object.values(coin?.platforms || {})?.includes(tx?.to)
+        Object.values(coin?.platforms || {})
+          ?.map((item) => `${item}`.toLocaleLowerCase())
+          ?.includes(`${tx?.to}`.toLocaleLowerCase())
       );
 
       if (token) {
