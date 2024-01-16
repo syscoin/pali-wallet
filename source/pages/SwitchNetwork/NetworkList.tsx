@@ -8,6 +8,7 @@ import { Button } from 'components/Button';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
+import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
 
@@ -41,26 +42,13 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
 
-  const mainetNetworks = newNetworks.filter(
-    (objeto) => objeto?.isTestnet !== true
+  let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
+
+  mainetNetworks = mainetNetworks.sort(
+    (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
   );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
-    // const cannotContinueWithTrezorAccount =
-    //   // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
-    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
-    //   (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
-    //   // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
-    //   (Object.keys(networks.ethereum).find(
-    //     (chainId) => `${activeNetwork.chainId}` === chainId
-    //   ) &&
-    //     Object.keys(networks.syscoin).find(
-    //       (chainId) => `${network.chainId}` === chainId
-    //     ) &&
-    //     `${network.slip44}` !== 'undefined' &&
-    //     (activeAccountType === KeyringAccountType.Trezor ||
-    //       activeAccountType === KeyringAccountType.Ledger));
-
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
@@ -71,7 +59,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   };
 
   return (
-    <div>
+    <div className="mb-14">
       {isChanging && (
         <div className="flex pl-[20px] gap-2">
           <div
