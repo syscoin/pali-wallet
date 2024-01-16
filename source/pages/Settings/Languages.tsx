@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/icons/greenChecked.svg';
-import { Layout, DefaultModal } from 'components/index';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { setLanguageInLocalstorage } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
@@ -84,6 +84,7 @@ const Languages = () => {
                   <button
                     value={lng.value}
                     className="bg-transparent text-sm font-light"
+                    type="button"
                   >
                     {lng.name}
                   </button>
@@ -95,6 +96,10 @@ const Languages = () => {
             </div>
           </div>
         </Form.Item>
+
+        <div className="absolute bottom-12 md:static">
+          <NeutralButton type="submit">{t('buttons.save')}</NeutralButton>
+        </div>
       </Form>
     </Layout>
   );
