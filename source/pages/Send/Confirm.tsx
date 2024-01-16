@@ -836,6 +836,7 @@ export const SendConfirm = () => {
         description={t('send.txSuccessfullMessage')}
         onClose={() => {
           wallet.sendAndSaveTransaction(confirmedTx);
+          wallet.setIsLastTxConfirmed(activeNetwork.chainId, false);
           navigate('/home');
         }}
       />

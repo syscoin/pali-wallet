@@ -76,9 +76,9 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
 
   let filteredAssets = currentChainAssets;
 
-  if (searchValue.length > 0) {
+  if (searchValue?.length > 0) {
     filteredAssets = assetsFilteredBySearch;
-  } else if (sortByValue.length > 0) {
+  } else if (sortByValue?.length > 0) {
     filteredAssets = assetsSortedBy;
   }
 

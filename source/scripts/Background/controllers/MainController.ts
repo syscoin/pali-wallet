@@ -39,6 +39,7 @@ import {
   setIsLoadingTxs,
   initialState,
   setIsLoadingAssets,
+  setIsLastTxConfirmed as setIsLastTxConfirmedToState,
   setIsLoadingBalances,
   setIsLoadingNfts,
   setAccountPropertyByIdAndType,
@@ -838,6 +839,16 @@ const MainController = (walletState): IMainController => {
     );
   };
 
+  const setIsLastTxConfirmed = (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => {
+    store.dispatch(
+      setIsLastTxConfirmedToState({ chainId, wasConfirmed, isFirstTime })
+    );
+  };
+
   const editAccountLabel = (
     label: string,
     accountId: number,
@@ -1593,6 +1604,7 @@ const MainController = (walletState): IMainController => {
     createWallet,
     forgetWallet,
     unlockFromController,
+    setIsLastTxConfirmed,
     lock,
     createAccount,
     editAccountLabel,

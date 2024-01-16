@@ -31,16 +31,17 @@ export interface IVaultState {
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
+  isLastTxConfirmed: null | { [k: number]: boolean };
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
+  isNetworkChanging: boolean;
   isPolling: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
   timer: number;
-  isNetworkChanging: boolean;
 }
 
 export interface INetworksVault {
