@@ -23,7 +23,6 @@ export const SyscoinAssetsList = () => {
   const filteredAssets = assets.syscoin.filter(
     (asset) => asset.chainId === chainId
   );
-
   return (
     <>
       {isLoadingAssets ? (

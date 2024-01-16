@@ -33,7 +33,7 @@ export const SwitchNetwork = () => {
 
   const networkSymbol = useMemo(
     () => (
-      <p className={`text-xs font-bold ${connectedColor}`}>
+      <p className={`text-xs font-extrabold ${connectedColor}`}>
         {connectedNetwork}
       </p>
     ),
@@ -42,7 +42,7 @@ export const SwitchNetwork = () => {
 
   const networkSymbolChange = useMemo(
     () => (
-      <p className={`text-xs font-bold ${networkNeedsChangingColor}`}>
+      <p className={`text-xs font-extrabold ${networkNeedsChangingColor}`}>
         {networkThatNeedsChanging}!
       </p>
     ),

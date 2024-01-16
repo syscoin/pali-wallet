@@ -8,6 +8,7 @@ import { Button } from 'components/Button';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
+import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
 
@@ -41,7 +42,11 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
 
-  const mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
+  let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
+
+  mainetNetworks = mainetNetworks.sort(
+    (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
+  );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
@@ -54,7 +59,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   };
 
   return (
-    <div>
+    <div className="mb-14">
       {isChanging && (
         <div className="flex pl-[20px] gap-2">
           <div

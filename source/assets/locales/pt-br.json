@@ -170,7 +170,7 @@
   "settings": {
     "version": "Version",
     "userSupport": "User Support",
-    "clickHereSupport": "Click here to be redirected to Syscoin Discord, please contact support team at #pali_support.",
+    "clickHereSupport": "Entre em contato com nossa equipe no canal discord #pali_support",
     "toAccess": "To access the support link, you need to give permission or copy and paste the link below",
     "refreshButtonWarning": "The refresh button dispatches multiple requests to the blockchain through an RPC, if you activating this be sure to add in your own paid RPC providers to avoid reaching the public RPCs rate-limit. Use it at your own accountability",
     "hereYouCanEnable": "Here, you can enable advanced settings in Pali. Use them responsibly and at your own risk.",
@@ -286,7 +286,10 @@
     "importWalletWarning": "IMPORT WALLET WARNING!",
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
+    "setAutoLockTime": "Configurar tempo de bloqueio automático",
+    "defaultMinutes": "Padrão: 5 minutos após inatividade.",
+    "maximumMinutes": "Máximo: 120 minutos."
   },
   "start": {
     "getStarted": "Get started",
@@ -366,5 +369,14 @@
     "tryingToConnectOn": "Você está tentando se conectar em:",
     "goToAnotherNetwork": "Ir para outra rede",
     "editCurrentRpc": "Editar RPC da rede atual"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",
+    "stillHaveFunds": "Você ainda tem fundos em sua carteira!",
+    "saveProperly": "Guarde corretamente esta frase-semente para que você possa importar esta carteira no futuro."
+  },
+  "walletSeedPhrasePage": {
+    "keepSeedPhrase": "Mantenha sua seed em segredo!",
+    "anyoneWithThisInfo": "Qualquer pessoa com estas informações pode roubar seus fundos."
   }
 }

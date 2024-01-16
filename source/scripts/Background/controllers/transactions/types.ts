@@ -26,8 +26,8 @@ interface ILog {
 export interface IEvmTransaction {
   // EIP-2930; Type 1 & EIP-1559; Type 2
   accessList?: AccessList;
-
   chainId: number;
+  confirmations?: number;
   data: string;
   from?: string;
 

@@ -14,7 +14,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { truncate, getAssetBalance } from 'utils/index';
+import { getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
@@ -229,7 +229,7 @@ export const SendEth = () => {
                         disabled={!hasAccountAssets}
                         className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
                       >
-                        {truncate(String(getLabel()), 2)}
+                        {String(getLabel())}
 
                         <ChevronDoubleDownIcon
                           className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"

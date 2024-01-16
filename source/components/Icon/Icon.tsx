@@ -59,6 +59,12 @@ const svgIcons = {
   ArrowDownLoad: '../../assets/icons/ArrowDownLoad.svg',
   ArrowLeft: '../../assets/icons/ArrowLeft.svg',
   Close: '../../assets/icons/closeBigger.svg',
+  EditTx: '../../assets/icons/editTx.svg',
+  externalLink: '../../assets/icons/externalExplorer.svg',
+  SpeedUp: '../../assets/icons/speedUp.svg',
+  Trash: '../../assets/icons/trashIcon.svg',
+  warning: '../../assets/icons/yellowWarn.svg',
+  Copy: '../../assets/icons/copy.svg',
 };
 
 interface IIcon {

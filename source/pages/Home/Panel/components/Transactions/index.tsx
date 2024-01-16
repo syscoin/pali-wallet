@@ -1,3 +1,2 @@
-export * from './EvmDetails';
-export * from './List';
-export * from './SyscoinDetails';
+export * from './EVM/EvmDetails';
+export * from './UTXO/SyscoinDetails';

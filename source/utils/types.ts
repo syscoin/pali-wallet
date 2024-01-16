@@ -30,6 +30,8 @@ export interface ITransactionOptions {
       wallet: IMainController;
     };
   }) => Promise<void>;
+  isOpen?: boolean;
+  onClose?: any;
   setIsOpenModal: React.Dispatch<React.SetStateAction<boolean>>;
   setModalData: React.Dispatch<
     React.SetStateAction<{

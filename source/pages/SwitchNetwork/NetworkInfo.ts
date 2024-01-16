@@ -22,8 +22,8 @@ interface INetworkInfo {
   selectedNetworkText: string;
 }
 
-const PINK_COLOR = 'text-brand-pink';
-const BLUE_COLOR = 'text-brand-blue';
+const PINK_COLOR = 'text-brand-deepPink100';
+const BLUE_COLOR = 'text-brand-blue200';
 
 export const useNetworkInfo = (setedNetwork?: string): INetworkInfo => {
   const isBitcoinBased = useSelector(
