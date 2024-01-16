@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import loadImg from 'assets/icons/loading.svg';
@@ -17,6 +18,7 @@ export const ChainErrorPage = () => {
   );
   const { navigate } = useUtils();
   const { wallet } = getController();
+  const { t } = useTranslation();
 
   const handleRetryToConnect = async () => {
     await wallet.setActiveNetwork(activeNetwork, String(activeNetwork.chainId));
@@ -64,14 +66,14 @@ export const ChainErrorPage = () => {
           <img src={loadImg} />
         </div>
         <span className="text-sm font-normal text-white text-center">
-          CONNECTION IS TAKING TOO LONG TO REPLY
+          {t('chainError.connectionTooLong')}
         </span>
         <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
           <div className="relative flex mb-4">
             <CurrentChains />
             <div className="flex flex-col ml-3">
               <h1 className="text-xs font-light text-white">
-                You are trying to connect on:
+                {t('chainError.tryingToConnectOn')}
               </h1>
               <h1 className="text-lg font-bold text-white">
                 {activeNetwork.label}
@@ -87,7 +89,7 @@ export const ChainErrorPage = () => {
                 })
               }
             >
-              Go to another network
+              {t('chainError.goToAnotherNetwork')}
             </div>
             <div
               className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
@@ -102,7 +104,7 @@ export const ChainErrorPage = () => {
                 })
               }
             >
-              Edit RPC of current network
+              {t('chainError.editCurrentRpc')}
             </div>
           </div>
         </div>
@@ -112,14 +114,14 @@ export const ChainErrorPage = () => {
             className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
             onClick={() => navigate('/home')}
           >
-            Cancel
+            {t('buttons.cancel')}
           </Button>
           <Button
             type="submit"
             className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
             onClick={handleRetryToConnect}
           >
-            Retry connect
+            {t('buttons.retryConnect')}
           </Button>
         </div>
       </div>
