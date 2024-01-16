@@ -284,7 +284,7 @@
     "advancedTitle": "ADVANCED SETTINGS",
     "autolockTitle": "AUTO LOCK TIMER",
     "accountImported": "Account imported successfully",
-    "clickHereSupport": "Click here to be redirected to Syscoin Discord, please contact support team at #pali_support.",
+    "clickHereSupport": "Contact our team on discord channel #pali_support",
     "toAccess": "To access the support link, you need to give permission or copy and paste the link below",
     "refreshButtonWarning": "The refresh button dispatches multiple requests to the blockchain through an RPC, if you activating this be sure to add in your own paid RPC providers to avoid reaching the public RPCs rate-limit. Use it at your own accountability",
     "ledgerBetaWarning": "The Ledger support is a beta feature. Use it at your own accountability.",
@@ -413,7 +413,10 @@
     "importWalletWarning": "IMPORT WALLET WARNING!",
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
+    "setAutoLockTime": "Set auto lock time",
+    "defaultMinutes": "Default: 5 minutes after no activity.",
+    "maximumMinutes": "Maximum: 120 minutes."
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
