@@ -285,7 +285,10 @@
     "importWalletWarning": "IMPORT WALLET WARNING!",
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
+    "setAutoLockTime": "Configurar tempo de bloqueio automático",
+    "defaultMinutes": "Padrão: 5 minutos após inatividade.",
+    "maximumMinutes": "Máximo: 120 minutos."
   },
   "start": {
     "getStarted": "Get started",

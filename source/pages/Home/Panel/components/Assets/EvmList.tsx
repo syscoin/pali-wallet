@@ -15,7 +15,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { truncate, formatCurrency } from 'utils/index';
+import { truncate } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
