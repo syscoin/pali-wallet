@@ -96,5 +96,22 @@ module.exports = {
     gray200: '#A2A5AB',
     gray300: '#808795',
     whiteAlpaBlue: '#283851',
+    yellowInfo: '#FE9B07',
+  },
+  border: {
+    default: 'rgba(255, 255, 255, 0.16)',
+    diffBLUE: '#1F2B3F',
+  },
+  alpha: {
+    whiteAlpha100: 'rgba(255, 255, 255, 0.06)',
+    whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
+  },
+
+  alpha: {
+    whiteAlpha300: '#FFFFFF29',
+  },
+
+  extraColors: {
+    red: '#D70000',
   },
 };

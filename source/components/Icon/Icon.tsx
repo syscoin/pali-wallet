@@ -63,6 +63,8 @@ const svgIcons = {
   externalLink: '../../assets/icons/externalExplorer.svg',
   SpeedUp: '../../assets/icons/speedUp.svg',
   Trash: '../../assets/icons/trashIcon.svg',
+  warning: '../../assets/icons/yellowWarn.svg',
+  Copy: '../../assets/icons/copy.svg',
 };
 
 interface IIcon {
