@@ -94,6 +94,11 @@ module.exports = {
     graylight: '#F5F5F5',
     gray200: '#A2A5AB',
     gray300: '#808795',
+    diffBLUE: '#1F2B3F',
+  },
+  alpha: {
+    whiteAlpha100: 'rgba(255, 255, 255, 0.06)',
+    whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
   },
 
   alpha: {

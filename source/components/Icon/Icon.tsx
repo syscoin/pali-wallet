@@ -59,6 +59,7 @@ const svgIcons = {
   ArrowDownLoad: '../../assets/icons/ArrowDownLoad.svg',
   ArrowLeft: '../../assets/icons/ArrowLeft.svg',
   Close: '../../assets/icons/closeBigger.svg',
+  Copy: '../../assets/icons/copy.svg',
 };
 
 interface IIcon {

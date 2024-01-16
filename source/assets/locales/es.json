@@ -287,7 +287,7 @@
     "spanish": "Español",
     "accountImported": "Cuenta importada con éxito.",
     "advancedTitle": "CONFIGURACIONES AVANZADAS",
-    "clickHereSupport": "Haz clic aquí para ser redirigido a Syscoin Discord, por favor, contacta al equipo de soporte en #pali_support.",
+    "clickHereSupport": "Póngase en contacto con nuestro equipo en el canal Discord #pali_support",
     "toAccess": "Para acceder al enlace de soporte, necesitas dar permiso o copiar y pegar el enlace de abajo.",
     "refreshButtonWarning": "El botón de actualización envía múltiples solicitudes a la cadena de bloques a través de una RPC. Si lo activas, asegúrate de agregar tus propios proveedores de RPC pagados para evitar alcanzar el límite de solicitudes públicas de RPC. Úsalo bajo tu propia responsabilidad.",
     "ledgerBetaWarning": "El soporte de Ledger es una característica en beta. Úselo bajo su propia responsabilidad.",
