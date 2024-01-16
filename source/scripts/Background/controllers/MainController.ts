@@ -143,9 +143,10 @@ const MainController = (walletState): IMainController => {
   };
 
   const unlockFromController = async (pwd: string): Promise<boolean> => {
+    console.log({ pwd });
     const { canLogin, wallet } = await keyringManager.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
-
+    console.log({ canLogin, wallet });
     if (!isEmpty(wallet)) {
       store.dispatch(
         setNetworkChange({
@@ -156,7 +157,7 @@ const MainController = (walletState): IMainController => {
     }
 
     store.dispatch(setLastLogin());
-    //TODO: validate contentScripts flow
+    // TODO: validate contentScripts flow
     window.controller.dapp
       .handleStateChange(PaliEvents.lockStateChanged, {
         method: PaliEvents.lockStateChanged,

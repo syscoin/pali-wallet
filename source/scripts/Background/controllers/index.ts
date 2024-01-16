@@ -41,6 +41,33 @@ export interface IMasterController {
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
+export const vaultToWalletState = (vaultState: IVaultState) => {
+  const accounts: { [key in KeyringAccountType]: accountType } = Object.entries(
+    vaultState.accounts
+  ).reduce((acc, [sysAccountType, paliAccountType]) => {
+    acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
+      Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
+        const keyringAccountState: IKeyringAccountState = omit(paliAccount, [
+          'assets',
+          'transactions',
+        ]) as IKeyringAccountState;
+        return [accountId, keyringAccountState];
+      })
+    );
+    return acc;
+  }, {} as { [key in KeyringAccountType]: accountType });
+
+  const sysweb3Wallet: IWalletState = {
+    accounts,
+    activeAccountId: vaultState.activeAccount.id,
+    activeAccountType: vaultState.activeAccount.type,
+    networks: vaultState.networks,
+    activeNetwork: vaultState.activeNetwork,
+  };
+  const activeChain: INetworkType = vaultState.activeChain;
+
+  return { wallet: sysweb3Wallet, activeChain };
+};
 
 const MasterController = (
   readyCallback: (windowController: any) => void
@@ -50,35 +77,6 @@ const MasterController = (
   let wallet: IMainController;
   let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
-  const vaultToWalletState = (vaultState: IVaultState) => {
-    const accounts: { [key in KeyringAccountType]: accountType } =
-      Object.entries(vaultState.accounts).reduce(
-        (acc, [sysAccountType, paliAccountType]) => {
-          acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
-            Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
-              const keyringAccountState: IKeyringAccountState = omit(
-                paliAccount,
-                ['assets', 'transactions']
-              ) as IKeyringAccountState;
-              return [accountId, keyringAccountState];
-            })
-          );
-          return acc;
-        },
-        {} as { [key in KeyringAccountType]: accountType }
-      );
-
-    const sysweb3Wallet: IWalletState = {
-      accounts,
-      activeAccountId: vaultState.activeAccount.id,
-      activeAccountType: vaultState.activeAccount.type,
-      networks: vaultState.networks,
-      activeNetwork: vaultState.activeNetwork,
-    };
-    const activeChain: INetworkType = vaultState.activeChain;
-
-    return { wallet: sysweb3Wallet, activeChain };
-  };
   // Subscribe to store updates
   persistor.subscribe(() => {
     const state = store.getState() as RootState & { _persist: IPersistState };

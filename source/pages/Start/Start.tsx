@@ -7,7 +7,10 @@ import { Link } from 'react-router-dom';
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { vaultToWalletState } from 'scripts/Background/controllers';
+import MainController from 'scripts/Background/controllers/MainController';
 import { RootState } from 'state/store';
+import store from 'state/store';
 // import { getController } from 'utils/browser';
 
 export const Start = (props: any) => {
@@ -15,6 +18,9 @@ export const Start = (props: any) => {
   // const {
   //   wallet: { unlockFromController },
   // } = getController();
+  console.log({ vault: store.getState().vault });
+  const formattedVault = vaultToWalletState(store.getState().vault);
+  const { unlockFromController } = MainController(formattedVault);
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
@@ -51,8 +57,9 @@ export const Start = (props: any) => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     try {
-      // const result = await unlockFromController(password);
-      const result = { password };
+      console.log({ password });
+      const result = await unlockFromController(password);
+      // const result = { password };
 
       if (!result) {
         setErrorMessage(t('start.wrongPassword'));
