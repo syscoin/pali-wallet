@@ -64,63 +64,11 @@ const ImportAccountView = () => {
         title={t('settings.accountImported')}
       />
 
-      <p className="mb-8 text-center text-white text-sm">
+      <p className="mb-8 text-left text-white text-sm">
         {t('settings.importAccountsWont')}
-      </p>
-      <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-2">
-        <Card type="info" className="border-alert-darkwarning">
-          <div className="text-xs text-alert-darkwarning font-bold mb-2.5">
-            <p>
-              {t('settings.forgetWarning')}: {t('settings.currentlyThePrivate')}
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      <p className="mb-2 mt-5 text-left text-white text-sm md:max-w-full">
-        {t('settings.selectType')}
       </p>
 
       <div className="flex flex-col gap-y-5 items-center justify-center">
-        <Menu as="div" className="relative inline-block text-left">
-          <Menu.Button className="inline-flex justify-center py-2 w-80 text-white text-sm font-medium bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-full">
-            <p>{type}</p>
-
-            <Icon
-              name="select-down"
-              className="text-brand-royalblue"
-              wrapperClassname="w-8 absolute right-20 bottom-3"
-            />
-          </Menu.Button>
-
-          <Transition
-            as={Fragment}
-            enter="transition ease-out duration-100"
-            enterFrom="transform opacity-0 scale-95"
-            enterTo="transform opacity-100 scale-100"
-            leave="transition ease-in duration-75"
-            leaveFrom="transform opacity-100 scale-100"
-            leaveTo="transform opacity-0 scale-95"
-          >
-            <Menu.Items
-              as="div"
-              className="scrollbar-styled absolute z-10 mt-2 py-3 w-full h-44 text-brand-white font-poppins bg-bkg-4 border border-fields-input-border rounded-xl shadow-2xl overflow-auto origin-top-right"
-            >
-              {['Private key'].map((key) => (
-                <Menu.Item as="div" key={key}>
-                  <button
-                    key={key}
-                    className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-brand-royalblue border-transparent border-opacity-30 transition-all duration-300"
-                    onClick={() => setType(key)}
-                  >
-                    <p>{key}</p>
-                  </button>
-                </Menu.Item>
-              ))}
-            </Menu.Items>
-          </Transition>
-        </Menu>
-
         <div className="flex flex-col items-center justify-center text-center">
           <Form
             validateMessages={{ default: '' }}
