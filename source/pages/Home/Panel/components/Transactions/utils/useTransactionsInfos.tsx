@@ -137,13 +137,15 @@ export const useTransactionsListConfig = (
   };
 
   const formatTimeStampUtxo = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
+    const date = new Date(timestamp);
+    console.log(timestamp, 'a');
 
     const dateFormatOptions: Intl.DateTimeFormatOptions = {
       month: '2-digit',
       day: '2-digit',
       year: '2-digit',
     };
+    console.log(dateFormatOptions, 'b');
 
     const timeFormatOptions: Intl.DateTimeFormatOptions = {
       hour: 'numeric',
@@ -159,9 +161,11 @@ export const useTransactionsListConfig = (
       'en-US',
       timeFormatOptions
     ).format(date);
+    console.log(formattedDate, 'c');
 
     const dateComponents = formattedDate.split('/');
     const formattedDateWithHyphen = dateComponents.join('-');
+    console.log(formattedDateWithHyphen, 'd');
 
     return (
       <div className="flex gap-2">
