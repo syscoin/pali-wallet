@@ -319,7 +319,7 @@ export const SendTransaction = () => {
             )}
           </div>
 
-          <div className="w-full">
+          <div className="w-full mt-6">
             <ul
               className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
               id="tabExample"

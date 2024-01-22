@@ -114,13 +114,16 @@ export const TransactionDetailsComponent = (
         {t('send.estimatedGasFee')}
         <p className="flex text-white text-xs">
           {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
-          <span onClick={() => setIsOpen(true)}>
+          <div
+            className="hover:text-fields-input-borderfocus"
+            onClick={() => setIsOpen(true)}
+          >
             <Icon
               name="EditTx"
               isSvg
               className="px-2 text-brand-white hover:text-fields-input-borderfocus"
             />{' '}
-          </span>
+          </div>
         </p>
       </p>
 
