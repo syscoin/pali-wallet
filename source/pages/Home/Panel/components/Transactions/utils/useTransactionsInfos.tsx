@@ -137,7 +137,7 @@ export const useTransactionsListConfig = (
   };
 
   const formatTimeStampUtxo = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
+    const date = new Date(timestamp);
 
     const dateFormatOptions: Intl.DateTimeFormatOptions = {
       month: '2-digit',
