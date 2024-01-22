@@ -13,7 +13,9 @@
   "permissions": [
     "storage",
     "activeTab",
-    "clipboardWrite"
+    "clipboardWrite",
+    "unlimitedStorage",
+    "webRequest"
   ],
   "host_permissions": [
     "http://*/*",
@@ -22,6 +24,11 @@
     "*://*.eth/",
     "http://localhost:8545/"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "author": "pollum labs",
+  "minimum_chrome_version": "49",
   "action": {
     "default_popup": "app.html",
     "default_icon": {
@@ -67,7 +74,9 @@
         "js/handleWindowProperties.bundle.js",
         "js/pali.bundle.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "commands": {
@@ -76,16 +85,5 @@
         "default": "Ctrl+Shift+P"
       }
     }
-  },
-  "__chrome|firefox__author": "pollum labs",
-  "__opera__developer": {
-    "name": "pollum labs"
-  },
-  "__firefox__applications": {
-    "gecko": {
-      "id": "{b3e96b5f-b5bf-8b48-846b-52f430365e80}"
-    }
-  },
-  "__chrome__minimum_chrome_version": "49",
-  "__opera__minimum_opera_version": "36"
+  }
 }

@@ -43,6 +43,7 @@ import { useUtils } from 'hooks/index';
 import { ChainErrorPage } from 'pages/Chain';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
+  getController,
   inactivityTime,
   removeVerifyPaliRequestListener,
   resetPaliRequestsCount,
@@ -58,7 +59,7 @@ export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [modalMessage, setmodalMessage] = useState<string>('');
   const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
-  // const { wallet, appRoute } = getController();
+  const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
@@ -67,7 +68,7 @@ export const Router = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   // const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
   //   wallet.ethereumTransaction.web3Provider;
-  const isUnlocked = false;
+  const isUnlocked = wallet.isUnlocked();
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
       JSON.stringify({ hasUtf8Error: false })

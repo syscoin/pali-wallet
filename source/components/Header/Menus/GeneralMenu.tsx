@@ -10,8 +10,8 @@ import langIcon from 'assets/images/langIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate, getHost, getTabUrl } from 'utils/index';
 
 export const GeneralMenu: React.FC = () => {

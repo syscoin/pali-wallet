@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { vaultToWalletState } from 'scripts/Background/controllers';
 import MainController from 'scripts/Background/controllers/MainController';
 import { RootState } from 'state/store';
@@ -15,12 +16,13 @@ import store from 'state/store';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
-  // const {
-  //   wallet: { unlockFromController },
-  // } = getController();
-  console.log({ vault: store.getState().vault });
-  const formattedVault = vaultToWalletState(store.getState().vault);
-  const { unlockFromController } = MainController(formattedVault);
+  const {
+    wallet: { unlockFromController },
+  } = getController();
+  // console.log(getController());
+  // console.log({ vault: store.getState().vault });
+  // const formattedVault = vaultToWalletState(store.getState().vault);
+  // const { unlockFromController } = MainController(formattedVault);
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
@@ -59,6 +61,7 @@ export const Start = (props: any) => {
     try {
       console.log({ password });
       const result = await unlockFromController(password);
+      console.log({ result });
       // const result = { password };
 
       if (!result) {

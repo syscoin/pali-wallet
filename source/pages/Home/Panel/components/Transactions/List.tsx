@@ -8,8 +8,8 @@ import { IconButton } from 'components/IconButton';
 import { ConfirmationModal } from 'components/Modal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis, formatDate, handleUpdateTransaction } from 'utils/index';
 
 export const TransactionsList = ({

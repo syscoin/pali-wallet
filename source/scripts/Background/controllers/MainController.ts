@@ -158,15 +158,15 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setLastLogin());
     // TODO: validate contentScripts flow
-    window.controller.dapp
-      .handleStateChange(PaliEvents.lockStateChanged, {
-        method: PaliEvents.lockStateChanged,
-        params: {
-          accounts: [],
-          isUnlocked: keyringManager.isUnlocked(),
-        },
-      })
-      .catch((error) => console.error('Unlock', error));
+    // window.controller.dapp
+    //   .handleStateChange(PaliEvents.lockStateChanged, {
+    //     method: PaliEvents.lockStateChanged,
+    //     params: {
+    //       accounts: [],
+    //       isUnlocked: keyringManager.isUnlocked(),
+    //     },
+    //   })
+    //   .catch((error) => console.error('Unlock', error));
     return canLogin;
   };
 

@@ -69,25 +69,24 @@ export const vaultToWalletState = (vaultState: IVaultState) => {
   return { wallet: sysweb3Wallet, activeChain };
 };
 
-const MasterController = (
-  readyCallback: (windowController: any) => void
-): IMasterController => {
+const MasterController = (): // readyCallback: (windowController: any) => void
+IMasterController => {
   let route = '/';
   let externalRoute = '/';
   let wallet: IMainController;
   let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
   // Subscribe to store updates
-  persistor.subscribe(() => {
-    const state = store.getState() as RootState & { _persist: IPersistState };
-    chrome.storage.local.set({ ['1']: store.getState() });
-    const {
-      _persist: { rehydrated },
-    } = state;
-    if (rehydrated) {
-      initializeMainController();
-    }
-  });
+  // store.subscribe(() => {
+  //   // const state = store.getState() as RootState & { _persist: IPersistState };
+  //   chrome.storage.local.set({ ['1']: store.getState() });
+  //   initializeMainController();
+  //   // const {
+  //   //   _persist: { rehydrated },
+  //   // } = state;
+  //   // if (rehydrated) {
+  //   // }
+  // });
   const initializeMainController = () => {
     const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
     const trezorAccounts = Object.values(
@@ -284,17 +283,18 @@ const MasterController = (
     const walletState = vaultToWalletState(store.getState().vault);
     dapp = Object.freeze(DAppController());
     wallet = Object.freeze(MainController(walletState));
+    console.log({ wallet });
     utils = Object.freeze(ControllerUtils());
     wallet.setStorage(window.localStorage);
-    readyCallback({
-      appRoute,
-      createPopup,
-      dapp,
-      refresh,
-      utils,
-      wallet,
-      callGetLatestUpdateForAccount,
-    });
+    // readyCallback({
+    //   appRoute,
+    //   createPopup,
+    //   dapp,
+    //   refresh,
+    //   utils,
+    //   wallet,
+    //   callGetLatestUpdateForAccount,
+    // });
   };
 
   const callGetLatestUpdateForAccount = () =>
@@ -338,6 +338,8 @@ const MasterController = (
       type: 'popup',
     });
   };
+
+  initializeMainController();
 
   return {
     appRoute,

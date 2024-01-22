@@ -8,8 +8,8 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,
@@ -114,7 +114,7 @@ export const Home = () => {
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
-      isUnlocked &&
+      // isUnlocked &&
       !isNetworkChanging ? (
         <>
           <Header accountHeader />

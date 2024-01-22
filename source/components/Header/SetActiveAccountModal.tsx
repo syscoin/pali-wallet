@@ -7,8 +7,8 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useUtils } from 'hooks/useUtils';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 interface ISetActiveAccountModalProps {
   selectedNetwork: { chain: string; network: INetwork };
