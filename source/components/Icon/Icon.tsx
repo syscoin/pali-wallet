@@ -57,6 +57,7 @@ const icons = {
 const svgIcons = {
   ArrowUpBoldIcon: '../../assets/icons/ArrowUp.svg',
   ArrowDownLoad: '../../assets/icons/ArrowDownLoad.svg',
+  ArrowDown: '../../assets/icons/ArrowDown.svg',
   ArrowLeft: '../../assets/icons/ArrowLeft.svg',
   Close: '../../assets/icons/closeBigger.svg',
   EditTx: '../../assets/icons/editTx.svg',
