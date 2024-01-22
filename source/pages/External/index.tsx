@@ -11,6 +11,7 @@ import appStore from 'state/store';
 import 'assets/styles/index.css';
 import 'assets/styles/custom-input-password.css';
 import 'assets/styles/custom-input-search.css';
+import 'assets/styles/custom-input-normal.css';
 import 'assets/styles/custom-checkbox.css';
 import 'assets/styles/custom-form-inputs-styles.css';
 import 'assets/styles/custom-autolock-input.css';

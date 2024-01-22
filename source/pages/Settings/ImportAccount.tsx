@@ -92,7 +92,7 @@ const ImportAccountView = () => {
             >
               <Input
                 type="text"
-                className="input-small relative"
+                className="custom-input-normal relative"
                 placeholder={`${t('settings.label')} (${t(
                   'settings.optional'
                 )})`}
@@ -120,7 +120,7 @@ const ImportAccountView = () => {
             >
               <Input
                 type="text"
-                className="input-small relative"
+                className="custom-input-normal relative"
                 placeholder={t('settings.yourPrivateKey')}
                 id="account-name-input"
               />
