@@ -71,82 +71,81 @@ export const TransactionDetailsComponent = (
   }, [tx]);
 
   return (
-    <>
-      <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-        <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          {t('send.from')}
-          <span className="text-brand-royalblue text-xs">
-            <Tooltip content={tx.from} childrenClassName="flex">
-              {ellipsis(tx.from, 7, 15)}
-              {
-                <IconButton onClick={() => copy(tx.from ?? '')}>
-                  <Icon
-                    wrapperClassname="flex items-center justify-center"
-                    name="copy"
-                    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                  />
-                </IconButton>
-              }
-            </Tooltip>
+    <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
+      <p className="flex flex-col pt-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
+        {t('send.from')}
+        <p className="text-white text-xs">
+          <Tooltip content={tx.from} childrenClassName="flex">
+            {ellipsis(tx.from, 7, 15)}
+            {
+              <IconButton onClick={() => copy(tx.from ?? '')}>
+                <Icon
+                  wrapperClassname="flex items-center justify-center"
+                  name="Copy"
+                  isSvg
+                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+                />
+              </IconButton>
+            }
+          </Tooltip>
+        </p>
+      </p>
+
+      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-normal">
+        {t('send.to')}
+        <p className="text-white text-xs">
+          <Tooltip content={tx.to} childrenClassName="flex">
+            {ellipsis(tx.to, 7, 15)}
+            {
+              <IconButton onClick={() => copy(tx.to ?? '')}>
+                <Icon
+                  wrapperClassname="flex items-center justify-center"
+                  name="Copy"
+                  isSvg
+                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+                />
+              </IconButton>
+            }
+          </Tooltip>
+        </p>
+      </p>
+
+      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
+        {t('send.estimatedGasFee')}
+        <p className="flex text-white text-xs">
+          {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
+          <span onClick={() => setIsOpen(true)}>
+            <Icon
+              name="EditTx"
+              isSvg
+              className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+            />{' '}
           </span>
         </p>
+      </p>
 
-        <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          {t('send.to')}
-          <span className="text-brand-royalblue text-xs">
-            <Tooltip content={tx.to} childrenClassName="flex">
-              {ellipsis(tx.to, 7, 15)}
-              {
-                <IconButton onClick={() => copy(tx.to ?? '')}>
-                  <Icon
-                    wrapperClassname="flex items-center justify-center"
-                    name="copy"
-                    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                  />
-                </IconButton>
-              }
-            </Tooltip>
-          </span>
+      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
+        {t('send.customNonce')}
+        <p className="text-white text-xs">
+          <Input
+            type="number"
+            className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
+            placeholder={String(tx.nonce)}
+            defaultValue={tx.nonce}
+            onChange={(e) => setCustomNonce(Number(e.target.value))}
+          />
         </p>
+      </p>
 
-        <div className="flex flex-row items-center justify-between w-full">
-          <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-            {t('send.estimatedGasFee')}
-            <span className="text-brand-royalblue text-xs">
-              {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
-            </span>
-          </p>
-          <span
-            className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
-            onClick={() => setIsOpen(true)}
-          >
-            {t('buttons.edit')}
-          </span>
-        </div>
-
-        <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          {t('send.customNonce')}
-          <span className="text-brand-royalblue text-xs">
-            <Input
-              type="number"
-              className="input-medium outline-0 w-10 bg-bkg-2 rounded-sm focus:outline-none focus-visible:outline-none"
-              placeholder={String(tx.nonce)}
-              defaultValue={tx.nonce}
-              onChange={(e) => setCustomNonce(Number(e.target.value))}
-            />
-          </span>
-        </p>
-
-        <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          Total ({t('send.amountAndFee')})
-          <span className="text-brand-royalblue text-xs">
-            {removeScientificNotation(
-              Number(currentTxValue) / 10 ** 18 + finalFee
-            )}{' '}
-            {activeNetwork.currency?.toUpperCase()}
-          </span>
-        </p>
-      </div>
-    </>
+      <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
+        Total ({t('send.amountAndFee')})
+        <span className="text-white text-xs">
+          {removeScientificNotation(
+            Number(currentTxValue) / 10 ** 18 + finalFee
+          )}{' '}
+          {activeNetwork.currency?.toUpperCase()}
+        </span>
+      </p>
+    </div>
   );
 };

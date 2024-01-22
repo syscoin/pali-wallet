@@ -319,30 +319,24 @@ export const SendTransaction = () => {
             )}
           </div>
 
-          <div className="my-4 w-full">
+          <div className="w-full">
             <ul
-              className="flex flex-wrap justify-around -mb-px text-center text-brand-white text-sm font-medium"
+              className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
               id="tabExample"
               role="tablist"
             >
               {tabElements.map((tab) => (
                 <li
-                  className={`${
+                  className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
                     tab.id === tabSelected
-                      ? 'border-b border-brand-royalblue'
-                      : ''
+                      ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
+                      : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
                   }`}
                   role="presentation"
                   key={tab.id}
+                  onClick={() => setTabSelected(tab.id)}
                 >
-                  <button
-                    className="inline-block p-4 hover:text-gray-200 border-b-2 hover:border-brand-royalblue border-transparent rounded-t-lg"
-                    type="button"
-                    role="tab"
-                    onClick={() => setTabSelected(tab.id)}
-                  >
-                    {t(`send.${tab.tabName.toLowerCase()}`)}
-                  </button>
+                  {t(`send.${tab.tabName.toLowerCase()}`)}
                 </li>
               ))}
             </ul>
