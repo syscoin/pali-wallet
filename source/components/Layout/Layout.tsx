@@ -80,7 +80,7 @@ export const Layout: FC<ILayout> = ({
       </div>
 
       <div
-        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-4 w-full ${
+        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-[18px] w-full ${
           isConnectPage ? '' : 'md:max-w-sm'
         } text-brand-white bg-brand-blue700 sm:max-w-full`}
       >

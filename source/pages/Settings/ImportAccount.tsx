@@ -1,17 +1,11 @@
-import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
 import { t } from 'i18next';
-import React, { Fragment, useState } from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import {
-  Layout,
-  Icon,
-  DefaultModal,
-  NeutralButton,
-  Card,
-} from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
+import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -58,7 +52,7 @@ const ImportAccountView = () => {
 
   return (
     <Layout title={t('header.importAccount').toUpperCase()}>
-      <DefaultModal
+      <ImportedWalletSuccessfully
         show={isAccountImported}
         onClose={() => navigate('/home')}
         title={t('settings.accountImported')}
@@ -68,11 +62,11 @@ const ImportAccountView = () => {
         {t('settings.importAccountsWont')}
       </p>
 
-      <div className="flex flex-col gap-y-5 items-center justify-center">
+      <div className="flex flex-col items-center justify-center">
         <div className="flex flex-col items-center justify-center text-center">
           <Form
             validateMessages={{ default: '' }}
-            className="flex flex-col gap-5 items-center justify-center text-center md:w-full mb-10"
+            className="flex flex-col gap-2 text-center md:w-full mb-10"
             name="newaccount"
             labelCol={{ span: 8 }}
             wrapperCol={{ span: 16 }}
@@ -126,13 +120,16 @@ const ImportAccountView = () => {
               />
             </Form.Item>
 
-            <NeutralButton
-              type="button"
-              loading={isImporting}
-              onClick={handleImportAccount}
-            >
-              {t('buttons.import')}
-            </NeutralButton>
+            <div className="w-full relative bottom-[-14rem] right-[0%] md:static">
+              <NeutralButton
+                type="button"
+                loading={isImporting}
+                onClick={handleImportAccount}
+                fullWidth={true}
+              >
+                {t('buttons.import')}
+              </NeutralButton>
+            </div>
           </Form>
         </div>
       </div>
