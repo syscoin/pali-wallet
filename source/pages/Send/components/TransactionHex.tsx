@@ -1,9 +1,6 @@
-import { utils } from 'ethers';
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/useUtils';
 
 interface ITransactionHexProps {
@@ -12,14 +9,12 @@ interface ITransactionHexProps {
 }
 
 export const TransactionHexComponent = (props: ITransactionHexProps) => {
-  const { methodName, dataHex } = props;
+  const { dataHex } = props;
   const { t } = useTranslation();
 
   const { useCopyClipboard, alert } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
-
-  const hexBytesLength = utils.hexDataLength(dataHex);
 
   useEffect(() => {
     if (!copied) return;
@@ -29,25 +24,14 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
   }, [copied]);
 
   return (
-    <div className="flex flex-col items-center justify-center w-full">
-      <div className="flex flex-col gap-2 items-center justify-center w-full">
-        <p className="flex gap-1.5 items-center justify-start w-full text-sm">
-          {t('send.method')}:
-          <span className="text-brand-royalblue font-bold">{methodName}</span>
-        </p>
-
-        <p className="flex gap-1.5 items-center justify-start w-full text-sm">
-          {t('send.hexData')}:
-          <span className="text-brand-royalblue">{hexBytesLength} BYTES</span>
-        </p>
-      </div>
-
+    <div className="bg-brand-blue600 w-[400px] relative left-[-1%] flex flex-col items-center justify-center p-6 rounded-[20px]">
       <div
-        className="scrollbar-styled mb-3 mt-2 p-3 w-full max-h-32 text-xs rounded-xl overflow-y-auto"
+        className="cursor-pointer scrollbar-styled w-full max-h-32 text-xs rounded-xl overflow-y-auto hover:opacity-60"
         style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
+        onClick={() => copy(dataHex)}
       >
         <p
-          className="w-full"
+          className="w-full text-xs"
           style={{
             overflowWrap: 'break-word',
             wordBreak: 'break-all',
@@ -55,19 +39,6 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
         >
           {dataHex}
         </p>
-      </div>
-
-      <div
-        className="flex items-center justify-center mb-2 w-full text-sm cursor-pointer"
-        onClick={() => copy(dataHex)}
-      >
-        <IconButton>
-          <Icon
-            name="copy"
-            className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-          />
-        </IconButton>
-        <span>{t('send.copyTxHexData')}</span>
       </div>
     </div>
   );
