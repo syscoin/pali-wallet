@@ -282,20 +282,29 @@ export const SendTransaction = () => {
 
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
-            <span className="text-sm font-medium font-thin">{host}</span>
+          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
+            <div className="flex flex-col my-6 text-center">
+              <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+                <img
+                  className="relative w-[30px] h-[30px]"
+                  src={'/assets/icons/ArrowUp.svg'}
+                  alt="Icon"
+                />
+              </div>
+              <p className="text-brand-gray200 text-xs font-light">
+                {t('buttons.send')}
+              </p>
+              <p className="text-white text-base">{valueAndCurrency}</p>
+            </div>
 
-            <p className="flex flex-col my-8 text-center text-xl">
-              {t('buttons.send')}:
-              <span className="text-brand-royalblue">{valueAndCurrency}</span>
-            </p>
-
-            <p className="flex flex-col text-center text-base ">
-              {t('send.method')}:
-              <span className="text-brand-royalblue">
-                {decodedTxData?.method}
-              </span>
-            </p>
+            <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
+              <p>Local</p>
+              <p>{host}</p>
+            </div>
+            <div className="py-2 text-white text-xs flex w-full justify-between">
+              <p>{t('send.method')}</p>
+              <p>{decodedTxData?.method}</p>
+            </div>
 
             {hasTxDataError && (
               <span className="text-red-600 text-sm my-4">
@@ -375,7 +384,10 @@ export const SendTransaction = () => {
             ))}
           </div>
 
-          <div className="flex items-center justify-around py-8 w-full">
+          <div
+            id="buttons"
+            className="flex items-center justify-around py-8 w-full"
+          >
             <Button
               type="button"
               className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
