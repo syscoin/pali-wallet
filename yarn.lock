@@ -2273,10 +2273,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
   integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@^1.0.476":
-  version "1.0.476"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.476.tgz#50db7e13f041787c44967e13801c76be7f91039e"
-  integrity sha512-8z+gI3RnKFCsJ5OXGNjbAjwtzWTTnYuANKPGj+1R+88rTXJb2nF3ymtDVml+/BuPMpIMCMNiUPJtzzVeIoJb+w==
+"@pollum-io/sysweb3-keyring@^1.0.477":
+  version "1.0.477"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.477.tgz#831c4ede9ac9ff7e67f2d38c07eeb449f4149323"
+  integrity sha512-lAZpHRRyfpazPaPqVQk07BS9QO9wuap2sLbf98683P2BpCVv8FPZY4AK2Nsg11QQH0QtgR/sAv2v+0rjGA3AdQ==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
