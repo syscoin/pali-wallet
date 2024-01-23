@@ -283,7 +283,7 @@ export const SendTransaction = () => {
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
-            <div className="flex flex-col my-6 text-center">
+            <div className="flex flex-col mb-6 text-center">
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
                 <img
                   className="relative w-[30px] h-[30px]"
@@ -384,7 +384,7 @@ export const SendTransaction = () => {
           >
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
@@ -394,27 +394,16 @@ export const SendTransaction = () => {
                 }
               }}
             >
-              <Icon
-                name="arrow-up"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-                rotate={45}
-              />
               {t('buttons.cancel')}
             </Button>
 
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              <Icon
-                name="arrow-down"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-              />
               {t('buttons.confirm')}
             </Button>
           </div>
