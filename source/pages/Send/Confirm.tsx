@@ -875,30 +875,43 @@ export const SendConfirm = () => {
       ) ||
       Boolean(isBitcoinBased && basicTxValues) ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <p className="flex flex-col items-center justify-center text-center font-rubik">
-            <span className="text-brand-royalblue font-poppins font-thin">
-              {`${basicTxValues.token?.isNft ? 'TokenID' : t('send.send')}`}
-            </span>
+          {basicTxValues.token?.isNft ? (
+            <p className="flex flex-col items-center justify-center text-center font-rubik">
+              TokenID
+              <span>
+                {!basicTxValues.token?.isNft ? (
+                  <>
+                    {`${basicTxValues.amount} ${' '} ${
+                      basicTxValues.token
+                        ? basicTxValues.token.symbol
+                        : activeNetwork.currency?.toUpperCase()
+                    }`}
+                  </>
+                ) : (
+                  <>{basicTxValues.amount}</>
+                )}
+              </span>
+            </p>
+          ) : (
+            <div className="flex flex-col mb-6 text-center">
+              <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+                <img
+                  className="relative w-[30px] h-[30px]"
+                  src={'/assets/icons/ArrowUp.svg'}
+                  alt="Icon"
+                />
+              </div>
+              <p className="text-brand-gray200 text-xs font-light">
+                {t('buttons.send')}
+              </p>
+              <p className="text-white text-base">{basicTxValues.amount}</p>
+            </div>
+          )}
 
-            <span>
-              {!basicTxValues.token?.isNft ? (
-                <>
-                  {`${basicTxValues.amount} ${' '} ${
-                    basicTxValues.token
-                      ? basicTxValues.token.symbol
-                      : activeNetwork.currency?.toUpperCase()
-                  }`}
-                </>
-              ) : (
-                <>{basicTxValues.amount}</>
-              )}
-            </span>
-          </p>
-
-          <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+          <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
+            <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.from')}
-              <span className="text-brand-royalblue text-xs">
+              <span className="text-white text-xs">
                 <Tooltip
                   content={basicTxValues.sender}
                   childrenClassName="flex"
@@ -910,7 +923,8 @@ export const SendConfirm = () => {
                     >
                       <Icon
                         wrapperClassname="flex items-center justify-center"
-                        name="copy"
+                        name="Copy"
+                        isSvg
                         className="px-1 text-brand-white hover:text-fields-input-borderfocus"
                       />
                     </IconButton>
@@ -918,9 +932,9 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </p>
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+            <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.to')}
-              <span className="text-brand-royalblue text-xs">
+              <span className="text-white text-xs">
                 <Tooltip
                   content={basicTxValues.receivingAddress}
                   childrenClassName="flex"
@@ -932,7 +946,8 @@ export const SendConfirm = () => {
                     >
                       <Icon
                         wrapperClassname="flex items-center justify-center"
-                        name="copy"
+                        name="Copy"
+                        isSvg
                         className="px-1 text-brand-white hover:text-fields-input-borderfocus"
                       />
                     </IconButton>
@@ -942,9 +957,9 @@ export const SendConfirm = () => {
             </p>
 
             <div className="flex flex-row items-center justify-between w-full">
-              <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+              <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
                 {t('send.estimatedGasFee')}
-                <span className="text-brand-royalblue text-xs">
+                <span className="text-white text-xs">
                   {isBitcoinBased
                     ? getFormattedFee(basicTxValues.fee)
                     : !isBitcoinBased && isEIP1559Compatible === false
@@ -955,21 +970,25 @@ export const SendConfirm = () => {
               {!isBitcoinBased && !basicTxValues.token?.isNft
                 ? !isBitcoinBased &&
                   isEIP1559Compatible && (
-                    <span
-                      className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
+                    <div
+                      className="hover:text-fields-input-borderfocus"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
-                      {t('buttons.edit')}
-                    </span>
+                      <Icon
+                        name="EditTx"
+                        isSvg
+                        className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+                      />{' '}
+                    </div>
                   )
                 : null}
             </div>
 
-            <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+            <p className="flex flex-col py-2 w-full text-brand-white font-poppins font-thin">
               {!basicTxValues.token?.isNft ? (
                 <>
                   Total ({t('send.amountAndFee')})
-                  <span className="text-brand-royalblue text-xs">
+                  <span className="text-white text-xs">
                     {isBitcoinBased
                       ? `${
                           Number(basicTxValues.fee) +
@@ -991,7 +1010,7 @@ export const SendConfirm = () => {
               ) : (
                 <>
                   Token ID
-                  <span className="text-brand-royalblue text-xs">
+                  <span className="text-white text-xs">
                     {basicTxValues.amount}
                   </span>
                 </>
@@ -1002,18 +1021,12 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-8 w-full">
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center h-8 text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
                 navigate('/home');
               }}
             >
-              <Icon
-                name="arrow-up"
-                className="w-5"
-                wrapperClassname="mr-2 flex items-center"
-                rotate={45}
-              />
               {t('buttons.cancel')}
             </Button>
 
@@ -1023,18 +1036,12 @@ export const SendConfirm = () => {
                 loading
                   ? 'opacity-60 cursor-not-allowed'
                   : 'opacity-100 hover:opacity-90'
-              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
+              } xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              {!loading ? (
-                <Icon
-                  name="arrow-down"
-                  className="w-5"
-                  wrapperClassname="flex items-center mr-2"
-                />
-              ) : (
+              {loading && (
                 <Icon
                   name="loading"
                   color="#fff"
