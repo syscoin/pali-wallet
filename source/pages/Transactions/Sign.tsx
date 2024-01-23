@@ -118,7 +118,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
               <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
             </ul>
 
-            <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-2 md:max-w-2xl">
+            <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
               <Button
                 type="button"
                 onClick={window.close}

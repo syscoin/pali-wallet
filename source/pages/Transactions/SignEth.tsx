@@ -3,13 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import {
-  DefaultModal,
-  ErrorModal,
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-} from 'components/index';
+import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -22,11 +16,13 @@ const EthSign: React.FC<ISign> = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [state, setState] = useState<string>('Details');
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
+  const tabLabel = ['Details', 'Data'];
   const url = browser.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
@@ -128,6 +124,55 @@ const EthSign: React.FC<ISign> = () => {
       setMessage(data[1]);
     }
   }, []);
+
+  const AccountDetailsSignature = () => (
+    <>
+      <div className="flex flex-row justify-between mb-2 w-full font-poppins text-xs text-white">
+        <p>{t('transactions.account')}</p>
+        <p>{label}</p>
+      </div>
+      <div className="flex flex-row justify-between mb-2 w-full font-poppins text-xs text-white">
+        <p>{t('send.balance')}</p>
+        <div className="flex gap-1">
+          <p>{balances[isBitcoinBased ? 'syscoin' : 'ethereum']}</p>
+          <p className="text-brand-blue200">{currency.toUpperCase()}</p>
+        </div>
+      </div>
+      <div className="flex flex-row justify-between mb-2 w-full font-poppins text-xs text-white">
+        <p>{t('transactions.origin')}</p>
+        <p>{host}</p>
+      </div>
+    </>
+  );
+
+  const DataSignature = () => (
+    <>
+      {(data.eventName === 'eth_signTypedData_v3' ||
+        data.eventName === 'eth_signTypedData_v4') && (
+        <div className="flex flex-col pb-4 pt-4 w-full">
+          <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
+            <pre>{`${JSON.stringify(JSON.parse(data[1]), null, 2)}`}</pre>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const SignatureDetails = () => (
+    <>
+      {data.eventName === 'eth_signTypedData' &&
+        data[0].map((item: any, number: number) => (
+          <div
+            key={number}
+            className="flex flex-row justify-between mb-2 w-full font-poppins text-xs text-white"
+          >
+            <p>{item?.name}</p>
+            <p>{item?.value}</p>
+          </div>
+        ))}
+    </>
+  );
+
   return (
     <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
       <ErrorModal
@@ -152,83 +197,85 @@ const EthSign: React.FC<ISign> = () => {
 
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-row justify-between mb-2 w-full">
-            <p className="font-poppins text-sm">
-              {t('transactions.account')}: {label}
-            </p>
-            <p className="font-poppins text-sm">
-              {t('send.balance')}:{' '}
-              {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
-              {currency.toUpperCase()}
-            </p>
-          </div>
-          <div className="justify-left flex flex-row mb-16 w-full">
-            <p className="font-poppins text-sm">
-              {t('transactions.origin')}: {host}
-            </p>
-          </div>
-          {data.eventName !== 'eth_sign' && (
-            <div className="flex justify-center mb-2 w-full">
-              <p className="m-0 font-poppins text-sm">
-                {t('transactions.youAreSigning')}:
-              </p>
+          <div className="flex flex-col w-full items-center justify-center mb-8">
+            <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
+              <img className="absolute" src="/assets/images/signature.svg" />
             </div>
-          )}
+            <p className="text-sm text-white">
+              {t('transactions.signatureRequest')}
+            </p>
+            <p className="text-sm text-gray-200">
+              {t('transactions.confirmToProceed')}
+            </p>
+          </div>
+
+          <div className="flex flex-col pb-4 w-full">
+            <p className="font-poppins text-center text-xs overflow-auto">
+              {message}
+            </p>
+          </div>
 
           {(data.eventName === 'personal_sign' ||
             data.eventName === 'eth_sign') && (
             <div className="flex flex-col w-full">
               {data.eventName === 'eth_sign' && (
-                <p className="mb-3 w-full text-center text-red-600 font-poppins text-sm">
+                <p className="mb-4 w-full text-center text-red-600 font-poppins text-xs">
                   {warningMessage}
                 </p>
               )}
-
-              <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-                <h1 className="text-lg">{t('transactions.message')}:</h1>
-                <p className="scrollbar-styled font-poppins text-sm overflow-auto">
-                  {message}
-                </p>
-              </div>
             </div>
           )}
 
-          {data.eventName === 'eth_signTypedData' &&
-            data[0].map((item: any, number: number) => (
-              <div
-                key={number}
-                className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark"
-              >
-                <h1 className="text-lg">{item?.name}:</h1>
-                <p className="scrollbar-styled font-poppins text-sm overflow-auto">
-                  {item?.value}
-                </p>
-              </div>
-            ))}
-
-          {(data.eventName === 'eth_signTypedData_v3' ||
-            data.eventName === 'eth_signTypedData_v4') && (
-            <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-              <h1 className="text-lg">{t('transactions.message')}:</h1>
-              <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
-                <pre>{`${JSON.stringify(JSON.parse(data[1]), null, 2)}`}</pre>
-              </div>
+          <div className="flex flex-col ">
+            <div className="flex flex-row ml-[1.5rem] gap-3 items-center">
+              {tabLabel?.map((tabLabel, index) => (
+                <div
+                  key={index}
+                  onClick={() => setState(tabLabel)}
+                  className={` ${
+                    tabLabel === state
+                      ? 'bg-brand-blue600'
+                      : 'bg-alpha-whiteAlpha200'
+                  } rounded-t-[20px] py-[8px] px-[16px] h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 text-center`}
+                >
+                  {tabLabel}
+                </div>
+              ))}
             </div>
-          )}
+            <div className="bg-brand-blue600 w-[396px] relative left-[0%] flex flex-col items-center justify-center p-6 rounded-[20px]">
+              {state === 'Details' ? (
+                <>
+                  <AccountDetailsSignature />
+                  <SignatureDetails />
+                </>
+              ) : (
+                <DataSignature />
+              )}
+            </div>
+          </div>
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
-            <SecondaryButton type="button" onClick={window.close}>
+          <div
+            className={` ${
+              state === 'Details' ? 'mt-24' : 'my-8'
+            } gap-6 flex items-center justify-between w-full md:max-w-2xl`}
+          >
+            <Button
+              type="button"
+              onClick={window.close}
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
+            >
               {t('buttons.cancel')}
-            </SecondaryButton>
+            </Button>
 
-            <PrimaryButton
+            <Button
               type="submit"
               disabled={confirmed}
               loading={loading}
               onClick={onSubmit}
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300"
             >
               {t('buttons.confirm')}
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       )}
