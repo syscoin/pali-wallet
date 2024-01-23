@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
-import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
