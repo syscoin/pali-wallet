@@ -18,7 +18,6 @@ const ImportAccountView = () => {
   const { importAccountFromPrivateKey } = controller.wallet;
 
   //* States
-  const [type, setType] = useState('Private Key');
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
