@@ -7,7 +7,6 @@ import { Link } from 'react-router-dom';
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
-import Transaction from 'pages/Transactions/Transaction';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
