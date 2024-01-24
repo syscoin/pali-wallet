@@ -1,6 +1,6 @@
 .custom-autolock-input {
   display: flex;
-  width: 352px !important;
+  width: 352px;
   height: 40px;
   padding: 11px 73px;
   align-items: center;
