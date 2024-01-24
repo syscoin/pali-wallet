@@ -893,7 +893,7 @@ export const SendConfirm = () => {
               </span>
             </p>
           ) : (
-            <div className="flex flex-col mb-6 text-center">
+            <div className="flex flex-col mb-4 text-center">
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
                 <img
                   className="relative w-[30px] h-[30px]"
@@ -908,8 +908,8 @@ export const SendConfirm = () => {
             </div>
           )}
 
-          <div className="flex flex-col p-6 bg-brand-blue600 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm divide-alpha-whiteAlpha300 divide-dashed divide-y rounded-[20px]">
-            <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
+          <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm">
+            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.from')}
               <span className="text-white text-xs">
                 <Tooltip
@@ -932,7 +932,8 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </p>
-            <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
+            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.to')}
               <span className="text-white text-xs">
                 <Tooltip
@@ -955,9 +956,9 @@ export const SendConfirm = () => {
                 </Tooltip>
               </span>
             </p>
-
-            <div className="flex flex-row items-center justify-between w-full">
-              <p className="flex flex-col py-2 w-full text-xs text-brand-gray200 font-poppins font-normal">
+            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            <div className="flex flex-row items-end w-full">
+              <p className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
                 {t('send.estimatedGasFee')}
                 <span className="text-white text-xs">
                   {isBitcoinBased
@@ -970,21 +971,21 @@ export const SendConfirm = () => {
               {!isBitcoinBased && !basicTxValues.token?.isNft
                 ? !isBitcoinBased &&
                   isEIP1559Compatible && (
-                    <div
-                      className="hover:text-fields-input-borderfocus"
+                    <span
+                      className="hover:text-fields-input-borderfocus pb-[3px]"
                       onClick={() => setIsOpenEditFeeModal(true)}
                     >
                       <Icon
                         name="EditTx"
                         isSvg
-                        className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+                        className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
                       />{' '}
-                    </div>
+                    </span>
                   )
                 : null}
             </div>
-
-            <p className="flex flex-col py-2 w-full text-brand-white font-poppins font-thin">
+            <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
+            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
                   Total ({t('send.amountAndFee')})
