@@ -476,7 +476,9 @@ export const SendEth = () => {
 
           <div className="absolute bottom-12 md:static md:mt-3">
             <Button
-              className="xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              className={`${
+                isValidAmount && isValidAddress ? 'opacity-100' : 'opacity-60'
+              }xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
               type="submit"
             >
               {t('buttons.next')}

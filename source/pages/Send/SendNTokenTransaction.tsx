@@ -22,7 +22,7 @@ import {
   verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
-import { EditPriorityModal } from './EditPriorityModal';
+import { EditPriorityModal } from './EditPriority';
 
 export const SendNTokenTransaction = () => {
   const {

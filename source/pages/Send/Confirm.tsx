@@ -17,6 +17,7 @@ import {
   Tooltip,
   IconButton,
 } from 'components/index';
+import { TxSuccessful } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
@@ -30,8 +31,6 @@ import {
   INITIAL_FEE,
   verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
-
-import { EditPriorityModal } from './EditPriorityModal';
 
 export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
@@ -830,10 +829,10 @@ export const SendConfirm = () => {
 
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>
-      <DefaultModal
+      <TxSuccessful
         show={confirmed}
         title={t('send.txSuccessfull')}
-        description={t('send.txSuccessfullMessage')}
+        phraseOne={t('send.txSuccessfullMessage')}
         onClose={() => {
           wallet.sendAndSaveTransaction(confirmedTx);
           wallet.setIsLastTxConfirmed(activeNetwork.chainId, false);
@@ -857,15 +856,6 @@ export const SendConfirm = () => {
         title={t('send.verifyFields')}
         description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
-      />
-
-      <EditPriorityModal
-        showModal={isOpenEditFeeModal}
-        setIsOpen={setIsOpenEditFeeModal}
-        customFee={customFee}
-        setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
-        fee={fee}
       />
       {Boolean(
         !isBitcoinBased && basicTxValues && fee && isEIP1559Compatible
@@ -973,7 +963,16 @@ export const SendConfirm = () => {
                   isEIP1559Compatible && (
                     <span
                       className="hover:text-fields-input-borderfocus pb-[3px]"
-                      onClick={() => setIsOpenEditFeeModal(true)}
+                      onClick={() =>
+                        navigate('edit/gas', {
+                          state: {
+                            customFee: customFee,
+                            setCustomFee: setCustomFee,
+                            fee: fee,
+                            setHaveError: setHaveError,
+                          },
+                        })
+                      }
                     >
                       <Icon
                         name="EditTx"

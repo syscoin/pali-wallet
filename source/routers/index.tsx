@@ -41,6 +41,7 @@ import {
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
 import { ChainErrorPage } from 'pages/Chain';
+import { EditPriority } from 'pages/Send/EditPriority';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
@@ -212,8 +213,8 @@ export const Router = () => {
           element={<ProtectedRoute element={<SendConfirm />} />}
         />
         <Route
-          path="send/edit/gas"
-          element={<ProtectedRoute element={<SendConfirm />} />}
+          path="send/confirm/edit/gas"
+          element={<ProtectedRoute element={<EditPriority />} />}
         />
         <Route path="switch-network" element={<SwitchNetwork />} />
         <Route
