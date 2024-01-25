@@ -27,7 +27,7 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
-import { EditPriorityModal } from './EditPriority';
+import { EditPriority } from './EditPriority'; //TODO
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
@@ -268,15 +268,6 @@ export const SendTransaction = () => {
           setIsReconectModalOpen(false);
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
-      />
-
-      <EditPriorityModal
-        showModal={isOpen}
-        setIsOpen={setIsOpen}
-        customFee={customFee}
-        setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
-        fee={fee}
       />
 
       {tx?.from ? (
