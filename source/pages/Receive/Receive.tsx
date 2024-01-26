@@ -37,31 +37,37 @@ export const Receive = () => {
       id="receiveSYS-title"
     >
       {activeAccount.address ? (
-        <div className="flex flex-col items-center justify-center w-full">
+        <div className="flex flex-col items-center justify-center w-screen">
           <div id="qr-code">
             <QRCodeSVG
               value={activeAccount.address}
               bgColor="#fff"
               fgColor="#000"
               style={{
-                height: '240px',
-                width: '225px',
+                height: '186px',
+                width: '186px',
                 padding: '6px',
                 backgroundColor: '#fff',
+                borderRadius: '10px',
               }}
             />
           </div>
-
-          <p className="mt-4 text-base">
-            {ellipsis(activeAccount.address, 4, 10)}
-          </p>
+          <div className="flex flex-wrap w-[60%]">
+            <p
+              className="mt-4 text-sm text-center"
+              style={{ wordBreak: 'break-all' }}
+            >
+              {activeAccount.address}
+            </p>
+          </div>
 
           <div
-            className="absolute bottom-12 md:static md:mt-6"
+            className="relative w-[96%] mt-36 md:static md:mt-6"
             id="copy-address-receive-btn"
           >
             <NeutralButton
               type="button"
+              fullWidth={true}
               onClick={() => copyText(activeAccount.address)}
             >
               <span className="text-xs">{t('buttons.copy')}</span>
