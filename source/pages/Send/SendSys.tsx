@@ -1,6 +1,7 @@
 import { Switch, Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
+import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
@@ -10,13 +11,19 @@ import { useSelector } from 'react-redux';
 //todo: update with the new function
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
-import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
+import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
+import {
+  truncate,
+  isNFT,
+  getAssetBalance,
+  formatCurrency,
+  ellipsis,
+} from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
@@ -49,6 +56,9 @@ export const SendSys = () => {
 
     form.setFieldsValue({ fee: getRecommendedFee || Number(0.00001) });
   }, [controller.wallet.account, form]);
+
+  const isAccountImported =
+    accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
 
   useEffect(() => {
     handleGetFee();
@@ -150,20 +160,57 @@ export const SendSys = () => {
     return getAmount;
   }, [selectedAsset, recommendedFee]);
 
+  useEffect(() => {
+    const placeholder = document.querySelector('.add-identicon');
+    if (!placeholder) return;
+
+    placeholder.innerHTML = toSvg(
+      accounts[activeAccountMeta.type][activeAccountMeta.id]?.xpub,
+      50,
+      {
+        backColor: '#07152B',
+        padding: 1,
+      }
+    );
+  }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
+
   return (
     <Layout
       title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}
     >
       <div>
-        <p className="flex flex-col items-center justify-center text-center font-rubik">
-          <span className="text-brand-royalblue font-poppins font-thin">
-            {t('send.balance')}
-          </span>
-
-          {selectedAsset
-            ? getAssetBalance(selectedAsset, activeAccount, true)
-            : `${activeAccount.balances.syscoin} ${activeNetwork.currency}`}
-        </p>
+        <div className="flex flex-col items-center justify-center">
+          <div className="add-identicon ml-1 mr-2 my-2" />
+          <div className="flex gap-1 justify-center items-center">
+            <img src={'/assets/images/paliLogoWhiteSmall.svg'} />
+            <div className="flex text-white gap-1 text-xs font-normal w-max">
+              <p>
+                {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}
+              </p>
+              <p>
+                {ellipsis(
+                  accounts[activeAccountMeta.type][activeAccountMeta.id]
+                    ?.address,
+                  4,
+                  4
+                )}
+              </p>
+            </div>
+            {isAccountImported && (
+              <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
+                Imported
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 mt-[6px]">
+            <p className="text-brand-gray200 text-xs">Your balance:</p>
+            <p className="text-white text-xs font-semibold">
+              {selectedAsset
+                ? getAssetBalance(selectedAsset, activeAccount, true)
+                : `${activeAccount.balances.syscoin} ${activeNetwork.currency}`}
+            </p>
+          </div>
+        </div>
 
         <Form
           validateMessages={{ default: '' }}
@@ -178,7 +225,7 @@ export const SendSys = () => {
           }}
           onFinish={nextStep}
           autoComplete="off"
-          className="flex flex-col gap-2 items-center justify-center mt-1 text-center md:w-full"
+          className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
         >
           <Form.Item
             name="receiver"
@@ -210,234 +257,235 @@ export const SendSys = () => {
             <Input
               type="text"
               placeholder={t('send.receiver')}
-              className="sender-input"
+              className="sender-custom-input"
             />
           </Form.Item>
+          <div className="flex gap-2 w-full">
+            <div className="flex md:max-w-md">
+              {
+                <Form.Item
+                  name="asset"
+                  className=""
+                  rules={[
+                    {
+                      required: false,
+                      message: '',
+                    },
+                  ]}
+                >
+                  <Menu>
+                    <div className="relative inline-block text-left">
+                      <Menu.Button className="inline-flex w-[100px] gap-4 uppercase justify-center border border-alpha-whiteAlpha300 px-5 py-[11px] text-white text-xs font-normal bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                        {truncate(
+                          String(
+                            selectedAsset?.symbol
+                              ? selectedAsset?.symbol
+                              : activeNetwork.currency
+                          ),
+                          4
+                        )}
 
-          <div className="flex items-center justify-center w-full md:max-w-md">
-            {
+                        <Icon isSvg name="ArrowDown" />
+                      </Menu.Button>
+
+                      <Transition
+                        as={Fragment}
+                        enter="transition ease-out duration-100"
+                        enterFrom="transform opacity-0 scale-95"
+                        enterTo="transform opacity-100 scale-100"
+                        leave="transition ease-in duration-75"
+                        leaveFrom="transform opacity-100 scale-100"
+                        leaveTo="transform opacity-0 scale-95"
+                      >
+                        {
+                          <Menu.Items
+                            as="div"
+                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
+                          >
+                            <Menu.Item>
+                              <button
+                                onClick={() => handleSelectedAsset(-1)}
+                                className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                              >
+                                <p>SYS</p>
+                                <small>{t('send.native')}</small>
+                              </button>
+                            </Menu.Item>
+
+                            {activeAccount.assets.syscoin.length > 0
+                              ? activeAccount.assets.syscoin.map(
+                                  (item: any) => (
+                                    <>
+                                      {item?.assetGuid ? (
+                                        <Menu.Item as="div" key={uniqueId()}>
+                                          <Menu.Item>
+                                            <button
+                                              onClick={() => {
+                                                if (
+                                                  activeAccount.isTrezorWallet ||
+                                                  activeAccount.isLedgerWallet
+                                                ) {
+                                                  alert.removeAll();
+                                                  alert.error(
+                                                    'Cannot send custom token with Trezor Account.'
+                                                  );
+                                                  return;
+                                                }
+                                                handleSelectedAsset(
+                                                  item.assetGuid
+                                                );
+                                              }}
+                                              className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                            >
+                                              <p>{item?.symbol}</p>
+
+                                              <small>
+                                                {isNFT(item.assetGuid)
+                                                  ? 'NFT'
+                                                  : 'SPT'}
+                                              </small>
+                                            </button>
+                                          </Menu.Item>
+                                        </Menu.Item>
+                                      ) : null}
+                                    </>
+                                  )
+                                )
+                              : null}
+                          </Menu.Items>
+                        }
+                      </Transition>
+                    </div>
+                  </Menu>
+                </Form.Item>
+              }
+            </div>
+
+            <div className="flex md:w-96">
               <Form.Item
-                name="asset"
-                className=""
+                name="amount"
+                className="relative w-full"
+                hasFeedback
                 rules={[
                   {
-                    required: false,
+                    required: true,
                     message: '',
                   },
-                ]}
-              >
-                <Menu>
-                  <div className="relative inline-block text-left">
-                    <Menu.Button className="inline-flex justify-center py-3 w-28 text-white text-sm font-medium bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border focus:border-fields-input-borderfocus rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-                      {truncate(
-                        String(
-                          selectedAsset?.symbol
-                            ? selectedAsset?.symbol
-                            : activeNetwork.currency
-                        ),
-                        4
-                      )}
-
-                      <ChevronDoubleDownIcon
-                        className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                        aria-hidden="true"
-                      />
-                    </Menu.Button>
-
-                    <Transition
-                      as={Fragment}
-                      enter="transition ease-out duration-100"
-                      enterFrom="transform opacity-0 scale-95"
-                      enterTo="transform opacity-100 scale-100"
-                      leave="transition ease-in duration-75"
-                      leaveFrom="transform opacity-100 scale-100"
-                      leaveTo="transform opacity-0 scale-95"
-                    >
-                      {
-                        <Menu.Items
-                          as="div"
-                          className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
-                        >
-                          <Menu.Item>
-                            <button
-                              onClick={() => handleSelectedAsset(-1)}
-                              className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                            >
-                              <p>SYS</p>
-                              <small>{t('send.native')}</small>
-                            </button>
-                          </Menu.Item>
-
-                          {activeAccount.assets.syscoin.length > 0
-                            ? activeAccount.assets.syscoin.map((item: any) => (
-                                <>
-                                  {item?.assetGuid ? (
-                                    <Menu.Item as="div" key={uniqueId()}>
-                                      <Menu.Item>
-                                        <button
-                                          onClick={() => {
-                                            if (
-                                              activeAccount.isTrezorWallet ||
-                                              activeAccount.isLedgerWallet
-                                            ) {
-                                              alert.removeAll();
-                                              alert.error(
-                                                'Cannot send custom token with Trezor Account.'
-                                              );
-                                              return;
-                                            }
-                                            handleSelectedAsset(item.assetGuid);
-                                          }}
-                                          className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                        >
-                                          <p>{item?.symbol}</p>
-
-                                          <small>
-                                            {isNFT(item.assetGuid)
-                                              ? 'NFT'
-                                              : 'SPT'}
-                                          </small>
-                                        </button>
-                                      </Menu.Item>
-                                    </Menu.Item>
-                                  ) : null}
-                                </>
-                              ))
-                            : null}
-                        </Menu.Items>
+                  () => ({
+                    validator(_, value) {
+                      if (value <= balance) {
+                        return Promise.resolve();
                       }
-                    </Transition>
-                  </div>
-                </Menu>
-              </Form.Item>
-            }
 
-            <div className="flex gap-x-0.5 items-center justify-center w-full">
-              <Form.Item
-                id="verify-address-switch"
-                name="verify"
-                className="flex-1 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-l-full md:w-full"
-                rules={[
-                  {
-                    required: false,
-                    message: '',
-                  },
+                      return Promise.reject();
+                    },
+                  }),
                 ]}
               >
-                <Tooltip
-                  childrenClassName="text-brand-white h-4"
-                  content={t('send.paliVerifies')}
-                >
-                  <p className={`text-10px cursor-default text-brand-white`}>
-                    {t('send.verifyAddress')}
-                  </p>
-                </Tooltip>
-
-                <Switch
-                  checked={verifyAddress}
-                  onChange={verifyOnChange}
-                  className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
-                >
-                  <span className="sr-only">{t('send.verifyAddress')}</span>
+                <div className="relative flex items-center ">
                   <span
-                    className={`${
-                      verifyAddress
-                        ? 'translate-x-6 bg-warning-success'
-                        : 'translate-x-1'
-                    } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+                    className="z-[99] left-[5%] bottom-[27%] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                    onClick={() =>
+                      form.setFieldValue(
+                        'amount',
+                        balance - 1.01 * recommendedFee
+                      )
+                    }
+                  >
+                    MAX
+                  </span>
+                  <Input
+                    id="with-max-button"
+                    className="value-custom-input"
+                    type="number"
+                    placeholder={'0.0'}
                   />
-                </Switch>
-              </Form.Item>
-
-              <Form.Item
-                name="ZDAG"
-                className="flex-1 text-center bg-fields-input-primary border border-fields-input-border focus:border-fields-input-borderfocus rounded-r-full"
-                rules={[
-                  {
-                    required: false,
-                    message: '',
-                  },
-                ]}
-              >
-                <Tooltip
-                  childrenClassName="text-brand-white h-4"
-                  content={t('send.disableThisOption')}
-                >
-                  <p className={`text-10px cursor-default text-brand-white`}>
-                    Z-DAG
-                  </p>
-                </Tooltip>
-                <Switch
-                  checked={ZDAG}
-                  onChange={ZDAGOnChange}
-                  className="relative inline-flex items-center w-9 h-4 bg-transparent border border-brand-royalblue rounded-full"
-                >
-                  <span className="sr-only">Z-DAG</span>
-                  <span
-                    className={`${
-                      ZDAG
-                        ? 'bg-warning-success translate-x-6'
-                        : 'bg-warning-error translate-x-1'
-                    } inline-block w-2 h-2 transform rounded-full`}
-                    id="z-dag-switch"
-                  />
-                </Switch>
+                </div>
               </Form.Item>
             </div>
           </div>
+          <Fee
+            disabled={true}
+            recommend={recommendedFee}
+            form={form}
+            fiatValue={fiatValueToShow}
+          />
 
-          <div className="flex w-80 md:w-96">
+          <div className="flex justify-between w-full">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-normal text-white">
+                {t('send.verifyAddress')}
+              </span>
+              <Tooltip
+                childrenClassName="text-brand-white h-4"
+                content={t('send.paliVerifies')}
+              >
+                <Icon isSvg name="Info" />
+              </Tooltip>
+            </div>
             <Form.Item
-              name="amount"
-              className="w-full"
-              hasFeedback
+              id="verify-address-switch"
+              name="verify"
               rules={[
                 {
-                  required: true,
+                  required: false,
                   message: '',
                 },
-                () => ({
-                  validator(_, value) {
-                    if (value <= balance) {
-                      return Promise.resolve();
-                    }
-
-                    return Promise.reject();
-                  },
-                }),
               ]}
             >
-              <Input
-                className="mixed-right-border-input"
-                type="number"
-                placeholder={t('send.amount')}
-              />
+              <Switch
+                checked={verifyAddress}
+                onChange={verifyOnChange}
+                className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
+              >
+                <span
+                  className={`${
+                    verifyAddress
+                      ? 'bg-brand-green translate-x-6'
+                      : 'bg-brand-redDark translate-x-1'
+                  } inline-block w-2 h-2 transform rounded-full`}
+                />
+              </Switch>
             </Form.Item>
-            <span
-              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
-              onClick={() =>
-                form.setFieldValue('amount', balance - 1.01 * recommendedFee)
-              }
+          </div>
+          <div className="flex justify-between w-full">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-normal text-white">Z-DAG</span>
+              <Tooltip
+                childrenClassName="text-brand-white h-4"
+                content={t('send.disableThisOption')}
+              >
+                <Icon isSvg name="Info" />
+              </Tooltip>
+            </div>
+            <Form.Item
+              name="ZDAG"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+              ]}
             >
-              Max
-            </span>
+              <Switch
+                checked={ZDAG}
+                onChange={ZDAGOnChange}
+                className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
+              >
+                <span
+                  className={`${
+                    ZDAG
+                      ? 'bg-brand-green translate-x-6'
+                      : 'bg-brand-redDark translate-x-1'
+                  } inline-block w-2 h-2 transform rounded-full`}
+                  id="z-dag-switch"
+                />
+              </Switch>
+            </Form.Item>
           </div>
 
-          <Fee disabled={true} recommend={recommendedFee} form={form} />
-
-          <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
-            <span className="text-xs">
-              {`${t('transactions.withCurrentNetwork')} ${recommendedFee} SYS`}
-            </span>
-
-            <span className="mt-0.5 text-brand-white font-rubik text-xs">
-              {'≈ '}
-              {fiatValueToShow}
-            </span>
-          </p>
-
-          <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit" loading={isLoading}>
+          <div className="relative mt-14 w-[96%] md:static md:mt-3">
+            <NeutralButton type="submit" fullWidth loading={isLoading}>
               {t('buttons.next')}
             </NeutralButton>
           </div>

@@ -16,6 +16,7 @@ import 'assets/styles/custom-form-inputs-styles.css';
 import 'assets/styles/custom-autolock-input.css';
 import 'assets/styles/custom-receive-input.css';
 import 'assets/fonts/index.css';
+import 'assets/styles/custom-send-utxo-input.css';
 import { log } from 'utils/index';
 
 import External from './External';
