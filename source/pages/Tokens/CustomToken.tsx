@@ -471,7 +471,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             readOnly={isEdit}
             type="text"
             disabled={isEdit}
-            className="input-small relative"
+            className="custom-import-input relative"
             placeholder={t('tokens.contractAddress')}
           />
         </Form.Item>
@@ -519,7 +519,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         >
           <Input
             type="text"
-            className="input-small relative"
+            className="custom-import-input relative"
             placeholder={t('tokens.tokenSymbol')}
           />
         </Form.Item>
@@ -574,7 +574,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         >
           <Input
             type="text"
-            className="input-small relative"
+            className="custom-import-input relative"
             placeholder={
               tokenContractType.contractType === 'ERC-20' ||
               tokenContractType.contractType === ''
