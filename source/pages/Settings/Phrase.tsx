@@ -108,7 +108,10 @@ const PhraseView = () => {
 
         <div className="flex w-full flex-col space-y-6 mt-2 mb-6 z-20">
           {isCopied ? (
-            <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
+            <div
+              id="copied-phrase-button"
+              className="flex w-full gap-1 items-center"
+            >
               <img
                 className="w-[16px] max-w-none"
                 src="/assets/icons/successIcon.svg"
@@ -117,6 +120,7 @@ const PhraseView = () => {
             </div>
           ) : (
             <div
+              id="copy-phrase-button"
               className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer"
               onClick={() => {
                 mockedPhrase !==

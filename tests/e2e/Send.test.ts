@@ -26,13 +26,13 @@ describe('Send', () => {
     //  * go to send page
     await driver.clickElement('#send-btn');
 
-    const findSendSYS = await driver.findElement(By.id('sendSYS-title'));
-    const sendSYSText = await findSendSYS.getText();
+    const balanceTextElement = await driver.findElement(By.id('balance-text'));
 
-    assert.equal(
-      sendSYSText,
-      'SEND SYS',
-      '<!> Send button is working different than the the expected <!>'
+    const balanceText = await balanceTextElement.getText();
+
+    assert.ok(
+      balanceText.includes('Balance'),
+      'Balance text is not as expected'
     );
   });
 

@@ -155,7 +155,10 @@ export const SendSys = () => {
       title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}
     >
       <div>
-        <p className="flex flex-col items-center justify-center text-center font-rubik">
+        <p
+          id="balance-text"
+          className="flex flex-col items-center justify-center text-center font-rubik"
+        >
           <span className="text-brand-royalblue font-poppins font-thin">
             {t('send.balance')}
           </span>

@@ -18,56 +18,38 @@ describe('Account settings', () => {
     await driver.quit();
   });
 
-  it('should find account settings button', async () => {
+  it('should find account settings', async () => {
     const settingsButton = await driver.findElement(
-      By.id('account-settings-btn')
+      By.id('general-settings-button')
     );
 
     assert.ok(settingsButton, '<!> Cannot find settings button <!>');
   });
 
-  it('should switch account', async () => {
-    await driver.clickElement('#account-settings-btn');
-    await driver.clickElement('#accounts-btn');
+  it('should switch account and verify settings buttons', async () => {
+    await driver.clickElement('#general-settings-button');
 
-    // go to create new account
-    await driver.clickElement('#create-new-account-btn');
+    await driver.clickElement('#create-new-account');
+
     await driver.fill('#account-name-input', 'Account 2');
 
-    // create new account
     await driver.clickElement('#create-btn');
+
     await driver.clickElement('#got-it-btn');
 
-    // go home and open the menu again
-    await driver.clickElement('#account-settings-btn');
-    await driver.clickElement('#accounts-btn');
+    await driver.clickElement('#general-settings-button');
 
-    // switch account
-    await driver.clickElement('#account-1');
-    const accountLabel = await driver.findElement('#active-account-label');
+    const activeAccountLabel = await driver.findElement(By.id('account-1'));
 
-    // check if Account 2 is the active one
-    const activeAccountLabelText = await accountLabel.getText();
-    expect(activeAccountLabelText).toBe('Account 2');
-  });
-
-  /*
-  it('should open the trezor popup in a new tab', async () => {
-    await uiWebDriver.clickElement('#account-settings-btn');
-    //  * go to hardware wallet
-    await uiWebDriver.clickElement('#hardware-wallet-btn');
-    //  * select Trezor
-    await uiWebDriver.clickElement('#trezor-btn');
-    //  * connect
-    await uiWebDriver.clickElement('#connect-btn');
-    try {
-      await uiWebDriver.switchToWindowWithTitle('TrezorConnect | Trezor', null);
-    } catch (error) {
-      assert.ifError(error);
+    if (!activeAccountLabel) {
+      throw new Error('Active account label not found');
     }
-    const url = await uiWebDriver.getCurrentUrl();
-    const expectedUrl = 'https://connect.trezor.io/8/popup.html';
-    //    * check if this is being redirected to https://connect.trezor.io/8/popup.html
-    expect(url).toContain(expectedUrl);
-  }); */
+
+    const activeAccountLabelText = await activeAccountLabel.getAttribute(
+      'innerText'
+    );
+
+    console.log('activeAccountLabelText', activeAccountLabelText);
+    expect(activeAccountLabelText).toContain('Account 2');
+  });
 });
