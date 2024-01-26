@@ -284,7 +284,7 @@ export const SendEth = () => {
             <span
               className={`${
                 hasAccountAssets ? 'flex' : 'hidden'
-              } items-center justify-center px-5 bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border rounded-l-full`}
+              } items-center absolute left-[71%] z-[99] h-[40px] justify-center px-5 bg-transparent hover:bg-opacity-30`}
             >
               {hasAccountAssets ? (
                 <Form.Item
@@ -301,12 +301,12 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
+                        className="inline-flex justify-center items-center py-3 w-full text-white text-xs font-normal"
                       >
                         {String(getLabel())}
 
                         <ChevronDoubleDownIcon
-                          className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                          className="text-white hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                           aria-hidden="true"
                         />
                       </Menu.Button>
@@ -323,7 +323,7 @@ export const SendEth = () => {
                         {hasAccountAssets ? (
                           <Menu.Items
                             as="div"
-                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
+                            className="scrollbar-styled absolute z-10 left-[-103px] mt-[1px] py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-2xl shadow-2xl overflow-auto origin-top-right"
                           >
                             <Menu.Item>
                               <button
