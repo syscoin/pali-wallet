@@ -50,7 +50,7 @@ export const formatDate = (timestamp: string) => {
   return formatedDate;
 };
 
-export const formatNumber = (num: number, min = 4, max = 4, maxSig = 8) =>
+export const formatNumber = (num: number, min = 4, max = 4, maxSig = 4) =>
   num.toLocaleString(navigator.language, {
     minimumFractionDigits: min,
     maximumFractionDigits: max,
@@ -75,15 +75,40 @@ export const formatCurrency = (number: string, precision: number) => {
   }).format();
 };
 
+export const formatBalanceDecimals = (
+  number: number | string,
+  hasSymbol: boolean
+) => {
+  const symbol = number.toString().split(' ')[3];
+  const numberStr: string = hasSymbol
+    ? number.toString().split(' ')[1]
+    : number.toString();
+
+  const [integerPart, decimalPart] = numberStr.split('.');
+
+  const integerDigits: string = integerPart.slice(0, 10);
+
+  const decimalDigits: string = decimalPart
+    ? decimalPart.slice(0, 10 - integerDigits.length)
+    : '';
+
+  const formattedNumber: string =
+    decimalDigits.length > 0
+      ? `${integerDigits}.${decimalDigits}`
+      : integerDigits;
+
+  return hasSymbol ? `${formattedNumber} ${symbol}` : formattedNumber;
+};
+
 /**
  * Truncate the `input` if length is greater than `size`
  *
  * Default `size` is 30
  */
-export const truncate = (input: string, size = 30) => {
+export const truncate = (input: string, size = 30, dots = true) => {
   if (input.length < size) return input;
 
-  return `${input.slice(0, size)}...`;
+  return `${input.slice(0, size)} ${dots ? '...' : ''}`;
 };
 
 /**

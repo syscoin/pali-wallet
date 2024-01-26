@@ -2,32 +2,48 @@ import { Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
-import * as React from 'react';
+import React, { useEffect } from 'react';
 import { useState, Fragment } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { Layout, NeutralButton } from 'components/index';
+import { Card, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { truncate, getAssetBalance } from 'utils/index';
+import { getController } from 'utils/browser';
+import { getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    currentBlock,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [txFees, setTxFees] = useState<{ gasLimit: number; gasPrice: number }>({
+    gasLimit: 0,
+    gasPrice: 0,
+  });
+  const [isMessageVisible, setIsMessageVisible] = useState(false);
   const [form] = Form.useForm();
+  const { wallet } = getController();
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
+
+  const totalMaxNativeTokenValue =
+    +activeAccount?.balances.ethereum - txFees.gasLimit * txFees.gasPrice * 3;
+
+  const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
 
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets.ethereum?.length > 0) {
@@ -73,7 +89,7 @@ export const SendEth = () => {
       });
     } catch (error) {
       alert.removeAll();
-      alert.error('An internal error has occurred.');
+      alert.error(t('send.internalError"'));
     }
   };
 
@@ -107,21 +123,46 @@ export const SendEth = () => {
 
   const getTitle = () => {
     if (selectedAsset?.is1155 === undefined) {
-      return `SEND ${
+      return `${t('send.send')} ${
         selectedAsset && selectedAsset.tokenSymbol
           ? selectedAsset.tokenSymbol
           : activeNetwork.currency?.toUpperCase()
       }`;
     }
-    return 'SEND NFT';
+    return `${t('send.send')} NFT`;
   };
+
+  const getFees = async () => {
+    try {
+      const currentGasPrice =
+        +(await wallet.ethereumTransaction.getRecommendedGasPrice()) / 10 ** 9;
+
+      const currentGasLimit =
+        parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
+
+      setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+    } catch (error) {
+      alert.removeAll();
+      alert.error(t('send.internalError'));
+    }
+  };
+
+  useEffect(() => {
+    getFees();
+  }, []);
+
+  useEffect(() => {
+    if (isMessageVisible) {
+      setTimeout(() => setIsMessageVisible(false), 4000);
+    }
+  }, [isMessageVisible]);
 
   return (
     <Layout title={getTitle()}>
       <div>
         <p className="flex flex-col items-center justify-center text-center font-rubik">
           <span className="text-brand-royalblue font-poppins font-thin">
-            Balance
+            {t('send.balance')}
           </span>
 
           {finalBalance()}
@@ -160,7 +201,7 @@ export const SendEth = () => {
             <Input
               id="receiver"
               type="text"
-              placeholder="Receiver"
+              placeholder={t('send.receiver')}
               className="sender-eth-input flex items-center"
             />
           </Form.Item>
@@ -188,7 +229,7 @@ export const SendEth = () => {
                         disabled={!hasAccountAssets}
                         className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
                       >
-                        {truncate(String(getLabel()), 2)}
+                        {String(getLabel())}
 
                         <ChevronDoubleDownIcon
                           className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
@@ -216,7 +257,7 @@ export const SendEth = () => {
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
                                 <p>{activeNetwork.currency.toUpperCase()}</p>
-                                <small>Native</small>
+                                <small>{t('send.receiver')}</small>
                               </button>
                             </Menu.Item>
 
@@ -298,7 +339,7 @@ export const SendEth = () => {
                       return Promise.resolve();
                     }
 
-                    return Promise.reject('Insufficient funds');
+                    return Promise.reject(t('send.insufficientFunds'));
                   },
                 }),
               ]}
@@ -313,26 +354,42 @@ export const SendEth = () => {
                   }`}
                 type="number"
                 placeholder={`${
-                  selectedAsset && selectedAsset?.isNft ? 'Token ID' : 'Amount'
+                  selectedAsset && selectedAsset?.isNft
+                    ? 'Token ID'
+                    : t('send.amount')
                 }`}
               />
             </Form.Item>
             <span
               className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
-              onClick={() =>
+              onClick={() => {
+                setIsMessageVisible(true);
                 form.setFieldValue(
                   'amount',
                   selectedAsset
                     ? selectedAsset.balance
-                    : 0.95 * Number(activeAccount?.balances.ethereum)
-                )
-              }
+                    : totalMaxNativeTokenValue
+                );
+              }}
             >
               Max
             </span>
           </div>
+
+          <div
+            className={`flex flex-col items-center justify-center w-full md:max-w-full mb-6 transition-all duration-500 ${messageOpacity}`}
+          >
+            <Card type="info" className="border-alert-darkwarning">
+              <div>
+                <div className="text-xs text-alert-darkwarning font-bold">
+                  <p>{t('send.maxMessage')}</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">Next</NeutralButton>
+            <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
           </div>
         </Form>
       </div>

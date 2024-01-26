@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-// import { Fullscreen } from 'components/Fullscreen';
+import externalLink from 'assets/icons/externalLink.svg';
 import { LoadingComponent } from 'components/Loading';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
-import { TransactionsList } from './components/Transactions';
+import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
+import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 const SECONDS = 10000;
 
@@ -18,11 +21,8 @@ export const TransactionsPanel = () => {
     isBitcoinBased,
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
-
-  const adjustedExplorer = useMemo(
-    () => (explorer?.endsWith('/') ? explorer : `${explorer}/`),
-    [explorer]
-  );
+  const { t } = useTranslation();
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
 
@@ -69,8 +69,8 @@ export const TransactionsPanel = () => {
   }, [isLoadingTxs, transactions, previousTransactions]);
 
   const NoTransactionsComponent = () => (
-    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      <p>You have no transaction history.</p>
+    <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
+      <p>{t('home.youHaveNoTxs')}</p>
     </div>
   );
 
@@ -94,13 +94,16 @@ export const TransactionsPanel = () => {
       );
 
     return (
-      <button
-        type="button"
-        className="pb-16 w-full underline text-sm font-semibold bg-transparent border-none cursor-pointer"
-        onClick={openExplorer}
-      >
-        See all your transactions
-      </button>
+      <div className="flex items-center justify-center gap-2">
+        <img src={externalLink} />
+        <button
+          type="button"
+          className="w-max underline text-sm font-normal bg-transparent border-none cursor-pointer"
+          onClick={openExplorer}
+        >
+          {t('home.seeAllTxs')}
+        </button>
+      </div>
     );
   }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);
 
@@ -112,23 +115,26 @@ export const TransactionsPanel = () => {
     };
   }, [isLoadingTxs]);
 
+  const allTransactions = hasTransactions ? transactions : previousTransactions;
+
   return (
     <>
       {internalLoading && !hasTransactions && <LoadingComponent />}
       {!internalLoading && !hasTransactions && (
-        <div className="w-full text-white">
+        <div className="w-full mt-8 text-white bg-brand-blue600">
           <NoTransactionsComponent />
           <OpenTransactionExplorer />
           {/* <Fullscreen /> */}
         </div>
       )}
+
       {hasTransactions && (
-        <div className="p-4 w-full text-white text-base bg-bkg-3">
-          <TransactionsList
-            userTransactions={
-              hasTransactions ? transactions : previousTransactions
-            }
-          />
+        <div className="p-4 mt-8 w-full text-white text-base bg-brand-blue600">
+          {isBitcoinBased ? (
+            <UtxoTransactionsList userTransactions={allTransactions} />
+          ) : (
+            <EvmTransactionsList userTransactions={allTransactions} />
+          )}
           <OpenTransactionExplorer />
         </div>
       )}

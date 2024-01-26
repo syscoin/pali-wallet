@@ -1,5 +1,6 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
@@ -12,7 +13,7 @@ import { truncate, ellipsis } from 'utils/index';
 const ConnectedSites = () => {
   const { dapp } = getController();
   const { navigate } = useUtils();
-
+  const { t } = useTranslation();
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -28,11 +29,11 @@ const ConnectedSites = () => {
   };
 
   return (
-    <Layout title="CONNECTED SITES">
+    <Layout title={t('settings.connectedSites')}>
       <p className="w-full text-white text-sm md:max-w-md">
         {dapps.length > 0
-          ? `${activeAccount.label} is connected to these sites. They can view your account public information.`
-          : `${activeAccount.label} is not connected to any sites. To connect to a Pali compatible dApp, find the connect button on their site.`}
+          ? `${activeAccount.label} ${t('settings.isConnected')}`
+          : `${activeAccount.label} ${t('settings.isNotConnected')}`}
       </p>
 
       <div className="flex flex-col items-center justify-center w-full">
@@ -94,11 +95,11 @@ const ConnectedSites = () => {
                       as="h3"
                       className="pb-3 text-center text-brand-white text-lg font-medium leading-6 border-b border-dashed border-brand-white"
                     >
-                      Edit connection
+                      {t('settings.editConnection')}
                     </Dialog.Title>
                     <div className="my-4">
                       <p className="m-3 text-brand-white text-sm">
-                        Delete connected site:
+                        {t('settings.deleteConnected')}:
                       </p>
 
                       <div className="flex items-center justify-between m-3 text-brand-white">
@@ -110,7 +111,9 @@ const ConnectedSites = () => {
                       </div>
 
                       <div className="p-4 bg-bkg-3">
-                        <p className="mb-3 text-brand-white">Permissions</p>
+                        <p className="mb-3 text-brand-white">
+                          {t('settings.permissions')}
+                        </p>
 
                         <div className="flex items-center justify-between">
                           <p className="text-brand-white text-xs">
@@ -126,7 +129,7 @@ const ConnectedSites = () => {
                           <input type="checkbox" />
 
                           <span className="mb-1 ml-3">
-                            View the addresses of your permitted accounts
+                            {t('settings.viewTheAddresses')}
                           </span>
                         </p>
                       </div>
@@ -138,7 +141,7 @@ const ConnectedSites = () => {
                         className="transparent inline-flex justify-center px-12 py-2 hover:text-bkg-4 text-brand-white text-sm font-medium hover:bg-white bg-repeat border border-white rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue focus-visible:ring-offset-2"
                         onClick={() => setSelected(undefined)}
                       >
-                        Close
+                        {t('buttons.close')}
                       </button>
                     </div>
                   </div>
@@ -150,7 +153,7 @@ const ConnectedSites = () => {
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
+            {t('buttons.close')}
           </NeutralButton>
         </div>
       </div>

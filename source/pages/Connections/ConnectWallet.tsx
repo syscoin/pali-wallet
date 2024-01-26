@@ -1,5 +1,6 @@
 import { Dialog } from '@headlessui/react';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -20,6 +21,7 @@ import { ellipsis } from 'utils/index';
 export const ConnectWallet = () => {
   const { dapp, wallet } = getController();
   const { host, chain, chainId, eventName } = useQueryData();
+  const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
@@ -65,8 +67,12 @@ export const ConnectWallet = () => {
   }, [isUnlocked]);
 
   return (
-    <Layout canGoBack={false} title="CONNECT ACCOUNT" titleOnly={true}>
-      <div className="flex flex-col gap-7 items-center justify-center mt-6 w-full">
+    <Layout
+      canGoBack={false}
+      title={t('connections.connectAccount')}
+      titleOnly={true}
+    >
+      <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
@@ -105,7 +111,7 @@ export const ConnectWallet = () => {
               return (
                 <div
                   key={keyringAccountType}
-                  className="h-fit flex flex-col text-center"
+                  className={`h-80 overflow-auto scrollbar-styled  flex flex-col text-center`}
                 >
                   <h3 className="text-sm font-semibold">
                     {keyringAccountType === KeyringAccountType.HDAccount
@@ -113,11 +119,7 @@ export const ConnectWallet = () => {
                       : keyringAccountType}
                   </h3>
                   <ul
-                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-${
-                      accountList.length === 1 || accountList.length === 2
-                        ? 'fit'
-                        : '32'
-                    } overflow-auto`}
+                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-full overflow-auto`}
                   >
                     {accountList.map((acc) => (
                       <li
@@ -163,13 +165,13 @@ export const ConnectWallet = () => {
         )}
 
         <small className="absolute bottom-28 text-center text-brand-royalblue text-sm">
-          Only connect with sites you trust.{' '}
-          <a href="https://docs.syscoin.org/">Learn more.</a>
+          {t('connections.onlyConnect')}{' '}
+          <a href="https://docs.syscoin.org/">{t('connections.learnMore')}</a>
         </small>
 
         <div className="absolute bottom-10 flex gap-3 items-center justify-between px-10 w-full md:max-w-2xl">
           <SecondaryButton type="button" action onClick={() => window.close()}>
-            Cancel
+            {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
@@ -178,7 +180,7 @@ export const ConnectWallet = () => {
             disabled={accountId === undefined && accountType === undefined}
             onClick={onConfirm}
           >
-            Confirm
+            {t('buttons.confirm')}
           </PrimaryButton>
         </div>
 
@@ -189,13 +191,12 @@ export const ConnectWallet = () => {
               className="flex gap-3 items-center justify-center text-brand-white text-lg font-medium leading-6"
             >
               <Icon name="warning" className="mb-2 text-brand-white" />
-              <p>Non trusted site detected</p>
+              <p>{t('connections.nonTrusted')}</p>
             </Dialog.Title>
 
             <div className="mt-4">
               <p className="text-brand-white text-sm">
-                This site is not on our trusted list. Are you sure you want to
-                connect?
+                {t('connections.nonTrustedMessage')}
               </p>
             </div>
 
@@ -206,7 +207,7 @@ export const ConnectWallet = () => {
                 type="button"
                 onClick={() => window.close()}
               >
-                Cancel
+                {t('buttons.cancel')}
               </SecondaryButton>
 
               <PrimaryButton
@@ -215,7 +216,7 @@ export const ConnectWallet = () => {
                 type="button"
                 onClick={() => handleConnect()}
               >
-                Confirm
+                {t('buttons.confirm')}
               </PrimaryButton>
             </div>
           </div>

@@ -6,17 +6,20 @@ export interface IPromiseProps {
 export enum PromiseTargets {
   ASSETS = 'assets',
   BALANCE = 'balance',
+  NFTS = 'nfts',
   TRANSACTION = 'transaction',
 }
 
 export class CancellablePromises {
   public transactionPromise: IPromiseProps | null;
   public assetsPromise: IPromiseProps | null;
+  public nftsPromise: IPromiseProps | null;
   public balancePromise: IPromiseProps | null;
 
   constructor() {
     this.transactionPromise = null;
     this.assetsPromise = null;
+    this.nftsPromise = null;
     this.balancePromise = null;
   }
 
@@ -48,6 +51,10 @@ export class CancellablePromises {
       this.assetsPromise.cancel();
       this.assetsPromise = null;
     }
+    if (this.nftsPromise) {
+      this.nftsPromise.cancel();
+      this.nftsPromise = null;
+    }
 
     if (this.balancePromise) {
       this.balancePromise.cancel();
@@ -66,6 +73,10 @@ export class CancellablePromises {
         this.assetsPromise.cancel();
         this.assetsPromise = null;
         break;
+      case PromiseTargets.NFTS:
+        this.nftsPromise.cancel();
+        this.nftsPromise = null;
+        break;
 
       case PromiseTargets.BALANCE:
         this.balancePromise.cancel();
@@ -82,6 +93,9 @@ export class CancellablePromises {
 
       case PromiseTargets.ASSETS:
         this.assetsPromise = promiseState;
+        break;
+      case PromiseTargets.NFTS:
+        this.nftsPromise = promiseState;
         break;
 
       case PromiseTargets.BALANCE:
@@ -104,6 +118,12 @@ export class CancellablePromises {
           return await this.assetsPromise.promise;
         } catch (assetsError) {
           throw new Error(assetsError);
+        }
+      case PromiseTargets.NFTS:
+        try {
+          return await this.nftsPromise.promise;
+        } catch (nftsError) {
+          throw new Error(nftsError);
         }
 
       case PromiseTargets.BALANCE:

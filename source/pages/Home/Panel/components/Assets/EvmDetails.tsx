@@ -1,23 +1,24 @@
 import { Disclosure } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
+import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import { Icon } from 'components/Icon';
-import { IconButton } from 'components/IconButton';
-import { useUtils } from 'hooks/index';
+import { NeutralButton, Icon } from 'components/index';
+import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection } from 'types/tokens';
-import { camelCaseToText, truncate } from 'utils/index';
-
-import { NftImage } from './NftImage';
+import { ellipsis } from 'utils/index';
 
 export const EvmAssetDetais = ({ id }: { id: string }) => {
-  const { accounts, activeAccount } = useSelector(
+  const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
   const { assets } = accounts[activeAccount.type][activeAccount.id];
-  const { useCopyClipboard, alert } = useUtils();
+  const { useCopyClipboard, alert, navigate } = useUtils();
+  const { t } = useTranslation();
 
   const [copied, copy] = useCopyClipboard();
 
@@ -25,48 +26,14 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success('Contract successfully copied');
+    alert.success(t('home.contractCopied'));
   }, [copied]);
-
-  const formattedAsset = [];
 
   const currentAsset = assets.ethereum.find((asset) => asset.id === id);
 
-  assets.ethereum?.find((asset) => {
-    if (asset.id !== id) return null;
+  const { explorer } = activeNetwork;
 
-    for (const [key, value] of Object.entries(asset)) {
-      const formattedKey = camelCaseToText(key);
-      const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
-      const formattedAndStringValue =
-        typeof value === 'boolean' ? formattedBoolean : value;
-
-      const formattedValue = {
-        value: {
-          formatted: formattedAndStringValue,
-          stringValue: formattedAndStringValue,
-        },
-        label: formattedKey,
-        canCopy: false,
-        isNft: false,
-      };
-
-      if (key === 'isNft') {
-        formattedValue.isNft = Boolean(value);
-      }
-
-      if (String(value).length >= 20) {
-        formattedValue.value.formatted = truncate(String(value), 20);
-        formattedValue.canCopy = true;
-      }
-
-      const isValid = typeof value !== 'object';
-
-      if (isValid) formattedAsset.unshift(formattedValue);
-    }
-
-    return formattedAsset;
-  });
+  const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const RenderCollectionItem: React.FC<{ currentNft: IERC1155Collection }> = ({
     currentNft,
@@ -74,14 +41,14 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     <>
       <Fragment key={uniqueId(id)}>
         <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>Balance</p>
+          <p>{t('send.balance')}</p>
           <span>
             <b>{currentNft.balance}</b>
           </span>
         </li>
 
         <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>Token Name</p>
+          <p>{t('settings.tokenName')}</p>
           <span>
             <b>{currentNft.tokenSymbol}</b>
           </span>
@@ -127,38 +94,91 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
   const RenderAsset = () => (
     <>
-      {formattedAsset.map(({ label, value, canCopy }: any) => {
-        const { formatted, stringValue } = value;
-        const canRender =
-          label.length > 0 &&
-          label !== 'Edited Symbol To Use' &&
-          stringValue.length > 0 &&
-          formatted.length > 0;
+      {currentAsset.contractAddress ? (
+        <>
+          <div className="w-full flex flex-col items-center justify-center gap-y-2">
+            <img
+              style={{ maxWidth: '50px', maxHeight: '50px' }}
+              src={currentAsset.logo}
+              alt={`${currentAsset.name} Logo`}
+            />
+            <p className="flex flex-col items-center justify-center gap-y-0.5">
+              <span className="text-xs font-light text-brand-gray200">
+                {currentAsset.tokenSymbol}
+              </span>
+              <span className="font-normal text-base text-brand-white">
+                {currentAsset.name} ({activeNetwork.label})
+              </span>
+            </p>
+          </div>
 
-        return (
-          <Fragment key={uniqueId(id)}>
-            {label === 'Image' && <NftImage imageLink={stringValue} />}
-
-            {canRender && (
-              <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-                <p>{label}</p>
-                <span>
-                  <b>{formatted}</b>
-
-                  {canCopy && (
-                    <IconButton onClick={() => copy(stringValue ?? '')}>
-                      <Icon
-                        name="copy"
-                        className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                      />
-                    </IconButton>
-                  )}
+          <div className="mt-4 mb-6">
+            <li
+              className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+              border-dashed border-bkg-white200 cursor-default transition-all duration-300"
+            >
+              <p className="font-normal text-xs">ID</p>
+              <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                <span className="text-brand-white">
+                  {ellipsis(currentAsset.id)}
                 </span>
-              </li>
-            )}
-          </Fragment>
-        );
-      })}
+
+                <CopyIcon
+                  size={15}
+                  className="hover:text-brand-deepPink100 cursor-pointer"
+                  color="text-brand-white"
+                  onClick={() => copy(currentAsset.id ?? '')}
+                />
+              </p>
+            </li>
+
+            <li
+              className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300 
+               border-none"
+            >
+              <p className="font-normal text-xs">Contract Address</p>
+              <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                <span className="text-brand-white">
+                  {ellipsis(currentAsset.contractAddress)}
+                </span>
+
+                <CopyIcon
+                  size={15}
+                  className="hover:text-brand-deepPink100 cursor-pointer"
+                  color="text-brand-white"
+                  onClick={() => copy(currentAsset.contractAddress ?? '')}
+                />
+              </p>
+            </li>
+          </div>
+
+          <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100">
+            <a
+              href={`${adjustedExplorer}address/${id} `}
+              target="_blank"
+              className="flex items-center justify-center gap-x-2"
+              rel="noreferrer"
+            >
+              <ExternalLinkIcon size={16} />
+              <span className="font-normal font-poppins underline text-sm">
+                View on Explorer
+              </span>
+            </a>
+          </div>
+
+          <div className="flex flex-col items-center justify-center w-full">
+            <div className="w-full px-4 absolute bottom-12 md:static">
+              <NeutralButton
+                onClick={() => navigate('/home')}
+                type="button"
+                fullWidth={true}
+              >
+                {t('buttons.close')}
+              </NeutralButton>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {currentAsset?.is1155 &&
         currentAsset.collection.map((nft) => renderAssetsDisclosure(nft))}

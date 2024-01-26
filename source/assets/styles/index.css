@@ -77,12 +77,12 @@ div[role='alert'] {
   bottom: 5rem !important;
 }
 
+.bg-token-gradient {
+  background: linear-gradient(109.86deg, #284f94 25.72%, #fe0077 141.55%);
+}
+
 .bg-gradient {
-  background: linear-gradient(
-    109.86deg,
-    #284f94 25.72%,
-    #fe0077 141.55%
-  ) !important;
+  background: linear-gradient(180deg, #1e365c 0.67%, #061120 19.78%);
 }
 
 .bg-gradient::before {
@@ -92,7 +92,6 @@ div[role='alert'] {
   right: 0px;
   bottom: 0px;
   left: 0px;
-  background-image: url('../images/bgPattern.svg') !important;
   background-blend-mode: overlay !important;
 }
 
@@ -147,7 +146,7 @@ div[role='alert'] {
 .input-extra-small .ant-input-suffix,
 .mixed-border-input .ant-input-suffix,
 .mixed-right-border-input .ant-input-suffix {
-  @apply absolute bottom-3 right-3 flex gap-x-1.5 items-center justify-center;
+  @apply absolute bottom-5 right-3 flex gap-x-1.5 items-center justify-center;
 }
 
 /** align eye invisible icon from password input suffix **/
@@ -171,14 +170,14 @@ div[role='alert'] {
 
 .amount-input .ant-input-suffix {
   position: absolute !important;
-  top: 19.5rem !important;
+  top: 18.8rem !important;
   left: 15rem !important;
 }
 
 .sender-input .ant-input-suffix {
   position: absolute !important;
   right: 3.3rem !important;
-  top: 14.8rem !important;
+  top: 14.2rem !important;
 }
 
 .sender-eth-input .ant-input {
@@ -188,7 +187,7 @@ div[role='alert'] {
 .sender-eth-input .ant-input-suffix {
   position: absolute !important;
   right: 3.3rem !important;
-  top: 15.5rem !important;
+  top: 15rem !important;
 }
 
 .input-medium .ant-input-suffix {

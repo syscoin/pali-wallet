@@ -10,9 +10,12 @@ export const CreatePasswordImport = () => {
   const { state } = useLocation();
 
   const { navigate } = useUtils();
-  const phrase = state.phrase;
+  const { phrase, isWalletImported } = state || {};
 
-  const next = () => navigate('/home');
+  const next = () =>
+    navigate('/home', {
+      state: { isWalletImported },
+    });
 
   const onSubmit = async ({ password }: { password: string }) => {
     await controller.wallet.createWallet(password, phrase);

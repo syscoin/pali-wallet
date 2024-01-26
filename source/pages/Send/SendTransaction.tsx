@@ -1,7 +1,9 @@
 import { ethers } from 'ethers';
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { browser } from 'webextension-polyfill-ts';
 
 import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
@@ -33,9 +35,12 @@ export const SendTransaction = () => {
   const {
     wallet: { ethereumTransaction, sendAndSaveTransaction },
   } = getController();
-
+  const { t } = useTranslation();
   const { navigate, alert } = useUtils();
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
 
+  const url = browser.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -166,10 +171,27 @@ export const SendTransaction = () => {
           dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
+        const isNecessaryReconnect = error.message.includes(
+          'read properties of undefined'
+        );
+        const isNecessaryBlindSigning = error.message.includes(
+          'Please enable Blind signing'
+        );
+        if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+          alert.removeAll();
+          alert.error(t('settings.ledgerBlindSigning'));
+          setLoading(false);
+          return;
+        }
+        if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+          setIsReconectModalOpen(true);
+          setLoading(false);
+          return;
+        }
         logError('error', 'Transaction', error);
 
         alert.removeAll();
-        alert.error("Can't complete transaction. Try again later.");
+        alert.error(t('send.cantCompleteTxs'));
 
         if (isExternal) setTimeout(window.close, 4000);
         else setLoading(false);
@@ -177,7 +199,7 @@ export const SendTransaction = () => {
       }
     } else {
       alert.removeAll();
-      alert.error("You don't have enough funds for this transactions.");
+      alert.error(t('send.enoughFunds'));
       if (isExternal) setTimeout(window.close, 2000);
     }
   };
@@ -199,7 +221,7 @@ export const SendTransaction = () => {
       } catch (e) {
         logError('error getting fees', 'Transaction', e);
         alert.removeAll();
-        alert.error('The transaction will fail, fix it and try again!', e);
+        alert.error(t('send.txWillFail'), e);
         setTimeout(window.close, 3000);
       }
     };
@@ -216,11 +238,11 @@ export const SendTransaction = () => {
   }, [tx]);
 
   return (
-    <Layout title="Transaction" canGoBack={canGoBack}>
+    <Layout title={t('send.tx')} canGoBack={canGoBack}>
       <DefaultModal
         show={confirmed}
-        title="Transaction successful"
-        description="Your transaction has been successfully submitted. You can see more details under activity on your home page."
+        title={t('send.txSuccessfull')}
+        description={t('send.txSuccessfullMessage')}
         onClose={() => {
           sendAndSaveTransaction(confirmedTx);
           if (isExternal) {
@@ -233,9 +255,20 @@ export const SendTransaction = () => {
 
       <DefaultModal
         show={haveError}
-        title="Verify Fields"
-        description="Change fields values and try again."
+        title={t('send.verifyFields')}
+        description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <EditPriorityModal
@@ -253,12 +286,12 @@ export const SendTransaction = () => {
             <span className="text-sm font-medium font-thin">{host}</span>
 
             <p className="flex flex-col my-8 text-center text-xl">
-              Send:
+              {t('buttons.send')}:
               <span className="text-brand-royalblue">{valueAndCurrency}</span>
             </p>
 
             <p className="flex flex-col text-center text-base ">
-              Method:
+              {t('send.method')}:
               <span className="text-brand-royalblue">
                 {decodedTxData?.method}
               </span>
@@ -266,16 +299,13 @@ export const SendTransaction = () => {
 
             {hasTxDataError && (
               <span className="text-red-600 text-sm my-4">
-                We were not able to estimate gas. There might be an error in the
-                contract and this transaction may fail.
+                {t('send.contractEstimateError')}
               </span>
             )}
 
             {hasGasError && (
               <span className="disabled text-xs my-4 text-center">
-                The current RPC provider couldn't estimate the gas for this
-                transaction. Therefore, we'll estimate the gas using the
-                existing block data for your transaction.
+                {t('send.rpcEstimateError')}
               </span>
             )}
           </div>
@@ -302,7 +332,7 @@ export const SendTransaction = () => {
                     role="tab"
                     onClick={() => setTabSelected(tab.id)}
                   >
-                    {tab.tabName}
+                    {t(`send.${tab.tabName.toLowerCase()}`)}
                   </button>
                 </li>
               ))}
@@ -364,7 +394,7 @@ export const SendTransaction = () => {
                 wrapperClassname="mb-2 mr-2"
                 rotate={45}
               />
-              Cancel
+              {t('buttons.cancel')}
             </Button>
 
             <Button
@@ -379,7 +409,7 @@ export const SendTransaction = () => {
                 className="w-4"
                 wrapperClassname="mb-2 mr-2"
               />
-              Confirm
+              {t('buttons.confirm')}
             </Button>
           </div>
         </div>

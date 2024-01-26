@@ -1,9 +1,11 @@
+//@ts-nocheck
 import { Runtime } from 'webextension-polyfill-ts';
 
 import {
   IKeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
+  IWalletState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 import {
@@ -53,6 +55,16 @@ export interface IMainController extends IKeyringManager {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
+  fetchAndUpdateNftsState: ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => Promise<void>;
   forgetWallet: (pwd: string) => void;
   getAssetInfo: (
     type: string,
@@ -78,8 +90,14 @@ export interface IMainController extends IKeyringManager {
     privKey: string,
     label?: string
   ) => Promise<IKeyringAccountState>;
-
+  importLedgerAccount: (
+    coin: string,
+    slip44: string,
+    index: string,
+    isAlreadyConnected: boolean
+  ) => Promise<any>;
   lock: () => void;
+  openDAppErrorModal: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -110,8 +128,19 @@ export interface IMainController extends IKeyringManager {
   setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  setIsLastTxConfirmed: (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => void;
   transactions: ITransactionsManager;
-  unlock: (pwd: string) => Promise<boolean>;
+  unlock: (
+    pwd: string,
+    isForPvtKey?: boolean
+  ) => Promise<{
+    canLogin: boolean;
+    wallet?: IWalletState;
+  }>;
   unlockFromController: (pwd: string) => Promise<boolean>;
   updateAssetsFromCurrentAccount: ({
     isBitcoinBased,
@@ -152,6 +181,18 @@ export interface IMainController extends IKeyringManager {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
+  }) => void;
+  validatePendingEvmTransactions: ({
+    activeAccount,
+    activeNetwork,
+    pendingTransactions,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    pendingTransactions: IEvmTransactionResponse[];
   }) => void;
 }
 

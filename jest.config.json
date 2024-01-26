@@ -3,7 +3,6 @@
   "moduleFileExtensions": ["js", "mjs", "ts", "json"],
   "moduleDirectories": ["source", "node_modules"],
   "transform": {
-    "^.+\\.ts$": "ts-jest",
     "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "babel-jest"
   },
   "transformIgnorePatterns": [

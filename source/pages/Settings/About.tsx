@@ -1,86 +1,84 @@
 import React, { FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { version } from '../../../package.json';
-import {
-  Layout,
-  Icon,
-  SimpleCard,
-  IconButton,
-  NeutralButton,
-} from 'components/index';
+import paliLogo from 'assets/images/paliLogoSmall.png';
+import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
     window.open(url);
   };
+  const { t } = useTranslation();
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
 
   const showSuccessAlert = () => {
     if (copied) {
       alert.removeAll();
-      alert.success('Link successfully copied');
+      alert.success(t('settings.linkCopied'));
     }
   };
 
   return (
-    <Layout title="INFO & HELP" id="info-help-title">
-      <div className="flex flex-col gap-y-4 w-full text-brand-white text-sm">
-        <p>Pali Wallet Browser Extension v2.0</p>
-        <p>Version: {version}</p>
+    <Layout
+      title={t('generalMenu.infoHelp').toUpperCase()}
+      id="info-help-title"
+    >
+      <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
+        <img className="pb-6" src={paliLogo} />
+        <p className=" text-white">Pali Wallet Browser Extension</p>
+        <p className="text-brand-gray200">
+          {t('settings.version')}: {version}
+        </p>
 
-        <p
-          className="hover:text-brand-royalblue cursor-pointer transition-all duration-200"
+        <Button
+          type="submit"
+          className="bg-transparent border-2 border-white rounded-[100px] w-[150px] h-10 flex items-center justify-center cursor-pointer transition-all duration-200 mt-6 py-2 px-[13px]"
           onClick={() => handleRedirect('https://docs.paliwallet.com/')}
         >
           Pali API
-        </p>
+        </Button>
       </div>
 
-      <div className="flex flex-col items-center justify-center w-full md:max-w-full">
-        <SimpleCard className="mt-4">
-          <div className="flex items-center justify-start mb-4 font-poppins text-base font-bold">
-            <Icon
-              name="message"
-              className="mb-1 text-brand-white"
-              wrapperClassname="w-6"
-            />
-
-            <p className="text-sm">User support</p>
-          </div>
+      <div className="flex flex-col items-center justify-center w-full md:max-w-full mt-2">
+        <SimpleCard>
+          <p className="text-xs font-medium text-white mb-[11px]">
+            {t('settings.userSupport')}
+          </p>
 
           <p
             id="user-support-btn"
-            className="text-brand-white underline text-xs cursor-pointer"
+            className="flex flex-nowrap text-brand-white text-xs cursor-pointer"
             onClick={() => handleRedirect('https://discord.com/invite/syscoin')}
           >
-            Click here to be redirected to Syscoin Discord, please contact
-            support team at #pali_support.
+            {t('settings.clickHereSupport')}
           </p>
-          <div className="pt-3 text-brand-white text-xs">
-            To access the support link, you need to give permission or copy and
-            paste the link below
-            <div className="flex flex-row mt-2">
-              <p className="pt-1">https://discord.com/invite/syscoin</p>
-              <IconButton
-                onClick={() => copy('https://discord.com/invite/syscoin')}
-                type="primary"
-                shape="circle"
-                className="align-center pl-2"
-              >
-                <Icon name="copy" className="text-xs" id="copy-address-btn" />
-              </IconButton>
+
+          <div className="flex items-center">
+            <p className="text-xs underline">
+              https://discord.com/invite/syscoin
+            </p>
+            <IconButton
+              onClick={() => copy('https://discord.com/invite/syscoin')}
+              type="primary"
+              shape="circle"
+              className="align-center pl-2"
+            >
+              <Icon isSvg={true} name="Copy" id="copy-address-btn" />
               <>{copied ? showSuccessAlert() : null}</>
-            </div>
+            </IconButton>
           </div>
         </SimpleCard>
 
-        <div className="absolute bottom-12 md:static md:mt-3">
-          <NeutralButton type="button" onClick={() => navigate('/home')}>
-            Close
-          </NeutralButton>
-        </div>
+        <Button
+          className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
+          type="button"
+          onClick={() => navigate('/home')}
+        >
+          {t('buttons.close')}
+        </Button>
       </div>
     </Layout>
   );

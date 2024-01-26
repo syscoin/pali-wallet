@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
@@ -12,7 +13,7 @@ const ManageAccountsView = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
 
   const { navigate } = useUtils();
-
+  const { t } = useTranslation();
   const editAccount = (account: IKeyringAccountState) => {
     navigate('/settings/edit-account', {
       state: account,
@@ -27,10 +28,10 @@ const ManageAccountsView = () => {
   );
 
   return (
-    <Layout title="MANAGE ACCOUNTS">
+    <Layout title={t('settings.manageAccounts')}>
       <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
         <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          HD Accounts
+          {t('settings.hdAccounts')}
         </p>
         {Object.values(accounts.HDAccount).map(
           (account: IKeyringAccountState) => (
@@ -60,7 +61,7 @@ const ManageAccountsView = () => {
         {existImportedAccounts ? (
           <>
             <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-              Imported Accounts
+              {t('settings.importedAccounts')}
             </p>
             {Object.values(accounts.Imported).map(
               (account: IKeyringAccountState) => (
@@ -93,7 +94,7 @@ const ManageAccountsView = () => {
         {existTrezorAccounts ? (
           <>
             <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-              Trezor Accounts
+              {t('settings.trezorAccounts')}
             </p>
             {Object.values(accounts.Trezor).map(
               (account: IKeyringAccountState) => (
@@ -125,7 +126,7 @@ const ManageAccountsView = () => {
       </ul>
 
       <NeutralButton type="button" onClick={() => navigate('/home')}>
-        Close
+        {t('buttons.close')}
       </NeutralButton>
     </Layout>
   );

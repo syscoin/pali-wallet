@@ -1,6 +1,7 @@
 import { Input } from 'antd';
 import isNaN from 'lodash/isNaN';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/Icon';
@@ -43,6 +44,7 @@ export const TransactionDetailsComponent = (
   const { alert, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<number>(0);
+  const { t } = useTranslation();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -72,7 +74,7 @@ export const TransactionDetailsComponent = (
     <>
       <div className="flex flex-col gap-3 items-start justify-center w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          From
+          {t('send.from')}
           <span className="text-brand-royalblue text-xs">
             <Tooltip content={tx.from} childrenClassName="flex">
               {ellipsis(tx.from, 7, 15)}
@@ -90,7 +92,7 @@ export const TransactionDetailsComponent = (
         </p>
 
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          To
+          {t('send.to')}
           <span className="text-brand-royalblue text-xs">
             <Tooltip content={tx.to} childrenClassName="flex">
               {ellipsis(tx.to, 7, 15)}
@@ -109,7 +111,7 @@ export const TransactionDetailsComponent = (
 
         <div className="flex flex-row items-center justify-between w-full">
           <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-            Estimated GasFee
+            {t('send.estimatedGasFee')}
             <span className="text-brand-royalblue text-xs">
               {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
             </span>
@@ -118,12 +120,12 @@ export const TransactionDetailsComponent = (
             className="w-fit relative bottom-1 hover:text-brand-deepPink100 text-brand-royalblue text-xs cursor-pointer"
             onClick={() => setIsOpen(true)}
           >
-            EDIT
+            {t('buttons.edit')}
           </span>
         </div>
 
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          Custom Nonce
+          {t('send.customNonce')}
           <span className="text-brand-royalblue text-xs">
             <Input
               type="number"
@@ -136,7 +138,7 @@ export const TransactionDetailsComponent = (
         </p>
 
         <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
-          Total (Amount + gas fee)
+          Total ({t('send.amountAndFee')})
           <span className="text-brand-royalblue text-xs">
             {removeScientificNotation(
               Number(currentTxValue) / 10 ** 18 + finalFee

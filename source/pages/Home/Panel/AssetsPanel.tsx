@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
@@ -9,6 +10,7 @@ import { RootState } from 'state/store';
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
+  const { t } = useTranslation();
   const { id, type } = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -37,17 +39,17 @@ export const AssetsPanel = () => {
   const { navigate } = useUtils();
 
   const NoAssetsComponent = () => (
-    <div className="flex items-center justify-center p-3 text-brand-white text-sm">
-      <p>You have no tokens or NFTs.</p>
+    <div className="flex mt-8 items-center justify-center p-3 text-brand-white text-sm">
+      <p>{t('home.youHaveNoTokens')}</p>
     </div>
   );
 
   return (
-    <div className="pb-14 w-full">
+    <div className="pb-8 w-full">
       {filterValidation ? (
         <NoAssetsComponent />
       ) : (
-        <ul className="pt-4 px-4 w-full text-center text-white text-base bg-bkg-3">
+        <ul className="pt-4 mt-6 px-4 w-full text-center text-white text-base bg-bkg-3">
           {isBitcoinBased ? <SyscoinAssetsList /> : <EvmAssetsList />}
         </ul>
       )}
@@ -61,7 +63,7 @@ export const AssetsPanel = () => {
           className="underline text-sm"
           onClick={() => navigate('/tokens/add')}
         >
-          Import Token
+          {t('home.importToken')}
         </p>
       </div>
 

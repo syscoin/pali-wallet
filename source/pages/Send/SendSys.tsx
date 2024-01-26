@@ -4,6 +4,7 @@ import { Form, Input } from 'antd';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 //todo: update with the new function
@@ -20,7 +21,7 @@ import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
   const controller = getController();
-
+  const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -35,9 +36,9 @@ export const SendSys = () => {
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     null
   );
+  const [isLoading, setIsLoading] = useState(false);
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
-
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
       await controller.wallet.syscoinTransaction.getRecommendedFee(
@@ -106,15 +107,21 @@ export const SendSys = () => {
     form.setFieldsValue({ ZDAG: value });
   };
 
-  const nextStep = ({ receiver, amount, fee }: any) => {
+  const nextStep = async ({ receiver, amount }: any) => {
     try {
+      setIsLoading(true);
+      const transactionFee =
+        await controller.wallet.syscoinTransaction.getEstimateSysTransactionFee(
+          { amount, receivingAddress: receiver }
+        );
+      setIsLoading(false);
       navigate('/send/confirm', {
         state: {
           tx: {
             sender: activeAccount.address,
             receivingAddress: receiver,
             amount: Number(amount),
-            fee,
+            fee: transactionFee,
             token: selectedAsset
               ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
               : null,
@@ -125,7 +132,7 @@ export const SendSys = () => {
       });
     } catch (error) {
       alert.removeAll();
-      alert.error('An internal error has occurred.');
+      alert.error(t('send.internalError'));
     }
   };
 
@@ -144,14 +151,16 @@ export const SendSys = () => {
   }, [selectedAsset, recommendedFee]);
 
   return (
-    <Layout title={`SEND ${activeNetwork.currency?.toUpperCase()}`}>
+    <Layout
+      title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}
+    >
       <div>
         <p
           id="balance-text"
           className="flex flex-col items-center justify-center text-center font-rubik"
         >
           <span className="text-brand-royalblue font-poppins font-thin">
-            Balance
+            {t('send.balance')}
           </span>
 
           {selectedAsset
@@ -203,7 +212,7 @@ export const SendSys = () => {
           >
             <Input
               type="text"
-              placeholder="Receiver"
+              placeholder={t('send.receiver')}
               className="sender-input"
             />
           </Form.Item>
@@ -258,7 +267,7 @@ export const SendSys = () => {
                               className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                             >
                               <p>SYS</p>
-                              <small>Native</small>
+                              <small>{t('send.native')}</small>
                             </button>
                           </Menu.Item>
 
@@ -270,7 +279,10 @@ export const SendSys = () => {
                                       <Menu.Item>
                                         <button
                                           onClick={() => {
-                                            if (activeAccount.isTrezorWallet) {
+                                            if (
+                                              activeAccount.isTrezorWallet ||
+                                              activeAccount.isLedgerWallet
+                                            ) {
                                               alert.removeAll();
                                               alert.error(
                                                 'Cannot send custom token with Trezor Account.'
@@ -317,10 +329,10 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Pali verifies your address to check if it is a valid SYS address. It's useful disable this verification if you want to send to specific type of addresses, like legacy. Only disable this verification if you are fully aware of what you are doing."
+                  content={t('send.paliVerifies')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
-                    Verify address
+                    {t('send.verifyAddress')}
                   </p>
                 </Tooltip>
 
@@ -329,7 +341,7 @@ export const SendSys = () => {
                   onChange={verifyOnChange}
                   className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
                 >
-                  <span className="sr-only">Verify address</span>
+                  <span className="sr-only">{t('send.verifyAddress')}</span>
                   <span
                     className={`${
                       verifyAddress
@@ -352,7 +364,7 @@ export const SendSys = () => {
               >
                 <Tooltip
                   childrenClassName="text-brand-white h-4"
-                  content="Disable this option for Replace-by-fee (RBF) and enable for Z-DAG, a exclusive Syscoin feature. Z-DAG enables faster transactions but should not be used for high amounts."
+                  content={t('send.disableThisOption')}
                 >
                   <p className={`text-10px cursor-default text-brand-white`}>
                     Z-DAG
@@ -401,7 +413,7 @@ export const SendSys = () => {
               <Input
                 className="mixed-right-border-input"
                 type="number"
-                placeholder="Amount"
+                placeholder={t('send.amount')}
               />
             </Form.Item>
             <span
@@ -418,7 +430,7 @@ export const SendSys = () => {
 
           <p className="flex flex-col items-center justify-center p-0 max-w-xs text-center text-brand-royalblue sm:w-full md:my-4">
             <span className="text-xs">
-              {`With current network conditions we recommendedFee a fee of ${recommendedFee} SYS`}
+              {`${t('transactions.withCurrentNetwork')} ${recommendedFee} SYS`}
             </span>
 
             <span className="mt-0.5 text-brand-white font-rubik text-xs">
@@ -428,7 +440,9 @@ export const SendSys = () => {
           </p>
 
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">Next</NeutralButton>
+            <NeutralButton type="submit" loading={isLoading}>
+              {t('buttons.next')}
+            </NeutralButton>
           </div>
         </Form>
       </div>

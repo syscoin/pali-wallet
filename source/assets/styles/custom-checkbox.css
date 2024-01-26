@@ -1,0 +1,24 @@
+.custom-checkbox {
+  width: 15px;
+  height: 15px;
+  appearance: none;
+  background-color: transparent;
+  border: 1px solid #fff;
+  border-radius: 2px;
+  outline: none;
+}
+
+.custom-checkbox:checked {
+  background-color: transparent;
+}
+
+.custom-checkbox:checked::before {
+  content: url('../icons/check.svg');
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  bottom: 3px;
+  font-size: 0px;
+  color: #8ec100;
+}

@@ -1,5 +1,6 @@
 import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ImWarning } from 'react-icons/im';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
@@ -16,13 +17,14 @@ interface IModal {
 interface IDefaultModal {
   buttonText?: string;
   description?: string;
+  isButtonLoading?: boolean;
   onClose?: () => any;
   show?: boolean;
   title: string;
 }
 
 interface IWarningModal extends IDefaultModal {
-  warningMessage: string;
+  warningMessage?: string;
 }
 
 interface IConfirmationModal extends IDefaultModal {
@@ -111,6 +113,42 @@ export const DefaultModal = ({
   </Modal>
 );
 
+export const NewDefaultModal = ({
+  buttonText = 'OK',
+  description = '',
+  onClose,
+  show,
+  title = '',
+}: IDefaultModal) => (
+  <Modal show={show} onClose={onClose}>
+    <div
+      className="inline-block absolute left-0 bottom-0 align-middle w-full max-w-md text-center font-poppins bg-bkg-blue200 shadow-xl overflow-hidden transform transition-all"
+      style={{ borderRadius: '50px 50px 0px 0px', padding: '0px 0px 48px 0px' }}
+    >
+      <Dialog.Title
+        as="h3"
+        className="px-2.5 py-5 bg-bkg-blackAlpha uppercase text-brand-white text-base font-semibold leading-6"
+      >
+        {title}
+      </Dialog.Title>
+
+      <div className="flex items-center flex-col justify-center px-6 mt-7 gap-7">
+        <p className="text-white text-sm">{description}</p>
+
+        <NeutralButton
+          type="button"
+          onClick={onClose}
+          id="got-it-btn"
+          fullWidth={true}
+          extraStyles="text-brand-blue text-base font-poppins"
+        >
+          {buttonText}
+        </NeutralButton>
+      </div>
+    </div>
+  </Modal>
+);
+
 export const WarningModal = ({
   buttonText = 'Ok',
   description = '',
@@ -132,9 +170,11 @@ export const WarningModal = ({
         <p className="text-white text-sm">{description}</p>
       </div>
 
-      <div className="mt-2">
-        <p className="text-white text-xs disabled">{warningMessage}</p>
-      </div>
+      {!!warningMessage && (
+        <div className="mt-2">
+          <p className="text-white text-xs disabled">{warningMessage}</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-center mt-4">
         <NeutralButton type="button" onClick={onClose} id="got-it-btn">
@@ -152,31 +192,40 @@ export const ConfirmationModal = ({
   onClick,
   show,
   title = '',
-}: IConfirmationModal) => (
-  <Modal show={show} onClose={onClose}>
-    <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
-      <Dialog.Title
-        as="h3"
-        className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
-      >
-        {title}
-      </Dialog.Title>
+  isButtonLoading = false,
+}: IConfirmationModal) => {
+  const { t } = useTranslation();
+  return (
+    <Modal show={show} onClose={onClose}>
+      <div className="inline-block align-middle my-8 p-6 w-full max-w-md text-center font-poppins bg-bkg-4 rounded-2xl shadow-xl overflow-hidden transform transition-all">
+        <Dialog.Title
+          as="h3"
+          className="pb-4 pt-2 text-brand-white text-lg font-medium leading-6 border-b border-dashed border-gray-600"
+        >
+          {title}
+        </Dialog.Title>
 
-      <div className="mt-2">
-        <p className="text-white text-sm">{description}</p>
-      </div>
+        <div className="mt-2">
+          <p className="text-white text-sm">{description}</p>
+        </div>
 
-      <div className="flex items-center justify-center mt-4 gap-4">
-        <NeutralButton type="button" onClick={onClose} id="got-it-btn">
-          Cancel
-        </NeutralButton>
-        <NeutralButton type="button" onClick={onClick} id="got-it-btn">
-          {buttonText}
-        </NeutralButton>
+        <div className="flex items-center justify-center mt-4 gap-4">
+          <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+            {t('buttons.cancel')}
+          </NeutralButton>
+          <NeutralButton
+            type="button"
+            onClick={onClick}
+            id="got-it-btn"
+            loading={isButtonLoading}
+          >
+            {buttonText}
+          </NeutralButton>
+        </div>
       </div>
-    </div>
-  </Modal>
-);
+    </Modal>
+  );
+};
 
 export const ErrorModal = ({
   buttonText = 'Ok',

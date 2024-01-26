@@ -1,6 +1,7 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,16 +14,11 @@ import {
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
-const WARNING_MESSAGES = {
-  refresh:
-    'The refresh button dispatches multiple requests to the blockchain through an RPC, if you activating this be sure to add in your own paid RPC providers to avoid reaching the public RPCs rate-limit. Use it at your own accountability',
-};
-
 const Advanced = () => {
   const { timer, advancedSettings } = useSelector(
     (state: RootState) => state.vault
   );
-
+  const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{
     [k: string]: boolean;
@@ -48,6 +44,18 @@ const Advanced = () => {
     setLoading(false);
   };
 
+  const WARNING_MESSAGES = {
+    refresh: t('settings.refreshButtonWarning'),
+    ledger: t('settings.ledgerBetaWarning'),
+  };
+
+  const SETTINGS_TITLES = {
+    refresh: t('settings.enableRefresh'),
+    ledger: t('settings.enableLedger'),
+  };
+
+  const ADVACED_SETTINGS = ['refresh', 'ledger'];
+
   const handleConfirmAdvancedProp = (propName: string, message: string) => {
     setCurrentAdvancedProperty(propName);
     setConfirmationMessage(message);
@@ -70,10 +78,9 @@ const Advanced = () => {
     setIsOpenConfirmationModal(!isOpenConfirmationModal);
   };
   return (
-    <Layout title="ADVANCED SETTINGS" id="auto-lock-timer-title">
+    <Layout title={t('settings.advancedTitle')} id="auto-lock-timer-title">
       <p className="mb-8 text-center text-white text-sm">
-        Here, you can enable advanced settings in Pali. Use them responsibly and
-        at your own risk.
+        {t('settings.hereYouCanEnable')}
       </p>
 
       <DefaultModal
@@ -82,12 +89,12 @@ const Advanced = () => {
           setConfirmed(false);
           navigate('/home');
         }}
-        title="Advanced settings was set successfully"
-        description="Your wallet was configured successfully. You can change it at any time."
+        title={t('settings.advancedSettingsWasSet')}
+        description={t('settings.yourWalletWasConfigured')}
       />
 
       <ConfirmationModal
-        title="Warning"
+        title={t('settings.forgetWarning')}
         description={confirmationMessage}
         show={isOpenConfirmationModal}
         onClose={() => setIsOpenConfirmationModal(!isOpenConfirmationModal)}
@@ -105,44 +112,47 @@ const Advanced = () => {
         initialValues={{ minutes: timer }}
         autoComplete="off"
       >
-        <Form.Item
-          id="verify-address-switch"
-          name="verify"
-          className="flex flex-col w-full text-center"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
-            <span className="text-sm">Enable wallet refresh button</span>
-            <Switch
-              checked={enabledProperties['refresh']}
-              onChange={() =>
-                handleConfirmAdvancedProp(
-                  'refresh',
-                  WARNING_MESSAGES['refresh']
-                )
-              }
-              className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
-              style={{ margin: '0 auto !important' }}
-            >
-              <span
-                className={`${
-                  enabledProperties['refresh']
-                    ? 'translate-x-6 bg-warning-success'
-                    : 'translate-x-1'
-                } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
-              />
-            </Switch>
-          </div>
-        </Form.Item>
+        {ADVACED_SETTINGS.map((propName: string, index: number) => (
+          <Form.Item
+            id="verify-address-switch"
+            name={propName}
+            className="flex flex-col w-full text-center"
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
+            key={index}
+          >
+            <div className="align-center flex flex-row gap-2 justify-center w-full text-center">
+              <span className="text-sm">{SETTINGS_TITLES[propName]}</span>
+              <Switch
+                checked={enabledProperties[propName]}
+                onChange={() =>
+                  handleConfirmAdvancedProp(
+                    propName,
+                    WARNING_MESSAGES[propName]
+                  )
+                }
+                className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
+                style={{ margin: '0 auto !important' }}
+              >
+                <span
+                  className={`${
+                    enabledProperties[propName]
+                      ? 'translate-x-6 bg-warning-success'
+                      : 'translate-x-1'
+                  } inline-block w-2 h-2 transform bg-warning-error rounded-full`}
+                />
+              </Switch>
+            </div>
+          </Form.Item>
+        ))}
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

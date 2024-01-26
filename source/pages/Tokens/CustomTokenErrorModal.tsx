@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ErrorModal } from 'components/Modal';
@@ -8,6 +9,7 @@ export const CustomTokenErrorModal = ({ errorType, resetErcErrorState }) => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const { t } = useTranslation();
 
   const returnCorrectModal = () => {
     switch (errorType) {
@@ -15,9 +17,9 @@ export const CustomTokenErrorModal = ({ errorType, resetErcErrorState }) => {
         return (
           <ErrorModal
             show={Boolean(errorType)}
-            title="Verify the current network"
-            description="This token probably is not available in the current network. Verify the token network and try again."
-            log="Invalid contract address. Verify the current contract address."
+            title={t('tokens.verifyTheCurrentNetwork')}
+            description={t('tokens.verifyTheCurrentNetworkMessage')}
+            log={t('tokens.verifyTheCurrentNetworkLog')}
             onClose={() => resetErcErrorState()}
           />
         );
@@ -36,9 +38,11 @@ export const CustomTokenErrorModal = ({ errorType, resetErcErrorState }) => {
         return (
           <ErrorModal
             show={Boolean(errorType)}
-            title="Invalid Contract Address"
-            description="This contract address is not a token contract."
-            log={`This contract is not from a  valid token on ${activeNetwork.label} , verify it further and in case you sure is a token contact us through our support channels `}
+            title={t('tokens.invalidContractAddressTitle')}
+            description={t('tokens.invalidContractAddressMessage')}
+            log={`${t('tokens.invalidContractAddressLog1')} ${
+              activeNetwork.label
+            }, ${t('tokens.invalidContractAddressLog2')}}`}
             onClose={() => resetErcErrorState()}
           />
         );
@@ -46,9 +50,9 @@ export const CustomTokenErrorModal = ({ errorType, resetErcErrorState }) => {
         return (
           <ErrorModal
             show={Boolean(errorType)}
-            title="Token Already Exists"
-            description="Verify the token contract address."
-            log="This token contract is already added in your token list. Try again using another token address!"
+            title={t('tokens.tokenAlreadyExist')}
+            description={t('tokens.verifyTheTokenContract')}
+            log={t('tokens.thisTokenContract')}
             onClose={() => resetErcErrorState()}
           />
         );

@@ -1,9 +1,11 @@
 import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import arrowRight from 'assets/images/arrowRight.svg';
 import ethChainImg from 'assets/images/ethChain.svg';
+import rolluxChainImg from 'assets/images/rolluxChain.png';
 import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
@@ -23,7 +25,7 @@ const SwitchChain: React.FC = () => {
   const networks = useSelector((state: RootState) => state.vault.networks);
   const network = networks.ethereum[chainId];
   const { wallet } = getController();
-
+  const { t } = useTranslation();
   const onSubmit = async () => {
     setLoading(true);
     try {
@@ -48,6 +50,12 @@ const SwitchChain: React.FC = () => {
       case 57:
         fromChain = <img src={sysChainImg} alt="sys" width="100px" />;
         break;
+      case 570:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
       default:
         fromChain = (
           <div
@@ -65,6 +73,12 @@ const SwitchChain: React.FC = () => {
         break;
       case 57:
         toChain = <img src={sysChainImg} alt="sys" width="100px" />;
+        break;
+      case 570:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
+        break;
+      case 5700:
+        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
         break;
       default:
         toChain = (
@@ -89,13 +103,10 @@ const SwitchChain: React.FC = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
             <h2 className="text-center text-base">
-              Allow {host} to switch the network ?
+              {t('send.allow')} {host} {t('settings.toSwitchNetwork')}?
             </h2>
             <div className="mt-1 px-4 w-full text-center text-sm">
-              <span className="disabled">
-                This will switch the selected network within Pali to a
-                previously added network
-              </span>
+              <span className="disabled">{t('settings.thisWillSwitch')}</span>
             </div>
             <div className="flex flex-col pb-4 pt-4 w-full text-center items-center">
               <CurrentChains />
@@ -104,7 +115,7 @@ const SwitchChain: React.FC = () => {
 
           <div className="absolute bottom-14 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondButton type="button" onClick={window.close} action={true}>
-              Reject
+              {t('buttons.reject')}
             </SecondButton>
 
             <PrimaryButton
@@ -114,7 +125,7 @@ const SwitchChain: React.FC = () => {
               onClick={onSubmit}
               action={true}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

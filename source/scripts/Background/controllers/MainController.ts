@@ -39,7 +39,9 @@ import {
   setIsLoadingTxs,
   initialState,
   setIsLoadingAssets,
+  setIsLastTxConfirmed as setIsLastTxConfirmedToState,
   setIsLoadingBalances,
+  setIsLoadingNfts,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
   setAdvancedSettings as setSettings,
@@ -48,6 +50,8 @@ import {
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setUpdatedNftsToState,
+  setOpenDAppErrorModal,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -65,16 +69,20 @@ import AssetsManager from './assets';
 import BalancesManager from './balances';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import TransactionsManager from './transactions';
 import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
+import { validateAndManageUserTransactions } from './transactions/utils';
+
 const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
+  const nftsController = NftsController();
   let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
@@ -136,8 +144,18 @@ const MainController = (walletState): IMainController => {
   };
 
   const unlockFromController = async (pwd: string): Promise<boolean> => {
-    const unlocked = await keyringManager.unlock(pwd);
-    if (!unlocked) throw new Error('Invalid password');
+    const { canLogin, wallet } = await keyringManager.unlock(pwd);
+    if (!canLogin) throw new Error('Invalid password');
+
+    if (!isEmpty(wallet)) {
+      store.dispatch(
+        setNetworkChange({
+          activeChain: INetworkType.Syscoin,
+          wallet,
+        })
+      );
+    }
+
     store.dispatch(setLastLogin());
     //TODO: validate contentScripts flow
     window.controller.dapp
@@ -149,7 +167,7 @@ const MainController = (walletState): IMainController => {
         },
       })
       .catch((error) => console.error('Unlock', error));
-    return unlocked;
+    return canLogin;
   };
 
   const createWallet = async (
@@ -196,6 +214,7 @@ const MainController = (walletState): IMainController => {
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
+        nfts: [],
       },
       transactions: {
         ethereum: {},
@@ -264,6 +283,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: initialSysAssetsForAccount,
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {
@@ -279,6 +299,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: [],
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {},
@@ -751,7 +772,7 @@ const MainController = (walletState): IMainController => {
       ...network,
       default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
-      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data?.explorer ? data.explorer : network?.explorer || '',
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -815,6 +836,16 @@ const MainController = (walletState): IMainController => {
     }
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
+  };
+
+  const setIsLastTxConfirmed = (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => {
+    store.dispatch(
+      setIsLastTxConfirmedToState({ chainId, wasConfirmed, isFirstTime })
     );
   };
 
@@ -954,6 +985,169 @@ const MainController = (walletState): IMainController => {
 
     return importedAccount;
   };
+
+  const importLedgerAccount = async (
+    coin: string,
+    slip44: string,
+    index: string,
+    isAlreadyConnected: boolean
+  ) => {
+    const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
+    let importedAccount;
+    try {
+      importedAccount = await keyringManager.importLedgerAccount(
+        coin,
+        slip44,
+        index,
+        isAlreadyConnected
+      );
+    } catch (error) {
+      console.error(error);
+      throw new Error(
+        'Could not import your account, please try again: ' + error.message
+      );
+    }
+    const paliImp: IPaliAccount = {
+      ...importedAccount,
+      assets: {
+        ethereum: [],
+        syscoin: [],
+      },
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
+    } as IPaliAccount;
+    store.dispatch(
+      setAccounts({
+        ...accounts,
+        [KeyringAccountType.Ledger]: {
+          ...accounts[KeyringAccountType.Ledger],
+          [paliImp.id]: paliImp,
+        },
+      })
+    );
+    keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
+    store.dispatch(
+      setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
+    );
+    updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
+      activeNetwork,
+    });
+    updateAssetsFromCurrentAccount({
+      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
+      activeNetwork,
+      isBitcoinBased,
+    });
+
+    return importedAccount;
+  };
+
+  //---- NFTS METHODS ----//
+
+  const getUserNftsByNetwork = async (
+    userAddress: string,
+    chainId: number,
+    rpcUrl: string
+  ) => {
+    if (chainId !== 57 && chainId !== 570) return [];
+
+    const fetchedNfts = await nftsController.getUserNfts(
+      userAddress,
+      chainId,
+      rpcUrl
+    );
+
+    return fetchedNfts;
+  };
+
+  const fetchAndUpdateNftsState = async ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => {
+    const { accounts } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    const { currentPromise: nftsPromises, cancel } =
+      cancellablePromises.createCancellablePromise<void>(
+        async (resolve, reject) => {
+          try {
+            store.dispatch(setIsLoadingNfts(true));
+
+            const updatedNfts = await getUserNftsByNetwork(
+              currentAccount.address,
+              activeNetwork.chainId,
+              activeNetwork.url
+            );
+
+            console.log('updatedNfts', updatedNfts);
+
+            const validateUpdatedAndPreviousNftsLength =
+              updatedNfts.length < currentAccount.assets.nfts.length;
+
+            const validateIfUpdatedNftsStayEmpty =
+              currentAccount.assets.nfts.length > 0 && isEmpty(updatedNfts);
+
+            const validateIfNftsUpdatedIsEmpty = isEmpty(updatedNfts);
+
+            const validateIfNotNullNftsValues = updatedNfts.some((value) =>
+              isNil(value)
+            );
+
+            const validateIfIsSameLength =
+              updatedNfts.length === currentAccount.assets.nfts.length;
+
+            const validateIfIsInvalidDispatch =
+              validateUpdatedAndPreviousNftsLength ||
+              validateIfUpdatedNftsStayEmpty ||
+              validateIfNftsUpdatedIsEmpty ||
+              validateIfNotNullNftsValues ||
+              validateIfIsSameLength;
+
+            if (validateIfIsInvalidDispatch) {
+              store.dispatch(setIsLoadingNfts(false));
+              resolve();
+              return;
+            }
+
+            store.dispatch(
+              setUpdatedNftsToState({
+                id: activeAccount.id,
+                type: activeAccount.type,
+                updatedNfts,
+              })
+            );
+
+            store.dispatch(setIsLoadingNfts(false));
+            resolve();
+          } catch (error) {
+            if (error && store.getState().vault.isLoadingNfts) {
+              store.dispatch(setIsLoadingNfts(false));
+            }
+
+            reject(error);
+          }
+        }
+      );
+
+    cancellablePromises.setPromise(PromiseTargets.NFTS, {
+      nftsPromises,
+      cancel,
+    });
+
+    cancellablePromises.runPromise(PromiseTargets.NFTS);
+  };
+
+  //---- END NFTS METHODS ----//
 
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
@@ -1130,6 +1324,30 @@ const MainController = (walletState): IMainController => {
     cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
   };
 
+  const validatePendingEvmTransactions = async ({
+    pendingTransactions,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+    pendingTransactions: IEvmTransactionResponse[];
+  }) => {
+    //todo: we need to ajust validateAndManageUserTransactions to guarantee it will work with no bugs
+    // const { accounts } = store.getState().vault;
+    // const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    const confirmedTx =
+      await transactionsManager.utils.checkPendingTransactions(
+        pendingTransactions
+      );
+
+    if (!!confirmedTx.length) {
+      validateAndManageUserTransactions(confirmedTx);
+    }
+  };
+
   const sendAndSaveTransaction = (
     tx: IEvmTransactionResponse | ISysTransaction
   ) => {
@@ -1151,6 +1369,10 @@ const MainController = (walletState): IMainController => {
         transaction: txWithTimestamp,
       })
     );
+  };
+
+  const openDAppErrorModal = () => {
+    store.dispatch(setOpenDAppErrorModal(true));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -1378,9 +1600,11 @@ const MainController = (walletState): IMainController => {
   };
 
   return {
+    importLedgerAccount,
     createWallet,
     forgetWallet,
     unlockFromController,
+    setIsLastTxConfirmed,
     lock,
     createAccount,
     editAccountLabel,
@@ -1407,6 +1631,7 @@ const MainController = (walletState): IMainController => {
     setEvmTransactionAsAccelerated,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
+    fetchAndUpdateNftsState,
     updateUserNativeBalance,
     updateUserTransactionsState,
     getLatestUpdateForCurrentAccount,
@@ -1415,7 +1640,9 @@ const MainController = (walletState): IMainController => {
     addWindowEthProperty,
     setHasEthProperty,
     importTrezorAccount,
+    validatePendingEvmTransactions,
     ...keyringManager,
+    openDAppErrorModal,
   };
 };
 

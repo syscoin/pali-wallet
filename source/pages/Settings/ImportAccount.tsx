@@ -1,6 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
+import { t } from 'i18next';
 import React, { Fragment, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -56,33 +57,28 @@ const ImportAccountView = () => {
   };
 
   return (
-    <Layout title="IMPORT ACCOUNT">
+    <Layout title={t('header.importAccount').toUpperCase()}>
       <DefaultModal
         show={isAccountImported}
         onClose={() => navigate('/home')}
-        title="Account imported successfully"
+        title={t('settings.accountImported')}
       />
 
       <p className="mb-8 text-center text-white text-sm">
-        Imported accounts won't link to your initial Pali account Secret
-        Recovery Phrase.
+        {t('settings.importAccountsWont')}
       </p>
       <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-2">
         <Card type="info" className="border-alert-darkwarning">
           <div className="text-xs text-alert-darkwarning font-bold mb-2.5">
             <p>
-              WARNING: Currently, the privateKeys feature is only supported in
-              the EVM/Web3 chains context. Therefore, UTXO networks won't be
-              accessible while using a PrivateKey account. To regain access to
-              UTXO networks, switch to a Pali Native Account or a Trezor
-              Account.
+              {t('settings.forgetWarning')}: {t('settings.currentlyThePrivate')}
             </p>
           </div>
         </Card>
       </div>
 
       <p className="mb-2 mt-5 text-left text-white text-sm md:max-w-full">
-        Select Type
+        {t('settings.selectType')}
       </p>
 
       <div className="flex flex-col gap-y-5 items-center justify-center">
@@ -149,7 +145,9 @@ const ImportAccountView = () => {
               <Input
                 type="text"
                 className="input-small relative"
-                placeholder="Label (optional)"
+                placeholder={`${t('settings.label')} (${t(
+                  'settings.optional'
+                )})`}
                 id="account-name-input"
               />
             </Form.Item>
@@ -175,7 +173,7 @@ const ImportAccountView = () => {
               <Input
                 type="text"
                 className="input-small relative"
-                placeholder="Your Private Key"
+                placeholder={t('settings.yourPrivateKey')}
                 id="account-name-input"
               />
             </Form.Item>
@@ -185,7 +183,7 @@ const ImportAccountView = () => {
               loading={isImporting}
               onClick={handleImportAccount}
             >
-              Import
+              {t('buttons.import')}
             </NeutralButton>
           </Form>
         </div>

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, SecondaryButton, PrimaryButton, Icon } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
@@ -15,6 +16,7 @@ export const ChangeAccount = () => {
   );
   const { dapp, wallet } = getController();
   const { host, eventName } = useQueryData();
+  const { t } = useTranslation();
 
   const currentAccountId = dapp.get(host).accountId;
   const currentAccountType = dapp.get(host).accountType;
@@ -45,8 +47,12 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <Layout canGoBack={false} title="CONNECTED ACCOUNT" titleOnly={true}>
-      <div className="flex flex-col gap-7 items-center justify-center w-full">
+    <Layout
+      canGoBack={false}
+      title={t('connections.connectedAccount')}
+      titleOnly={true}
+    >
+      <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
@@ -85,7 +91,7 @@ export const ChangeAccount = () => {
               return (
                 <div
                   key={keyringAccountType}
-                  className="h-fit flex flex-col text-center"
+                  className="h-80 overflow-auto scrollbar-styled flex flex-col text-center"
                 >
                   <h3 className="text-sm font-semibold">
                     {keyringAccountType === KeyringAccountType.HDAccount
@@ -93,11 +99,7 @@ export const ChangeAccount = () => {
                       : keyringAccountType}
                   </h3>
                   <ul
-                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-${
-                      accountList.length === 1 || accountList.length === 2
-                        ? 'fit'
-                        : '32'
-                    } overflow-auto`}
+                    className={`scrollbar-styled flex flex-col gap-4 mt-4 px-8 w-full h-full overflow-auto`}
                   >
                     {accountList.map((acc) => (
                       <li
@@ -143,13 +145,13 @@ export const ChangeAccount = () => {
         )}
 
         <small className="absolute bottom-28 text-center text-brand-royalblue text-sm">
-          Only connect with sites you trust.{' '}
-          <a href="https://docs.syscoin.org/">Learn more.</a>
+          {t('connections.onlyConnect')}{' '}
+          <a href="https://docs.syscoin.org/">{t('connections.learnMore')}</a>
         </small>
 
         <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
           <SecondaryButton type="button" onClick={() => window.close()}>
-            Cancel
+            {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
@@ -157,7 +159,7 @@ export const ChangeAccount = () => {
             width="40"
             onClick={() => handleChangeAccount()}
           >
-            Change
+            {t('buttons.change')}
           </PrimaryButton>
         </div>
       </div>

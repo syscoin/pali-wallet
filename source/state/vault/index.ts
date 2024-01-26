@@ -13,6 +13,7 @@ import {
   initialActiveTrezorAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
   IEvmTransaction,
@@ -22,7 +23,7 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
-import { isERC1155Transfer } from 'utils/transactions';
+import { isTokenTransfer } from 'utils/transactions';
 
 import {
   IChangingConnectedAccount,
@@ -38,12 +39,13 @@ export const initialState: IVaultState = {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
-        assets: { ethereum: [], syscoin: [] },
+        assets: { ethereum: [], syscoin: [], nfts: [] },
         transactions: { ethereum: {}, syscoin: {} },
       },
     },
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
     //TODO: add Trezor account type here
   },
   activeAccount: {
@@ -52,7 +54,9 @@ export const initialState: IVaultState = {
   },
   advancedSettings: {
     refresh: false,
+    ledger: false,
   },
+  isLastTxConfirmed: {},
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
   activeNetwork: {
@@ -62,12 +66,15 @@ export const initialState: IVaultState = {
     default: true,
     currency: 'sys',
     slip44: 57,
+    isTestnet: false,
   },
+  hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
   isLoadingAssets: false,
+  isLoadingNfts: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -80,6 +87,7 @@ export const initialState: IVaultState = {
   error: false,
   isPolling: false,
   currentBlock: undefined,
+  coinsList: [],
 };
 
 const VaultState = createSlice({
@@ -171,6 +179,21 @@ const VaultState = createSlice({
     ) {
       const { account, accountType } = action.payload;
       state.accounts[accountType][account.id] = account;
+    },
+    setIsLastTxConfirmed(
+      state: IVaultState,
+      action: PayloadAction<{
+        chainId: number;
+        isFirstTime?: boolean;
+        wasConfirmed: boolean;
+      }>
+    ) {
+      const { chainId, wasConfirmed, isFirstTime } = action.payload;
+      if (isFirstTime) {
+        state.isLastTxConfirmed = {};
+        return;
+      }
+      state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
     setNetworks(
       state: IVaultState,
@@ -280,6 +303,7 @@ const VaultState = createSlice({
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
     },
+
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<{
@@ -307,11 +331,20 @@ const VaultState = createSlice({
     setIsLoadingAssets(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingAssets = action.payload;
     },
+    setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isLoadingNfts = action.payload;
+    },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
     },
+    setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasErrorOndAppEVM = action.payload;
+    },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
+    },
+    setCoinsList(state: IVaultState, action: PayloadAction<Array<any>>) {
+      state.coinsList = action.payload;
     },
     setAdvancedSettings(
       state: IVaultState,
@@ -329,6 +362,27 @@ const VaultState = createSlice({
         state.advancedSettings = {
           ...state.advancedSettings,
           [advancedProperty]: isActive,
+        };
+      }
+
+      if (state.advancedSettings?.[advancedProperty] === undefined) {
+        state.advancedSettings = {
+          ...state.advancedSettings,
+          [advancedProperty]: isActive,
+        };
+      }
+    },
+
+    setAccountTypeInAccountsObject(
+      state: IVaultState,
+      action: PayloadAction<string>
+    ) {
+      const accountType = action.payload;
+
+      if (state.accounts?.[accountType] === undefined) {
+        state.accounts = {
+          ...state.accounts,
+          [accountType]: {},
         };
       }
     },
@@ -384,21 +438,28 @@ const VaultState = createSlice({
         [KeyringAccountType.HDAccount]: {
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Imported]: {
           [initialActiveImportedAccountState.id]: {
             ...initialActiveImportedAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
         [KeyringAccountType.Trezor]: {
           [initialActiveTrezorAccountState.id]: {
             ...initialActiveTrezorAccountState,
-            assets: { ethereum: [], syscoin: [] },
+            assets: { ethereum: [], syscoin: [], nfts: [] },
+            transactions: { ethereum: {}, syscoin: {} },
+          },
+        },
+        [KeyringAccountType.Ledger]: {
+          [initialActiveTrezorAccountState.id]: {
+            ...initialActiveTrezorAccountState,
+            assets: { ethereum: [], syscoin: [], nfts: [] },
             transactions: { ethereum: {}, syscoin: {} },
           },
         },
@@ -464,6 +525,19 @@ const VaultState = createSlice({
       action: PayloadAction<ethers.providers.Block>
     ) {
       state.currentBlock = action.payload;
+    },
+
+    setUpdatedNftsToState: (
+      state: IVaultState,
+      action: PayloadAction<{
+        id: number;
+        type: KeyringAccountType;
+        updatedNfts: INftsStructure[];
+      }>
+    ) => {
+      const { updatedNfts, id, type } = action.payload;
+
+      state.accounts[type][id].assets.nfts = updatedNfts;
     },
 
     setSingleTransactionToState: (
@@ -534,7 +608,7 @@ const VaultState = createSlice({
         transactions: Array<IEvmTransaction | ISysTransaction>;
       }>
     ) {
-      const { activeAccount } = state;
+      const { activeAccount, isBitcoinBased } = state;
       const { networkType, chainId, transactions } = action.payload;
       const currentAccount =
         state.accounts[activeAccount.type][activeAccount.id];
@@ -546,7 +620,7 @@ const VaultState = createSlice({
       const clonedUserTxs =
         cloneDeep(currentAccount.transactions[networkType][chainId]) || [];
 
-      const transactionsToVerify = [...clonedUserTxs, ...transactions];
+      const transactionsToVerify = [...transactions, ...clonedUserTxs];
 
       transactionsToVerify.forEach(
         (tx: IEvmTransactionResponse | ISysTransaction) => {
@@ -564,20 +638,23 @@ const VaultState = createSlice({
 
       // Check if the networkType exists in the current account's transactions
       if (!currentAccount.transactions[networkType]) {
+        let chainTransactions = treatedTxs;
         // Cast the array to the correct type based on the networkType and value bigger than 0
-        const chainTransactions = treatedTxs.filter((tx) => {
-          if (
-            convertTransactionValueToCompare(
-              tx.value as TransactionValueType
-            ) === 0 &&
-            !isERC1155Transfer(tx as IEvmTransactionResponse)
-          ) {
-            return false;
-          }
-          return networkType === TransactionsType.Ethereum
-            ? (tx as IEvmTransaction)
-            : (tx as ISysTransaction);
-        });
+        if (!isBitcoinBased) {
+          chainTransactions = treatedTxs.filter((tx) => {
+            const shouldNotBeAdded =
+              convertTransactionValueToCompare(
+                tx.value as TransactionValueType
+              ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+            if (shouldNotBeAdded) {
+              return false;
+            }
+            return networkType === TransactionsType.Ethereum
+              ? (tx as IEvmTransaction)
+              : (tx as ISysTransaction);
+          });
+        }
 
         currentAccount.transactions[networkType] = {
           [chainId]:
@@ -588,40 +665,46 @@ const VaultState = createSlice({
       } else {
         // Check if the chainId exists in the current networkType's transactions
         if (!currentAccount.transactions[networkType][chainId]) {
+          let chainTransactions = treatedTxs;
           // Create a new array with the correct type based on the networkType and value bigger than 0
-          const chainTransactions = treatedTxs.filter((tx) => {
-            if (
-              convertTransactionValueToCompare(
-                tx.value as TransactionValueType
-              ) === 0 &&
-              !isERC1155Transfer(tx as IEvmTransactionResponse)
-            ) {
-              return false;
-            }
-            return networkType === TransactionsType.Ethereum
-              ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction);
-          });
+          if (!isBitcoinBased) {
+            chainTransactions = treatedTxs.filter((tx) => {
+              const shouldNotBeAdded =
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+              if (shouldNotBeAdded) {
+                return false;
+              }
+              return networkType === TransactionsType.Ethereum
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction);
+            });
+          }
 
           currentAccount.transactions[networkType][chainId] =
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
               : ISysTransaction)[];
         } else {
+          let castedTransactions = treatedTxs;
           // Filter and push the transactions based on the networkType and value bigger than 0
-          const castedTransactions = treatedTxs.filter((tx) => {
-            if (
-              convertTransactionValueToCompare(
-                tx.value as TransactionValueType
-              ) === 0 &&
-              !isERC1155Transfer(tx as IEvmTransactionResponse)
-            ) {
-              return false;
-            }
-            return networkType === TransactionsType.Ethereum
-              ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction);
-          });
+          if (!isBitcoinBased) {
+            castedTransactions = treatedTxs.filter((tx) => {
+              const shouldNotBeAdded =
+                convertTransactionValueToCompare(
+                  tx.value as TransactionValueType
+                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
+
+              if (shouldNotBeAdded) {
+                return false;
+              }
+              return networkType === TransactionsType.Ethereum
+                ? (tx as IEvmTransaction)
+                : (tx as ISysTransaction);
+            });
+          }
 
           currentAccount.transactions[networkType][chainId] =
             //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
@@ -723,11 +806,14 @@ export const {
   setEditedEvmToken,
   setNetworkType,
   setNetworkChange,
+  setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsNetworkChanging,
   setIsLoadingBalances,
   setIsLoadingAssets,
   setIsLoadingTxs,
+  setIsLoadingNfts,
+  setOpenDAppErrorModal,
   setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
@@ -744,6 +830,7 @@ export const {
   setStoreError,
   setIsBitcoinBased,
   setUpdatedAllErcTokensBalance,
+  setUpdatedNftsToState,
   setAdvancedSettings,
   setIsPolling,
   setCurrentBlock,
@@ -751,6 +838,8 @@ export const {
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setCoinsList,
+  setIsLastTxConfirmed,
 } = VaultState.actions;
 
 export default VaultState.reducer;

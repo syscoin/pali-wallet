@@ -1,6 +1,7 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -11,7 +12,7 @@ import { getController } from 'utils/browser';
 
 const EditAccountView = () => {
   const { state } = useLocation();
-
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
   const { alert, navigate } = useUtils();
@@ -31,13 +32,15 @@ const EditAccountView = () => {
         ? KeyringAccountType.Imported
         : state.isTrezorWallet
         ? KeyringAccountType.Trezor
+        : state.isLedgerWallet
+        ? KeyringAccountType.Ledger
         : KeyringAccountType.HDAccount;
 
       const accountId = state.id;
 
       controller.wallet.editAccountLabel(data.label, accountId, accountType);
 
-      alert.success('Account label edited successfully!');
+      alert.success(t('settings.accountLabelEditedSuccessfully'));
 
       navigate('/home');
     } catch (error) {
@@ -49,7 +52,7 @@ const EditAccountView = () => {
   };
 
   return (
-    <Layout title="EDIT ACCOUNT">
+    <Layout title={t('settings.editAccount')}>
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -84,18 +87,18 @@ const EditAccountView = () => {
         >
           <Input
             type="text"
-            placeholder={'Account Label'}
+            placeholder={t('settings.accountLabel')}
             className="input-small relative"
           />
         </Form.Item>
 
         <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-          You can edit this later if you need on accounts settings menu.
+          {t('settings.youCanEditAccount')}
         </p>
 
         <div className="absolute bottom-12 md:static">
           <NeutralButton type="submit" loading={loading}>
-            Save
+            {t('buttons.save')}
           </NeutralButton>
         </div>
       </Form>

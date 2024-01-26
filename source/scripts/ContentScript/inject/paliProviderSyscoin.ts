@@ -4,7 +4,11 @@ import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
-import { EMITTED_NOTIFICATIONS } from './utils';
+import {
+  EMITTED_NOTIFICATIONS,
+  isValidChainId,
+  isValidNetworkVersion,
+} from './utils';
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 interface SysProviderState {
@@ -30,6 +34,8 @@ export class PaliInpageProviderSys extends BaseProvider {
   };
   private _sysState: SysProviderState;
   public readonly version: number = 2;
+  public networkVersion: string | null;
+  public chainId: string | null;
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
@@ -37,6 +43,8 @@ export class PaliInpageProviderSys extends BaseProvider {
     this._sysState = {
       ...PaliInpageProviderSys._defaultState,
     };
+    this.chainId = null;
+    this.networkVersion = null;
     this.request({ method: 'wallet_getSysProviderState' })
       .then((state) => {
         const initialState = state as Parameters<
@@ -77,6 +85,7 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_accountsChanged':
             break;
           case 'pali_chainChanged':
+            this._handleChainChanged(params);
             break;
           case 'pali_removeProperty':
             break;
@@ -93,6 +102,36 @@ export class PaliInpageProviderSys extends BaseProvider {
         passive: true,
       }
     );
+  }
+
+  /**
+   * Upon receipt of a new `chainId`, emits the corresponding event and sets
+   * and sets relevant public state. Does nothing if the given `chainId` is
+   * equivalent to the existing value.
+   *
+   * Permits the `networkVersion` field in the parameter object for
+   * compatibility with child classes that use this value.
+   *
+   * @emits BaseProvider#chainChanged
+   * @param networkInfo - An object with network info.
+   * @param networkInfo.chainId - The latest chain ID.
+   */
+  private _handleChainChanged({
+    chainId,
+    networkVersion,
+  }: { chainId?: string; networkVersion?: string } = {}) {
+    if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
+      console.error(messages.errors.invalidNetworkParams(), {
+        chainId,
+        networkVersion,
+      });
+      return;
+    }
+
+    if (chainId !== this.chainId) {
+      this.chainId = chainId;
+      this.networkVersion = networkVersion;
+    }
   }
 
   public async activeExplorer(): Promise<string> {

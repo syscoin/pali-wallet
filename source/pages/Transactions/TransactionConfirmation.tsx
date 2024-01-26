@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -70,12 +72,17 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const [data, setData] = useState<ITxData[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
+
+  const url = browser.runtime.getURL('app.html');
 
   const advancedOptionsArray = [
     'notarydetails',
@@ -103,7 +110,9 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     setLoading(true);
 
     if (activeAccount.balances.syscoin <= 0) {
-      const message = `You don't have enough funds to process this transaction. Your actual balance is: ${activeAccount.balances.syscoin}`;
+      const message = `${t('transactions.youDontHave')} ${
+        activeAccount.balances.syscoin
+      }`;
 
       setLoading(false);
       setErrorMsg(message);
@@ -118,6 +127,22 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);
     } catch (error: any) {
+      const isNecessaryReconnect = error.message.includes(
+        'read properties of undefined'
+      );
+      const isNecessaryBlindSigning = error.message.includes(
+        'Please enable Blind signing'
+      );
+      if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+        setErrorMsg(t('settings.ledgerBlindSigning'));
+        setLoading(false);
+        return;
+      }
+      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+        setIsReconectModalOpen(true);
+        setLoading(false);
+        return;
+      }
       if (error.message.includes('txVersion'))
         error.message =
           "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.";
@@ -131,20 +156,34 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
-        title={`${capitalizeFirstLetter(title.toLowerCase())} request failed`}
-        description="Sorry, we could not submit your request. Try again later."
-        log={errorMsg || 'No description provided'}
+        title={`${capitalizeFirstLetter(title.toLowerCase())} ${t(
+          'transactions.requestFailed'
+        )}`}
+        description={t('transactions.sorryWeCould')}
+        log={errorMsg || t('transactions.noDescriptionProvided')}
         buttonText="Ok"
       />
 
       <DefaultModal
         show={submitted}
         onClose={window.close}
-        title={`${capitalizeFirstLetter(
-          title.toLowerCase()
-        )} request successfully submitted`}
-        description="You can check your request under activity on your home screen."
-        buttonText="Got it"
+        title={`${capitalizeFirstLetter(title.toLowerCase())} ${t(
+          'transactions.signatureRequestWasRequest'
+        )}`}
+        description={t('transactions.youCanCheckYour')}
+        buttonText={t('settings.gotIt')}
+      />
+
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.close();
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       <div className="flex flex-col items-center justify-center w-full">
@@ -184,7 +223,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
 
         <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
           <SecondaryButton type="button" onClick={window.close}>
-            Cancel
+            {t('buttons.cancel')}
           </SecondaryButton>
 
           <PrimaryButton
@@ -193,7 +232,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
             loading={loading}
             onClick={onSubmit}
           >
-            Confirm
+            {t('buttons.confirm')}
           </PrimaryButton>
         </div>
       </div>

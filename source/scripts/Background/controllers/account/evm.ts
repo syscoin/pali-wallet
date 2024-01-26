@@ -1,6 +1,6 @@
 import cloneDeep from 'lodash/cloneDeep';
 
-import { getSearch } from '@pollum-io/sysweb3-utils';
+import { getTokenInfoBasedOnNetwork } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
@@ -85,37 +85,12 @@ const EthAccountController = (): IEthAccountController | any => {
 
       if (tokenExists) throw new Error('Token already exists');
 
-      let web3Token: ITokenEthProps;
+      let web3Token = await getTokenInfoBasedOnNetwork(token, chainId);
 
-      const { coins } = await getSearch(token.tokenSymbol);
-
-      if (coins && coins[0]) {
-        const { name, thumb } = coins[0];
-
+      if (web3Token.logo === '') {
         web3Token = {
-          ...token,
-          tokenSymbol: token.editedSymbolToUse
-            ? token.editedSymbolToUse
-            : token.tokenSymbol,
-          balance: token.balance,
-          name: token?.name ? token.name : name,
-          id: token.contractAddress,
-          logo: token?.logo ? token.logo : thumb,
-          isNft: token.isNft,
-          chainId,
-        };
-      } else {
-        web3Token = {
-          ...token,
-          tokenSymbol: token.editedSymbolToUse
-            ? token.editedSymbolToUse
-            : token.tokenSymbol,
-          balance: token.balance,
-          name: token.tokenSymbol,
-          id: token.contractAddress,
-          logo: token?.logo ? token.logo : PaliLogo,
-          isNft: token.isNft,
-          chainId,
+          ...web3Token,
+          logo: PaliLogo,
         };
       }
 

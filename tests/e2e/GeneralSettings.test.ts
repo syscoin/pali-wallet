@@ -37,7 +37,7 @@ describe('General settings', () => {
 
     // input password
     await driver.fill('#phraseview_password', MOCK_PASSWORD);
-    await driver.clickElement('#copy-btn');
+    await driver.clickElement('#copy-phrase-button');
 
     const clipboardValue = clipboard.paste();
     expect(clipboardValue).toBe(MOCK_SEED_PHRASE);

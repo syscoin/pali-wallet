@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { browser } from 'webextension-polyfill-ts';
 
 import {
+  DefaultModal,
   ErrorModal,
   Layout,
   PrimaryButton,
@@ -16,11 +19,15 @@ interface ISign {
 }
 const EthSign: React.FC<ISign> = () => {
   const { host, ...data } = useQueryData();
-
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
+  const [isReconectModalOpen, setIsReconectModalOpen] =
+    useState<boolean>(false);
+
+  const url = browser.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -32,8 +39,7 @@ const EthSign: React.FC<ISign> = () => {
   const { label, balances, address } = activeAccount;
   const { currency } = activeNetwork;
 
-  const warningMessage =
-    "Signing this message can be dangerous. This signature could potentially perform any operation on your account's behalf, including granting complete control of your account and all of its assets to the requesting site. Only sign this message if you know what you're doing or completely trust the requesting site.";
+  const warningMessage = t('transactions.warningSignMessage');
 
   const onSubmit = async () => {
     const { ethereumTransaction } = getController().wallet;
@@ -89,6 +95,22 @@ const EthSign: React.FC<ISign> = () => {
       dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
+      const isNecessaryReconnect = error.message.includes(
+        'read properties of undefined'
+      );
+      const isNecessaryBlindSigning = error.message.includes(
+        'Please enable Blind signing'
+      );
+      if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
+        setErrorMsg(t('settings.ledgerBlindSigning'));
+        setLoading(false);
+        return;
+      }
+      if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+        setIsReconectModalOpen(true);
+        setLoading(false);
+        return;
+      }
       console.log(error);
       setErrorMsg(error.message);
 
@@ -107,31 +129,49 @@ const EthSign: React.FC<ISign> = () => {
     }
   }, []);
   return (
-    <Layout canGoBack={false} title={'SIGNATURE REQUEST'}>
+    <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
-        title="Signature request failed"
-        description="Sorry, we could not submit your request. Try again later."
+        title={t('transactions.signatureFailed')}
+        description={t('transactions.sorryWeCould')}
         log={errorMsg || '...'}
         buttonText="Ok"
+      />
+      <DefaultModal
+        show={isReconectModalOpen}
+        title={t('settings.ledgerReconnection')}
+        buttonText={t('buttons.reconnect')}
+        description={t('settings.ledgerReconnectionMessage')}
+        onClose={() => {
+          setIsReconectModalOpen(false);
+          window.close();
+          window.open(`${url}?isReconnect=true`, '_blank');
+        }}
       />
 
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-row justify-between mb-2 w-full">
-            <p className="font-poppins text-sm">Account: {label}</p>
             <p className="font-poppins text-sm">
-              Balance: {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
+              {t('transactions.account')}: {label}
+            </p>
+            <p className="font-poppins text-sm">
+              {t('send.balance')}:{' '}
+              {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
               {currency.toUpperCase()}
             </p>
           </div>
           <div className="justify-left flex flex-row mb-16 w-full">
-            <p className="font-poppins text-sm">Origin: {host}</p>
+            <p className="font-poppins text-sm">
+              {t('transactions.origin')}: {host}
+            </p>
           </div>
           {data.eventName !== 'eth_sign' && (
             <div className="flex justify-center mb-2 w-full">
-              <p className="m-0 font-poppins text-sm">You are signing:</p>
+              <p className="m-0 font-poppins text-sm">
+                {t('transactions.youAreSigning')}:
+              </p>
             </div>
           )}
 
@@ -145,7 +185,7 @@ const EthSign: React.FC<ISign> = () => {
               )}
 
               <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-                <h1 className="text-lg">Message:</h1>
+                <h1 className="text-lg">{t('transactions.message')}:</h1>
                 <p className="scrollbar-styled font-poppins text-sm overflow-auto">
                   {message}
                 </p>
@@ -169,7 +209,7 @@ const EthSign: React.FC<ISign> = () => {
           {(data.eventName === 'eth_signTypedData_v3' ||
             data.eventName === 'eth_signTypedData_v4') && (
             <div className="flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">
-              <h1 className="text-lg">Message:</h1>
+              <h1 className="text-lg">{t('transactions.message')}:</h1>
               <div className="scrollbar-styled mt-1 px-4 w-full h-40 text-xs overflow-auto">
                 <pre>{`${JSON.stringify(JSON.parse(data[1]), null, 2)}`}</pre>
               </div>
@@ -178,7 +218,7 @@ const EthSign: React.FC<ISign> = () => {
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
             <PrimaryButton
@@ -187,7 +227,7 @@ const EthSign: React.FC<ISign> = () => {
               loading={loading}
               onClick={onSubmit}
             >
-              Confirm
+              {t('buttons.confirm')}
             </PrimaryButton>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { Form } from 'antd';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
@@ -18,7 +19,7 @@ interface IFee {
 
 const Fee: React.FC<IFee> = ({ title, onFinish }) => {
   const { getRecommendedFee } = getController().wallet.syscoinTransaction;
-
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -43,7 +44,7 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
   return (
     <Layout canGoBack={false} title={title.toUpperCase()}>
       <div className="flex flex-col items-center justify-center">
-        <h1 className="mt-4 text-sm">FEE</h1>
+        <h1 className="mt-4 text-sm">{t('transactions.fee')}</h1>
 
         <Form
           validateMessages={{ default: '' }}
@@ -59,15 +60,15 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
           <FeeFC recommend={fee} disabled={disabledFee} form={form} />
 
           <p className="mt-4 mx-6 p-4 max-w-xs text-left text-xs bg-transparent border border-dashed border-gray-600 rounded-lg md:max-w-2xl">
-            With current network conditions, we recommend a fee of {fee} SYS.
+            {t('transactions.withCurrentNetwork')} {fee} SYS.
           </p>
 
           <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
             <SecondaryButton type="button" onClick={window.close}>
-              Cancel
+              {t('buttons.cancel')}
             </SecondaryButton>
 
-            <PrimaryButton type="submit">Next</PrimaryButton>
+            <PrimaryButton type="submit">{t('buttons.next')}</PrimaryButton>
           </div>
         </Form>
       </div>
