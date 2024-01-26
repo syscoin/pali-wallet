@@ -7,7 +7,6 @@ import { Layout, NeutralButton } from 'components/index';
 import { LoadingComponent } from 'components/Loading';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { ellipsis } from 'utils/index';
 
 export const Receive = () => {
   const { useCopyClipboard, alert } = useUtils();
