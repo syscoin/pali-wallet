@@ -72,6 +72,11 @@ let timeout: any;
 //   }
 // };
 
+browser.storage.onChanged.addListener((changes) => {
+  console.log({ changes });
+  console.log({ formatted: JSON.parse(changes?.['persist:root']?.newValue) });
+});
+
 let requestCount = 0;
 const requestsPerSecond = {};
 const requestCallback = (details: any) => {
@@ -121,13 +126,12 @@ const updateRequestsPerSecond = () => {
     requestsPerSecond[currentTime] = [];
   }
 };
-const getData = async () => {
-  await chrome.storage.local.set({ ['1']: store.getState() });
+export const setDataStorage = async (state: any) => {
+  await chrome.storage.local.clear();
+  await chrome.storage.local.set({ ['1']: state });
   const data = await chrome.storage.local.get('1');
   console.log({ data });
 };
-
-getData();
 
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
