@@ -45,6 +45,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         </Form.Item>
 
         <Form.Item
+          id="create-password"
           name="repassword"
           className="w-full flex justify-center"
           hasFeedback
