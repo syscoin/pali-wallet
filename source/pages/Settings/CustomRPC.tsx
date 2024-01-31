@@ -9,7 +9,7 @@ import { useLocation } from 'react-router-dom';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import checkAtIcon from 'assets/icons/checkAt.svg';
-import { Button, Layout, NeutralButton, Tooltip } from 'components/index';
+import { Button, Layout, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
@@ -348,7 +348,7 @@ const CustomRPCView = () => {
             type="text"
             placeholder={t('settings.symbol')}
             className={`${
-              isSyscoinRpc ? 'hidden' : 'block'
+              isSyscoinRpc ? 'hidden' : 'relative'
             } custom-input-password relative`}
           />
         </Form.Item>
@@ -404,10 +404,14 @@ const CustomRPCView = () => {
             </Button>
           </div>
         ) : (
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton type="submit" loading={loading}>
+          <div className="relative bottom-0 md:static">
+            <Button
+              className="xl:p-18 h-[40px] w-[352px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              type="submit"
+              loading={loading}
+            >
               {t('buttons.save')}
-            </NeutralButton>
+            </Button>
           </div>
         )}
       </Form>
