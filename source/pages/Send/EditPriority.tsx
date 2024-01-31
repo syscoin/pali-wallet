@@ -1,8 +1,8 @@
-import { Form, Input } from 'antd';
+import { Form } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Button, Modal, NeutralButton } from 'components/index';
+import { Button } from 'components/index';
 import { EditFeeModalBase } from 'components/Modal/EditFeeModalBase';
 import { ICustomFeeParams, IFeeState } from 'types/transactions';
 import removeScientificNotation from 'utils/removeScientificNotation';

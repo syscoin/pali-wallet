@@ -27,7 +27,7 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
-import { EditPriorityModal } from './EditPriority'; //TODO
+import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
@@ -250,6 +250,15 @@ export const SendTransaction = () => {
             navigate('/home');
           }
         }}
+      />
+
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
       />
 
       <DefaultModal

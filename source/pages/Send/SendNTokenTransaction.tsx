@@ -22,7 +22,7 @@ import {
   verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
-import { EditPriorityModal } from './EditPriority'; //TODO
+import { EditPriorityModal } from './EditPriority';
 
 export const SendNTokenTransaction = () => {
   const {
@@ -420,6 +420,16 @@ export const SendNTokenTransaction = () => {
         title={t('send.verifyFields')}
         description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
+      />
+
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+        isSendLegacyTransaction={isLegacyTransaction}
       />
 
       <DefaultModal

@@ -343,6 +343,15 @@ export const ApproveTransactionComponent = () => {
         }}
       />
 
+      <EditPriorityModal
+        showModal={isOpenPriority}
+        setIsOpen={setIsOpenPriority}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+      />
+
       <DefaultModal
         show={haveError}
         title={t('send.verifyFields')}
