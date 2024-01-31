@@ -4,5 +4,5 @@ export { SendEth } from './SendEth';
 export { SendSys } from './SendSys';
 export { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 export { ApproveTransactionComponent } from './Approve';
-export { EditPriority } from './EditPriority';
+export { EditPriorityModal } from './EditPriority';
 export { SendNTokenTransaction } from './SendNTokenTransaction';

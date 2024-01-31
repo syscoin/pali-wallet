@@ -27,7 +27,7 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
-import { EditPriority } from './EditPriority'; //TODO
+import { EditPriorityModal } from './EditPriority'; //TODO
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {

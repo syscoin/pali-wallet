@@ -32,7 +32,7 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
-import { EditPriority } from './EditPriority';
+import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
   const { wallet } = getController();
