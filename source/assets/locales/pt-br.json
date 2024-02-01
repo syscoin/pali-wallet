@@ -357,7 +357,8 @@
     "inputsOrOutputs": "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.",
     "requestFailed": "request failed",
     "noDescriptionProvided": "No description provided",
-    "requestSuccessfullySubmitted": "request successfully submitted"
+    "requestSuccessfullySubmitted": "request successfully submitted",
+    "confirmToProceed": "Confirme para continuar a transacao"
   },
   "switchNetwork": {
     "connectedOn": "Você está conectado em",

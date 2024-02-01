@@ -22,7 +22,7 @@ import {
   verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
-import { EditPriorityModal } from './EditPriorityModal';
+import { EditPriorityModal } from './EditPriority';
 
 export const SendNTokenTransaction = () => {
   const {
@@ -422,6 +422,16 @@ export const SendNTokenTransaction = () => {
         onClose={() => setHaveError(false)}
       />
 
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+        isSendLegacyTransaction={isLegacyTransaction}
+      />
+
       <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}
@@ -431,16 +441,6 @@ export const SendNTokenTransaction = () => {
           setIsReconectModalOpen(false);
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
-      />
-
-      <EditPriorityModal
-        showModal={isOpen}
-        setIsOpen={setIsOpen}
-        customFee={customFee}
-        setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
-        fee={fee}
-        isSendLegacyTransaction={isLegacyTransaction}
       />
 
       {tx.from && fee ? (

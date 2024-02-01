@@ -477,7 +477,7 @@
     "withCurrentNetwork": "With current network conditions, we recommend a fee of",
     "sys": "SYS",
     "signatureRequest": "SIGNATURE REQUEST",
-    "signatureRequestWasRequest": "Signature request successfully submitted",
+    "signatureRequestWasRequest": "SIGNATURE SUCCESSFULLY SUBMITTED!",
     "theDappHas": "The Dapp has your signed psbt",
     "youCanCheckYour": "You can check your request under activity on your home screen.",
     "signatureRequestFailed": "Signature request failed",
@@ -489,7 +489,8 @@
     "inputsOrOutputs": "Inputs or outputs are empty. Maybe you don't have enough funds for this transaction.",
     "requestFailed": "request failed",
     "noDescriptionProvided": "No description provided",
-    "requestSuccessfullySubmitted": "request successfully submitted"
+    "requestSuccessfullySubmitted": "request successfully submitted",
+    "confirmToProceed": "Confirm to proceed the transaction!"
   },
   "switchNetwork": {
     "connectedOn": "You are connected on",
