@@ -1,6 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Form, Input } from 'antd';
+import { Form } from 'antd';
+import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
 import React, { useEffect } from 'react';
 import { useState, Fragment } from 'react';
@@ -9,12 +10,12 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import { Card, Layout, NeutralButton } from 'components/index';
+import { Card, Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { getController } from 'utils/browser';
-import { getAssetBalance } from 'utils/index';
+import { ellipsis, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
@@ -34,8 +35,15 @@ export const SendEth = () => {
     gasPrice: 0,
   });
   const [isMessageVisible, setIsMessageVisible] = useState(false);
+  const [inputValue, setInputValue] = useState({ address: '', amount: 0 });
+  const [isValidAddress, setIsValidAddress] = useState(null);
+  const [isValidAmount, setIsValidAmount] = useState(null);
+
   const [form] = Form.useForm();
   const { wallet } = getController();
+
+  const isAccountImported =
+    accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
@@ -44,6 +52,23 @@ export const SendEth = () => {
     +activeAccount?.balances.ethereum - txFees.gasLimit * txFees.gasPrice * 3;
 
   const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+
+    setInputValue((prevState) => ({ ...prevState, [name]: value }));
+
+    if (name === 'address' && value.trim() !== '') {
+      const validAddress = isValidEthereumAddress(value);
+      setIsValidAddress(validAddress);
+    } else if (name === 'amount') {
+      const validAmount =
+        value <= Number(activeAccount?.balances.ethereum) && value > 0;
+      setIsValidAmount(validAmount);
+    } else {
+      setIsValidAddress(null);
+    }
+  };
 
   const handleSelectedAsset = (item: string) => {
     if (activeAccount.assets.ethereum?.length > 0) {
@@ -136,11 +161,12 @@ export const SendEth = () => {
     try {
       const currentGasPrice =
         +(await wallet.ethereumTransaction.getRecommendedGasPrice()) / 10 ** 9;
+      if (currentBlock) {
+        const currentGasLimit =
+          parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
 
-      const currentGasLimit =
-        parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
-
-      setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+        setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+      }
     } catch (error) {
       alert.removeAll();
       alert.error(t('send.internalError'));
@@ -157,17 +183,51 @@ export const SendEth = () => {
     }
   }, [isMessageVisible]);
 
+  useEffect(() => {
+    const placeholder = document.querySelector('.add-identicon');
+    if (!placeholder) return;
+
+    placeholder.innerHTML = toSvg(
+      accounts[activeAccountMeta.type][activeAccountMeta.id]?.xpub,
+      50,
+      {
+        backColor: '#07152B',
+        padding: 1,
+      }
+    );
+  }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
+
   return (
     <Layout title={getTitle()}>
       <div>
-        <p className="flex flex-col items-center justify-center text-center font-rubik">
-          <span className="text-brand-royalblue font-poppins font-thin">
-            {t('send.balance')}
-          </span>
-
-          {finalBalance()}
-        </p>
-
+        <div className="flex flex-col items-center justify-center">
+          <div className="add-identicon ml-1 mr-2 my-2" />
+          <div className="flex gap-1 justify-center items-center">
+            <img src={'/assets/images/paliLogoWhiteSmall.svg'} />
+            <div className="flex text-white gap-1 text-xs font-normal w-max">
+              <p>
+                {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}
+              </p>
+              <p>
+                {ellipsis(
+                  accounts[activeAccountMeta.type][activeAccountMeta.id]
+                    ?.address,
+                  4,
+                  4
+                )}
+              </p>
+            </div>
+            {isAccountImported && (
+              <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
+                Imported
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 mt-[6px]">
+            <p className="text-brand-gray200 text-xs">Your balance:</p>
+            <p className="text-white text-xs font-semibold">{finalBalance()}</p>
+          </div>
+        </div>
         <Form
           validateMessages={{ default: '' }}
           form={form}
@@ -198,19 +258,34 @@ export const SendEth = () => {
               }),
             ]}
           >
-            <Input
-              id="receiver"
-              type="text"
-              placeholder={t('send.receiver')}
-              className="sender-eth-input flex items-center"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                name="address"
+                placeholder={t('send.receiver')}
+                className="custom-receive-input"
+                value={inputValue.address}
+                onChange={handleInputChange}
+              />
+              {isValidAddress !== null && (
+                <img
+                  src={
+                    isValidAddress === true
+                      ? '/assets/icons/successIcon.svg'
+                      : '/assets/icons/errorIcon.svg'
+                  }
+                  alt={isValidAddress === true ? 'Success' : 'Error'}
+                  className="absolute right-8 top-[15px]"
+                />
+              )}
+            </div>
           </Form.Item>
 
-          <div className="flex w-80 md:w-96">
+          <div className="flex">
             <span
               className={`${
-                hasAccountAssets ? 'inline-flex' : 'hidden'
-              } items-center px-5 bg-fields-input-primary hover:bg-opacity-30 border border-fields-input-border rounded-l-full`}
+                hasAccountAssets ? 'flex' : 'hidden'
+              } items-center absolute left-[71%] z-[99] h-[40px] justify-center px-5 bg-transparent hover:bg-opacity-30`}
             >
               {hasAccountAssets ? (
                 <Form.Item
@@ -227,12 +302,12 @@ export const SendEth = () => {
                     <div className="relative inline-block text-left">
                       <Menu.Button
                         disabled={!hasAccountAssets}
-                        className="inline-flex justify-center py-3 w-full text-white text-sm font-medium"
+                        className="inline-flex justify-center items-center py-3 w-full text-white text-xs font-normal"
                       >
                         {String(getLabel())}
 
                         <ChevronDoubleDownIcon
-                          className="text-violet-200 hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                          className="text-white hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
                           aria-hidden="true"
                         />
                       </Menu.Button>
@@ -249,7 +324,7 @@ export const SendEth = () => {
                         {hasAccountAssets ? (
                           <Menu.Items
                             as="div"
-                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-bkg-3 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
+                            className="scrollbar-styled absolute z-10 left-[-103px] mt-[1px] py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-2xl shadow-2xl overflow-auto origin-top-right"
                           >
                             <Menu.Item>
                               <button
@@ -344,36 +419,48 @@ export const SendEth = () => {
                 }),
               ]}
             >
-              <Input
-                id="amount"
-                className={`
-                  ${
-                    hasAccountAssets
-                      ? 'mixed-double-border-input amount-input'
-                      : 'mixed-right-border-input'
+              <div className="relative">
+                <span
+                  onClick={() => {
+                    setIsMessageVisible(true);
+                    form.setFieldValue(
+                      'amount',
+                      selectedAsset
+                        ? selectedAsset.balance
+                        : totalMaxNativeTokenValue
+                    );
+                  }}
+                  className="absolute bottom-[11px] left-[22px] text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px]"
+                >
+                  MAX
+                </span>
+                <input
+                  type="number"
+                  name="amount"
+                  placeholder={`${
+                    selectedAsset && selectedAsset?.isNft
+                      ? 'Token ID'
+                      : t('send.amount')
                   }`}
-                type="number"
-                placeholder={`${
-                  selectedAsset && selectedAsset?.isNft
-                    ? 'Token ID'
-                    : t('send.amount')
-                }`}
-              />
+                  className="custom-autolock-input"
+                  value={inputValue.amount}
+                  onChange={handleInputChange}
+                />
+                <div className="relative">
+                  {isValidAmount !== null && (
+                    <img
+                      src={
+                        isValidAmount === true
+                          ? '/assets/icons/successIcon.svg'
+                          : '/assets/icons/errorIcon.svg'
+                      }
+                      alt={isValidAmount === true ? 'Success' : 'Error'}
+                      className="absolute right-[5.5rem] top-[-28.5px]"
+                    />
+                  )}
+                </div>
+              </div>
             </Form.Item>
-            <span
-              className="disabled inline-flex items-center px-5 bg-fields-input-primary border-2 border-fields-input-primary rounded-r-full cursor-pointer"
-              onClick={() => {
-                setIsMessageVisible(true);
-                form.setFieldValue(
-                  'amount',
-                  selectedAsset
-                    ? selectedAsset.balance
-                    : totalMaxNativeTokenValue
-                );
-              }}
-            >
-              Max
-            </span>
           </div>
 
           <div
@@ -389,7 +476,14 @@ export const SendEth = () => {
           </div>
 
           <div className="absolute bottom-12 md:static md:mt-3">
-            <NeutralButton type="submit">{t('buttons.next')}</NeutralButton>
+            <Button
+              className={`${
+                isValidAmount && isValidAddress ? 'opacity-100' : 'opacity-60'
+              }xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
+              type="submit"
+            >
+              {t('buttons.next')}
+            </Button>
           </div>
         </Form>
       </div>

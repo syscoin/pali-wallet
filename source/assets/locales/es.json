@@ -335,7 +335,7 @@
     "nameYourNewAccount": "Nombrar tu nueva cuenta",
     "optional": "opcional",
     "password": "Contraseña",
-    "fiatCurrency": "MONEDA FIAT",
+    "fiatCurrency": "Moneda Fiat",
     "fiatCurrencySetSuccessfully": "La moneda fiat se configuró con éxito.",
     "nowYouWill": "Ahora verás los valores en tu monedero en SYS y",
     "setYourPreferred": "Configura tu moneda preferida para mostrar el valor de tus activos.",
@@ -477,7 +477,7 @@
     "withCurrentNetwork": "Con las condiciones actuales de la red, recomendamos una comisión de",
     "sys": "SYS",
     "signatureRequest": "SOLICITUD DE FIRMA",
-    "signatureRequestWasRequest": "La solicitud de firma se envió correctamente",
+    "signatureRequestWasRequest": "La solicitud se envió correctamente",
     "theDappHas": "La Dapp tiene su PSBT firmado",
     "youCanCheckYour": "Puede verificar su solicitud en la sección de actividad de su pantalla de inicio.",
     "signatureRequestFailed": "La solicitud de firma falló",
@@ -489,7 +489,8 @@
     "inputsOrOutputs": "Las entradas o salidas están vacías. Tal vez no tiene suficientes fondos para esta transacción.",
     "requestFailed": "solicitud fallida",
     "noDescriptionProvided": "No se proporcionó una descripción",
-    "requestSuccessfullySubmitted": "solicitud enviada con éxito"
+    "requestSuccessfullySubmitted": "solicitud enviada con éxito",
+    "confirmToProceed": "¡Confirma para continuar con la transacción!"
   },
   "switchNetwork": {
     "connectedOn": "Estás conectado en",

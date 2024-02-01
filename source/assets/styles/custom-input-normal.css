@@ -1,6 +1,6 @@
 .custom-input-normal .ant-input {
   position: relative !important;
-  width: 100%;
+  width: 353px;
   height: 40px;
   border-radius: 100px !important;
   border: 1px solid rgba(255, 255, 255, 0.16) !important;
@@ -19,8 +19,7 @@
 
 .custom-input-normal .ant-input-suffix .anticon-close-circle {
   display: inline-block;
-  position: relative;
-  bottom: 27px;
+  position: absolute;
   content: url('../icons/errorIcon.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
@@ -28,13 +27,14 @@
   font-weight: 400;
   line-height: normal;
   color: #fff;
-  left: 304px;
+  top: 55%;
+  right: 40px;
+  transform: translateY(-50%);
 }
 
 .custom-input-normal .ant-input-suffix .anticon-check-circle {
   display: inline-block;
-  position: relative;
-  bottom: 27px;
+  position: absolute;
   content: url('../icons/successIcon.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
@@ -42,5 +42,7 @@
   font-weight: 400;
   line-height: normal;
   color: #fff;
-  left: 304px;
+  top: 55%;
+  right: 40px;
+  transform: translateY(-50%);
 }

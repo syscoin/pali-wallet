@@ -35,8 +35,8 @@ export const Layout: FC<ILayout> = ({
 
   return (
     <div
-      className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700  ${
-        isSwitchChainPage ? '' : 'overflow-y-scroll'
+      className={`scrollbar-styled remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700  ${
+        isSwitchChainPage ? '' : 'overflow-y-auto'
       }`}
     >
       {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
@@ -80,7 +80,7 @@ export const Layout: FC<ILayout> = ({
       </div>
 
       <div
-        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-4 w-full ${
+        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-[18px] w-full ${
           isConnectPage ? '' : 'md:max-w-sm'
         } text-brand-white bg-brand-blue700 sm:max-w-full`}
       >

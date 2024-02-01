@@ -45,3 +45,10 @@ export interface ITransactionOptions {
   transaction: IEvmTransaction;
   wallet: IMainController;
 }
+
+export interface IEIP6963ProviderInfo {
+  icon: string;
+  name: string;
+  rdns: string;
+  uuid: string;
+}
