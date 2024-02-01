@@ -335,7 +335,7 @@
     "nameYourNewAccount": "Nombrar tu nueva cuenta",
     "optional": "opcional",
     "password": "Contraseña",
-    "fiatCurrency": "MONEDA FIAT",
+    "fiatCurrency": "Moneda Fiat",
     "fiatCurrencySetSuccessfully": "La moneda fiat se configuró con éxito.",
     "nowYouWill": "Ahora verás los valores en tu monedero en SYS y",
     "setYourPreferred": "Configura tu moneda preferida para mostrar el valor de tus activos.",
