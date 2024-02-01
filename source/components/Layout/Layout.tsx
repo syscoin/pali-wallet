@@ -36,7 +36,7 @@ export const Layout: FC<ILayout> = ({
   return (
     <div
       className={`scrollbar-styled relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700  ${
-        isSwitchChainPage ? '' : 'overflow-y-scroll'
+        isSwitchChainPage ? '' : 'overflow-y-auto'
       }`}
     >
       {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
