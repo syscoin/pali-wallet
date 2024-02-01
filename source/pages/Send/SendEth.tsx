@@ -136,11 +136,12 @@ export const SendEth = () => {
     try {
       const currentGasPrice =
         +(await wallet.ethereumTransaction.getRecommendedGasPrice()) / 10 ** 9;
+      if (currentBlock) {
+        const currentGasLimit =
+          parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
 
-      const currentGasLimit =
-        parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
-
-      setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+        setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
+      }
     } catch (error) {
       alert.removeAll();
       alert.error(t('send.internalError'));

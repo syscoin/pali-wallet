@@ -1,3 +1,4 @@
+import { IEIP6963ProviderInfo } from 'utils/types';
 // resolve response.result or response, reject errors
 export const getRpcPromiseCallback =
   (resolve: (value?: any) => void, reject: (error?: Error) => void) =>
@@ -58,3 +59,18 @@ export const PALI_UTXO_METHODS = [
   'pali_isTestnet',
   ,
 ];
+
+export const announceProvider = (provider: any, uuid: string) => {
+  const providerInfo: IEIP6963ProviderInfo = {
+    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/icons/favicon-48.png',
+    name: 'Pali Wallet',
+    rdns: 'com.paliwallet',
+    uuid,
+  };
+
+  window.dispatchEvent(
+    new CustomEvent('eip6963:announceProvider', {
+      detail: Object.freeze({ info: providerInfo, provider }),
+    })
+  );
+};
