@@ -32,6 +32,8 @@ import {
   verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
+import { EditPriorityModal } from './EditPriority';
+
 export const SendConfirm = () => {
   const { wallet, callGetLatestUpdateForAccount } = getController();
   const { t } = useTranslation();
@@ -840,6 +842,15 @@ export const SendConfirm = () => {
         }}
       />
 
+      <EditPriorityModal
+        showModal={isOpenEditFeeModal}
+        setIsOpen={setIsOpenEditFeeModal}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+      />
+
       <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}
@@ -963,16 +974,7 @@ export const SendConfirm = () => {
                   isEIP1559Compatible && (
                     <span
                       className="hover:text-fields-input-borderfocus pb-[3px]"
-                      onClick={() =>
-                        navigate('edit/gas', {
-                          state: {
-                            customFee: customFee,
-                            setCustomFee: setCustomFee,
-                            fee: fee,
-                            setHaveError: setHaveError,
-                          },
-                        })
-                      }
+                      onClick={() => setIsOpenEditFeeModal(true)}
                     >
                       <Icon
                         name="EditTx"

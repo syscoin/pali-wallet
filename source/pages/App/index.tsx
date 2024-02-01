@@ -6,6 +6,7 @@ import 'assets/styles/custom-form-inputs-styles.css';
 import 'assets/styles/custom-autolock-input.css';
 import 'assets/styles/custom-receive-input.css';
 import 'assets/styles/custom-import-token-input.css';
+import 'assets/styles/custom-send-utxo-input.css';
 import 'assets/fonts/index.css';
 
 import React from 'react';

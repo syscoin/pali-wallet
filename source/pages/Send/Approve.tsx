@@ -32,7 +32,7 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
-import { EditPriority } from './EditPriority';
+import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
   const { wallet } = getController();
@@ -341,6 +341,15 @@ export const ApproveTransactionComponent = () => {
           setIsReconectModalOpen(false);
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
+      />
+
+      <EditPriorityModal
+        showModal={isOpenPriority}
+        setIsOpen={setIsOpenPriority}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
       />
 
       <DefaultModal

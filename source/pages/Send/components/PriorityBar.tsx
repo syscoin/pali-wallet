@@ -44,7 +44,7 @@ export const PriorityBar = ({
   };
 
   return (
-    <div className="flex items-center justify-between my-4 w-60 max-w-xs border-b-2 border-brand-blue400">
+    <div className="flex items-center justify-between w-60 max-w-xs border-b-2 border-brand-blue400">
       {Object.entries(values).map(([key, value]) => (
         <div key={key} onClick={() => onClick(Number(key))}>
           <Ball selected={Number(key) === priority} label={value} />
