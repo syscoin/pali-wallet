@@ -256,7 +256,7 @@ const EthSign: React.FC<ISign> = () => {
 
           <div
             className={` ${
-              state === 'Details' ? 'mt-24' : 'my-8'
+              state === 'Details' ? 'mt-12' : 'my-8'
             } gap-6 flex items-center justify-between w-full md:max-w-2xl`}
           >
             <Button

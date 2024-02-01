@@ -26,7 +26,7 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
   return (
     <div className="bg-brand-blue600 w-[400px] relative left-[-1%] flex flex-col items-center justify-center p-6 rounded-[20px]">
       <div
-        className="cursor-pointer scrollbar-styled w-full max-h-32 text-xs rounded-xl overflow-y-auto hover:opacity-60"
+        className="cursor-pointer remove-scrollbar w-full max-h-32 text-xs rounded-xl overflow-y-auto hover:opacity-60"
         style={{ backgroundColor: 'rgba(22, 39, 66, 1)' }}
         onClick={() => copy(dataHex)}
       >
