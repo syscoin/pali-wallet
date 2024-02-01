@@ -109,7 +109,7 @@ module.exports = {
   },
 
   alpha: {
-    whiteAlpha300: '#FFFFFF29',
+    whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
     whiteAlpha200: 'rgba(255, 255, 255, 0.08)',
   },
 
