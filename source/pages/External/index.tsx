@@ -5,6 +5,7 @@ import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 import watch from 'redux-watch';
+import { browser } from 'webextension-polyfill-ts';
 
 import { ToastAlert } from 'components/index';
 import { STORE_PORT } from 'constants/index';
@@ -28,6 +29,10 @@ store.subscribe(
     log('watching webext store');
   })
 );
+
+store.subscribe(() => {
+  browser.storage.local.set({ vault: appStore.getState().vault });
+});
 
 const options = {
   position: positions.BOTTOM_CENTER,

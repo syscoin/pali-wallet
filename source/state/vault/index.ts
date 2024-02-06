@@ -92,6 +92,9 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    setAllState(state: IVaultState, action: PayloadAction<IVaultState>) {
+      state = action.payload;
+    },
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
@@ -778,6 +781,7 @@ const VaultState = createSlice({
 });
 
 export const {
+  setAllState,
   setAccounts,
   setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,

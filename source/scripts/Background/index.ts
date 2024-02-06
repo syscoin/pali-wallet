@@ -5,9 +5,9 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import { STORE_PORT } from 'constants/index';
 import store from 'state/store';
-import { setIsPolling } from 'state/vault';
+import { setAllState, setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
-import { i18next } from 'utils/i18n';
+// import { i18next } from 'utils/i18n';
 import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
@@ -72,9 +72,30 @@ let timeout: any;
 //   }
 // };
 
+function parseJsonRecursively(jsonString: string) {
+  try {
+    const parsed = JSON.parse(jsonString);
+
+    if (typeof parsed === 'object' && parsed !== null) {
+      Object.keys(parsed).forEach((key) => {
+        if (typeof parsed[key] === 'string') {
+          parsed[key] = parseJsonRecursively(parsed[key]);
+        }
+      });
+    }
+
+    return parsed;
+  } catch (error) {
+    // if not a valid JSON, return the param
+    return jsonString;
+  }
+}
+
 browser.storage.onChanged.addListener((changes) => {
   console.log({ changes });
-  console.log({ formatted: JSON.parse(changes?.['persist:root']?.newValue) });
+  console.log({
+    formatted: parseJsonRecursively(changes?.['persist:root']?.newValue),
+  });
 });
 
 let requestCount = 0;
@@ -130,7 +151,8 @@ export const setDataStorage = async (state: any) => {
   await chrome.storage.local.clear();
   await chrome.storage.local.set({ ['1']: state });
   const data = await chrome.storage.local.get('1');
-  console.log({ data });
+  store.dispatch(setAllState(state));
+  console.log({ dataState: data });
 };
 
 // Interval to perform the information update and display the requests per second every second.
@@ -187,9 +209,9 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
         port.postMessage({ isInjected: hasEthProperty });
       }
     });
-    if (window.controller?.dapp) {
-      window.controller.dapp.setup(port);
-    }
+    // if (window.controller?.dapp) {
+    //   window.controller.dapp.setup(port);
+    // }
     paliPort = port;
     return;
   }
