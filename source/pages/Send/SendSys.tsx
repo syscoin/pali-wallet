@@ -260,7 +260,7 @@ export const SendSys = () => {
               className="sender-custom-input"
             />
           </Form.Item>
-          <div className="flex gap-2 w-full">
+          <div className="flex gap-2 w-full items-center">
             <div className="flex md:max-w-md">
               {
                 <Form.Item
@@ -275,7 +275,7 @@ export const SendSys = () => {
                 >
                   <Menu>
                     <div className="relative inline-block text-left">
-                      <Menu.Button className="inline-flex w-[100px] gap-4 uppercase justify-center border border-alpha-whiteAlpha300 px-5 py-[11px] text-white text-xs font-normal bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                      <Menu.Button className="inline-flex items-center w-[100px] gap-4 uppercase justify-center border border-alpha-whiteAlpha300 px-5 py-[7px] text-white text-xs font-normal bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
                         {truncate(
                           String(
                             selectedAsset?.symbol
@@ -371,37 +371,24 @@ export const SendSys = () => {
                     required: true,
                     message: '',
                   },
-                  () => ({
-                    validator(_, value) {
-                      if (value <= balance) {
-                        return Promise.resolve();
-                      }
-
-                      return Promise.reject();
-                    },
-                  }),
                 ]}
               >
-                <div className="relative flex items-center ">
-                  <span
-                    className="z-[99] left-[5%] bottom-[27%] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                    onClick={() =>
-                      form.setFieldValue(
-                        'amount',
-                        balance - 1.01 * recommendedFee
-                      )
-                    }
-                  >
-                    MAX
-                  </span>
-                  <Input
-                    id="with-max-button"
-                    className="value-custom-input"
-                    type="number"
-                    placeholder={'0.0'}
-                  />
-                </div>
+                <Input
+                  name="amount"
+                  id="with-max-button"
+                  className="value-custom-input"
+                  type="number"
+                  placeholder={'0.0'}
+                />
               </Form.Item>
+              <span
+                className="z-[9999] left-[36%] bottom-[43%] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                onClick={() =>
+                  form.setFieldValue('amount', balance - 1.01 * recommendedFee)
+                }
+              >
+                MAX
+              </span>
             </div>
           </div>
           <Fee

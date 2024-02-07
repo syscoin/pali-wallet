@@ -58,7 +58,7 @@
 .value-custom-input .ant-input-suffix .anticon-close-circle {
   content: url('../icons/errorIcon.svg');
   position: absolute;
-  top: 1.2rem;
+  top: 1.3rem;
   right: 23px;
   transform: translateY(-50%);
   cursor: pointer;
@@ -69,7 +69,7 @@
 .value-custom-input .ant-input-suffix .anticon-check-circle {
   content: url('../icons/successIcon.svg');
   position: absolute;
-  top: 1.2rem;
+  top: 1.3rem;
   right: 23px;
   transform: translateY(-50%);
   cursor: pointer;
