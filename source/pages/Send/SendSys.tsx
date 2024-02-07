@@ -173,7 +173,7 @@ export const SendSys = () => {
       }
     );
   }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
-  console.log(recommendedFee);
+
   return (
     <Layout
       title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}

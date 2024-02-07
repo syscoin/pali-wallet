@@ -828,7 +828,7 @@ export const SendConfirm = () => {
 
     validateEIP1559Compatibility();
   }, []);
-  console.log(basicTxValues.fee, 'basicTxValues.fee');
+
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>
       <TxSuccessful
