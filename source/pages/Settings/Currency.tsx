@@ -7,8 +7,8 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { formatNumber } from 'utils/index';
 
 const CurrencyView = () => {

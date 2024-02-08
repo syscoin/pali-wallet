@@ -11,9 +11,9 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { Card, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import { truncate, getAssetBalance } from 'utils/index';
 
 export const SendEth = () => {

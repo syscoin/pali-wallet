@@ -22,8 +22,8 @@ import {
   DefaultModal,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {

@@ -11,9 +11,9 @@ const App: FC = () => {
   useEffect(() => {
     // Ensure compatibility between browsers
 
-    store.subscribe(() => {
-      setDataStorage(store.getState());
-    });
+    // store.subscribe(() => {
+    //   setDataStorage(store.getState());
+    // });
 
     const messageListener = ({ action }) => {
       if (action === 'logoutFS') {

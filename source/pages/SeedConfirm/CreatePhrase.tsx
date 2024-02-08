@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, Button } from 'components/index';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 
 export const CreatePhrase = ({ password }: { password: string }) => {
   const controller = getController();

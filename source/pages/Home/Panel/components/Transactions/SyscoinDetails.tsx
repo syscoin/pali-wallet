@@ -7,10 +7,10 @@ import { useSelector } from 'react-redux';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { getController } from 'utils/browser';
 import { camelCaseToText, ellipsis, truncate } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {

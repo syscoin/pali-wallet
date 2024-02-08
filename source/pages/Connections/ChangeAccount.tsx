@@ -6,8 +6,9 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, SecondaryButton, PrimaryButton, Icon } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {

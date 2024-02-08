@@ -8,7 +8,8 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
+import { dispatchBackgroundEvent } from 'utils/browser';
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();

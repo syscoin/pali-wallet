@@ -5,8 +5,8 @@ import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import dafaultImage from 'assets/images/pali-blank.png';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { nftsVideoFormats } from 'utils/index';
 
 import { getChainImage } from './GetChainImage';

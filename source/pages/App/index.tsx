@@ -6,7 +6,7 @@ import 'assets/styles/custom-checkbox.css';
 import 'assets/styles/custom-form-inputs-styles.css';
 import 'assets/fonts/index.css';
 
-import { Store } from '@eduardoac-skimlinks/webext-redux';
+// import { Store } from '@eduardoac-skimlinks/webext-redux';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
@@ -16,13 +16,14 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { ToastAlert } from 'components/index';
 import { STORE_PORT } from 'constants/index';
+import { ProxyStore } from 'scripts/Background';
 import appStore from 'state/store';
-import { log } from 'utils/index';
+import { log, parseJsonRecursively } from 'utils/index';
 
 import App from './App';
 
 const app = document.getElementById('app-root');
-const store = new Store({ portName: STORE_PORT });
+const store = new ProxyStore({ portName: STORE_PORT });
 
 const w = watch(appStore.getState, 'vault.lastLogin');
 store.subscribe(
@@ -42,6 +43,15 @@ const options = {
 };
 
 store.ready().then(() => {
+  chrome.storage.onChanged.addListener((e) => {
+    console.log({ e });
+  });
+  const update = (changes) => {
+    if (changes?.['persist:root']?.newValue === undefined) return;
+    const newState = parseJsonRecursively(changes?.['persist:root']?.newValue);
+    store.replaceState(newState);
+  };
+  chrome.storage.onChanged.addListener(update);
   ReactDOM.render(
     <Provider store={store}>
       <AlertProvider template={ToastAlert} {...options}>

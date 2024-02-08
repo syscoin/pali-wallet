@@ -8,7 +8,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 
 const EditAccountView = () => {
   const { state } = useLocation();

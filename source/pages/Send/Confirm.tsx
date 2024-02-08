@@ -18,9 +18,9 @@ import {
   IconButton,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
-import { getController } from 'utils/browser';
 import {
   truncate,
   logError,

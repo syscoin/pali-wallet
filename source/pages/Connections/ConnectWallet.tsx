@@ -14,8 +14,9 @@ import {
 } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {

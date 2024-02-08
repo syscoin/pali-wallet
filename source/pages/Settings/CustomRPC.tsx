@@ -11,9 +11,9 @@ import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 import checkAtIcon from 'assets/icons/checkAt.svg';
 import { Button, Layout, NeutralButton, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
-import { getController } from 'utils/browser';
 
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();

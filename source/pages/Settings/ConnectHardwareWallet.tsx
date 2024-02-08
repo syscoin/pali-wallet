@@ -16,8 +16,8 @@ import {
   Card,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isTestnet, setIsTestnet] = useState<boolean>(false);

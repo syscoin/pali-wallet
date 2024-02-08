@@ -12,9 +12,9 @@ import { EvmNftsList } from '../Nfts/EvmNftsList';
 import { LoadingComponent } from 'components/Loading';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import { truncate, formatCurrency } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';

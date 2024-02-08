@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/useUtils';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 
 import { ConfirmPhrase } from './ConfirmPhrase';
 import { CreatePhrase } from './CreatePhrase';
