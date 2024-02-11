@@ -56,7 +56,7 @@ export const methodRequest = async (
     console.error(
       'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
     );
-    //Todo: we're throwing arbitrary error codes here, later it would be good to check the avaiability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
+    //Todo: we're throwing arbitrary error codes here, later it would be good to check the availability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
     throw ethErrors.provider.custom({
       code: 4874,
       message:
@@ -127,6 +127,7 @@ export const methodRequest = async (
         return !wallet.isUnlocked();
       case 'getChangeAddress':
         if (!isBitcoinBased)
+          //todo: this errors might be wrong for syscoin bridge too
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
               'Method only available for syscoin UTXO chains'
@@ -135,6 +136,7 @@ export const methodRequest = async (
         return controller.wallet.getChangeAddress(dapp.getAccount(host).id);
       case 'getAccount':
         if (!isBitcoinBased)
+          //todo: this errors might be wrong for syscoin bridge too
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
               'Method only available for syscoin UTXO chains'
@@ -385,24 +387,26 @@ export const methodRequest = async (
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  } else if (prefix === 'eth' && isBitcoinBased) {
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized(
-        'Method only available when connected on EVM chains'
-      )
-    );
   }
+  //todo: we need a better logic to handle this case, bridge has utxo and nevm methods
+  // } else if (prefix === 'eth' && isBitcoinBased) {
+  //   throw cleanErrorStack(
+  //     ethErrors.provider.unauthorized(
+  //       'Method only available when connected on EVM chains'
+  //     )
+  //   );
+  // }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
 
-  if (!method) throw cleanErrorStack(ethErrors.rpc.methodNotFound());
-
-  if (data.params) return await method(...data.params);
-
-  return await method();
+  if (method) {
+    if (data.params) return await method(...data.params);
+    return await method();
+  }
 };
 
+//todo: adjust this fn to handle syscoin dapps correctly
 export const enable = async (
   host: string,
   chain: string,
@@ -414,19 +418,20 @@ export const enable = async (
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-  if (!isSyscoinDapp && isBitcoinBased) {
-    throw ethErrors.provider.custom({
-      code: 4101,
-      message: 'Connected to Bitcoin based chain',
-      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
-    });
-  } else if (isSyscoinDapp && !isBitcoinBased) {
-    throw ethErrors.provider.custom({
-      code: 4101,
-      message: 'Connected to Ethereum based chain',
-      data: { code: 4101, message: 'Connected to Ethereum based chain' },
-    });
-  }
+  //todo: this will need to be refactored to handle syscoin dapps which allow both chains
+  // if (!isSyscoinDapp && isBitcoinBased) {
+  //   throw ethErrors.provider.custom({
+  //     code: 4101,
+  //     message: 'Connected to Bitcoin based chain',
+  //     data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+  //   });
+  // } else if (isSyscoinDapp && !isBitcoinBased) {
+  //   throw ethErrors.provider.custom({
+  //     code: 4101,
+  //     message: 'Connected to Ethereum based chain',
+  //     data: { code: 4101, message: 'Connected to Ethereum based chain' },
+  //   });
+  // }
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
 

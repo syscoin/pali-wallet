@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
@@ -14,7 +14,9 @@ import { useNetworkInfo } from './NetworkInfo';
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { wallet } = getController();
-  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+  const { isBitcoinBased, networks } = useSelector(
+    (state: RootState) => state.vault
+  );
   const [selectCurrentNetwork, setSelectCurrentNetwork] = useState({
     current: null,
     chain: '',
@@ -29,23 +31,35 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     selectedNetworkText,
     leftLogo,
     rightLogo,
-  } = useNetworkInfo();
-  const chainName = isBitcoinBased ? 'ethereum' : 'syscoin';
+  } = useNetworkInfo({ isBitcoinBased, networks });
 
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const chainName = useMemo(
+    () => (isBitcoinBased ? 'ethereum' : 'syscoin'),
+    [isBitcoinBased]
+  );
 
-  let newNetworks;
+  const newNetworks = useMemo(
+    () =>
+      isBitcoinBased
+        ? Object.values(networks.ethereum)
+        : Object.values(networks.syscoin),
+    [isBitcoinBased]
+  ); //todo: change name
 
-  isBitcoinBased
-    ? (newNetworks = Object.values(networks.ethereum))
-    : (newNetworks = Object.values(networks.syscoin));
+  const testnetNetworks = useMemo(
+    () => newNetworks.filter((obj) => obj?.isTestnet),
+    [newNetworks]
+  );
 
-  const testnetNetworks = newNetworks.filter((obj) => obj?.isTestnet === true);
-
-  let mainetNetworks = newNetworks.filter((obj) => obj?.isTestnet !== true);
-
-  mainetNetworks = mainetNetworks.sort(
-    (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
+  const mainnetNetworks = useMemo(
+    () =>
+      newNetworks
+        .filter((obj) => !obj?.isTestnet)
+        .sort(
+          (a, b) =>
+            getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
+        ),
+    []
   );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
@@ -97,7 +111,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             {selectedNetworkText}
           </p>
-          {mainetNetworks.map((currentNetwork: INetwork) => (
+          {mainnetNetworks.map((currentNetwork: INetwork) => (
             <div
               key={uniqueId()}
               className={`${

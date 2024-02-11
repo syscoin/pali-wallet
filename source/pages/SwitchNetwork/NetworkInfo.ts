@@ -25,19 +25,22 @@ interface INetworkInfo {
 const PINK_COLOR = 'text-brand-deepPink100';
 const BLUE_COLOR = 'text-brand-blue200';
 
-export const useNetworkInfo = (setedNetwork?: string): INetworkInfo => {
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const networks = useSelector((state: RootState) => state.vault.networks);
-
+export const useNetworkInfo = ({
+  network,
+  isBitcoinBased,
+  networks,
+}: {
+  isBitcoinBased?: boolean;
+  network?: string;
+  networks: RootState['vault']['networks'];
+}): INetworkInfo => {
   const filteredNetworks = useMemo(() => {
-    if (setedNetwork !== '') {
-      return setedNetwork === 'EVM'
+    if (network !== '') {
+      return network === 'EVM'
         ? Object.values(networks.syscoin)
         : Object.values(networks.ethereum);
     }
-  }, [setedNetwork, isBitcoinBased, networks]);
+  }, [network, isBitcoinBased, networks]);
 
   const utxoNetwork: INetworkInfo = {
     connectedNetwork: NetworkType.UTXO,
@@ -65,8 +68,8 @@ export const useNetworkInfo = (setedNetwork?: string): INetworkInfo => {
 
   let value: any;
 
-  if (setedNetwork) {
-    if (setedNetwork === 'EVM') {
+  if (network) {
+    if (network === 'EVM') {
       value = otherNetworkInfo;
     } else {
       value = utxoNetwork;
