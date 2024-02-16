@@ -3,11 +3,13 @@ import { isBoolean, isNil } from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
+import { ErrorModal, NeutralButton } from 'components/index';
+import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -61,11 +63,11 @@ export const SyscoinImportToken = () => {
         wrapperCol={{ span: 8 }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
+        className="flex w-full flex-col gap-3 items-center justify-center mt-4 text-center"
       >
         <Form.Item
           name="assetGuid"
-          className="md:w-full md:max-w-md"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -97,8 +99,8 @@ export const SyscoinImportToken = () => {
         </Form.Item>
 
         <Form.Item
-          name="symbol"
-          className="md:w-full md:max-w-md"
+          name="assetSymbol"
+          className="w-full md:max-w-md"
           hasFeedback
           rules={[
             {
@@ -113,10 +115,22 @@ export const SyscoinImportToken = () => {
             placeholder={t('tokens.tokenSymbol')}
           />
         </Form.Item>
+        <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
+          <a
+            href=""
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+          >
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              Learn more on docs!
+            </span>
+          </a>
+        </div>
 
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton loading={isLoading} type="submit">
+          <div className="w-full px-4 absolute bottom-12 md:static">
+            <NeutralButton loading={isLoading} type="submit" fullWidth={true}>
               {t('buttons.next')}
             </NeutralButton>
           </div>
@@ -124,13 +138,13 @@ export const SyscoinImportToken = () => {
       </Form>
 
       {added && (
-        <DefaultModal
-          show={added}
+        <TokenSuccessfulyAdded
           title={t('tokens.tokenSuccessfullyAdded')}
-          description={`${form.getFieldValue('symbol')} ${t(
+          phraseOne={`${form.getFieldValue('symbol')} ${t(
             'tokens.wasSucessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}
+          show={added}
         />
       )}
 

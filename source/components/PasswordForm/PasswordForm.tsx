@@ -45,6 +45,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         </Form.Item>
 
         <Form.Item
+          id="create-password"
           name="repassword"
           className="w-full flex justify-center"
           hasFeedback
@@ -70,7 +71,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           />
         </Form.Item>
 
-        <span className="px-3 w-full text-left text-brand-blue100 text-xs">
+        <span className="px-3 w-full text-left text-brand-royalbluemedium text-xs">
           {t('components.atLeast')} {'   '}
         </span>
 

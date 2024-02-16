@@ -31,6 +31,7 @@ export const popupPromise = async ({
     eventName !== 'wallet_switchEthereumChain' &&
     eventName !== 'wallet_addEthereumChain' &&
     eventName !== 'change_UTXOEVM' &&
+    eventName !== 'switchNetwork' &&
     !dapp.isConnected(host)
   )
     return;
@@ -85,7 +86,8 @@ export const popupPromise = async ({
           route === 'add-EthChain' ||
           route === 'change-account' ||
           route === 'switch-UtxoEvm' ||
-          route === 'watch-asset'
+          route === 'watch-asset' ||
+          route === 'switch-network'
         ) {
           resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }

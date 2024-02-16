@@ -22,7 +22,7 @@ export const SimpleCard: React.FC<ISimpleCard> = ({
   onClick,
 }) => (
   <div
-    className={`${className} bg-bkg-4 border-dashed border-brand-royalblue border md:mx-20 mx-6 my-8 p-4 text-xs rounded-lg`}
+    className={`${className} bg-brand-diffBLUE border-dashed border-alpha-whiteAlpha300 border my-8 p-4 text-xs rounded-[20px]`}
     onClick={onClick}
   >
     {children}
@@ -36,6 +36,7 @@ export const Card: React.FC<ICard> = ({
   type,
 }) => {
   let iconName: string;
+  let borderColor: string;
 
   switch (type) {
     case 'error':
@@ -43,6 +44,7 @@ export const Card: React.FC<ICard> = ({
       break;
     case 'info':
       iconName = 'warning';
+      borderColor = 'border-brand-yellowInfo';
       break;
     default:
     case 'success':
@@ -52,11 +54,10 @@ export const Card: React.FC<ICard> = ({
 
   return (
     <div
-      className={`${className} bg-bkg-3 border border-dashed border-warning-${type} p-4 text-xs rounded-lg gap-x-3 cursor-default flex items-center w-full md:max-w-md max-w-xs`}
+      className={`${className} bg-transparent border border-dashed ${borderColor} p-4 text-xs rounded-[20px] gap-x-[19px] cursor-default flex items-start w-full `}
       onClick={onClick}
     >
-      <Icon name={iconName} className={`text-warning-${type}`} size={25} />
-
+      <Icon name={iconName} className={`text-warning-${type}`} size={24} />
       {children}
     </div>
   );

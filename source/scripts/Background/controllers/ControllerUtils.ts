@@ -12,8 +12,9 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
-import { setPrices, setCoins } from 'state/price';
+import { setCoins, setPrices } from 'state/price';
 import store from 'state/store';
+import { setCoinsList } from 'state/vault';
 import { IControllerUtils } from 'types/controllers';
 import { getController } from 'utils/browser';
 import { logError } from 'utils/index';
@@ -30,6 +31,20 @@ const ControllerUtils = (): IControllerUtils => {
     const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
     const id = isBitcoinBased ? 'syscoin' : 'ethereum';
+    const coinsListState = store.getState().vault.coinsList;
+    const isUpToDateCoinArray =
+      coinsListState?.some((item) => item?.platforms !== undefined) &&
+      coinsListState?.length > 0;
+
+    const coinsList = isUpToDateCoinArray
+      ? coinsListState
+      : await (
+          await fetch(
+            'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
+          )
+        ).json();
+
+    store.dispatch(setCoinsList(coinsList));
 
     switch (id) {
       case 'syscoin':
@@ -92,21 +107,19 @@ const ControllerUtils = (): IControllerUtils => {
             return;
           }
 
-          const getCoinList = await (
-            await fetch('https://api.coingecko.com/api/v3/coins/list')
-          ).json();
-
-          if (getCoinList.length > 0 && !getCoinList?.status?.error_code) {
-            const findCoinSymbolByNetwork = getCoinList.find(
+          if (coinsList?.length > 0) {
+            const findCoinSymbolByNetwork = coinsList.find(
               (coin) => coin.symbol === activeNetwork.currency
             )?.id;
-            const coins = await (
-              await fetch(
-                `https://api.coingecko.com/api/v3/coins/markets?vs_currency=${currency}&ids=${findCoinSymbolByNetwork}&order=market_cap_desc&per_page=100&page=1&sparkline=false`
-              )
-            ).json(); //This call can be optimized so we get only the info we're interested in
 
-            const currentNetworkCoinMarket = coins[0]?.current_price;
+            const coinPriceResponse = await fetch(
+              `https://api.coingecko.com/api/v3/simple/price?ids=${findCoinSymbolByNetwork}&vs_currencies=${currency}`
+            );
+
+            const coinPriceData = await coinPriceResponse.json();
+
+            const currentNetworkCoinMarket =
+              coinPriceData[findCoinSymbolByNetwork]?.[currency];
 
             store.dispatch(
               setPrices({

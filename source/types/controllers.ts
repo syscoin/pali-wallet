@@ -55,6 +55,16 @@ export interface IMainController extends IKeyringManager {
     newRpc: ICustomRpcParams,
     oldRpc: ICustomRpcParams
   ) => Promise<INetwork>;
+  fetchAndUpdateNftsState: ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => Promise<void>;
   forgetWallet: (pwd: string) => void;
   getAssetInfo: (
     type: string,
@@ -87,7 +97,7 @@ export interface IMainController extends IKeyringManager {
     isAlreadyConnected: boolean
   ) => Promise<any>;
   lock: () => void;
-
+  openDAppErrorModal: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -118,6 +128,11 @@ export interface IMainController extends IKeyringManager {
   setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
+  setIsLastTxConfirmed: (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,

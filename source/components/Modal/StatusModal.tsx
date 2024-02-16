@@ -44,7 +44,7 @@ export const StatusModal = ({
         className={`fixed z-10 inset-0 overflow-y-auto  rounded-[20px]`}
         onClose={handleOnClose}
       >
-        <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+        <div className="fixed z-0 -inset-0 w-full bg-transparent bg-opacity-50 transition-all duration-300 ease-in-out" />
 
         <div className="min-h-screen  text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
           <Transition.Child
