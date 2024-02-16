@@ -130,7 +130,6 @@ export const methodRequest = async (
         return !wallet.isUnlocked();
       case 'getChangeAddress':
         if (!isBitcoinBased)
-          //todo: this errors might be wrong for syscoin bridge too
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
               'Method only available for syscoin UTXO chains'
@@ -139,7 +138,6 @@ export const methodRequest = async (
         return controller.wallet.getChangeAddress(dapp.getAccount(host).id);
       case 'getAccount':
         if (!isBitcoinBased)
-          //todo: this errors might be wrong for syscoin bridge too
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
               'Method only available for syscoin UTXO chains'
@@ -390,9 +388,7 @@ export const methodRequest = async (
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  }
-  //todo: we need a better logic to handle this case, bridge has utxo and nevm methods
-  else if (prefix === 'eth' && isBitcoinBased && !isHybridDapp) {
+  } else if (prefix === 'eth' && isBitcoinBased && !isHybridDapp) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Method only available when connected on EVM chains'
@@ -409,7 +405,6 @@ export const methodRequest = async (
   }
 };
 
-//todo: adjust this fn to handle syscoin dapps correctly
 export const enable = async (
   host: string,
   chain: string,
@@ -422,7 +417,6 @@ export const enable = async (
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-  //todo: this will need to be refactored to handle syscoin dapps which allow both chains
   if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({
       code: 4101,
