@@ -144,3 +144,10 @@ export const camelCaseToText = (input: string) => {
   // this regex splits the string without removing the delimiters
   return input.split(/(?=[A-Z])/).join(' ');
 };
+
+export const areStringsPresent = (
+  strToCheck: string,
+  stringsArray: string[]
+): boolean =>
+  // Check if any string from stringsArray is present in strToCheck
+  stringsArray.some((subString) => strToCheck.includes(subString));

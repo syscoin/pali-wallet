@@ -14,15 +14,15 @@ import { NetworkList } from './NetworkList';
 export const SwitchNetwork = () => {
   const { state }: { state: any } = useLocation();
   const { t } = useTranslation();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const { isBitcoinBased, activeNetwork, networks } = useSelector(
+    (rootState: RootState) => rootState.vault
   );
   const {
     connectedNetwork,
     networkThatNeedsChanging,
     connectedColor,
     networkNeedsChangingColor,
-  } = useNetworkInfo();
+  } = useNetworkInfo({ isBitcoinBased, networks });
 
   const networkLabel = useMemo(
     () => (
