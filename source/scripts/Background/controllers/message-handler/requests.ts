@@ -8,6 +8,7 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { areStringsPresent } from 'utils/format';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -25,6 +26,8 @@ export const methodRequest = async (
 ) => {
   const { dapp, wallet } = window.controller;
   const controller = getController();
+  const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
+  const isHybridDapp = areStringsPresent(host, hybridDapps);
   const [prefix, methodName] = data.method.split('_');
   const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
     store.getState().vault;
@@ -71,7 +74,7 @@ export const methodRequest = async (
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, false);
+      return await enable(host, undefined, undefined, false, isHybridDapp);
     } catch (error) {
       await popupPromise({
         host,
@@ -80,12 +83,12 @@ export const methodRequest = async (
         data: {},
       });
 
-      return await enable(host, undefined, undefined, false);
+      return await enable(host, undefined, undefined, false, isHybridDapp);
     }
   }
   if (prefix === 'sys' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, true);
+      return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
       if (error.message === 'Connected to Ethereum based chain') {
         await popupPromise({
@@ -95,7 +98,7 @@ export const methodRequest = async (
           data: { network: data.network },
         });
 
-        return await enable(host, undefined, undefined, true);
+        return await enable(host, undefined, undefined, true, isHybridDapp);
       }
     }
   }
@@ -389,13 +392,13 @@ export const methodRequest = async (
     throw cleanErrorStack(ethErrors.rpc.internal());
   }
   //todo: we need a better logic to handle this case, bridge has utxo and nevm methods
-  // } else if (prefix === 'eth' && isBitcoinBased) {
-  //   throw cleanErrorStack(
-  //     ethErrors.provider.unauthorized(
-  //       'Method only available when connected on EVM chains'
-  //     )
-  //   );
-  // }
+  else if (prefix === 'eth' && isBitcoinBased && !isHybridDapp) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Method only available when connected on EVM chains'
+      )
+    );
+  }
 
   const provider = SysProvider(host);
   const method = provider[methodName];
@@ -411,7 +414,8 @@ export const enable = async (
   host: string,
   chain: string,
   chainId: number,
-  isSyscoinDapp = false
+  isSyscoinDapp = false,
+  isHybridDapp = true
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   const { dapp, wallet } = window.controller;
@@ -419,19 +423,19 @@ export const enable = async (
     window.localStorage.getItem('isPopupOpen')
   );
   //todo: this will need to be refactored to handle syscoin dapps which allow both chains
-  // if (!isSyscoinDapp && isBitcoinBased) {
-  //   throw ethErrors.provider.custom({
-  //     code: 4101,
-  //     message: 'Connected to Bitcoin based chain',
-  //     data: { code: 4101, message: 'Connected to Bitcoin based chain' },
-  //   });
-  // } else if (isSyscoinDapp && !isBitcoinBased) {
-  //   throw ethErrors.provider.custom({
-  //     code: 4101,
-  //     message: 'Connected to Ethereum based chain',
-  //     data: { code: 4101, message: 'Connected to Ethereum based chain' },
-  //   });
-  // }
+  if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Bitcoin based chain',
+      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+    });
+  } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Ethereum based chain',
+      data: { code: 4101, message: 'Connected to Ethereum based chain' },
+    });
+  }
   if (dapp.isConnected(host) && wallet.isUnlocked())
     return [dapp.getAccount(host).address];
 
