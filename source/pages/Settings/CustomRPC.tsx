@@ -3,12 +3,15 @@ import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import { Layout, NeutralButton, Tooltip } from 'components/index';
+import checkAtIcon from 'assets/icons/checkAt.svg';
+import { Button, Layout, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
 
@@ -23,7 +26,10 @@ const CustomRPCView = () => {
     number | null
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
-
+  const { activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const { wallet } = getController();
   const { alert, navigate } = useUtils();
   const controller = getController();
 
@@ -100,8 +106,12 @@ const CustomRPCView = () => {
     }
   }, [urlFieldValue]);
 
+  const handleConnect = async (data: ICustomRpcParams) => {
+    await wallet.setActiveNetwork(data, String(activeNetwork.chainId));
+  };
+
   return (
-    <Layout title={t('settings.customRpc')}>
+    <Layout title={state?.isEditing ? 'EDIT RPC' : t('settings.customRpc')}>
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -110,7 +120,7 @@ const CustomRPCView = () => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={initialValues}
-        onFinish={onSubmit}
+        onFinish={state?.isEditing ? handleConnect : onSubmit}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center"
       >
@@ -124,32 +134,42 @@ const CustomRPCView = () => {
             },
           ]}
         >
-          <div className="flex gap-x-2 mb-4 text-xs">
-            <p className="text-brand-royalblue text-xs">Ethereum</p>
-            <Tooltip
-              content={
-                !!state ? 'Cant change type of network while editing' : ''
-              }
+          {state?.isEditing ? (
+            <p
+              className={`text-sm ${
+                isBitcoinBased ? 'text-brand-pink200' : 'text-brand-blue200'
+              }`}
             >
-              <Switch
-                checked={isSyscoinRpc}
-                onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-                className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
-                disabled={!!state}
+              {isBitcoinBased ? 'UTXO' : 'NEVM'} Network
+            </p>
+          ) : (
+            <div className="flex gap-x-2 mb-4 text-xs">
+              <p className="text-brand-royalblue text-xs">Ethereum</p>
+              <Tooltip
+                content={
+                  !!state ? 'Cant change type of network while editing' : ''
+                }
               >
-                <span className="sr-only">Syscoin Network</span>
-                <span
-                  className={`${
-                    isSyscoinRpc
-                      ? 'translate-x-6 bg-brand-royalblue'
-                      : 'translate-x-1 bg-brand-deepPink100'
-                  } inline-block w-2 h-2 transform rounded-full`}
-                />
-              </Switch>
-            </Tooltip>
+                <Switch
+                  checked={isSyscoinRpc}
+                  onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
+                  className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                  disabled={!!state}
+                >
+                  <span className="sr-only">Syscoin Network</span>
+                  <span
+                    className={`${
+                      isSyscoinRpc
+                        ? 'translate-x-6 bg-brand-royalblue'
+                        : 'translate-x-1 bg-brand-deepPink100'
+                    } inline-block w-2 h-2 transform rounded-full`}
+                  />
+                </Switch>
+              </Tooltip>
 
-            <p className="text-brand-deepPink100 text-xs">Syscoin</p>
-          </div>
+              <p className="text-brand-deepPink100 text-xs">Syscoin</p>
+            </div>
+          )}
         </Form.Item>
 
         <Form.Item
@@ -169,7 +189,7 @@ const CustomRPCView = () => {
             placeholder={`${t('settings.label')} ${
               isSyscoinRpc ? `(${t('settings.label')})` : ''
             }`}
-            className="input-small relative"
+            className="custom-input-password relative"
           />
         </Form.Item>
 
@@ -238,21 +258,23 @@ const CustomRPCView = () => {
 
                     return Promise.resolve();
                   } else if (valid || !value) {
-                    const chainIdConverted = String(parseInt(hexChainId, 16));
+                    const chainIdConvertedOne = String(
+                      parseInt(hexChainId, 16)
+                    );
 
-                    populateForm('chainId', chainIdConverted);
+                    populateForm('chainId', chainIdConvertedOne);
 
-                    setLastRpcChainIdSearched(Number(chainIdConverted));
+                    setLastRpcChainIdSearched(Number(chainIdConvertedOne));
                     return Promise.resolve();
                   }
                 } else {
-                  const chainIdConverted = String(parseInt(hexChainId, 16));
+                  const chainIdConvertedTwo = String(parseInt(hexChainId, 16));
                   //Here if already had search for any RPC we have to validate if the result
                   //for the new one is for the same chainID or not, if is just keep the older values
                   //filled and give a valid for the new rpc url
                   if (
                     (details && lastRpcChainIdSearched === details.chainId) ||
-                    lastRpcChainIdSearched === Number(chainIdConverted)
+                    lastRpcChainIdSearched === Number(chainIdConvertedTwo)
                   ) {
                     return Promise.resolve();
                   } else {
@@ -267,10 +289,12 @@ const CustomRPCView = () => {
 
                       return Promise.resolve();
                     } else if (valid) {
-                      const chainIdConverted = String(parseInt(hexChainId, 16));
-                      populateForm('chainId', chainIdConverted);
+                      const chainIdConvertedThree = String(
+                        parseInt(hexChainId, 16)
+                      );
+                      populateForm('chainId', chainIdConvertedThree);
 
-                      setLastRpcChainIdSearched(Number(chainIdConverted));
+                      setLastRpcChainIdSearched(Number(chainIdConvertedThree));
                       return Promise.resolve();
                     }
                   }
@@ -284,7 +308,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
-            className="input-small relative"
+            className="custom-input-password relative"
           />
         </Form.Item>
 
@@ -303,7 +327,9 @@ const CustomRPCView = () => {
             type="text"
             disabled={isInputDisabled}
             placeholder="Chain ID"
-            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
+            className={`${
+              isSyscoinRpc ? 'hidden' : 'relative'
+            } custom-input-password `}
           />
         </Form.Item>
 
@@ -322,8 +348,8 @@ const CustomRPCView = () => {
             type="text"
             placeholder={t('settings.symbol')}
             className={`${
-              isSyscoinRpc ? 'hidden' : 'block'
-            } input-small relative`}
+              isSyscoinRpc ? 'hidden' : 'relative'
+            } custom-input-password relative`}
           />
         </Form.Item>
 
@@ -341,19 +367,53 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.explorer')}
-            className={`${isSyscoinRpc ? 'hidden' : 'relative'} input-small`}
+            className={`${
+              isSyscoinRpc ? 'hidden' : 'relative'
+            } custom-input-password `}
           />
         </Form.Item>
-
-        <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-          {t('settings.youCanEdit')}
-        </p>
-
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
-            {t('buttons.save')}
-          </NeutralButton>
-        </div>
+        {state?.isEditing ? (
+          <div
+            className="flex justify-center items-center gap-2 cursor-pointer"
+            onClick={() => (window.location.href = 'https://chainlist.org/')}
+          >
+            <img src={checkAtIcon} alt="Check at chainlist" />
+            <p className="underline text-center text-white font-poppins text-sm">
+              Check chainlist
+            </p>
+          </div>
+        ) : (
+          <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
+            {t('settings.youCanEdit')}
+          </p>
+        )}
+        {state?.isEditing ? (
+          <div className="flex gap-6 justify-between mt-[2.313rem]">
+            <Button
+              type="submit"
+              className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
+              onClick={() => navigate('/chain-fail-to-connect')}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            >
+              Connect
+            </Button>
+          </div>
+        ) : (
+          <div className="relative bottom-0 md:static">
+            <Button
+              className="xl:p-18 h-[40px] w-[352px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              type="submit"
+              loading={loading}
+            >
+              {t('buttons.save')}
+            </Button>
+          </div>
+        )}
       </Form>
     </Layout>
   );

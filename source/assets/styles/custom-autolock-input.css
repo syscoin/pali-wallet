@@ -1,0 +1,24 @@
+.custom-autolock-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 73px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+.custom-gas-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 20px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #162742;
+}

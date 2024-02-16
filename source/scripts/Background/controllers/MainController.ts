@@ -39,7 +39,9 @@ import {
   setIsLoadingTxs,
   initialState,
   setIsLoadingAssets,
+  setIsLastTxConfirmed as setIsLastTxConfirmedToState,
   setIsLoadingBalances,
+  setIsLoadingNfts,
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
   setAdvancedSettings as setSettings,
@@ -48,6 +50,8 @@ import {
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
+  setUpdatedNftsToState,
+  setOpenDAppErrorModal,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -65,6 +69,7 @@ import AssetsManager from './assets';
 import BalancesManager from './balances';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
   PromiseTargets,
@@ -77,6 +82,7 @@ const MainController = (walletState): IMainController => {
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();
+  const nftsController = NftsController();
   let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
@@ -208,6 +214,7 @@ const MainController = (walletState): IMainController => {
       assets: {
         syscoin: initialSysAssetsForAccount,
         ethereum: [],
+        nfts: [],
       },
       transactions: {
         ethereum: {},
@@ -276,6 +283,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: initialSysAssetsForAccount,
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {
@@ -291,6 +299,7 @@ const MainController = (walletState): IMainController => {
           assets: {
             syscoin: [],
             ethereum: [],
+            nfts: [],
           },
           transactions: {
             syscoin: {},
@@ -763,7 +772,7 @@ const MainController = (walletState): IMainController => {
       ...network,
       default: false, // We only have RPCs with default as true in our initialNetworksState value
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
-      explorer: data.apiUrl ? data.apiUrl : network.apiUrl,
+      explorer: data?.explorer ? data.explorer : network?.explorer || '',
       currency: data.symbol ? data.symbol : network.currency,
     } as INetwork;
 
@@ -827,6 +836,16 @@ const MainController = (walletState): IMainController => {
     }
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
+    );
+  };
+
+  const setIsLastTxConfirmed = (
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) => {
+    store.dispatch(
+      setIsLastTxConfirmedToState({ chainId, wasConfirmed, isFirstTime })
     );
   };
 
@@ -1026,6 +1045,109 @@ const MainController = (walletState): IMainController => {
 
     return importedAccount;
   };
+
+  //---- NFTS METHODS ----//
+
+  const getUserNftsByNetwork = async (
+    userAddress: string,
+    chainId: number,
+    rpcUrl: string
+  ) => {
+    if (chainId !== 57 && chainId !== 570) return [];
+
+    const fetchedNfts = await nftsController.getUserNfts(
+      userAddress,
+      chainId,
+      rpcUrl
+    );
+
+    return fetchedNfts;
+  };
+
+  const fetchAndUpdateNftsState = async ({
+    activeNetwork,
+    activeAccount,
+  }: {
+    activeAccount: {
+      id: number;
+      type: KeyringAccountType;
+    };
+    activeNetwork: INetwork;
+  }) => {
+    const { accounts } = store.getState().vault;
+    const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    const { currentPromise: nftsPromises, cancel } =
+      cancellablePromises.createCancellablePromise<void>(
+        async (resolve, reject) => {
+          try {
+            store.dispatch(setIsLoadingNfts(true));
+
+            const updatedNfts = await getUserNftsByNetwork(
+              currentAccount.address,
+              activeNetwork.chainId,
+              activeNetwork.url
+            );
+
+            console.log('updatedNfts', updatedNfts);
+
+            const validateUpdatedAndPreviousNftsLength =
+              updatedNfts.length < currentAccount.assets.nfts.length;
+
+            const validateIfUpdatedNftsStayEmpty =
+              currentAccount.assets.nfts.length > 0 && isEmpty(updatedNfts);
+
+            const validateIfNftsUpdatedIsEmpty = isEmpty(updatedNfts);
+
+            const validateIfNotNullNftsValues = updatedNfts.some((value) =>
+              isNil(value)
+            );
+
+            const validateIfIsSameLength =
+              updatedNfts.length === currentAccount.assets.nfts.length;
+
+            const validateIfIsInvalidDispatch =
+              validateUpdatedAndPreviousNftsLength ||
+              validateIfUpdatedNftsStayEmpty ||
+              validateIfNftsUpdatedIsEmpty ||
+              validateIfNotNullNftsValues ||
+              validateIfIsSameLength;
+
+            if (validateIfIsInvalidDispatch) {
+              store.dispatch(setIsLoadingNfts(false));
+              resolve();
+              return;
+            }
+
+            store.dispatch(
+              setUpdatedNftsToState({
+                id: activeAccount.id,
+                type: activeAccount.type,
+                updatedNfts,
+              })
+            );
+
+            store.dispatch(setIsLoadingNfts(false));
+            resolve();
+          } catch (error) {
+            if (error && store.getState().vault.isLoadingNfts) {
+              store.dispatch(setIsLoadingNfts(false));
+            }
+
+            reject(error);
+          }
+        }
+      );
+
+    cancellablePromises.setPromise(PromiseTargets.NFTS, {
+      nftsPromises,
+      cancel,
+    });
+
+    cancellablePromises.runPromise(PromiseTargets.NFTS);
+  };
+
+  //---- END NFTS METHODS ----//
 
   //---- SYS METHODS ----//
   const getInitialSysTransactionsForAccount = async (xpub: string) => {
@@ -1247,6 +1369,10 @@ const MainController = (walletState): IMainController => {
         transaction: txWithTimestamp,
       })
     );
+  };
+
+  const openDAppErrorModal = () => {
+    store.dispatch(setOpenDAppErrorModal(true));
   };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
@@ -1478,6 +1604,7 @@ const MainController = (walletState): IMainController => {
     createWallet,
     forgetWallet,
     unlockFromController,
+    setIsLastTxConfirmed,
     lock,
     createAccount,
     editAccountLabel,
@@ -1504,6 +1631,7 @@ const MainController = (walletState): IMainController => {
     setEvmTransactionAsAccelerated,
     getAssetInfo,
     updateAssetsFromCurrentAccount,
+    fetchAndUpdateNftsState,
     updateUserNativeBalance,
     updateUserTransactionsState,
     getLatestUpdateForCurrentAccount,
@@ -1514,6 +1642,7 @@ const MainController = (walletState): IMainController => {
     importTrezorAccount,
     validatePendingEvmTransactions,
     ...keyringManager,
+    openDAppErrorModal,
   };
 };
 

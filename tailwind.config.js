@@ -55,6 +55,7 @@ module.exports = {
         menu: '27rem',
         bigmenu: '31rem',
         85: '23rem',
+        tokenHeader: '70px',
       },
       letterSpacing: {
         tightest: '-.075em',

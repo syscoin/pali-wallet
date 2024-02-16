@@ -30,6 +30,8 @@ export interface ITransactionOptions {
       wallet: IMainController;
     };
   }) => Promise<void>;
+  isOpen?: boolean;
+  onClose?: any;
   setIsOpenModal: React.Dispatch<React.SetStateAction<boolean>>;
   setModalData: React.Dispatch<
     React.SetStateAction<{
@@ -42,4 +44,11 @@ export interface ITransactionOptions {
   >;
   transaction: IEvmTransaction;
   wallet: IMainController;
+}
+
+export interface IEIP6963ProviderInfo {
+  icon: string;
+  name: string;
+  rdns: string;
+  uuid: string;
 }

@@ -44,7 +44,7 @@ export const Modal = ({
   <Transition appear show={show} as={Fragment}>
     <Dialog
       as="div"
-      className={`fixed z-10 inset-0 overflow-y-auto ${className}`}
+      className={`fixed z-[9999] inset-0 overflow-y-auto ${className}`}
       onClose={() => {
         if (onClose) onClose();
       }}
@@ -106,6 +106,42 @@ export const DefaultModal = ({
 
       <div className="flex items-center justify-center mt-4">
         <NeutralButton type="button" onClick={onClose} id="got-it-btn">
+          {buttonText}
+        </NeutralButton>
+      </div>
+    </div>
+  </Modal>
+);
+
+export const NewDefaultModal = ({
+  buttonText = 'OK',
+  description = '',
+  onClose,
+  show,
+  title = '',
+}: IDefaultModal) => (
+  <Modal show={show} onClose={onClose}>
+    <div
+      className="inline-block absolute left-0 bottom-0 align-middle w-full max-w-md text-center font-poppins bg-bkg-blue200 shadow-xl overflow-hidden transform transition-all"
+      style={{ borderRadius: '50px 50px 0px 0px', padding: '0px 0px 48px 0px' }}
+    >
+      <Dialog.Title
+        as="h3"
+        className="px-2.5 py-5 bg-bkg-blackAlpha uppercase text-brand-white text-base font-semibold leading-6"
+      >
+        {title}
+      </Dialog.Title>
+
+      <div className="flex items-center flex-col justify-center px-6 mt-7 gap-7">
+        <p className="text-white text-sm">{description}</p>
+
+        <NeutralButton
+          type="button"
+          onClick={onClose}
+          id="got-it-btn"
+          fullWidth={true}
+          extraStyles="text-brand-blue text-base font-poppins"
+        >
           {buttonText}
         </NeutralButton>
       </div>
