@@ -142,7 +142,7 @@ export const ImportWalletWarning = ({
   );
 };
 
-export const TokenSuccessfulyAdded = ({
+export const TokenSuccessfullyAdded = ({
   phraseOne,
   onClose,
   show = true,
@@ -169,7 +169,7 @@ export const TokenSuccessfulyAdded = ({
   </ModalBase>
 );
 
-export const TimeSetSuccessfuly = ({
+export const TimeSetSuccessfully = ({
   phraseOne,
   onClose,
   show = true,

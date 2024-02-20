@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
@@ -16,7 +16,6 @@ import {
   handleUpdateTransaction,
   isERC20Transfer,
 } from 'utils/transactions';
-
 export const EvmTransactionsList = ({
   userTransactions,
 }: {
@@ -30,7 +29,6 @@ export const EvmTransactionsList = ({
     activeNetwork: { chainId },
     isLastTxConfirmed,
   } = useSelector((state: RootState) => state.vault);
-
   const {
     filteredTransactions,
     formatTimeStamp,
@@ -43,23 +41,27 @@ export const EvmTransactionsList = ({
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [showModal, setShowModal] = useState(false);
+  const [groupedTransactions, setGroupedTransactions] = useState<{
+    [date: string]: ITransactionInfoEvm[];
+  }>({});
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const { wallet } = getController();
-
-  const groupedTransactions = {};
-
-  filteredTransactions.forEach((tx) => {
-    const formattedDate = formatTimeStamp(tx.timestamp);
-
-    if (!groupedTransactions[formattedDate]) {
-      groupedTransactions[formattedDate] = [];
-    }
-
-    groupedTransactions[formattedDate].push(tx);
-  });
-
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
+  useEffect(() => {
+    const grouped = {};
+    filteredTransactions.forEach((tx) => {
+      const formattedDate = formatTimeStamp(tx.timestamp);
+      if (!grouped[formattedDate]) {
+        grouped[formattedDate] = [];
+      }
+      grouped[formattedDate].push(tx);
+    });
+    setGroupedTransactions(grouped);
+  }, [filteredTransactions]);
+  const currentAccount = useMemo(
+    () => accounts[activeAccount.type][activeAccount.id],
+    [accounts, activeAccount]
+  );
   const EvmTransactionsListComponent = ({
     tx,
   }: {
@@ -80,25 +82,20 @@ export const EvmTransactionsList = ({
         );
       }
     };
-
     const isTxCanceled = tx?.isCanceled === true;
     const isConfirmed = tx.confirmations > 0;
     const isErc20Tx = isERC20Transfer(tx as any);
-
     const isTxSent = isBitcoinBased
       ? false
       : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
-
     const tokenValue = !isConfirmed
       ? typeof tx.value === 'string'
         ? tx.value
         : Number(tx.value.hex) / 1e18
       : Number(tx.value) / 1e18;
-
     const finalTxValue = isErc20Tx
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : tokenValue;
-
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
         <div className="flex justify-between py-2 w-full">
@@ -114,7 +111,7 @@ export const EvmTransactionsList = ({
           <div className="flex items-center gap-4">
             <div className="flex flex-col justify-end items-end">
               <div className="text-white text-xs font-normal">
-                {Number(finalTxValue).toFixed(4)}{' '}
+                {Number(finalTxValue).toFixed(4)}
                 {getTokenSymbol(isErc20Tx, coinsList, tx)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal">
@@ -128,10 +125,7 @@ export const EvmTransactionsList = ({
                   src="/assets/icons/detailArrow.svg"
                   onClick={() =>
                     navigate('/home/details', {
-                      state: {
-                        id: null,
-                        hash: tx[txId],
-                      },
+                      state: { id: null, hash: tx[txId] },
                     })
                   }
                 />
@@ -144,7 +138,6 @@ export const EvmTransactionsList = ({
       </div>
     );
   };
-
   useEffect(() => {
     if (!currentAccount.transactions.ethereum?.[chainId]) {
       return;
@@ -153,22 +146,18 @@ export const EvmTransactionsList = ({
     const lastTx = currentAccount.transactions.ethereum[chainId][
       lastIndex
     ] as IEvmTransaction;
-
     if (isLastTxConfirmed?.[chainId]) {
       return;
     }
-
     if (lastTx?.confirmations === 0) {
       wallet.setIsLastTxConfirmed(chainId, false);
       return;
     }
-
     if (lastTx?.confirmations > 0 && !isLastTxConfirmed?.[chainId]) {
       setShowModal(true);
       wallet.setIsLastTxConfirmed(chainId, true);
     }
   }, [currentAccount]);
-
   return (
     <>
       <StatusModal
