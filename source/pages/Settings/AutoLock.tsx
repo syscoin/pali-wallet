@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, Button } from 'components/index';
-import { TimeSetSuccessfuly } from 'components/Modal/WarningBaseModal';
+import { TimeSetSuccessfully } from 'components/Modal/WarningBaseModal';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -67,7 +67,7 @@ const AutolockView = () => {
           {t('settings.setAutoLockTime')}
         </p>
       </div>
-      <TimeSetSuccessfuly
+      <TimeSetSuccessfully
         show={confirmed}
         onClose={() => {
           setConfirmed(false);

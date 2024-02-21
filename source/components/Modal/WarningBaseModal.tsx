@@ -142,7 +142,7 @@ export const ImportWalletWarning = ({
   );
 };
 
-export const TokenSuccessfulyAdded = ({
+export const TokenSuccessfullyAdded = ({
   phraseOne,
   onClose,
   show = true,
@@ -169,7 +169,7 @@ export const TokenSuccessfulyAdded = ({
   </ModalBase>
 );
 
-export const TimeSetSuccessfuly = ({
+export const TimeSetSuccessfully = ({
   phraseOne,
   onClose,
   show = true,
@@ -238,7 +238,6 @@ export const TxSuccessful = ({
   title,
 }: IDefaultModal) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   return (
     <ModalBase onClose={onClose} show={show}>
@@ -253,7 +252,7 @@ export const TxSuccessful = ({
           id="unlock-btn"
           type="submit"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/home')}
+          onClick={onClose}
         >
           {t('buttons.ok')}
         </Button>

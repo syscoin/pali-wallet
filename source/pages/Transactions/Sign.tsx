@@ -3,15 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import {
-  Button,
-  DefaultModal,
-  ErrorModal,
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-} from 'components/index';
-import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
+import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
+import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
@@ -64,7 +57,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
   return (
     <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
-      <TokenSuccessfulyAdded
+      <TokenSuccessfullyAdded
         show={confirmed}
         onClose={window.close}
         title={t('transactions.signatureRequestWasRequest')}
