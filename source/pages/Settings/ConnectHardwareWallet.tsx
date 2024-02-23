@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { Disclosure } from '@headlessui/react';
 import React, { FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -7,14 +6,7 @@ import { useSelector } from 'react-redux';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
-import {
-  Layout,
-  Icon,
-  Tooltip,
-  NeutralButton,
-  DefaultModal,
-  Card,
-} from 'components/index';
+import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -23,8 +15,7 @@ const ConnectHardwareWalletView: FC = () => {
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedHardwareWallet, setSelectedHardwareWallet] =
-    useState('trezor');
+  const [selectedHardwareWallet, setSelectedHardwareWallet] = useState();
   const [isReconnect, setIsReconnect] = useState<boolean>(false);
   const { activeNetwork, isBitcoinBased, accounts, advancedSettings } =
     useSelector((state: RootState) => state.vault);
@@ -36,15 +27,6 @@ const ConnectHardwareWalletView: FC = () => {
   const { slip44 } = activeNetwork;
 
   const isSysUTXOMainnet = isBitcoinBased && activeNetwork.chainId === 57;
-  const ledgerButtonColor =
-    selectedHardwareWallet === 'ledger'
-      ? 'bg-bkg-3 border-brand-deepPink cursor-pointer'
-      : 'bg-bkg-1 border-brand-royalblue cursor-pointer';
-
-  const trezorButtonColor =
-    selectedHardwareWallet === 'trezor'
-      ? 'bg-bkg-3 border-brand-deepPink'
-      : 'bg-bkg-1 border-brand-royalblue';
 
   const modalTitle = isReconnect
     ? t('settings.ledgerConnected')
@@ -55,6 +37,24 @@ const ConnectHardwareWalletView: FC = () => {
     : t('settings.walletSelectedMessage');
 
   const controller = getController();
+
+  const trezorSelectedButtonStyle = `${
+    selectedHardwareWallet === 'trezor'
+      ? 'bg-brand-blue400 border-2 border-brand-blue400 cursor-pointer'
+      : 'bg-transparent border-2 border-white '
+  }`;
+
+  const ledgerSelectedButtonStyle = `${
+    selectedHardwareWallet === 'ledger'
+      ? 'bg-brand-blue400 border-2 border-brand-blue400 cursor-pointer'
+      : 'bg-transparent border-2 border-white '
+  }`;
+
+  const confirmButtonDisbledStyle = `${
+    isTestnet || selectedHardwareWallet === undefined
+      ? 'opacity-60'
+      : 'opacity-100'
+  }`;
 
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
@@ -180,153 +180,101 @@ const ConnectHardwareWalletView: FC = () => {
           window.close();
         }}
       />
-      <div className="flex flex-col items-center justify-center w-full md:max-w-md">
+      <div className="flex flex-col  items-center justify-center w-full md:max-w-md">
+        <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
+          <img
+            className="absolute left-[30%]"
+            src="/assets/icons/hardwallet.svg"
+          />
+        </div>
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
-          <p className="text-white text-sm">
-            {t('settings.selectTheHardware')}{' '}
-            {!trezorAccounts.length
-              ? t('settings.toConnect')
-              : t('settings.toAddAccount')}{' '}
-            {t('settings.toPali')}
-          </p>
+          {selectedHardwareWallet ? (
+            <>
+              <div className="flex flex-col text-center justify-center items-center w-max text-sm">
+                <p>
+                  {t('settings.connectYourWalletAndClick', {
+                    hardwalletName:
+                      selectedHardwareWallet === 'ledger' ? 'LEDGER' : 'TREZOR',
+                  })}
+                </p>
+                <p className="text-brand-gray200">
+                  {t('settings.youCanUseAny', {
+                    hardwalletName:
+                      selectedHardwareWallet === 'ledger' ? 'Ledger' : 'Trezor',
+                  })}
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center">
+              <p className="text-white text-center text-sm">
+                {t('settings.selectTheHardware')}{' '}
+              </p>
 
-          <p
-            className={`${trezorButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6 cursor-pointer`}
-            onClick={() => setSelectedHardwareWallet('trezor')}
-            id="trezor-btn"
-          >
-            Trezor
-          </p>
-          {advancedSettings?.ledger && (
-            <Tooltip
-              content={
-                isSysUTXOMainnet || !isBitcoinBased
-                  ? ''
-                  : t('settings.ledgerOnlyAvailable')
-              }
-            >
-              <p
-                className={`${ledgerButtonColor} rounded-full py-2 w-80 md:w-full mx-auto text-center border text-sm my-6`}
-                onClick={() => {
-                  if (isSysUTXOMainnet || !isBitcoinBased) {
-                    setSelectedHardwareWallet('ledger');
-                  }
-                  return;
-                }}
+              <button
+                className={`${trezorSelectedButtonStyle} mt-6 rounded-full py-2 w-80 mx-auto text-center text-base font-medium mb-[6px] hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                onClick={() => setSelectedHardwareWallet('trezor')}
                 id="trezor-btn"
               >
-                Ledger
-              </p>
-            </Tooltip>
-          )}
-
-          {isLedger && (
-            <div className="flex flex-col items-center justify-center w-full md:max-w-full mb-6">
-              <Card type="info" className="border-alert-darkwarning">
-                <div>
-                  <div className="text-xs text-alert-darkwarning font-bold">
-                    <p>
-                      {isSysUTXOMainnet
-                        ? t('settings.dontForget')
-                        : t('settings.dontForgetEvm')}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {isLedger && (
-            <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
-              <p>
-                {isSysUTXOMainnet
-                  ? t('settings.toUseLedger')
-                  : t('settings.toUseLedgerEvm')}
-              </p>
-
-              {isSysUTXOMainnet && (
-                <p
-                  className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
-                  onClick={() =>
-                    window.open(
-                      'https://github.com/osiastedian/ledger-app-syscoin'
-                    )
+                Trezor
+              </button>
+              {advancedSettings?.ledger && (
+                <Tooltip
+                  content={
+                    isSysUTXOMainnet || !isBitcoinBased
+                      ? ''
+                      : t('settings.ledgerOnlyAvailable')
                   }
                 >
-                  {t('settings.githubLink')}
-                </p>
+                  <button
+                    className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                    onClick={() => {
+                      if (isSysUTXOMainnet || !isBitcoinBased) {
+                        setSelectedHardwareWallet('ledger');
+                      }
+                      return;
+                    }}
+                    id="trezor-btn"
+                  >
+                    Ledger
+                  </button>
+                </Tooltip>
               )}
             </div>
           )}
-
-          <div className="mb-6 mx-auto p-4 w-80 text-brand-white text-xs bg-bkg-4 border border-dashed border-brand-royalblue rounded-lg md:w-full">
-            <p>
-              <b>{t('settings.dontHaveWallet')}</b>
-              <br />
-              <br />
-              {isLedger ? t('settings.orderLedger') : t('settings.orderTrezor')}
-            </p>
-
-            <p
-              className="mt-2 w-32 hover:text-brand-white text-button-primary cursor-pointer"
-              onClick={() =>
-                window.open(
-                  isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/'
-                )
-              }
-            >
-              {t('settings.buyNow')}
-            </p>
-          </div>
-
-          <Disclosure>
-            {({ open }) => (
-              <>
-                <Disclosure.Button
-                  className={`${
-                    open ? 'rounded-t-lg' : 'rounded-lg'
-                  } mt-3 w-80 md:w-full py-2 px-4 flex justify-between items-center mx-auto border border-bkg-1 cursor-pointer transition-all duration-300 bg-bkg-1 learn-more-btn`}
-                >
-                  {t('connections.learnMore')}
-                  <Icon
-                    name="select-down"
-                    className={`${
-                      open ? 'transform rotate-180' : ''
-                    } mb-1 text-brand-deepPink100`}
-                  />
-                </Disclosure.Button>
-
-                <Disclosure.Panel>
-                  <div className="flex flex-col items-start justify-start mx-auto px-4 py-2 w-80 bg-bkg-3 border border-bkg-3 rounded-b-lg cursor-pointer transition-all duration-300 md:w-full md:max-w-md">
-                    <p className="my-2 text-sm">
-                      1 - {t('settings.connectToAHardwareWallet')}
-                    </p>
-
-                    <span className="mb-4 text-xs">
-                      {t('settings.connectYourHardwareWallet')}
-                    </span>
-
-                    <p className="my-2 text-sm">
-                      2 - {t('settings.startUsingSys')}
-                    </p>
-
-                    <span className="mb-1 text-xs">
-                      {t('settings.useYourHardwareAccount')}
-                    </span>
-                  </div>
-                </Disclosure.Panel>
-              </>
-            )}
-          </Disclosure>
         </div>
-
-        <div className="absolute bottom-12 md:static md:mt-6 mb-10">
-          <NeutralButton
+        <div className="absolute bottom-7">
+          {selectedHardwareWallet && (
+            <div className="w-[22rem] gap-3 flex flex-col mb-10 mx-auto p-4  text-brand-white text-xs bg-alpha-whiteAlpha100 border border-dashed border-alpha-whiteAlpha300 rounded-[20px] ">
+              <p className="font-medium">{t('settings.dontHaveWallet')}</p>
+              <div className="flex">
+                <p>
+                  {isLedger
+                    ? t('settings.orderLedger')
+                    : t('settings.orderTrezor')}
+                  <span
+                    className="hover:text-button-primary cursor-pointer pl-1 underline"
+                    onClick={() =>
+                      window.open(
+                        isLedger
+                          ? 'https://www.ledger.com/'
+                          : 'https://trezor.io/'
+                      )
+                    }
+                  >
+                    {t('settings.buyNow')}
+                  </span>
+                </p>
+              </div>
+            </div>
+          )}
+          <Button
             type="button"
             onClick={handleCreateHardwareWallet}
-            disabled={isTestnet}
+            disabled={isTestnet || selectedHardwareWallet === undefined}
             loading={isLoading}
             id="connect-btn"
+            className={`${confirmButtonDisbledStyle} cursor-pointer bg-white w-[22rem] mt-3 h-10 text-brand-blue200 text-base font-base font-medium rounded-2xl`}
           >
             <Tooltip
               content={
@@ -338,7 +286,7 @@ const ConnectHardwareWalletView: FC = () => {
             >
               <ButtonLabel />
             </Tooltip>
-          </NeutralButton>
+          </Button>
         </div>
       </div>
     </Layout>
