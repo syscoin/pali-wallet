@@ -10,8 +10,9 @@ import {
   SecondaryButton,
   Tooltip,
 } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
 
 interface ITransactionConfirmation {

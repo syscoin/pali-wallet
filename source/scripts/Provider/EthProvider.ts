@@ -3,13 +3,13 @@ import { ethErrors } from 'helpers/errors';
 
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
+import { getController } from 'scripts/Background';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
   blockingRestrictedMethods,
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
-import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';

@@ -3,10 +3,10 @@ import { ethErrors } from 'helpers/errors';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
 

@@ -6,8 +6,8 @@ import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
@@ -68,8 +68,8 @@ const ForgetWalletView = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
-                  const seed = controller.wallet.getSeed(value);
+                async validator(_, value) {
+                  const seed = await controller.wallet.getSeed(value);
 
                   if (seed) {
                     setIsPasswordValid(true);
@@ -107,8 +107,8 @@ const ForgetWalletView = () => {
                     message: '',
                   },
                   ({ getFieldValue }) => ({
-                    validator(_, value) {
-                      const seed = controller.wallet.getSeed(
+                    async validator(_, value) {
+                      const seed = await controller.wallet.getSeed(
                         getFieldValue('password')
                       );
 

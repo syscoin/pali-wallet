@@ -641,7 +641,7 @@ const MainController = (walletState): IMainController => {
     );
   };
 
-  const getSeed = (pwd: string) => keyringManager.getSeed(pwd);
+  const getSeed = async (pwd: string) => await keyringManager.getSeed(pwd);
 
   const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
     try {

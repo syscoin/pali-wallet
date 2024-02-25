@@ -12,7 +12,8 @@ import {
   DefaultModal,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {

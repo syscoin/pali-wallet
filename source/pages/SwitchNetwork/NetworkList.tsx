@@ -5,9 +5,9 @@ import { useSelector } from 'react-redux';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Button } from 'components/Button';
+import { getController } from 'scripts/Background';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
-import { getController } from 'utils/browser';
 
 import { useNetworkInfo } from './NetworkInfo';
 

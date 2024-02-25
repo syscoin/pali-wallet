@@ -14,9 +14,9 @@ import {
 import { Card, NeutralButton } from 'components/index';
 import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 
 import { CustomTokenErrorModal } from './CustomTokenErrorModal';
 

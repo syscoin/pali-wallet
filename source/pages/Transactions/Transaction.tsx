@@ -5,8 +5,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { camelCaseToText } from 'utils/format';
 
 import Fee from './Fee';

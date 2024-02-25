@@ -18,6 +18,7 @@ import {
 } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useQueryData } from 'hooks/useQuery';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import {
   IApprovedTokenInfos,
@@ -27,7 +28,7 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 

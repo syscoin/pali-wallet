@@ -12,8 +12,9 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 
 interface ISign {
   send?: boolean;

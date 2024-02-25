@@ -12,10 +12,10 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
+import { getController } from 'scripts/Background';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { IControllerUtils } from 'types/controllers';
-import { getController } from 'utils/browser';
 import { logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {

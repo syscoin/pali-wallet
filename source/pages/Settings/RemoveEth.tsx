@@ -6,8 +6,8 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const RemoveEthView = () => {
   const { timer, hasEthProperty } = useSelector(

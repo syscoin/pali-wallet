@@ -12,10 +12,10 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import { truncate, isNFT, getAssetBalance, formatCurrency } from 'utils/index';
 
 export const SendSys = () => {

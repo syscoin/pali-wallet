@@ -285,7 +285,7 @@ IMasterController => {
     wallet = Object.freeze(MainController(walletState));
     console.log({ wallet });
     utils = Object.freeze(ControllerUtils());
-    wallet.setStorage(window.localStorage);
+    wallet.setStorage(browser.storage.local);
     // readyCallback({
     //   appRoute,
     //   createPopup,

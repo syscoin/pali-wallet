@@ -11,8 +11,8 @@ import { getAsset } from '@pollum-io/sysweb3-utils';
 import { ErrorModal, NeutralButton } from 'components/index';
 import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 export const SyscoinImportToken = () => {
   const controller = getController();

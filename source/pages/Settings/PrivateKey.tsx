@@ -5,8 +5,8 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {

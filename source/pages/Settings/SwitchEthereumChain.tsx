@@ -10,8 +10,9 @@ import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 const SwitchChain: React.FC = () => {

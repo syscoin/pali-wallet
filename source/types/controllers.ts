@@ -82,6 +82,7 @@ export interface IMainController extends IKeyringManager {
           }
       >;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  getSeed: (pwd: string) => Promise<any>;
   handleWatchAsset: (
     type: string,
     asset: IWatchAssetTokenProps

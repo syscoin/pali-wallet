@@ -8,6 +8,7 @@ import { browser } from 'webextension-polyfill-ts';
 import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import {
   ICustomFeeParams,
@@ -16,7 +17,7 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
-import { getController, dispatchBackgroundEvent } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
 import removeScientificNotation from 'utils/removeScientificNotation';

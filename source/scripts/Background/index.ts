@@ -38,7 +38,9 @@ let paliPort: Runtime.Port;
 //   window.controller = MasterController(onWalletReady);
 // }
 
-export const getController = () => MasterController();
+const masterController = MasterController();
+
+export const getController = () => masterController;
 
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
