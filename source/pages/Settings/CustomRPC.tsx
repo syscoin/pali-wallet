@@ -394,8 +394,15 @@ const CustomRPCView = () => {
             className="flex justify-center items-center gap-2 cursor-pointer"
             onClick={() => (window.location.href = 'https://chainlist.org/')}
           >
-            <img src={checkAtIcon} alt="Check at chainlist" />
-            <p className="underline text-center text-white font-poppins text-sm">
+            <img
+              src={checkAtIcon}
+              alt="Check at chainlist"
+              onClick={() => (window.location.href = 'https://chainlist.org/')}
+            />
+            <p
+              className="underline text-center text-white font-poppins text-sm"
+              onClick={() => (window.location.href = 'https://chainlist.org/')}
+            >
               Check chainlist
             </p>
           </div>

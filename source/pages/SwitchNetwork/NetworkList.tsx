@@ -31,20 +31,27 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     selectedNetworkText,
     leftLogo,
     rightLogo,
-  } = useNetworkInfo({ isBitcoinBased, networks });
+  } = useNetworkInfo({ isBitcoinBased, isChanging, selectedNetwork });
 
-  const chainName = useMemo(
-    () => (isBitcoinBased ? 'ethereum' : 'syscoin'),
-    [isBitcoinBased]
-  );
+  const chainName = useMemo(() => {
+    if (isChanging) {
+      return selectedNetwork === 'UTXO' ? 'syscoin' : 'ethereum';
+    } else {
+      return isBitcoinBased ? 'ethereum' : 'syscoin';
+    }
+  }, [isBitcoinBased, isChanging, selectedNetwork]);
 
-  const newNetworks = useMemo(
-    () =>
-      isBitcoinBased
-        ? Object.values(networks.ethereum)
-        : Object.values(networks.syscoin),
-    [isBitcoinBased]
-  ); //todo: change name
+  const newNetworks = useMemo(() => {
+    if (isChanging) {
+      return selectedNetwork === 'UTXO'
+        ? Object.values(networks.syscoin)
+        : Object.values(networks.ethereum);
+    }
+
+    return isBitcoinBased
+      ? Object.values(networks.ethereum)
+      : Object.values(networks.syscoin);
+  }, [isBitcoinBased, isChanging, selectedNetwork, networks]);
 
   const testnetNetworks = useMemo(
     () => newNetworks.filter((obj) => obj?.isTestnet),
@@ -59,7 +66,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           (a, b) =>
             getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
         ),
-    []
+    [newNetworks]
   );
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
