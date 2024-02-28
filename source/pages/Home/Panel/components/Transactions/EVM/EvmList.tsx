@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
@@ -16,6 +16,7 @@ import {
   handleUpdateTransaction,
   isERC20Transfer,
 } from 'utils/transactions';
+
 export const EvmTransactionsList = ({
   userTransactions,
 }: {
@@ -29,6 +30,7 @@ export const EvmTransactionsList = ({
     activeNetwork: { chainId },
     isLastTxConfirmed,
   } = useSelector((state: RootState) => state.vault);
+
   const {
     filteredTransactions,
     formatTimeStamp,
@@ -38,36 +40,24 @@ export const EvmTransactionsList = ({
     getTxType,
     txId,
   } = useTransactionsListConfig(userTransactions);
+  const { navigate } = useUtils();
+  const { getFiatAmount } = usePrice();
+  const { wallet } = getController();
+
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [showModal, setShowModal] = useState(false);
   const [groupedTransactions, setGroupedTransactions] = useState<{
     [date: string]: ITransactionInfoEvm[];
   }>({});
-  const { navigate } = useUtils();
-  const { getFiatAmount } = usePrice();
-  const { wallet } = getController();
-  useEffect(() => {
-    const grouped = {};
-    filteredTransactions.forEach((tx) => {
-      const formattedDate = formatTimeStamp(tx.timestamp);
-      if (!grouped[formattedDate]) {
-        grouped[formattedDate] = [];
-      }
-      grouped[formattedDate].push(tx);
-    });
-    setGroupedTransactions(grouped);
-  }, [filteredTransactions]);
+
   const currentAccount = useMemo(
     () => accounts[activeAccount.type][activeAccount.id],
     [accounts, activeAccount]
   );
-  const EvmTransactionsListComponent = ({
-    tx,
-  }: {
-    tx: ITransactionInfoEvm;
-  }) => {
-    const getTxOptions = (isCanceled: boolean, isConfirmed: boolean) => {
+
+  const getTxOptions = useCallback(
+    (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {
       if (!isCanceled && !isConfirmed) {
         return (
           <TransactionOptions
@@ -81,21 +71,34 @@ export const EvmTransactionsList = ({
           />
         );
       }
-    };
+      return null;
+    },
+    [
+      handleUpdateTransaction,
+      alert,
+      chainId,
+      wallet,
+      setIsOpenModal,
+      setModalData,
+    ]
+  );
+
+  const EvmTransactionsListComponent = useCallback(({ tx }) => {
     const isTxCanceled = tx?.isCanceled === true;
-    const isConfirmed = tx.confirmations > 0;
+    const isConfirmed = tx?.confirmations > 0;
     const isErc20Tx = isERC20Transfer(tx as any);
     const isTxSent = isBitcoinBased
       ? false
-      : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
+      : tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
     const tokenValue = !isConfirmed
-      ? typeof tx.value === 'string'
-        ? tx.value
-        : Number(tx.value.hex) / 1e18
-      : Number(tx.value) / 1e18;
+      ? typeof tx?.value === 'string'
+        ? tx?.value
+        : Number(tx?.value?.hex) / 1e18
+      : Number(tx?.value) / 1e18;
     const finalTxValue = isErc20Tx
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : tokenValue;
+
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
         <div className="flex justify-between py-2 w-full">
@@ -115,7 +118,7 @@ export const EvmTransactionsList = ({
                 {getTokenSymbol(isErc20Tx, coinsList, tx)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal">
-                ${getFiatAmount(+tx.value / 1e18, 6)}
+                ${getFiatAmount(+tx?.value / 1e18, 6)}
               </div>
             </div>
             <div className="m-auto">
@@ -130,14 +133,29 @@ export const EvmTransactionsList = ({
                   }
                 />
               ) : (
-                getTxOptions(isTxCanceled, isConfirmed)
+                getTxOptions(isTxCanceled, isConfirmed, tx)
               )}
             </div>
           </div>
         </div>
       </div>
     );
-  };
+  }, []);
+
+  useEffect(() => {
+    const grouped = {};
+
+    filteredTransactions.forEach((tx) => {
+      const formattedDate = formatTimeStamp(tx?.timestamp);
+      if (!grouped[formattedDate]) {
+        grouped[formattedDate] = [];
+      }
+      grouped[formattedDate].push(tx);
+    });
+
+    setGroupedTransactions(grouped);
+  }, [filteredTransactions]);
+
   useEffect(() => {
     if (!currentAccount.transactions.ethereum?.[chainId]) {
       return;
@@ -158,6 +176,7 @@ export const EvmTransactionsList = ({
       wallet.setIsLastTxConfirmed(chainId, true);
     }
   }, [currentAccount]);
+
   return (
     <>
       <StatusModal
@@ -169,10 +188,10 @@ export const EvmTransactionsList = ({
       />
       <ConfirmationModal show={isOpenModal} {...modalData} />
       {Object.entries(groupedTransactions).map(([date, transactions]: any) => (
-        <div key={date} className="mb-[20px]">
+        <div key={date} className="relative mb-[20px]">
           <div className="text-xs text-white font-normal">{date}</div>
-          {transactions.map((tx, idx) => (
-            <EvmTransactionsListComponent key={idx} tx={tx} />
+          {transactions.map((tx) => (
+            <EvmTransactionsListComponent key={tx?.hash} tx={tx} />
           ))}
         </div>
       ))}

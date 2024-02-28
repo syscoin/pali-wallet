@@ -25,7 +25,6 @@ export const TransactionsPanel = () => {
   const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
-
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
   const transactions = useMemo(() => {
@@ -53,8 +52,10 @@ export const TransactionsPanel = () => {
     }
   }, [accounts, activeAccount, chainId, isBitcoinBased]);
 
-  const hasTransactions =
-    transactions.length > 0 || previousTransactions.length > 0;
+  const hasTransactions = useMemo(
+    () => (hasTransactions ? transactions : previousTransactions),
+    []
+  );
 
   useEffect(() => {
     if (
@@ -82,7 +83,7 @@ export const TransactionsPanel = () => {
     }
   };
 
-  const OpenTransactionExplorer = useCallback(() => {
+  const OpenTransactionExplorer = useMemo(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
     const openExplorer = () =>
@@ -115,7 +116,10 @@ export const TransactionsPanel = () => {
     };
   }, [isLoadingTxs]);
 
-  const allTransactions = hasTransactions ? transactions : previousTransactions;
+  const allTransactions = useMemo(
+    () => (hasTransactions ? transactions : previousTransactions),
+    [hasTransactions, transactions, previousTransactions]
+  );
 
   return (
     <>
@@ -123,19 +127,19 @@ export const TransactionsPanel = () => {
       {!internalLoading && !hasTransactions && (
         <div className="w-full mt-8 text-white bg-brand-blue600">
           <NoTransactionsComponent />
-          <OpenTransactionExplorer />
+          {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>
       )}
 
       {hasTransactions && (
-        <div className="p-4 mt-8 w-full text-white text-base bg-brand-blue600">
+        <div className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600">
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={allTransactions} />
           ) : (
             <EvmTransactionsList userTransactions={allTransactions} />
           )}
-          <OpenTransactionExplorer />
+          {OpenTransactionExplorer}
         </div>
       )}
       {/* <Fullscreen /> */}
