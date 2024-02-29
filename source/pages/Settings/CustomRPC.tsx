@@ -16,6 +16,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
 import { getController } from 'utils/browser';
+import { NetworkType } from 'utils/types';
 
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
@@ -39,6 +40,16 @@ const CustomRPCView = () => {
   const controller = getController();
 
   const [form] = useForm();
+
+  const switchBallStyle = isSyscoinRpc
+    ? 'translate-x-6 bg-brand-deepPink100'
+    : 'translate-x-1  bg-brand-blue200';
+
+  const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
+
+  const modalMessageOnSuccessful = state
+    ? t('settings.rpcSucessfullyEdited')
+    : t('settings.rpcSucessfullyAdded');
 
   const populateForm = (field: string, value: number | string) => {
     if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
@@ -115,11 +126,7 @@ const CustomRPCView = () => {
       <RPCSuccessfullyAdded
         show={addedRpc}
         title={t('titles.congratulations')}
-        phraseOne={
-          state
-            ? t('settings.rpcSucessfullyEdited')
-            : t('settings.rpcSucessfullyAdded')
-        }
+        phraseOne={modalMessageOnSuccessful}
         onClose={() => navigate('/settings/networks/edit')}
       />
       <StatusModal
@@ -157,7 +164,7 @@ const CustomRPCView = () => {
                 isBitcoinBased ? 'text-brand-pink200' : 'text-brand-blue200'
               }`}
             >
-              {isBitcoinBased ? 'UTXO' : 'NEVM'} Network
+              {isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM} Network
             </p>
           ) : (
             <div className="flex gap-x-2 mb-4 text-xs">
@@ -175,11 +182,7 @@ const CustomRPCView = () => {
                 >
                   <span className="sr-only">Syscoin Network</span>
                   <span
-                    className={`${
-                      isSyscoinRpc
-                        ? 'translate-x-6 bg-brand-deepPink100'
-                        : 'translate-x-1  bg-brand-blue200'
-                    } inline-block w-2 h-2 transform rounded-full`}
+                    className={`${switchBallStyle} inline-block w-2 h-2 transform rounded-full`}
                   />
                 </Switch>
               </Tooltip>
@@ -344,9 +347,7 @@ const CustomRPCView = () => {
             type="text"
             disabled={isInputDisabled}
             placeholder="Chain ID"
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'relative'
-            } custom-input-normal `}
+            className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
 
@@ -364,9 +365,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.symbol')}
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'relative'
-            } custom-input-normal relative`}
+            className={`${inputHiddenOrNotStyle} custom-input-normal relative`}
           />
         </Form.Item>
 
@@ -384,9 +383,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.explorer')}
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'relative'
-            } custom-input-normal `}
+            className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
         {state?.isEditing ? (
