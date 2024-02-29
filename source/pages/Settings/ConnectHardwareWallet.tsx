@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { FC, useEffect, useState } from 'react';
+import React, { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -8,6 +8,7 @@ import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
@@ -157,6 +158,27 @@ const ConnectHardwareWalletView: FC = () => {
     }
   };
 
+  const ledgerTooltipContent = useMemo(
+    () =>
+      isSysUTXOMainnet || !isBitcoinBased
+        ? ''
+        : t('settings.ledgerOnlyAvailable'),
+    [isSysUTXOMainnet, isBitcoinBased]
+  );
+
+  const supportTooltipContent = useMemo(
+    () =>
+      isTestnet &&
+      (isLedger
+        ? t('settings.ledgerDoesntSupport')
+        : t('settings.trezorDoesntSupport')),
+    [isTestnet, isLedger]
+  );
+
+  const handleHardwalletBuyNow = useCallback(() => {
+    window.open(isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/');
+  }, [isLedger]);
+
   useEffect(() => {
     verifyIfIsTestnet().then((isTestnetResponse) =>
       setIsTestnet(isTestnetResponse)
@@ -194,13 +216,17 @@ const ConnectHardwareWalletView: FC = () => {
                 <p>
                   {t('settings.connectYourWalletAndClick', {
                     hardwalletName:
-                      selectedHardwareWallet === 'ledger' ? 'LEDGER' : 'TREZOR',
+                      selectedHardwareWallet === HardWallets.LEDGER
+                        ? 'LEDGER'
+                        : 'TREZOR',
                   })}
                 </p>
                 <p className="text-brand-gray200">
                   {t('settings.youCanUseAny', {
                     hardwalletName:
-                      selectedHardwareWallet === 'ledger' ? 'Ledger' : 'Trezor',
+                      selectedHardwareWallet === HardWallets.LEDGER
+                        ? 'Ledger'
+                        : 'Trezor',
                   })}
                 </p>
               </div>
@@ -219,13 +245,7 @@ const ConnectHardwareWalletView: FC = () => {
                 Trezor
               </button>
               {advancedSettings?.ledger && (
-                <Tooltip
-                  content={
-                    isSysUTXOMainnet || !isBitcoinBased
-                      ? ''
-                      : t('settings.ledgerOnlyAvailable')
-                  }
-                >
+                <Tooltip content={ledgerTooltipContent}>
                   <button
                     className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
                     onClick={() => {
@@ -254,13 +274,7 @@ const ConnectHardwareWalletView: FC = () => {
                     : t('settings.orderTrezor')}
                   <span
                     className="hover:text-button-primary cursor-pointer pl-1 underline"
-                    onClick={() =>
-                      window.open(
-                        isLedger
-                          ? 'https://www.ledger.com/'
-                          : 'https://trezor.io/'
-                      )
-                    }
+                    onClick={handleHardwalletBuyNow}
                   >
                     {t('settings.buyNow')}
                   </span>
@@ -276,14 +290,7 @@ const ConnectHardwareWalletView: FC = () => {
             id="connect-btn"
             className={`${confirmButtonDisbledStyle} cursor-pointer bg-white w-[22rem] mt-3 h-10 text-brand-blue200 text-base font-base font-medium rounded-2xl`}
           >
-            <Tooltip
-              content={
-                isTestnet &&
-                (isLedger
-                  ? t('settings.ledgerDoesntSupport')
-                  : t('settings.trezorDoesntSupport'))
-              }
-            >
+            <Tooltip content={supportTooltipContent}>
               <ButtonLabel />
             </Tooltip>
           </Button>
