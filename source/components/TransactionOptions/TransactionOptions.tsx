@@ -79,7 +79,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         hash: transaction.hash,
       },
     });
-  }, []);
+  }, [transaction.hash]);
 
   return (
     <>
