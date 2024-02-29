@@ -1,5 +1,5 @@
 import { Menu, Transition } from '@headlessui/react';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +19,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
+
   const { t } = useTranslation();
   const { navigate } = useUtils();
 
@@ -70,6 +71,16 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         break;
     }
   };
+
+  const handleGoTxDetails = useCallback(() => {
+    navigate('/home/details', {
+      state: {
+        id: null,
+        hash: transaction.hash,
+      },
+    });
+  }, []);
+
   return (
     <>
       <Menu
@@ -83,7 +94,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
       hover:bg-opacity-30 rounded-full"
         >
           <IconButton className="w-5">
-            <Icon isSvg={true} name="EditTx" className="text-base" />
+            <Icon isSvg name="EditTx" className="text-base" />
           </IconButton>
         </Menu.Button>
 
@@ -112,19 +123,12 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   ${active ? 'font-semibold' : 'font-normal'}
                   flex items-center justify-start text-brand-white mb-4 w-full
                   `}
-                    onClick={() =>
-                      navigate('/home/details', {
-                        state: {
-                          id: null,
-                          hash: transaction.hash,
-                        },
-                      })
-                    }
+                    onClick={handleGoTxDetails}
                   >
                     <IconButton className="w-5 mr-3">
                       <Icon
                         name="externalLink"
-                        isSvg={true}
+                        isSvg
                         className="text-base text-brand-white"
                       />
                     </IconButton>
@@ -146,7 +150,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     <IconButton className="w-5 mr-3">
                       <Icon
                         name="SpeedUp"
-                        isSvg={true}
+                        isSvg
                         className="text-base text-brand-white"
                       />
                     </IconButton>
@@ -167,7 +171,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     <IconButton className="w-5 mr-3">
                       <Icon
                         name="Trash"
-                        isSvg={true}
+                        isSvg
                         className="text-base text-brand-white"
                       />
                     </IconButton>

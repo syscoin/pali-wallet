@@ -99,6 +99,12 @@ export const EvmTransactionsList = ({
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : tokenValue;
 
+    const handleGoTxDetails = () => {
+      navigate('/home/details', {
+        state: { id: null, hash: tx[txId] },
+      });
+    };
+
     return (
       <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
         <div className="flex justify-between py-2 w-full">
@@ -126,11 +132,7 @@ export const EvmTransactionsList = ({
                 <img
                   className="cursor-pointer transition-all hover:opacity-60"
                   src="/assets/icons/detailArrow.svg"
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: { id: null, hash: tx[txId] },
-                    })
-                  }
+                  onClick={handleGoTxDetails}
                 />
               ) : (
                 getTxOptions(isTxCanceled, isConfirmed, tx)
@@ -187,14 +189,16 @@ export const EvmTransactionsList = ({
         onClose={() => setShowModal(false)}
       />
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      {Object.entries(groupedTransactions).map(([date, transactions]: any) => (
-        <div key={date} className="relative mb-[20px]">
-          <div className="text-xs text-white font-normal">{date}</div>
-          {transactions.map((tx) => (
-            <EvmTransactionsListComponent key={tx?.hash} tx={tx} />
-          ))}
-        </div>
-      ))}
+      {Object?.entries(groupedTransactions)?.map(
+        ([date, transactions]: any) => (
+          <div key={date} className="relative mb-[20px]">
+            <div className="text-xs text-white font-normal">{date}</div>
+            {transactions?.map((tx) => (
+              <EvmTransactionsListComponent key={tx?.hash} tx={tx} />
+            ))}
+          </div>
+        )
+      )}
     </>
   );
 };
