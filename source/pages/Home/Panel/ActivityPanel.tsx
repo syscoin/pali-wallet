@@ -54,7 +54,7 @@ export const TransactionsPanel = () => {
 
   const hasTransactions = useMemo(
     () => (hasTransactions ? transactions : previousTransactions),
-    []
+    [transactions, previousTransactions]
   );
 
   useEffect(() => {
