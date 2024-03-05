@@ -52,10 +52,8 @@ export const TransactionsPanel = () => {
     }
   }, [accounts, activeAccount, chainId, isBitcoinBased]);
 
-  const hasTransactions = useMemo(
-    () => (hasTransactions ? transactions : previousTransactions),
-    [transactions, previousTransactions]
-  );
+  const hasTransactions =
+    transactions.length > 0 || previousTransactions.length > 0;
 
   useEffect(() => {
     if (
