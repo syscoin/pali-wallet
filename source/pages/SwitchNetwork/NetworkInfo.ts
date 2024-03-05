@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { useSelector } from 'react-redux';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
