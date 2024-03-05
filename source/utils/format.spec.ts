@@ -64,7 +64,7 @@ describe('Format', () => {
     const input =
       ' this? test! phrase   phone3 here use hello annual fury letter snack globe ';
     const output = formatSeedPhrase(input);
-    const outputLenght = output.split(' ').length;
+    const outputLenght = String(output).split(' ').length;
 
     expect(output).toBe(
       'this test phrase phone here use hello annual fury letter snack globe'

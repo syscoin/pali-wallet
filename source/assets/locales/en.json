@@ -168,7 +168,10 @@
     "congratulations": "CONGRATULATIONS!"
   },
   "import": {
-    "importingYourAccount": "Importing your wallet seed automatically import a wallet associated with this seed phrase.",
+    "importModalWordMissing": "Word missing!",
+    "importModalTheSeedPgrase": "The seed phrase must be 12 or 24 words and you inserted 11.",
+    "importAttention": "ATTENTION: ",
+    "importingYourAccount": "After importing your wallet you must add again your hardware wallets and adjust the wallet's personal settings.",
     "pasteYourWalletSeed": "Paste your wallet seed phrase"
   },
   "receive": {
