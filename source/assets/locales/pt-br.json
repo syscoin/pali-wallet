@@ -91,7 +91,10 @@
     "explorer": "Explorer?",
     "addressCopied": "Address successfully copied",
     "hashCopied": "Hash successfully copied",
-    "contractCopied": "Contract successfully copied"
+    "contractCopied": "Contract successfully copied",
+    "ifYouHaveAHardWallet": "Se você possui uma carteira física, você pode conectá-la agora!",
+    "congratulations": "Parabéns",
+    "youWalletWas": "Sua carteira foi importada com sucesso."
   },
   "import": {
     "importModalWordMissing": "Palavra ausente!",

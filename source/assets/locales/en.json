@@ -159,7 +159,11 @@
     "verifySysAddressDescription": "Click in button below to verify your SYS address.",
     "addressVerified": "Address successfully verified",
     "verificationDeniedByUser": "Verification denied by user.",
-    "clickToVerify": "Click to verify your SYS address."
+    "clickToVerify": "Click to verify your SYS address.",
+    "ifYouHaveAHardWallet":"If you have a hard wallet you can connect now!",
+    "congratulations":"Congratulations",
+    "youWalletWas":"Your wallet was successfully imported."
+
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",

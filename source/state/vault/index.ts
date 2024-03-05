@@ -340,6 +340,12 @@ const VaultState = createSlice({
     setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasErrorOndAppEVM = action.payload;
     },
+    setCongratulationsModalOnImportWallet(
+      state: IVaultState,
+      action: PayloadAction<boolean>
+    ) {
+      state.hasErrorOndAppEVM = action.payload;
+    },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
     },

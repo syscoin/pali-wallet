@@ -159,7 +159,11 @@
     "verifySysAddressDescription": "Haz clic en el botón de abajo para verificar tu dirección SYS.",
     "addressVerified": "Dirección verificada con éxito",
     "verificationDeniedByUser": "Verificación denegada por el usuario.",
-    "clickToVerify": "Haz clic para verificar tu dirección SYS."
+    "clickToVerify": "Haz clic para verificar tu dirección SYS.",
+    "ifYouHaveAHardWallet": "Si tienes una billetera física, ¡puedes conectarla ahora!",
+    "congratulations": "Felicidades",
+    "youWalletWas": "Tu billetera se importó con éxito."
+
   },
   "titles": {
     "assetDetails": "DETALLES DEL ACTIVO",
