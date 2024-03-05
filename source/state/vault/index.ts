@@ -61,7 +61,7 @@ export const initialState: IVaultState = {
   activeChain: INetworkType.Syscoin,
   activeNetwork: {
     chainId: 57,
-    url: 'https://blockbook.elint.services/',
+    url: 'https://blockbook.syscoin.org',
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',
