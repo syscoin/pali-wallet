@@ -164,7 +164,8 @@
   "titles": {
     "assetDetails": "ASSET DETAILS",
     "transactionDetails": "TRANSACTION DETAILS",
-    "importWallet": "Import wallet"
+    "importWallet": "Import wallet",
+    "congratulations": "CONGRATULATIONS!"
   },
   "import": {
     "importingYourAccount": "Importing your wallet seed automatically import a wallet associated with this seed phrase.",

@@ -381,5 +381,11 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Mantenha sua seed em segredo!",
     "anyoneWithThisInfo": "Qualquer pessoa com estas informações pode roubar seus fundos."
+  },
+  "titles": {
+    "assetDetails": "DETALLES DEL ACTIVO",
+    "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
+    "importWallet": "Importar billetera",
+    "congratulations": "PARABÉNS!"
   }
 }

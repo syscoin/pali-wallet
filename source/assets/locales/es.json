@@ -164,7 +164,8 @@
   "titles": {
     "assetDetails": "DETALLES DEL ACTIVO",
     "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
-    "importWallet": "Importar billetera"
+    "importWallet": "Importar billetera",
+    "congratulations": "FELICIDADES!"
   },
   "import": {
     "importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla.",
