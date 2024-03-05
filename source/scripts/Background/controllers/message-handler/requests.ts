@@ -8,6 +8,7 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { areStringsPresent } from 'utils/format';
 import { networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
@@ -25,6 +26,8 @@ export const methodRequest = async (
 ) => {
   const { dapp, wallet } = window.controller;
   const controller = getController();
+  const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
+  const isHybridDapp = areStringsPresent(host, hybridDapps);
   const [prefix, methodName] = data.method.split('_');
   const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
     store.getState().vault;
@@ -56,7 +59,7 @@ export const methodRequest = async (
     console.error(
       'It is not possible to interact with content scripts using Trezor Wallet. Please switch to a different account and try again.'
     );
-    //Todo: we're throwing arbitrary error codes here, later it would be good to check the avaiability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
+    //Todo: we're throwing arbitrary error codes here, later it would be good to check the availability of this errors codes and create a UTXO(bitcoin) json error standard and submit as a BIP;
     throw ethErrors.provider.custom({
       code: 4874,
       message:
@@ -71,7 +74,7 @@ export const methodRequest = async (
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, false);
+      return await enable(host, undefined, undefined, false, isHybridDapp);
     } catch (error) {
       await popupPromise({
         host,
@@ -80,12 +83,12 @@ export const methodRequest = async (
         data: {},
       });
 
-      return await enable(host, undefined, undefined, false);
+      return await enable(host, undefined, undefined, false, isHybridDapp);
     }
   }
   if (prefix === 'sys' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, true);
+      return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
       if (error.message === 'Connected to Ethereum based chain') {
         await popupPromise({
@@ -95,7 +98,7 @@ export const methodRequest = async (
           data: { network: data.network },
         });
 
-        return await enable(host, undefined, undefined, true);
+        return await enable(host, undefined, undefined, true, isHybridDapp);
       }
     }
   }
@@ -385,7 +388,7 @@ export const methodRequest = async (
     return resp;
   } else if (prefix === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  } else if (prefix === 'eth' && isBitcoinBased) {
+  } else if (prefix === 'eth' && isBitcoinBased && !isHybridDapp) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Method only available when connected on EVM chains'
@@ -396,31 +399,31 @@ export const methodRequest = async (
   const provider = SysProvider(host);
   const method = provider[methodName];
 
-  if (!method) throw cleanErrorStack(ethErrors.rpc.methodNotFound());
-
-  if (data.params) return await method(...data.params);
-
-  return await method();
+  if (method) {
+    if (data.params) return await method(...data.params);
+    return await method();
+  }
 };
 
 export const enable = async (
   host: string,
   chain: string,
   chainId: number,
-  isSyscoinDapp = false
+  isSyscoinDapp = false,
+  isHybridDapp = true
 ) => {
   const { isBitcoinBased } = store.getState().vault;
   const { dapp, wallet } = window.controller;
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
-  if (!isSyscoinDapp && isBitcoinBased) {
+  if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Bitcoin based chain',
       data: { code: 4101, message: 'Connected to Bitcoin based chain' },
     });
-  } else if (isSyscoinDapp && !isBitcoinBased) {
+  } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({
       code: 4101,
       message: 'Connected to Ethereum based chain',

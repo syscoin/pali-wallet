@@ -9,7 +9,7 @@ import { useSelector } from 'react-redux';
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
 import { ErrorModal, NeutralButton } from 'components/index';
-import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
+import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
@@ -117,9 +117,10 @@ export const SyscoinImportToken = () => {
         </Form.Item>
         <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
           <a
-            href=""
+            href="https://docs.paliwallet.com/guide/v2/"
             target="_blank"
             className="flex items-center justify-center gap-x-2"
+            rel="noreferrer"
           >
             <ExternalLinkIcon size={16} />
             <span className="font-normal font-poppins underline text-sm">
@@ -138,13 +139,14 @@ export const SyscoinImportToken = () => {
       </Form>
 
       {added && (
-        <TokenSuccessfulyAdded
+        <TokenSuccessfullyAdded
           title={t('tokens.tokenSuccessfullyAdded')}
           phraseOne={`${form.getFieldValue('symbol')} ${t(
-            'tokens.wasSucessfullyAdded'
+            'tokens.wasSuccessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}
           show={added}
+          buttonText={t('settings.gotIt')}
         />
       )}
 

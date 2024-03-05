@@ -445,7 +445,7 @@
     "formValue": "Valor del formulario",
     "tokenDecimals": "Decimales del token",
     "tokenSuccessfullyAdded": "Token agregado correctamente!",
-    "wasSucessfullyAdded": "se ha agregado con éxito a su monedero.",
+    "wasSuccessfullyAdded": "se ha agregado con éxito a su monedero.",
     "verifyTheCurrentNetwork": "Verificar la red actual",
     "verifyTheCurrentNetworkMessage": "Este token probablemente no está disponible en la red actual. Verifique la red del token e inténtelo de nuevo.",
     "verifyTheCurrentNetworkLog": "Dirección de contrato no válida. Verifique la dirección de contrato actual.",

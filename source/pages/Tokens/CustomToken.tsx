@@ -12,7 +12,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { Card, NeutralButton } from 'components/index';
-import { TokenSuccessfulyAdded } from 'components/Modal/WarningBaseModal';
+import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
@@ -630,9 +630,10 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
         <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
           <a
-            href=""
+            href="https://docs.paliwallet.com/guide/v2/"
             target="_blank"
             className="flex items-center justify-center gap-x-2"
+            rel="noreferrer"
           >
             <ExternalLinkIcon size={16} />
             <span className="font-normal font-poppins underline text-sm">
@@ -662,13 +663,14 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       </Form>
 
       {added && (
-        <TokenSuccessfulyAdded
+        <TokenSuccessfullyAdded
           show={added}
           title={t('tokens.tokenSuccessfullyAdded')}
           phraseOne={`${form.getFieldValue('assetSymbol')} ${t(
-            'tokens.wasSucessfullyAdded'
+            'tokens.wasSuccessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}
+          buttonText={t('settings.gotIt')}
         />
       )}
 
