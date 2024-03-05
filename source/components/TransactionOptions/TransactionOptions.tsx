@@ -1,5 +1,5 @@
 import { Menu, Transition } from '@headlessui/react';
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +19,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 }) => {
   const isLegacyTransaction =
     transaction.type === 0 || String(transaction.type) === '0x0';
+
   const { t } = useTranslation();
   const { navigate } = useUtils();
 
@@ -70,6 +71,16 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         break;
     }
   };
+
+  const handleGoTxDetails = useCallback(() => {
+    navigate('/home/details', {
+      state: {
+        id: null,
+        hash: transaction.hash,
+      },
+    });
+  }, [transaction.hash]);
+
   return (
     <>
       <Menu
@@ -80,12 +91,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         <Menu.Button
           className="inline-flex justify-center w-full 
       hover:text-button-primaryhover text-white text-sm font-medium 
-      hover:bg-opacity-30 rounded-full focus:outline-none 
-      focus-visible:ring-2 focus-visible:ring-white 
-      focus-visible:ring-opacity-75"
+      hover:bg-opacity-30 rounded-full"
         >
           <IconButton className="w-5">
-            <Icon isSvg={true} name="EditTx" className="text-base" />
+            <Icon isSvg name="EditTx" className="text-base" />
           </IconButton>
         </Menu.Button>
 
@@ -98,87 +107,82 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
           leaveFrom="transform opacity-100 scale-100"
           leaveTo="transform opacity-0 scale-95"
         >
-          <Menu.Items
-            as="div"
-            className="p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
+          <div className="absolute right-0 z-10 h-[15rem]">
+            <Menu.Items
+              as="div"
+              className="p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
             font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out cursor-pointer"
-          >
-            <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
-              PENDING TRANSACTION
-            </h1>
-            <Menu.Item>
-              {({ active }) => (
-                <li
-                  className={`
+            >
+              <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
+                PENDING TRANSACTION
+              </h1>
+              <Menu.Item>
+                {({ active }) => (
+                  <li
+                    className={`
                   ${active ? 'font-semibold' : 'font-normal'}
                   flex items-center justify-start text-brand-white mb-4 w-full
                   `}
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: {
-                        id: null,
-                        hash: transaction.hash,
-                      },
-                    })
-                  }
-                >
-                  <IconButton className="w-5 mr-3">
-                    <Icon
-                      name="externalLink"
-                      isSvg={true}
-                      className="text-base text-brand-white"
-                    />
-                  </IconButton>
-                  <span className="text-sm text-brand-white">
-                    See on the block explorer
-                  </span>
-                </li>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
-                <li
-                  className={`
+                    onClick={handleGoTxDetails}
+                  >
+                    <IconButton className="w-5 mr-3">
+                      <Icon
+                        name="externalLink"
+                        isSvg
+                        className="text-base text-brand-white"
+                      />
+                    </IconButton>
+                    <span className="text-sm text-brand-white">
+                      See on the block explorer
+                    </span>
+                  </li>
+                )}
+              </Menu.Item>
+              <Menu.Item>
+                {({ active }) => (
+                  <li
+                    className={`
                   ${active ? 'font-semibold' : 'font-normal'}
                   flex items-center justify-start text-brand-white mb-4 w-full
                   `}
-                  onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                >
-                  <IconButton className="w-5 mr-3">
-                    <Icon
-                      name="SpeedUp"
-                      isSvg={true}
-                      className="text-base text-brand-white"
-                    />
-                  </IconButton>
-                  <span className="text-sm text-brand-white">
-                    {t('header.speedUp')}
-                  </span>
-                </li>
-              )}
-            </Menu.Item>
-            <Menu.Item>
-              {({ active }) => (
-                <li
-                  className={`
+                    onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+                  >
+                    <IconButton className="w-5 mr-3">
+                      <Icon
+                        name="SpeedUp"
+                        isSvg
+                        className="text-base text-brand-white"
+                      />
+                    </IconButton>
+                    <span className="text-sm text-brand-white">
+                      {t('header.speedUp')}
+                    </span>
+                  </li>
+                )}
+              </Menu.Item>
+              <Menu.Item>
+                {({ active }) => (
+                  <li
+                    className={`
                 ${active ? 'font-semibold ' : 'font-normal'}
                 flex items-center justify-start w-full `}
-                  onClick={() => handleOnClick(UpdateTxAction.Cancel)}
-                >
-                  <IconButton className="w-5 mr-3">
-                    <Icon
-                      name="Trash"
-                      isSvg={true}
-                      className="text-base text-brand-white"
-                    />
-                  </IconButton>
-                  <span className="text-sm text-brand-white">
-                    {t('buttons.cancel')}
-                  </span>
-                </li>
-              )}
-            </Menu.Item>
-          </Menu.Items>
+                    onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                  >
+                    <IconButton className="w-5 mr-3">
+                      <Icon
+                        name="Trash"
+                        isSvg
+                        className="text-base text-brand-white"
+                      />
+                    </IconButton>
+                    <span className="text-sm text-brand-white">
+                      {t('buttons.cancel')}
+                    </span>
+                  </li>
+                )}
+              </Menu.Item>
+            </Menu.Items>
+          </div>
         </Transition>
       </Menu>
     </>
