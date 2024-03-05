@@ -9,18 +9,23 @@ import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
+import { NetworkType } from 'utils/types';
 
 import { useNetworkInfo } from './NetworkInfo';
+
+type currentNetwork = {
+  chain: string;
+  current: INetwork;
+};
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { wallet } = getController();
   const { isBitcoinBased, networks } = useSelector(
     (state: RootState) => state.vault
   );
-  const [selectCurrentNetwork, setSelectCurrentNetwork] = useState({
-    current: null,
-    chain: '',
-  });
+
+  const [selectCurrentNetwork, setSelectCurrentNetwork] =
+    useState<currentNetwork>();
   const [selectedNetwork, setSelectedNetwork] = useState<string>(
     isBitcoinBased ? 'UTXO' : 'EVM'
   );
@@ -31,20 +36,47 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     selectedNetworkText,
     leftLogo,
     rightLogo,
-  } = useNetworkInfo({ isBitcoinBased, networks });
+  } = useNetworkInfo({ isBitcoinBased, isChanging, selectedNetwork });
 
-  const chainName = useMemo(
-    () => (isBitcoinBased ? 'ethereum' : 'syscoin'),
-    [isBitcoinBased]
-  );
+  const isButtonDisabledBgStyle = selectCurrentNetwork
+    ? 'bg-white'
+    : 'bg-slate-400';
 
-  const newNetworks = useMemo(
-    () =>
-      isBitcoinBased
-        ? Object.values(networks.ethereum)
-        : Object.values(networks.syscoin),
-    [isBitcoinBased]
-  ); //todo: change name
+  const seletedEvmButtonStyle =
+    selectedNetwork === NetworkType.EVM ? 'opacity-100' : 'opacity-60';
+
+  const seletedUtxoButtonStyle =
+    selectedNetwork === NetworkType.UTXO ? 'opacity-100' : 'opacity-60';
+
+  const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    try {
+      store.dispatch(setOpenDAppErrorModal(false));
+      await wallet.setActiveNetwork(network, chain);
+      window.close();
+    } catch (networkError) {
+      window.close();
+    }
+  };
+
+  const chainName = useMemo(() => {
+    if (isChanging) {
+      return selectedNetwork === 'UTXO' ? 'syscoin' : 'ethereum';
+    } else {
+      return isBitcoinBased ? 'ethereum' : 'syscoin';
+    }
+  }, [isBitcoinBased, isChanging, selectedNetwork]);
+
+  const newNetworks = useMemo(() => {
+    if (isChanging) {
+      return selectedNetwork === 'UTXO'
+        ? Object.values(networks.syscoin)
+        : Object.values(networks.ethereum);
+    }
+
+    return isBitcoinBased
+      ? Object.values(networks.ethereum)
+      : Object.values(networks.syscoin);
+  }, [isBitcoinBased, isChanging, selectedNetwork, networks]);
 
   const testnetNetworks = useMemo(
     () => newNetworks.filter((obj) => obj?.isTestnet),
@@ -59,36 +91,28 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           (a, b) =>
             getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
         ),
-    []
+    [newNetworks]
   );
-
-  const handleChangeNetwork = async (network: INetwork, chain: string) => {
-    try {
-      store.dispatch(setOpenDAppErrorModal(false));
-      await wallet.setActiveNetwork(network, chain);
-      window.close();
-    } catch (networkError) {
-      window.close();
-    }
-  };
 
   return (
     <div className="mb-14">
       {isChanging && (
         <div className="flex pl-[20px] gap-2">
           <div
-            className={`bg-brand-blue500 text-base text-white ${
-              selectedNetwork === 'UTXO' ? 'opacity-100' : 'opacity-60'
-            } px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
-            onClick={() => setSelectedNetwork('UTXO')}
+            className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+            onClick={() => {
+              setSelectedNetwork('UTXO');
+              setSelectCurrentNetwork(null);
+            }}
           >
             UTXO
           </div>
           <div
-            className={`bg-brand-blue500 text-base text-white ${
-              selectedNetwork === 'EVM' ? 'opacity-100' : 'opacity-60'
-            } px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
-            onClick={() => setSelectedNetwork('EVM')}
+            className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+            onClick={() => {
+              setSelectedNetwork('EVM');
+              setSelectCurrentNetwork(null);
+            }}
           >
             EVM
           </div>
@@ -111,22 +135,22 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             {selectedNetworkText}
           </p>
-          {mainnetNetworks.map((currentNetwork: INetwork) => (
+          {mainnetNetworks.map((currentNetworks: INetwork) => (
             <div
               key={uniqueId()}
               className={`${
-                selectCurrentNetwork.current?.label === currentNetwork.label
+                selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
                   : 'bg-brand-blue600'
               } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
               onClick={() =>
                 setSelectCurrentNetwork({
-                  current: currentNetwork,
+                  current: currentNetworks,
                   chain: chainName,
                 })
               }
             >
-              {currentNetwork.label}
+              {currentNetworks.label}
             </div>
           ))}
         </div>
@@ -134,22 +158,22 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             Testnet network:
           </p>
-          {testnetNetworks.map((currentNetwork: INetwork) => (
+          {testnetNetworks.map((currentNetworks: INetwork) => (
             <div
               key={uniqueId()}
               className={`${
-                selectCurrentNetwork.current?.label === currentNetwork.label
+                selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
                   : 'bg-brand-blue600'
               } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
               onClick={() =>
                 setSelectCurrentNetwork({
-                  current: currentNetwork,
+                  current: currentNetworks,
                   chain: chainName,
                 })
               }
             >
-              {currentNetwork.label}
+              {currentNetworks?.label}
             </div>
           ))}
         </div>
@@ -162,13 +186,14 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           </div> */}
           <Button
             type="submit"
+            disabled={!selectCurrentNetwork?.current}
             onClick={() =>
               handleChangeNetwork(
-                selectCurrentNetwork.current,
-                selectCurrentNetwork.chain
+                selectCurrentNetwork?.current,
+                selectCurrentNetwork?.chain
               )
             }
-            className="bg-white rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium"
+            className={`${isButtonDisabledBgStyle} rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium`}
           >
             Connect
           </Button>
