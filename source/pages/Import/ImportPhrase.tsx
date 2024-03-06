@@ -46,7 +46,7 @@ const ImportPhrase: React.FC = () => {
       <StatusModal
         status="warn"
         title={t('import.importModalWordMissing')}
-        description={t('import.importModalTheSeedPgrase')}
+        description={t('import.importModalSeed')}
         onClose={() => setShowModal(false)}
         position="inset-[-6.5rem]"
         show={showModal}

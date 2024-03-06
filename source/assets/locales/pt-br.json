@@ -98,7 +98,7 @@
   },
   "import": {
     "importModalWordMissing": "Palavra ausente!",
-    "importModalTheSeedPgrase": "A frase-semente deve ter 12 ou 24 palavras e você inseriu 11.",
+    "importModalSeed": "A frase-semente deve ter 12 ou 24 palavras e você inseriu 11.",
     "importAttention": "ATENÇÃO: ",
     "importingYourAccount": "Após importar sua carteira você deve adicionar novamente suas carteiras de hardware e ajustar as configurações pessoais da carteira."
   },
