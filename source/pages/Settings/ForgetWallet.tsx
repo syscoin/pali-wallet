@@ -39,6 +39,9 @@ const ForgetWalletView = () => {
   };
 
   const [form] = Form.useForm();
+  console.log(hasAccountFunds, 'hasAccountFunds');
+  console.log(isSeedValid, 'isSeedValid');
+  console.log(isPasswordValid, 'isPasswordValid');
 
   return (
     <Layout title={t('menus.forget')}>
@@ -49,14 +52,13 @@ const ForgetWalletView = () => {
         validateMessages={{ default: '' }}
         form={form}
         onFinish={onSubmit}
-        className="password flex flex-col gap-4 items-center justify-center mb-10 w-full text-center "
+        className="password flex flex-col gap-4 items-center justify-center mb-10  text-center "
         name="forget"
         autoComplete="off"
       >
         <Form.Item
           name="password"
           hasFeedback
-          className="w-full"
           rules={[
             {
               required: true,
@@ -103,7 +105,10 @@ const ForgetWalletView = () => {
                       getFieldValue('password')
                     );
 
-                    if (seed === value) {
+                    console.log(seed.trim());
+                    console.log(value.trim());
+
+                    if (seed.trim() === value.trim()) {
                       setIsSeedValid(true);
 
                       return Promise.resolve();
