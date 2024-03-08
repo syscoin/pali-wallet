@@ -133,7 +133,7 @@ export const formatSeedPhrase = (seed: string) => {
   if (seedLength === 12) {
     return formattedSeed;
   } else {
-    return false;
+    return { seedLength, seedLengthError: true };
   }
 };
 

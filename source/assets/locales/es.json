@@ -173,7 +173,7 @@
   },
   "import": {
     "importModalWordMissing": "¡Palabra faltante!",
-    "importModalSeed": "La frase de semilla debe tener 12 o 24 palabras y has insertado 11.",
+    "importModalSeed": "La frase de semilla debe tener 12 o 24 palabras y has insertado {{seedLength}}.",
     "importAttention": "ATENCIÓN: ",
     "importingYourAccount": "Después de importar su billetera, debe agregar nuevamente sus billeteras de hardware y ajustar la configuración personal de la billetera.",
     "pasteYourWalletSeed": "Escribe tu frase semilla"

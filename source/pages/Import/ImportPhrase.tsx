@@ -17,7 +17,10 @@ const ImportPhrase: React.FC = () => {
   const { t } = useTranslation();
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
   const [visible, setVisible] = useState<boolean>(false);
-  const [isMoreThenTwelve, setIsMoreThenTwelve] = useState<boolean>(null);
+  const [seedValidation, setSeedValidation] = useState({
+    seedLength: null,
+    seedLengthError: false,
+  });
   const [showModal, setShowModal] = useState(false);
 
   const textAreaNotVisibleStyle = visible ? 'filter blur-sm' : '';
@@ -46,7 +49,9 @@ const ImportPhrase: React.FC = () => {
       <StatusModal
         status="warn"
         title={t('import.importModalWordMissing')}
-        description={t('import.importModalSeed')}
+        description={t('import.importModalSeed', {
+          seedLength: seedValidation.seedLength,
+        })}
         onClose={() => setShowModal(false)}
         position="inset-[-6.5rem]"
         show={showModal}
@@ -74,10 +79,16 @@ const ImportPhrase: React.FC = () => {
                 //todo: we should validate the seed phrase with the new fn
                 setSeedIsValid(controller.wallet.isSeedValid(value) && value);
                 if (controller.wallet.isSeedValid(value)) {
-                  setIsMoreThenTwelve(true);
+                  setSeedValidation({
+                    seedLength: value.seedLength,
+                    seedLengthError: false,
+                  });
                   return Promise.resolve();
                 }
-                setIsMoreThenTwelve(value);
+                setSeedValidation({
+                  seedLength: value.seedLength,
+                  seedLengthError: value.seedLengthError,
+                });
                 return Promise.reject();
               },
             }),
@@ -88,7 +99,9 @@ const ImportPhrase: React.FC = () => {
               id="import-wallet-input"
               rows={3}
               onBlur={() =>
-                !isMoreThenTwelve ? setShowModal(true) : setShowModal(false)
+                seedValidation.seedLengthError
+                  ? setShowModal(true)
+                  : setShowModal(false)
               }
               style={{ padding: '15px 38px 15px 15px' }}
               className={`${formBorderStatusStyle} ${textAreaNotVisibleStyle} bg-fields-input-primary overflow-hidden max-w-[17.5rem] w-[17.5rem] h-[5.625rem] text-brand-graylight text-sm border focus:border-fields-input-borderfocus rounded-lg outline-none resize-none `}
