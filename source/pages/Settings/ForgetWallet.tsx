@@ -105,9 +105,6 @@ const ForgetWalletView = () => {
                       getFieldValue('password')
                     );
 
-                    console.log(seed.trim());
-                    console.log(value.trim());
-
                     if (seed.trim() === value.trim()) {
                       setIsSeedValid(true);
 
