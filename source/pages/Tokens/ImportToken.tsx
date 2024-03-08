@@ -155,7 +155,7 @@ export const ImportToken: FC = () => {
           show={added}
           title={t('tokens.tokenSuccessfullyAdded')}
           description={`${selected.tokenSymbol} ${t(
-            'tokens.wasSucessfullyAdded'
+            'tokens.wasSuccessfullyAdded'
           )}`}
           onClose={() => navigate('/home')}
         />

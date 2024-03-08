@@ -36,7 +36,8 @@
     "success": "Correcto",
     "error": "Erro",
     "reconnect": "Reconectar",
-    "verify": "Verificar"
+    "verify": "Verificar",
+    "retryConnect": "Reintentar conexión"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -163,7 +164,8 @@
   "titles": {
     "assetDetails": "DETALLES DEL ACTIVO",
     "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
-    "importWallet": "Importar billetera"
+    "importWallet": "Importar billetera",
+    "congratulations": "FELICIDADES!"
   },
   "import": {
     "importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla.",
@@ -287,7 +289,7 @@
     "spanish": "Español",
     "accountImported": "Cuenta importada con éxito.",
     "advancedTitle": "CONFIGURACIONES AVANZADAS",
-    "clickHereSupport": "Haz clic aquí para ser redirigido a Syscoin Discord, por favor, contacta al equipo de soporte en #pali_support.",
+    "clickHereSupport": "Póngase en contacto con nuestro equipo en el canal Discord #pali_support",
     "toAccess": "Para acceder al enlace de soporte, necesitas dar permiso o copiar y pegar el enlace de abajo.",
     "refreshButtonWarning": "El botón de actualización envía múltiples solicitudes a la cadena de bloques a través de una RPC. Si lo activas, asegúrate de agregar tus propios proveedores de RPC pagados para evitar alcanzar el límite de solicitudes públicas de RPC. Úsalo bajo tu propia responsabilidad.",
     "ledgerBetaWarning": "El soporte de Ledger es una característica en beta. Úselo bajo su propia responsabilidad.",
@@ -314,12 +316,14 @@
     "addNewChain": "Agregar Nueva Cadena",
     "viewTheAddresses": "Ver las direcciones de tus cuentas permitidas",
     "errorCreatingHardWallet": "Error al crear monedero hardware.",
-    "hardwareWallet": "MONEDERO HARDWARE",
-    "selectTheHardware": "Selecciona el monedero hardware que desees",
+    "hardwareWallet": "CONECTAR HARDWALLET",
+    "selectTheHardware": "SELECCIONAR HARDWALLET:",
     "toConnect": "conectar",
     "toAddAccount": "para agregar una cuenta",
     "toPali": "a Pali",
     "dontHaveWallet": "¿No tienes un monedero hardware?",
+    "connectYourWalletAndClick": "CONECTA TU MONEDERO {{hardwalletName}} Y HAZ CLIC PARA CONECTAR",
+    "youCanUseAny": "Puedes usar cualquier dispositivo {{hardwalletName}}.",
     "orderTrezor": "Ordena un monedero Trezor y guarda tus fondos en almacenamiento en frío.",
     "orderLedger": "Ordena un monedero Ledger y guarda tus fondos en almacenamiento en frío.",
     "buyNow": "Comprar ahora",
@@ -334,7 +338,7 @@
     "nameYourNewAccount": "Nombrar tu nueva cuenta",
     "optional": "opcional",
     "password": "Contraseña",
-    "fiatCurrency": "MONEDA FIAT",
+    "fiatCurrency": "Moneda Fiat",
     "fiatCurrencySetSuccessfully": "La moneda fiat se configuró con éxito.",
     "nowYouWill": "Ahora verás los valores en tu monedero en SYS y",
     "setYourPreferred": "Configura tu moneda preferida para mostrar el valor de tus activos.",
@@ -413,7 +417,10 @@
     "importWalletWarning": "IMPORT WALLET ADVERTENCIA!",
     "thisActionErases": "Esta acción borra su billetera actual.",
     "toRestoreThis": "Para restaurar esta billetera actual en el futuro, asegúrese de tener la frase de recuperación.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!"
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
+    "setAutoLockTime": "Configurar tiempo de bloqueo automático",
+    "defaultMinutes": "Predeterminado: 5 minutos después de inactividad.",
+    "maximumMinutes": "Máximo: 120 minutos."
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",
@@ -441,7 +448,7 @@
     "formValue": "Valor del formulario",
     "tokenDecimals": "Decimales del token",
     "tokenSuccessfullyAdded": "Token agregado correctamente!",
-    "wasSucessfullyAdded": "se ha agregado con éxito a su monedero.",
+    "wasSuccessfullyAdded": "se ha agregado con éxito a su monedero.",
     "verifyTheCurrentNetwork": "Verificar la red actual",
     "verifyTheCurrentNetworkMessage": "Este token probablemente no está disponible en la red actual. Verifique la red del token e inténtelo de nuevo.",
     "verifyTheCurrentNetworkLog": "Dirección de contrato no válida. Verifique la dirección de contrato actual.",
@@ -473,7 +480,7 @@
     "withCurrentNetwork": "Con las condiciones actuales de la red, recomendamos una comisión de",
     "sys": "SYS",
     "signatureRequest": "SOLICITUD DE FIRMA",
-    "signatureRequestWasRequest": "La solicitud de firma se envió correctamente",
+    "signatureRequestWasRequest": "La solicitud se envió correctamente",
     "theDappHas": "La Dapp tiene su PSBT firmado",
     "youCanCheckYour": "Puede verificar su solicitud en la sección de actividad de su pantalla de inicio.",
     "signatureRequestFailed": "La solicitud de firma falló",
@@ -485,6 +492,27 @@
     "inputsOrOutputs": "Las entradas o salidas están vacías. Tal vez no tiene suficientes fondos para esta transacción.",
     "requestFailed": "solicitud fallida",
     "noDescriptionProvided": "No se proporcionó una descripción",
-    "requestSuccessfullySubmitted": "solicitud enviada con éxito"
+    "requestSuccessfullySubmitted": "solicitud enviada con éxito",
+    "confirmToProceed": "¡Confirma para continuar con la transacción!"
+  },
+  "switchNetwork": {
+    "connectedOn": "Estás conectado en",
+    "toUse": "para usar esta dApp, debes cambiar a",
+    "learnAbout": "Aprende sobre UTXO y EVM"
+  },
+  "chainError": {
+    "connectionTooLong": "LA CONEXIÓN ESTÁ TOMANDO DEMASIADO TIEMPO EN RESPONDER",
+    "tryingToConnectOn": "Estás intentando conectarte en:",
+    "goToAnotherNetwork": "Ir a otra red",
+    "editCurrentRpc": "Editar RPC de la red actual"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
+    "stillHaveFunds": "¡Todavía tienes fondos en tu billetera!",
+    "saveProperly": "Guarda correctamente esta frase semilla para que puedas importar esta billetera en el futuro."
+  },
+  "walletSeedPhrasePage": {
+    "keepSeedPhrase": "¡Mantén en secreto tu seed frase!",
+    "anyoneWithThisInfo": "Cualquier persona con esta información puede robar tus fondos."
   }
 }

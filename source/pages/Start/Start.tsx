@@ -147,7 +147,6 @@ export const Start = (props: any) => {
           Wallet
         </h1>
       </div>
-
       {isFirstStep ? getStarted : unLock}
     </div>
   );

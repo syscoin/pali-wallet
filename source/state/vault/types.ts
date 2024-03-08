@@ -25,11 +25,13 @@ export interface IVaultState {
     [k: string]: boolean;
   };
   changingConnectedAccount: IChangingConnectedAccount;
+  coinsList: any[];
   currentBlock: ethers.providers.Block;
   error: boolean;
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
+  isLastTxConfirmed: null | { [k: number]: boolean };
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;

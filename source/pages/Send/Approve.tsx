@@ -33,7 +33,7 @@ import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
-import { EditPriorityModal } from './EditPriorityModal';
+import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
   const { wallet } = getController();
@@ -344,12 +344,6 @@ export const ApproveTransactionComponent = () => {
         }}
       />
 
-      <DefaultModal
-        show={haveError}
-        title={t('send.verifyFields')}
-        description={t('send.changeFields')}
-        onClose={() => setHaveError(false)}
-      />
       <EditPriorityModal
         showModal={isOpenPriority}
         setIsOpen={setIsOpenPriority}
@@ -357,6 +351,13 @@ export const ApproveTransactionComponent = () => {
         setCustomFee={setCustomFee}
         setHaveError={setHaveError}
         fee={fee}
+      />
+
+      <DefaultModal
+        show={haveError}
+        title={t('send.verifyFields')}
+        description={t('send.changeFields')}
+        onClose={() => setHaveError(false)}
       />
       <EditApprovedAllowanceValueModal
         showModal={openEditFeeModal}

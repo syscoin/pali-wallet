@@ -163,3 +163,9 @@ export function parseJsonRecursively(jsonString: string) {
     return jsonString;
   }
 }
+export const areStringsPresent = (
+  strToCheck: string,
+  stringsArray: string[]
+): boolean =>
+  // Check if any string from stringsArray is present in strToCheck
+  stringsArray.some((subString) => strToCheck.includes(subString));

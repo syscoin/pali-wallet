@@ -142,7 +142,34 @@ export const ImportWalletWarning = ({
   );
 };
 
-export const TokenSuccessfulyAdded = ({
+export const TokenSuccessfullyAdded = ({
+  phraseOne,
+  onClose,
+  show = true,
+  title,
+  buttonText,
+}: IDefaultModal) => (
+  <ModalBase onClose={onClose} show={show}>
+    <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+      <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+        <h1 className="text-white font-medium text-base">{title}</h1>
+      </div>
+      <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
+        <p>{phraseOne}</p>
+      </div>
+      <Button
+        id="unlock-btn"
+        type="submit"
+        className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+        onClick={onClose}
+      >
+        {buttonText}
+      </Button>
+    </div>
+  </ModalBase>
+);
+
+export const TimeSetSuccessfully = ({
   phraseOne,
   onClose,
   show = true,
@@ -165,6 +192,161 @@ export const TokenSuccessfulyAdded = ({
           type="submit"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
           onClick={() => navigate('/home')}
+        >
+          {t('buttons.ok')}
+        </Button>
+      </div>
+    </ModalBase>
+  );
+};
+
+export const SignatureRequestSuccessfullySubmit = ({
+  phraseOne,
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
+          <p>{phraseOne}</p>
+        </div>
+        <Button
+          id="unlock-btn"
+          type="submit"
+          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+          onClick={() => navigate('/home')}
+        >
+          {t('buttons.ok')}
+        </Button>
+      </div>
+    </ModalBase>
+  );
+};
+
+export const TxSuccessful = ({
+  phraseOne,
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%] gap-5">
+          <p>{phraseOne}</p>
+        </div>
+        <Button
+          id="unlock-btn"
+          type="submit"
+          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+          onClick={onClose}
+        >
+          {t('buttons.ok')}
+        </Button>
+      </div>
+    </ModalBase>
+  );
+};
+
+export const ImportedWalletSuccessfully = ({
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <Button
+          id="unlock-btn"
+          type="submit"
+          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+          onClick={() => navigate('/home')}
+        >
+          {t('buttons.ok')}
+        </Button>
+      </div>
+    </ModalBase>
+  );
+};
+
+export const CreatedAccountSuccessfully = ({
+  phraseOne,
+  phraseTwo,
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <div className="flex flex-col pt-6  px-6 text-white text-left text-sm font-normal w-[94%]">
+          <p>{phraseOne}</p>
+        </div>
+        <div className="flex flex-col  pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
+          <p>{phraseTwo}</p>
+        </div>
+        <Button
+          id="unlock-btn"
+          type="submit"
+          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+          onClick={() => navigate('/home')}
+        >
+          {t('buttons.ok')}
+        </Button>
+      </div>
+    </ModalBase>
+  );
+};
+
+export const RPCSuccessfullyAdded = ({
+  phraseOne,
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
+          <p>{phraseOne}</p>
+        </div>
+
+        <Button
+          id="btn-ok"
+          type="submit"
+          className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+          onClick={() => navigate('/settings/networks/edit')}
         >
           {t('buttons.ok')}
         </Button>

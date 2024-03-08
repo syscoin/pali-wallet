@@ -414,6 +414,7 @@ export const AccountHeader: React.FC = () => {
   const controller = getController();
   const isLedger = activeAccount.type === KeyringAccountType.Ledger;
   const url = browser.runtime.getURL('app.html');
+
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
     if (!placeholder) return;

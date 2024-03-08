@@ -85,6 +85,7 @@ module.exports = {
     green: '#8EC100',
     darkGreen: '#83B100',
     black: '#000',
+    orange: '#FE9B07',
     white: '#fff',
     red: '#D70000',
     redDark: '#C60000',
@@ -94,5 +95,20 @@ module.exports = {
     graylight: '#F5F5F5',
     gray200: '#A2A5AB',
     gray300: '#808795',
+    whiteAlpaBlue: '#283851',
+    yellowInfo: '#FE9B07',
+  },
+  border: {
+    default: 'rgba(255, 255, 255, 0.16)',
+    diffBLUE: '#1F2B3F',
+  },
+  alpha: {
+    whiteAlpha100: 'rgba(255, 255, 255, 0.06)',
+    whiteAlpha200: 'rgba(255, 255, 255, 0.08)',
+    whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
+  },
+
+  extraColors: {
+    red: '#D70000',
   },
 };

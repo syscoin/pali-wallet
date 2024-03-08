@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -12,15 +13,16 @@ import { NetworkList } from './NetworkList';
 
 export const SwitchNetwork = () => {
   const { state }: { state: any } = useLocation();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const { t } = useTranslation();
+  const { isBitcoinBased, activeNetwork } = useSelector(
+    (rootState: RootState) => rootState.vault
   );
   const {
     connectedNetwork,
     networkThatNeedsChanging,
     connectedColor,
     networkNeedsChangingColor,
-  } = useNetworkInfo();
+  } = useNetworkInfo({ isBitcoinBased });
 
   const networkLabel = useMemo(
     () => (
@@ -31,7 +33,7 @@ export const SwitchNetwork = () => {
 
   const networkSymbol = useMemo(
     () => (
-      <p className={`text-xs font-bold ${connectedColor}`}>
+      <p className={`text-xs font-extrabold ${connectedColor}`}>
         {connectedNetwork}
       </p>
     ),
@@ -40,7 +42,7 @@ export const SwitchNetwork = () => {
 
   const networkSymbolChange = useMemo(
     () => (
-      <p className={`text-xs font-bold ${networkNeedsChangingColor}`}>
+      <p className={`text-xs font-extrabold ${networkNeedsChangingColor}`}>
         {networkThatNeedsChanging}!
       </p>
     ),
@@ -58,21 +60,22 @@ export const SwitchNetwork = () => {
                 <img src={warningImg} />
               </div>
               <span className="text-xs font-medium text-white text-center">
-                You are connected on
+                {t('switchNetwork.connectedOn')}
                 <div className="inline-block ml-1 align-middle">
                   {networkLabel}
                 </div>
                 <div className="inline-block ml-1 align-middle">
                   {networkSymbol}
                 </div>
-                , to use this dApp you must change to
+                , {t('switchNetwork.toUse')}
                 <div className="inline-block ml-1 align-middle">
                   {networkSymbolChange}
                 </div>
               </span>
-              <p className="text-[#808795] text-xs underline">
-                Learn about UTXO and EVM
-              </p>
+              {/*TODO: We don't have the link yet */}
+              {/* <p className="text-[#808795] text-xs underline">
+                {t('switchNetwork.learnAbout')}
+              </p> */}
             </>
           ) : null}
           <NetworkList isChanging={state?.switchingFromTimeError} />

@@ -47,6 +47,6 @@ export const onMessage = async (message: Message, port: Runtime.Port) => {
     port.postMessage({ id: message.id, data: response });
   } catch (error: any) {
     console.error(error);
-    port.postMessage({ id: message.id, data: { error: error } }); //This was altered for better ethereum compability TODO: check on syscoin contentScript side
+    port.postMessage({ id: message.id, data: { error: error } }); //This was altered for better ethereum compatibility TODO: check on syscoin contentScript side
   }
 };

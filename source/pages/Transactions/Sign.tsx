@@ -3,13 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import {
-  DefaultModal,
-  ErrorModal,
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-} from 'components/index';
+import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
+import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useQueryData } from 'hooks/index';
 import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
@@ -63,11 +58,11 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
 
   return (
     <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
-      <DefaultModal
+      <TokenSuccessfullyAdded
         show={confirmed}
         onClose={window.close}
         title={t('transactions.signatureRequestWasRequest')}
-        description={
+        phraseOne={
           send
             ? t('transactions.theDappHas')
             : t('transactions.youCanCheckYour')
@@ -97,24 +92,45 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       />
 
       {!loading && (
-        <div className="flex flex-col items-center justify-center w-full">
-          <ul className="scrollbar-styled mt-8 px-4 w-full h-80 text-xs overflow-auto">
-            <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
-          </ul>
+        <div className="flex flex-col items-start">
+          <div className="flex flex-col w-full items-center justify-center mb-8">
+            <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
+              <img className="absolute" src="/assets/images/signature.svg" />
+            </div>
+            <p className="text-sm text-white">
+              {t('transactions.signatureRequest')}
+            </p>
+            <p className="text-sm text-gray-200">
+              {t('transactions.confirmToProceed')}
+            </p>
+          </div>
+          <div className="bg-brand-blue600 rounded-t-[20px] ml-[15px] py-[8px] px-[16px] h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 text-center ">
+            Data
+          </div>
+          <div className="bg-brand-blue600 w-[396px] relative left-[0%] flex flex-col items-center justify-center p-6 rounded-[20px]">
+            <ul className="scrollbar-styled px-4 w-full text-xs overflow-auto">
+              <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
+            </ul>
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
-            <SecondaryButton type="button" onClick={window.close}>
-              {t('buttons.cancel')}
-            </SecondaryButton>
+            <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
+              <Button
+                type="button"
+                onClick={window.close}
+                className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
+              >
+                {t('buttons.cancel')}
+              </Button>
 
-            <PrimaryButton
-              type="submit"
-              disabled={confirmed}
-              loading={loading}
-              onClick={onSubmit}
-            >
-              {t('buttons.confirm')}
-            </PrimaryButton>
+              <Button
+                type="submit"
+                disabled={confirmed}
+                loading={loading}
+                onClick={onSubmit}
+                className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              >
+                {t('buttons.confirm')}
+              </Button>
+            </div>
           </div>
         </div>
       )}

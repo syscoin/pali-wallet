@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
-import { Icon } from 'components/Icon';
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
@@ -29,7 +28,7 @@ import {
   TransactionDataComponent,
   TransactionHexComponent,
 } from './components';
-import { EditPriorityModal } from './EditPriorityModal';
+import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
@@ -254,6 +253,15 @@ export const SendTransaction = () => {
         }}
       />
 
+      <EditPriorityModal
+        showModal={isOpen}
+        setIsOpen={setIsOpen}
+        customFee={customFee}
+        setCustomFee={setCustomFee}
+        setHaveError={setHaveError}
+        fee={fee}
+      />
+
       <DefaultModal
         show={haveError}
         title={t('send.verifyFields')}
@@ -272,31 +280,31 @@ export const SendTransaction = () => {
         }}
       />
 
-      <EditPriorityModal
-        showModal={isOpen}
-        setIsOpen={setIsOpen}
-        customFee={customFee}
-        setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
-        fee={fee}
-      />
-
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins font-thin">
-            <span className="text-sm font-medium font-thin">{host}</span>
+          <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
+            <div className="flex flex-col items-center mb-6 text-center">
+              <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+                <img
+                  className="relative w-[30px] h-[30px]"
+                  src={'/assets/icons/ArrowUp.svg'}
+                  alt="Icon"
+                />
+              </div>
+              <p className="text-brand-gray200 text-xs font-light">
+                {t('buttons.send')}
+              </p>
+              <p className="text-white text-base">{valueAndCurrency}</p>
+            </div>
 
-            <p className="flex flex-col my-8 text-center text-xl">
-              {t('buttons.send')}:
-              <span className="text-brand-royalblue">{valueAndCurrency}</span>
-            </p>
-
-            <p className="flex flex-col text-center text-base ">
-              {t('send.method')}:
-              <span className="text-brand-royalblue">
-                {decodedTxData?.method}
-              </span>
-            </p>
+            <div className="py-2 text-white text-xs flex w-full justify-between border-b border-dashed border-alpha-whiteAlpha300">
+              <p>Local</p>
+              <p>{host}</p>
+            </div>
+            <div className="py-2 text-white text-xs flex w-full justify-between">
+              <p>{t('send.method')}</p>
+              <p>{decodedTxData?.method}</p>
+            </div>
 
             {hasTxDataError && (
               <span className="text-red-600 text-sm my-4">
@@ -311,30 +319,24 @@ export const SendTransaction = () => {
             )}
           </div>
 
-          <div className="my-4 w-full">
+          <div className="w-full mt-6">
             <ul
-              className="flex flex-wrap justify-around -mb-px text-center text-brand-white text-sm font-medium"
+              className="flex gap-2 flex-wrap text-center text-brand-white font-normal"
               id="tabExample"
               role="tablist"
             >
               {tabElements.map((tab) => (
                 <li
-                  className={`${
+                  className={`h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 ${
                     tab.id === tabSelected
-                      ? 'border-b border-brand-royalblue'
-                      : ''
+                      ? 'bg-brand-blue600 rounded-t-[20px] py-[8px] px-[16px] '
+                      : 'bg-alpha-whiteAlpha200 rounded-t-[20px] py-[8px] px-[16px] '
                   }`}
                   role="presentation"
                   key={tab.id}
+                  onClick={() => setTabSelected(tab.id)}
                 >
-                  <button
-                    className="inline-block p-4 hover:text-gray-200 border-b-2 hover:border-brand-royalblue border-transparent rounded-t-lg"
-                    type="button"
-                    role="tab"
-                    onClick={() => setTabSelected(tab.id)}
-                  >
-                    {t(`send.${tab.tabName.toLowerCase()}`)}
-                  </button>
+                  {t(`send.${tab.tabName.toLowerCase()}`)}
                 </li>
               ))}
             </ul>
@@ -376,10 +378,13 @@ export const SendTransaction = () => {
             ))}
           </div>
 
-          <div className="flex items-center justify-around py-8 w-full">
+          <div
+            id="buttons"
+            className="flex items-center justify-around py-8 w-full"
+          >
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
               id="send-btn"
               onClick={() => {
                 if (isExternal) {
@@ -389,27 +394,16 @@ export const SendTransaction = () => {
                 }
               }}
             >
-              <Icon
-                name="arrow-up"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-                rotate={45}
-              />
               {t('buttons.cancel')}
             </Button>
 
             <Button
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
               id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              <Icon
-                name="arrow-down"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-              />
               {t('buttons.confirm')}
             </Button>
           </div>

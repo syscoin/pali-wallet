@@ -226,10 +226,6 @@ export const Router = () => {
           path="send/confirm"
           element={<ProtectedRoute element={<SendConfirm />} />}
         />
-        <Route
-          path="send/edit/gas"
-          element={<ProtectedRoute element={<SendConfirm />} />}
-        />
         <Route path="switch-network" element={<SwitchNetwork />} />
         <Route
           path="chain-fail-to-connect"

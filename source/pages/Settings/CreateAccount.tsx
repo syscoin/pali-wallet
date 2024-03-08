@@ -4,14 +4,16 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { Layout, NeutralButton } from 'components/index';
+import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { ellipsis } from 'utils/index';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
+  const [accountName, setAccountName] = useState<string>('');
+
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
@@ -35,14 +37,15 @@ const CreateAccount = () => {
   return (
     <Layout title={t('settings.createAccount')} id="create-account-title">
       {address ? (
-        <DefaultModal
+        <CreatedAccountSuccessfully
           show={address !== ''}
           onClose={() => {
             setAddress('');
             navigate('/home');
           }}
           title={t('settings.yourNewAccount')}
-          description={`${ellipsis(address)}`}
+          phraseOne={`${accountName}`}
+          phraseTwo={`${address}`}
         />
       ) : (
         <Form
@@ -67,10 +70,11 @@ const CreateAccount = () => {
           >
             <Input
               type="text"
-              className="input-small relative"
+              className="custom-input-normal relative"
               placeholder={`${t('settings.nameYourNewAccount')} (${t(
                 'settings.optional'
               )})`}
+              onChange={(e) => setAccountName(e.target.value)}
               id="account-name-input"
             />
           </Form.Item>

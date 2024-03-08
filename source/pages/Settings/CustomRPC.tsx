@@ -9,11 +9,14 @@ import { useLocation } from 'react-router-dom';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import checkAtIcon from 'assets/icons/checkAt.svg';
-import { Button, Layout, NeutralButton, Tooltip } from 'components/index';
+import { Button, Layout, Tooltip } from 'components/index';
+import { StatusModal } from 'components/Modal/StatusModal';
+import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
+import { NetworkType } from 'utils/types';
 
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
@@ -22,11 +25,15 @@ const CustomRPCView = () => {
   const [loading, setLoading] = useState(false);
   const [isUrlValid, setIsUrlValid] = useState(false);
   const [urlFieldValue, setUrlFieldValue] = useState('');
+  const [addedRpc, setAddedRpc] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState(false);
+  const [errorModalMessage, setErrorModalMessage] = useState<string>('');
   const [lastRpcChainIdSearched, setLastRpcChainIdSearched] = useState<
     number | null
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
   const { activeNetwork, isBitcoinBased } = useSelector(
+    // eslint-disable-next-line no-shadow
     (state: RootState) => state.vault
   );
   const { wallet } = getController();
@@ -35,8 +42,22 @@ const CustomRPCView = () => {
 
   const [form] = useForm();
 
+  const switchBallStyle = isSyscoinRpc
+    ? 'translate-x-6 bg-brand-deepPink100'
+    : 'translate-x-1  bg-brand-blue200';
+
+  const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
+
+  const modalMessageOnSuccessful = state
+    ? t('settings.rpcSucessfullyEdited')
+    : t('settings.rpcSucessfullyAdded');
+
   const populateForm = (field: string, value: number | string) => {
     if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
   };
 
   const onSubmit = async (data: ICustomRpcParams) => {
@@ -50,28 +71,20 @@ const CustomRPCView = () => {
     try {
       if (!state) {
         await controller.wallet.addCustomRpc(customRpc);
-
-        alert.success(t('settings.rpcSucessfullyAdded'));
-
         setLoading(false);
-
-        navigate('/settings/networks/edit');
-
+        setAddedRpc(true);
         return;
       }
 
       await controller.wallet.editCustomRpc(customRpc, state.selected);
-
-      alert.success(t('settings.rpcSucessfullyEdited'));
-
       setLoading(false);
-
-      navigate('/settings/networks/edit');
+      setAddedRpc(true);
     } catch (error: any) {
       alert.removeAll();
-      alert.error(error.message);
-
+      setAddedRpc(false);
+      setShowModal(true);
       setLoading(false);
+      setErrorModalMessage(error.message);
     }
   };
 
@@ -102,16 +115,28 @@ const CustomRPCView = () => {
     const fieldErrors = form.getFieldError('url');
     if (urlFieldValue && fieldErrors.length > 0) {
       alert.removeAll();
-      alert.error(t('settings.invalidRpcUrl'));
+      setErrorModalMessage(t('settings.invalidRpcUrl'));
     }
   }, [urlFieldValue]);
 
   const handleConnect = async (data: ICustomRpcParams) => {
     await wallet.setActiveNetwork(data, String(activeNetwork.chainId));
   };
-
   return (
     <Layout title={state?.isEditing ? 'EDIT RPC' : t('settings.customRpc')}>
+      <RPCSuccessfullyAdded
+        show={addedRpc}
+        title={t('titles.congratulations')}
+        phraseOne={modalMessageOnSuccessful}
+        onClose={() => navigate('/settings/networks/edit')}
+      />
+      <StatusModal
+        status="error"
+        title="Erro"
+        description={errorModalMessage}
+        onClose={closeModal}
+        show={showModal}
+      />
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -140,11 +165,11 @@ const CustomRPCView = () => {
                 isBitcoinBased ? 'text-brand-pink200' : 'text-brand-blue200'
               }`}
             >
-              {isBitcoinBased ? 'UTXO' : 'NEVM'} Network
+              {isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM} Network
             </p>
           ) : (
             <div className="flex gap-x-2 mb-4 text-xs">
-              <p className="text-brand-royalblue text-xs">Ethereum</p>
+              <p className="text-brand-blue200 text-xs">EVM</p>
               <Tooltip
                 content={
                   !!state ? 'Cant change type of network while editing' : ''
@@ -153,21 +178,17 @@ const CustomRPCView = () => {
                 <Switch
                   checked={isSyscoinRpc}
                   onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
-                  className="relative inline-flex items-center w-9 h-4 border border-brand-royalblue rounded-full"
+                  className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
                   disabled={!!state}
                 >
                   <span className="sr-only">Syscoin Network</span>
                   <span
-                    className={`${
-                      isSyscoinRpc
-                        ? 'translate-x-6 bg-brand-royalblue'
-                        : 'translate-x-1 bg-brand-deepPink100'
-                    } inline-block w-2 h-2 transform rounded-full`}
+                    className={`${switchBallStyle} inline-block w-2 h-2 transform rounded-full`}
                   />
                 </Switch>
               </Tooltip>
 
-              <p className="text-brand-deepPink100 text-xs">Syscoin</p>
+              <p className="text-brand-deepPink100 text-xs">UTXO</p>
             </div>
           )}
         </Form.Item>
@@ -189,7 +210,7 @@ const CustomRPCView = () => {
             placeholder={`${t('settings.label')} ${
               isSyscoinRpc ? `(${t('settings.label')})` : ''
             }`}
-            className="custom-input-password relative"
+            className="custom-input-normal relative"
           />
         </Form.Item>
 
@@ -308,7 +329,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
-            className="custom-input-password relative"
+            className="custom-input-normal relative"
           />
         </Form.Item>
 
@@ -327,9 +348,7 @@ const CustomRPCView = () => {
             type="text"
             disabled={isInputDisabled}
             placeholder="Chain ID"
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'relative'
-            } custom-input-password `}
+            className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
 
@@ -347,9 +366,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.symbol')}
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'block'
-            } custom-input-password relative`}
+            className={`${inputHiddenOrNotStyle} custom-input-normal relative`}
           />
         </Form.Item>
 
@@ -367,9 +384,7 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.explorer')}
-            className={`${
-              isSyscoinRpc ? 'hidden' : 'relative'
-            } custom-input-password `}
+            className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
         {state?.isEditing ? (
@@ -377,8 +392,15 @@ const CustomRPCView = () => {
             className="flex justify-center items-center gap-2 cursor-pointer"
             onClick={() => (window.location.href = 'https://chainlist.org/')}
           >
-            <img src={checkAtIcon} alt="Check at chainlist" />
-            <p className="underline text-center text-white font-poppins text-sm">
+            <img
+              src={checkAtIcon}
+              alt="Check at chainlist"
+              onClick={() => (window.location.href = 'https://chainlist.org/')}
+            />
+            <p
+              className="underline text-center text-white font-poppins text-sm"
+              onClick={() => (window.location.href = 'https://chainlist.org/')}
+            >
               Check chainlist
             </p>
           </div>
@@ -404,10 +426,14 @@ const CustomRPCView = () => {
             </Button>
           </div>
         ) : (
-          <div className="absolute bottom-12 md:static">
-            <NeutralButton type="submit" loading={loading}>
+          <div className="absolute bottom-10 md:static">
+            <Button
+              className="xl:p-18 h-[40px] w-[352px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              type="submit"
+              loading={loading}
+            >
               {t('buttons.save')}
-            </NeutralButton>
+            </Button>
           </div>
         )}
       </Form>

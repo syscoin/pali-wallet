@@ -31,7 +31,7 @@ export const EvmNftsList = () => {
         activeNetwork,
       });
     } catch (error) {
-      console.error('Erro ao obter NFTs:', error);
+      console.error('Error on get NFTs:', error);
     }
   };
 
