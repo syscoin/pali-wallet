@@ -24,7 +24,8 @@ export const methodRequest = async (
   host: string,
   data: { method: string; network?: string; params?: any[] }
 ) => {
-  const { dapp, wallet } = window.controller;
+  console.log({ data });
+  const { dapp, wallet } = getController();
   const controller = getController();
   const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
   const isHybridDapp = areStringsPresent(host, hybridDapps);
@@ -413,7 +414,7 @@ export const enable = async (
   isHybridDapp = true
 ) => {
   const { isBitcoinBased } = store.getState().vault;
-  const { dapp, wallet } = window.controller;
+  const { dapp, wallet } = getController();
   const { isOpen: isPopupOpen } = JSON.parse(
     window.localStorage.getItem('isPopupOpen')
   );
@@ -454,6 +455,6 @@ export const enable = async (
 };
 
 export const isUnlocked = () => {
-  const { wallet } = window.controller;
+  const { wallet } = getController();
   return wallet.isUnlocked();
 };

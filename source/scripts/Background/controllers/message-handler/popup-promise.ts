@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import { browser } from 'webextension-polyfill-ts';
 
+import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -25,7 +26,7 @@ export const popupPromise = async ({
   host: string;
   route: string;
 }) => {
-  const { dapp, createPopup } = window.controller;
+  const { dapp, createPopup } = getController();
   if (
     eventName !== 'connect' &&
     eventName !== 'wallet_switchEthereumChain' &&

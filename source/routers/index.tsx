@@ -66,25 +66,13 @@ export const Router = () => {
   const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
     useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  // const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
-  //   wallet.ethereumTransaction.web3Provider;
+  const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
+    wallet.ethereumTransaction.web3Provider;
   const isUnlocked = wallet.isUnlocked();
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
       JSON.stringify({ hasUtf8Error: false })
   );
-
-  // const onWalletReady = (windowController: any) => {
-  //   // Add any code here that depends on the initialized wallet
-  //   window.controller = windowController;
-  //   setInterval(window.controller.utils.setFiat, 3 * 60 * 1000);
-  //   // if (paliPort) {
-  //   //   window.controller.dapp.setup(paliPort);
-  //   // }
-  //   window.controller.utils.setFiat();
-  // };
-
-  // window.controller = MasterController(onWalletReady);
 
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
@@ -103,8 +91,8 @@ export const Router = () => {
       return;
     }
 
-    // const route = appRoute();
-    // if (route !== '/') navigate(route);
+    const route = appRoute();
+    if (route !== '/') navigate(route);
   }, [isUnlocked]);
 
   useEffect(() => {
@@ -135,25 +123,25 @@ export const Router = () => {
     }
   }, [pathname]);
 
-  // useEffect(() => {
-  //   if (
-  //     // serverHasAnError &&
-  //     isUnlocked &&
-  //     !isBitcoinBased &&
-  //     !isNetworkChanging
-  //   ) {
-  //     // if (errorMessage !== 'string' && errorMessage?.code === -32016) {
-  //     //   setmodalMessage(
-  //     //     'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
-  //     //   );
-  //     // } else {
-  //     //   setmodalMessage(
-  //     //     'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
-  //     //   );
-  //     // }
-  //     setShowModal(true);
-  //   }
-  // }, [serverHasAnError]);
+  useEffect(() => {
+    if (
+      serverHasAnError &&
+      isUnlocked &&
+      !isBitcoinBased &&
+      !isNetworkChanging
+    ) {
+      if (errorMessage !== 'string' && errorMessage?.code === -32016) {
+        setmodalMessage(
+          'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
+        );
+      } else {
+        setmodalMessage(
+          'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
+        );
+      }
+      setShowModal(true);
+    }
+  }, [serverHasAnError]);
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
@@ -172,10 +160,10 @@ export const Router = () => {
         description={t('settings.bgErrorMessage')}
         onClose={async () => {
           setShowUtf8ErrorModal(false);
-          // if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
-          //   await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
-          // }
-          // wallet.lock();
+          if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
+            await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
+          }
+          wallet.lock();
           navigate('/');
         }}
       />
@@ -184,10 +172,9 @@ export const Router = () => {
         title="RPC Error"
         description={`${modalMessage}`}
         warningMessage={`Provider Error: ${
-          // errorMessage === 'string' || typeof errorMessage === 'undefined'
-          //   ? errorMessage
-          //   : errorMessage.message
-          ''
+          errorMessage === 'string' || typeof errorMessage === 'undefined'
+            ? errorMessage
+            : errorMessage.message
         }`}
         onClose={() => setShowModal(false)}
       />

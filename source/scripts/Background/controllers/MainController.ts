@@ -405,74 +405,74 @@ const MainController = (walletState): IMainController => {
             type: wallet.activeAccountType,
           },
         });
-        window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-          method: PaliEvents.chainChanged,
-          params: {
-            chainId: `0x${network.chainId.toString(16)}`,
-            networkVersion: network.chainId,
-          },
-        });
+        // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+        //   method: PaliEvents.chainChanged,
+        //   params: {
+        //     chainId: `0x${network.chainId.toString(16)}`,
+        //     networkVersion: network.chainId,
+        //   },
+        // });
 
-        window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
-          method: PaliEvents.isBitcoinBased,
-          params: { isBitcoinBased },
-        });
+        // window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
+        //   method: PaliEvents.isBitcoinBased,
+        //   params: { isBitcoinBased },
+        // });
 
-        window.controller.dapp.handleBlockExplorerChange(
-          PaliSyscoinEvents.blockExplorerChanged,
-          {
-            method: PaliSyscoinEvents.blockExplorerChanged,
-            params: isBitcoinBased ? network.url : null,
-          }
-        );
+        // window.controller.dapp.handleBlockExplorerChange(
+        //   PaliSyscoinEvents.blockExplorerChanged,
+        //   {
+        //     method: PaliSyscoinEvents.blockExplorerChanged,
+        //     params: isBitcoinBased ? network.url : null,
+        //   }
+        // );
 
         switch (isBitcoinBased) {
           case true:
             const isTestnet = verifyIfIsTestnet();
 
-            window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-              method: PaliEvents.isTestnet,
-              params: { isTestnet },
-            });
+            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            //   method: PaliEvents.isTestnet,
+            //   params: { isTestnet },
+            // });
 
-            window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-              method: PaliEvents.xpubChanged,
-              params:
-                wallet.accounts[wallet.activeAccountType][
-                  wallet.activeAccountId
-                ].xpub,
-            });
+            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+            //   method: PaliEvents.xpubChanged,
+            //   params:
+            //     wallet.accounts[wallet.activeAccountType][
+            //       wallet.activeAccountId
+            //     ].xpub,
+            // });
 
-            window.controller.dapp.handleStateChange(
-              PaliEvents.accountsChanged,
-              {
-                method: PaliEvents.accountsChanged,
-                params: null,
-              }
-            );
+            // window.controller.dapp.handleStateChange(
+            //   PaliEvents.accountsChanged,
+            //   {
+            //     method: PaliEvents.accountsChanged,
+            //     params: null,
+            //   }
+            // );
             break;
           case false:
-            window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-              method: PaliEvents.isTestnet,
-              params: { isTestnet: undefined },
-            });
+            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            //   method: PaliEvents.isTestnet,
+            //   params: { isTestnet: undefined },
+            // });
 
-            window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-              method: PaliEvents.xpubChanged,
-              params: null,
-            });
+            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+            //   method: PaliEvents.xpubChanged,
+            //   params: null,
+            // });
 
-            window.controller.dapp.handleStateChange(
-              PaliEvents.accountsChanged,
-              {
-                method: PaliEvents.accountsChanged,
-                params: [
-                  wallet.accounts[wallet.activeAccountType][
-                    wallet.activeAccountId
-                  ].address,
-                ],
-              }
-            );
+            // window.controller.dapp.handleStateChange(
+            //   PaliEvents.accountsChanged,
+            //   {
+            //     method: PaliEvents.accountsChanged,
+            //     params: [
+            //       wallet.accounts[wallet.activeAccountType][
+            //         wallet.activeAccountId
+            //       ].address,
+            //     ],
+            //   }
+            // );
             break;
           default:
             break;
@@ -491,64 +491,64 @@ const MainController = (walletState): IMainController => {
             accounts,
             activeAccount: { id: activeAccountId, type: activeAccountType },
           } = store.getState().vault;
-          window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-            method: PaliEvents.chainChanged,
-            params: {
-              chainId: `0x${activeNetwork.chainId.toString(16)}`,
-              networkVersion: activeNetwork.chainId,
-            },
-          });
-          window.controller.dapp.handleBlockExplorerChange(
-            PaliSyscoinEvents.blockExplorerChanged,
-            {
-              method: PaliSyscoinEvents.blockExplorerChanged,
-              params: isBitcoinBased ? network.url : null,
-            }
-          );
+          // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+          //   method: PaliEvents.chainChanged,
+          //   params: {
+          //     chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          //     networkVersion: activeNetwork.chainId,
+          //   },
+          // });
+          // window.controller.dapp.handleBlockExplorerChange(
+          //   PaliSyscoinEvents.blockExplorerChanged,
+          //   {
+          //     method: PaliSyscoinEvents.blockExplorerChanged,
+          //     params: isBitcoinBased ? network.url : null,
+          //   }
+          // );
 
           switch (isBitcoinBased) {
             case true:
               const isTestnet = verifyIfIsTestnet();
 
-              window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-                method: PaliEvents.isTestnet,
-                params: { isTestnet },
-              });
+              // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+              //   method: PaliEvents.isTestnet,
+              //   params: { isTestnet },
+              // });
 
-              window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-                method: PaliEvents.xpubChanged,
-                params: accounts[activeAccountType][activeAccountId].xpub,
-              });
+              // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+              //   method: PaliEvents.xpubChanged,
+              //   params: accounts[activeAccountType][activeAccountId].xpub,
+              // });
 
-              window.controller.dapp.handleStateChange(
-                PaliEvents.accountsChanged,
-                {
-                  method: PaliEvents.accountsChanged,
-                  params: null,
-                }
-              );
+              // window.controller.dapp.handleStateChange(
+              //   PaliEvents.accountsChanged,
+              //   {
+              //     method: PaliEvents.accountsChanged,
+              //     params: null,
+              //   }
+              // );
 
               break;
             case false:
-              window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-                method: PaliEvents.isTestnet,
-                params: { isTestnet: undefined },
-              });
+            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+            //   method: PaliEvents.isTestnet,
+            //   params: { isTestnet: undefined },
+            // });
 
-              window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-                method: PaliEvents.xpubChanged,
-                params: null,
-              });
+            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+            //   method: PaliEvents.xpubChanged,
+            //   params: null,
+            // });
 
-              window.controller.dapp.handleStateChange(
-                PaliEvents.accountsChanged,
-                {
-                  method: PaliEvents.accountsChanged,
-                  params: [
-                    accounts[activeAccountType][activeAccountId].address,
-                  ],
-                }
-              );
+            // window.controller.dapp.handleStateChange(
+            //   PaliEvents.accountsChanged,
+            //   {
+            //     method: PaliEvents.accountsChanged,
+            //     params: [
+            //       accounts[activeAccountType][activeAccountId].address,
+            //     ],
+            //   }
+            // );
             default:
               break;
           }

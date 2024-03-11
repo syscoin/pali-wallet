@@ -1,6 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
@@ -21,7 +22,7 @@ const _messageHandler = async (host: string, message: Message) => {
 
   const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
 
-  const { dapp } = window.controller;
+  const { dapp } = getController();
   switch (message.type) {
     case 'ENABLE':
       return enable(host, chain, activeNetwork.chainId);
