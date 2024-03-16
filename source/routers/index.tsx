@@ -143,7 +143,7 @@ export const Router = () => {
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
-    url: 'https://blockbook.elint.services/',
+    url: 'https://blockbook.syscoin.org/',
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',

@@ -178,7 +178,7 @@ const MasterController = (
 
     const isSysUtxoMainnetWithWrongRpcUrl =
       activeNetwork.chainId === 57 &&
-      activeNetwork.url.includes('https://blockbook.elint.services');
+      activeNetwork.url.includes('https://blockbook.syscoin.org');
 
     if (isSysUtxoMainnetWithWrongRpcUrl) {
       store.dispatch(
