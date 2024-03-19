@@ -11,7 +11,7 @@ export const TxsPanel: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <div className="sm:max-h-max relative bottom-[19px]  flex flex-col items-center w-full max-h-52">
+    <div className="h-max relative bottom-[19px]  flex flex-col items-center w-full">
       <div className="flex  items-center justify-center w-full text-brand-white text-base border-b border-bkg-1">
         <Button
           className={`flex-1 w-[12.5rem] absolute left-0 p-2 ${

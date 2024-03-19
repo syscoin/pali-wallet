@@ -275,7 +275,9 @@ export const SendEth = () => {
                       : '/assets/icons/errorIcon.svg'
                   }
                   alt={isValidAddress === true ? 'Success' : 'Error'}
-                  className="absolute right-8 top-[15px]"
+                  className={`absolute right-8 ${
+                    isValidAmount === true ? 'top-[12.5px]' : 'top-[11.5px]'
+                  }`}
                 />
               )}
             </div>
@@ -455,7 +457,9 @@ export const SendEth = () => {
                           : '/assets/icons/errorIcon.svg'
                       }
                       alt={isValidAmount === true ? 'Success' : 'Error'}
-                      className="absolute right-[5.5rem] top-[-28.5px]"
+                      className={`absolute right-[2rem] ${
+                        isValidAmount === true ? 'top-[-26.5px]' : 'top-[-25px]'
+                      }`}
                     />
                   )}
                 </div>

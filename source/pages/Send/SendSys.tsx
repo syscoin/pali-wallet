@@ -1,5 +1,4 @@
 import { Switch, Menu, Transition } from '@headlessui/react';
-import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form, Input } from 'antd';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';

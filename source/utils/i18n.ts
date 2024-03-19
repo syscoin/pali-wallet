@@ -53,7 +53,7 @@ i18next
     lowerCaseLng: true,
     fallbackLng: determineLngFn,
     keySeparator: '.',
-    interpolation: { escapeValue: false },
+    interpolation: { escapeValue: true },
   });
 
 export { i18next };

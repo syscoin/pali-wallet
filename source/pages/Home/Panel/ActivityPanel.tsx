@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -25,7 +25,6 @@ export const TransactionsPanel = () => {
   const adjustedExplorer = useAdjustedExplorer(explorer);
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
-
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
   const transactions = useMemo(() => {
@@ -82,12 +81,12 @@ export const TransactionsPanel = () => {
     }
   };
 
-  const OpenTransactionExplorer = useCallback(() => {
+  const OpenTransactionExplorer = useMemo(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
     const openExplorer = () =>
       window.open(
-        `${isBitcoinBased ? networkUrl : adjustedExplorer}${
+        `${isBitcoinBased ? networkUrl : adjustedExplorer}/${
           isBitcoinBased ? 'xpub' : 'address'
         }/${isBitcoinBased ? xpub : userAddress}`,
         '_blank'
@@ -115,7 +114,10 @@ export const TransactionsPanel = () => {
     };
   }, [isLoadingTxs]);
 
-  const allTransactions = hasTransactions ? transactions : previousTransactions;
+  const allTransactions = useMemo(
+    () => (hasTransactions ? transactions : previousTransactions),
+    [hasTransactions, transactions, previousTransactions]
+  );
 
   return (
     <>
@@ -123,19 +125,19 @@ export const TransactionsPanel = () => {
       {!internalLoading && !hasTransactions && (
         <div className="w-full mt-8 text-white bg-brand-blue600">
           <NoTransactionsComponent />
-          <OpenTransactionExplorer />
+          {OpenTransactionExplorer}
           {/* <Fullscreen /> */}
         </div>
       )}
 
       {hasTransactions && (
-        <div className="p-4 mt-8 w-full text-white text-base bg-brand-blue600">
+        <div className="p-4 mt-8 w-full  mb-9 text-white text-base bg-brand-blue600">
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={allTransactions} />
           ) : (
             <EvmTransactionsList userTransactions={allTransactions} />
           )}
-          <OpenTransactionExplorer />
+          {OpenTransactionExplorer}
         </div>
       )}
       {/* <Fullscreen /> */}

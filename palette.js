@@ -108,11 +108,6 @@ module.exports = {
     whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
   },
 
-  alpha: {
-    whiteAlpha300: 'rgba(255, 255, 255, 0.16)',
-    whiteAlpha200: 'rgba(255, 255, 255, 0.08)',
-  },
-
   extraColors: {
     red: '#D70000',
   },

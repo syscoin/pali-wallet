@@ -282,7 +282,7 @@ export const SendTransaction = () => {
       {tx?.from ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-col items-center justify-center w-full text-center text-brand-white font-poppins ">
-            <div className="flex flex-col mb-6 text-center">
+            <div className="flex flex-col items-center mb-6 text-center">
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
                 <img
                   className="relative w-[30px] h-[30px]"

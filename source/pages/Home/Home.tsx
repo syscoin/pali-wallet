@@ -97,6 +97,7 @@ export const Home = () => {
   const closeModal = () => {
     setShowModal(false);
   };
+
   const formatFiatAmmount = useMemo(() => {
     if (isTestnet) {
       return null;

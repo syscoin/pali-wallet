@@ -164,7 +164,8 @@
   "titles": {
     "assetDetails": "DETALLES DEL ACTIVO",
     "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
-    "importWallet": "Importar billetera"
+    "importWallet": "Importar billetera",
+    "congratulations": "FELICIDADES!"
   },
   "import": {
     "importingYourAccount": "Importar tu frase semilla de billetera automáticamente importará una billetera asociada a esta frase semilla.",
@@ -315,12 +316,14 @@
     "addNewChain": "Agregar Nueva Cadena",
     "viewTheAddresses": "Ver las direcciones de tus cuentas permitidas",
     "errorCreatingHardWallet": "Error al crear monedero hardware.",
-    "hardwareWallet": "MONEDERO HARDWARE",
-    "selectTheHardware": "Selecciona el monedero hardware que desees",
+    "hardwareWallet": "CONECTAR HARDWALLET",
+    "selectTheHardware": "SELECCIONAR HARDWALLET:",
     "toConnect": "conectar",
     "toAddAccount": "para agregar una cuenta",
     "toPali": "a Pali",
     "dontHaveWallet": "¿No tienes un monedero hardware?",
+    "connectYourWalletAndClick": "CONECTA TU MONEDERO {{hardwalletName}} Y HAZ CLIC PARA CONECTAR",
+    "youCanUseAny": "Puedes usar cualquier dispositivo {{hardwalletName}}.",
     "orderTrezor": "Ordena un monedero Trezor y guarda tus fondos en almacenamiento en frío.",
     "orderLedger": "Ordena un monedero Ledger y guarda tus fondos en almacenamiento en frío.",
     "buyNow": "Comprar ahora",

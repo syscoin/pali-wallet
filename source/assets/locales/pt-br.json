@@ -289,7 +289,9 @@
     "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
     "setAutoLockTime": "Configurar tempo de bloqueio automático",
     "defaultMinutes": "Padrão: 5 minutos após inatividade.",
-    "maximumMinutes": "Máximo: 120 minutos."
+    "maximumMinutes": "Máximo: 120 minutos.",
+    "connectYourWalletAndClick": "CONECTE SUA {{hardwalletName}} E CLIQUE PARA CONECTAR!",
+    "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}."
   },
   "start": {
     "getStarted": "Get started",
@@ -379,5 +381,11 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Mantenha sua seed em segredo!",
     "anyoneWithThisInfo": "Qualquer pessoa com estas informações pode roubar seus fundos."
+  },
+  "titles": {
+    "assetDetails": "DETALLES DEL ACTIVO",
+    "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
+    "importWallet": "Importar billetera",
+    "congratulations": "PARABÉNS!"
   }
 }
