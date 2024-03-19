@@ -86,7 +86,7 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id];
     const openExplorer = () =>
       window.open(
-        `${isBitcoinBased ? networkUrl : adjustedExplorer}${
+        `${isBitcoinBased ? networkUrl : adjustedExplorer}/${
           isBitcoinBased ? 'xpub' : 'address'
         }/${isBitcoinBased ? xpub : userAddress}`,
         '_blank'
