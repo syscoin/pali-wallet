@@ -354,3 +354,47 @@ export const RPCSuccessfullyAdded = ({
     </ModalBase>
   );
 };
+
+export const ConnectHardwareWallet = ({
+  phraseOne,
+  onClose,
+  show = true,
+  title,
+}: IDefaultModal) => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+
+  return (
+    <ModalBase onClose={onClose} show={show}>
+      <div className="rounded-t-[50px] w-screen flex flex-col align-bottom justify-end items-center bg-brand-blue400 shadow-md">
+        <div className="bg-[#476daa] w-full py-5 rounded-t-[50px]">
+          <h1 className="text-white font-medium text-base">{title}</h1>
+        </div>
+        <div className="flex flex-col pt-6 pb-7 px-6 text-white text-left text-sm font-normal w-[94%]">
+          <p>{phraseOne}</p>
+        </div>
+
+        <div className="flex gap-[21.10px]">
+          <Button
+            id="unlock-btn"
+            type="submit"
+            className="bg-transparent w-[10.313rem] h-10 text-white text-base mb-12 font-base font-medium rounded-2xl border border-white"
+            onClick={() => {
+              if (onClose) onClose(true);
+            }}
+          >
+            {t('buttons.cancel')}
+          </Button>
+          <Button
+            id="unlock-btn"
+            type="submit"
+            className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
+            onClick={() => navigate('/settings/account/hardware')}
+          >
+            {t('buttons.connect')}
+          </Button>
+        </div>
+      </div>
+    </ModalBase>
+  );
+};
