@@ -1046,7 +1046,7 @@ export const SendConfirm = () => {
               {loading && (
                 <Icon
                   name="loading"
-                  color="#fff"
+                  color="#4d76b8"
                   className="w-5 animate-spin-slow"
                   wrapperClassname="mr-2 flex items-center"
                 />
