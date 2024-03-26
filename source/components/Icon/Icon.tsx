@@ -67,6 +67,9 @@ const svgIcons = {
   warning: '../../assets/icons/yellowWarn.svg',
   Copy: '/assets/icons/copy.svg',
   Info: '/assets/icons/info.svg',
+  WhiteSuccess: '/assets/icons/whiteSuccess.svg',
+  Edit: '/assets/icons/edit.svg',
+  Network: '/assets/icons/network.svg',
 };
 
 interface IIcon {
@@ -107,7 +110,11 @@ export const Icon: FC<IIcon> = ({
           disabled={disabled}
         />
       ) : (
-        <img className={className} src={svg} />
+        <img
+          className={className}
+          src={svg}
+          style={{ fontSize: size, color, opacity }}
+        />
       )}
     </div>
   );
