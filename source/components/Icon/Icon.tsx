@@ -4,7 +4,6 @@ import React, { FC } from 'react';
 import { ExternalLinkIcon } from './ExternalLinkIcon';
 import { ForgetWalletIcon } from './ForgetWalletIcon';
 import { LoaderIcon } from './LoaderIcon';
-
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
@@ -70,6 +69,7 @@ const svgIcons = {
   WhiteSuccess: '/assets/icons/whiteSuccess.svg',
   Edit: '/assets/icons/edit.svg',
   Network: '/assets/icons/network.svg',
+  greenCheck: '/assets/icons/greencheck.svg',
 };
 
 interface IIcon {
