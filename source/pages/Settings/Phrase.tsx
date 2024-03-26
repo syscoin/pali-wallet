@@ -3,33 +3,41 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Layout, Card, Button } from 'components/index';
+import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { getController } from 'utils/browser';
 
 const PhraseView = () => {
-  const [mockedPhrase, setMockedPhrase] = useState<string>(
-    '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****'
-  );
+  const [phrase, setPhrase] = useState<string>();
+  const mockedPhrase =
+    '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****';
+
   const [visible, setVisible] = useState<boolean>(false);
-  const [isCopied, setIsCopied] = useState<boolean>(false);
   const { t } = useTranslation();
   const { useCopyClipboard, navigate, alert } = useUtils();
   const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
+  const [showModal, setShowModal] = useState<boolean>(false);
+
   useEffect(() => {
     if (!copied) return;
-
-    alert.removeAll();
-    alert.success(t('settings.seedPhraseCopied'));
+    setShowModal(true);
   }, [copied]);
 
   const handleCopyToClipboard = () => {
-    copyText(mockedPhrase);
+    copyText(phrase);
   };
 
   return (
     <Layout title={t('settings.walletSeedPhrase')} id="seed-phrase-title">
+      <StatusModal
+        status="success"
+        title="Copied"
+        description={t('settings.seedPhraseCopied')}
+        onClose={() => setShowModal(false)}
+        show={showModal}
+      />
       <p className="text-sm mb-6">
         {t('forgetWalletPage.importedAccountsWont')}
       </p>
@@ -56,7 +64,7 @@ const PhraseView = () => {
                   try {
                     const seed = controller.wallet.getSeed(value);
                     if (seed) {
-                      setMockedPhrase(seed);
+                      setPhrase(seed);
 
                       return Promise.resolve();
                     }
@@ -83,13 +91,19 @@ const PhraseView = () => {
               visible ? '' : 'filter blur-sm'
             }`}
           >
-            {mockedPhrase.split(' ').map((phrase: string, index: number) => (
-              <p key={index} className="flex text-white text-sm font-light ">
-                {phrase}
-              </p>
-            ))}
+            {(phrase ? phrase : mockedPhrase)
+              .split(' ')
+              .map((phraseText: string, index: number) => (
+                <p key={index} className="flex text-white text-sm font-light ">
+                  {phraseText}
+                </p>
+              ))}
           </div>
-          <div className="flex bg-brand-blue800">
+          <div
+            className={`flex bg-brand-blue800 ${
+              phrase ? `relative` : `hidden`
+            }`}
+          >
             {visible ? (
               <img
                 className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
@@ -107,7 +121,7 @@ const PhraseView = () => {
         </div>
 
         <div className="flex w-full flex-col space-y-6 mt-2 mb-6 z-20">
-          {isCopied ? (
+          {copied ? (
             <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
               <img
                 className="w-[16px] max-w-none"
@@ -117,12 +131,11 @@ const PhraseView = () => {
             </div>
           ) : (
             <div
-              className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer"
+              className={`flex w-max gap-1 items-center ${
+                phrase ? `cursor-pointer` : `cursor-not-allowed`
+              } hover:cursor-pointer`}
               onClick={() => {
-                mockedPhrase !==
-                  '**** ******* ****** ****** ****** ******** *** ***** ****** ***** *****' &&
-                  handleCopyToClipboard();
-                setIsCopied(true);
+                phrase && handleCopyToClipboard();
               }}
             >
               <img className="max-w-none z-20 " src="/assets/icons/copy.svg" />

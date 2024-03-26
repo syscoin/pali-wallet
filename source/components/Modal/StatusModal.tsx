@@ -1,5 +1,5 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useCallback, useMemo } from 'react';
+import React, { Fragment, useCallback, useEffect, useMemo } from 'react';
 
 interface IModal {
   description?: string;
