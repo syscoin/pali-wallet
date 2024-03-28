@@ -39,9 +39,6 @@ const ForgetWalletView = () => {
   };
 
   const [form] = Form.useForm();
-  console.log(hasAccountFunds, 'hasAccountFunds');
-  console.log(isSeedValid, 'isSeedValid');
-  console.log(isPasswordValid, 'isPasswordValid');
 
   return (
     <Layout title={t('menus.forget')}>
