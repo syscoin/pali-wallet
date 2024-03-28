@@ -65,7 +65,7 @@ const RenderAccountsListByBitcoinBased = (
               >
                 <span
                   style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                  className="w-max gap-3 flex items-center justify-start whitespace-nowrap overflow-hidden"
+                  className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
                 >
                   <img src={logo} className="mr-1 w-7"></img>
                   {account.label} ({ellipsis(account.address, 4, 4)})
@@ -312,7 +312,7 @@ export const AccountMenu: React.FC = () => {
   const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
 
   return (
-    <>
+    <div className="flex flex-col justify-start items-start">
       <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
         {t('accountMenu.accounts')}
       </span>
@@ -334,7 +334,7 @@ export const AccountMenu: React.FC = () => {
           onClick={() => navigate('/settings/account/new')}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
-          <Icon name="appstoreadd" className="mb-1 text-brand-white" />
+          <Icon name="AddUser" isSvg className="mb-1 text-brand-white" />
 
           <span>{t('accountMenu.createNewAccount')}</span>
         </li>
@@ -343,9 +343,9 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <li
           onClick={() => navigate('/settings/manage-accounts')}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
-          <Icon name="edit" className="mb-2 text-brand-white" />
+          <Icon name="ManageUser" isSvg className="mb-2 text-brand-white" />
 
           <span>{t('accountMenu.manageAccounts')}</span>
         </li>
@@ -357,7 +357,8 @@ export const AccountMenu: React.FC = () => {
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon
-            name="partition"
+            name="HardWallet"
+            isSvg
             className="mb-2 text-brand-white"
             id="hardware-wallet-btn"
           />
@@ -375,7 +376,8 @@ export const AccountMenu: React.FC = () => {
             className={`py-1.5 ${cursorType} px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
           >
             <Icon
-              name="import"
+              name="ImportUser"
+              isSvg
               className="mb-1 text-brand-white"
               opacity={isBitcoinBased ? 0.6 : 1}
             />
@@ -391,7 +393,7 @@ export const AccountMenu: React.FC = () => {
           )}
         </div>
       </Menu.Item>
-    </>
+    </div>
   );
 };
 

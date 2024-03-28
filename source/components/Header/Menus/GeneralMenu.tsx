@@ -119,131 +119,143 @@ export const GeneralMenu: React.FC = () => {
           className="scrollbar-styled absolute z-50 top-6 right-[-16px] pb-24 w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-auto  ring-1 ring-black ring-opacity-5"
         >
           <AccountMenu />
+          <div className="flex flex-col justify-start items-start">
+            <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
+              {t('generalMenu.wallet')}
+            </span>
 
-          <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
-            {t('generalMenu.wallet')}
-          </span>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/seed')}
+                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon name="Key" isSvg className="mb-1 text-brand-white" />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/seed')}
-              className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden gap-3 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon name="wallet" className="mb-1 text-brand-white" />
+                <span id="wallet-seed-phrase-btn">
+                  {t('generalMenu.walletSeedPhrase')}
+                </span>
+              </li>
+            </Menu.Item>
 
-              <span id="wallet-seed-phrase-btn">
-                {t('generalMenu.walletSeedPhrase')}
-              </span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/forget-wallet')}
+                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="Trash"
+                  isSvg
+                  className="mb-1 text-brand-white"
+                  id="forget-wallet-btn"
+                />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/forget-wallet')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-3 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon
-                name="forget"
-                className="mb-1 w-5 h-5 text-brand-white"
-                id="forget-wallet-btn"
-              />
+                <span>{t('generalMenu.forget')}</span>
+              </li>
+            </Menu.Item>
+          </div>
 
-              <span>{t('generalMenu.forget')}</span>
-            </li>
-          </Menu.Item>
+          <div className="flex flex-col justify-start items-start">
+            <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
+              {t('generalMenu.generalOptions')}
+            </span>
 
-          <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
-            {t('generalMenu.generalOptions')}
-          </span>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/languages')}
+                className="py-1.5 gap-2 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="Language"
+                  isSvg
+                  className="mb-1 text-brand-white"
+                  id="forget-wallet-btn"
+                  wrapperClassname={`max-w-10`}
+                />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/languages')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <img
-                src={langIcon}
-                width="16px"
-                className="ml-0.2 text-brand-white"
-              />
+                <span>{t('generalMenu.languages')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.languages')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/currency')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="DollarSign"
+                  isSvg
+                  className="text-brand-white"
+                  wrapperClassname={`max-w-10`}
+                />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/currency')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon name="dolar" className="ml-1 text-brand-white" />
+                <span>{t('generalMenu.currency')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.currency')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/autolock')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon name="Clock" isSvg className="text-brand-white" />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/autolock')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex gap-3 items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon name="clock" className="ml-1 text-brand-white" />
+                <span>{t('generalMenu.autolock')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.autolock')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/remove-eth')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <img
+                  src={ethIcon}
+                  width="16px"
+                  className="ml-0.2 text-brand-white"
+                />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/remove-eth')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex gap-3 items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <img
-                src={ethIcon}
-                width="16px"
-                className="ml-0.2 text-brand-white"
-              />
+                <span>{t('generalMenu.manageEth')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.manageEth')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/about')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="Help"
+                  isSvg
+                  className="text-brand-white"
+                  id="info-help-btn"
+                />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/about')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-3 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon
-                name="warning"
-                className="ml-1 text-brand-white"
-                id="info-help-btn"
-              />
+                <span>{t('generalMenu.infoHelp')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.infoHelp')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={handleLogout}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon name="Lock" isSvg className="mb-2 text-brand-white" />
 
-          <Menu.Item>
-            <li
-              onClick={handleLogout}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-3 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <Icon name="lock" className="mb-2 ml-1 text-brand-white" />
+                <span>{t('generalMenu.lock')}</span>
+              </li>
+            </Menu.Item>
 
-              <span>{t('generalMenu.lock')}</span>
-            </li>
-          </Menu.Item>
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/advanced')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <img src={slider} width="20px" className="text-brand-white" />
 
-          <Menu.Item>
-            <li
-              onClick={() => navigate('/settings/advanced')}
-              className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-3 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-            >
-              <img src={slider} width="20px" className="text-brand-white" />
-
-              <span>{t('generalMenu.advanced')}</span>
-            </li>
-          </Menu.Item>
+                <span>{t('generalMenu.advanced')}</span>
+              </li>
+            </Menu.Item>
+          </div>
         </Menu.Items>
       </Transition>
     </Menu>
