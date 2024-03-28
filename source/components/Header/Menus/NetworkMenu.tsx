@@ -111,7 +111,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     ? 'border-warning-success'
     : 'border-warning-error';
   return (
-    <Menu as="div" className="absolute left-4 inline-block mr-8 text-left">
+    <Menu
+      as="div"
+      className="absolute w-full left-4 inline-block mr-8 text-left"
+    >
       {(menuprops) => (
         <>
           <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
@@ -144,16 +147,17 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Items
               as="div"
-              className="absolute z-50 left-0 pb-6 pt-5 w-72 h-fit text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-hidden origin-top-right ring-1 ring-black ring-opacity-5"
+              className="absolute overflow-scroll z-50 top-[10px] left-[-17px] pb-16 pt-5 w-screen min-h-screen max-h-full text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5"
             >
               <Menu.Item>
                 <li
                   onClick={() => navigate('/settings/networks/connected-sites')}
-                  className={`flex items-center justify-start mb-2 mx-3 px-2 py-1 text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
+                  className={`flex items-center justify-start mb-2 mx-3 px-2 py-2 text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
                 >
                   <Icon
                     name="globe"
-                    className="flex items-center ml-1 mr-2 text-brand-white"
+                    size={19}
+                    className="w-[19px] flex items-center ml-1  text-brand-white"
                   />
 
                   <span
@@ -161,7 +165,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                       language === 'es' &&
                       connectedWebsiteTitle.includes('No hay')
                         ? 'text-xs'
-                        : 'text-sm'
+                        : 'text-base'
                     }`}
                   >
                     {connectedWebsiteTitle}
@@ -172,23 +176,24 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               <Menu.Item>
                 <li
                   onClick={() => navigate('/settings/networks/trusted-sites')}
-                  className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                  className="flex items-center justify-start mb-4 mx-3 px-2 py-2 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
-                    name="check"
-                    className="flex items-center ml-1 mr-2 text-brand-white"
+                    name="WhiteSuccess"
+                    isSvg
+                    className="w-[19px] flex items-center ml-1 text-brand-white"
                   />
 
-                  <span className="px-3 text-sm">
+                  <span className="px-3 text-base">
                     {t('networkMenu.trustedSites')}
                   </span>
                 </li>
               </Menu.Item>
-              <div className="scrollbar-styled h-73 overflow-auto">
+              <div className="scrollbar-styled overflow-scroll">
                 {!activeAccount.isImported ? (
                   <Menu.Item>
                     <>
-                      <span className="disabled text-xs flex justify-start px-5 my-3">
+                      <span className="disabled text-xs flex justify-start px-5 py-4">
                         {t('networkMenu.networks')}
                       </span>
                       <Disclosure>
@@ -207,7 +212,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                               <img
                                 src={arrow}
-                                className={`relative left-5 flex items-center ${
+                                className={`relative left-[12rem] flex items-center ${
                                   open ? 'transform rotate-180' : ''
                                 } text-brand-white`}
                                 id="network-settings-btn"
@@ -247,8 +252,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       ) && (
                                         <Icon
                                           name="check"
-                                          className="mb-1 w-4"
-                                          wrapperClassname="w-6 absolute right-20"
+                                          className="absolute left-[21.5rem] bottom-2 w-4"
+                                          wrapperClassname="w-6"
                                         />
                                       )}
                                   </li>
@@ -266,7 +271,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   <Disclosure>
                     {({ open }) => (
                       <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                        <Disclosure.Button className="flex items-center justify-start px-5 pt-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
                           <img
                             src={ethIcon}
                             width="16px"
@@ -279,14 +284,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                           <img
                             src={arrow}
-                            className={`relative left-5.5 flex items-center ${
+                            className={`relative left-[12.4rem] flex items-center ${
                               open ? 'transform rotate-180' : ''
                             } text-brand-white`}
                             id="network-settings-btn"
                           />
                         </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
+                        <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
                           {Object.values(networks.ethereum)
                             .sort(customSort)
 
@@ -315,8 +320,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                   activeNetworkValidator(currentNetwork) && (
                                     <Icon
                                       name="check"
-                                      className="right-0 mb-1 w-4"
-                                      wrapperClassname="w-6 right-16"
+                                      className="absolute left-[21.5rem] bottom-2 w-4"
+                                      wrapperClassname="w-6"
                                     />
                                   )}
                               </li>
@@ -327,18 +332,19 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   </Disclosure>
                 </Menu.Item>
 
-                <span className="disabled text-xs flex justify-start px-5 my-3">
+                <span className="disabled text-xs flex justify-start px-5 py-3 mt-6">
                   {t('networkMenu.networkSettings')}
                 </span>
 
                 <Menu.Item>
                   <li
                     onClick={() => navigate('/settings/networks/custom-rpc')}
-                    className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                    className="flex px-5 py-2 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                   >
                     <Icon
-                      name="appstoreadd"
-                      className="ml-1 flex items-center text-brand-white"
+                      name="Network"
+                      isSvg
+                      className="w-5 flex items-center text-brand-white"
                     />
 
                     <span className="px-3 text-sm">
@@ -350,11 +356,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 <Menu.Item>
                   <li
                     onClick={() => navigate('/settings/networks/edit')}
-                    className="flex items-center justify-start px-5 py-1 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
+                    className="flex px-5 py-2 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                   >
                     <Icon
-                      name="edit"
-                      className="ml-1 flex items-center text-brand-white"
+                      name="Edit"
+                      isSvg
+                      className="flex items-center text-brand-white"
                     />
 
                     <span className="px-3 text-sm">

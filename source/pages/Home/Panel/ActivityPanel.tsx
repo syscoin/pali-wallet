@@ -93,7 +93,7 @@ export const TransactionsPanel = () => {
       );
 
     return (
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex mt-5 items-center justify-center gap-2">
         <img src={externalLink} />
         <button
           type="button"

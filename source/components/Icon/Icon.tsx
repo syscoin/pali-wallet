@@ -4,7 +4,6 @@ import React, { FC } from 'react';
 import { ExternalLinkIcon } from './ExternalLinkIcon';
 import { ForgetWalletIcon } from './ForgetWalletIcon';
 import { LoaderIcon } from './LoaderIcon';
-
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
@@ -67,6 +66,22 @@ const svgIcons = {
   warning: '../../assets/icons/yellowWarn.svg',
   Copy: '/assets/icons/copy.svg',
   Info: '/assets/icons/info.svg',
+  WhiteSuccess: '/assets/icons/whiteSuccess.svg',
+  Edit: '/assets/icons/edit.svg',
+  Network: '/assets/icons/network.svg',
+  greenCheck: '/assets/icons/greencheck.svg',
+  WhiteErrorIcon: '/assets/icons/errorIconWhite.svg',
+  AttentionIcon: '/assets/icons/Attention.svg',
+  AddUser: '/assets/icons/add-user.svg',
+  Clock: '/assets/icons/clock.svg',
+  DollarSign: '/assets/icons/dollar-sign.svg',
+  HardWallet: '/assets/icons/hardwalletd.svg',
+  Help: '/assets/icons/helpsuqare.svg',
+  Key: '/assets/icons/key.svg',
+  Language: '/assets/icons/language.svg',
+  Lock: '/assets/icons/lock.svg',
+  ManageUser: '/assets/icons/manage-user.svg',
+  ImportUser: '/assets/icons/user-imported.svg',
 };
 
 interface IIcon {
@@ -78,7 +93,7 @@ interface IIcon {
   name: string;
   opacity?: number;
   rotate?: number;
-  size?: number;
+  size?: number | string;
   wrapperClassname?: string;
 }
 
@@ -107,7 +122,11 @@ export const Icon: FC<IIcon> = ({
           disabled={disabled}
         />
       ) : (
-        <img className={className} src={svg} />
+        <img
+          className={className}
+          src={svg}
+          style={{ width: size, color, opacity }}
+        />
       )}
     </div>
   );

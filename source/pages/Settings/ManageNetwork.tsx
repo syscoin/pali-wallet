@@ -51,9 +51,9 @@ const ManageNetworkView = () => {
 
   return (
     <Layout title={t('settings.manageNetworks')}>
-      <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
-        <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          {t('settings.syscoinNetworks')}
+      <ul className=" mb-4 w-full h-80 text-sm overflow-hidden md:h-96">
+        <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
+          UTXO
         </p>
         {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
@@ -62,15 +62,10 @@ const ManageNetworkView = () => {
                 ? network.key
                 : `${network.label.trim()}-${network.chainId}`
             }
-            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
+            className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-alpha-whiteAlpha300 cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
-
-              <span>
-                <b className="text-brand-royalblue">Blockbook URL:</b>{' '}
-                {truncate(String(network.url), 26)}
-              </span>
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">
@@ -138,8 +133,8 @@ const ManageNetworkView = () => {
           </li>
         ))}
 
-        <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          {t('settings.ethereumNetworks')}
+        <p className="py-3 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-blue200">
+          EVM
         </p>
         {Object.values(networks.ethereum).map((network: any) => (
           <li
@@ -148,15 +143,10 @@ const ManageNetworkView = () => {
                 ? network.key
                 : `${network.label.trim()}-${network.chainId}`
             }
-            className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
+            className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-alpha-whiteAlpha300 cursor-default`}
           >
             <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
               <span>{truncate(network.label, 25)}</span>
-
-              <span className="text-brand-white">
-                <b className="text-brand-royalblue">RPC URL:</b>
-                {truncate(String(network.url), 26)}
-              </span>
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">
@@ -223,10 +213,15 @@ const ManageNetworkView = () => {
           </li>
         ))}
       </ul>
-
-      <NeutralButton type="button" onClick={() => navigate('/home')}>
-        {t('buttons.close')}
-      </NeutralButton>
+      <div className="w-full px-4 absolute bottom-12 md:static">
+        <NeutralButton
+          type="button"
+          onClick={() => navigate('/home')}
+          fullWidth={true}
+        >
+          {t('buttons.close')}
+        </NeutralButton>{' '}
+      </div>
     </Layout>
   );
 };

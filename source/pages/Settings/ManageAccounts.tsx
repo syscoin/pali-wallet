@@ -1,13 +1,19 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { AiOutlineUsb } from 'react-icons/ai';
+import { RiUserReceivedLine } from 'react-icons/ri/';
 import { useSelector } from 'react-redux';
 
-import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import {
+  IKeyringAccountState,
+  KeyringAccountType,
+} from '@pollum-io/sysweb3-keyring';
 
+import logo from 'assets/images/whiteLogo.png';
 import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { truncate } from 'utils/index';
+import { ellipsis } from 'utils/index';
 
 const ManageAccountsView = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
@@ -19,6 +25,9 @@ const ManageAccountsView = () => {
       state: account,
     });
   };
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
 
   const existImportedAccounts = Boolean(
     Object.values(accounts.Imported).length > 0
@@ -30,19 +39,28 @@ const ManageAccountsView = () => {
   return (
     <Layout title={t('settings.manageAccounts')}>
       <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
-        <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-          {t('settings.hdAccounts')}
-        </p>
         {Object.values(accounts.HDAccount).map(
           (account: IKeyringAccountState) => (
             <li
               key={account.id}
-              className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
+              className={`my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
             >
-              <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-                <span>{truncate(account.label, 25)}</span>
+              <div className="flex items-center">
+                <span
+                  style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+                  className="w-max  flex items-center justify-start whitespace-nowrap overflow-hidden"
+                >
+                  <img src={logo} className="mr-1 w-7"></img>
+                  {account.label} ({ellipsis(account.address, 4, 4)})
+                </span>
+                <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                  Pali
+                </span>
+                {activeAccount.id === account.id &&
+                  activeAccount.type === KeyringAccountType.HDAccount && (
+                    <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                  )}
               </div>
-
               <div className="flex gap-x-3 items-center justify-between">
                 <IconButton
                   onClick={() => editAccount(account)}
@@ -51,6 +69,7 @@ const ManageAccountsView = () => {
                 >
                   <Icon
                     name="edit"
+                    size={20}
                     className="hover:text-brand-royalblue text-xl"
                   />
                 </IconButton>
@@ -58,19 +77,32 @@ const ManageAccountsView = () => {
             </li>
           )
         )}
-        {existImportedAccounts ? (
+        {!existImportedAccounts ? (
           <>
-            <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-              {t('settings.importedAccounts')}
-            </p>
             {Object.values(accounts.Imported).map(
               (account: IKeyringAccountState) => (
                 <li
                   key={account.id}
-                  className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
+                  className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
                 >
-                  <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-                    <span>{truncate(account.label, 25)}</span>
+                  <div className="flex items-center">
+                    <span
+                      style={{
+                        maxWidth: '16.25rem',
+                        textOverflow: 'ellipsis',
+                      }}
+                      className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
+                    >
+                      <RiUserReceivedLine size={20} className="mr-1" />
+                      {account.label} ({ellipsis(account.address, 4, 4)})
+                    </span>
+                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                      Imported
+                    </span>
+                    {activeAccount.id === account.id &&
+                      activeAccount.type === KeyringAccountType.Imported && (
+                        <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                      )}
                   </div>
 
                   <div className="flex gap-x-3 items-center justify-between">
@@ -93,17 +125,30 @@ const ManageAccountsView = () => {
 
         {existTrezorAccounts ? (
           <>
-            <p className="py-1 text-center text-brand-white text-xs font-bold bg-bkg-4">
-              {t('settings.trezorAccounts')}
-            </p>
             {Object.values(accounts.Trezor).map(
               (account: IKeyringAccountState) => (
                 <li
                   key={account.id}
                   className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
                 >
-                  <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-                    <span>{truncate(account.label, 25)}</span>
+                  <div className="flex items-center">
+                    <span
+                      style={{
+                        maxWidth: '16.25rem',
+                        textOverflow: 'ellipsis',
+                      }}
+                      className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
+                    >
+                      <AiOutlineUsb size={20} className="mr-1" />
+                      {account.label} ({ellipsis(account.address, 4, 4)})
+                    </span>
+                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                      Trezor
+                    </span>
+                    {activeAccount.id === account.id &&
+                      activeAccount.type === KeyringAccountType.Trezor && (
+                        <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                      )}
                   </div>
 
                   <div className="flex gap-x-3 items-center justify-between">
@@ -124,10 +169,15 @@ const ManageAccountsView = () => {
           </>
         ) : null}
       </ul>
-
-      <NeutralButton type="button" onClick={() => navigate('/home')}>
-        {t('buttons.close')}
-      </NeutralButton>
+      <div className="w-full px-4 absolute bottom-12 md:static">
+        <NeutralButton
+          type="button"
+          fullWidth
+          onClick={() => navigate('/home')}
+        >
+          {t('buttons.close')}
+        </NeutralButton>{' '}
+      </div>
     </Layout>
   );
 };

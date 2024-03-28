@@ -79,12 +79,13 @@ const CreateAccount = () => {
             />
           </Form.Item>
 
-          <div className="absolute bottom-12 md:static">
+          <div className="w-full px-4 absolute bottom-12 md:static">
             <NeutralButton
               type="submit"
               loading={loading}
               disabled={loading}
               id="create-btn"
+              fullWidth
             >
               {t('buttons.create')}
             </NeutralButton>
