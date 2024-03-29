@@ -50,18 +50,17 @@ export const popupPromise = async ({
     throw error;
   }
   return new Promise((resolve) => {
-    window.addEventListener(
-      `${eventName}.${host}`,
-      (event: CustomEvent) => {
-        if (event.detail !== undefined && event.detail !== null) {
+    self.addEventListener('message', (event) => {
+      if (event.data.eventName === `${eventName}.${host}`) {
+        if (event.data.detail !== undefined && event.data.detail !== null) {
           if (
             route === 'tx/send/ethTx' ||
             route === 'tx/send/approve' ||
             route === 'tx/send/nTokenTx'
           ) {
-            resolve(event.detail.hash);
+            resolve(event.data.detail.hash);
           }
-          resolve(event.detail);
+          resolve(event.data.detail);
         }
         if (
           route === 'switch-EthChain' ||
@@ -72,9 +71,8 @@ export const popupPromise = async ({
           dapp.setHasWindow(host, false);
           return null;
         }
-      },
-      { once: true, passive: true }
-    );
+      }
+    });
 
     browser.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {

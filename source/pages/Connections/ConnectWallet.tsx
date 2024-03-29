@@ -24,6 +24,11 @@ export const ConnectWallet = () => {
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const { activeAccount: activeAccountData } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const { id, type } = activeAccountData;
+  const activeAccount = accounts[type][id];
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -34,15 +39,16 @@ export const ConnectWallet = () => {
   const [accountId, setAccountId] = useState(currentAccountId);
   const [accountType, setAccountType] = useState(currentAccountType);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
+  const date = Date.now();
 
   const isUnlocked = wallet.isUnlocked();
   const handleConnect = () => {
-    const date = Date.now();
     dapp.connect({ host, chain, chainId, accountId, accountType, date });
     wallet.setAccount(accountId, accountType);
     dispatchBackgroundEvent(
       `${eventName}.${host}`,
-      dapp.getAccount(host).address
+      // dapp.getAccount(host).address
+      activeAccount
     );
     window.close();
   };

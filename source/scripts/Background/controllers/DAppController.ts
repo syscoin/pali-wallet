@@ -49,9 +49,11 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
-    _dapps[dapp.host].activeAddress = isBitcoinBased
-      ? accounts[dapp.accountType][dapp.accountId].xpub
-      : accounts[dapp.accountType][dapp.accountId].address;
+    if (!!_dapps?.[dapp.host]) {
+      _dapps[dapp.host].activeAddress = isBitcoinBased
+        ? accounts[dapp.accountType][dapp.accountId].xpub
+        : accounts[dapp.accountType][dapp.accountId].address;
+    }
   };
 
   const requestPermissions = (

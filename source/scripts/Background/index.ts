@@ -130,14 +130,6 @@ const updateRequestsPerSecond = () => {
     requestsPerSecond[currentTime] = [];
   }
 };
-export const setDataStorage = async (state: any) => {
-  await chrome.storage.local.clear();
-  await chrome.storage.local.set({ ['1']: state });
-  const data = await chrome.storage.local.get('1');
-  // store.dispatch(setAllState(state));
-  console.log({ dataState: data });
-};
-
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
 

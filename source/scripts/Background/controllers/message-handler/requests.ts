@@ -28,10 +28,19 @@ export const methodRequest = async (
   const { dapp, wallet } = getController();
   const controller = getController();
   const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
+
   const isHybridDapp = areStringsPresent(host, hybridDapps);
   const [prefix, methodName] = data.method.split('_');
-  const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
-    store.getState().vault;
+  const {
+    activeAccount,
+    isBitcoinBased,
+    isNetworkChanging,
+    accounts,
+    activeNetwork,
+    activeChain,
+  } = store.getState().vault;
+  const { chainId } = activeNetwork;
+
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased && prefix !== 'sys') {
@@ -75,7 +84,7 @@ export const methodRequest = async (
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, false, isHybridDapp);
+      return await enable(host, activeChain, chainId, false, isHybridDapp);
     } catch (error) {
       await popupPromise({
         host,
@@ -413,33 +422,33 @@ export const enable = async (
   isSyscoinDapp = false,
   isHybridDapp = true
 ) => {
-  const { isBitcoinBased } = store.getState().vault;
-  const { dapp, wallet } = getController();
-  const { isOpen: isPopupOpen } = JSON.parse(
-    window.localStorage.getItem('isPopupOpen')
-  );
-  if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
-    throw ethErrors.provider.custom({
-      code: 4101,
-      message: 'Connected to Bitcoin based chain',
-      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
-    });
-  } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
-    throw ethErrors.provider.custom({
-      code: 4101,
-      message: 'Connected to Ethereum based chain',
-      data: { code: 4101, message: 'Connected to Ethereum based chain' },
-    });
-  }
-  if (dapp.isConnected(host) && wallet.isUnlocked())
-    return [dapp.getAccount(host).address];
+  // const { isBitcoinBased } = store.getState().vault;
+  // const { dapp, wallet } = getController();
+  // const { isOpen: isPopupOpen } = JSON.parse(
+  //   window.localStorage.getItem('isPopupOpen')
+  // );
+  // if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
+  //   throw ethErrors.provider.custom({
+  //     code: 4101,
+  //     message: 'Connected to Bitcoin based chain',
+  //     data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+  //   });
+  // } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
+  //   throw ethErrors.provider.custom({
+  //     code: 4101,
+  //     message: 'Connected to Ethereum based chain',
+  //     data: { code: 4101, message: 'Connected to Ethereum based chain' },
+  //   });
+  // }
+  // if (dapp.isConnected(host) && wallet.isUnlocked())
+  //   return [dapp.getAccount(host).address];
 
-  if (isPopupOpen)
-    throw cleanErrorStack(
-      ethErrors.rpc.resourceUnavailable({
-        message: 'Already processing eth_requestAccounts. Please wait.',
-      })
-    );
+  // if (isPopupOpen)
+  //   throw cleanErrorStack(
+  //     ethErrors.rpc.resourceUnavailable({
+  //       message: 'Already processing eth_requestAccounts. Please wait.',
+  //     })
+  //   );
 
   const dAppActiveAddress: any = await popupPromise({
     host,

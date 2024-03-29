@@ -9,7 +9,5 @@ export const getController = () => {
 };
 
 export const dispatchBackgroundEvent = (eventName: string, data: any) => {
-  // const background = browser.extension.getBackgroundPage();
-  const background = window;
-  background.dispatchEvent(new CustomEvent(eventName, { detail: data }));
+  navigator.serviceWorker.controller.postMessage({ eventName, detail: data });
 };

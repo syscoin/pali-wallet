@@ -4,8 +4,6 @@ import { browser } from 'webextension-polyfill-ts';
 
 import { Container, Loading } from 'components/index';
 import { Router } from 'routers/index';
-import { setDataStorage } from 'scripts/Background';
-import store from 'state/store';
 
 const App: FC = () => {
   useEffect(() => {
