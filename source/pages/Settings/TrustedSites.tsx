@@ -10,16 +10,39 @@ import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
 
+const EMPTY_STATE = {
+  name: '',
+  icon: '',
+  color: '',
+  size: '',
+};
+
+const ATTENTION_STYLE = {
+  name: 'Undefined',
+  icon: 'AttentionIcon',
+  color: '#FE9B07',
+  size: '16px',
+};
+
+const TRUSTED_STYLE = {
+  name: 'Trusted',
+  icon: 'WhiteSuccess',
+  color: '#8EC100',
+  size: '14px',
+};
+
+const NOT_TRUSTED_WALLET_STYLE = {
+  name: 'Not trusted',
+  icon: 'WhiteErrorIcon',
+  color: '#C60000 ',
+  size: '16px',
+};
+
 const TrustedSitesView = () => {
   const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
-  const [status, setStatus] = useState({
-    name: '',
-    icon: '',
-    color: '',
-    size: '',
-  });
+  const [status, setStatus] = useState(EMPTY_STATE);
 
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
@@ -39,26 +62,11 @@ const TrustedSitesView = () => {
       const isValueValid = validateSearch(typed, trustedApps);
 
       if (isValueValid) {
-        setStatus({
-          name: 'Trusted',
-          icon: 'WhiteSuccess',
-          color: '#8EC100',
-          size: '14px',
-        });
+        setStatus(TRUSTED_STYLE);
       } else if (!isValueValid && newList.length === 0) {
-        setStatus({
-          name: 'Undefined',
-          icon: 'AttentionIcon',
-          color: '#FE9B07',
-          size: '16px',
-        });
+        setStatus(ATTENTION_STYLE);
       } else {
-        setStatus({
-          name: 'Not trusted',
-          icon: 'WhiteErrorIcon',
-          color: '#C60000 ',
-          size: '16px',
-        });
+        setStatus(NOT_TRUSTED_WALLET_STYLE);
       }
 
       setFilteredSearch(newList);

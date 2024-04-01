@@ -152,7 +152,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               <Menu.Item>
                 <li
                   onClick={() => navigate('/settings/networks/connected-sites')}
-                  className={`flex items-center justify-start mb-2 mx-3 px-2 py-2 text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
+                  className={`flex items-center justify-start mb-2 mx-3 px-2 py-1  text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
                 >
                   <Icon
                     name="globe"
@@ -176,7 +176,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               <Menu.Item>
                 <li
                   onClick={() => navigate('/settings/networks/trusted-sites')}
-                  className="flex items-center justify-start mb-4 mx-3 px-2 py-2 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
+                  className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
                     name="WhiteSuccess"

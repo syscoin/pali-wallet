@@ -1,4 +1,5 @@
 import { Form, Input } from 'antd';
+import { isEmpty } from 'lodash';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -91,7 +92,7 @@ const PhraseView = () => {
               visible ? '' : 'filter blur-sm'
             }`}
           >
-            {(phrase ? phrase : mockedPhrase)
+            {(isEmpty(phrase) ? mockedPhrase : phrase)
               .split(' ')
               .map((phraseText: string, index: number) => (
                 <p key={index} className="flex text-white text-sm font-light ">
