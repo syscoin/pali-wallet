@@ -1,8 +1,12 @@
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { OnboardingLayout, Button } from 'components/index';
+
+type FormErrors = {
+  [key: string]: string;
+};
 
 interface IPasswordForm {
   onSubmit: (data: any) => any;
@@ -12,14 +16,20 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   const { t } = useTranslation();
 
   const [form] = Form.useForm();
-  const [formErrors, setFormErrors] = useState({});
+  const [formErrors, setFormErrors] = useState<FormErrors>({
+    password: '',
+    repassword: '',
+  });
+  console.log(formErrors, 'a');
+  const buttonIsValidStyle = useMemo(
+    () =>
+      Object.keys(formErrors).length > 0 || !form.getFieldValue('password')
+        ? 'opacity-60'
+        : 'opacity-100',
+    [formErrors, form]
+  );
 
-  const buttonIsValidStyle =
-    Object.keys(formErrors).length > 0 || !form.getFieldValue('password')
-      ? 'opacity-60'
-      : 'opacity-100';
-
-  const onValuesChange = () => {
+  const onValuesChange = useCallback(() => {
     form
       .validateFields()
       .then(() => setFormErrors({}))
@@ -31,7 +41,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           }, {})
         );
       });
-  };
+  }, []);
 
   return (
     <OnboardingLayout title={t('settings.password')}>

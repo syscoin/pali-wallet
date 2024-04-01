@@ -1,6 +1,6 @@
 import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -8,6 +8,13 @@ import { OnboardingLayout, Button } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { getController } from 'utils/browser';
 import { formatSeedPhrase } from 'utils/format';
+
+type SeedValidationType = {
+  seedLength: string;
+  seedLengthError: boolean;
+};
+
+const eyeStyle = 'w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20';
 
 const ImportPhrase: React.FC = () => {
   const { TextArea } = Input;
@@ -17,7 +24,7 @@ const ImportPhrase: React.FC = () => {
   const { t } = useTranslation();
   const [seedIsValid, setSeedIsValid] = useState<boolean>();
   const [visible, setVisible] = useState<boolean>(false);
-  const [seedValidation, setSeedValidation] = useState({
+  const [seedValidation, setSeedValidation] = useState<SeedValidationType>({
     seedLength: null,
     seedLengthError: false,
   });
@@ -25,10 +32,13 @@ const ImportPhrase: React.FC = () => {
 
   const textAreaNotVisibleStyle = visible ? 'filter blur-sm' : '';
 
-  const formBorderStatusStyle =
-    !seedIsValid && form.getFieldValue('phrase')
-      ? 'border-warning-error'
-      : 'border-fields-input-border';
+  const formBorderStatusStyle = useMemo(
+    () =>
+      !seedIsValid && form.getFieldValue('phrase')
+        ? 'border-warning-error'
+        : 'border-fields-input-border',
+    [seedIsValid]
+  );
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
     if (controller.wallet.isSeedValid(phrase)) {
@@ -111,13 +121,13 @@ const ImportPhrase: React.FC = () => {
             <div className="absolute left-[88%] top-[18%] flex bg-brand-blue800">
               {visible ? (
                 <img
-                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                  className={eyeStyle}
                   onClick={() => setVisible(false)}
                   src="/assets/icons/visibleEye.svg"
                 />
               ) : (
                 <img
-                  className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
+                  className={eyeStyle}
                   onClick={() => setVisible(true)}
                   src="/assets/icons/notVisibleEye.svg"
                 />
@@ -126,11 +136,11 @@ const ImportPhrase: React.FC = () => {
           </div>
         </Form.Item>
 
-        <div className="w-[85%] text-center text-xs ">
+        <div className="w-[85%] text-center text-xs">
           <span className="text-brand-blue100 font-bold">
             {t('import.importAttention')}
           </span>
-          <span className="text-brand-gray200 font-normal ">
+          <span className="text-brand-gray200 font-normal">
             {t('import.importingYourAccount')}
           </span>
         </div>
