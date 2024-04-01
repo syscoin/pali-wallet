@@ -14,7 +14,7 @@ const PhraseView = () => {
 
   const [visible, setVisible] = useState<boolean>(false);
   const { t } = useTranslation();
-  const { useCopyClipboard, navigate, alert } = useUtils();
+  const { useCopyClipboard, navigate } = useUtils();
   const controller = getController();
   const [copied, copyText] = useCopyClipboard();
 
