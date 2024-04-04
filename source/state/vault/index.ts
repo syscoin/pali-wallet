@@ -70,6 +70,7 @@ export const initialState: IVaultState = {
   },
   hasErrorOndAppEVM: false,
   isBitcoinBased: true,
+  isDappAskingToChangeNetwork: false,
   isLoadingBalances: false,
   isNetworkChanging: false,
   isLoadingTxs: false,
@@ -336,6 +337,12 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
+    },
+    setIsDappAskingToChangeNetwork(
+      state: IVaultState,
+      action: PayloadAction<boolean>
+    ) {
+      state.isDappAskingToChangeNetwork = action.payload;
     },
     setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
       state.hasErrorOndAppEVM = action.payload;
@@ -809,6 +816,7 @@ export const {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsNetworkChanging,
+  setIsDappAskingToChangeNetwork,
   setIsLoadingBalances,
   setIsLoadingAssets,
   setIsLoadingTxs,

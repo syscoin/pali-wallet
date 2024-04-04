@@ -6,6 +6,7 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { setIsDappAskingToChangeNetwork } from 'state/vault';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { areStringsPresent } from 'utils/format';
@@ -76,12 +77,14 @@ export const methodRequest = async (
     try {
       return await enable(host, undefined, undefined, false, isHybridDapp);
     } catch (error) {
+      store.dispatch(setIsDappAskingToChangeNetwork(true));
       await popupPromise({
         host,
         route: 'switch-network',
         eventName: 'switchNetwork',
         data: {},
       });
+      store.dispatch(setIsDappAskingToChangeNetwork(false));
 
       return await enable(host, undefined, undefined, false, isHybridDapp);
     }
@@ -90,6 +93,7 @@ export const methodRequest = async (
     try {
       return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
+      store.dispatch(setIsDappAskingToChangeNetwork(true));
       if (error.message === 'Connected to Ethereum based chain') {
         await popupPromise({
           host,
@@ -97,6 +101,7 @@ export const methodRequest = async (
           eventName: 'switchNetwork',
           data: { network: data.network },
         });
+        store.dispatch(setIsDappAskingToChangeNetwork(false));
 
         return await enable(host, undefined, undefined, true, isHybridDapp);
       }

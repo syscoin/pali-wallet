@@ -31,6 +31,7 @@ export interface IVaultState {
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
+  isDappAskingToChangeNetwork: boolean;
   isLastTxConfirmed: null | { [k: number]: boolean };
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;

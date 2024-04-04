@@ -7,7 +7,10 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { Button } from 'components/Button';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
-import { setOpenDAppErrorModal } from 'state/vault';
+import {
+  setIsDappAskingToChangeNetwork,
+  setOpenDAppErrorModal,
+} from 'state/vault';
 import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 import { NetworkType } from 'utils/types';
@@ -21,7 +24,7 @@ type currentNetwork = {
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { wallet } = getController();
-  const { isBitcoinBased, networks } = useSelector(
+  const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
   const { navigate } = useUtils();
@@ -54,6 +57,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
+      if (isDappAskingToChangeNetwork) window.close();
       navigate('/home');
     } catch (networkError) {
       window.close();
