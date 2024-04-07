@@ -23,6 +23,7 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
+import { SYSCOIN_MAINNET_NETWORK_57 } from 'utils/constants';
 import { isTokenTransfer } from 'utils/transactions';
 
 import {
@@ -46,7 +47,6 @@ export const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    //TODO: add Trezor account type here
   },
   activeAccount: {
     id: 0,
@@ -59,15 +59,7 @@ export const initialState: IVaultState = {
   isLastTxConfirmed: {},
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
-  activeNetwork: {
-    chainId: 57,
-    url: 'https://blockbook.syscoin.org',
-    label: 'Syscoin Mainnet',
-    default: true,
-    currency: 'sys',
-    slip44: 57,
-    isTestnet: false,
-  },
+  activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isLoadingBalances: false,
@@ -100,7 +92,7 @@ const VaultState = createSlice({
         [key in KeyringAccountType]: PaliAccount;
       }>
     ) {
-      state.accounts = action.payload; //todo: account should be adjusted with the new type and format
+      state.accounts = action.payload;
     },
     setAccountsWithLabelEdited(
       state: IVaultState,
