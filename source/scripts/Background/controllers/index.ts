@@ -29,6 +29,11 @@ import {
   IDAppController,
   IMainController,
 } from 'types/controllers';
+import {
+  ROLLUX_DEFAULT_NETWORK,
+  SYSCOIN_MAINNET_DEFAULT_NETWORK,
+  SYSCOIN_MAINNET_NETWORK_57,
+} from 'utils/constants';
 import { getNetworkChain } from 'utils/network';
 
 import ControllerUtils from './ControllerUtils';
@@ -44,37 +49,6 @@ export interface IMasterController {
   utils: Readonly<IControllerUtils>;
   wallet: IMainController;
 }
-
-const ROLLUX_DEFAULT_NETWORK = {
-  chain: INetworkType.Ethereum,
-  network: {
-    chainId: 570,
-    currency: 'sys',
-    default: true,
-    label: 'Rollux',
-    url: 'https://rpc.rollux.com',
-    apiUrl: 'https://explorer.rollux.com/api',
-    explorer: 'https://explorer.rollux.com/',
-    isTestnet: false,
-  } as INetwork,
-  isEdit: false,
-};
-
-const SYSCOIN_MAINNET_NETWORK_57 = {
-  chainId: 57,
-  url: 'https://blockbook.syscoin.org',
-  label: 'Syscoin Mainnet',
-  default: true,
-  currency: 'sys',
-  slip44: 57,
-  isTestnet: false,
-} as INetwork;
-
-const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
-  chain: INetworkType.Syscoin,
-  network: SYSCOIN_MAINNET_NETWORK_57,
-  isEdit: true,
-};
 
 const getAccountType = (account: IPaliAccount): KeyringAccountType =>
   !account.isImported && !account.isTrezorWallet
