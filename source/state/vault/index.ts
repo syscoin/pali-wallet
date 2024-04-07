@@ -195,67 +195,39 @@ const VaultState = createSlice({
       }
       state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
-    setNetworks(
+    setNetwork(
       state: IVaultState,
       action: PayloadAction<{
         chain: string;
-        isEdit: boolean;
+        isEdit?: boolean;
         isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
-      //TODO: refactor, it should just set the network the verification is already done on sysweb3
       const { chain, network, isEdit, isFirstTime } = action.payload;
-
-      const replaceNetworkName = `${network.label
-        .replace(/\s/g, '')
-        .toLocaleLowerCase()}-${network.chainId}`;
-
       const networkKeyIdentifier = network.key ? network.key : network.chainId;
 
-      const alreadyExist = Boolean(state.networks[chain][networkKeyIdentifier]);
-
-      if (alreadyExist && !isEdit && !isFirstTime) {
-        const verifyIfRpcOrNameExists = Object.values(
-          state.networks[chain]
-        ).find(
-          (networkState: INetwork) =>
-            networkState.url === network.url ||
-            networkState.key === replaceNetworkName
-        );
-
-        if (verifyIfRpcOrNameExists)
-          throw new Error(
-            'Network RPC or name already exists, try with a new one!'
-          );
-
-        state.networks[chain] = {
-          ...state.networks[chain],
-          [replaceNetworkName]: {
+      if (state.networks[chain][networkKeyIdentifier]) {
+        if (!isEdit && !isFirstTime) {
+          throw new Error('Network already exists!');
+        }
+        if (isEdit) {
+          state.networks[chain][networkKeyIdentifier] = {
+            ...state.networks[chain][networkKeyIdentifier],
             ...network,
-
-            key: replaceNetworkName,
-          },
-        };
-
+          };
+        }
         return;
       }
-      state.networks[chain] = {
-        ...state.networks[chain],
-        [networkKeyIdentifier]: network,
-      };
+      state.networks[chain][networkKeyIdentifier] = network;
 
       if (
         chain === state.activeChain &&
-        state.networks[chain][networkKeyIdentifier].chainId ===
-          state.activeNetwork.chainId &&
-        state.networks[chain][networkKeyIdentifier].url ===
-          state.activeNetwork.url
+        network.chainId === state.activeNetwork.chainId &&
+        network.url === state.activeNetwork.url
       ) {
         state.activeNetwork = network;
       }
-
-      return;
     },
     removeNetwork(
       state: IVaultState,
@@ -269,30 +241,28 @@ const VaultState = createSlice({
     ) {
       const { chain, chainId, rpcUrl, label, key } = action.payload;
 
-      const cloneNetworkState = cloneDeep(state.networks);
+      const clonedNetworks = cloneDeep(state.networks[chain]);
 
-      const updatedNetworks = Object.entries(cloneNetworkState[chain]).reduce(
-        (result, [index, networkValue]) => {
-          const networkTyped = networkValue as INetwork;
-
-          if (key && networkTyped.key === key) {
-            return result; // Skip the network with the provided key
+      if (key && clonedNetworks[key]) {
+        delete clonedNetworks[key];
+      } else {
+        const networkToDeleteKey = Object.keys(clonedNetworks).find(
+          (networkKey) => {
+            const network = clonedNetworks[networkKey];
+            return (
+              network.url === rpcUrl &&
+              network.chainId === chainId &&
+              network.label === label
+            );
           }
+        );
 
-          if (
-            networkTyped.url === rpcUrl &&
-            networkTyped.chainId === chainId &&
-            networkTyped.label === label
-          ) {
-            return result; // Skip the network that matches the criteria
-          }
+        if (networkToDeleteKey) {
+          delete clonedNetworks[networkToDeleteKey];
+        }
+      }
 
-          return { ...result, [index]: networkValue }; // Keep the network in the updated object
-        },
-        {}
-      );
-
-      state.networks[chain] = updatedNetworks;
+      state.networks[chain] = clonedNetworks;
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
@@ -817,7 +787,7 @@ export const {
   setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
-  setNetworks,
+  setNetwork,
   setTimer,
   setIsTimerEnabled,
   forgetWallet,
