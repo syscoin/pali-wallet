@@ -32,7 +32,7 @@ describe('Receive', () => {
     assert.equal(
       receiveSYSText,
       'RECEIVE SYS',
-      '<!> Receive button is working different than the the expected <!>'
+      '<!> Receive button is working different than the expected <!>'
     );
   });
 
