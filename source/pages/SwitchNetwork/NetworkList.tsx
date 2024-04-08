@@ -7,10 +7,7 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { Button } from 'components/Button';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
-import {
-  setIsDappAskingToChangeNetwork,
-  setOpenDAppErrorModal,
-} from 'state/vault';
+import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 import { NetworkType } from 'utils/types';
