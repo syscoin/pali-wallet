@@ -93,4 +93,4 @@ export const verifyNetworkEIP1559Compatibility = async (
 };
 
 export const getNetworkChain = (isBtcBased: boolean) =>
-  isBtcBased ? INetworkType.Ethereum : INetworkType.Syscoin;
+  isBtcBased ? INetworkType.Syscoin : INetworkType.Ethereum;

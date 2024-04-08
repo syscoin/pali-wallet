@@ -824,7 +824,7 @@ const MainController = (walletState): IMainController => {
         throw new Error('RPC from a different chainId');
       }
 
-      store.dispatch(setNetwork({ chain, network: newNetwork }));
+      store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
