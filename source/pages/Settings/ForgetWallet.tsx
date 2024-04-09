@@ -102,7 +102,7 @@ const ForgetWalletView = () => {
                       getFieldValue('password')
                     );
 
-                    if (seed.trim() === value.trim()) {
+                    if (seed === value) {
                       setIsSeedValid(true);
 
                       return Promise.resolve();
@@ -127,38 +127,38 @@ const ForgetWalletView = () => {
             </Form.Item>
           </>
         )}
-      </Form>
-      <Card type="info">
-        <div className="flex flex-col justify-start items-start">
-          <p className="text-brand-yellowInfo text-sm font-normal text-left">
-            {t('forgetWalletPage.stillHaveFunds')}
-          </p>
-          <p className="text-white text-sm font-normal text-left">
-            {t('forgetWalletPage.saveProperly')}
-          </p>
+        <Card type="info">
+          <div className="flex flex-col justify-start items-start">
+            <p className="text-brand-yellowInfo text-sm font-normal text-left">
+              {t('forgetWalletPage.stillHaveFunds')}
+            </p>
+            <p className="text-white text-sm font-normal text-left">
+              {t('forgetWalletPage.saveProperly')}
+            </p>
+          </div>
+        </Card>
+
+        <div className="flex mt-6 gap-x-8 justify-between md:static md:gap-x-40">
+          <Button
+            type="button"
+            onClick={() => navigate('/home')}
+            className="w-[164px] h-10 flex items-center justify-center rounded-[100px] border-2 border-white text-base font-medium text-white"
+          >
+            {t('buttons.cancel')}
+          </Button>
+
+          <Button
+            type="submit"
+            className={`${
+              !isPasswordValid || !isSeedValid ? 'opacity-60' : 'opacity-100'
+            } w-[164px] h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400`}
+            disabled={!isPasswordValid || !isSeedValid}
+            id="forget-btn"
+          >
+            {t('buttons.forget')}
+          </Button>
         </div>
-      </Card>
-
-      <div className="flex mt-6 gap-x-8 justify-between md:static md:gap-x-40">
-        <Button
-          type="button"
-          onClick={() => navigate('/home')}
-          className="w-[164px] h-10 flex items-center justify-center rounded-[100px] border-2 border-white text-base font-medium text-white"
-        >
-          {t('buttons.cancel')}
-        </Button>
-
-        <Button
-          type="submit"
-          className={`${
-            !isPasswordValid || !isSeedValid ? 'opacity-60' : 'opacity-100'
-          } w-[164px] h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400`}
-          disabled={!isPasswordValid || !isSeedValid}
-          id="forget-btn"
-        >
-          {t('buttons.forget')}
-        </Button>
-      </div>
+      </Form>
     </Layout>
   );
 };
