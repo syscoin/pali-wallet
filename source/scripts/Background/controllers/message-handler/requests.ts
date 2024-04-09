@@ -93,8 +93,8 @@ export const methodRequest = async (
     try {
       return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
-      store.dispatch(setIsDappAskingToChangeNetwork(true));
       if (error.message === 'Connected to Ethereum based chain') {
+        store.dispatch(setIsDappAskingToChangeNetwork(true));
         await popupPromise({
           host,
           route: 'switch-network',
