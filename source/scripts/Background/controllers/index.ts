@@ -17,6 +17,7 @@ import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
+  setActiveNetwork,
   setAdvancedSettings,
   setIsLastTxConfirmed,
   setNetworks,
@@ -149,6 +150,47 @@ const MasterController = (
           } as INetwork,
           isEdit: false,
         })
+      );
+    }
+
+    const currentRpcSysUtxoMainnet =
+      store.getState().vault.networks[TransactionsType.Syscoin][57].url;
+
+    const { activeNetwork } = store.getState().vault;
+
+    if (currentRpcSysUtxoMainnet !== 'https://blockbook.syscoin.org') {
+      store.dispatch(
+        setNetworks({
+          chain: 'syscoin' as INetworkType,
+          network: {
+            chainId: 57,
+            url: 'https://blockbook.syscoin.org',
+            label: 'Syscoin Mainnet',
+            default: true,
+            currency: 'sys',
+            slip44: 57,
+            isTestnet: false,
+          } as INetwork,
+          isEdit: true,
+        })
+      );
+    }
+
+    const isSysUtxoMainnetWithWrongRpcUrl =
+      activeNetwork.chainId === 57 &&
+      activeNetwork.url.includes('https://blockbook.elint.services');
+
+    if (isSysUtxoMainnetWithWrongRpcUrl) {
+      store.dispatch(
+        setActiveNetwork({
+          chainId: 57,
+          url: 'https://blockbook.syscoin.org',
+          label: 'Syscoin Mainnet',
+          default: true,
+          currency: 'sys',
+          slip44: 57,
+          isTestnet: false,
+        } as INetwork)
       );
     }
 
