@@ -27,8 +27,8 @@
   font-weight: 400;
   line-height: normal;
   color: #fff;
-  top: 55%;
-  right: 40px;
+  top: 52%;
+  right: 23px;
   transform: translateY(-50%);
 }
 
@@ -42,7 +42,16 @@
   font-weight: 400;
   line-height: normal;
   color: #fff;
-  top: 55%;
-  right: 40px;
+  top: 51%;
+  right: 23px;
   transform: translateY(-50%);
+}
+
+.custom-input-normal .ant-input-suffix .anticon-loading {
+  position: absolute;
+  top: 35%;
+  right: 28px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
 }

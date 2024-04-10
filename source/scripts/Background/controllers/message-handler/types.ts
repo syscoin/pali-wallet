@@ -4,6 +4,12 @@ export type Message = {
   id: string;
   type: string;
 };
+
+export enum HardWallets {
+  LEDGER = 'LEDGER',
+  TREZOR = 'TREZOR',
+}
+
 //TODO: addtype for rpc subscription notifications here
 export enum PaliEvents {
   accountsChanged = 'pali_accountsChanged',
