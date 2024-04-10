@@ -2,8 +2,6 @@ import { ethErrors } from 'helpers/errors';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { INetworkType } from '@pollum-io/sysweb3-network';
-
 import {
   Layout,
   PrimaryButton,
@@ -14,6 +12,7 @@ import {
 import { useQueryData } from 'hooks/index';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { getNetworkChain } from 'utils/network';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
   const { wallet } = getController();
@@ -22,10 +21,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
-  const previousChain = newChainValue === 'Ethereum' ? 'Syscoin' : 'Ethereum';
+  const previousChain = getNetworkChain(newChainValue === 'Ethereum');
 
-  const correctTypeForChainValue =
-    newChainValue === 'Ethereum' ? INetworkType.Ethereum : INetworkType.Syscoin;
+  const correctTypeForChainValue = getNetworkChain(
+    newChainValue === 'Ethereum'
+  );
 
   const titleValue = `${t(
     'buttons.switch'

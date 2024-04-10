@@ -91,10 +91,16 @@
     "explorer": "Explorer?",
     "addressCopied": "Address successfully copied",
     "hashCopied": "Hash successfully copied",
-    "contractCopied": "Contract successfully copied"
+    "contractCopied": "Contract successfully copied",
+    "ifYouHaveAHardWallet": "Se você possui uma carteira física, você pode conectá-la agora!",
+    "congratulations": "Parabéns",
+    "youWalletWas": "Sua carteira foi importada com sucesso."
   },
   "import": {
-    "importingYourAccount": "Importing your wallet seed automatically import a wallet associated with this seed phrase."
+    "importModalWordMissing": "Palavra ausente!",
+    "importModalSeed": "A frase-semente deve ter 12 ou 24 palavras e você inseriu {{seedLength}}.",
+    "importAttention": "ATENÇÃO: ",
+    "importingYourAccount": "Após importar sua carteira você deve adicionar novamente suas carteiras de hardware e ajustar as configurações pessoais da carteira."
   },
   "receive": {
     "receiveTitle": "RECEIVE"

@@ -45,6 +45,7 @@ export const SendSys = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
+
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
       await controller.wallet.syscoinTransaction.getRecommendedFee(

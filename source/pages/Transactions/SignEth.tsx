@@ -7,6 +7,7 @@ import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { getNetworkChain } from 'utils/network';
 
 interface ISign {
   send?: boolean;
@@ -134,7 +135,7 @@ const EthSign: React.FC<ISign> = () => {
       <div className="flex flex-row justify-between mb-2 w-full font-poppins text-xs text-white">
         <p>{t('send.balance')}</p>
         <div className="flex gap-1">
-          <p>{balances[isBitcoinBased ? 'syscoin' : 'ethereum']}</p>
+          <p>{balances[getNetworkChain(isBitcoinBased)]}</p>
           <p className="text-brand-blue200">{currency.toUpperCase()}</p>
         </div>
       </div>
