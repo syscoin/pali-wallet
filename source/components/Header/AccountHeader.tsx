@@ -273,7 +273,7 @@ const RenderAccountsListByBitcoinBased = (
                         <Icon
                           name="check"
                           className="mb-1 w-4"
-                          wrapperClassname="absolute right-2.5"
+                          wrapperClassname="absolute right-0.5"
                           color="#8EC100"
                         />
                       )}
