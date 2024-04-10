@@ -9,6 +9,7 @@ import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
+import { getNetworkChain } from 'utils/network';
 import { NetworkType } from 'utils/types';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -60,9 +61,9 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const chainName = useMemo(() => {
     if (isChanging) {
-      return selectedNetwork === 'UTXO' ? 'syscoin' : 'ethereum';
+      return getNetworkChain(selectedNetwork === 'UTXO');
     } else {
-      return isBitcoinBased ? 'ethereum' : 'syscoin';
+      return getNetworkChain(isBitcoinBased);
     }
   }, [isBitcoinBased, isChanging, selectedNetwork]);
 
