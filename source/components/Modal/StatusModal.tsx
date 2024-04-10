@@ -4,6 +4,7 @@ import React, { Fragment, useCallback, useMemo } from 'react';
 interface IModal {
   description?: string;
   onClose?: () => any;
+  position?: string;
   show?: boolean;
   status: string;
   title: string;
@@ -14,6 +15,7 @@ export const StatusModal = ({
   onClose,
   show = true,
   title,
+  position = 'inset-0',
   status = '',
 }: IModal) => {
   const theme = useMemo(() => {
@@ -28,6 +30,11 @@ export const StatusModal = ({
         iconBg: 'bg-brand-darkGreen',
         bg: 'bg-brand-green',
       },
+      warn: {
+        icon: 'assets/icons/warn.svg',
+        iconBg: 'bg-brand-yellowInfoDark',
+        bg: 'bg-brand-yellowInfo',
+      },
     };
 
     return themes[status] || {};
@@ -41,7 +48,7 @@ export const StatusModal = ({
     <Transition appear show={show} as={Fragment}>
       <Dialog
         as="div"
-        className={`fixed z-10 inset-0 overflow-y-auto  rounded-[20px]`}
+        className={`fixed z-30 ${position} overflow-y-auto  rounded-[20px]`}
         onClose={handleOnClose}
       >
         <div className="fixed z-0 -inset-0 w-full bg-transparent bg-opacity-50 transition-all duration-300 ease-in-out" />

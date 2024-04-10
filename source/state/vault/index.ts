@@ -23,6 +23,7 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
+import { SYSCOIN_MAINNET_NETWORK_57 } from 'utils/constants';
 import { isTokenTransfer } from 'utils/transactions';
 
 import {
@@ -46,7 +47,6 @@ export const initialState: IVaultState = {
     [KeyringAccountType.Imported]: {},
     [KeyringAccountType.Trezor]: {},
     [KeyringAccountType.Ledger]: {},
-    //TODO: add Trezor account type here
   },
   activeAccount: {
     id: 0,
@@ -59,15 +59,7 @@ export const initialState: IVaultState = {
   isLastTxConfirmed: {},
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
-  activeNetwork: {
-    chainId: 57,
-    url: 'https://blockbook.syscoin.org',
-    label: 'Syscoin Mainnet',
-    default: true,
-    currency: 'sys',
-    slip44: 57,
-    isTestnet: false,
-  },
+  activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isDappAskingToChangeNetwork: false,
@@ -101,7 +93,7 @@ const VaultState = createSlice({
         [key in KeyringAccountType]: PaliAccount;
       }>
     ) {
-      state.accounts = action.payload; //todo: account should be adjusted with the new type and format
+      state.accounts = action.payload;
     },
     setAccountsWithLabelEdited(
       state: IVaultState,
@@ -196,67 +188,39 @@ const VaultState = createSlice({
       }
       state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
-    setNetworks(
+    setNetwork(
       state: IVaultState,
       action: PayloadAction<{
         chain: string;
-        isEdit: boolean;
+        isEdit?: boolean;
         isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
-      //TODO: refactor, it should just set the network the verification is already done on sysweb3
       const { chain, network, isEdit, isFirstTime } = action.payload;
-
-      const replaceNetworkName = `${network.label
-        .replace(/\s/g, '')
-        .toLocaleLowerCase()}-${network.chainId}`;
-
       const networkKeyIdentifier = network.key ? network.key : network.chainId;
 
-      const alreadyExist = Boolean(state.networks[chain][networkKeyIdentifier]);
-
-      if (alreadyExist && !isEdit && !isFirstTime) {
-        const verifyIfRpcOrNameExists = Object.values(
-          state.networks[chain]
-        ).find(
-          (networkState: INetwork) =>
-            networkState.url === network.url ||
-            networkState.key === replaceNetworkName
-        );
-
-        if (verifyIfRpcOrNameExists)
-          throw new Error(
-            'Network RPC or name already exists, try with a new one!'
-          );
-
-        state.networks[chain] = {
-          ...state.networks[chain],
-          [replaceNetworkName]: {
+      if (state.networks[chain][networkKeyIdentifier]) {
+        if (!isEdit && !isFirstTime) {
+          throw new Error('Network already exists!');
+        }
+        if (isEdit) {
+          state.networks[chain][networkKeyIdentifier] = {
+            ...state.networks[chain][networkKeyIdentifier],
             ...network,
-
-            key: replaceNetworkName,
-          },
-        };
-
+          };
+        }
         return;
       }
-      state.networks[chain] = {
-        ...state.networks[chain],
-        [networkKeyIdentifier]: network,
-      };
+      state.networks[chain][networkKeyIdentifier] = network;
 
       if (
         chain === state.activeChain &&
-        state.networks[chain][networkKeyIdentifier].chainId ===
-          state.activeNetwork.chainId &&
-        state.networks[chain][networkKeyIdentifier].url ===
-          state.activeNetwork.url
+        network.chainId === state.activeNetwork.chainId &&
+        network.url === state.activeNetwork.url
       ) {
         state.activeNetwork = network;
       }
-
-      return;
     },
     removeNetwork(
       state: IVaultState,
@@ -270,30 +234,28 @@ const VaultState = createSlice({
     ) {
       const { chain, chainId, rpcUrl, label, key } = action.payload;
 
-      const cloneNetworkState = cloneDeep(state.networks);
+      const clonedNetworks = cloneDeep(state.networks[chain]);
 
-      const updatedNetworks = Object.entries(cloneNetworkState[chain]).reduce(
-        (result, [index, networkValue]) => {
-          const networkTyped = networkValue as INetwork;
-
-          if (key && networkTyped.key === key) {
-            return result; // Skip the network with the provided key
+      if (key && clonedNetworks[key]) {
+        delete clonedNetworks[key];
+      } else {
+        const networkToDeleteKey = Object.keys(clonedNetworks).find(
+          (networkKey) => {
+            const network = clonedNetworks[networkKey];
+            return (
+              network.url === rpcUrl &&
+              network.chainId === chainId &&
+              network.label === label
+            );
           }
+        );
 
-          if (
-            networkTyped.url === rpcUrl &&
-            networkTyped.chainId === chainId &&
-            networkTyped.label === label
-          ) {
-            return result; // Skip the network that matches the criteria
-          }
+        if (networkToDeleteKey) {
+          delete clonedNetworks[networkToDeleteKey];
+        }
+      }
 
-          return { ...result, [index]: networkValue }; // Keep the network in the updated object
-        },
-        {}
-      );
-
-      state.networks[chain] = updatedNetworks;
+      state.networks[chain] = clonedNetworks;
     },
     setTimer(state: IVaultState, action: PayloadAction<number>) {
       state.timer = action.payload;
@@ -345,6 +307,12 @@ const VaultState = createSlice({
       state.isDappAskingToChangeNetwork = action.payload;
     },
     setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
+      state.hasErrorOndAppEVM = action.payload;
+    },
+    setCongratulationsModalOnImportWallet(
+      state: IVaultState,
+      action: PayloadAction<boolean>
+    ) {
       state.hasErrorOndAppEVM = action.payload;
     },
     setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
@@ -825,7 +793,7 @@ export const {
   setAccountBalances,
   setChangingConnectedAccount,
   setLastLogin,
-  setNetworks,
+  setNetwork,
   setTimer,
   setIsTimerEnabled,
   forgetWallet,
