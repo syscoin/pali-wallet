@@ -3,6 +3,7 @@ import { browser, Runtime } from 'webextension-polyfill-ts';
 
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { getNetworkChain } from 'utils/network';
 
 import { methodRequest, enable, isUnlocked } from './requests';
 import { Message } from './types';
@@ -19,7 +20,7 @@ const _messageHandler = async (host: string, message: Message) => {
 
   const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
-  const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
+  const chain = getNetworkChain(isBitcoinBased);
 
   const { dapp } = window.controller;
   switch (message.type) {

@@ -14,6 +14,7 @@ import {
 import { useQueryData, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { getNetworkChain } from 'utils/network';
 
 interface ISign {
   send?: boolean;
@@ -88,8 +89,7 @@ const Decrypt: React.FC<ISign> = () => {
               {t('transactions.account')}: {label}
             </p>
             <p className="font-poppins text-sm">
-              {t('send.balance')}:{' '}
-              {balances[isBitcoinBased ? 'syscoin' : 'ethereum']}{' '}
+              {t('send.balance')}: {balances[getNetworkChain(isBitcoinBased)]}{' '}
               {currency.toUpperCase()}
             </p>
           </div>
