@@ -95,10 +95,41 @@ div[role='alert'] {
   background-blend-mode: overlay !important;
 }
 
-.scrollbar-styled {
+/* .scrollbar-styled {
   /* Firefox */
-  scrollbar-color: #4ca1cf #739dce;
-  scrollbar-width: thin;
+  // scrollbar-color: #4d76b8 #162742;
+  // scrollbar-width: thin;
+  //}
+
+/* Chrome, Edge and Safari */
+*::-webkit-scrollbar {
+  height: 1px;
+  width: 1px;
+}
+*::-webkit-scrollbar-track {
+  border-radius: 5px;
+  background-color: #162742;
+}
+
+*::-webkit-scrollbar-track:hover {
+  background-color: #162742;
+}
+
+*::-webkit-scrollbar-track:active {
+  background-color: #162742;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background-color: #4d76b8;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #4d76b8;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: #4d76b8;
 }
 
 .remove-scrollbar {
