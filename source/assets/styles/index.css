@@ -97,9 +97,9 @@ div[role='alert'] {
 
 /* .scrollbar-styled {
   /* Firefox */
-  // scrollbar-color: #4d76b8 #162742;
-  // scrollbar-width: thin;
-  //}
+/* scrollbar-color: #4d76b8 #162742;
+ scrollbar-width: thin;
+   */
 
 /* Chrome, Edge and Safari */
 *::-webkit-scrollbar {
