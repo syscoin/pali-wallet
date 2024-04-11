@@ -151,8 +151,12 @@ const ConnectedSites = () => {
           </Transition>
         )}
 
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="button" onClick={() => navigate('/home')}>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton
+            type="button"
+            fullWidth
+            onClick={() => navigate('/home')}
+          >
             {t('buttons.close')}
           </NeutralButton>
         </div>

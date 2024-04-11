@@ -86,14 +86,14 @@ export const TransactionsPanel = () => {
       accounts[activeAccount.type][activeAccount.id];
     const openExplorer = () =>
       window.open(
-        `${isBitcoinBased ? networkUrl : adjustedExplorer}${
+        `${isBitcoinBased ? networkUrl : adjustedExplorer}/${
           isBitcoinBased ? 'xpub' : 'address'
         }/${isBitcoinBased ? xpub : userAddress}`,
         '_blank'
       );
 
     return (
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex mt-5 items-center justify-center gap-2">
         <img src={externalLink} />
         <button
           type="button"

@@ -7,6 +7,7 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
@@ -44,7 +45,8 @@ export const Home = () => {
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
-  const [showModal, setShowModal] = useState(isWalletImported);
+  const [showModalCongrats, setShowModalCongrats] = useState(false);
+  const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
   //* Constants
   const { url } = activeNetwork;
@@ -62,6 +64,15 @@ export const Home = () => {
   const moreThanMillion = actualBalance >= ONE_MILLION;
 
   const moreThanTrillion = actualBalance > ONE_TRILLION;
+
+  const closeModal = () => {
+    setShowModalCongrats(false);
+  };
+
+  const handleCloseModal = () => {
+    setShowModalHardWallet(false);
+    setShowModalCongrats(true);
+  };
 
   //* Effect for set Testnet or not
   useEffect(() => {
@@ -93,10 +104,6 @@ export const Home = () => {
     fiatPrice,
     actualBalance,
   ]);
-
-  const closeModal = () => {
-    setShowModal(false);
-  };
 
   const formatFiatAmmount = useMemo(() => {
     if (isTestnet) {
@@ -181,13 +188,21 @@ export const Home = () => {
             </div>
           </section>
           {isWalletImported && (
-            <StatusModal
-              show={showModal}
-              title={'Congratulations!'}
-              description={'Your wallet was successfully imported.'}
-              onClose={closeModal}
-              status="success"
-            />
+            <>
+              <ConnectHardwareWallet
+                title={t('accountMenu.connectTrezor').toUpperCase()}
+                onClose={handleCloseModal}
+                show={showModalHardWallet}
+                phraseOne={t('home.ifYouHaveAHardWallet')}
+              />
+              <StatusModal
+                show={showModalCongrats}
+                title={t('home.congratulations')}
+                description={t('home.youWalletWas')}
+                onClose={closeModal}
+                status="success"
+              />
+            </>
           )}
           <TxsPanel />
         </>

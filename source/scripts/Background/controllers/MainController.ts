@@ -26,7 +26,7 @@ import {
   setLastLogin,
   setTimer,
   createAccount as addAccountToStore,
-  setNetworks,
+  setNetwork,
   removeNetwork as removeNetworkFromStore,
   setStoreError,
   setIsBitcoinBased,
@@ -62,6 +62,7 @@ import { IMainController } from 'types/controllers';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { getNetworkChain } from 'utils/network';
 
 import EthAccountController from './account/evm';
 import SysAccountController from './account/syscoin';
@@ -86,7 +87,7 @@ const MainController = (walletState): IMainController => {
   let web3Provider: CustomJsonRpcProvider =
     keyringManager.ethereumTransaction.web3Provider;
   let transactionsManager = TransactionsManager(web3Provider);
-  let balancesMananger = BalancesManager(web3Provider);
+  let balancesManager = BalancesManager(web3Provider);
   const cancellablePromises = new CancellablePromises();
 
   let currentPromise: {
@@ -593,7 +594,7 @@ const MainController = (walletState): IMainController => {
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
-      balancesMananger = BalancesManager(
+      balancesManager = BalancesManager(
         keyringManager.ethereumTransaction.web3Provider
       );
       resolve({
@@ -781,9 +782,7 @@ const MainController = (walletState): IMainController => {
       ? INetworkType.Syscoin
       : INetworkType.Ethereum;
 
-    store.dispatch(
-      setNetworks({ chain, network: networkWithCustomParams, isEdit: false })
-    );
+    store.dispatch(setNetwork({ chain, network: networkWithCustomParams }));
 
     //We need to do that to get the correct network value, we only can know if will have a Key value
     //inside the state after the dispatch for some network with a chainID that already exists
@@ -806,7 +805,7 @@ const MainController = (walletState): IMainController => {
   ): Promise<INetwork> => {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await getRpc(newRpc);
-    const chain = newRpc.isSyscoinRpc ? 'syscoin' : 'ethereum';
+    const chain = getNetworkChain(newRpc.isSyscoinRpc);
 
     if (network.chainId === oldRpc.chainId) {
       const newNetwork = {
@@ -821,15 +820,17 @@ const MainController = (walletState): IMainController => {
         default: oldRpc.default,
         ...(oldRpc?.key && { key: oldRpc.key }),
       } as INetwork;
+
       if (changedChainId) {
         throw new Error('RPC from a different chainId');
       }
-      store.dispatch(setNetworks({ chain, network: newNetwork, isEdit: true }));
+
+      store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider
       );
-      balancesMananger = BalancesManager(
+      balancesManager = BalancesManager(
         keyringManager.ethereumTransaction.web3Provider
       );
 
@@ -1514,7 +1515,7 @@ const MainController = (walletState): IMainController => {
         async (resolve, reject) => {
           try {
             const updatedBalance =
-              await balancesMananger.utils.getBalanceUpdatedForAccount(
+              await balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url

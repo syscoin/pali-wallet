@@ -8,7 +8,7 @@ import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { formatNumber } from 'utils/index';
+import { formatNumber, getNetworkChain } from 'utils/index';
 
 const CurrencyView = () => {
   const controller = getController();
@@ -58,10 +58,7 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (selectedCoin) {
-      controller.utils.setFiat(
-        selectedCoin,
-        isBitcoinBased ? 'syscoin' : 'ethereum'
-      );
+      controller.utils.setFiat(selectedCoin, getNetworkChain(isBitcoinBased));
     }
   }, [selectedCoin, isBitcoinBased]);
 

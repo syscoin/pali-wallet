@@ -45,6 +45,7 @@ export const SendSys = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [recommendedFee, setRecommendedFee] = useState(0.00001);
   const [form] = Form.useForm();
+
   const handleGetFee = useCallback(async () => {
     const getRecommendedFee =
       await controller.wallet.syscoinTransaction.getRecommendedFee(
@@ -274,16 +275,14 @@ export const SendSys = () => {
                 >
                   <Menu>
                     <div className="relative inline-block text-left">
-                      <Menu.Button className="inline-flex items-center w-[100px] gap-4 uppercase justify-center border border-alpha-whiteAlpha300 px-5 py-[7px] text-white text-xs font-normal bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-                        {truncate(
-                          String(
+                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                        <p className="w-full uppercase text-white text-xs font-normal">
+                          {String(
                             selectedAsset?.symbol
                               ? selectedAsset?.symbol
                               : activeNetwork.currency
-                          ),
-                          4
-                        )}
-
+                          )}
+                        </p>
                         <Icon isSvg name="ArrowDown" />
                       </Menu.Button>
 
@@ -360,7 +359,7 @@ export const SendSys = () => {
               }
             </div>
 
-            <div className="flex md:w-96">
+            <div className="flex md:w-96 relative">
               <Form.Item
                 name="amount"
                 className="relative w-full"
@@ -381,7 +380,7 @@ export const SendSys = () => {
                 />
               </Form.Item>
               <span
-                className="z-[9999] left-[36%] bottom-[43%] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
                 onClick={() =>
                   form.setFieldValue('amount', balance - 1.01 * recommendedFee)
                 }

@@ -97,6 +97,7 @@ module.exports = {
     gray300: '#808795',
     whiteAlpaBlue: '#283851',
     yellowInfo: '#FE9B07',
+    yellowInfoDark: '#EA8F06',
   },
   border: {
     default: 'rgba(255, 255, 255, 0.16)',

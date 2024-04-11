@@ -1,9 +1,15 @@
 import { ethers } from 'ethers';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  INetworkType,
+  validateEthRpc,
+  validateSysRpc,
+} from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
+
+import { ethTestnetsChainsIds } from './constants';
 
 export const isActiveNetwork = (chain: string, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
@@ -19,7 +25,7 @@ export const isActiveNetwork = (chain: string, chainId: number) => {
  * `{ chaindId, url }` is compatible with `INetwork`
  */
 export const networkChain = () =>
-  store.getState().vault.isBitcoinBased ? 'syscoin' : 'ethereum';
+  getNetworkChain(store.getState().vault.isBitcoinBased);
 
 /**
  * `{ chaindId, url }` is compatible with `INetwork`
@@ -55,9 +61,6 @@ export const verifyIfIsTestnet = async (
     ? await validateSysRpc(networkUrl)
     : await validateEthRpc(networkUrl, isInCooldown);
 
-  //todo: this can be in some consts file
-  const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
   return Boolean(
     chain === 'test' ||
       chain === 'testnet' ||
@@ -88,3 +91,6 @@ export const verifyNetworkEIP1559Compatibility = async (
     throw new Error(error);
   }
 };
+
+export const getNetworkChain = (isBtcBased: boolean) =>
+  isBtcBased ? INetworkType.Syscoin : INetworkType.Ethereum;

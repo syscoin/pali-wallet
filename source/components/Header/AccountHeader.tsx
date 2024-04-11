@@ -45,6 +45,7 @@ const RenderAccountsListByBitcoinBased = (
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+
   return (
     <>
       {isBitcoinBased ? ( // If the network is Bitcoinbased only show SYS UTX0 accounts -> isImported === false
@@ -53,7 +54,7 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-center text-white text-sm 
+                className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
                    transition duration-300`}
                 onClick={() =>
@@ -64,18 +65,19 @@ const RenderAccountsListByBitcoinBased = (
               >
                 <span
                   style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                  className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
+                  className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
                 >
                   <img src={logo} className="mr-1 w-7"></img>
                   {account.label} ({ellipsis(account.address, 4, 4)})
                 </span>
-
+                <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                  Pali
+                </span>
                 {activeAccount.id === account.id &&
                   activeAccount.type === KeyringAccountType.HDAccount && (
                     <Icon
                       name="check"
-                      className="mb-1 w-4"
-                      wrapperClassname="absolute right-2.5"
+                      className="mb-1 ml-2 w-4"
                       color="#8EC100"
                     />
                   )}
@@ -122,12 +124,15 @@ const RenderAccountsListByBitcoinBased = (
                     `(${ellipsis(account.address, 4, 4)})`}
                 </span>
 
+                <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                  Trezor
+                </span>
+
                 {activeAccount.id === account.id &&
                   activeAccount.type === KeyringAccountType.Trezor && (
                     <Icon
                       name="check"
-                      className="mb-1 w-4"
-                      wrapperClassname="absolute right-2.5"
+                      className="mb-1 ml-2 w-4"
                       color="#8EC100"
                     />
                   )}
@@ -174,12 +179,15 @@ const RenderAccountsListByBitcoinBased = (
                     `(${ellipsis(account.address, 4, 4)})`}
                 </span>
 
+                <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                  Ledger
+                </span>
+
                 {activeAccount.id === account.id &&
                   activeAccount.type === KeyringAccountType.Ledger && (
                     <Icon
                       name="check"
-                      className="mb-1 w-4"
-                      wrapperClassname="absolute right-2.5"
+                      className="mb-1 ml-2 w-4"
                       color="#8EC100"
                     />
                   )}
@@ -265,7 +273,7 @@ const RenderAccountsListByBitcoinBased = (
                         <Icon
                           name="check"
                           className="mb-1 w-4"
-                          wrapperClassname="absolute right-2.5"
+                          wrapperClassname="absolute right-0.5"
                           color="#8EC100"
                         />
                       )}
@@ -304,7 +312,7 @@ export const AccountMenu: React.FC = () => {
   const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
 
   return (
-    <>
+    <div className="flex flex-col justify-start items-start">
       <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
         {t('accountMenu.accounts')}
       </span>
@@ -326,7 +334,7 @@ export const AccountMenu: React.FC = () => {
           onClick={() => navigate('/settings/account/new')}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
-          <Icon name="appstoreadd" className="mb-1 text-brand-white" />
+          <Icon name="AddUser" isSvg className="mb-1 text-brand-white" />
 
           <span>{t('accountMenu.createNewAccount')}</span>
         </li>
@@ -335,22 +343,11 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <li
           onClick={() => navigate('/settings/manage-accounts')}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
-          <Icon name="edit" className="mb-2 text-brand-white" />
+          <Icon name="ManageUser" isSvg className="mb-2 text-brand-white" />
 
           <span>{t('accountMenu.manageAccounts')}</span>
-        </li>
-      </Menu.Item>
-
-      <Menu.Item>
-        <li
-          onClick={() => navigate('/settings/account/private-key')}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-        >
-          <Icon name="key" className="mb-2 text-brand-white" />
-
-          <span>{t('accountMenu.yourKeys')}</span>
         </li>
       </Menu.Item>
 
@@ -360,7 +357,8 @@ export const AccountMenu: React.FC = () => {
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon
-            name="partition"
+            name="HardWallet"
+            isSvg
             className="mb-2 text-brand-white"
             id="hardware-wallet-btn"
           />
@@ -378,7 +376,8 @@ export const AccountMenu: React.FC = () => {
             className={`py-1.5 ${cursorType} px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
           >
             <Icon
-              name="import"
+              name="ImportUser"
+              isSvg
               className="mb-1 text-brand-white"
               opacity={isBitcoinBased ? 0.6 : 1}
             />
@@ -394,7 +393,7 @@ export const AccountMenu: React.FC = () => {
           )}
         </div>
       </Menu.Item>
-    </>
+    </div>
   );
 };
 

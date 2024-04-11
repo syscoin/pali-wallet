@@ -7,9 +7,10 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { setIsDappAskingToChangeNetwork } from 'state/vault';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { areStringsPresent } from 'utils/format';
-import { networkChain } from 'utils/network';
+import { getNetworkChain, networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 /**
@@ -86,12 +87,14 @@ export const methodRequest = async (
     try {
       return await enable(host, activeChain, chainId, false, isHybridDapp);
     } catch (error) {
+      store.dispatch(setIsDappAskingToChangeNetwork(true));
       await popupPromise({
         host,
         route: 'switch-network',
         eventName: 'switchNetwork',
         data: {},
       });
+      store.dispatch(setIsDappAskingToChangeNetwork(false));
 
       return await enable(host, undefined, undefined, false, isHybridDapp);
     }
@@ -101,12 +104,14 @@ export const methodRequest = async (
       return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
       if (error.message === 'Connected to Ethereum based chain') {
+        store.dispatch(setIsDappAskingToChangeNetwork(true));
         await popupPromise({
           host,
           route: 'switch-network',
           eventName: 'switchNetwork',
           data: { network: data.network },
         });
+        store.dispatch(setIsDappAskingToChangeNetwork(false));
 
         return await enable(host, undefined, undefined, true, isHybridDapp);
       }
@@ -310,13 +315,13 @@ export const methodRequest = async (
   const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
 
   if (validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName) {
-    const { chainId } = data.params[0];
+    const { chainId: chain } = data.params[0];
 
     const networks = store.getState().vault.networks;
 
-    const newChainValue = prefix === 'sys' ? 'Syscoin' : 'Ethereum';
+    const newChainValue = getNetworkChain(prefix === 'sys');
     const findCorrectNetwork: INetwork =
-      networks[newChainValue.toLowerCase()][chainId];
+      networks[newChainValue.toLowerCase()][chain];
     if (!findCorrectNetwork) {
       throw cleanErrorStack(
         ethErrors.provider.unauthorized('Network request does not exists')

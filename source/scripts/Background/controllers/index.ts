@@ -17,17 +17,24 @@ import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
+  setActiveNetwork,
   setAdvancedSettings,
   setIsLastTxConfirmed,
-  setNetworks,
+  setNetwork,
   setTimer,
 } from 'state/vault';
-import { IVaultState, TransactionsType } from 'state/vault/types';
+import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
 import {
   IControllerUtils,
   IDAppController,
   IMainController,
 } from 'types/controllers';
+import {
+  ROLLUX_DEFAULT_NETWORK,
+  SYSCOIN_MAINNET_DEFAULT_NETWORK,
+  SYSCOIN_MAINNET_NETWORK_57,
+} from 'utils/constants';
+import { getNetworkChain } from 'utils/network';
 
 import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
@@ -70,13 +77,21 @@ export const vaultToWalletState = (vaultState: IVaultState) => {
   return { wallet: sysweb3Wallet, activeChain };
 };
 
-const MasterController = (): // readyCallback: (windowController: any) => void
-IMasterController => {
+const MasterController = (): IMasterController => {
   let route = '/';
   let externalRoute = '/';
   let wallet: IMainController;
   let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
+
+  const getAccountType = (account: IPaliAccount): KeyringAccountType =>
+    !account.isImported && !account.isTrezorWallet
+      ? KeyringAccountType.HDAccount
+      : account.isTrezorWallet
+      ? KeyringAccountType.Trezor
+      : account.isLedgerWallet
+      ? KeyringAccountType.Ledger
+      : KeyringAccountType.Imported;
   // Subscribe to store updates
   // store.subscribe(() => {
   //   // const state = store.getState() as RootState & { _persist: IPersistState };
@@ -105,15 +120,7 @@ IMasterController => {
 
     if (!validateIfNftsStateExists) {
       accountsObj.forEach((account) => {
-        const accType = (
-          !account.isImported && !account.isTrezorWallet
-            ? 'HDAccount'
-            : account.isTrezorWallet
-            ? 'Trezor'
-            : account.isLedgerWallet
-            ? 'Ledger'
-            : 'Imported'
-        ) as KeyringAccountType;
+        const accType = getAccountType(account);
 
         const updatedAssets = {
           ...account.assets,
@@ -132,22 +139,24 @@ IMasterController => {
     }
 
     if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
-      store.dispatch(
-        setNetworks({
-          chain: 'ethereum' as INetworkType,
-          network: {
-            chainId: 570,
-            currency: 'sys',
-            default: true,
-            label: 'Rollux',
-            url: 'https://rpc.rollux.com',
-            apiUrl: 'https://explorer.rollux.com/api',
-            explorer: 'https://explorer.rollux.com/',
-            isTestnet: false,
-          } as INetwork,
-          isEdit: false,
-        })
-      );
+      store.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
+    }
+
+    const currentRpcSysUtxoMainnet =
+      store.getState().vault.networks[TransactionsType.Syscoin][57].url;
+
+    const { activeNetwork } = store.getState().vault;
+
+    if (currentRpcSysUtxoMainnet !== 'https://blockbook.syscoin.org') {
+      store.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
+    }
+
+    const isSysUtxoMainnetWithWrongRpcUrl =
+      activeNetwork.chainId === 57 &&
+      activeNetwork.url.includes('https://blockbook.elint.services');
+
+    if (isSysUtxoMainnetWithWrongRpcUrl) {
+      store.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
     }
 
     // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
@@ -171,11 +180,9 @@ IMasterController => {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
         (network) => {
           store.dispatch(
-            setNetworks({
-              chain: 'ethereum' as INetworkType,
+            setNetwork({
+              chain: INetworkType.Ethereum,
               network: network as INetwork,
-              isEdit: false,
-              isFirstTime: true,
             })
           );
         }
@@ -186,11 +193,9 @@ IMasterController => {
       Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
         (network) => {
           store.dispatch(
-            setNetworks({
-              chain: 'syscoin' as INetworkType,
+            setNetwork({
+              chain: INetworkType.Syscoin,
               network: network as INetwork,
-              isEdit: false,
-              isFirstTime: true,
             })
           );
         }
@@ -198,7 +203,7 @@ IMasterController => {
     }
 
     if (store.getState().vault?.accounts?.Ledger === undefined) {
-      store.dispatch(setAccountTypeInAccountsObject('Ledger'));
+      store.dispatch(setAccountTypeInAccountsObject(KeyringAccountType.Ledger));
     }
     if (store.getState().vault?.advancedSettings === undefined) {
       store.dispatch(
@@ -239,15 +244,7 @@ IMasterController => {
       } = store.getState().vault;
 
       accountsObj.forEach((account) => {
-        const accType = (
-          !account.isImported && !account.isTrezorWallet
-            ? 'HDAccount'
-            : account.isTrezorWallet
-            ? 'Trezor'
-            : account.isLedgerWallet
-            ? 'Ledger'
-            : 'Imported'
-        ) as KeyringAccountType;
+        const accType = getAccountType(account);
 
         if (Array.isArray(account.transactions)) {
           if (account.transactions.length > 0) {
@@ -257,7 +254,7 @@ IMasterController => {
             } as { [chainType: string]: { [chainId: string]: any } };
 
             account.transactions.forEach((tx) => {
-              const currentNetwork = isBitcoinBased ? 'syscoin' : 'ethereum';
+              const currentNetwork = getNetworkChain(isBitcoinBased);
               const currentChainId = isBitcoinBased ? chainId : tx.chainId;
 
               updatedTransactions[currentNetwork][currentChainId] = [
