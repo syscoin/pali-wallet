@@ -67,6 +67,9 @@ const svgIcons = {
   warning: '../../assets/icons/yellowWarn.svg',
   Copy: '/assets/icons/copy.svg',
   Info: '/assets/icons/info.svg',
+  Wallet: '/assets/icons/wallet.svg',
+  Metamask: '/assets/icons/metamask.svg',
+  Pali: '/assets/icons/pali.svg',
 };
 
 interface IIcon {
