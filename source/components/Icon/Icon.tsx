@@ -85,6 +85,9 @@ const svgIcons = {
   Lock: '/assets/icons/lock.svg',
   ManageUser: '/assets/icons/manage-user.svg',
   ImportUser: '/assets/icons/user-imported.svg',
+  PaliWhiteSmall: '/assets/icons/pali-white-small.svg',
+  PaliNotDefault: '/assets/icons/pali-not-default.svg',
+  PaliDefault: '/assets/icons/pali-default.svg',
 };
 
 interface IIcon {

@@ -10,9 +10,7 @@ import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 
 const RemoveEthView = () => {
-  const { timer, hasEthProperty } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { hasEthProperty } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
