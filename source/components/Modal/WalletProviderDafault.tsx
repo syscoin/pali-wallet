@@ -1,4 +1,10 @@
-import { motion } from 'framer-motion';
+import {
+  AnimationControls,
+  MotionStyle,
+  TargetAndTransition,
+  VariantLabels,
+  motion,
+} from 'framer-motion';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -11,6 +17,58 @@ export const WalletProviderDafault = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [isNotVisible, setIsNotVisible] = useState(!!isEnabled);
+
+  const containerStyleAnimation = {
+    style: {
+      width: isHovered ? `100vw` : `2.75rem`,
+      height: isHovered ? `64px` : `2.75rem`,
+      borderTopRightRadius: isHovered ? `20px` : `999px`,
+      borderTopLeftRadius: isHovered ? `20px` : `unset`,
+      opacity: isNotVisible ? 0 : 1,
+    } as MotionStyle,
+    animation: {
+      width: isHovered ? `100vw` : `2.75rem`,
+      height: isHovered ? `64px` : `2.75rem`,
+      borderTopRightRadius: isHovered ? `20px` : `999px`,
+      borderTopLeftRadius: isHovered ? `20px` : `unset`,
+      opacity: isNotVisible ? 0 : 1,
+      transition: {
+        duration: 0.3,
+        ease: 'easeInOut',
+      },
+    } as boolean | AnimationControls | TargetAndTransition | VariantLabels,
+  };
+
+  const containerIconStyleAnimation = {
+    style: {
+      width: isHovered ? `55px` : `2.75rem`,
+      backgroundColor: isHovered ? `#476DAA` : `#4d76b8`,
+      borderTopRightRadius: isHovered ? `unset` : `999px`,
+      borderTopLeftRadius: isHovered ? `20px` : `unset`,
+    } as MotionStyle,
+    animation: {
+      backgroundColor: isHovered ? `#476DAA` : `#4d76b8`,
+      borderTopRightRadius: isHovered ? `unset` : `999px`,
+      borderTopLeftRadius: isHovered ? `20px` : `unset`,
+      transition: {
+        duration: 0.3,
+        ease: 'easeInOut',
+      },
+    } as boolean | AnimationControls | TargetAndTransition | VariantLabels,
+  };
+
+  const iconStyleAnimation = {
+    style: {
+      position: `absolute`,
+      left: isHovered ? `15px` : `5px`,
+      bottom: isHovered ? `18px` : `6px`,
+    } as MotionStyle,
+    animation: {
+      position: `absolute`,
+      left: isHovered ? `15px` : `5px`,
+      bottom: isHovered ? `18px` : `6px`,
+    } as boolean | AnimationControls | TargetAndTransition | VariantLabels,
+  };
 
   const controller = getController();
 
@@ -78,53 +136,16 @@ export const WalletProviderDafault = () => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className="fixed left-0 bottom-0 z-[9999] bg-brand-blue400 flex"
-      style={{
-        width: isHovered ? `100vw` : `2.75rem`,
-        height: isHovered ? `64px` : `2.75rem`,
-        borderTopRightRadius: isHovered ? `20px` : `999px`,
-        borderTopLeftRadius: isHovered ? `20px` : `unset`,
-        opacity: isNotVisible ? 0 : 1,
-      }}
-      animate={{
-        width: isHovered ? `100vw` : `2.75rem`,
-        height: isHovered ? `64px` : `2.75rem`,
-        borderTopRightRadius: isHovered ? `20px` : `999px`,
-        borderTopLeftRadius: isHovered ? `20px` : `unset`,
-        opacity: isNotVisible ? 0 : 1,
-        transition: {
-          duration: 0.3,
-          ease: 'easeInOut',
-        },
-      }}
+      style={containerStyleAnimation.style}
+      animate={containerStyleAnimation.animation}
     >
       <motion.div
-        style={{
-          width: isHovered ? `55px` : `2.75rem`,
-          backgroundColor: isHovered ? `#476DAA` : `#4d76b8`,
-          borderTopRightRadius: isHovered ? `unset` : `999px`,
-          borderTopLeftRadius: isHovered ? `20px` : `unset`,
-        }}
-        animate={{
-          backgroundColor: isHovered ? `#476DAA` : `#4d76b8`,
-          borderTopRightRadius: isHovered ? `unset` : `999px`,
-          borderTopLeftRadius: isHovered ? `20px` : `unset`,
-          transition: {
-            duration: 0.3,
-            ease: 'easeInOut',
-          },
-        }}
+        style={containerIconStyleAnimation.style}
+        animate={containerIconStyleAnimation.animation}
       >
         <motion.div
-          style={{
-            position: `absolute`,
-            left: isHovered ? `15px` : `5px`,
-            bottom: isHovered ? `18px` : `6px`,
-          }}
-          animate={{
-            position: `absolute`,
-            left: isHovered ? `15px` : `5px`,
-            bottom: isHovered ? `18px` : `6px`,
-          }}
+          style={iconStyleAnimation.style}
+          animate={iconStyleAnimation.animation}
         >
           <Icon isSvg name={icon} />
         </motion.div>
