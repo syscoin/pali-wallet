@@ -50,7 +50,7 @@ const ManageNetworkView = () => {
 
   return (
     <Layout title={t('settings.manageNetworks')}>
-      <ul className=" mb-4 w-full h-80 text-sm overflow-hidden md:h-96">
+      <ul className=" mb-4 w-full h-85 text-sm overflow-auto md:h-96">
         <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
           UTXO
         </p>
@@ -210,7 +210,7 @@ const ManageNetworkView = () => {
           </li>
         ))}
       </ul>
-      <div className="w-full px-4 absolute bottom-12 md:static">
+      <div className="w-full px-2 md:static">
         <NeutralButton
           type="button"
           onClick={() => navigate('/home')}
