@@ -22,7 +22,11 @@ export const TransactionsPanel = () => {
     isLoadingTxs,
   } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
-  const adjustedExplorer = useAdjustedExplorer(explorer);
+  const networkExplorer = useAdjustedExplorer(explorer);
+  const adjustedNetworkUrl = useAdjustedExplorer(networkUrl);
+  const adjustedExplorer = isBitcoinBased
+    ? adjustedNetworkUrl
+    : networkExplorer;
 
   const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
   const [previousTransactions, setPreviousTransactions] = useState([]);
@@ -84,13 +88,12 @@ export const TransactionsPanel = () => {
   const OpenTransactionExplorer = useMemo(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
-    const openExplorer = () =>
-      window.open(
-        `${isBitcoinBased ? networkUrl : adjustedExplorer}/${
-          isBitcoinBased ? 'xpub' : 'address'
-        }/${isBitcoinBased ? xpub : userAddress}`,
-        '_blank'
-      );
+
+    const explorerUrl = `${adjustedExplorer}${
+      isBitcoinBased ? 'xpub' : 'address'
+    }/${isBitcoinBased ? xpub : userAddress}`;
+
+    const openExplorer = () => window.open(explorerUrl, '_blank');
 
     return (
       <div className="flex mt-5 items-center justify-center gap-2">
