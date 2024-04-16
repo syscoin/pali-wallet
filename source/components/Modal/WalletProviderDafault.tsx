@@ -83,14 +83,14 @@ export const WalletProviderDafault = () => {
         height: isHovered ? `64px` : `2.75rem`,
         borderTopRightRadius: isHovered ? `20px` : `999px`,
         borderTopLeftRadius: isHovered ? `20px` : `unset`,
-        visibility: isNotVisible ? `hidden` : `visible`,
+        opacity: isNotVisible ? 0 : 1,
       }}
       animate={{
         width: isHovered ? `100vw` : `2.75rem`,
         height: isHovered ? `64px` : `2.75rem`,
         borderTopRightRadius: isHovered ? `20px` : `999px`,
         borderTopLeftRadius: isHovered ? `20px` : `unset`,
-        visibility: isNotVisible ? `hidden` : `visible`,
+        opacity: isNotVisible ? 0 : 1,
         transition: {
           duration: 0.3,
           ease: 'easeInOut',
@@ -132,9 +132,9 @@ export const WalletProviderDafault = () => {
       {isHovered && (
         <motion.div
           className="flex items-center p-4 "
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 0 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 1 }}
         >
           {modalText}
           <span className="cursor-pointer" onClick={() => setIsHovered(false)}>
