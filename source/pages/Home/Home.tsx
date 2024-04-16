@@ -106,7 +106,7 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  const formatFiatAmmount = useMemo(() => {
+  const formatFiatAmount = useMemo(() => {
     if (isTestnet) {
       return null;
     }
@@ -149,7 +149,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{formatFiatAmmount}</p>
+              <p id="fiat-ammount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
