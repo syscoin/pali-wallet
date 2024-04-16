@@ -22,7 +22,6 @@ const ManageNetworkView = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const { t } = useTranslation();
-  const SYSCOIN_UTXO_CHAIN_ID = 57;
 
   const { navigate } = useUtils();
   const { wallet } = getController();
@@ -69,24 +68,22 @@ const ManageNetworkView = () => {
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">
-              {network.chainId !== SYSCOIN_UTXO_CHAIN_ID && (
-                <IconButton
-                  onClick={() =>
-                    editNetwork({
-                      selected: network,
-                      chain: INetworkType.Syscoin,
-                      isDefault: network.default,
-                    })
-                  }
-                  type="primary"
-                  shape="circle"
-                >
-                  <Icon
-                    name="edit"
-                    className="hover:text-brand-royalblue text-xl"
-                  />
-                </IconButton>
-              )}
+              <IconButton
+                onClick={() =>
+                  editNetwork({
+                    selected: network,
+                    chain: INetworkType.Syscoin,
+                    isDefault: network.default,
+                  })
+                }
+                type="primary"
+                shape="circle"
+              >
+                <Icon
+                  name="edit"
+                  className="hover:text-brand-royalblue text-xl"
+                />
+              </IconButton>
               {!network.default && (
                 <Tooltip
                   content={

@@ -20,7 +20,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
     password: '',
     repassword: '',
   });
-  console.log(formErrors, 'a');
+
   const buttonIsValidStyle = useMemo(
     () =>
       Object.keys(formErrors).length > 0 || !form.getFieldValue('password')
