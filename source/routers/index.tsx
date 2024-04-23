@@ -50,12 +50,13 @@ import {
 } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
+import { SYS_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
   const [showModal, setShowModal] = useState<boolean>(false);
-  const [modalMessage, setmodalMessage] = useState<string>('');
+  const [modalMessage, setModalMessage] = useState<string>('');
   const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
   const { wallet, appRoute } = getController();
   const { alert, navigate } = useUtils();
@@ -129,26 +130,17 @@ export const Router = () => {
       !isNetworkChanging
     ) {
       if (errorMessage !== 'string' && errorMessage?.code === -32016) {
-        setmodalMessage(
+        setModalMessage(
           'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
         );
       } else {
-        setmodalMessage(
+        setModalMessage(
           'The RPC provider from network has an error. Pali performance may be affected. Modify the RPC URL in the network settings to resolve this issue.'
         );
       }
       setShowModal(true);
     }
   }, [serverHasAnError]);
-
-  const SYS_UTXO_MAINNET_NETWORK = {
-    chainId: 57,
-    url: 'https://blockbook.elint.services/',
-    label: 'Syscoin Mainnet',
-    default: true,
-    currency: 'sys',
-    slip44: 57,
-  } as INetwork;
 
   return (
     <>

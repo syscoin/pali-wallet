@@ -30,7 +30,7 @@ export const Home = () => {
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
-    (state: RootState) => state.price.fiat
+    (priceState: RootState) => priceState.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
   const {
@@ -41,7 +41,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((vaultState: RootState) => vaultState.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -105,7 +105,7 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  const formatFiatAmmount = useMemo(() => {
+  const formatFiatAmount = useMemo(() => {
     if (isTestnet) {
       return null;
     }
@@ -148,7 +148,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{formatFiatAmmount}</p>
+              <p id="fiat-amount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">

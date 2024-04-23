@@ -355,6 +355,7 @@
     "trezorSiteWarning": "trezor.io has a rate limit for simultaneous requests, so we can't use it for now",
     "symbol": "Symbol",
     "youCanEdit": "You can edit this later if you need on network settings menu.",
+    "youCanAddMultipleRpcs": "You can add fallback RPCS using comma or semi-colon in the URL field.",
     "accountLabelEditedSuccessfully": "Account label edited successfully!'",
     "editAccount": "EDIT ACCOUNT",
     "accountLabel": "Account Label",

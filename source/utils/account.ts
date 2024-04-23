@@ -3,11 +3,11 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import {
   IVaultState,
   IOmittedVault,
-  IOmmitedAccount,
+  IOmittedAccount,
   IPaliAccount,
 } from 'state/vault/types';
 
-export const removeXprv = (account: IPaliAccount): IOmmitedAccount => {
+export const removeXprv = (account: IPaliAccount): IOmittedAccount => {
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   const { xprv, ...remainingInfo } = account;
 

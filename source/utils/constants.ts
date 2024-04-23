@@ -49,6 +49,15 @@ export const SYSCOIN_MAINNET_NETWORK_57 = {
   isTestnet: false,
 } as INetwork;
 
+export const SYS_UTXO_MAINNET_NETWORK = {
+  chainId: 57,
+  url: 'https://blockbook.elint.services/',
+  label: 'Syscoin Mainnet',
+  default: true,
+  currency: 'sys',
+  slip44: 57,
+} as INetwork;
+
 export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
   chain: INetworkType.Syscoin,
   network: SYSCOIN_MAINNET_NETWORK_57,

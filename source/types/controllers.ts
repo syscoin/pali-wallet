@@ -27,7 +27,7 @@ import {
   ITransactionsManager,
 } from 'scripts/Background/controllers/transactions/types';
 import { IDApp } from 'state/dapp/types';
-import { IOmmitedAccount } from 'state/vault/types';
+import { IOmittedAccount } from 'state/vault/types';
 
 import { ITokenEthProps, IWatchAssetTokenProps } from './tokens';
 import { ICustomRpcParams } from './transactions';
@@ -115,7 +115,7 @@ export interface IMainController extends IKeyringManager {
     id: number,
     type: KeyringAccountType,
     host?: string,
-    connectedAccount?: IOmmitedAccount
+    connectedAccount?: IOmittedAccount
   ) => void;
   setActiveNetwork: (network: INetwork, chain: string) => Promise<any>;
   setAdvancedSettings: (advancedProperty: string, isActive: boolean) => void;
@@ -280,7 +280,7 @@ export interface IDAppController {
   /**
    * Retrieves the connected account
    */
-  getAccount: (host: string) => IOmmitedAccount;
+  getAccount: (host: string) => IOmittedAccount;
   getAll: () => { [host: string]: IDApp };
   getNetwork: () => INetwork;
   getState: () => any;

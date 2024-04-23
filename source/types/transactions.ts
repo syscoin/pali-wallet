@@ -152,6 +152,7 @@ export interface ICustomRpcParams {
   apiUrl?: string;
   chainId: number;
   explorer?: string;
+  fallbackRpcs?: string[];
   isSyscoinRpc?: boolean;
   isTestnet: boolean;
   label: string;
