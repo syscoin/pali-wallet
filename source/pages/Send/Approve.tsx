@@ -43,7 +43,7 @@ export const ApproveTransactionComponent = () => {
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
-  const [isReconectModalOpen, setIsReconectModalOpen] =
+  const [isReconnectModalOpen, setIsReconnectModalOpen] =
     useState<boolean>(false);
 
   const [tx, setTx] = useState<ITxState>();
@@ -207,7 +207,7 @@ export const ApproveTransactionComponent = () => {
           return;
         }
         if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-          setIsReconectModalOpen(true);
+          setIsReconnectModalOpen(true);
           setLoading(false);
           return;
         }
@@ -333,12 +333,12 @@ export const ApproveTransactionComponent = () => {
         }}
       />
       <DefaultModal
-        show={isReconectModalOpen}
+        show={isReconnectModalOpen}
         title={t('settings.ledgerReconnection')}
         buttonText={t('buttons.reconnect')}
         description={t('settings.ledgerReconnectionMessage')}
         onClose={() => {
-          setIsReconectModalOpen(false);
+          setIsReconnectModalOpen(false);
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
       />

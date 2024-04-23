@@ -14,7 +14,7 @@ import {
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
+  accounts: { [key in KeyringAccountType]: PaliAccount };
   activeAccount: {
     id: number;
     type: KeyringAccountType;
@@ -28,6 +28,7 @@ export interface IVaultState {
   coinsList: any[];
   currentBlock: ethers.providers.Block;
   error: boolean;
+  fallbackRpcs: IFallBackRpcsVault;
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;
@@ -51,6 +52,14 @@ export interface INetworksVault {
   };
   [INetworkType.Syscoin]: {
     [chainId: number]: INetwork;
+  };
+}
+export interface IFallBackRpcsVault {
+  [INetworkType.Ethereum]: {
+    [chainId: number]: Array<string>;
+  };
+  [INetworkType.Syscoin]: {
+    [chainId: number]: Array<string>;
   };
 }
 
@@ -86,8 +95,8 @@ export interface IChainNumberTransactions {
   [chainId: number]: IEvmTransaction[] | ISysTransaction[];
 }
 
-export type IOmmitedAccount = Omit<IPaliAccount, 'xprv'>;
+export type IOmittedAccount = Omit<IPaliAccount, 'xprv'>;
 
 export type IOmittedVault = Omit<IVaultState, 'accounts'> & {
-  accounts: { [id: number]: IOmmitedAccount };
+  accounts: { [id: number]: IOmittedAccount };
 };

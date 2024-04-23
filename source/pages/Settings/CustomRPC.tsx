@@ -32,12 +32,36 @@ const CustomRPCView = () => {
     number | null
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
-  const { activeNetwork, isBitcoinBased } = useSelector(
-    (state: RootState) => state.vault
+  const { activeNetwork, isBitcoinBased, fallbackRpcs } = useSelector(
+    (rootState: RootState) => rootState.vault
   );
   const { wallet } = getController();
   const { alert, navigate } = useUtils();
   const controller = getController();
+  const {
+    label = '',
+    url = '',
+    chainId = '',
+    currency = '',
+    explorer = '',
+  } = state?.selected ?? {};
+
+  const initialValues = {
+    label,
+    url,
+    chainId,
+    symbol: currency,
+    explorer,
+  };
+
+  if (
+    state &&
+    fallbackRpcs &&
+    fallbackRpcs[state?.chain][chainId]?.length > 0
+  ) {
+    const fallbackUrls = fallbackRpcs[state?.chain][chainId].join(';');
+    initialValues.url += initialValues.url ? `;${fallbackUrls}` : fallbackUrls;
+  }
 
   const [form] = useForm();
 
@@ -64,6 +88,8 @@ const CustomRPCView = () => {
 
     const customRpc = {
       ...data,
+      url: data.url.split(/[,;]/)[0],
+      fallbackRpcs: data.url.split(/[,;]/).splice(0, 1),
       isSyscoinRpc,
     };
 
@@ -94,21 +120,119 @@ const CustomRPCView = () => {
     form.setFieldValue('explorer', '');
   };
 
-  const initialValues = {
-    label: (state && state.selected && state.selected.label) ?? '',
-    url: (state && state.selected && state.selected.url) ?? '',
-    chainId: (state && state.selected && state.selected.chainId) ?? '',
-    symbol: (state && state.selected && state.selected.currency) ?? '',
-    explorer: (state && state.selected && state.selected.explorer) ?? '',
-  };
-
-  const isInputDisableByEditMode = state ? state.isDefault : false;
-
   const isInputDisabled = Boolean(
     !form.getFieldValue('url') ||
       isUrlValid ||
       (state && state.selected && state.selected.chainId)
   );
+
+  const validateRpcUrlRule = [
+    {
+      required: true,
+      message: '',
+    },
+    () => ({
+      //todo: refactor this function
+      async validator(_, value) {
+        setUrlFieldValue(value);
+        const rpcs = value.split(/[,;]/);
+
+        if (isSyscoinRpc) {
+          for (const rpc of rpcs) {
+            const trezorIoRegExp = /trezor\.io/;
+            if (trezorIoRegExp.test(rpc)) {
+              console.error(
+                "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
+              );
+              alert.error(t('settings.trezorSiteWarning'));
+              return Promise.reject();
+            }
+            const { valid, coin } = await validateSysRpc(rpc);
+
+            if (!valid || !rpc) {
+              return Promise.reject();
+            }
+            populateForm('label', String(coin));
+          }
+          return Promise.resolve();
+        }
+
+        const { valid, details, hexChainId } = await validateEthRpc(
+          rpcs[0], //first url should be the most important one
+          false
+        ); //Cooldown doesn't matter on network edition
+
+        setIsUrlValid(valid);
+
+        for (const rpc of rpcs.slice(1)) {
+          const { valid: isValid } = await validateEthRpc(rpc, false); //Cooldown doesn't matter on network edition
+
+          if (!isValid) {
+            setIsUrlValid(isValid);
+            return Promise.reject();
+          }
+        }
+
+        if (state && state.selected.chainId) {
+          const stateChainId = state.selected.chainId;
+
+          const rpcChainId = details
+            ? details.chainId
+            : Number(String(parseInt(hexChainId, 16)));
+
+          if (stateChainId === rpcChainId) {
+            return Promise.resolve();
+          } else {
+            return Promise.reject();
+          }
+        }
+
+        if (!state && lastRpcChainIdSearched === null) {
+          if ((valid && details) || !value) {
+            populateForm('label', String(details.name));
+            populateForm('chainId', String(details.chainId));
+
+            setLastRpcChainIdSearched(details.chainId);
+
+            return Promise.resolve();
+          } else if (valid || !value) {
+            const chainIdConvertedOne = String(parseInt(hexChainId, 16));
+            populateForm('chainId', chainIdConvertedOne);
+
+            setLastRpcChainIdSearched(Number(chainIdConvertedOne));
+            return Promise.resolve();
+          }
+        } else {
+          const chainIdConvertedTwo = String(parseInt(hexChainId, 16));
+          if (
+            (details && lastRpcChainIdSearched === details.chainId) ||
+            lastRpcChainIdSearched === Number(chainIdConvertedTwo)
+          ) {
+            return Promise.resolve();
+          } else {
+            resetFormValues();
+
+            if (valid && details) {
+              populateForm('label', String(details.name));
+              populateForm('chainId', String(details.chainId));
+
+              setLastRpcChainIdSearched(details.chainId);
+
+              return Promise.resolve();
+            } else if (valid) {
+              const chainIdConvertedThree = String(parseInt(hexChainId, 16));
+              populateForm('chainId', chainIdConvertedThree);
+
+              setLastRpcChainIdSearched(Number(chainIdConvertedThree));
+              return Promise.resolve();
+            }
+          }
+        }
+
+        return Promise.reject();
+      },
+    }),
+  ];
 
   useEffect(() => {
     const fieldErrors = form.getFieldError('url');
@@ -131,7 +255,7 @@ const CustomRPCView = () => {
       />
       <StatusModal
         status="error"
-        title="Erro"
+        title="Error"
         description={errorModalMessage}
         onClose={closeModal}
         show={showModal}
@@ -205,7 +329,6 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={isInputDisableByEditMode}
             placeholder={`${t('settings.label')} ${
               isSyscoinRpc ? `(${t('settings.label')})` : ''
             }`}
@@ -217,113 +340,7 @@ const CustomRPCView = () => {
           name="url"
           className="md:w-full"
           hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              async validator(_, value) {
-                setUrlFieldValue(value);
-                if (isSyscoinRpc) {
-                  const trezorIoRegExp = /trezor\.io/;
-                  if (trezorIoRegExp.test(value)) {
-                    console.error(
-                      "trezor.io has a rate limit for simultaneous requests, so we can't use it for now"
-                    );
-                    alert.error(t('settings.trezorSiteWarning'));
-                    return Promise.reject();
-                  }
-                  const { valid, coin } = await validateSysRpc(value);
-
-                  if (valid || !value) {
-                    populateForm('label', String(coin));
-
-                    return Promise.resolve();
-                  }
-
-                  return Promise.reject();
-                }
-
-                const { valid, details, hexChainId } = await validateEthRpc(
-                  value,
-                  false
-                ); //Cooldown doesn't matter on network edition
-
-                setIsUrlValid(valid);
-
-                //We have to use the value from the state if exists because we have to validate the
-                //rpc from networks that is already added too
-                if (state && state.selected.chainId) {
-                  const stateChainId = state.selected.chainId;
-
-                  const rpcChainId = details
-                    ? details.chainId
-                    : Number(String(parseInt(hexChainId, 16)));
-
-                  if (stateChainId === rpcChainId) {
-                    return Promise.resolve();
-                  } else {
-                    return Promise.reject();
-                  }
-                }
-
-                //If no RPC was searched yet
-                if (!state && lastRpcChainIdSearched === null) {
-                  if ((valid && details) || !value) {
-                    populateForm('label', String(details.name));
-                    populateForm('chainId', String(details.chainId));
-
-                    setLastRpcChainIdSearched(details.chainId);
-
-                    return Promise.resolve();
-                  } else if (valid || !value) {
-                    const chainIdConvertedOne = String(
-                      parseInt(hexChainId, 16)
-                    );
-
-                    populateForm('chainId', chainIdConvertedOne);
-
-                    setLastRpcChainIdSearched(Number(chainIdConvertedOne));
-                    return Promise.resolve();
-                  }
-                } else {
-                  const chainIdConvertedTwo = String(parseInt(hexChainId, 16));
-                  //Here if already had search for any RPC we have to validate if the result
-                  //for the new one is for the same chainID or not, if is just keep the older values
-                  //filled and give a valid for the new rpc url
-                  if (
-                    (details && lastRpcChainIdSearched === details.chainId) ||
-                    lastRpcChainIdSearched === Number(chainIdConvertedTwo)
-                  ) {
-                    return Promise.resolve();
-                  } else {
-                    //If is not valid we reset the form values and fill with the new and correct ones
-                    resetFormValues();
-
-                    if (valid && details) {
-                      populateForm('label', String(details.name));
-                      populateForm('chainId', String(details.chainId));
-
-                      setLastRpcChainIdSearched(details.chainId);
-
-                      return Promise.resolve();
-                    } else if (valid) {
-                      const chainIdConvertedThree = String(
-                        parseInt(hexChainId, 16)
-                      );
-                      populateForm('chainId', chainIdConvertedThree);
-
-                      setLastRpcChainIdSearched(Number(chainIdConvertedThree));
-                      return Promise.resolve();
-                    }
-                  }
-                }
-
-                return Promise.reject();
-              },
-            }),
-          ]}
+          rules={validateRpcUrlRule}
         >
           <Input
             type="text"
@@ -404,9 +421,14 @@ const CustomRPCView = () => {
             </p>
           </div>
         ) : (
-          <p className="px-8 py-4 text-center text-brand-royalblue font-poppins text-xs">
-            {t('settings.youCanEdit')}
-          </p>
+          <div>
+            <p className="px-8 py-1 text-center text-brand-royalblue font-poppins text-xs">
+              {t('settings.youCanAddMultipleRpcs')}
+            </p>
+            <p className="px-8 text-center text-brand-royalblue font-poppins text-xs">
+              {t('settings.youCanEdit')}
+            </p>
+          </div>
         )}
         {state?.isEditing ? (
           <div className="flex gap-6 justify-between mt-[2.313rem]">

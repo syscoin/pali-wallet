@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
+import { isEmpty } from 'lodash';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
@@ -60,6 +61,10 @@ export const initialState: IVaultState = {
   hasEthProperty: true,
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
+  fallbackRpcs: {
+    [INetworkType.Ethereum]: {},
+    [INetworkType.Syscoin]: {},
+  },
   hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isDappAskingToChangeNetwork: false,
@@ -192,13 +197,22 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chain: string;
+        fallbackRpcs?: Array<string>;
         isEdit?: boolean;
         isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
-      const { chain, network, isEdit, isFirstTime } = action.payload;
+      const { chain, network, isEdit, isFirstTime, fallbackRpcs } =
+        action.payload;
+
       const networkKeyIdentifier = network.key ? network.key : network.chainId;
+
+      console.log('fallbackRpcs', fallbackRpcs);
+
+      if (!isEmpty(fallbackRpcs)) {
+        state.fallbackRpcs[chain][networkKeyIdentifier] = fallbackRpcs;
+      }
 
       if (state.networks[chain][networkKeyIdentifier]) {
         if (!isEdit && !isFirstTime) {
@@ -212,6 +226,7 @@ const VaultState = createSlice({
         }
         return;
       }
+
       state.networks[chain][networkKeyIdentifier] = network;
 
       if (

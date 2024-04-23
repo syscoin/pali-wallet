@@ -54,7 +54,7 @@ import {
   setOpenDAppErrorModal,
 } from 'state/vault';
 import {
-  IOmmitedAccount,
+  IOmittedAccount,
   IPaliAccount,
   TransactionsType,
 } from 'state/vault/types';
@@ -327,7 +327,7 @@ const MainController = (walletState): IMainController => {
     id: number,
     type: KeyringAccountType,
     host?: string,
-    connectedAccount?: IOmmitedAccount
+    connectedAccount?: IOmittedAccount
   ): void => {
     const { accounts, activeAccount } = store.getState().vault;
     if (
@@ -481,6 +481,7 @@ const MainController = (walletState): IMainController => {
         store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
         return;
       })
+      //todo: add fallbackrpcs to handle error
       .catch((reason) => {
         if (reason === 'Network change cancelled') {
           console.error('User asked to switch network - slow connection');
@@ -781,7 +782,13 @@ const MainController = (walletState): IMainController => {
       ? INetworkType.Syscoin
       : INetworkType.Ethereum;
 
-    store.dispatch(setNetwork({ chain, network: networkWithCustomParams }));
+    store.dispatch(
+      setNetwork({
+        chain,
+        network: networkWithCustomParams,
+        fallbackRpcs: data.fallbackRpcs,
+      })
+    );
 
     //We need to do that to get the correct network value, we only can know if will have a Key value
     //inside the state after the dispatch for some network with a chainID that already exists
@@ -824,7 +831,15 @@ const MainController = (walletState): IMainController => {
         throw new Error('RPC from a different chainId');
       }
 
-      store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
+      store.dispatch(
+        setNetwork({
+          chain,
+          network: newNetwork,
+          isEdit: true,
+          fallbackRpcs: newRpc.fallbackRpcs,
+        })
+      );
+
       keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
       transactionsManager = TransactionsManager(
         keyringManager.ethereumTransaction.web3Provider

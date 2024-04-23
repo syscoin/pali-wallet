@@ -358,6 +358,7 @@
     "trezorSiteWarning": "trezor.io tiene un límite de tasa para solicitudes simultáneas, por lo que no podemos usarlo por ahora.",
     "symbol": "Símbolo",
     "youCanEdit": "Puedes editar esto más tarde si es necesario en el menú de configuración de la red.",
+    "youCanAddMultipleRpcs": "Puedes agregar RPCs de respaldo usando coma o punto y coma en el campo de URL.",
     "accountLabelEditedSuccessfully": "¡La etiqueta de la cuenta se editó con éxito!",
     "editAccount": "EDITAR CUENTA",
     "accountLabel": "Etiqueta de la cuenta",
