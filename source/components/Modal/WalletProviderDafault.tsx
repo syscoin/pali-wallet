@@ -18,6 +18,8 @@ export const WalletProviderDafault = () => {
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [isNotVisible, setIsNotVisible] = useState(!!isEnabled);
 
+  const controller = getController();
+
   const containerStyleAnimation = {
     style: {
       width: isHovered ? `100vw` : `2.75rem`,
@@ -70,8 +72,6 @@ export const WalletProviderDafault = () => {
     } as boolean | AnimationControls | TargetAndTransition | VariantLabels,
   };
 
-  const controller = getController();
-
   const turnPaliAsDefault = () => {
     setIsEnabled(!isEnabled);
     switch (isEnabled) {
@@ -109,7 +109,7 @@ export const WalletProviderDafault = () => {
         </span>
       ) : (
         <span className="text-white text-sm ">
-          <p>WalletName is in use and Pali is banned. </p>
+          <p>Metamask is in use and Pali is banned. </p>
           <p
             className="underline font-bold cursor-pointer"
             onClick={turnPaliAsDefault}
