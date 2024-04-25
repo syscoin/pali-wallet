@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { claimFaucet } from 'scripts/Background/controllers/faucetController';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import {
@@ -118,6 +119,13 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
+  const handleFaucet = useCallback(
+    async (chainId: number, walletAddress: string) => {
+      await claimFaucet(chainId, walletAddress);
+    },
+    []
+  );
+
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
@@ -184,6 +192,19 @@ export const Home = () => {
                   isSvg={true}
                 />
                 {t('buttons.receive')}
+              </Button>
+
+              <Button
+                type="button"
+                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-brand-darkGreen hover:opacity-80 rounded-r-full transition-all duration-300 xl:flex-none"
+                onClick={() =>
+                  handleFaucet(
+                    activeNetwork.chainId,
+                    accounts[activeAccount.type][activeAccount.id]?.address
+                  )
+                }
+              >
+                Faucet
               </Button>
             </div>
           </section>
