@@ -69,6 +69,11 @@ module.exports = {
       'scripts/ContentScript/trezor',
       'trezor-usb-permissions.ts'
     ),
+    offscreenScript: path.join(
+      sourcePath,
+      'scripts/ContentScript/offscreen',
+      'index.ts'
+    ),
   },
   output: {
     path: path.join(destPath, targetBrowser),
@@ -225,6 +230,12 @@ module.exports = {
       filename: 'trezor-usb-permissions.html',
       inject: 'body',
       chunks: ['trezorUSB'],
+    }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'offscreen.html'),
+      filename: 'offscreen.html',
+      inject: 'body',
+      chunks: ['offscreenScript'],
     }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),

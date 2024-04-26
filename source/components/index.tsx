@@ -14,3 +14,4 @@ export * from './TransactionOptions';
 export * from './Loading';
 export * from './FiatComponent';
 export * from './Fee';
+export * from './KeepAliveContainer';

@@ -2,7 +2,7 @@ import React, { FC, Suspense, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 import { browser } from 'webextension-polyfill-ts';
 
-import { Container, Loading } from 'components/index';
+import { Container, KeepAliveContainer, Loading } from 'components/index';
 import { Router } from 'routers/index';
 
 const App: FC = () => {
@@ -40,6 +40,7 @@ const App: FC = () => {
             <div className="w-full min-w-popup h-full min-h-popup">
               <Router />
             </div>
+            <KeepAliveContainer />
           </HashRouter>
         </Container>
       </Suspense>

@@ -27,8 +27,11 @@ interface IDappsSession {
  */
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
+  const isConnected = (host: string) => {
+    const { dapps } = store.getState().dapp;
 
-  const isConnected = (host: string) => Boolean(_dapps[host]?.activeAddress);
+    return !!dapps?.[host];
+  };
 
   const setup = (port: Runtime.Port) => {
     const { isBitcoinBased } = store.getState().vault;
@@ -49,11 +52,10 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
-    if (!!_dapps?.[dapp.host]) {
-      _dapps[dapp.host].activeAddress = isBitcoinBased
-        ? accounts[dapp.accountType][dapp.accountId].xpub
-        : accounts[dapp.accountType][dapp.accountId].address;
-    }
+    _dapps[dapp.host] = { activeAddress: '', hasWindow: false, port: null };
+    _dapps[dapp.host].activeAddress = isBitcoinBased
+      ? accounts[dapp.accountType][dapp.accountId].xpub
+      : accounts[dapp.accountType][dapp.accountId].address;
   };
 
   const requestPermissions = (

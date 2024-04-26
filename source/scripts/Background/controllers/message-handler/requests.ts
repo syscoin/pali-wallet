@@ -45,7 +45,7 @@ export const methodRequest = async (
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased && prefix !== 'sys') {
-    const provider = EthProvider(host);
+    const provider = EthProvider(host, activeNetwork);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
       data.params
@@ -82,11 +82,15 @@ export const methodRequest = async (
       },
     });
   }
+  if (prefix === 'eth' && methodName === 'chainId') {
+    return `0x${chainId.toString(16)}`;
+  }
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     try {
       return await enable(host, activeChain, chainId, false, isHybridDapp);
     } catch (error) {
+      console.log({ error }, 'ERROR');
       store.dispatch(setIsDappAskingToChangeNetwork(true));
       await popupPromise({
         host,
@@ -125,15 +129,15 @@ export const methodRequest = async (
       ? [dapp.getAccount(host).address]
       : [];
   }
-  if (
-    !isRequestAllowed &&
-    methodName !== 'switchEthereumChain' &&
-    methodName !== 'getProviderState' &&
-    methodName !== 'getSysProviderState' &&
-    methodName !== 'getAccount' &&
-    methodName !== 'changeUTXOEVM'
-  )
-    throw cleanErrorStack(ethErrors.provider.unauthorized());
+  // if (
+  //   !isRequestAllowed &&
+  //   methodName !== 'switchEthereumChain' &&
+  //   methodName !== 'getProviderState' &&
+  //   methodName !== 'getSysProviderState' &&
+  //   methodName !== 'getAccount' &&
+  //   methodName !== 'changeUTXOEVM'
+  // )
+  //   throw cleanErrorStack(ethErrors.provider.unauthorized());
   const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
 
   //* Wallet methods
@@ -370,7 +374,7 @@ export const methodRequest = async (
   if (
     prefix !== 'sys' &&
     !isBitcoinBased &&
-    EthProvider(host).checkIsBlocking(data.method) &&
+    EthProvider(host, activeNetwork).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
       dapp.getAccount(host).address
   ) {
@@ -395,7 +399,8 @@ export const methodRequest = async (
 
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
-    const provider = EthProvider(host);
+    const provider = EthProvider(host, activeNetwork);
+    console.log('INSIDE IF');
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     if (!wallet.isUnlocked()) return false;
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());

@@ -24,6 +24,7 @@ declare global {
 const isWatchRequestsActive = false;
 
 let paliPort: Runtime.Port;
+let paliPopupPort: Runtime.Port;
 
 const masterController = MasterController();
 
@@ -45,6 +46,19 @@ onWalletReady();
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
 });
+
+async function createOffscreen() {
+  await chrome.offscreen
+    .createDocument({
+      url: 'offscreen.html',
+      reasons: [chrome.offscreen.Reason.BLOBS],
+      justification: 'keep service worker running',
+    })
+    .catch(() => {});
+}
+chrome.runtime.onStartup.addListener(createOffscreen);
+self.onmessage = () => null; // keepAlive
+createOffscreen();
 
 let timeout: any;
 
@@ -135,6 +149,10 @@ setInterval(updateRequestsPerSecond, 1000);
 
 browser.runtime.onMessage.addListener(async ({ type, target }) => {
   switch (type) {
+    case 'ping':
+      if (target === 'background')
+        paliPopupPort?.postMessage({ action: 'pong' });
+      break;
     case 'reset_autolock':
       // if (target === 'background') restartLockTimeout();
       break;
@@ -176,7 +194,11 @@ export const inactivityTime = () => {
 };
 
 browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
-  if (port.name === 'pali') handleIsOpen(true);
+  console.log({ port });
+  if (port.name === 'pali') {
+    handleIsOpen(true);
+    paliPopupPort = port;
+  }
   if (port.name === 'pali-inject') {
     port.onMessage.addListener((message) => {
       if (message.action === 'isInjected') {
@@ -366,6 +388,13 @@ export const verifyPaliRequests = () => {
 export const removeVerifyPaliRequestListener = () => {
   browser.runtime.sendMessage({
     type: 'removeVerifyPaliRequestListener',
+    target: 'background',
+  });
+};
+
+export const keepSWAlive = () => {
+  browser.runtime.sendMessage({
+    type: 'ping',
     target: 'background',
   });
 };

@@ -74,7 +74,7 @@ const MV2_OPTIONS = {
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '2.0.16',
+  version: '2.0.18',
   icons: {
     16: 'assets/icons/favicon-16.png',
     32: 'assets/icons/favicon-32.png',
@@ -83,7 +83,13 @@ const MV3_OPTIONS = {
   },
   description: 'A Non-Custodial Crypto Wallet',
   short_name: 'pali',
-  permissions: ['storage', 'activeTab', 'clipboardWrite', 'unlimitedStorage'],
+  permissions: [
+    'storage',
+    'activeTab',
+    'clipboardWrite',
+    'unlimitedStorage',
+    'offscreen',
+  ],
   host_permissions: [
     'http://*/*',
     'https://*/*',

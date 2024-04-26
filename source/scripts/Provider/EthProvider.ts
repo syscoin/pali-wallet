@@ -1,6 +1,7 @@
 import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
@@ -14,7 +15,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (host: string) => {
+export const EthProvider = (host: string, network?: INetwork) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = params;
     const {
@@ -167,12 +168,19 @@ export const EthProvider = (host: string) => {
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
-    const { ethereumTransaction } = getController().wallet;
-    const resp = await ethereumTransaction.contentScriptWeb3Provider.send(
-      method,
-      params
-    );
-    return resp;
+    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
+    await setSignerNetwork(network, 'ethereum');
+
+    try {
+      const resp = await ethereumTransaction.contentScriptWeb3Provider.send(
+        method,
+        params
+      );
+
+      return resp;
+    } catch (error) {
+      console.error({ error });
+    }
   };
 
   const checkIsBlocking = (method: string) =>

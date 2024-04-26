@@ -48,7 +48,7 @@ export const ConnectWallet = () => {
     dispatchBackgroundEvent(
       `${eventName}.${host}`,
       // dapp.getAccount(host).address
-      activeAccount
+      activeAccount.address
     );
     window.close();
   };

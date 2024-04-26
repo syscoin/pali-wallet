@@ -36,21 +36,14 @@ export const GeneralMenu: React.FC = () => {
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    getTabUrl(browser).then(async (url: string) => {
-      if (!isMounted) return;
-
+    const getTabData = async () => {
+      const url = await getTabUrl(browser);
       const host = getHost(url);
       const isConnected = dapp.isConnected(host);
-
       setCurrentTab({ host, isConnected });
-    });
-
-    return () => {
-      isMounted = false;
     };
-  }, [wallet.isUnlocked()]);
+    getTabData();
+  }, []);
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
