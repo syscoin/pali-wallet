@@ -7,7 +7,7 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { WalletProviderDafault } from 'components/Modal/WalletProviderDafault';
+import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -127,7 +127,7 @@ export const Home = () => {
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
-          <WalletProviderDafault />
+          <WalletProviderDefaultModal />
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
