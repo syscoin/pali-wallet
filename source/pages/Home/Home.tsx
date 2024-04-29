@@ -6,6 +6,8 @@ import { useLocation } from 'react-router-dom';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
+import { FaucetAccessModal } from 'components/Modal/FaucetAccessModal';
+import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
@@ -134,7 +136,8 @@ export const Home = () => {
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
-
+          <FaucetFirstAccessModal />
+          <FaucetAccessModal />
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
@@ -192,19 +195,6 @@ export const Home = () => {
                   isSvg={true}
                 />
                 {t('buttons.receive')}
-              </Button>
-
-              <Button
-                type="button"
-                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-brand-darkGreen hover:opacity-80 rounded-r-full transition-all duration-300 xl:flex-none"
-                onClick={() =>
-                  handleFaucet(
-                    activeNetwork.chainId,
-                    accounts[activeAccount.type][activeAccount.id]?.address
-                  )
-                }
-              >
-                Faucet
               </Button>
             </div>
           </section>
