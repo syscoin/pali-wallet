@@ -57,7 +57,12 @@ const AboutView: FC = () => {
           </p>
 
           <div className="flex items-center">
-            <p className="text-xs underline">
+            <p
+              className="text-xs underline cursor-pointer"
+              onClick={() =>
+                handleRedirect('https://discord.com/invite/syscoin')
+              }
+            >
               https://discord.com/invite/syscoin
             </p>
             <IconButton

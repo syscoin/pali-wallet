@@ -1,5 +1,9 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  INetworkType,
+  validateEthRpc,
+  validateSysRpc,
+} from '@pollum-io/sysweb3-network';
 import {
   getSearch,
   isValidEthereumAddress,
@@ -17,7 +21,7 @@ import store from 'state/store';
 import { setCoinsList } from 'state/vault';
 import { IControllerUtils } from 'types/controllers';
 import { getController } from 'utils/browser';
-import { logError } from 'utils/index';
+import { getNetworkChain, logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
   const setFiat = async (currency?: string) => {
@@ -30,7 +34,7 @@ const ControllerUtils = (): IControllerUtils => {
       controller.wallet.ethereumTransaction.web3Provider;
     const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
-    const id = isBitcoinBased ? 'syscoin' : 'ethereum';
+    const id = getNetworkChain(isBitcoinBased);
     const coinsListState = store.getState().vault.coinsList;
     const isUpToDateCoinArray =
       coinsListState?.some((item) => item?.platforms !== undefined) &&
@@ -47,7 +51,7 @@ const ControllerUtils = (): IControllerUtils => {
     store.dispatch(setCoinsList(coinsList));
 
     switch (id) {
-      case 'syscoin':
+      case INetworkType.Syscoin:
         try {
           const { chain } = await validateSysRpc(activeNetwork.url);
           if (chain !== 'test') {
@@ -80,7 +84,7 @@ const ControllerUtils = (): IControllerUtils => {
         }
         break;
 
-      case 'ethereum':
+      case INetworkType.Ethereum:
         try {
           const { chain, chainId } = await validateEthRpc(
             activeNetwork.url,

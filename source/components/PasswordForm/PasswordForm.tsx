@@ -1,8 +1,12 @@
 import { Form, Input } from 'antd';
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { OnboardingLayout, Button } from 'components/index';
+
+type FormErrors = {
+  [key: string]: string;
+};
 
 interface IPasswordForm {
   onSubmit: (data: any) => any;
@@ -10,9 +14,40 @@ interface IPasswordForm {
 
 export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
   const { t } = useTranslation();
+
+  const [form] = Form.useForm();
+  const [formErrors, setFormErrors] = useState<FormErrors>({
+    password: '',
+    repassword: '',
+  });
+
+  const buttonIsValidStyle = useMemo(
+    () =>
+      Object.keys(formErrors).length > 0 || !form.getFieldValue('password')
+        ? 'opacity-60'
+        : 'opacity-100',
+    [formErrors, form]
+  );
+
+  const onValuesChange = useCallback(() => {
+    form
+      .validateFields()
+      .then(() => setFormErrors({}))
+      .catch((errors) => {
+        setFormErrors(
+          errors.errorFields.reduce((acc, current) => {
+            acc[current.name[0]] = current.errors[0];
+            return acc;
+          }, {})
+        );
+      });
+  }, []);
+
   return (
     <OnboardingLayout title={t('settings.password')}>
       <Form
+        form={form}
+        onValuesChange={onValuesChange}
         validateMessages={{ default: '' }}
         name="basic"
         labelCol={{ span: 8 }}
@@ -57,8 +92,9 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
             },
             ({ getFieldValue }) => ({
               validator(_, value) {
-                if (!value || getFieldValue('password') === value)
+                if (!value || getFieldValue('password') === value) {
                   return Promise.resolve();
+                }
                 return Promise.reject();
               },
             }),
@@ -71,7 +107,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           />
         </Form.Item>
 
-        <span className="px-3 w-full text-left text-brand-royalbluemedium text-xs">
+        <span className="px-3 mt-6 mb-4 w-full text-left text-brand-blue100 text-xs">
           {t('components.atLeast')} {'   '}
         </span>
 
@@ -83,7 +119,8 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
           <Button
             type="submit"
             id="create-password-action"
-            className="bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl"
+            disabled={Object.keys(formErrors).length > 0}
+            className={`${buttonIsValidStyle} bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
           >
             {t('buttons.next')}
           </Button>

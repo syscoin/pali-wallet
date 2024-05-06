@@ -5,10 +5,12 @@ import { useSelector } from 'react-redux';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Button } from 'components/Button';
+import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
+import { getNetworkChain } from 'utils/network';
 import { NetworkType } from 'utils/types';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -20,9 +22,10 @@ type currentNetwork = {
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { wallet } = getController();
-  const { isBitcoinBased, networks } = useSelector(
+  const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+  const { navigate } = useUtils();
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
     useState<currentNetwork>();
@@ -52,7 +55,8 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     try {
       store.dispatch(setOpenDAppErrorModal(false));
       await wallet.setActiveNetwork(network, chain);
-      window.close();
+      if (isDappAskingToChangeNetwork) window.close();
+      navigate('/home');
     } catch (networkError) {
       window.close();
     }
@@ -60,9 +64,9 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const chainName = useMemo(() => {
     if (isChanging) {
-      return selectedNetwork === 'UTXO' ? 'syscoin' : 'ethereum';
+      return getNetworkChain(selectedNetwork === 'UTXO');
     } else {
-      return isBitcoinBased ? 'ethereum' : 'syscoin';
+      return getNetworkChain(isBitcoinBased);
     }
   }, [isBitcoinBased, isChanging, selectedNetwork]);
 

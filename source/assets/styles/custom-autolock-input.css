@@ -10,6 +10,41 @@
   font-size: 12px;
 }
 
+
+.custom-edit-input .ant-input {
+  display: flex;
+  width: 352px;
+  height: 40px;
+  padding: 11px 20px;
+  align-items: center;
+  border-radius: 100px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background-color: #07152a !important;
+  font-size: 12px;
+}
+
+.custom-edit-input .ant-input-suffix .anticon-close-circle {
+  content: url('../icons/errorIcon.svg');
+  position: absolute;
+  top: 55%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+}
+
+.custom-edit-input .ant-input-suffix .anticon-check-circle {
+  content: url('../icons/successIcon.svg');
+  position: absolute;
+  top: 53%;
+  right: 28px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 14px;
+} 
+
 .custom-gas-input {
   display: flex;
   width: 352px;

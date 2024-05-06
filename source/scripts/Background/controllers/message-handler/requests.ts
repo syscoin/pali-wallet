@@ -6,10 +6,11 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import { setIsDappAskingToChangeNetwork } from 'state/vault';
 import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { areStringsPresent } from 'utils/format';
-import { networkChain } from 'utils/network';
+import { getNetworkChain, networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 /**
@@ -76,12 +77,14 @@ export const methodRequest = async (
     try {
       return await enable(host, undefined, undefined, false, isHybridDapp);
     } catch (error) {
+      store.dispatch(setIsDappAskingToChangeNetwork(true));
       await popupPromise({
         host,
         route: 'switch-network',
         eventName: 'switchNetwork',
         data: {},
       });
+      store.dispatch(setIsDappAskingToChangeNetwork(false));
 
       return await enable(host, undefined, undefined, false, isHybridDapp);
     }
@@ -91,12 +94,14 @@ export const methodRequest = async (
       return await enable(host, undefined, undefined, true, isHybridDapp);
     } catch (error) {
       if (error.message === 'Connected to Ethereum based chain') {
+        store.dispatch(setIsDappAskingToChangeNetwork(true));
         await popupPromise({
           host,
           route: 'switch-network',
           eventName: 'switchNetwork',
           data: { network: data.network },
         });
+        store.dispatch(setIsDappAskingToChangeNetwork(false));
 
         return await enable(host, undefined, undefined, true, isHybridDapp);
       }
@@ -304,7 +309,7 @@ export const methodRequest = async (
 
     const networks = store.getState().vault.networks;
 
-    const newChainValue = prefix === 'sys' ? 'Syscoin' : 'Ethereum';
+    const newChainValue = getNetworkChain(prefix === 'sys');
     const findCorrectNetwork: INetwork =
       networks[newChainValue.toLowerCase()][chainId];
     if (!findCorrectNetwork) {
