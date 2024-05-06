@@ -11,7 +11,7 @@ import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import store, { RootState } from 'state/store';
+import { RootState } from 'state/store';
 import { setFaucetModalState } from 'state/vault';
 import { getController } from 'utils/browser';
 import {
@@ -33,7 +33,7 @@ export const Home = () => {
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
-    (state: RootState) => state.price.fiat
+    (priceState: RootState) => priceState.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
   const {
@@ -45,7 +45,7 @@ export const Home = () => {
     lastLogin,
     isLoadingBalances,
     faucetModal,
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((rootState: RootState) => rootState.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -55,19 +55,33 @@ export const Home = () => {
   //* Constants
   const { url } = activeNetwork;
   const controller = getController();
+  const { wallet } = controller;
+
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
+
   const isUnlocked =
     controller.wallet.isUnlocked() &&
     accounts[activeAccount.type][activeAccount.id].address !== '';
+
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
     accounts[activeAccount.type][activeAccount.id].balances;
 
-  const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
-  const moreThanMillion = actualBalance >= ONE_MILLION;
+  const actualBalance = useMemo(
+    () => (isBitcoinBased ? syscoinBalance : ethereumBalance),
+    [syscoinBalance, ethereumBalance]
+  );
 
-  const moreThanTrillion = actualBalance > ONE_TRILLION;
+  const moreThanMillion = useMemo(
+    () => actualBalance > ONE_MILLION,
+    [actualBalance]
+  );
+
+  const moreThanTrillion = useMemo(
+    () => actualBalance > ONE_TRILLION,
+    [actualBalance]
+  );
 
   const closeModal = () => {
     setShowModalCongrats(false);
@@ -109,7 +123,7 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  const formatFiatAmmount = useMemo(() => {
+  const formatFiatAmount = useMemo(() => {
     if (isTestnet) {
       return null;
     }
@@ -122,28 +136,44 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
-  const handleOnClose = useCallback(() => {
-    store.dispatch(setFaucetModalState({ chainId: activeNetwork.chainId }));
-  }, []);
+  const handleOnCloseFaucetModal = useCallback(() => {
+    wallet.setFaucetModalState(activeNetwork.chainId);
+  }, [activeNetwork, setFaucetModalState]);
 
-  const hasClosedFirstModal = useMemo(
-    () => !faucetModal[activeNetwork.chainId],
-    [faucetModal, activeNetwork.chainId]
+  const shouldShowFaucetFirstModal = useMemo(
+    () => faucetModal[activeNetwork.chainId],
+    [faucetModal, activeNetwork]
+  );
+
+  const formattedBalance = useMemo(
+    () =>
+      moreThanMillion
+        ? formatMillionNumber(actualBalance)
+        : formatBalanceDecimals(actualBalance || 0, false),
+    [actualBalance, moreThanMillion]
+  );
+
+  const shouldRenderHomePage = useMemo(
+    () =>
+      accounts[activeAccount.type][activeAccount.id] &&
+      lastLogin &&
+      isUnlocked &&
+      !isNetworkChanging,
+    [accounts, activeAccount, lastLogin, isUnlocked, isNetworkChanging]
   );
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
-      {accounts[activeAccount.type][activeAccount.id] &&
-      lastLogin &&
-      isUnlocked &&
-      !isNetworkChanging ? (
+      {shouldRenderHomePage ? (
         <>
           <Header accountHeader />
 
           {!isBitcoinBased && (
             <>
-              {!hasClosedFirstModal ? (
-                <FaucetFirstAccessModal handleOnClose={handleOnClose} />
+              {shouldShowFaucetFirstModal ? (
+                <FaucetFirstAccessModal
+                  handleOnClose={handleOnCloseFaucetModal}
+                />
               ) : (
                 <FaucetAccessModal />
               )}
@@ -157,9 +187,7 @@ export const Home = () => {
                   id="home-balance"
                   className={`font-rubik text-5xl font-medium`}
                 >
-                  {moreThanMillion
-                    ? formatMillionNumber(actualBalance)
-                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
+                  {formattedBalance}{' '}
                 </p>
 
                 <p
@@ -171,7 +199,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{formatFiatAmmount}</p>
+              <p id="fiat-amount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">

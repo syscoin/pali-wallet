@@ -27,6 +27,7 @@ export const Faucet = () => {
   } = FaucetComponentStates();
 
   return (
+    //! Question: is the label always like that?
     <Layout title="ROLLUX FAUCET" canGoBack>
       {status === `request` && !isLoading && (
         <>

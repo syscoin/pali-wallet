@@ -5,7 +5,9 @@ import image from 'assets/images/faucetmodal.png';
 import rolluxLogo from 'assets/images/rolluxChain.png';
 import sysLogo from 'assets/images/sysChain.svg';
 
-export const FaucetFirstAccessModal = ({ handleOnClose }: any) => (
+export const FaucetFirstAccessModal = (
+  { handleOnClose }: any //todo: type handleClose
+) => (
   <div className="z-[88] border border-brand-blue400 left-[6%] absolute bottom-6 w-[352px] h-[91px]  flex items-center rounded-[20px]  bg-gradient-to-r from-[#7192C6] via-[#436AA8] to-[#314E7C]">
     <div className="w-full relative p-[13px]">
       <div className="relative bottom-[0.5rem] z-[9999]">
