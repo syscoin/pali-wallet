@@ -11,8 +11,8 @@ import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { claimFaucet } from 'scripts/Background/controllers/faucetController';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { setFaucetModalState } from 'state/vault';
 import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
@@ -44,6 +44,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
+    faucetModal,
   } = useSelector((state: RootState) => state.vault);
 
   //* States
@@ -121,11 +122,13 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
-  const handleFaucet = useCallback(
-    async (chainId: number, walletAddress: string) => {
-      await claimFaucet(chainId, walletAddress);
-    },
-    []
+  const handleOnClose = useCallback(() => {
+    store.dispatch(setFaucetModalState({ chainId: activeNetwork.chainId }));
+  }, []);
+
+  const hasClosedFirstModal = useMemo(
+    () => !faucetModal[activeNetwork.chainId],
+    [faucetModal, activeNetwork.chainId]
   );
 
   return (
@@ -136,8 +139,17 @@ export const Home = () => {
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
-          <FaucetFirstAccessModal />
-          <FaucetAccessModal />
+
+          {!isBitcoinBased && (
+            <>
+              {!hasClosedFirstModal ? (
+                <FaucetFirstAccessModal handleOnClose={handleOnClose} />
+              ) : (
+                <FaucetAccessModal />
+              )}
+            </>
+          )}
+
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">

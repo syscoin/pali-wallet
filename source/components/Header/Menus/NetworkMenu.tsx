@@ -12,6 +12,7 @@ import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { getController } from 'utils/browser';
 import { NetworkType } from 'utils/types';
@@ -117,7 +118,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     >
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-max text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span className="font-light">{activeNetwork.label}</span>
             <span
               className={`px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor}`}
@@ -256,13 +257,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                             className="w-4 relative bottom-0.5"
                                             wrapperClassname="w-6"
                                           />
-
-                                          <div className="flex justify-center w-full h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
-                                            <div className="w-2 h-2 bg-brand-green rounded-full" />
-                                            <p className="text-xs text-white">
-                                              Faucet
-                                            </p>
-                                          </div>
                                         </div>
                                       )}
                                   </li>
@@ -324,24 +318,26 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
-
-                                {!isBitcoinBased &&
-                                  activeNetworkValidator(currentNetwork) && (
-                                    <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                  {!isBitcoinBased &&
+                                    activeNetworkValidator(currentNetwork) && (
                                       <Icon
                                         name="check"
                                         className="w-4 relative bottom-0.5"
                                         wrapperClassname="w-6"
                                       />
-
-                                      <div className="flex justify-center w-full h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
-                                        <div className="w-2 h-2 bg-brand-green rounded-full" />
-                                        <p className="text-xs text-white">
-                                          Faucet
-                                        </p>
-                                      </div>
+                                    )}
+                                  {Object.values(FaucetChainIds).includes(
+                                    currentNetwork.chainId
+                                  ) && (
+                                    <div className="flex justify-center w-full h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
+                                      <div className="w-2 h-2 bg-brand-green rounded-full" />
+                                      <p className="text-xs text-white">
+                                        Faucet
+                                      </p>
                                     </div>
                                   )}
+                                </div>
                               </li>
                             ))}
                         </Disclosure.Panel>

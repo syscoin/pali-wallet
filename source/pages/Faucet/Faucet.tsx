@@ -1,42 +1,52 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 import errorIcon from 'assets/images/faucet-error.svg';
 import loadingIcon from 'assets/images/faucet-loading.svg';
 import successIcon from 'assets/images/faucet-success.svg';
+import { NeutralButton } from 'components/Button';
 import { Layout } from 'components/Layout';
+import { ellipsis } from 'utils/format';
 
 import {
   FaucetApiFeedback,
   FaucetCardAccount,
   FaucetFeedback,
 } from './Components';
-import { FaucetComponentStates } from './Utils';
+import { FaucetComponentStates } from './Utils/FaucetComponentStates';
 
 export const Faucet = () => {
-  const [state, setState] = useState(`loading`);
-  const { account } = FaucetComponentStates();
+  const {
+    account,
+    status,
+    handleFaucetButton,
+    faucetButtonLabel,
+    isLoading,
+    faucetRequestDetails,
+    errorMessage,
+    txHash,
+  } = FaucetComponentStates();
 
   return (
     <Layout title="ROLLUX FAUCET" canGoBack>
-      {state === `request` && (
+      {status === `request` && !isLoading && (
         <>
           <FaucetFeedback
-            icon=""
-            textFeedbackTitle="Grab $SYS with our faucet to begin experiencing the Rollux network!"
-            textFeedbackDesc="You can get 0.001 $SYS per wallet address every 24h."
+            icon={faucetRequestDetails.icon}
+            textFeedbackTitle={faucetRequestDetails.grabText}
+            textFeedbackDesc={faucetRequestDetails.tokenQuantity}
           />
           <FaucetApiFeedback
             apiTitle="Smart Contract"
-            apiResponse="0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23"
+            apiResponse={faucetRequestDetails.smartContract}
           />
           <FaucetCardAccount
             accountImg={account.img}
             accountName={account.label}
-            accountAddress={account.address}
+            accountAddress={ellipsis(account.address, 4, 4)}
           />
         </>
       )}
-      {state === `loading` && (
+      {isLoading && (
         <>
           <FaucetFeedback
             icon={loadingIcon}
@@ -45,27 +55,35 @@ export const Faucet = () => {
           />
         </>
       )}
-      {state === `error` && (
+      {status === `error` && !isLoading && (
         <>
           <FaucetFeedback
             icon={errorIcon}
             textFeedbackTitle="ERROR!"
-            textFeedbackDesc="Please wait 24 hours to request again."
+            textFeedbackDesc={errorMessage}
           />
         </>
       )}
-      {state === `success` && (
+      {status === `success` && !isLoading && (
         <>
           <FaucetFeedback
             icon={successIcon}
             textFeedbackTitle="CONGRATULATIONS!"
-            textFeedbackDesc="Some TSYS has just been sent to your Rollux wallet."
+            textFeedbackDesc={`Some ${faucetRequestDetails.tokenSymbol} has just been sent to your ${faucetRequestDetails.networkName} wallet.`}
           />
           <FaucetApiFeedback
             apiTitle="Transaction hash"
-            apiResponse="0x89e37b5c5f59aaaba2be8077fe3802b4ccefb84755058d88f7db5df6393ae23a"
+            status={status}
+            apiResponse={txHash}
           />
         </>
+      )}
+      {!isLoading && (
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton type="button" fullWidth onClick={handleFaucetButton}>
+            {faucetButtonLabel}
+          </NeutralButton>
+        </div>
       )}
     </Layout>
   );

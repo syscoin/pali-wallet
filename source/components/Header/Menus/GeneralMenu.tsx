@@ -66,7 +66,7 @@ export const GeneralMenu: React.FC = () => {
   return (
     <Menu
       as="div"
-      className="absolute right-4 top-2 flex items-center gap-2 justify-evenly"
+      className="absolute z-[9999] right-4 top-2 flex items-center gap-2 justify-evenly"
     >
       <Tooltip content={truncate(currentTab.host)}>
         <div

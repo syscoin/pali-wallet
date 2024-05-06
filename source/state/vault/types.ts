@@ -28,6 +28,9 @@ export interface IVaultState {
   coinsList: any[];
   currentBlock: ethers.providers.Block;
   error: boolean;
+  faucetModal: {
+    [k: number]: boolean;
+  };
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;

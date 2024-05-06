@@ -1,27 +1,25 @@
 import axios from 'axios';
 
 const claimFaucet = async (chainId: number, walletAddress: string) => {
-  let wallet: string;
+  let chainName: string;
 
   if (chainId === 57) {
-    wallet = `nevm-mainnet`;
+    chainName = `nevm-mainnet`;
   } else if (chainId === 5700) {
-    wallet = `nevm-testnet`;
+    chainName = `nevm-testnet`;
   } else if (chainId === 57000) {
-    wallet = `rollux-testnet`;
+    chainName = `rollux-testnet`;
   } else if (chainId === 570) {
-    wallet = `rollux-mainnet`;
+    chainName = `rollux-mainnet`;
   } else {
-    wallet = ``;
+    chainName = ``;
   }
 
   const { data } = await axios.get(
-    `https://chains.tools/api/faucet/claim?networkKey=${wallet}&walletAddress=${walletAddress}`
+    `https://chains.tools/api/faucet/claim?networkKey=${chainName}&walletAddress=${walletAddress}`
   );
 
-  console.log(data);
   return data;
 };
 
 export { claimFaucet };
-//nevm-testnet nevm-mainnet rollux-testnet rollux-mainnet
