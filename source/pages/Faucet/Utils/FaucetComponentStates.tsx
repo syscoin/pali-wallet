@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { faucetTxDetailsProps } from '../Types';
@@ -25,14 +26,13 @@ export const FaucetComponentStates = () => {
   const [status, setStatus] = useState(`request`);
   const [isLoading, setIsLoading] = useState(false);
   const [txHash, setTxHash] = useState(``);
-
   const [errorMessage, setErrorMessage] = useState('');
-
   const [faucetTxDetailsInfo, setFaucetTxDetailsInfo] = useState(
     {} as faucetTxDetailsProps
   );
 
   const { navigate } = useUtils();
+  const { t } = useTranslation();
 
   const account = {
     img: accounts[activeAccount.type][activeAccount.id]?.xpub,
@@ -44,8 +44,14 @@ export const FaucetComponentStates = () => {
     icon: faucetTxDetailsInfo?.icon,
     tokenSymbol: faucetTxDetailsInfo?.token,
     networkName: faucetTxDetailsInfo?.networkName,
-    grabText: `Grab ${faucetTxDetailsInfo.token} with our faucet to begin experiencing the ${faucetTxDetailsInfo.networkName} network!`,
-    tokenQuantity: `You can get ${faucetTxDetailsInfo.quantity} ${faucetTxDetailsInfo.token} per wallet address every 24h.`,
+    grabText: t('faucet.withOurFaucet', {
+      token: faucetTxDetailsInfo.token,
+      networkName: faucetTxDetailsInfo.networkName,
+    }),
+    tokenQuantity: t('faucet.youCanGet', {
+      quantity: faucetTxDetailsInfo.quantity,
+      token: faucetTxDetailsInfo.token,
+    }),
     smartContract: faucetTxDetailsInfo.smartContract,
   };
 
@@ -84,11 +90,11 @@ export const FaucetComponentStates = () => {
   const faucetButtonLabel = useMemo(() => {
     let buttonName: string;
     if (status === 'request') {
-      buttonName = 'Request Now';
+      buttonName = t('faucet.requestNow');
     } else if (status === 'success') {
-      buttonName = 'Close';
+      buttonName = t('faucet.Close');
     } else if (status === 'error') {
-      buttonName = 'Try again';
+      buttonName = t('faucet.tryAgain');
     } else {
       return;
     }

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import errorIcon from 'assets/images/faucet-error.svg';
 import loadingIcon from 'assets/images/faucet-loading.svg';
@@ -13,6 +14,7 @@ import {
   FaucetFeedback,
 } from './Components';
 import { FaucetComponentStates } from './Utils/FaucetComponentStates';
+import { useHandleNetworkTokenNames } from './Utils/NetworksInfos';
 
 export const Faucet = () => {
   const {
@@ -25,10 +27,11 @@ export const Faucet = () => {
     errorMessage,
     txHash,
   } = FaucetComponentStates();
+  const { t } = useTranslation();
+  const { networkName } = useHandleNetworkTokenNames();
 
   return (
-    //! Question: is the label always like that?
-    <Layout title="ROLLUX FAUCET" canGoBack>
+    <Layout title={networkName} canGoBack>
       {status === `request` && !isLoading && (
         <>
           <FaucetFeedback
@@ -43,7 +46,7 @@ export const Faucet = () => {
           <FaucetCardAccount
             accountImg={account.img}
             accountName={account.label}
-            accountAddress={ellipsis(account.address, 4, 4)}
+            accountAddress={ellipsis(account.address, 8, 8)}
           />
         </>
       )}
@@ -51,8 +54,8 @@ export const Faucet = () => {
         <>
           <FaucetFeedback
             icon={loadingIcon}
-            textFeedbackTitle="Please wait while we work our magic..."
-            textFeedbackDesc="Do not close the wallet."
+            textFeedbackTitle={t('faucet.pleaseWait')}
+            textFeedbackDesc={t('faucet.doNotClose')}
           />
         </>
       )}
@@ -60,7 +63,7 @@ export const Faucet = () => {
         <>
           <FaucetFeedback
             icon={errorIcon}
-            textFeedbackTitle="ERROR!"
+            textFeedbackTitle={t('faucet.ERROR')}
             textFeedbackDesc={errorMessage}
           />
         </>
@@ -69,11 +72,14 @@ export const Faucet = () => {
         <>
           <FaucetFeedback
             icon={successIcon}
-            textFeedbackTitle="CONGRATULATIONS!"
-            textFeedbackDesc={`Some ${faucetRequestDetails.tokenSymbol} has just been sent to your ${faucetRequestDetails.networkName} wallet.`}
+            textFeedbackTitle={t('faucet.CONGRATULATIONS')}
+            textFeedbackDesc={t('faucet.someHasJust', {
+              tokenSymbol: faucetRequestDetails.tokenSymbol,
+              networkName: faucetRequestDetails.networkName,
+            })}
           />
           <FaucetApiFeedback
-            apiTitle="Transaction hash"
+            apiTitle={t('faucet.transactionHash')}
             status={status}
             apiResponse={txHash}
           />

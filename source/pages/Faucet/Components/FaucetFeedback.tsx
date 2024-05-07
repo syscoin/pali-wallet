@@ -1,11 +1,11 @@
 import React from 'react';
 
-type FaucedFeedbackProps = {
+type FaucetFeedbackProps = {
   icon: string;
   textFeedbackDesc: string;
   textFeedbackTitle: string;
 };
-export const FaucetFeedback: React.FC<FaucedFeedbackProps> = ({
+export const FaucetFeedback: React.FC<FaucetFeedbackProps> = ({
   icon,
   textFeedbackDesc,
   textFeedbackTitle,

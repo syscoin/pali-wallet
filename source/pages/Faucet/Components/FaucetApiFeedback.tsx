@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 
 import { StatusModal } from 'components/Modal/StatusModal';
 
-type FaucedApiFeedbackProps = {
+type FaucetApiFeedbackProps = {
   apiResponse: string;
   apiTitle: string;
   status?: string;
 };
-export const FaucetApiFeedback: React.FC<FaucedApiFeedbackProps> = ({
+export const FaucetApiFeedback: React.FC<FaucetApiFeedbackProps> = ({
   apiTitle,
   apiResponse,
   status,
