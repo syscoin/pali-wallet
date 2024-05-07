@@ -58,20 +58,21 @@ export const FaucetComponentStates = () => {
   const handleRequestFaucet = async () => {
     setIsLoading(true);
     try {
-      const { data: request } = await claimFaucet(
-        activeNetwork.chainId,
-        account.address
-      );
-      if (!request?.status) {
+      const data = await claimFaucet(activeNetwork.chainId, account.address);
+      console.log(data, 'data');
+      if (!data?.status || !data?.data?.status) {
         setStatus('error');
-        setErrorMessage(request?.message);
+        setErrorMessage(
+          data?.data?.message ? data?.data?.message : data?.message
+        );
       } else {
-        setTxHash(request?.hash);
+        setTxHash(data?.data?.hash);
         setStatus(`success`);
       }
     } catch (error) {
+      console.log(error, 'a');
       setStatus('error');
-      setErrorMessage(error);
+      setErrorMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }

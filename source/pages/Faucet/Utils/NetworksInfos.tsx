@@ -45,32 +45,21 @@ export const useHandleNetworkTokenNames = () => {
     let token: string;
     let network: string;
 
-    if (activeNetwork.isTestnet) {
-      token = 'TSYS';
-      switch (activeNetwork.chainId) {
-        case FaucetChainIds.RolluxTestnet:
-          network = 'Rollux Testnet';
-          break;
-        case FaucetChainIds.nevmTestnet:
-          network = 'Syscoin NEVM Testnet';
-          break;
-        default:
-          network = '';
-          break;
-      }
-    } else {
+    if (activeNetwork.chainId === FaucetChainIds.nevmMainnet) {
       token = 'SYS';
-      switch (activeNetwork.chainId) {
-        case FaucetChainIds.RolluxMainnet:
-          network = 'Rollux';
-          break;
-        case FaucetChainIds.nevmMainnet:
-          network = 'Syscoin NEVM';
-          break;
-        default:
-          network = '';
-          break;
-      }
+      network = 'Syscoin NEVM';
+    } else if (activeNetwork.chainId === FaucetChainIds.nevmTestnet) {
+      token = 'TSYS';
+      network = 'Syscoin NEVM Testnet';
+    } else if (activeNetwork.chainId === FaucetChainIds.RolluxTestnet) {
+      token = 'TSYS';
+      network = 'Rollux Testnet';
+    } else if (activeNetwork.chainId === FaucetChainIds.RolluxMainnet) {
+      token = 'SYS';
+      network = 'Rollux';
+    } else {
+      token = '';
+      network = '';
     }
 
     return { token, network };

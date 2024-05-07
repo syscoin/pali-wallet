@@ -14,12 +14,15 @@ const claimFaucet = async (chainId: number, walletAddress: string) => {
   } else {
     chainName = ``;
   }
+  try {
+    const { data } = await axios.get(
+      `https://chains.tools/api/faucet/claim?networkKey=${chainName}&walletAddress=${walletAddress}`
+    );
 
-  const { data } = await axios.get(
-    `https://chains.tools/api/faucet/claim?networkKey=${chainName}&walletAddress=${walletAddress}`
-  );
-
-  return data;
+    return data;
+  } catch (err) {
+    return err;
+  }
 };
 
 export { claimFaucet };
