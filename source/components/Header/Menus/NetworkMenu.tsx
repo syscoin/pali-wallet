@@ -117,7 +117,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
     >
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-max text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span className="font-light">{activeNetwork.label}</span>
             <span
               className={`px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor}`}
