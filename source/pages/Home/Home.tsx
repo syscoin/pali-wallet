@@ -11,6 +11,7 @@ import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { setFaucetModalState } from 'state/vault';
 import { getController } from 'utils/browser';
@@ -168,17 +169,18 @@ export const Home = () => {
         <>
           <Header accountHeader />
 
-          {!isBitcoinBased && (
-            <>
-              {shouldShowFaucetFirstModal ? (
-                <FaucetFirstAccessModal
-                  handleOnClose={handleOnCloseFaucetModal}
-                />
-              ) : (
-                <FaucetAccessModal />
-              )}
-            </>
-          )}
+          {!isBitcoinBased &&
+            Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
+              <>
+                {shouldShowFaucetFirstModal ? (
+                  <FaucetFirstAccessModal
+                    handleOnClose={handleOnCloseFaucetModal}
+                  />
+                ) : (
+                  <FaucetAccessModal />
+                )}
+              </>
+            )}
 
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">

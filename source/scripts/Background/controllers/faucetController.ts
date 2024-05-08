@@ -18,7 +18,6 @@ const claimFaucet = async (chainId: number, walletAddress: string) => {
     const { data } = await axios.get(
       `https://chains.tools/api/faucet/claim?networkKey=${chainName}&walletAddress=${walletAddress}`
     );
-
     return data;
   } catch (err) {
     return err;
