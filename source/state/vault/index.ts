@@ -57,7 +57,7 @@ export const initialState: IVaultState = {
     ledger: false,
   },
   isLastTxConfirmed: {},
-  hasEthProperty: true,
+  hasEthProperty: true, //hasEthProperty true means pali as default provider
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
