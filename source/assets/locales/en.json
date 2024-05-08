@@ -54,7 +54,7 @@
     "languages": "Languages",
     "currency": "Currency",
     "autolock": "Auto lock timer",
-    "manageEth": "Manage ETH provider",
+    "manageEth": "Set default wallet",
     "infoHelp": "Info/Help",
     "lock": "Lock",
     "advanced": "Advanced"

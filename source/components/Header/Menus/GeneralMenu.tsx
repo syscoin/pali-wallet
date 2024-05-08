@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import ethIcon from 'assets/images/ethIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -125,6 +124,21 @@ export const GeneralMenu: React.FC = () => {
 
             <Menu.Item>
               <li
+                onClick={() => navigate('/settings/remove-eth')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="PaliWhiteSmall"
+                  isSvg
+                  className="text-brand-white"
+                />
+
+                <span>{t('generalMenu.manageEth')}</span>
+              </li>
+            </Menu.Item>
+
+            <Menu.Item>
+              <li
                 onClick={() => navigate('/settings/seed')}
                 className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
               >
@@ -199,21 +213,6 @@ export const GeneralMenu: React.FC = () => {
                 <Icon name="Clock" isSvg className="text-brand-white" />
 
                 <span>{t('generalMenu.autolock')}</span>
-              </li>
-            </Menu.Item>
-
-            <Menu.Item>
-              <li
-                onClick={() => navigate('/settings/remove-eth')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-              >
-                <img
-                  src={ethIcon}
-                  width="16px"
-                  className="ml-0.2 text-brand-white"
-                />
-
-                <span>{t('generalMenu.manageEth')}</span>
               </li>
             </Menu.Item>
 

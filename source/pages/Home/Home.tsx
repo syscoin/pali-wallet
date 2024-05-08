@@ -9,6 +9,7 @@ import { Header, Icon, Button, Loading } from 'components/index';
 import { FaucetAccessModal } from 'components/Modal/FaucetAccessModal';
 import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
