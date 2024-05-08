@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Pali Wallet",
-  "version": "2.0.18",
+  "version": "2.0.19",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -20,8 +20,7 @@
     "*://*.eth/",
     "clipboardWrite",
     "unlimitedStorage",
-    "http://localhost:8545/",
-    "webRequest"
+    "http://localhost:8545/"
   ],
   "content_security_policy": "script-src 'self'; object-src 'self'",
   "__chrome|firefox__author": "pollum labs",
