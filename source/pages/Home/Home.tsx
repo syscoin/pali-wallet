@@ -169,7 +169,7 @@ export const Home = () => {
       {shouldRenderHomePage ? (
         <>
           <Header accountHeader />
-
+          <WalletProviderDefaultModal />
           {!isBitcoinBased &&
             Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
               <>
