@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { Icon } from '..';
 import { RootState } from 'state/store';
 
-const FIVE_SECONDS = 0;
+const FIVE_SECONDS = 5000;
 
 export const Loading = ({
   opacity = 60,
