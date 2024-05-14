@@ -59,7 +59,6 @@ export const FaucetComponentStates = () => {
     setIsLoading(true);
     try {
       const data = await claimFaucet(activeNetwork.chainId, account.address);
-      console.log(data, 'data');
       if (!data?.status || !data?.data?.status) {
         setStatus('error');
         setErrorMessage(
@@ -70,7 +69,6 @@ export const FaucetComponentStates = () => {
         setStatus(`success`);
       }
     } catch (error) {
-      console.log(error, 'a');
       setStatus('error');
       setErrorMessage(errorMessage);
     } finally {

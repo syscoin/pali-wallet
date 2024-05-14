@@ -126,6 +126,10 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setFaucetState(chainId));
   };
 
+  const setOpenDAppErrorModalState = () => {
+    store.dispatch(setOpenDAppErrorModal(true));
+  };
+
   const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
     store.dispatch(setSettings({ advancedProperty, isActive }));
   };
@@ -1375,9 +1379,6 @@ const MainController = (walletState): IMainController => {
     );
   };
 
-  const openDAppErrorModal = () => {
-    store.dispatch(setOpenDAppErrorModal(true));
-  };
   //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
 
   //------------------------- END TRANSACTIONS METHODS -------------------------//
@@ -1646,7 +1647,7 @@ const MainController = (walletState): IMainController => {
     importTrezorAccount,
     validatePendingEvmTransactions,
     ...keyringManager,
-    openDAppErrorModal,
+    setOpenDAppErrorModalState,
     setFaucetModalState,
   };
 };
