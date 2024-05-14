@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import {
   DefaultModal,
   Layout,
@@ -12,22 +14,32 @@ import { dispatchBackgroundEvent, getController } from 'utils/browser';
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
-  const [loading, setLoading] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
   const { alert } = useUtils();
   const controller = getController();
+
+  const [loading, setLoading] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+
   const wallet = controller.wallet;
+
   const onSubmit = async (customRpc: any) => {
     setLoading(true);
 
+    const networkWithCustomParams = {
+      ...customRpc,
+      explorer: data?.apiUrl ? data.apiUrl : customRpc?.apiUrl || '',
+    } as INetwork;
+
     try {
-      await controller.wallet.addCustomRpc(customRpc).then(async (network) => {
-        setConfirmed(true);
-        setLoading(false);
-        const type = data.eventName;
-        dispatchBackgroundEvent(`${type}.${host}`, null);
-        await wallet.setActiveNetwork(network, 'ethereum');
-      });
+      await controller.wallet
+        .addCustomRpc(networkWithCustomParams)
+        .then(async (network) => {
+          setConfirmed(true);
+          setLoading(false);
+          const type = data.eventName;
+          dispatchBackgroundEvent(`${type}.${host}`, null);
+          await wallet.setActiveNetwork(network, 'ethereum');
+        });
     } catch (error: any) {
       alert.removeAll();
       alert.error(error.message);
