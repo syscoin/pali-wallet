@@ -294,7 +294,7 @@ function registerListener() {
       port.onMessage.addListener((message) => {
         if (message.action === 'startPolling' && !isPolling) {
           store.dispatch(setIsPolling(true));
-          // stateIntervalId = setInterval(checkForUpdates, 15000);
+          stateIntervalId = setInterval(checkForUpdates, 15000);
           port.postMessage({ stateIntervalId });
         } else if (message.action === 'stopPolling') {
           clearInterval(stateIntervalId);

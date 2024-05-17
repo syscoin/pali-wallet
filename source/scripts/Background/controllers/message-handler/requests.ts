@@ -402,6 +402,7 @@ export const methodRequest = async (
     const provider = EthProvider(host, activeNetwork);
     console.log('INSIDE IF');
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
+    console.log({ responseInside: resp });
     if (!wallet.isUnlocked()) return false;
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 

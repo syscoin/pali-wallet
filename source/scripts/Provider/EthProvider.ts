@@ -17,10 +17,12 @@ import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 export const EthProvider = (host: string, network?: INetwork) => {
   const sendTransaction = async (params: ITransactionParams) => {
-    const tx = params;
     const {
       ethereumTransaction: { contentScriptWeb3Provider },
+      setSignerNetwork,
     } = getController().wallet;
+    await setSignerNetwork(network, 'ethereum');
+    const tx = params;
     const validateTxToAddress = await validateEOAAddress(
       tx.to,
       contentScriptWeb3Provider
@@ -161,8 +163,8 @@ export const EthProvider = (host: string, network?: INetwork) => {
   };
 
   const send = async (args: any[]) => {
-    const { ethereumTransaction } = getController().wallet;
-
+    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
+    await setSignerNetwork(network, 'ethereum');
     return ethereumTransaction.contentScriptWeb3Provider.send(args[0], args);
   };
 
@@ -187,7 +189,8 @@ export const EthProvider = (host: string, network?: INetwork) => {
     blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    const { ethereumTransaction } = getController().wallet;
+    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
+    await setSignerNetwork(network, 'ethereum');
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);

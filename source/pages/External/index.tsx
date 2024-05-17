@@ -36,10 +36,6 @@ store.subscribe(
   })
 );
 
-store.subscribe(() => {
-  browser.storage.local.set({ vault: appStore.getState().vault });
-});
-
 const options = {
   position: positions.BOTTOM_CENTER,
   timeout: 2 * 1000,

@@ -11,9 +11,7 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import { persistor, RootState } from 'state/store';
 import store from 'state/store';
-import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
