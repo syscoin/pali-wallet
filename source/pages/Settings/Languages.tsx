@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/icons/greenChecked.svg';
 import { Layout, DefaultModal, NeutralButton } from 'components/index';
-import { setLanguageInLocalstorage } from 'scripts/Background';
+import { setLanguageInLocalStorage } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
 import { PaliLanguages } from 'utils/types';
@@ -29,7 +29,7 @@ const Languages = () => {
   const navigate = useNavigate();
 
   const onSubmit = () => {
-    setLanguageInLocalstorage(currentLang);
+    setLanguageInLocalStorage(currentLang);
 
     i18next.changeLanguage(currentLang);
     setConfirmed(true);
