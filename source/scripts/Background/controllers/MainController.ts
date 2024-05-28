@@ -52,6 +52,7 @@ import {
   setTransactionStatusToAccelerated,
   setUpdatedNftsToState,
   setOpenDAppErrorModal,
+  setFaucetModalState as setFaucetState,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -119,6 +120,10 @@ const MainController = (walletState): IMainController => {
   };
   const setHasEthProperty = (exist: boolean) => {
     store.dispatch(setEthProperty(exist));
+  };
+
+  const setFaucetModalState = (chainId: number) => {
+    store.dispatch(setFaucetState(chainId));
   };
 
   const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
@@ -1091,8 +1096,6 @@ const MainController = (walletState): IMainController => {
               activeNetwork.url
             );
 
-            console.log('updatedNfts', updatedNfts);
-
             const validateUpdatedAndPreviousNftsLength =
               updatedNfts.length < currentAccount.assets.nfts.length;
 
@@ -1645,6 +1648,7 @@ const MainController = (walletState): IMainController => {
     validatePendingEvmTransactions,
     ...keyringManager,
     openDAppErrorModal,
+    setFaucetModalState,
   };
 };
 

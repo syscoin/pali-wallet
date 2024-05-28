@@ -57,7 +57,7 @@ export const initialState: IVaultState = {
     ledger: false,
   },
   isLastTxConfirmed: {},
-  hasEthProperty: true,
+  hasEthProperty: true, //hasEthProperty true means pali as default provider
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
@@ -79,6 +79,12 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
+  faucetModal: {
+    57: true,
+    570: true,
+    5700: true,
+    57000: true,
+  },
   currentBlock: undefined,
   coinsList: [],
 };
@@ -302,6 +308,16 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
+    },
+    setFaucetModalState: (
+      state: IVaultState,
+      action: PayloadAction<number>
+    ) => {
+      if (state.isBitcoinBased) {
+        return;
+      }
+
+      state.faucetModal[action.payload] = false;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
@@ -820,6 +836,7 @@ export const {
   setTransactionStatusToAccelerated,
   setCoinsList,
   setIsLastTxConfirmed,
+  setFaucetModalState,
 } = VaultState.actions;
 
 export default VaultState.reducer;

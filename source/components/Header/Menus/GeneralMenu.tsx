@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { browser } from 'webextension-polyfill-ts';
 
-import ethIcon from 'assets/images/ethIcon.svg';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -59,7 +58,7 @@ export const GeneralMenu: React.FC = () => {
   return (
     <Menu
       as="div"
-      className="absolute right-4 top-2 flex items-center gap-2 justify-evenly"
+      className="absolute z-[9999] right-4 top-2 flex items-center gap-2 justify-evenly"
     >
       <Tooltip content={truncate(currentTab.host)}>
         <div
@@ -115,6 +114,21 @@ export const GeneralMenu: React.FC = () => {
             <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
               {t('generalMenu.wallet')}
             </span>
+
+            <Menu.Item>
+              <li
+                onClick={() => navigate('/settings/remove-eth')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="PaliWhiteSmall"
+                  isSvg
+                  className="text-brand-white"
+                />
+
+                <span>{t('generalMenu.manageEth')}</span>
+              </li>
+            </Menu.Item>
 
             <Menu.Item>
               <li
@@ -192,21 +206,6 @@ export const GeneralMenu: React.FC = () => {
                 <Icon name="Clock" isSvg className="text-brand-white" />
 
                 <span>{t('generalMenu.autolock')}</span>
-              </li>
-            </Menu.Item>
-
-            <Menu.Item>
-              <li
-                onClick={() => navigate('/settings/remove-eth')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
-              >
-                <img
-                  src={ethIcon}
-                  width="16px"
-                  className="ml-0.2 text-brand-white"
-                />
-
-                <span>{t('generalMenu.manageEth')}</span>
               </li>
             </Menu.Item>
 

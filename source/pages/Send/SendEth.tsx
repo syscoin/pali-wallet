@@ -457,9 +457,15 @@ export const SendEth = () => {
                           : '/assets/icons/errorIcon.svg'
                       }
                       alt={isValidAmount === true ? 'Success' : 'Error'}
-                      className={`absolute right-[2rem] ${
-                        isValidAmount === true ? 'top-[-26.5px]' : 'top-[-25px]'
-                      }`}
+                      className={`absolute`}
+                      style={
+                        hasAccountAssets
+                          ? {
+                              right: `5rem`,
+                              top: `-28.5px`,
+                            }
+                          : { right: `2rem`, top: `-26.5px` }
+                      }
                     />
                   )}
                 </div>

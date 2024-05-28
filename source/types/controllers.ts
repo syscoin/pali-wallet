@@ -127,6 +127,7 @@ export interface IMainController extends IKeyringManager {
     newTxValue: IEvmTransactionResponse
   ) => void;
   setEvmTransactionAsCanceled: (txHash: string, chainID: number) => void;
+  setFaucetModalState: (chainId: number) => void;
   setHasEthProperty: (exist: boolean) => void;
   setIsAutolockEnabled: (isEnabled: boolean) => void;
   setIsLastTxConfirmed: (

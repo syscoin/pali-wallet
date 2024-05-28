@@ -280,48 +280,77 @@ async function checkForUpdates() {
 let stateIntervalId;
 let pendingTransactionsPollingIntervalId;
 let isListenerRegistered = false;
+let currentIsBitcoinBased = store.getState().vault.isBitcoinBased;
+
+function getPollingInterval() {
+  const { isBitcoinBased } = store.getState().vault;
+  return isBitcoinBased ? 2 * 60 * 1000 : 15 * 1000;
+}
+
+function startPolling() {
+  clearInterval(stateIntervalId);
+  stateIntervalId = setInterval(checkForUpdates, getPollingInterval());
+}
+
+function unregisterListener() {
+  browser.runtime.onConnect.removeListener(handleConnect);
+  isListenerRegistered = false;
+}
+
+function handleConnect(port) {
+  const { isPolling } = store.getState().vault;
+
+  if (port.name === 'polling') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'startPolling' && !isPolling) {
+        store.dispatch(setIsPolling(true));
+        startPolling();
+        port.postMessage({ stateIntervalId });
+      } else if (message.action === 'stopPolling') {
+        clearInterval(stateIntervalId);
+        store.dispatch(setIsPolling(false));
+      }
+    });
+  } else if (port.name === 'pendingTransactionsPolling') {
+    port.onMessage.addListener((message) => {
+      if (message.action === 'startPendingTransactionsPolling') {
+        store.dispatch(setIsPolling(true));
+        startPendingTransactionsPolling();
+      } else if (message.action === 'stopPendingTransactionsPolling') {
+        clearInterval(pendingTransactionsPollingIntervalId);
+        store.dispatch(setIsPolling(false));
+      }
+    });
+  }
+}
 
 function registerListener() {
   if (isListenerRegistered) {
     return;
   }
 
-  browser.runtime.onConnect.addListener((port) => {
-    const isPolling = store.getState().vault.isPolling;
-    store.dispatch(setIsPolling(false));
+  browser.runtime.onConnect.addListener(handleConnect);
+  isListenerRegistered = true;
+}
 
-    if (port.name === 'polling') {
-      port.onMessage.addListener((message) => {
-        if (message.action === 'startPolling' && !isPolling) {
-          store.dispatch(setIsPolling(true));
-          stateIntervalId = setInterval(checkForUpdates, 15000);
-          port.postMessage({ stateIntervalId });
-        } else if (message.action === 'stopPolling') {
-          clearInterval(stateIntervalId);
-          store.dispatch(setIsPolling(false));
-        }
-      });
-    } else if (port.name === 'pendingTransactionsPolling') {
-      port.onMessage.addListener((message) => {
-        if (message.action === 'startPendingTransactionsPolling') {
-          store.dispatch(setIsPolling(true));
-          startPendingTransactionsPolling();
-        } else if (message.action === 'stopPendingTransactionsPolling') {
-          clearInterval(pendingTransactionsPollingIntervalId);
-          store.dispatch(setIsPolling(false));
-        }
-      });
+function observeVaultChanges() {
+  store.subscribe(() => {
+    const nextState = store.getState().vault;
+    if (nextState.isBitcoinBased !== currentIsBitcoinBased) {
+      currentIsBitcoinBased = nextState.isBitcoinBased;
+      if (store.getState().vault.isPolling) {
+        startPolling();
+      }
+      unregisterListener();
+      registerListener();
     }
   });
-
-  isListenerRegistered = true;
 }
 
 function startPendingTransactionsPolling() {
   pendingTransactionsPollingIntervalId = setInterval(
     checkForPendingTransactionsUpdate,
     2 * 60 * 60 * 1000 //run after 2 hours
-    // 10000 //todo: 10s just in matter of testing, replace this for the 1-2hour timer
   );
 }
 
@@ -368,6 +397,7 @@ async function checkForPendingTransactionsUpdate() {
   }
 }
 
+observeVaultChanges();
 registerListener();
 
 const port = browser.runtime.connect(undefined, { name: 'polling' });
@@ -406,7 +436,7 @@ export const resetPaliRequestsCount = () => {
   });
 };
 
-export const setLanguageInLocalstorage = (lang: PaliLanguages) => {
+export const setLanguageInLocalStorage = (lang: PaliLanguages) => {
   browser.storage.local.set({ language: lang });
 };
 
