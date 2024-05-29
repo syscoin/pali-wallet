@@ -20,7 +20,7 @@ export const WalletProviderDefaultModal = () => {
     <motion.div
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="fixed left-0 bottom-0 z-[9999] bg-brand-blue400 flex"
+      className="fixed left-0 bottom-0 z-40 bg-brand-blue400 flex"
       style={containerStyleAnimation.style}
       animate={containerStyleAnimation.animation}
     >
