@@ -35,7 +35,7 @@ export const SendEth = () => {
     gasPrice: 0,
   });
   const [isMessageVisible, setIsMessageVisible] = useState(false);
-  const [inputValue, setInputValue] = useState({ address: '', amount: 0 });
+  const [inputValue, setInputValue] = useState({ address: '', amount: null });
   const [isValidAddress, setIsValidAddress] = useState(null);
   const [isValidAmount, setIsValidAmount] = useState(null);
 
