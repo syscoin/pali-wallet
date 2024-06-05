@@ -76,6 +76,7 @@ module.exports = {
     pink200: '#FF3E91',
     blue: '#4D76B8',
     blue100: '#C9DEFF',
+    blueAlpha: '#476DAA',
     blue200: '#4CA1CF',
     blue400: '#4d76b8',
     blue500: '#1E365C',

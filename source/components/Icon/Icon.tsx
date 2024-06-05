@@ -66,6 +66,9 @@ const svgIcons = {
   warning: '../../assets/icons/yellowWarn.svg',
   Copy: '/assets/icons/copy.svg',
   Info: '/assets/icons/info.svg',
+  Wallet: '/assets/icons/wallet.svg',
+  Metamask: '/assets/icons/metamask.svg',
+  Pali: '/assets/icons/pali.svg',
   WhiteSuccess: '/assets/icons/whiteSuccess.svg',
   Edit: '/assets/icons/edit.svg',
   Network: '/assets/icons/network.svg',
@@ -82,6 +85,9 @@ const svgIcons = {
   Lock: '/assets/icons/lock.svg',
   ManageUser: '/assets/icons/manage-user.svg',
   ImportUser: '/assets/icons/user-imported.svg',
+  PaliWhiteSmall: '/assets/icons/pali-white-small.svg',
+  PaliNotDefault: '/assets/icons/pali-not-default.svg',
+  PaliDefault: '/assets/icons/pali-default.svg',
 };
 
 interface IIcon {

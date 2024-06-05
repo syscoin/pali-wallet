@@ -54,7 +54,7 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center text-white text-sm 
+                className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
                    transition duration-300`}
                 onClick={() =>
@@ -88,7 +88,7 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`py-1.5 px-5 w-full  backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                className={`py-1.5 px-5 w-max  backface-visibility-hidden flex items-center justify-start text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
@@ -143,7 +143,7 @@ const RenderAccountsListByBitcoinBased = (
             .filter((acc) => acc.isImported === false) //todo we don't have account.isImported anymore
             .map((account, index) => (
               <li
-                className={`py-1.5 px-5 w-full  backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                className={`py-1.5 px-5 w-max  backface-visibility-hidden flex items-center justify-start text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
@@ -202,7 +202,7 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((account) => account.xpub !== '')
                 .map((account, index) => (
                   <li
-                    className={`py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm 
+                    className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center justify-start text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none ${
                     (account.isTrezorWallet &&
                       account?.originNetwork?.isBitcoinBased) ||
@@ -272,8 +272,8 @@ const RenderAccountsListByBitcoinBased = (
                       activeAccount.type === keyringAccountType && (
                         <Icon
                           name="check"
-                          className="mb-1 w-4"
-                          wrapperClassname="absolute right-0.5"
+                          className="mb-1 ml-2 w-4"
+                          wrapperClassname="relative right-0.5"
                           color="#8EC100"
                         />
                       )}
