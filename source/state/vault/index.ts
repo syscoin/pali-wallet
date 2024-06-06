@@ -85,6 +85,7 @@ export const initialState: IVaultState = {
     5700: true,
     57000: true,
   },
+  newState: false,
   currentBlock: undefined,
   coinsList: [],
 };
