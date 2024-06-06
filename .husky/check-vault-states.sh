@@ -53,12 +53,14 @@ for state in $new_states; do
   fi
 done
 
-# Exibir os resultados
+# Exibir os resultados e retornar código de saída 1 se houver estados ausentes
 if [ ${#missing_states[@]} -ne 0 ]; then
   echo "The following new states from the vault in develop are missing in the controller:"
   for state in "${missing_states[@]}"; do
     echo "State: $state"
   done
+  rm $TEMP_VAULT_FILE
+  exit 1
 else
   echo "All new states from the vault in develop are reflected in the controller."
 fi
