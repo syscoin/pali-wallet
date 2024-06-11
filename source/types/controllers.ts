@@ -97,7 +97,6 @@ export interface IMainController extends IKeyringManager {
     isAlreadyConnected: boolean
   ) => Promise<any>;
   lock: () => void;
-  openDAppErrorModal: () => void;
   removeKeyringNetwork: (
     chain: string,
     chainId: number,
@@ -134,6 +133,7 @@ export interface IMainController extends IKeyringManager {
     wasConfirmed: boolean,
     isFirstTime?: boolean
   ) => void;
+  setOpenDAppErrorModalState: (value: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,
