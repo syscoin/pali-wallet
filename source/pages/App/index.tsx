@@ -13,29 +13,19 @@ import 'assets/styles/custom-send-utxo-input.css';
 import 'assets/fonts/index.css';
 
 // import { Store } from '@eduardoac-skimlinks/webext-redux';
+import throttle from 'lodash/throttle';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
-import watch from 'redux-watch';
 
 import { ToastAlert } from 'components/index';
-import { STORE_PORT } from 'constants/index';
-import { ProxyStore } from 'scripts/Background';
-import appStore from 'state/store';
-import { log, parseJsonRecursively } from 'utils/index';
+import { rehydrateStore } from 'state/rehydrate';
+import store, { updateState } from 'state/store';
 
 import App from './App';
 
 const app = document.getElementById('app-root');
-const store = new ProxyStore({ portName: STORE_PORT });
-
-const w = watch(appStore.getState, 'vault.lastLogin');
-store.subscribe(
-  w(() => {
-    log('watching webext store');
-  })
-);
 
 const options = {
   position: positions.BOTTOM_CENTER,
@@ -72,16 +62,7 @@ navigator.serviceWorker
     registration.update();
   });
 
-store.ready().then(() => {
-  chrome.storage.local.onChanged.addListener((e) => {
-    console.log({ e });
-  });
-  const update = (changes) => {
-    if (changes?.['persist:root']?.newValue === undefined) return;
-    const newState = parseJsonRecursively(changes?.['persist:root']?.newValue);
-    store.replaceState(newState);
-  };
-  chrome.storage.local.onChanged.addListener(update);
+rehydrateStore(store).then(() => {
   ReactDOM.render(
     <Provider store={store}>
       <AlertProvider template={ToastAlert} {...options}>
@@ -89,5 +70,13 @@ store.ready().then(() => {
       </AlertProvider>
     </Provider>,
     app
+  );
+
+  // Subscribe store to updates
+  store.subscribe(
+    throttle(() => {
+      // every second we update store state
+      updateState();
+    }, 1000)
   );
 });

@@ -10,6 +10,7 @@ import { localStorage } from 'redux-persist-webextension-storage';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
+import { saveState } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
 import { IPersistState } from './types';
@@ -50,6 +51,17 @@ const store: Store<{
 });
 
 export const persistor = persistStore(store);
+
+export function updateState() {
+  try {
+    const state = store.getState();
+
+    saveState(state);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 
 export type RootState = ReturnType<typeof store.getState> & {
   _persist: IPersistState;

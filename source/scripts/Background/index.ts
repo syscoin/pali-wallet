@@ -1,9 +1,9 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import 'emoji-log';
-import { wrapStore, Store } from '@eduardoac-skimlinks/webext-redux';
+
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { STORE_PORT } from 'constants/index';
+import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
@@ -13,7 +13,9 @@ import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
+import { handleStoreSubscribe } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
+
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -46,7 +48,13 @@ onWalletReady();
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
 });
-
+// chrome.storage.onChanged.addListener(() => {
+//   setTimeout(() => {
+//     rehydrateStore(store).then(() => {
+//       handleStoreSubscribe(store);
+//     });
+//   }, 2000);
+// });
 async function createOffscreen() {
   await chrome.offscreen
     .createDocument({
@@ -439,10 +447,6 @@ export const resetPaliRequestsCount = () => {
 export const setLanguageInLocalStorage = (lang: PaliLanguages) => {
   browser.storage.local.set({ language: lang });
 };
-
-wrapStore(store, { portName: STORE_PORT });
-
-export { Store as ProxyStore };
 
 const isPollingRunNotValid = () => {
   const {
