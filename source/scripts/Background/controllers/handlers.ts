@@ -23,8 +23,7 @@ export const handleStoreSubscribe = (storeInside: Store) => {
 };
 
 export const handleRehydrateMessage = async (message: any) => {
-  if (!message || !message?.type || !message?.event) return;
-  if (message.event !== GlobalMessageEvent.rehydrate) return;
+  if (message !== GlobalMessageEvent.rehydrate) return;
 
   await rehydrateStore(store);
 };
