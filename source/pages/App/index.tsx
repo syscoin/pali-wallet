@@ -12,16 +12,18 @@ import 'assets/styles/custom-import-token-input.css';
 import 'assets/styles/custom-send-utxo-input.css';
 import 'assets/fonts/index.css';
 
-// import { Store } from '@eduardoac-skimlinks/webext-redux';
-import throttle from 'lodash/throttle';
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
+import {
+  handleRehydrateStore,
+  handleStoreSubscribe,
+} from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
-import store, { updateState } from 'state/store';
+import store from 'state/store';
 
 import App from './App';
 
@@ -62,6 +64,8 @@ navigator.serviceWorker
     registration.update();
   });
 
+handleRehydrateStore();
+
 rehydrateStore(store).then(() => {
   ReactDOM.render(
     <Provider store={store}>
@@ -73,10 +77,5 @@ rehydrateStore(store).then(() => {
   );
 
   // Subscribe store to updates
-  store.subscribe(
-    throttle(() => {
-      // every second we update store state
-      updateState();
-    }, 1000)
-  );
+  handleStoreSubscribe(store);
 });

@@ -4,13 +4,13 @@ import {
   getDefaultMiddleware,
   Store,
 } from '@reduxjs/toolkit';
+import isEqual from 'lodash/isEqual';
 import logger from 'redux-logger';
-import { persistStore, persistReducer } from 'redux-persist';
-import { localStorage } from 'redux-persist-webextension-storage';
+import { thunk } from 'redux-thunk';
 
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
-import { saveState } from './paliStorage';
+import { loadState, saveState } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
 import { IPersistState } from './types';
@@ -23,16 +23,11 @@ const reducers = combineReducers({
   vault,
 });
 
-const persistConfig = {
-  key: 'root',
-  storage: localStorage,
-};
-
-const persistedReducer = persistReducer(persistConfig, reducers);
-
 const middleware: any = [
   ...getDefaultMiddleware({ thunk: false, serializableCheck: false }),
 ];
+
+middleware.push(thunk);
 
 const nodeEnv = process.env.NODE_ENV;
 
@@ -45,18 +40,23 @@ const store: Store<{
   price: IPriceState;
   vault: IVaultState;
 }> = configureStore({
-  reducer: persistedReducer,
+  reducer: reducers,
   middleware,
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
-export const persistor = persistStore(store);
-
-export function updateState() {
+export async function updateState() {
   try {
     const state = store.getState();
 
-    saveState(state);
+    const currentState = await loadState();
+
+    const isStateEqual = isEqual(currentState, state);
+    console.log({ isStateEqual });
+    if (isStateEqual) {
+      return false;
+    }
+    await saveState(state);
     return true;
   } catch (error) {
     return false;

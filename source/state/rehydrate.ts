@@ -1,14 +1,23 @@
 import { Store } from '@reduxjs/toolkit';
 
+import { rehydrate as dappRehydrate } from 'state/dapp';
+import { rehydrate as priceRehydrate } from 'state/price';
+import { rehydrate as vaultRehydrate } from 'state/vault';
+
 import { loadState } from './paliStorage';
-import { getHasEncryptedVault, setAllState } from './vault';
-
 export const rehydrateStore = async (store: Store) => {
-  const storageState = await loadState();
+  try {
+    const storageState = await loadState();
+    console.log({ storageState });
+    if (storageState) {
+      store.dispatch(vaultRehydrate(storageState.vault));
+      store.dispatch(dappRehydrate(storageState.dapp));
+      store.dispatch(priceRehydrate(storageState.price));
+    }
 
-  if (storageState) {
-    store.dispatch(setAllState(storageState.vault));
+    return Promise.resolve();
+  } catch (error) {
+    console.log({ error });
+    return Promise.reject();
   }
-
-  return Promise.resolve();
 };

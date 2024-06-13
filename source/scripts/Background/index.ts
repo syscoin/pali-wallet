@@ -3,9 +3,11 @@ import 'emoji-log';
 
 import { browser, Runtime } from 'webextension-polyfill-ts';
 
-import { rehydrateStore } from 'state/rehydrate';
+import { rehydrate as dappRehydrate } from 'state/dapp';
+import { loadState } from 'state/paliStorage';
+import { rehydrate as priceRehydrate } from 'state/price';
 import store from 'state/store';
-import { setIsPolling } from 'state/vault';
+import { rehydrate as vaultRehydrate, setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 // import { i18next } from 'utils/i18n';
 import { parseJsonRecursively } from 'utils/format';
@@ -13,9 +15,26 @@ import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-import { handleStoreSubscribe } from './controllers/handlers';
+import {
+  handleRehydrateStore,
+  handleStoreSubscribe,
+} from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
+// rehydrateStore(store).then(() => {});
+
+async () => {
+  const storageState = await loadState();
+  console.log({ storageState });
+  if (storageState) {
+    store.dispatch(vaultRehydrate(storageState.vault));
+    store.dispatch(dappRehydrate(storageState.dapp));
+    store.dispatch(priceRehydrate(storageState.price));
+  }
+  handleStoreSubscribe(store);
+};
+
+handleRehydrateStore();
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
