@@ -18,18 +18,12 @@ import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 export const EthProvider = (host: string, network?: INetwork) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const {
-      ethereumTransaction: { contentScriptWeb3Provider },
-      setSignerNetwork,
+      ethereumTransaction: { web3Provider },
     } = getController().wallet;
-    await setSignerNetwork(network, 'ethereum');
+    // await setSignerNetwork(network, 'ethereum');
     const tx = params;
-    const validateTxToAddress = await validateEOAAddress(
-      tx.to,
-      contentScriptWeb3Provider
-    );
-    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(
-      contentScriptWeb3Provider
-    ));
+    const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
@@ -163,21 +157,17 @@ export const EthProvider = (host: string, network?: INetwork) => {
   };
 
   const send = async (args: any[]) => {
-    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
-    await setSignerNetwork(network, 'ethereum');
-    return ethereumTransaction.contentScriptWeb3Provider.send(args[0], args);
+    const { ethereumTransaction } = getController().wallet;
+
+    return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
-    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
-    await setSignerNetwork(network, 'ethereum');
+    const { ethereumTransaction } = getController().wallet;
 
     try {
-      const resp = await ethereumTransaction.contentScriptWeb3Provider.send(
-        method,
-        params
-      );
+      const resp = await ethereumTransaction.web3Provider.send(method, params);
 
       return resp;
     } catch (error) {
@@ -189,8 +179,7 @@ export const EthProvider = (host: string, network?: INetwork) => {
     blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    const { ethereumTransaction, setSignerNetwork } = getController().wallet;
-    await setSignerNetwork(network, 'ethereum');
+    const { ethereumTransaction } = getController().wallet;
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
@@ -214,11 +203,19 @@ export const EthProvider = (host: string, network?: INetwork) => {
         return await decryptMessage(params);
       default:
         try {
-          return await ethereumTransaction.contentScriptWeb3Provider.send(
+          const requestResult = await ethereumTransaction.web3Provider.send(
             method,
             params
           );
+          console.log({
+            method,
+            params,
+            ethWeb3Provider: ethereumTransaction.web3Provider,
+            requestResult,
+          });
+          return requestResult;
         } catch (error) {
+          console.log({ requestError: error, method, params });
           throw cleanErrorStack(
             ethErrors.rpc.internal(error.error.data || error.error.message)
           );

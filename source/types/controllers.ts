@@ -135,6 +135,7 @@ export interface IMainController extends IKeyringManager {
     wasConfirmed: boolean,
     isFirstTime?: boolean
   ) => void;
+  setIsPaliNetworkChanging: (isChanging: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,

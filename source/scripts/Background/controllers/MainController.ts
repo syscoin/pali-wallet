@@ -153,7 +153,6 @@ const MainController = (walletState): IMainController => {
     console.log({ pwd });
     const { canLogin, wallet } = await keyringManager.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
-    console.log({ canLogin, wallet });
     if (!isEmpty(wallet)) {
       store.dispatch(
         setNetworkChange({
@@ -383,6 +382,7 @@ const MainController = (walletState): IMainController => {
     currentPromise = promiseWrapper;
     promiseWrapper.promise
       .then(async ({ wallet, activeChain, isBitcoinBased }) => {
+        console.log({ walletFromChangeNetwork: wallet });
         store.dispatch(
           setNetworkChange({
             activeChain,
@@ -666,6 +666,10 @@ const MainController = (walletState): IMainController => {
         'Could not add your network, please try a different RPC endpoint'
       );
     }
+  };
+
+  const setIsPaliNetworkChanging = (isChanging: boolean) => {
+    store.dispatch(setIsNetworkChanging(isChanging));
   };
 
   const handleWatchAsset = async (
@@ -1224,24 +1228,24 @@ const MainController = (walletState): IMainController => {
       case true:
         //IF SYS UTX0 ONLY RETURN DEFAULT TXS FROM XPUB REQUEST
 
-        window.controller.wallet.transactions.sys
-          .getInitialUserTransactionsByXpub(
-            currentAccount.xpub,
-            activeNetwork.url
-          )
-          .then((txs) => {
-            if (isNil(txs) || isEmpty(txs)) {
-              return;
-            }
+        // window.controller.wallet.transactions.sys
+        //   .getInitialUserTransactionsByXpub(
+        //     currentAccount.xpub,
+        //     activeNetwork.url
+        //   )
+        //   .then((txs) => {
+        //     if (isNil(txs) || isEmpty(txs)) {
+        //       return;
+        //     }
 
-            store.dispatch(
-              setMultipleTransactionToState({
-                chainId: activeNetwork.chainId,
-                networkType: TransactionsType.Syscoin,
-                transactions: txs,
-              })
-            );
-          });
+        //     store.dispatch(
+        //       setMultipleTransactionToState({
+        //         chainId: activeNetwork.chainId,
+        //         networkType: TransactionsType.Syscoin,
+        //         transactions: txs,
+        //       })
+        //     );
+        //   });
         break;
       case false:
         //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
@@ -1614,6 +1618,7 @@ const MainController = (walletState): IMainController => {
     createAccount,
     editAccountLabel,
     setAdvancedSettings,
+    setIsPaliNetworkChanging,
     handleWatchAsset,
     account: walletController.account,
     setAccount,

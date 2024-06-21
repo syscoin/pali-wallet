@@ -21,9 +21,21 @@ import {
 } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
-// rehydrateStore(store).then(() => {});
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  interface Window {
+    controller: Readonly<IMasterController>;
+  }
+}
+let paliPort: Runtime.Port;
+let paliPopupPort: Runtime.Port;
+let dappMethods = {} as any;
+let walletMethods = {} as any;
 
-async () => {
+// rehydrateStore(store).then(() => {});
+let MasterControllerInstance = {} as IMasterController;
+(async () => {
   const storageState = await loadState();
   console.log({ storageState });
   if (storageState) {
@@ -32,48 +44,33 @@ async () => {
     store.dispatch(priceRehydrate(storageState.price));
   }
   handleStoreSubscribe(store);
-};
+})().then(() => {
+  const masterController = MasterController(store);
+  MasterControllerInstance = masterController;
 
-handleRehydrateStore();
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-declare global {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
-  interface Window {
-    controller: Readonly<IMasterController>;
-  }
-}
-const isWatchRequestsActive = false;
+  const { wallet, dapp, utils } = masterController;
 
-let paliPort: Runtime.Port;
-let paliPopupPort: Runtime.Port;
+  dappMethods = dapp;
+  walletMethods = wallet;
 
-const masterController = MasterController();
+  setInterval(utils.setFiat, 3 * 60 * 1000);
 
-export const getController = () => masterController;
-
-const { wallet, dapp, utils } = getController();
-setInterval(utils.setFiat, 3 * 60 * 1000);
-
-const onWalletReady = () => {
-  // Add any code here that depends on the initialized wallet
   if (paliPort) {
     dapp.setup(paliPort);
   }
   utils.setFiat();
-};
+});
 
-onWalletReady();
+handleRehydrateStore();
+
+const isWatchRequestsActive = false;
+
+export const getController = () => MasterControllerInstance;
 
 browser.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
 });
-// chrome.storage.onChanged.addListener(() => {
-//   setTimeout(() => {
-//     rehydrateStore(store).then(() => {
-//       handleStoreSubscribe(store);
-//     });
-//   }, 2000);
-// });
+
 async function createOffscreen() {
   await chrome.offscreen
     .createDocument({
@@ -107,8 +104,8 @@ const handleIsOpen = (isOpen: boolean) =>
 const handleLogout = () => {
   const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
 
-  if (isTimerEnabled) {
-    wallet.lock();
+  if (isTimerEnabled && walletMethods?.lock) {
+    walletMethods.lock();
 
     // Send a message to the content script
     browser.runtime.sendMessage({ action: 'logoutFS' });
@@ -233,8 +230,9 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
         port.postMessage({ isInjected: hasEthProperty });
       }
     });
-    if (dapp !== undefined) {
-      dapp.setup(port);
+    console.log({ dappMethods });
+    if (dappMethods !== undefined) {
+      dappMethods.setup(port);
     }
     paliPort = port;
     return;
@@ -250,8 +248,11 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
     }, timer * 60 * 1000);
   }
 
-  if (changingConnectedAccount.isChangingConnectedAccount)
-    wallet.resolveAccountConflict();
+  if (
+    changingConnectedAccount.isChangingConnectedAccount &&
+    walletMethods?.resolveAccountConflict
+  )
+    walletMethods.resolveAccountConflict();
 
   const senderUrl = port.sender.url;
 
@@ -279,29 +280,35 @@ async function checkForUpdates() {
   if (isPollingRunNotValid()) {
     return;
   }
+  if (
+    walletMethods?.updateUserNativeBalance &&
+    walletMethods?.updateAssetsFromCurrentAccount &&
+    walletMethods?.updateUserTransactionsState
+  ) {
+    walletMethods.updateUserNativeBalance({
+      isBitcoinBased,
+      activeNetwork,
+      activeAccount,
+    });
+
+    //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
+    walletMethods.updateUserTransactionsState({
+      isPolling: true,
+      isBitcoinBased,
+      activeNetwork,
+      activeAccount,
+    });
+
+    //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
+    walletMethods.updateAssetsFromCurrentAccount({
+      isPolling: true,
+      isBitcoinBased,
+      activeNetwork,
+      activeAccount,
+    });
+  }
 
   //Method that update Balances for current user based on isBitcoinBased state ( validated inside )
-  wallet.updateUserNativeBalance({
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
-
-  //Method that update TXs for current user based on isBitcoinBased state ( validated inside )
-  wallet.updateUserTransactionsState({
-    isPolling: true,
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
-
-  //Method that update Assets for current user based on isBitcoinBased state ( validated inside )
-  wallet.updateAssetsFromCurrentAccount({
-    isPolling: true,
-    isBitcoinBased,
-    activeNetwork,
-    activeAccount,
-  });
 }
 
 let stateIntervalId;
@@ -411,12 +418,13 @@ async function checkForPendingTransactionsUpdate() {
       i,
       i + maxTransactionsToSend
     );
-
-    wallet.validatePendingEvmTransactions({
-      activeNetwork,
-      activeAccount,
-      pendingTransactions: batchTransactions,
-    });
+    if (walletMethods?.validatePendingEvmTransactions) {
+      walletMethods?.validatePendingEvmTransactions({
+        activeNetwork,
+        activeAccount,
+        pendingTransactions: batchTransactions,
+      });
+    }
 
     if (i + maxTransactionsToSend < pendingTransactions.length) {
       await new Promise((resolve) => setTimeout(resolve, cooldownTimeMs));

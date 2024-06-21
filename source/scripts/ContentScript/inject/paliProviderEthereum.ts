@@ -300,6 +300,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     if (!dequal(this._state.accounts, accounts)) {
       // we should always have the correct accounts even before eth_accounts
       // returns
+      this._state.accounts = []; // just for testing purposes
       if (
         isEthAccounts &&
         this._state.accounts !== null &&

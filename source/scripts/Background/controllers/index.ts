@@ -1,4 +1,5 @@
 import omit from 'lodash/omit';
+import { AnyAction, Store } from 'redux';
 import { browser, Windows } from 'webextension-polyfill-ts';
 
 import {
@@ -11,7 +12,8 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import store from 'state/store';
+import { IDAppState } from 'state/dapp/types';
+import { IPriceState } from 'state/price/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
@@ -75,7 +77,16 @@ export const vaultToWalletState = (vaultState: IVaultState) => {
   return { wallet: sysweb3Wallet, activeChain };
 };
 
-const MasterController = (): IMasterController => {
+const MasterController = (
+  externalStore: Store<
+    {
+      dapp: IDAppState;
+      price: IPriceState;
+      vault: IVaultState;
+    },
+    AnyAction
+  >
+): IMasterController => {
   let route = '/';
   let externalRoute = '/';
   let wallet: IMainController;
@@ -90,24 +101,16 @@ const MasterController = (): IMasterController => {
       : account.isLedgerWallet
       ? KeyringAccountType.Ledger
       : KeyringAccountType.Imported;
-  // Subscribe to store updates
-  // store.subscribe(() => {
-  //   // const state = store.getState() as RootState & { _persist: IPersistState };
-  //   chrome.storage.local.set({ ['1']: store.getState() });
-  //   initializeMainController();
-  //   // const {
-  //   //   _persist: { rehydrated },
-  //   // } = state;
-  //   // if (rehydrated) {
-  //   // }
-  // });
+
   const initializeMainController = () => {
-    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
+    const hdAccounts = Object.values(
+      externalStore.getState().vault.accounts.HDAccount
+    );
     const trezorAccounts = Object.values(
-      store.getState().vault.accounts.Trezor
+      externalStore.getState().vault.accounts.Trezor
     );
     const importedAccounts = Object.values(
-      store.getState().vault.accounts.Imported
+      externalStore.getState().vault.accounts.Imported
     );
 
     const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
@@ -125,7 +128,7 @@ const MasterController = (): IMasterController => {
           nfts: [] as INftsStructure[],
         };
 
-        store.dispatch(
+        externalStore.dispatch(
           setAccountPropertyByIdAndType({
             id: account.id,
             type: accType,
@@ -136,17 +139,19 @@ const MasterController = (): IMasterController => {
       });
     }
 
-    if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
-      store.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
+    if (
+      !externalStore.getState().vault.networks[TransactionsType.Ethereum][570]
+    ) {
+      externalStore.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
     }
 
     const currentRpcSysUtxoMainnet =
-      store.getState().vault.networks[TransactionsType.Syscoin][57].url;
+      externalStore.getState().vault.networks[TransactionsType.Syscoin][57].url;
 
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork } = externalStore.getState().vault;
 
     if (currentRpcSysUtxoMainnet !== 'https://blockbook.syscoin.org') {
-      store.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
+      externalStore.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
     }
 
     const isSysUtxoMainnetWithWrongRpcUrl =
@@ -154,30 +159,30 @@ const MasterController = (): IMasterController => {
       activeNetwork.url.includes('https://blockbook.elint.services');
 
     if (isSysUtxoMainnetWithWrongRpcUrl) {
-      store.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
+      externalStore.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
     }
 
     // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
-    if (Number(store.getState().vault.timer) === 5) {
-      store.dispatch(setTimer(30));
+    if (Number(externalStore.getState().vault.timer) === 5) {
+      externalStore.dispatch(setTimer(30));
     }
 
     const isNetworkOldState =
-      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.default ?? false;
 
     const isNetworkOldEVMStateWithoutTestnet =
-      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.isTestnet === undefined;
 
     const isNetworkOldUTXOStateWithoutTestnet =
-      store.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
         ?.isTestnet === undefined;
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
         (network) => {
-          store.dispatch(
+          externalStore.dispatch(
             setNetwork({
               chain: INetworkType.Ethereum,
               network: network as INetwork,
@@ -190,7 +195,7 @@ const MasterController = (): IMasterController => {
     if (isNetworkOldUTXOStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
         (network) => {
-          store.dispatch(
+          externalStore.dispatch(
             setNetwork({
               chain: INetworkType.Syscoin,
               network: network as INetwork,
@@ -200,18 +205,20 @@ const MasterController = (): IMasterController => {
       );
     }
 
-    if (store.getState().vault?.accounts?.Ledger === undefined) {
-      store.dispatch(setAccountTypeInAccountsObject(KeyringAccountType.Ledger));
+    if (externalStore.getState().vault?.accounts?.Ledger === undefined) {
+      externalStore.dispatch(
+        setAccountTypeInAccountsObject(KeyringAccountType.Ledger)
+      );
     }
-    if (store.getState().vault?.advancedSettings === undefined) {
-      store.dispatch(
+    if (externalStore.getState().vault?.advancedSettings === undefined) {
+      externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'refresh',
           isActive: false,
           isFirstTime: true,
         })
       );
-      store.dispatch(
+      externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'ledger',
           isActive: false,
@@ -220,8 +227,8 @@ const MasterController = (): IMasterController => {
       );
     }
 
-    if (store.getState().vault?.isLastTxConfirmed === undefined) {
-      store.dispatch(
+    if (externalStore.getState().vault?.isLastTxConfirmed === undefined) {
+      externalStore.dispatch(
         setIsLastTxConfirmed({
           chainId: 0,
           wasConfirmed: false,
@@ -230,7 +237,7 @@ const MasterController = (): IMasterController => {
       );
     }
 
-    const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
+    const isBitcoinBased = externalStore.getState()?.vault?.isBitcoinBased;
 
     const isTransactionsOldState = accountsObj.some((account) =>
       Array.isArray(account.transactions)
@@ -239,7 +246,7 @@ const MasterController = (): IMasterController => {
     if (isTransactionsOldState) {
       const {
         activeNetwork: { chainId },
-      } = store.getState().vault;
+      } = externalStore.getState().vault;
 
       accountsObj.forEach((account) => {
         const accType = getAccountType(account);
@@ -262,7 +269,7 @@ const MasterController = (): IMasterController => {
               ];
             });
 
-            store.dispatch(
+            externalStore.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
                 type: accType,
@@ -271,7 +278,7 @@ const MasterController = (): IMasterController => {
               })
             );
           } else {
-            store.dispatch(
+            externalStore.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
                 type: accType,
@@ -286,7 +293,8 @@ const MasterController = (): IMasterController => {
         }
       });
     }
-    const walletState = vaultToWalletState(store.getState().vault);
+    const walletState = vaultToWalletState(externalStore.getState().vault);
+    console.log({ walletState });
     dapp = Object.freeze(DAppController());
     wallet = Object.freeze(MainController(walletState));
     console.log({ wallet });
@@ -307,7 +315,7 @@ const MasterController = (): IMasterController => {
     wallet.getLatestUpdateForCurrentAccount();
 
   const refresh = () => {
-    const { activeAccount, accounts } = store.getState().vault;
+    const { activeAccount, accounts } = externalStore.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
     callGetLatestUpdateForAccount();
   };

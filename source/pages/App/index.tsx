@@ -35,34 +35,6 @@ const options = {
   offset: '30px',
   transition: transitions.FADE,
 };
-const handleServiceWorker = () => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-      .register('/js/background.bundle.js', {
-        scope: '/',
-        updateViaCache: 'all',
-      })
-      .then(function (registration) {
-        // Registration was successful
-        console.log(
-          'ServiceWorker registration successful with scope: ',
-          registration.scope,
-          registration
-        );
-      })
-      .catch(function (err) {
-        // registration failed :(
-        console.log('ServiceWorker registration failed: ', err);
-      });
-  }
-};
-
-handleServiceWorker();
-navigator.serviceWorker
-  .getRegistration('/js/background.bundle.js')
-  .then(function (registration) {
-    registration.update();
-  });
 
 handleRehydrateStore();
 
