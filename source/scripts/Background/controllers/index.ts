@@ -180,10 +180,13 @@ const MasterController = (
       externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
         ?.isTestnet === undefined;
 
-    const isOldFaucetState = store.getState()?.vault?.faucetModal === undefined;
+    const isOldFaucetState =
+      externalStore.getState()?.vault?.faucetModal === undefined;
 
     if (isOldFaucetState) {
-      store.dispatch(setFaucetModalState({ chainId: 0, isFirstTime: true }));
+      externalStore.dispatch(
+        setFaucetModalState({ chainId: 0, isFirstTime: true })
+      );
     }
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
