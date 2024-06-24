@@ -123,7 +123,7 @@ const MainController = (walletState): IMainController => {
   };
 
   const setFaucetModalState = (chainId: number) => {
-    store.dispatch(setFaucetState(chainId));
+    store.dispatch(setFaucetState({ chainId }));
   };
 
   const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
