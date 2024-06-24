@@ -142,11 +142,6 @@ export const Home = () => {
     wallet.setFaucetModalState(activeNetwork.chainId);
   }, [activeNetwork, setFaucetModalState]);
 
-  const shouldShowFaucetFirstModal = useMemo(
-    () => faucetModal[activeNetwork.chainId],
-    [faucetModal, activeNetwork]
-  );
-
   const formattedBalance = useMemo(
     () =>
       moreThanMillion
@@ -164,24 +159,45 @@ export const Home = () => {
     [accounts, activeAccount, lastLogin, isUnlocked, isNetworkChanging]
   );
 
+  const FaucetModals = useMemo(() => {
+    const chainId = activeNetwork?.chainId;
+
+    try {
+      if (
+        !isBitcoinBased &&
+        chainId &&
+        Object.values(FaucetChainIds).includes(chainId)
+      ) {
+        return (
+          <>
+            {faucetModal && faucetModal[chainId] ? (
+              <FaucetFirstAccessModal
+                handleOnClose={handleOnCloseFaucetModal}
+              />
+            ) : (
+              <FaucetAccessModal />
+            )}
+          </>
+        );
+      }
+    } catch (err) {
+      console.log(err, `err`);
+    }
+    return null;
+  }, [
+    isBitcoinBased,
+    activeNetwork?.chainId,
+    faucetModal,
+    activeNetwork?.chainId,
+  ]);
+
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {shouldRenderHomePage ? (
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
-          {!isBitcoinBased &&
-            Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
-              <>
-                {shouldShowFaucetFirstModal ? (
-                  <FaucetFirstAccessModal
-                    handleOnClose={handleOnCloseFaucetModal}
-                  />
-                ) : (
-                  <FaucetAccessModal />
-                )}
-              </>
-            )}
+          {FaucetModals}
 
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
