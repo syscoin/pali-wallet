@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
@@ -23,7 +22,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { activeAccount: activeAccountData, accounts } = useSelector(
     (state: RootState) => state.vault
   );

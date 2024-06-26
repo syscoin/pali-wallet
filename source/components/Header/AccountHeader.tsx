@@ -3,7 +3,6 @@ import { toSvg } from 'jdenticon';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   IKeyringAccountState,
@@ -293,11 +292,11 @@ export const AccountMenu: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
-      const tabs = await browser.tabs.query({
+      const tabs = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
@@ -412,7 +411,7 @@ export const AccountHeader: React.FC = () => {
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
   const controller = getController();
   const isLedger = activeAccount.type === KeyringAccountType.Ledger;
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');

@@ -1,8 +1,6 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import 'emoji-log';
 
-import { browser, Runtime } from 'webextension-polyfill-ts';
-
 import { rehydrate as dappRehydrate } from 'state/dapp';
 import { loadState } from 'state/paliStorage';
 import { rehydrate as priceRehydrate } from 'state/price';
@@ -28,8 +26,8 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
-let paliPort: Runtime.Port;
-let paliPopupPort: Runtime.Port;
+let paliPort: chrome.runtime.Port;
+let paliPopupPort: chrome.runtime.Port;
 let dappMethods = {} as any;
 let walletMethods = {} as any;
 
@@ -67,7 +65,7 @@ const isWatchRequestsActive = false;
 
 export const getController = () => MasterControllerInstance;
 
-browser.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(() => {
   console.emoji('🤩', 'Pali extension enabled');
 });
 
@@ -99,7 +97,7 @@ let timeout: any;
 // };
 
 const handleIsOpen = (isOpen: boolean) =>
-  browser.storage.local.set({ isPopupOpen: isOpen });
+  chrome.storage.local.set({ isPopupOpen: isOpen });
 
 const handleLogout = () => {
   const { isTimerEnabled } = store.getState().vault; // We need this because movement listner will refresh timeout even if it's disabled
@@ -108,11 +106,11 @@ const handleLogout = () => {
     walletMethods.lock();
 
     // Send a message to the content script
-    browser.runtime.sendMessage({ action: 'logoutFS' });
+    chrome.runtime.sendMessage({ action: 'logoutFS' });
   }
 };
 
-browser.storage.onChanged.addListener((changes) => {
+chrome.storage.onChanged.addListener((changes) => {
   console.log({ changes });
   console.log({
     formatted: parseJsonRecursively(changes?.['persist:root']?.newValue),
@@ -142,7 +140,7 @@ const requestCallback = (details: any) => {
 
 const verifyAllPaliRequests = () => {
   // get all requests called by extension
-  browser.webRequest.onCompleted.addListener(requestCallback, { urls: [] });
+  chrome.webRequest.onCompleted.addListener(requestCallback, { urls: [] });
 };
 
 // update and show requests per second
@@ -171,7 +169,7 @@ const updateRequestsPerSecond = () => {
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
 
-browser.runtime.onMessage.addListener(async ({ type, target }) => {
+chrome.runtime.onMessage.addListener(async ({ type, target }) => {
   switch (type) {
     case 'ping':
       if (target === 'background')
@@ -190,14 +188,14 @@ browser.runtime.onMessage.addListener(async ({ type, target }) => {
       break;
     case 'removeVerifyPaliRequestListener':
       if (target === 'background' && process.env.NODE_ENV === 'development')
-        browser.webRequest.onCompleted.removeListener(requestCallback);
+        chrome.webRequest.onCompleted.removeListener(requestCallback);
       break;
   }
 });
 
 export const inactivityTime = () => {
   const resetTimer = () => {
-    browser.runtime.sendMessage({
+    chrome.runtime.sendMessage({
       type: 'reset_autolock',
       target: 'background',
     });
@@ -217,7 +215,7 @@ export const inactivityTime = () => {
   events.forEach((event) => (document[event] = resetTimer));
 };
 
-browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
+chrome.runtime.onConnect.addListener(async (port) => {
   console.log({ port });
   if (port.name === 'pali') {
     handleIsOpen(true);
@@ -257,8 +255,8 @@ browser.runtime.onConnect.addListener(async (port: Runtime.Port) => {
   const senderUrl = port.sender.url;
 
   if (
-    senderUrl?.includes(browser.runtime.getURL('/app.html')) ||
-    senderUrl?.includes(browser.runtime.getURL('/external.html'))
+    senderUrl?.includes(chrome.runtime.getURL('/app.html')) ||
+    senderUrl?.includes(chrome.runtime.getURL('/external.html'))
   ) {
     port.onDisconnect.addListener(() => {
       // handleIsOpen(false);
@@ -327,7 +325,7 @@ function startPolling() {
 }
 
 function unregisterListener() {
-  browser.runtime.onConnect.removeListener(handleConnect);
+  chrome.runtime.onConnect.removeListener(handleConnect);
   isListenerRegistered = false;
 }
 
@@ -363,7 +361,7 @@ function registerListener() {
     return;
   }
 
-  browser.runtime.onConnect.addListener(handleConnect);
+  chrome.runtime.onConnect.addListener(handleConnect);
   isListenerRegistered = true;
 }
 
@@ -435,44 +433,44 @@ async function checkForPendingTransactionsUpdate() {
 observeVaultChanges();
 registerListener();
 
-const port = browser.runtime.connect(undefined, { name: 'polling' });
+const port = chrome.runtime.connect(undefined, { name: 'polling' });
 port.postMessage({ action: 'startPolling' });
 
-const secondPort = browser.runtime.connect(undefined, {
+const secondPort = chrome.runtime.connect(undefined, {
   name: 'pendingTransactionsPolling',
 });
 secondPort.postMessage({ action: 'startPendingTransactionsPolling' });
 
 export const verifyPaliRequests = () => {
-  browser.runtime.sendMessage({
+  chrome.runtime.sendMessage({
     type: 'verifyPaliRequests',
     target: 'background',
   });
 };
 
 export const removeVerifyPaliRequestListener = () => {
-  browser.runtime.sendMessage({
+  chrome.runtime.sendMessage({
     type: 'removeVerifyPaliRequestListener',
     target: 'background',
   });
 };
 
 export const keepSWAlive = () => {
-  browser.runtime.sendMessage({
+  chrome.runtime.sendMessage({
     type: 'ping',
     target: 'background',
   });
 };
 
 export const resetPaliRequestsCount = () => {
-  browser.runtime.sendMessage({
+  chrome.runtime.sendMessage({
     type: 'resetPaliRequestsCount',
     target: 'background',
   });
 };
 
 export const setLanguageInLocalStorage = (lang: PaliLanguages) => {
-  browser.storage.local.set({ language: lang });
+  chrome.storage.local.set({ language: lang });
 };
 
 const isPollingRunNotValid = () => {

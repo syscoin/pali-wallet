@@ -1,5 +1,4 @@
 //@ts-nocheck
-import { Runtime } from 'webextension-polyfill-ts';
 
 import {
   IKeyringManager,
@@ -336,5 +335,5 @@ export interface IDAppController {
   /**
    * Setup communication
    */
-  setup: (port: Runtime.Port) => void;
+  setup: (port: chrome.runtime.Port) => void;
 }

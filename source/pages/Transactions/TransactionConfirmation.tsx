@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -83,7 +82,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
 
   const advancedOptionsArray = [
     'notarydetails',

@@ -42,12 +42,6 @@ module.exports = {
 
   entry: {
     manifest: path.join(__dirname, 'manifest.json'),
-    webextension: path.join(
-      __dirname,
-      'node_modules',
-      'webextension-polyfill-ts',
-      'lib/index.js'
-    ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     pali: path.join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),
@@ -85,9 +79,6 @@ module.exports = {
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.json'],
     alias: {
-      'webextension-polyfill-ts': path.resolve(
-        path.join(__dirname, 'node_modules', 'webextension-polyfill-ts')
-      ),
       assets: path.resolve(__dirname, 'source/assets'),
       components: path.resolve(__dirname, 'source/components'),
       scripts: path.resolve(__dirname, 'source/scripts'),

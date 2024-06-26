@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
@@ -24,7 +23,7 @@ const EthSign: React.FC<ISign> = () => {
     useState<boolean>(false);
 
   const tabLabel = ['Details', 'Data'];
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );

@@ -1,5 +1,3 @@
-import { browser } from 'webextension-polyfill-ts';
-
 const trezorConnectVersion = '8.1.27';
 const versionN = trezorConnectVersion.split('.').map((s) => parseInt(s, 10));
 const DIRECTORY = `${versionN[0]}/`;
@@ -15,22 +13,22 @@ const setTab = (event?: Event) => {
      * triggered from 'usb-permissions-close' message
      * close current tab
      */
-    const current = browser.tabs.query({ currentWindow: true, active: true });
+    const current = chrome.tabs.query({ currentWindow: true, active: true });
 
     if (!current) return;
 
-    browser.tabs.remove(current[0].id);
+    chrome.tabs.remove(current[0].id);
   }
 
   /**
    * triggered from 'usb-permissions-close' message
    * update current tab
    */
-  const tabs = browser.tabs.query({ url: `${url}popup.html` });
+  const tabs = chrome.tabs.query({ url: `${url}popup.html` });
 
   if (!tabs) return;
 
-  browser.tabs.update(tabs[0].id, { active: true });
+  chrome.tabs.update(tabs[0].id, { active: true });
 };
 
 window.addEventListener('message', ({ data }) => {
@@ -47,7 +45,7 @@ window.addEventListener('message', ({ data }) => {
       iframe.contentWindow.postMessage(
         {
           type: 'usb-permissions-init',
-          extension: browser.runtime.id,
+          extension: chrome.runtime.id,
         },
         '*'
       );
@@ -77,3 +75,5 @@ window.addEventListener('load', () => {
 
   if (document.body) document.body.appendChild(instance);
 });
+
+export {};

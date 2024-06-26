@@ -3,7 +3,6 @@ import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
@@ -36,7 +35,7 @@ export const GeneralMenu: React.FC = () => {
 
   useEffect(() => {
     const getTabData = async () => {
-      const url = await getTabUrl(browser);
+      const url = await getTabUrl();
       const host = getHost(url);
       const isConnected = dapp.isConnected(host);
       setCurrentTab({ host, isConnected });
@@ -46,7 +45,7 @@ export const GeneralMenu: React.FC = () => {
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
-      getTabUrl(browser).then(async (url: string) => {
+      getTabUrl().then(async (url: string) => {
         const host = getHost(url);
         const isConnected = dapp.isConnected(host);
 

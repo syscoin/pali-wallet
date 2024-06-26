@@ -39,7 +39,7 @@ const MV2_OPTIONS = {
     chrome_style: false,
   },
   background: {
-    scripts: ['js/webextension.bundle.js', 'js/background.bundle.js'],
+    scripts: ['js/background.bundle.js'],
     persistent: true,
   },
   content_scripts: [
@@ -47,14 +47,14 @@ const MV2_OPTIONS = {
       all_frames: true,
       matches: ['file://*/*', 'http://*/*', 'https://*/*'],
       run_at: 'document_start',
-      js: ['js/webextension.bundle.js', 'js/contentScript.bundle.js'],
+      js: ['js/contentScript.bundle.js'],
     },
     {
       matches: [
         '*://connect.trezor.io/9/popup.html',
         'https://localhost:8088/*',
       ],
-      js: ['js/webextension.bundle.js', 'js/trezorScript.bundle.js'],
+      js: ['js/trezorScript.bundle.js'],
     },
   ],
   web_accessible_resources: [
@@ -120,14 +120,14 @@ const MV3_OPTIONS = {
       all_frames: true,
       matches: ['file://*/*', 'http://*/*', 'https://*/*'],
       run_at: 'document_start',
-      js: ['js/webextension.bundle.js', 'js/contentScript.bundle.js'],
+      js: ['js/contentScript.bundle.js'],
     },
     {
       matches: [
         '*://connect.trezor.io/9/popup.html',
         'https://localhost:8088/*',
       ],
-      js: ['js/webextension.bundle.js', 'js/trezorScript.bundle.js'],
+      js: ['js/trezorScript.bundle.js'],
     },
   ],
   web_accessible_resources: [

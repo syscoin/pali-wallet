@@ -1,10 +1,9 @@
 import React from 'react';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Icon } from '..';
 
 export const Fullscreen: React.FC = () => {
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   if (!url) return <></>;
 
   return (

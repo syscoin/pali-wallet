@@ -1,5 +1,3 @@
-import { Runtime } from 'webextension-polyfill-ts';
-
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
@@ -16,7 +14,7 @@ interface IDappsSession {
   [host: string]: {
     activeAddress: string | null;
     hasWindow: boolean;
-    port: Runtime.Port;
+    port: chrome.runtime.Port;
   };
 }
 
@@ -33,7 +31,7 @@ const DAppController = (): IDAppController => {
     return !!dapps?.[host];
   };
 
-  const setup = (port: Runtime.Port) => {
+  const setup = (port: chrome.runtime.Port) => {
     const { isBitcoinBased } = store.getState().vault;
     const { host } = new URL(port.sender.url);
     const activeAccount = isBitcoinBased

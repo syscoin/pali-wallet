@@ -1,6 +1,5 @@
 import omit from 'lodash/omit';
 import { AnyAction, Store } from 'redux';
-import { browser, Windows } from 'webextension-polyfill-ts';
 
 import {
   accountType,
@@ -44,7 +43,10 @@ import MainController from './MainController';
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   callGetLatestUpdateForAccount: () => void;
-  createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
+  createPopup: (
+    route?: string,
+    data?: object
+  ) => Promise<chrome.windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
   utils: Readonly<IControllerUtils>;
@@ -309,7 +311,7 @@ const MasterController = (
     wallet = Object.freeze(MainController(walletState));
     console.log({ wallet });
     utils = Object.freeze(ControllerUtils());
-    wallet.setStorage(browser.storage.local);
+    wallet.setStorage(chrome.storage.local);
     // readyCallback({
     //   appRoute,
     //   createPopup,
@@ -347,7 +349,7 @@ const MasterController = (
    * @returns the window object from the popup
    */
   const createPopup = async (popUpRoute = '', data = {}) => {
-    const window = await browser.windows.getCurrent();
+    const window = await chrome.windows.getCurrent();
 
     if (!window || !window.width) return;
 
@@ -355,11 +357,13 @@ const MasterController = (
     if (popUpRoute) params.append('route', popUpRoute);
     if (data) params.append('data', JSON.stringify(data));
 
-    return browser.windows.create({
+    return await chrome.windows.create({
       url: '/external.html?' + params.toString(),
       width: 400,
       height: 620,
       type: 'popup',
+      top: 0,
+      left: window.width - 620,
     });
   };
 

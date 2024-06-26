@@ -3,7 +3,6 @@ import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
@@ -70,7 +69,7 @@ export const SendNTokenTransaction = () => {
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(

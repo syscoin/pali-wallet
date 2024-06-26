@@ -1,6 +1,5 @@
 import React, { FC, Suspense, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Container, KeepAliveContainer, Loading } from 'components/index';
 import { Router } from 'routers/index';
@@ -23,11 +22,11 @@ const App: FC = () => {
     };
 
     // Add the listener when the component mounts
-    browser.runtime.onMessage.addListener(messageListener);
+    chrome.runtime.onMessage.addListener(messageListener);
 
     // Cleanup: remove the listener when the component unmounts
     return () => {
-      browser.runtime.onMessage.removeListener(messageListener);
+      chrome.runtime.onMessage.removeListener(messageListener);
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
 

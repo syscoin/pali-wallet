@@ -1,5 +1,4 @@
 import { ethErrors } from 'helpers/errors';
-import { browser } from 'webextension-polyfill-ts';
 
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -74,7 +73,7 @@ export const popupPromise = async ({
       }
     });
 
-    browser.windows.onRemoved.addListener((id) => {
+    chrome.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
         if (
           route === 'tx/send/ethTx' ||
