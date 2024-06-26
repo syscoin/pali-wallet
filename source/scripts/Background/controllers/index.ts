@@ -363,7 +363,7 @@ const MasterController = (
       height: 620,
       type: 'popup',
       top: 0,
-      left: window.width - 620,
+      left: window.width - 400,
     });
   };
 

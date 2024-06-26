@@ -126,7 +126,7 @@ export const methodRequest = async (
     return isBitcoinBased
       ? cleanErrorStack(ethErrors.rpc.internal())
       : wallet.isUnlocked()
-      ? [dapp.getAccount(host).address]
+      ? [dapp.getAccount(host)?.address]
       : [];
   }
   // if (
@@ -372,11 +372,12 @@ export const methodRequest = async (
   }
 
   if (
+    dapp.getAccount(host)?.address &&
     prefix !== 'sys' &&
     !isBitcoinBased &&
     EthProvider(host, activeNetwork).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
-      dapp.getAccount(host).address
+      dapp.getAccount(host)?.address
   ) {
     const dappAccount = dapp.getAccount(host);
     const dappAccountType = dappAccount.isImported
@@ -403,7 +404,7 @@ export const methodRequest = async (
     console.log('INSIDE IF');
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     console.log({ responseInside: resp });
-    if (!wallet.isUnlocked()) return false;
+    // if (!wallet.isUnlocked()) return false;
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;

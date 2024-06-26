@@ -26,15 +26,15 @@ export const popupPromise = async ({
   route: string;
 }) => {
   const { dapp, createPopup } = getController();
-  if (
-    eventName !== 'connect' &&
-    eventName !== 'wallet_switchEthereumChain' &&
-    eventName !== 'wallet_addEthereumChain' &&
-    eventName !== 'change_UTXOEVM' &&
-    eventName !== 'switchNetwork' &&
-    !dapp.isConnected(host)
-  )
-    return;
+  // if (
+  //   eventName !== 'connect' &&
+  //   eventName !== 'wallet_switchEthereumChain' &&
+  //   eventName !== 'wallet_addEthereumChain' &&
+  //   eventName !== 'change_UTXOEVM' &&
+  //   eventName !== 'switchNetwork' &&
+  //   !dapp.isConnected(host)
+  // )
+  //   return;
   if (dapp.hasWindow(host))
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')

@@ -41,7 +41,6 @@ let MasterControllerInstance = {} as IMasterController;
     store.dispatch(dappRehydrate(storageState.dapp));
     store.dispatch(priceRehydrate(storageState.price));
   }
-  handleStoreSubscribe(store);
 })().then(() => {
   const masterController = MasterController(store);
   MasterControllerInstance = masterController;
