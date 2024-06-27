@@ -57,9 +57,9 @@ export const popupPromise = async ({
             route === 'tx/send/approve' ||
             route === 'tx/send/nTokenTx'
           ) {
-            resolve(event.data.detail.hash);
+            resolve(JSON.parse(event.data.detail).hash);
           }
-          resolve(event.data.detail);
+          resolve(JSON.parse(event.data.detail));
         }
         if (
           route === 'switch-EthChain' ||

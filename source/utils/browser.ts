@@ -7,5 +7,8 @@ export const getController = () => {
 };
 
 export const dispatchBackgroundEvent = (eventName: string, data: any) => {
-  navigator.serviceWorker.controller.postMessage({ eventName, detail: data });
+  navigator.serviceWorker.controller.postMessage({
+    eventName,
+    detail: JSON.stringify(data),
+  });
 };

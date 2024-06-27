@@ -1,4 +1,5 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
@@ -14,6 +15,17 @@ export interface IAssetsManager {
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
   syscoin: ITokenSysProps[];
+}
+
+export interface INftController {
+  getUserNfts: (
+    userAddress: string,
+    chainId: number,
+    rpcUrl: string
+  ) => Promise<INftsStructure[]>;
+  validateAndManagerUserNfts: (
+    fetchedNfts: INftsStructure[]
+  ) => INftsStructure[];
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (

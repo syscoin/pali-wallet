@@ -50,7 +50,7 @@ export interface IMasterController {
   dapp: Readonly<IDAppController>;
   refresh: () => void;
   utils: Readonly<IControllerUtils>;
-  wallet: IMainController;
+  wallet: MainController;
 }
 export const vaultToWalletState = (vaultState: IVaultState) => {
   const accounts: { [key in KeyringAccountType]: accountType } = Object.entries(
@@ -92,7 +92,7 @@ const MasterController = (
 ): IMasterController => {
   let route = '/';
   let externalRoute = '/';
-  let wallet: IMainController;
+  let wallet: MainController;
   let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
 
@@ -308,7 +308,7 @@ const MasterController = (
     const walletState = vaultToWalletState(externalStore.getState().vault);
     console.log({ walletState });
     dapp = Object.freeze(DAppController());
-    wallet = Object.freeze(MainController(walletState));
+    wallet = new MainController(walletState);
     console.log({ wallet });
     utils = Object.freeze(ControllerUtils());
     wallet.setStorage(chrome.storage.local);

@@ -59,16 +59,18 @@ import {
   IPaliAccount,
   TransactionsType,
 } from 'state/vault/types';
-import { IMainController } from 'types/controllers';
+import { IControllerUtils } from 'types/controllers';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
 
-import EthAccountController from './account/evm';
-import SysAccountController from './account/syscoin';
+import EthAccountController, { IEthAccountController } from './account/evm';
+import SysAccountController, { ISysAccountController } from './account/syscoin';
 import AssetsManager from './assets';
+import { IAssetsManager, INftController } from './assets/types';
 import BalancesManager from './balances';
+import { IBalancesManager } from './balances/types';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import NftsController from './nfts/nfts';
@@ -77,33 +79,59 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import TransactionsManager from './transactions';
-import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
+import {
+  IEvmTransactionResponse,
+  ISysTransaction,
+  ITransactionsManager,
+} from './transactions/types';
 import { validateAndManageUserTransactions } from './transactions/utils';
 
-const MainController = (walletState): IMainController => {
-  const keyringManager = new KeyringManager(walletState);
-  const utilsController = Object.freeze(ControllerUtils());
-  const assetsManager = AssetsManager();
-  const nftsController = NftsController();
-  let web3Provider: CustomJsonRpcProvider =
-    keyringManager.ethereumTransaction.web3Provider;
-  let transactionsManager = TransactionsManager(web3Provider);
-  let balancesManager = BalancesManager(web3Provider);
-  const cancellablePromises = new CancellablePromises();
+class MainController extends KeyringManager {
+  private keyringManager: KeyringManager;
+  private utilsController: IControllerUtils;
+  private assetsManager: IAssetsManager;
+  private nftsController: INftController;
+  private web3Provider: CustomJsonRpcProvider;
+  private transactionsManager: ITransactionsManager;
+  private balancesManager: IBalancesManager;
+  private cancellablePromises: CancellablePromises;
+  public account: {
+    eth: IEthAccountController;
+    sys: ISysAccountController;
+  };
+  public assets: IAssetsManager;
+  public transactions: ITransactionsManager;
 
-  let currentPromise: {
+  private currentPromise: {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
 
-  const { verifyIfIsTestnet } = keyringManager;
-  const createCancellablePromise = <T>(
+  constructor(walletState: any) {
+    super(walletState);
+    this.keyringManager = this;
+    this.utilsController = ControllerUtils();
+    this.assetsManager = AssetsManager();
+    this.nftsController = NftsController();
+    this.web3Provider = this.keyringManager.ethereumTransaction.web3Provider;
+    this.transactionsManager = TransactionsManager(this.web3Provider);
+    this.balancesManager = BalancesManager(this.web3Provider);
+    this.cancellablePromises = new CancellablePromises();
+    this.account = {
+      eth: EthAccountController(),
+      sys: SysAccountController(() => this.keyringManager),
+    };
+    this.assets = this.assetsManager;
+    this.transactions = this.transactionsManager;
+    this.unlockFromController = this.unlockFromController.bind(this);
+  }
+
+  private createCancellablePromise<T>(
     executor: (
       resolve: (value: T) => void,
       reject: (reason?: any) => void
     ) => void
-  ): { cancel: () => void; promise: Promise<T> } => {
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
+  ): { cancel: () => void; promise: Promise<T> } {
     let cancel = () => {};
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
@@ -113,45 +141,89 @@ const MainController = (walletState): IMainController => {
     });
 
     return { promise, cancel };
+  }
+
+  private setActiveNetworkLogic = async (
+    network: INetwork,
+    chain: string,
+    cancelled: boolean,
+    resolve: (value: {
+      activeChain: INetworkType;
+      chain: string;
+      chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
+      networkVersion: number;
+      wallet: IWalletState;
+    }) => void,
+    reject: (reason?: any) => void
+  ) => {
+    if (store.getState().vault.isNetworkChanging && !cancelled) {
+      return;
+    }
+
+    store.dispatch(setIsNetworkChanging(true));
+    store.dispatch(setIsLoadingBalances(true));
+    store.dispatch(setCurrentBlock(undefined));
+
+    const isBitcoinBased = chain === INetworkType.Syscoin;
+
+    const { sucess, wallet, activeChain } =
+      await this.keyringManager.setSignerNetwork(network, chain);
+    const chainId = network.chainId.toString(16);
+    const networkVersion = network.chainId;
+    if (sucess) {
+      console.log({
+        provider: this.keyringManager.ethereumTransaction.web3Provider,
+      });
+      this.web3Provider = this.keyringManager.ethereumTransaction.web3Provider;
+      this.transactionsManager = TransactionsManager(
+        this.keyringManager.ethereumTransaction.web3Provider
+      );
+      this.balancesManager = BalancesManager(
+        this.keyringManager.ethereumTransaction.web3Provider
+      );
+      resolve({
+        activeChain,
+        chain,
+        chainId,
+        isBitcoinBased,
+        network,
+        networkVersion,
+        wallet,
+      });
+    } else {
+      reject(
+        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
+      );
+    }
   };
 
-  const setAutolockTimer = (minutes: number) => {
+  public setAutolockTimer(minutes: number) {
     store.dispatch(setTimer(minutes));
-  };
-  const setHasEthProperty = (exist: boolean) => {
+  }
+
+  public setHasEthProperty(exist: boolean) {
     store.dispatch(setEthProperty(exist));
-  };
+  }
 
-  const setFaucetModalState = (chainId: number) => {
+  public setFaucetModalState(chainId: number) {
     store.dispatch(setFaucetState({ chainId }));
-  };
+  }
 
-  const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
+  public setAdvancedSettings(advancedProperty: string, isActive: boolean) {
     store.dispatch(setSettings({ advancedProperty, isActive }));
-  };
+  }
 
-  const getKeyringManager = (): KeyringManager => keyringManager;
-  const walletController = {
-    account: {
-      sys: SysAccountController(getKeyringManager),
-      eth: EthAccountController(),
-    },
-  };
-
-  /** forget your wallet created with pali and associated with your seed phrase,
-   *  but don't delete seed phrase so it is possible to create a new
-   *  account using the same seed
-   */
-  const forgetWallet = (pwd: string) => {
-    keyringManager.forgetMainWallet(pwd);
+  public forgetWallet(pwd: string) {
+    this.keyringManager.forgetMainWallet(pwd);
 
     store.dispatch(forgetWalletState());
     store.dispatch(setLastLogin());
-  };
+  }
 
-  const unlockFromController = async (pwd: string): Promise<boolean> => {
-    console.log({ pwd });
-    const { canLogin, wallet } = await keyringManager.unlock(pwd);
+  public async unlockFromController(pwd: string): Promise<boolean> {
+    const { canLogin, wallet } = await this.keyringManager.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
     if (!isEmpty(wallet)) {
       store.dispatch(
@@ -163,23 +235,10 @@ const MainController = (walletState): IMainController => {
     }
 
     store.dispatch(setLastLogin());
-    // TODO: validate contentScripts flow
-    // window.controller.dapp
-    //   .handleStateChange(PaliEvents.lockStateChanged, {
-    //     method: PaliEvents.lockStateChanged,
-    //     params: {
-    //       accounts: [],
-    //       isUnlocked: keyringManager.isUnlocked(),
-    //     },
-    //   })
-    //   .catch((error) => console.error('Unlock', error));
     return canLogin;
-  };
+  }
 
-  const createWallet = async (
-    password: string,
-    phrase: string
-  ): Promise<void> => {
+  public async createWallet(password: string, phrase: string): Promise<void> {
     store.dispatch(setIsLoadingBalances(true));
     const {
       accounts,
@@ -190,28 +249,24 @@ const MainController = (walletState): IMainController => {
       accounts[activeAccountInfo.type][activeAccountInfo.id];
 
     const handleWalletInfo = () => {
-      keyringManager.setSeed(phrase);
-      keyringManager.setWalletPassword(password);
+      this.keyringManager.setSeed(phrase);
+      this.keyringManager.setWalletPassword(password);
     };
 
-    // set seed and wallet password for the new created wallet.
     handleWalletInfo();
 
     if (activeAccount.address !== '') {
-      // if pali already have a wallet, we will forget the previous wallet
-      forgetWallet(password);
-      // and set the new wallet info for KeyringManager class.
+      this.forgetWallet(password);
       handleWalletInfo();
     }
 
     const account =
-      (await keyringManager.createKeyringVault()) as IKeyringAccountState;
+      (await this.keyringManager.createKeyringVault()) as IKeyringAccountState;
 
-    const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
+    const initialSysAssetsForAccount = await this.getInitialSysTokenForAccount(
       account.xpub
     );
-    //todo: test promise.all to enhance performance
-    const initialTxsForAccount = await getInitialSysTransactionsForAccount(
+    const initialTxsForAccount = await this.getInitialSysTransactionsForAccount(
       account.xpub
     );
 
@@ -244,74 +299,61 @@ const MainController = (walletState): IMainController => {
       })
     );
     store.dispatch(setLastLogin());
-  };
+  }
 
-  const lock = () => {
-    keyringManager.logout();
+  public lock() {
+    this.keyringManager.logout();
 
     store.dispatch(setLastLogin());
-    window.controller.dapp
-      .handleStateChange(PaliEvents.lockStateChanged, {
-        method: PaliEvents.lockStateChanged,
-        params: {
-          accounts: [],
-          isUnlocked: keyringManager.isUnlocked(),
-        },
-      })
-      .catch((error) => console.error(error));
     return;
-  };
+  }
 
-  const setIsAutolockEnabled = (isEnabled: boolean) => {
+  public setIsAutolockEnabled(isEnabled: boolean) {
     store.dispatch(setIsTimerActive(isEnabled));
-  };
+  }
 
-  const createAccount = async (
+  public async createAccount(
     isBitcoinBased: boolean,
     activeNetworkChainId: number,
     label?: string
-  ): Promise<IPaliAccount> => {
-    const newAccount = await keyringManager.addNewAccount(label);
+  ): Promise<IPaliAccount> {
+    const newAccount = await this.keyringManager.addNewAccount(label);
     let newAccountWithAssets: IPaliAccount;
 
-    switch (isBitcoinBased) {
-      case true:
-        const initialSysAssetsForAccount = await getInitialSysTokenForAccount(
-          newAccount.xpub
-        );
+    if (isBitcoinBased) {
+      const initialSysAssetsForAccount =
+        await this.getInitialSysTokenForAccount(newAccount.xpub);
 
-        const initialTxsForAccount = await getInitialSysTransactionsForAccount(
-          newAccount.xpub
-        );
+      const initialTxsForAccount =
+        await this.getInitialSysTransactionsForAccount(newAccount.xpub);
 
-        newAccountWithAssets = {
-          ...newAccount,
-          assets: {
-            syscoin: initialSysAssetsForAccount,
-            ethereum: [],
-            nfts: [],
+      newAccountWithAssets = {
+        ...newAccount,
+        assets: {
+          syscoin: initialSysAssetsForAccount,
+          ethereum: [],
+          nfts: [],
+        },
+        transactions: {
+          syscoin: {
+            [activeNetworkChainId]: initialTxsForAccount,
           },
-          transactions: {
-            syscoin: {
-              [activeNetworkChainId]: initialTxsForAccount,
-            },
-            ethereum: {},
-          },
-        };
-        break;
-      case false:
-        newAccountWithAssets = {
-          ...newAccount,
-          assets: {
-            syscoin: [],
-            ethereum: [],
-            nfts: [],
-          },
-          transactions: {
-            syscoin: {},
-            ethereum: {},
-          },
-        };
+          ethereum: {},
+        },
+      };
+    } else {
+      newAccountWithAssets = {
+        ...newAccount,
+        assets: {
+          syscoin: [],
+          ethereum: [],
+          nfts: [],
+        },
+        transactions: {
+          syscoin: {},
+          ethereum: {},
+        },
+      };
     }
     store.dispatch(
       addAccountToStore({
@@ -326,14 +368,14 @@ const MainController = (walletState): IMainController => {
       })
     );
     return newAccountWithAssets;
-  };
+  }
 
-  const setAccount = (
+  public setAccount(
     id: number,
     type: KeyringAccountType,
     host?: string,
     connectedAccount?: IOmmitedAccount
-  ): void => {
+  ) {
     const { accounts, activeAccount } = store.getState().vault;
     if (
       connectedAccount &&
@@ -353,22 +395,21 @@ const MainController = (walletState): IMainController => {
       }
     }
 
-    //TODO: investigate if here would be a ideal place to add balance update
-    keyringManager.setActiveAccount(id, type);
+    this.keyringManager.setActiveAccount(id, type);
     store.dispatch(setActiveAccount({ id, type }));
-  };
+  }
 
-  const setActiveNetwork = async (
+  public async setActiveNetwork(
     network: INetwork,
     chain: string
-  ): Promise<{ chainId: string; networkVersion: number }> => {
+  ): Promise<{ chainId: string; networkVersion: number }> {
     let cancelled = false;
-    if (currentPromise) {
-      currentPromise.cancel();
+    if (this.currentPromise) {
+      this.currentPromise.cancel();
       cancelled = true;
     }
 
-    const promiseWrapper = createCancellablePromise<{
+    const promiseWrapper = this.createCancellablePromise<{
       activeChain: INetworkType;
       chain: string;
       chainId: string;
@@ -377,12 +418,11 @@ const MainController = (walletState): IMainController => {
       networkVersion: number;
       wallet: IWalletState;
     }>((resolve, reject) => {
-      setActiveNetworkLogic(network, chain, cancelled, resolve, reject);
+      this.setActiveNetworkLogic(network, chain, cancelled, resolve, reject);
     });
-    currentPromise = promiseWrapper;
+    this.currentPromise = promiseWrapper;
     promiseWrapper.promise
       .then(async ({ wallet, activeChain, isBitcoinBased }) => {
-        console.log({ walletFromChangeNetwork: wallet });
         store.dispatch(
           setNetworkChange({
             activeChain,
@@ -391,9 +431,9 @@ const MainController = (walletState): IMainController => {
         );
         store.dispatch(setIsBitcoinBased(isBitcoinBased));
         store.dispatch(setIsLoadingBalances(false));
-        await utilsController.setFiat(); // TODO: We should just call the asset on network edition and get added networks coins price with one call from the background;
+        await this.utilsController.setFiat();
 
-        updateAssetsFromCurrentAccount({
+        this.updateAssetsFromCurrentAccount({
           isBitcoinBased,
           activeNetwork: network,
           activeAccount: {
@@ -402,7 +442,7 @@ const MainController = (walletState): IMainController => {
           },
         });
 
-        updateUserTransactionsState({
+        this.updateUserTransactionsState({
           isPolling: false,
           isBitcoinBased,
           activeNetwork: network,
@@ -411,80 +451,17 @@ const MainController = (walletState): IMainController => {
             type: wallet.activeAccountType,
           },
         });
-        // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-        //   method: PaliEvents.chainChanged,
-        //   params: {
-        //     chainId: `0x${network.chainId.toString(16)}`,
-        //     networkVersion: network.chainId,
-        //   },
-        // });
-
-        // window.controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
-        //   method: PaliEvents.isBitcoinBased,
-        //   params: { isBitcoinBased },
-        // });
-
-        // window.controller.dapp.handleBlockExplorerChange(
-        //   PaliSyscoinEvents.blockExplorerChanged,
-        //   {
-        //     method: PaliSyscoinEvents.blockExplorerChanged,
-        //     params: isBitcoinBased ? network.url : null,
-        //   }
-        // );
 
         switch (isBitcoinBased) {
           case true:
-            const isTestnet = verifyIfIsTestnet();
-
-            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            //   method: PaliEvents.isTestnet,
-            //   params: { isTestnet },
-            // });
-
-            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-            //   method: PaliEvents.xpubChanged,
-            //   params:
-            //     wallet.accounts[wallet.activeAccountType][
-            //       wallet.activeAccountId
-            //     ].xpub,
-            // });
-
-            // window.controller.dapp.handleStateChange(
-            //   PaliEvents.accountsChanged,
-            //   {
-            //     method: PaliEvents.accountsChanged,
-            //     params: null,
-            //   }
-            // );
+            const isTestnet = this.keyringManager.verifyIfIsTestnet();
             break;
           case false:
-            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            //   method: PaliEvents.isTestnet,
-            //   params: { isTestnet: undefined },
-            // });
-
-            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-            //   method: PaliEvents.xpubChanged,
-            //   params: null,
-            // });
-
-            // window.controller.dapp.handleStateChange(
-            //   PaliEvents.accountsChanged,
-            //   {
-            //     method: PaliEvents.accountsChanged,
-            //     params: [
-            //       wallet.accounts[wallet.activeAccountType][
-            //         wallet.activeAccountId
-            //       ].address,
-            //     ],
-            //   }
-            // );
             break;
           default:
             break;
         }
-
-        store.dispatch(setIsNetworkChanging(false)); // TODO: remove this , just provisory
+        store.dispatch(setIsNetworkChanging(false));
         return;
       })
       .catch((reason) => {
@@ -497,64 +474,12 @@ const MainController = (walletState): IMainController => {
             accounts,
             activeAccount: { id: activeAccountId, type: activeAccountType },
           } = store.getState().vault;
-          // window.controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-          //   method: PaliEvents.chainChanged,
-          //   params: {
-          //     chainId: `0x${activeNetwork.chainId.toString(16)}`,
-          //     networkVersion: activeNetwork.chainId,
-          //   },
-          // });
-          // window.controller.dapp.handleBlockExplorerChange(
-          //   PaliSyscoinEvents.blockExplorerChanged,
-          //   {
-          //     method: PaliSyscoinEvents.blockExplorerChanged,
-          //     params: isBitcoinBased ? network.url : null,
-          //   }
-          // );
 
           switch (isBitcoinBased) {
             case true:
-              const isTestnet = verifyIfIsTestnet();
-
-              // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-              //   method: PaliEvents.isTestnet,
-              //   params: { isTestnet },
-              // });
-
-              // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-              //   method: PaliEvents.xpubChanged,
-              //   params: accounts[activeAccountType][activeAccountId].xpub,
-              // });
-
-              // window.controller.dapp.handleStateChange(
-              //   PaliEvents.accountsChanged,
-              //   {
-              //     method: PaliEvents.accountsChanged,
-              //     params: null,
-              //   }
-              // );
-
+              const isTestnet = this.keyringManager.verifyIfIsTestnet();
               break;
             case false:
-            // window.controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-            //   method: PaliEvents.isTestnet,
-            //   params: { isTestnet: undefined },
-            // });
-
-            // window.controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-            //   method: PaliEvents.xpubChanged,
-            //   params: null,
-            // });
-
-            // window.controller.dapp.handleStateChange(
-            //   PaliEvents.accountsChanged,
-            //   {
-            //     method: PaliEvents.accountsChanged,
-            //     params: [
-            //       accounts[activeAccountType][activeAccountId].address,
-            //     ],
-            //   }
-            // );
             default:
               break;
           }
@@ -564,80 +489,31 @@ const MainController = (walletState): IMainController => {
         store.dispatch(setIsLoadingBalances(false));
       });
     return promiseWrapper.promise;
-  };
-  const setActiveNetworkLogic = async (
-    network: INetwork,
-    chain: string,
-    cancelled: boolean,
-    resolve: (value: {
-      activeChain: INetworkType;
-      chain: string;
-      chainId: string;
-      isBitcoinBased: boolean;
-      network: INetwork;
-      networkVersion: number;
-      wallet: IWalletState;
-    }) => void,
-    reject: (reason?: any) => void
-  ) => {
-    if (store.getState().vault.isNetworkChanging && !cancelled) {
-      return;
-    }
+  }
 
-    store.dispatch(setIsNetworkChanging(true));
-    store.dispatch(setIsLoadingBalances(true));
-    store.dispatch(setCurrentBlock(undefined));
-
-    const isBitcoinBased = chain === INetworkType.Syscoin;
-
-    const { sucess, wallet, activeChain } =
-      await keyringManager.setSignerNetwork(network, chain);
-    const chainId = network.chainId.toString(16);
-    const networkVersion = network.chainId;
-    if (sucess) {
-      web3Provider = keyringManager.ethereumTransaction.web3Provider;
-      transactionsManager = TransactionsManager(
-        keyringManager.ethereumTransaction.web3Provider
-      );
-      balancesManager = BalancesManager(
-        keyringManager.ethereumTransaction.web3Provider
-      );
-      resolve({
-        activeChain,
-        chain,
-        chainId,
-        isBitcoinBased,
-        network,
-        networkVersion,
-        wallet,
-      });
-    } else {
-      reject(
-        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-      );
-    }
-  };
-
-  const removeWindowEthProperty = () => {
+  public removeWindowEthProperty() {
     window.controller.dapp.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
       params: {
         type: PaliEvents.removeProperty,
       },
     });
-  };
+  }
 
-  const addWindowEthProperty = () => {
+  public addWindowEthProperty() {
     window.controller.dapp.handleStateChange(PaliEvents.addProperty, {
       method: PaliEvents.addProperty,
       params: {
         type: PaliEvents.addProperty,
       },
     });
-  };
+  }
 
-  const resolveError = () => store.dispatch(setStoreError(false));
-  const resolveAccountConflict = () => {
+  public resolveError() {
+    store.dispatch(setStoreError(false));
+  }
+
+  public resolveAccountConflict() {
     store.dispatch(
       setChangingConnectedAccount({
         newConnectedAccount: undefined,
@@ -646,17 +522,13 @@ const MainController = (walletState): IMainController => {
         connectedAccountType: undefined,
       })
     );
-  };
+  }
 
-  const getSeed = async (pwd: string) => await keyringManager.getSeed(pwd);
-
-  const getRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
+  public async getRpc(data: ICustomRpcParams): Promise<INetwork> {
     try {
-      //todo: need to adjust to get this from keyringmanager syscoin
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data, false); //Here we are always either edditing the network to add a new RPC or adding a new Network
-
+        : await getEthRpc(data, false);
       return formattedNetwork;
     } catch (error) {
       if (!data.isSyscoinRpc) {
@@ -666,16 +538,16 @@ const MainController = (walletState): IMainController => {
         'Could not add your network, please try a different RPC endpoint'
       );
     }
-  };
+  }
 
-  const setIsPaliNetworkChanging = (isChanging: boolean) => {
+  public setIsPaliNetworkChanging(isChanging: boolean) {
     store.dispatch(setIsNetworkChanging(isChanging));
-  };
+  }
 
-  const handleWatchAsset = async (
+  public async handleWatchAsset(
     type: string,
     asset: IWatchAssetTokenProps
-  ) => {
+  ): Promise<boolean> {
     const { activeAccount: activeAccountInfo, accounts } =
       store.getState().vault;
     const activeAccount =
@@ -687,11 +559,10 @@ const MainController = (walletState): IMainController => {
     const metadata = await getTokenStandardMetadata(
       asset.address,
       activeAccount.address,
-      web3Provider
+      this.web3Provider
     );
 
     const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-
     const formattedBalance = floor(parseFloat(balance), 4);
 
     try {
@@ -704,15 +575,15 @@ const MainController = (walletState): IMainController => {
         logo: asset?.image,
       } as ITokenEthProps;
 
-      await walletController.account.eth.saveTokenInfo(assetToAdd);
+      await this.account.eth.saveTokenInfo(assetToAdd);
 
       return true;
     } catch (error) {
       throw new Error(error);
     }
-  };
+  }
 
-  const getAssetInfo = async (type: string, asset: IWatchAssetTokenProps) => {
+  public async getAssetInfo(type: string, asset: IWatchAssetTokenProps) {
     const {
       activeAccount: activeAccountInfo,
       accounts,
@@ -727,11 +598,10 @@ const MainController = (walletState): IMainController => {
     const metadata = await getTokenStandardMetadata(
       asset.address,
       activeAccount.address,
-      web3Provider
+      this.web3Provider
     );
 
     const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-
     const formattedBalance = floor(parseFloat(balance), 4);
 
     let web3Token: ITokenEthProps;
@@ -774,14 +644,14 @@ const MainController = (walletState): IMainController => {
     }
 
     return web3Token;
-  };
+  }
 
-  const addCustomRpc = async (data: ICustomRpcParams): Promise<INetwork> => {
-    const network = await getRpc(data);
+  public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
+    const network = await this.getRpc(data);
 
     const networkWithCustomParams = {
       ...network,
-      default: false, // We only have RPCs with default as true in our initialNetworksState value
+      default: false,
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
       explorer: data?.explorer ? data.explorer : network?.explorer || '',
       currency: data.symbol ? data.symbol : network.currency,
@@ -793,8 +663,6 @@ const MainController = (walletState): IMainController => {
 
     store.dispatch(setNetwork({ chain, network: networkWithCustomParams }));
 
-    //We need to do that to get the correct network value, we only can know if will have a Key value
-    //inside the state after the dispatch for some network with a chainID that already exists
     const networksAfterDispatch = store.getState().vault.networks[chain];
 
     const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
@@ -804,16 +672,17 @@ const MainController = (walletState): IMainController => {
         netValues.label === networkWithCustomParams.label
     );
 
-    keyringManager.addCustomNetwork(chain, findCorrectNetworkValue);
+    this.keyringManager.addCustomNetwork(chain, findCorrectNetworkValue);
 
     return findCorrectNetworkValue;
-  };
-  const editCustomRpc = async (
+  }
+
+  public async editCustomRpc(
     newRpc: ICustomRpcParams,
     oldRpc: INetwork
-  ): Promise<INetwork> => {
+  ): Promise<INetwork> {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await getRpc(newRpc);
+    const network = await this.getRpc(newRpc);
     const chain = getNetworkChain(newRpc.isSyscoinRpc);
 
     if (network.chainId === oldRpc.chainId) {
@@ -835,12 +704,15 @@ const MainController = (walletState): IMainController => {
       }
 
       store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
-      keyringManager.updateNetworkConfig(newNetwork, chain as INetworkType);
-      transactionsManager = TransactionsManager(
-        keyringManager.ethereumTransaction.web3Provider
+      this.keyringManager.updateNetworkConfig(
+        newNetwork,
+        chain as INetworkType
       );
-      balancesManager = BalancesManager(
-        keyringManager.ethereumTransaction.web3Provider
+      this.transactionsManager = TransactionsManager(
+        this.keyringManager.ethereumTransaction.web3Provider
+      );
+      this.balancesManager = BalancesManager(
+        this.keyringManager.ethereumTransaction.web3Provider
       );
 
       return newNetwork;
@@ -848,24 +720,24 @@ const MainController = (walletState): IMainController => {
     throw new Error(
       'You are trying to set a different network RPC in current network. Please, verify it and try again'
     );
-  };
+  }
 
-  const setIsLastTxConfirmed = (
+  public setIsLastTxConfirmed(
     chainId: number,
     wasConfirmed: boolean,
     isFirstTime?: boolean
-  ) => {
+  ) {
     store.dispatch(
       setIsLastTxConfirmedToState({ chainId, wasConfirmed, isFirstTime })
     );
-  };
+  }
 
-  const editAccountLabel = (
+  public editAccountLabel(
     label: string,
     accountId: number,
     accountType: KeyringAccountType
-  ) => {
-    keyringManager.updateAccountLabel(label, accountId, accountType);
+  ) {
+    this.keyringManager.updateAccountLabel(label, accountId, accountType);
 
     store.dispatch(
       setAccountsWithLabelEdited({
@@ -874,43 +746,41 @@ const MainController = (walletState): IMainController => {
         accountType,
       })
     );
-  };
+  }
 
-  const removeKeyringNetwork = (
+  public removeKeyringNetwork(
     chain: INetworkType,
     chainId: number,
     rpcUrl: string,
     label: string,
     key?: string
-  ) => {
+  ) {
     store.dispatch(
       removeNetworkFromStore({ chain, chainId, rpcUrl, label, key })
     );
 
-    keyringManager.removeNetwork(chain, chainId, rpcUrl, label, key);
-  };
+    this.keyringManager.removeNetwork(chain, chainId, rpcUrl, label, key);
+  }
 
-  //todo: we need to adjust that to use the right fn since keyring manager does not have this function anymore
-  const getChangeAddress = async (accountId: number) =>
-    await keyringManager.getChangeAddress(accountId);
+  // public async getChangeAddress(accountId: number) {
+  //   return await this.keyringManager.getChangeAddress(accountId);
+  // }
 
-  const getRecommendedFee = () => {
+  public getRecommendedFee() {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
     if (isBitcoinBased)
-      return keyringManager.syscoinTransaction.getRecommendedFee(
+      return this.keyringManager.syscoinTransaction.getRecommendedFee(
         activeNetwork.url
       );
-    //TODO: Validate this method call through contentScript
-    return keyringManager.ethereumTransaction.getRecommendedGasPrice(true);
-  };
+    return this.keyringManager.ethereumTransaction.getRecommendedGasPrice(true);
+  }
 
-  const importAccountFromPrivateKey = async (
-    privKey: string,
-    label?: string
-  ) => {
+  public async importAccountFromPrivateKey(privKey: string, label?: string) {
     const { accounts } = store.getState().vault;
-    //todo: this function was renamed we should update it
-    const importedAccount = await keyringManager.importAccount(privKey, label);
+    const importedAccount = await this.keyringManager.importAccount(
+      privKey,
+      label
+    );
     const paliImp: IPaliAccount = {
       ...importedAccount,
       assets: {
@@ -936,18 +806,18 @@ const MainController = (walletState): IMainController => {
     );
 
     return importedAccount;
-  };
+  }
 
-  const importTrezorAccount = async (
+  public async importTrezorAccount(
     coin: string,
     slip44: string,
     index: string
-  ) => {
+  ) {
     const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
       store.getState().vault;
     let importedAccount;
     try {
-      importedAccount = await keyringManager.importTrezorAccount(
+      importedAccount = await this.keyringManager.importTrezorAccount(
         coin,
         slip44,
         index
@@ -978,35 +848,35 @@ const MainController = (walletState): IMainController => {
         },
       })
     );
-    keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
+    this.keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
-    updateUserTransactionsState({
+    this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
       activeAccount,
       activeNetwork,
     });
-    updateAssetsFromCurrentAccount({
+    this.updateAssetsFromCurrentAccount({
       activeAccount,
       activeNetwork,
       isBitcoinBased,
     });
 
     return importedAccount;
-  };
+  }
 
-  const importLedgerAccount = async (
+  public async importLedgerAccount(
     coin: string,
     slip44: string,
     index: string,
     isAlreadyConnected: boolean
-  ) => {
+  ) {
     const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
     let importedAccount;
     try {
-      importedAccount = await keyringManager.importLedgerAccount(
+      importedAccount = await this.keyringManager.importLedgerAccount(
         coin,
         slip44,
         index,
@@ -1038,44 +908,42 @@ const MainController = (walletState): IMainController => {
         },
       })
     );
-    keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
+    this.keyringManager.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
     );
-    updateUserTransactionsState({
+    this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
       activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
     });
-    updateAssetsFromCurrentAccount({
+    this.updateAssetsFromCurrentAccount({
       activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
       isBitcoinBased,
     });
 
     return importedAccount;
-  };
+  }
 
-  //---- NFTS METHODS ----//
-
-  const getUserNftsByNetwork = async (
+  public async getUserNftsByNetwork(
     userAddress: string,
     chainId: number,
     rpcUrl: string
-  ) => {
+  ) {
     if (chainId !== 57 && chainId !== 570) return [];
 
-    const fetchedNfts = await nftsController.getUserNfts(
+    const fetchedNfts = await this.nftsController.getUserNfts(
       userAddress,
       chainId,
       rpcUrl
     );
 
     return fetchedNfts;
-  };
+  }
 
-  const fetchAndUpdateNftsState = async ({
+  public async fetchAndUpdateNftsState({
     activeNetwork,
     activeAccount,
   }: {
@@ -1084,17 +952,17 @@ const MainController = (walletState): IMainController => {
       type: KeyringAccountType;
     };
     activeNetwork: INetwork;
-  }) => {
+  }) {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: nftsPromises, cancel } =
-      cancellablePromises.createCancellablePromise<void>(
+      this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
             store.dispatch(setIsLoadingNfts(true));
 
-            const updatedNfts = await getUserNftsByNetwork(
+            const updatedNfts = await this.getUserNftsByNetwork(
               currentAccount.address,
               activeNetwork.chainId,
               activeNetwork.url
@@ -1148,22 +1016,19 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    cancellablePromises.setPromise(PromiseTargets.NFTS, {
+    this.cancellablePromises.setPromise(PromiseTargets.NFTS, {
       nftsPromises,
       cancel,
     });
 
-    cancellablePromises.runPromise(PromiseTargets.NFTS);
-  };
+    this.cancellablePromises.runPromise(PromiseTargets.NFTS);
+  }
 
-  //---- END NFTS METHODS ----//
-
-  //---- SYS METHODS ----//
-  const getInitialSysTransactionsForAccount = async (xpub: string) => {
+  public async getInitialSysTransactionsForAccount(xpub: string) {
     store.dispatch(setIsLoadingTxs(true));
 
     const initialTxsForAccount =
-      await transactionsManager.sys.getInitialUserTransactionsByXpub(
+      await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
         xpub,
         initialState.activeNetwork.url
       );
@@ -1171,24 +1036,22 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsLoadingTxs(false));
 
     return initialTxsForAccount;
-  };
-  //---- END SYS METHODS ----//
+  }
 
-  //---- EVM METHODS ----//
-  const setEvmTransactionAsCanceled = (txHash: string, chainID: number) => {
+  public setEvmTransactionAsCanceled(txHash: string, chainID: number) {
     store.dispatch(
       setTransactionStatusToCanceled({
         txHash,
         chainID,
       })
     );
-  };
+  }
 
-  const setEvmTransactionAsAccelerated = (
+  public setEvmTransactionAsAccelerated(
     oldTxHash: string,
     chainID: number,
     newTxValue: IEvmTransactionResponse
-  ) => {
+  ) {
     store.dispatch(
       setTransactionStatusToAccelerated({
         oldTxHash,
@@ -1208,61 +1071,47 @@ const MainController = (walletState): IMainController => {
         transaction: transactionWithTimestamp,
       })
     );
-  };
+  }
 
-  //---- END EVM METHODS ----//
-
-  //---- METHODS FOR UPDATE BOTH TRANSACTIONS ----//
-  const callUpdateTxsMethodBasedByIsBitcoinBased = (
+  public callUpdateTxsMethodBasedByIsBitcoinBased(
     isBitcoinBased: boolean,
     activeAccount: {
       id: number;
       type: KeyringAccountType;
     },
     activeNetwork: INetwork
-  ) => {
+  ) {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    switch (isBitcoinBased) {
-      case true:
-        //IF SYS UTX0 ONLY RETURN DEFAULT TXS FROM XPUB REQUEST
-
-        // window.controller.wallet.transactions.sys
-        //   .getInitialUserTransactionsByXpub(
-        //     currentAccount.xpub,
-        //     activeNetwork.url
-        //   )
-        //   .then((txs) => {
-        //     if (isNil(txs) || isEmpty(txs)) {
-        //       return;
-        //     }
-
-        //     store.dispatch(
-        //       setMultipleTransactionToState({
-        //         chainId: activeNetwork.chainId,
-        //         networkType: TransactionsType.Syscoin,
-        //         transactions: txs,
-        //       })
-        //     );
-        //   });
-        break;
-      case false:
-        //DO SAME AS POLLING TO DEAL WITH EVM NETWORKS
-        transactionsManager.utils.updateTransactionsFromCurrentAccount(
-          currentAccount,
-          isBitcoinBased,
-          activeNetwork.url
-        );
-
-        break;
-
-      default:
-        break;
+    if (isBitcoinBased) {
+      // Window.controller.wallet.transactions.sys
+      //   .getInitialUserTransactionsByXpub(
+      //     currentAccount.xpub,
+      //     activeNetwork.url
+      //   )
+      //   .then((txs) => {
+      //     if (isNil(txs) || isEmpty(txs)) {
+      //       return;
+      //     }
+      //     store.dispatch(
+      //       setMultipleTransactionToState({
+      //         chainId: activeNetwork.chainId,
+      //         networkType: TransactionsType.Syscoin,
+      //         transactions: txs,
+      //       })
+      //     );
+      //   });
+    } else {
+      this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
+        currentAccount,
+        isBitcoinBased,
+        activeNetwork.url
+      );
     }
-  };
+  }
 
-  const updateUserTransactionsState = ({
+  public updateUserTransactionsState({
     isPolling,
     isBitcoinBased,
     activeNetwork,
@@ -1275,48 +1124,42 @@ const MainController = (walletState): IMainController => {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
-  }) => {
+  }) {
     const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: transactionPromise, cancel } =
-      cancellablePromises.createCancellablePromise<void>(
+      this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            switch (isPolling) {
-              //CASE FOR POLLING AT ALL -> EVM AND SYS UTX0
-              case true:
-                await transactionsManager.utils
-                  .updateTransactionsFromCurrentAccount(
-                    currentAccount,
-                    isBitcoinBased,
-                    activeNetwork.url
-                  )
-                  .then((txs) => {
-                    const canDispatch =
-                      isBitcoinBased && !(isNil(txs) && isEmpty(txs));
-
-                    if (canDispatch) {
-                      store.dispatch(
-                        setMultipleTransactionToState({
-                          chainId: activeNetwork.chainId,
-                          networkType: TransactionsType.Syscoin,
-                          transactions: txs,
-                        })
-                      );
-                    }
-                  });
-
-                break;
-              //DEAL WITH NETWORK CHANGING, CHANGING ACCOUNTS ETC
-              case false:
-                callUpdateTxsMethodBasedByIsBitcoinBased(
+            if (isPolling) {
+              await this.transactionsManager.utils
+                .updateTransactionsFromCurrentAccount(
+                  currentAccount,
                   isBitcoinBased,
-                  activeAccount,
-                  activeNetwork
-                );
-                break;
+                  activeNetwork.url
+                )
+                .then((txs) => {
+                  const canDispatch =
+                    isBitcoinBased && !(isNil(txs) && isEmpty(txs));
+
+                  if (canDispatch) {
+                    store.dispatch(
+                      setMultipleTransactionToState({
+                        chainId: activeNetwork.chainId,
+                        networkType: TransactionsType.Syscoin,
+                        transactions: txs,
+                      })
+                    );
+                  }
+                });
+            } else {
+              this.callUpdateTxsMethodBasedByIsBitcoinBased(
+                isBitcoinBased,
+                activeAccount,
+                activeNetwork
+              );
             }
             resolve();
           } catch (error) {
@@ -1325,15 +1168,15 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
+    this.cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
       transactionPromise,
       cancel,
     });
 
-    cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
-  };
+    this.cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
+  }
 
-  const validatePendingEvmTransactions = async ({
+  public async validatePendingEvmTransactions({
     pendingTransactions,
   }: {
     activeAccount: {
@@ -1342,24 +1185,18 @@ const MainController = (walletState): IMainController => {
     };
     activeNetwork: INetwork;
     pendingTransactions: IEvmTransactionResponse[];
-  }) => {
-    //todo: we need to ajust validateAndManageUserTransactions to guarantee it will work with no bugs
-    // const { accounts } = store.getState().vault;
-    // const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
+  }) {
     const confirmedTx =
-      await transactionsManager.utils.checkPendingTransactions(
+      await this.transactionsManager.utils.checkPendingTransactions(
         pendingTransactions
       );
 
     if (!!confirmedTx.length) {
       validateAndManageUserTransactions(confirmedTx);
     }
-  };
+  }
 
-  const sendAndSaveTransaction = (
-    tx: IEvmTransactionResponse | ISysTransaction
-  ) => {
+  public sendAndSaveTransaction(tx: IEvmTransactionResponse | ISysTransaction) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     const txWithTimestamp = {
@@ -1378,23 +1215,17 @@ const MainController = (walletState): IMainController => {
         transaction: txWithTimestamp,
       })
     );
-  };
+  }
 
-  const openDAppErrorModal = () => {
+  public openDAppErrorModal() {
     store.dispatch(setOpenDAppErrorModal(true));
-  };
-  //---- END METHODS FOR UPDATE BOTH TRANSACTIONS ----//
+  }
 
-  //------------------------- END TRANSACTIONS METHODS -------------------------//
-
-  //------------------------- NEW ASSETS METHODS -------------------------//
-
-  //---- SYS METHODS ----//
-  const getInitialSysTokenForAccount = async (xpub: string) => {
+  public async getInitialSysTokenForAccount(xpub: string) {
     store.dispatch(setIsLoadingAssets(true));
 
     const initialSysAssetsForAccount =
-      await assetsManager.sys.getSysAssetsByXpub(
+      await this.assetsManager.sys.getSysAssetsByXpub(
         xpub,
         initialState.activeNetwork.url,
         initialState.activeNetwork.chainId
@@ -1403,11 +1234,9 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setIsLoadingAssets(false));
 
     return initialSysAssetsForAccount;
-  };
-  //---- END SYS METHODS ----//
+  }
 
-  //---- METHODS FOR UPDATE BOTH ASSETS ----//
-  const updateAssetsFromCurrentAccount = ({
+  public updateAssetsFromCurrentAccount({
     isBitcoinBased,
     activeNetwork,
     activeAccount,
@@ -1420,22 +1249,22 @@ const MainController = (walletState): IMainController => {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
-  }) => {
+  }) {
     const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: assetsPromise, cancel } =
-      cancellablePromises.createCancellablePromise<void>(
+      this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
             const updatedAssets =
-              await assetsManager.utils.updateAssetsFromCurrentAccount(
+              await this.assetsManager.utils.updateAssetsFromCurrentAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
                 activeNetwork.chainId,
-                keyringManager.ethereumTransaction.web3Provider
+                this.keyringManager.ethereumTransaction.web3Provider
               );
             const validateUpdatedAndPreviousAssetsLength =
               updatedAssets.ethereum.length <
@@ -1488,20 +1317,15 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    cancellablePromises.setPromise(PromiseTargets.ASSETS, {
+    this.cancellablePromises.setPromise(PromiseTargets.ASSETS, {
       assetsPromise,
       cancel,
     });
 
-    cancellablePromises.runPromise(PromiseTargets.ASSETS);
-  };
-  //---- END METHODS FOR UPDATE BOTH ASSETS ----//
+    this.cancellablePromises.runPromise(PromiseTargets.ASSETS);
+  }
 
-  //------------------------- END ASSETS METHODS -------------------------//
-
-  //------------------------- NEW BALANCES METHODS -------------------------//
-
-  const updateUserNativeBalance = ({
+  public updateUserNativeBalance({
     isBitcoinBased,
     activeNetwork,
     activeAccount,
@@ -1512,17 +1336,17 @@ const MainController = (walletState): IMainController => {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
-  }) => {
+  }) {
     const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: balancePromise, cancel } =
-      cancellablePromises.createCancellablePromise<void>(
+      this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
             const updatedBalance =
-              await balancesManager.utils.getBalanceUpdatedForAccount(
+              await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url
@@ -1561,16 +1385,15 @@ const MainController = (walletState): IMainController => {
         }
       );
 
-    cancellablePromises.setPromise(PromiseTargets.BALANCE, {
+    this.cancellablePromises.setPromise(PromiseTargets.BALANCE, {
       balancePromise,
       cancel,
     });
 
-    cancellablePromises.runPromise(PromiseTargets.BALANCE);
-  };
+    this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
+  }
 
-  //---- New method to update some infos from account like Assets, Txs etc ----//
-  const getLatestUpdateForCurrentAccount = () => {
+  public getLatestUpdateForCurrentAccount() {
     const {
       isNetworkChanging,
       accounts,
@@ -1586,75 +1409,24 @@ const MainController = (walletState): IMainController => {
     }
 
     Promise.all([
-      //First update native balance
-      updateUserNativeBalance({
+      this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
       }),
-      //Later update Txs
-      updateUserTransactionsState({
+      this.updateUserTransactionsState({
         isPolling: false,
         isBitcoinBased,
         activeNetwork,
         activeAccount,
       }),
-      //Later update Assets
-      updateAssetsFromCurrentAccount({
+      this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
       }),
     ]);
-  };
-
-  return {
-    importLedgerAccount,
-    createWallet,
-    forgetWallet,
-    unlockFromController,
-    setIsLastTxConfirmed,
-    lock,
-    createAccount,
-    editAccountLabel,
-    setAdvancedSettings,
-    setIsPaliNetworkChanging,
-    handleWatchAsset,
-    account: walletController.account,
-    setAccount,
-    setAutolockTimer,
-    setActiveNetwork,
-    addCustomRpc,
-    setIsAutolockEnabled,
-    getRpc,
-    getSeed,
-    editCustomRpc,
-    removeKeyringNetwork,
-    resolveAccountConflict,
-    resolveError,
-    getChangeAddress,
-    getRecommendedFee,
-    assets: assetsManager,
-    transactions: transactionsManager,
-    sendAndSaveTransaction,
-    setEvmTransactionAsCanceled,
-    setEvmTransactionAsAccelerated,
-    getAssetInfo,
-    updateAssetsFromCurrentAccount,
-    fetchAndUpdateNftsState,
-    updateUserNativeBalance,
-    updateUserTransactionsState,
-    getLatestUpdateForCurrentAccount,
-    importAccountFromPrivateKey,
-    removeWindowEthProperty,
-    addWindowEthProperty,
-    setHasEthProperty,
-    importTrezorAccount,
-    validatePendingEvmTransactions,
-    ...keyringManager,
-    openDAppErrorModal,
-    setFaucetModalState,
-  };
-};
+  }
+}
 
 export default MainController;

@@ -227,7 +227,7 @@ chrome.runtime.onConnect.addListener(async (port) => {
         port.postMessage({ isInjected: hasEthProperty });
       }
     });
-    console.log({ dappMethods });
+
     if (dappMethods !== undefined) {
       dappMethods.setup(port);
     }

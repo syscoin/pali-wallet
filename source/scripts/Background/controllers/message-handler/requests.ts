@@ -138,7 +138,7 @@ export const methodRequest = async (
   //   methodName !== 'changeUTXOEVM'
   // )
   //   throw cleanErrorStack(ethErrors.provider.unauthorized());
-  const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
+  const estimateFee = () => wallet.getRecommendedFee();
 
   //* Wallet methods
   if (prefix === 'wallet') {

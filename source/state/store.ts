@@ -5,7 +5,6 @@ import {
   Store,
 } from '@reduxjs/toolkit';
 import isEqual from 'lodash/isEqual';
-import logger from 'redux-logger';
 import { thunk } from 'redux-thunk';
 
 import dapp from './dapp';
@@ -31,10 +30,6 @@ middleware.push(thunk);
 
 const nodeEnv = process.env.NODE_ENV;
 
-if (nodeEnv !== 'production' && nodeEnv !== 'test') {
-  middleware.push(logger as never);
-}
-
 const store: Store<{
   dapp: IDAppState;
   price: IPriceState;
@@ -52,7 +47,7 @@ export async function updateState() {
     const currentState = await loadState();
 
     const isStateEqual = isEqual(currentState, state);
-    console.log({ isStateEqual });
+
     if (isStateEqual) {
       return false;
     }
