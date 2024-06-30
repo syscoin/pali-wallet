@@ -306,10 +306,8 @@ const MasterController = (
       });
     }
     const walletState = vaultToWalletState(externalStore.getState().vault);
-    console.log({ walletState });
     dapp = Object.freeze(DAppController());
     wallet = new MainController(walletState);
-    console.log({ wallet });
     utils = Object.freeze(ControllerUtils());
     wallet.setStorage(chrome.storage.local);
     // readyCallback({

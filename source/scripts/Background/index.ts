@@ -111,13 +111,6 @@ const handleLogout = () => {
   }
 };
 
-chrome.storage.onChanged.addListener((changes) => {
-  console.log({ changes });
-  console.log({
-    formatted: parseJsonRecursively(changes?.['persist:root']?.newValue),
-  });
-});
-
 let requestCount = 0;
 const requestsPerSecond = {};
 const requestCallback = (details: any) => {
