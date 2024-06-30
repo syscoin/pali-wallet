@@ -11,8 +11,8 @@ import {
   NeutralButton,
   ConfirmationModal,
 } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const Advanced = () => {
   const { timer, advancedSettings } = useSelector(

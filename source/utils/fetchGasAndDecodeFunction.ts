@@ -1,8 +1,7 @@
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import { getController } from 'scripts/Background';
 import { ITransactionParams } from 'types/transactions';
-
-import { getController } from './browser';
 
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,

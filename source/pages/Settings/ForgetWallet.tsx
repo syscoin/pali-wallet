@@ -6,8 +6,8 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Button, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();

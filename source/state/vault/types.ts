@@ -31,6 +31,7 @@ export interface IVaultState {
   faucetModal: {
     [k: number]: boolean;
   };
+  hasEncryptedVault: boolean;
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;

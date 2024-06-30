@@ -9,9 +9,9 @@ import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 
 export const ImportToken: FC = () => {
   const controller = getController();

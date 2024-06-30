@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, Button } from 'components/index';
+// import { getController } from 'utils/browser';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 import { formatSeedPhrase } from 'utils/format';
 
 type SeedValidationType = {

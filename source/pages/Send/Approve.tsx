@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
@@ -18,6 +17,7 @@ import {
 } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useQueryData } from 'hooks/useQuery';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import {
   IApprovedTokenInfos,
@@ -27,7 +27,7 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
@@ -39,7 +39,7 @@ export const ApproveTransactionComponent = () => {
   const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();

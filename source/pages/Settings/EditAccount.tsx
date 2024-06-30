@@ -9,8 +9,8 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Icon, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/format';
 
 const EditAccountView = () => {

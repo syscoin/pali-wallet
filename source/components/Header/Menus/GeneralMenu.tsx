@@ -3,13 +3,12 @@ import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate, getHost, getTabUrl } from 'utils/index';
 
 export const GeneralMenu: React.FC = () => {
@@ -35,25 +34,18 @@ export const GeneralMenu: React.FC = () => {
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    getTabUrl(browser).then(async (url: string) => {
-      if (!isMounted) return;
-
+    const getTabData = async () => {
+      const url = await getTabUrl();
       const host = getHost(url);
       const isConnected = dapp.isConnected(host);
-
       setCurrentTab({ host, isConnected });
-    });
-
-    return () => {
-      isMounted = false;
     };
-  }, [wallet.isUnlocked()]);
+    getTabData();
+  }, []);
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
-      getTabUrl(browser).then(async (url: string) => {
+      getTabUrl().then(async (url: string) => {
         const host = getHost(url);
         const isConnected = dapp.isConnected(host);
 

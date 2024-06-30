@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
-import { browser, Runtime } from 'webextension-polyfill-ts';
 
+import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
@@ -14,7 +14,7 @@ import { Message } from './types';
  * - Requests for Sys and Eth providers methods
  */
 const _messageHandler = async (host: string, message: Message) => {
-  if (browser.runtime.lastError) {
+  if (chrome.runtime.lastError) {
     throw new Error('Runtime last error');
   }
 
@@ -22,7 +22,7 @@ const _messageHandler = async (host: string, message: Message) => {
 
   const chain = getNetworkChain(isBitcoinBased);
 
-  const { dapp } = window.controller;
+  const { dapp } = getController();
   switch (message.type) {
     case 'ENABLE':
       return enable(host, chain, activeNetwork.chainId);
@@ -40,7 +40,10 @@ const _messageHandler = async (host: string, message: Message) => {
 /**
  * Receives and reply messages
  */
-export const onMessage = async (message: Message, port: Runtime.Port) => {
+export const onMessage = async (
+  message: Message,
+  port: chrome.runtime.Port
+) => {
   const { host } = new URL(port.sender.url);
   try {
     const response = await _messageHandler(host, message);

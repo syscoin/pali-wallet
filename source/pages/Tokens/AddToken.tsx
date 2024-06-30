@@ -10,8 +10,8 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 import { CustomToken } from './CustomToken';
 import { ImportToken } from './ImportToken';

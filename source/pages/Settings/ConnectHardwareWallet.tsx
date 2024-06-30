@@ -8,9 +8,9 @@ import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isTestnet, setIsTestnet] = useState<boolean>(false);

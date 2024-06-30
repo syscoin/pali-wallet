@@ -3,10 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import {
   ICustomFeeParams,
@@ -15,7 +15,7 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
-import { getController, dispatchBackgroundEvent } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
 import removeScientificNotation from 'utils/removeScientificNotation';
@@ -39,7 +39,7 @@ export const SendTransaction = () => {
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

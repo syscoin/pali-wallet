@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Layout, Card, Button } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>();
@@ -61,9 +61,9 @@ const PhraseView = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
+                async validator(_, value) {
                   try {
-                    const seed = controller.wallet.getSeed(value);
+                    const seed = await controller.wallet.getSeed(value);
                     if (seed) {
                       setPhrase(seed);
 

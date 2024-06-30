@@ -42,12 +42,6 @@ module.exports = {
 
   entry: {
     manifest: path.join(__dirname, 'manifest.json'),
-    webextension: path.join(
-      __dirname,
-      'node_modules',
-      'webextension-polyfill-ts',
-      'lib/index.js'
-    ),
     background: path.join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: path.join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     pali: path.join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),
@@ -69,6 +63,11 @@ module.exports = {
       'scripts/ContentScript/trezor',
       'trezor-usb-permissions.ts'
     ),
+    offscreenScript: path.join(
+      sourcePath,
+      'scripts/ContentScript/offscreen',
+      'index.ts'
+    ),
   },
   output: {
     path: path.join(destPath, targetBrowser),
@@ -80,9 +79,6 @@ module.exports = {
   resolve: {
     extensions: ['.ts', '.tsx', '.js', '.json'],
     alias: {
-      'webextension-polyfill-ts': path.resolve(
-        path.join(__dirname, 'node_modules', 'webextension-polyfill-ts')
-      ),
       assets: path.resolve(__dirname, 'source/assets'),
       components: path.resolve(__dirname, 'source/components'),
       scripts: path.resolve(__dirname, 'source/scripts'),
@@ -103,18 +99,18 @@ module.exports = {
   },
 
   module: {
-    rules: [
+    defaultRules: [
       {
-        type: 'javascript/auto', // prevent webpack handling json with its own loaders,
-        test: /manifest\.json$/,
-        use: {
-          loader: 'wext-manifest-loader',
-          options: {
-            usePackageJSONVersion: true, // set to false to not use package.json version for manifest
-          },
-        },
-        exclude: /node_modules/,
+        type: 'javascript/auto',
+        resolve: {},
       },
+      {
+        test: /\.json$/i,
+        type: 'json',
+      },
+    ],
+
+    rules: [
       {
         test: /\.txt$/i,
         type: 'asset/source', // replaced raw-loader
@@ -226,11 +222,33 @@ module.exports = {
       inject: 'body',
       chunks: ['trezorUSB'],
     }),
+    new HtmlWebpackPlugin({
+      template: path.join(viewsPath, 'offscreen.html'),
+      filename: 'offscreen.html',
+      inject: 'body',
+      chunks: ['offscreenScript'],
+    }),
     // write css file(s) to build folder
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     // copy static assets
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: './manifest.json',
+          to: path.join(__dirname, 'build/chrome'),
+          force: true,
+          transform: function (content, path) {
+            return Buffer.from(
+              JSON.stringify({
+                ...JSON.parse(content.toString()),
+              })
+            );
+          },
+        },
+      ],
     }),
     new NodePolyfillPlugin(),
   ],

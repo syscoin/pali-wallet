@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
-import { browser } from 'webextension-polyfill-ts';
 
+import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -25,16 +25,16 @@ export const popupPromise = async ({
   host: string;
   route: string;
 }) => {
-  const { dapp, createPopup } = window.controller;
-  if (
-    eventName !== 'connect' &&
-    eventName !== 'wallet_switchEthereumChain' &&
-    eventName !== 'wallet_addEthereumChain' &&
-    eventName !== 'change_UTXOEVM' &&
-    eventName !== 'switchNetwork' &&
-    !dapp.isConnected(host)
-  )
-    return;
+  const { dapp, createPopup } = getController();
+  // if (
+  //   eventName !== 'connect' &&
+  //   eventName !== 'wallet_switchEthereumChain' &&
+  //   eventName !== 'wallet_addEthereumChain' &&
+  //   eventName !== 'change_UTXOEVM' &&
+  //   eventName !== 'switchNetwork' &&
+  //   !dapp.isConnected(host)
+  // )
+  //   return;
   if (dapp.hasWindow(host))
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
@@ -49,18 +49,17 @@ export const popupPromise = async ({
     throw error;
   }
   return new Promise((resolve) => {
-    window.addEventListener(
-      `${eventName}.${host}`,
-      (event: CustomEvent) => {
-        if (event.detail !== undefined && event.detail !== null) {
+    self.addEventListener('message', (event) => {
+      if (event.data.eventName === `${eventName}.${host}`) {
+        if (event.data.detail !== undefined && event.data.detail !== null) {
           if (
             route === 'tx/send/ethTx' ||
             route === 'tx/send/approve' ||
             route === 'tx/send/nTokenTx'
           ) {
-            resolve(event.detail.hash);
+            resolve(JSON.parse(event.data.detail).hash);
           }
-          resolve(event.detail);
+          resolve(JSON.parse(event.data.detail));
         }
         if (
           route === 'switch-EthChain' ||
@@ -71,11 +70,10 @@ export const popupPromise = async ({
           dapp.setHasWindow(host, false);
           return null;
         }
-      },
-      { once: true, passive: true }
-    );
+      }
+    });
 
-    browser.windows.onRemoved.addListener((id) => {
+    chrome.windows.onRemoved.addListener((id) => {
       if (id === popup.id) {
         if (
           route === 'tx/send/ethTx' ||

@@ -6,8 +6,8 @@ import { useSelector } from 'react-redux';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 import { AccountHeader } from '.';
 import { GeneralMenu, NetworkMenu } from './Menus';

@@ -1,5 +1,3 @@
-import { Runtime } from 'webextension-polyfill-ts';
-
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
@@ -16,7 +14,7 @@ interface IDappsSession {
   [host: string]: {
     activeAddress: string | null;
     hasWindow: boolean;
-    port: Runtime.Port;
+    port: chrome.runtime.Port;
   };
 }
 
@@ -27,10 +25,13 @@ interface IDappsSession {
  */
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
+  const isConnected = (host: string) => {
+    const { dapps } = store.getState().dapp;
 
-  const isConnected = (host: string) => Boolean(_dapps[host]?.activeAddress);
+    return !!dapps?.[host];
+  };
 
-  const setup = (port: Runtime.Port) => {
+  const setup = (port: chrome.runtime.Port) => {
     const { isBitcoinBased } = store.getState().vault;
     const { host } = new URL(port.sender.url);
     const activeAccount = isBitcoinBased
@@ -49,6 +50,7 @@ const DAppController = (): IDAppController => {
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
+    _dapps[dapp.host] = { activeAddress: '', hasWindow: false, port: null };
     _dapps[dapp.host].activeAddress = isBitcoinBased
       ? accounts[dapp.accountType][dapp.accountId].xpub
       : accounts[dapp.accountType][dapp.accountId].address;

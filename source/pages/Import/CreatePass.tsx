@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom';
 
 import { PasswordForm } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
+// import { getController } from 'utils/browser';
 
 export const CreatePasswordImport = () => {
   const controller = getController();

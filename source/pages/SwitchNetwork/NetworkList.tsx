@@ -6,9 +6,9 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Button } from 'components/Button';
 import { useUtils } from 'hooks/useUtils';
+import { getController } from 'scripts/Background';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
-import { getController } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 import { getNetworkChain } from 'utils/network';
 import { NetworkType } from 'utils/types';

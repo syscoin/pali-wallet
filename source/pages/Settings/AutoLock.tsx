@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout, Button } from 'components/index';
 import { TimeSetSuccessfully } from 'components/Modal/WarningBaseModal';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const AutolockView = () => {
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);

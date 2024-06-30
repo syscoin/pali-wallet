@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout, NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();

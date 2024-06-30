@@ -12,10 +12,10 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { Card, Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
-import { ellipsis, getAssetBalance } from 'utils/index';
+import { getAssetBalance, ellipsis } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();

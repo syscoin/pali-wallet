@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import metamaskIcon from 'assets/icons/metamask.svg';
 import paliIcon from 'assets/icons/pali.svg';
 import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const RemoveEthView = () => {
   const { hasEthProperty } = useSelector((state: RootState) => state.vault);

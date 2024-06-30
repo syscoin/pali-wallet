@@ -9,8 +9,8 @@ import {
   SecondaryButton,
   Fee as FeeFC,
 } from 'components/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 interface IFee {
   onFinish: (fee: number) => any;

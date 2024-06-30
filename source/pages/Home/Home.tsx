@@ -12,10 +12,10 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { setFaucetModalState } from 'state/vault';
-import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,

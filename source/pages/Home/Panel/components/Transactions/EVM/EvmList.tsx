@@ -7,10 +7,10 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
+import { getController } from 'scripts/Background';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
-import { getController } from 'utils/browser';
 import {
   getERC20TransferValue,
   handleUpdateTransaction,

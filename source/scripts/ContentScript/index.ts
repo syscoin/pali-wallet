@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   PaliEvents,
@@ -8,7 +7,7 @@ import {
 const emitter = new EventEmitter();
 
 // Connect to pali
-const backgroundPort = browser.runtime.connect(undefined, {
+const backgroundPort = chrome.runtime.connect(undefined, {
   name: 'pali-inject',
 });
 
@@ -170,7 +169,7 @@ export const injectScriptFile = (file: string, id: string) => {
     }
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
-    scriptTag.src = file.includes('http') ? file : browser.runtime.getURL(file);
+    scriptTag.src = file.includes('http') ? file : chrome.runtime.getURL(file);
     scriptTag.setAttribute('id', id);
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {

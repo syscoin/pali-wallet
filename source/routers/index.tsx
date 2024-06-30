@@ -44,13 +44,15 @@ import { ChainErrorPage } from 'pages/Chain';
 import { Faucet } from 'pages/Faucet';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
+  getController,
   inactivityTime,
   removeVerifyPaliRequestListener,
   resetPaliRequestsCount,
   verifyPaliRequests,
 } from 'scripts/Background';
+// import MasterController from 'scripts/Background/controllers';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+// import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -115,7 +117,7 @@ export const Router = () => {
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname);
+    // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
     if (isFullscreen) {
       navigate('/settings/account/hardware');

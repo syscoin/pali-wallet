@@ -8,10 +8,10 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { getController } from 'utils/browser';
 import { camelCaseToText, ellipsis } from 'utils/index';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
@@ -127,14 +127,14 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
     transactionTx = tx;
-    txValue = tx?.vout[0]?.value || '0';
+    txValue = tx?.vout?.[0]?.value || '0';
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
       ? false
       : tx.from.toLowerCase() === currentAccount.address;
 
-    const vinAddresses = tx.vin[0]?.addresses || [];
+    const vinAddresses = tx.vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
       label: 'To',
@@ -142,7 +142,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     };
     formattedTransaction.push(vinFormattedValue);
 
-    const voutAddress = tx.vout[1]?.addresses || [];
+    const voutAddress = tx?.vout?.[1]?.addresses || [];
     const voutFormattedValue = {
       value: voutAddress.join(', '),
       label: 'From',

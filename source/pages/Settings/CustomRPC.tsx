@@ -13,9 +13,9 @@ import { Button, Layout, Tooltip } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
-import { getController } from 'utils/browser';
 import { NetworkType } from 'utils/types';
 
 const CustomRPCView = () => {
@@ -33,6 +33,7 @@ const CustomRPCView = () => {
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
   const { activeNetwork, isBitcoinBased } = useSelector(
+    // eslint-disable-next-line no-shadow
     (state: RootState) => state.vault
   );
   const { wallet } = getController();

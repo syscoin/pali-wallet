@@ -9,8 +9,9 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { ITokenEthProps } from 'types/tokens';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();

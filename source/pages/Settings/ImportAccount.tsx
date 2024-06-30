@@ -7,8 +7,8 @@ import { useSelector } from 'react-redux';
 import { Layout, NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {

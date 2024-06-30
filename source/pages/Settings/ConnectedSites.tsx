@@ -5,9 +5,9 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { getController } from 'scripts/Background';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate, ellipsis } from 'utils/index';
 
 const ConnectedSites = () => {

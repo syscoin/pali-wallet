@@ -34,12 +34,12 @@ import {
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const { wallet, appRoute } = getController();
+  const { appRoute, wallet } = getController();
   const { navigate, alert } = useUtils();
   const { pathname, search } = useLocation();
 
