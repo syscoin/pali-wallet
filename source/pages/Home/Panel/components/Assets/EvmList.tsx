@@ -1,11 +1,11 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import {
-  FiTrash as DeleteIcon,
   RiEditLine as EditIcon,
   RiShareForward2Line as DetailsIcon,
-} from 'react-icons/all';
+} from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
