@@ -315,7 +315,7 @@ const VaultState = createSlice({
         return;
       }
 
-      if (isFirstTime) {
+      if (isFirstTime && !state.isBitcoinBased) {
         state.faucetModal = {
           57: true,
           570: true,
