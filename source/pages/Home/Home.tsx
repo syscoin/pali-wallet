@@ -162,26 +162,20 @@ export const Home = () => {
   const FaucetModals = useMemo(() => {
     const chainId = activeNetwork?.chainId;
 
-    try {
-      if (
-        !isBitcoinBased &&
-        chainId &&
-        Object.values(FaucetChainIds).includes(chainId)
-      ) {
-        return (
-          <>
-            {faucetModal && faucetModal[chainId] ? (
-              <FaucetFirstAccessModal
-                handleOnClose={handleOnCloseFaucetModal}
-              />
-            ) : (
-              <FaucetAccessModal />
-            )}
-          </>
-        );
-      }
-    } catch (err) {
-      console.log(err, `err`);
+    if (
+      !isBitcoinBased &&
+      chainId &&
+      Object.values(FaucetChainIds).includes(chainId)
+    ) {
+      return (
+        <>
+          {faucetModal && faucetModal[chainId] ? (
+            <FaucetFirstAccessModal handleOnClose={handleOnCloseFaucetModal} />
+          ) : (
+            <FaucetAccessModal />
+          )}
+        </>
+      );
     }
     return null;
   }, [
