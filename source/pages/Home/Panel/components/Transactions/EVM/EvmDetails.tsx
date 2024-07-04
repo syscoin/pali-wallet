@@ -31,7 +31,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const [isTxSent, setIsTxSent] = useState(false);
   const [transactionTx, setTransactionTx] = useState(null);
   const [txValue, setTxValue] = useState<any>();
-  const [txSymbol, setTxSymbol] = useState('');
+  const [txSymbol, setTxSymbol] = useState<any>('');
   const [formattedTransaction, setFormattedTransaction] = useState([]);
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
