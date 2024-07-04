@@ -2333,10 +2333,15 @@
   resolved "https://registry.yarnpkg.com/@nomiclabs/hardhat-ethers/-/hardhat-ethers-2.2.3.tgz#b41053e360c31a32c2640c9a45ee981a7e603fe0"
   integrity sha512-YhzPdzb612X591FOe68q+qXVXGG2ANZRvDo0RRUtimev85rCrAlv/TLMEZw5c+kq9AbzocLTVX/h2jVIFPL9Xg==
 
+"@pollum-io/sysweb3-core@1.0.26":
+  version "1.0.26"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
+  integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
+
 "@pollum-io/sysweb3-core@file:../sysweb3/packages/sysweb3-core/dist":
   version "1.0.26"
 
-"@pollum-io/sysweb3-keyring@file:../sysweb3/packages/sysweb3-keyring/dist":
+"@pollum-io/sysweb3-keyring@/Volumes/SSD/Lucas/Jobs/Pollum/sysweb3/packages/sysweb3-keyring/dist":
   version "1.0.478"
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
@@ -2345,6 +2350,42 @@
     "@ledgerhq/hw-transport-webhid" "^6.27.19"
     "@ledgerhq/logs" "^6.10.1"
     "@pollum-io/sysweb3-core" "file:../sysweb3/packages/sysweb3-core/dist"
+    "@pollum-io/sysweb3-network" "^1.0.95"
+    "@pollum-io/sysweb3-utils" "^1.1.232"
+    "@trezor/connect-web" "^9.1.5"
+    "@trezor/utxo-lib" "^1.0.12"
+    axios "^1.6.0"
+    bip32-path "^0.4.2"
+    bip39 "^3.0.4"
+    bip84 "^0.2.7"
+    bitcoin-ops "^1.4.1"
+    bitcoinjs-lib "^6.1.5"
+    bs58check "^3.0.1"
+    coinselectsyscoin "^1.0.77"
+    crypto-js "^4.2.0"
+    dotenv "^16.3.1"
+    eth-chains "^2.0.0"
+    eth-sig-util "^3.0.1"
+    ethereumjs-util "^7.1.5"
+    ethereumjs-wallet "^1.0.2"
+    ethers "^5.6.4"
+    lodash "^4.17.21"
+    satoshi-bitcoin "^1.0.5"
+    syscoinjs-lib "^1.0.218"
+    syscointx-js "^1.0.106"
+    web3 "^1.7.1"
+
+"@pollum-io/sysweb3-keyring@^1.0.479":
+  version "1.0.479"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.479.tgz#0dd20786426c9d8ed8bb3f328f8bf8ecae133338"
+  integrity sha512-LvRUH2jZh2Pr4Dt/rsA2GWOVHeWNlFjBfsdVu7ijWMP0D+8bSUoamapX8PRvzHU7A6D5JzpzAN4/KrR7p1iIXg==
+  dependencies:
+    "@bitcoinerlab/descriptors" "^2.0.1"
+    "@bitcoinerlab/secp256k1" "^1.0.5"
+    "@ledgerhq/hw-app-eth" "^6.34.8"
+    "@ledgerhq/hw-transport-webhid" "^6.27.19"
+    "@ledgerhq/logs" "^6.10.1"
+    "@pollum-io/sysweb3-core" "1.0.26"
     "@pollum-io/sysweb3-network" "^1.0.95"
     "@pollum-io/sysweb3-utils" "^1.1.232"
     "@trezor/connect-web" "^9.1.5"
