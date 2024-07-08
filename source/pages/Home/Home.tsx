@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -6,16 +6,12 @@ import { useLocation } from 'react-router-dom';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
-import { FaucetAccessModal } from 'components/Modal/FaucetAccessModal';
-import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
-import { setFaucetModalState } from 'state/vault';
+import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,
@@ -35,7 +31,7 @@ export const Home = () => {
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
-    (priceState: RootState) => priceState.price.fiat
+    (state: RootState) => state.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
   const {
@@ -46,8 +42,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
-    faucetModal,
-  } = useSelector((rootState: RootState) => rootState.vault);
+  } = useSelector((state: RootState) => state.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -57,33 +52,19 @@ export const Home = () => {
   //* Constants
   const { url } = activeNetwork;
   const controller = getController();
-  const { wallet } = controller;
-
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
-
   const isUnlocked =
     controller.wallet.isUnlocked() &&
     accounts[activeAccount.type][activeAccount.id].address !== '';
-
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
     accounts[activeAccount.type][activeAccount.id].balances;
 
-  const actualBalance = useMemo(
-    () => (isBitcoinBased ? syscoinBalance : ethereumBalance),
-    [syscoinBalance, ethereumBalance]
-  );
+  const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
+  const moreThanMillion = actualBalance >= ONE_MILLION;
 
-  const moreThanMillion = useMemo(
-    () => actualBalance > ONE_MILLION,
-    [actualBalance]
-  );
-
-  const moreThanTrillion = useMemo(
-    () => actualBalance > ONE_TRILLION,
-    [actualBalance]
-  );
+  const moreThanTrillion = actualBalance > ONE_TRILLION;
 
   const closeModal = () => {
     setShowModalCongrats(false);
@@ -138,38 +119,16 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
-  const handleOnCloseFaucetModal = useCallback(() => {
-    wallet.setFaucetModalState(activeNetwork.chainId);
-  }, [activeNetwork, setFaucetModalState]);
-
-  const shouldShowFaucetFirstModal = useMemo(
-    () => faucetModal[activeNetwork.chainId],
-    [faucetModal, activeNetwork]
-  );
-
-  const formattedBalance = useMemo(
-    () =>
-      moreThanMillion
-        ? formatMillionNumber(actualBalance)
-        : formatBalanceDecimals(actualBalance || 0, false),
-    [actualBalance, moreThanMillion]
-  );
-
-  const shouldRenderHomePage = useMemo(
-    () =>
-      accounts[activeAccount.type][activeAccount.id] &&
-      lastLogin &&
-      isUnlocked &&
-      !isNetworkChanging,
-    [accounts, activeAccount, lastLogin, isUnlocked, isNetworkChanging]
-  );
-
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
-      {shouldRenderHomePage ? (
+      {accounts[activeAccount.type][activeAccount.id] &&
+      lastLogin &&
+      isUnlocked &&
+      !isNetworkChanging ? (
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
+<<<<<<< HEAD
           {!isBitcoinBased &&
             Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
               <>
@@ -183,6 +142,8 @@ export const Home = () => {
               </>
             )}
 
+=======
+>>>>>>> parent of 44d7ef9b (feat: new page Faucet (#580))
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
@@ -190,7 +151,9 @@ export const Home = () => {
                   id="home-balance"
                   className={`font-rubik text-5xl font-medium`}
                 >
-                  {formattedBalance}{' '}
+                  {moreThanMillion
+                    ? formatMillionNumber(actualBalance)
+                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
                 </p>
 
                 <p
@@ -202,7 +165,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-amount">{formatFiatAmount}</p>
+              <p id="fiat-ammount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
