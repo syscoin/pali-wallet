@@ -11,7 +11,7 @@ import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafau
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { getController } from 'scripts/Background';
 import {
   ONE_MILLION,
   ONE_TRILLION,

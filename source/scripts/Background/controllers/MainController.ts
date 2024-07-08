@@ -203,7 +203,7 @@ class MainController extends KeyringManager {
     store.dispatch(setEthProperty(exist));
   }
 
-  const setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
+  public setAdvancedSettings = (advancedProperty: string, isActive: boolean) => {
     store.dispatch(setSettings({ advancedProperty, isActive }));
   }
 

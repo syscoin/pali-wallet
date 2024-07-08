@@ -16,7 +16,6 @@ import {
   dispatchChangeNetworkBgEvent,
   getController,
 } from 'scripts/Background';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { NetworkType } from 'utils/types';
 

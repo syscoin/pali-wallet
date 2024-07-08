@@ -4,13 +4,13 @@ import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
 import {
-  initialNetworksState,
+  IKeyringBalances,
   initialActiveHdAccountState,
   initialActiveImportedAccountState,
-  KeyringAccountType,
-  IWalletState,
-  IKeyringBalances,
   initialActiveTrezorAccountState,
+  initialNetworksState,
+  IWalletState,
+  KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
@@ -388,11 +388,11 @@ const VaultState = createSlice({
       action: PayloadAction<{
         property: string;
         value:
-          | number
-          | string
-          | boolean
-          | any[]
-          | { ethereum: any[]; syscoin: any[] };
+        | number
+        | string
+        | boolean
+        | any[]
+        | { ethereum: any[]; syscoin: any[] };
       }>
     ) {
       const { id, type } = state.activeAccount;
@@ -500,8 +500,8 @@ const VaultState = createSlice({
       if (
         !Boolean(
           findAccount.address === accounts[type][id].address ||
-            isNetworkChanging ||
-            isBitcoinBased
+          isNetworkChanging ||
+          isBitcoinBased
         )
       )
         return;
@@ -583,8 +583,8 @@ const VaultState = createSlice({
             // If the array length is less than 30, simply push the new transaction
             currentUserTransactions.push(
               transaction as typeof networkType extends TransactionsType.Ethereum
-                ? IEvmTransaction
-                : ISysTransaction
+              ? IEvmTransaction
+              : ISysTransaction
             );
           }
         }
@@ -744,7 +744,7 @@ const VaultState = createSlice({
         findTxIndex
       ] = {
         ...state.accounts[type][id].transactions[TransactionsType.Ethereum][
-          chainID
+        chainID
         ][findTxIndex],
         isCanceled: true,
       } as IEvmTransactionResponse;
