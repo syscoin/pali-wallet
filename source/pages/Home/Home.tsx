@@ -5,7 +5,7 @@ import { useLocation } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
-import { Header, Icon, Button, Loading } from 'components/index';
+import { Button, Header, Icon, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
@@ -15,9 +15,9 @@ import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,
+  formatBalanceDecimals,
   formatMillionNumber,
   verifyIfIsTestnet,
-  formatBalanceDecimals,
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
@@ -128,22 +128,6 @@ export const Home = () => {
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
-<<<<<<< HEAD
-          {!isBitcoinBased &&
-            Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
-              <>
-                {shouldShowFaucetFirstModal ? (
-                  <FaucetFirstAccessModal
-                    handleOnClose={handleOnCloseFaucetModal}
-                  />
-                ) : (
-                  <FaucetAccessModal />
-                )}
-              </>
-            )}
-
-=======
->>>>>>> parent of 44d7ef9b (feat: new page Faucet (#580))
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">

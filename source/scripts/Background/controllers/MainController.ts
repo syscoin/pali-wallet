@@ -960,8 +960,6 @@ class MainController extends KeyringManager {
               activeNetwork.url
             );
 
-            console.log('updatedNfts', updatedNfts);
-
             const validateUpdatedAndPreviousNftsLength =
               updatedNfts.length < currentAccount.assets.nfts.length;
 
@@ -1420,58 +1418,7 @@ class MainController extends KeyringManager {
         activeAccount,
       }),
     ]);
-<<<<<<< HEAD
   }
 }
-=======
-  };
-
-  return {
-    importLedgerAccount,
-    createWallet,
-    forgetWallet,
-    unlockFromController,
-    setIsLastTxConfirmed,
-    lock,
-    createAccount,
-    editAccountLabel,
-    setAdvancedSettings,
-    handleWatchAsset,
-    account: walletController.account,
-    setAccount,
-    setAutolockTimer,
-    setActiveNetwork,
-    addCustomRpc,
-    setIsAutolockEnabled,
-    getRpc,
-    getSeed,
-    editCustomRpc,
-    removeKeyringNetwork,
-    resolveAccountConflict,
-    resolveError,
-    getChangeAddress,
-    getRecommendedFee,
-    assets: assetsManager,
-    transactions: transactionsManager,
-    sendAndSaveTransaction,
-    setEvmTransactionAsCanceled,
-    setEvmTransactionAsAccelerated,
-    getAssetInfo,
-    updateAssetsFromCurrentAccount,
-    fetchAndUpdateNftsState,
-    updateUserNativeBalance,
-    updateUserTransactionsState,
-    getLatestUpdateForCurrentAccount,
-    importAccountFromPrivateKey,
-    removeWindowEthProperty,
-    addWindowEthProperty,
-    setHasEthProperty,
-    importTrezorAccount,
-    validatePendingEvmTransactions,
-    ...keyringManager,
-    openDAppErrorModal,
-  };
-};
->>>>>>> parent of 44d7ef9b (feat: new page Faucet (#580))
 
 export default MainController;
