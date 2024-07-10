@@ -17,22 +17,21 @@ const EthSign: React.FC<ISign> = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [state, setState] = useState<string>('Details');
+  const [tabDetailsState, setTabDetailsState] = useState<string>('Details');
   const [errorMsg, setErrorMsg] = useState('');
   const [message, setMessage] = useState<string>('');
-  const [isReconectModalOpen, setIsReconectModalOpen] =
+  const [isReconnectModalOpen, setIsReconnectModalOpen] =
     useState<boolean>(false);
 
   const tabLabel = ['Details', 'Data'];
   const url = browser.runtime.getURL('app.html');
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    activeNetwork,
+    isBitcoinBased,
+  } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const { label, balances, address } = activeAccount;
   const { currency } = activeNetwork;
 
@@ -104,7 +103,7 @@ const EthSign: React.FC<ISign> = () => {
         return;
       }
       if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
-        setIsReconectModalOpen(true);
+        setIsReconnectModalOpen(true);
         setLoading(false);
         return;
       }
@@ -185,12 +184,12 @@ const EthSign: React.FC<ISign> = () => {
         buttonText="Ok"
       />
       <DefaultModal
-        show={isReconectModalOpen}
+        show={isReconnectModalOpen}
         title={t('settings.ledgerReconnection')}
         buttonText={t('buttons.reconnect')}
         description={t('settings.ledgerReconnectionMessage')}
         onClose={() => {
-          setIsReconectModalOpen(false);
+          setIsReconnectModalOpen(false);
           window.close();
           window.open(`${url}?isReconnect=true`, '_blank');
         }}
@@ -229,12 +228,12 @@ const EthSign: React.FC<ISign> = () => {
 
           <div className="flex flex-col ">
             <div className="flex flex-row ml-[1.5rem] gap-3 items-center">
-              {tabLabel?.map((tabLabel, index) => (
+              {tabLabel?.map((labelTab, index) => (
                 <div
                   key={index}
-                  onClick={() => setState(tabLabel)}
+                  onClick={() => setTabDetailsState(labelTab)}
                   className={` ${
-                    tabLabel === state
+                    labelTab === tabDetailsState
                       ? 'bg-brand-blue600'
                       : 'bg-alpha-whiteAlpha200'
                   } rounded-t-[20px] py-[8px] px-[16px] h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 text-center`}
@@ -244,7 +243,7 @@ const EthSign: React.FC<ISign> = () => {
               ))}
             </div>
             <div className="bg-brand-blue600 w-[396px] relative left-[0%] flex flex-col items-center justify-center p-6 rounded-[20px]">
-              {state === 'Details' ? (
+              {tabDetailsState === 'Details' ? (
                 <>
                   <AccountDetailsSignature />
                   <SignatureDetails />
@@ -257,7 +256,7 @@ const EthSign: React.FC<ISign> = () => {
 
           <div
             className={` ${
-              state === 'Details' ? 'mt-12' : 'my-8'
+              tabDetailsState === 'Details' ? 'mt-12' : 'my-8'
             } gap-6 flex items-center justify-between w-full md:max-w-2xl`}
           >
             <Button

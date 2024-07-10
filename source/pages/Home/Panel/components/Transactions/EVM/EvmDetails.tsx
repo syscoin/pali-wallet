@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect } from 'react';
+import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -8,7 +8,6 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import {
@@ -28,7 +27,13 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   } = useSelector((state: RootState) => state.vault);
 
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
+  const [isTxCanceled, setIsTxCanceled] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isTxSent, setIsTxSent] = useState(false);
+  const [transactionTx, setTransactionTx] = useState(null);
+  const [txValue, setTxValue] = useState<any>();
+  const [txSymbol, setTxSymbol] = useState<any>('');
+  const [formattedTransaction, setFormattedTransaction] = useState([]);
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -52,63 +57,67 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     return `${currency || 'SYS'}`.toUpperCase();
   };
 
-  let isTxCanceled: boolean;
-  let isConfirmed: boolean;
-  let isTxSent: boolean;
-  let transactionTx: any;
-  let txValue: number;
-  let txSymbol: string;
+  useEffect(() => {
+    if (copied) {
+      alert.removeAll();
+      alert.success(t('home.hashCopied'));
+    }
+  }, [copied, t]);
 
   useEffect(() => {
-    if (!copied) return;
+    const ethereumTransactions: any =
+      transactions[TransactionsType.Ethereum][chainId];
 
-    alert.removeAll();
-    alert.success(t('home.hashCopied'));
-  }, [copied]);
+    if (ethereumTransactions) {
+      const foundTransaction = ethereumTransactions?.find((tx: any) => {
+        if (tx.value && tx.value === 'object') {
+          setTxValue(tx.value?.hex);
+        } else {
+          setTxValue(tx.value);
+        }
 
-  const formattedTransaction = [];
+        if (tx?.hash !== hash) return false;
 
-  const ethereumTransactions = transactions[TransactionsType.Ethereum][
-    chainId
-  ] as IEvmTransaction[];
+        const isErc20Tx = isERC20Transfer(tx);
+        setTransactionTx(tx);
+        setTxValue(
+          isErc20Tx
+            ? Number(getERC20TransferValue(tx)) / 1e18
+            : parseInt(tx.value, 16) / 1e18
+        );
+        setTxSymbol(getTokenSymbol(isErc20Tx, tx));
+        setIsTxCanceled(tx?.isCanceled === true);
+        setIsConfirmed(tx.confirmations > 0);
+        setIsTxSent(
+          isBitcoinBased
+            ? false
+            : tx.from.toLowerCase() === currentAccount.address
+        );
 
-  ethereumTransactions?.find((tx: any) => {
-    tx.value = !!tx.value?.hex ? tx.value?.hex : tx.value;
+        const formattedTransactionList = [];
 
-    if (tx?.hash !== hash) return null;
-    const isErc20Tx = isERC20Transfer(tx as any);
-    transactionTx = tx;
-    txValue = isErc20Tx
-      ? Number(getERC20TransferValue(tx as any)) / 1e18
-      : parseInt(tx.value, 16) / 1e18;
-    txSymbol = getTokenSymbol(isErc20Tx, tx);
-    isTxCanceled = tx?.isCanceled === true;
-    isConfirmed = tx.confirmations > 0;
-    isTxSent = isBitcoinBased
-      ? false
-      : tx.from.toLowerCase() === currentAccount.address;
+        for (const [key, value] of Object.entries(tx)) {
+          const formattedKey = camelCaseToText(key);
+          const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
+          const formattedValue = {
+            value: typeof value === 'boolean' ? formattedBoolean : value,
+            label: formattedKey,
+            canCopy: String(value).length >= 20 && key !== 'image',
+          };
+          if (typeof value !== 'object')
+            formattedTransactionList.push(formattedValue);
+        }
 
-    for (const [key, value] of Object.entries(tx)) {
-      const formattedKey = camelCaseToText(key);
-      const formattedBoolean = Boolean(value) ? 'Yes' : 'No';
+        setFormattedTransaction(formattedTransactionList);
+        return true;
+      });
 
-      const formattedValue = {
-        value: typeof value === 'boolean' ? formattedBoolean : value,
-        label: formattedKey,
-        canCopy: false,
-      };
-
-      if (String(value).length >= 20 && key !== 'image') {
-        formattedValue.canCopy = true;
+      if (!foundTransaction) {
+        setTransactionTx(null);
+        setFormattedTransaction([]);
       }
-
-      const isValid = typeof value !== 'object';
-
-      if (isValid) formattedTransaction.push(formattedValue);
     }
-
-    return formattedTransaction;
-  });
+  }, [transactions, chainId, hash, isBitcoinBased, currentAccount]);
 
   const formattedTransactionDetails = formattedTransaction
     .filter(({ label }) => EvmTxDetailsLabelsToKeep.includes(label))

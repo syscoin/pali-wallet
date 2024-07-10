@@ -70,6 +70,7 @@ interface ITransactionReceipt {
   transactionHash: string;
   transactionIndex: number;
   type: number;
+  value?: TransactionValueType;
 }
 
 export interface IEvmTransactionResponse extends IEvmTransaction {
@@ -150,7 +151,7 @@ export interface ITransactionsManagerUtils {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string
-  ) => Promise<ISysTransaction[] | IEvmTransaction[]>;
+  ) => Promise<IEvmTransaction[]>;
 }
 export interface ITransactionsManager {
   evm: IEvmTransactionsController;
