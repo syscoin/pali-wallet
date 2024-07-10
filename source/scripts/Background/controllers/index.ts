@@ -19,7 +19,6 @@ import {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setAdvancedSettings,
-  setFaucetModalState,
   setIsLastTxConfirmed,
   setNetwork,
   setTimer,
@@ -179,12 +178,6 @@ const MasterController = (
     const isNetworkOldUTXOStateWithoutTestnet =
       store.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
         ?.isTestnet === undefined;
-
-    const isOldFaucetState = store.getState()?.vault?.faucetModal === undefined;
-
-    if (isOldFaucetState) {
-      store.dispatch(setFaucetModalState({ chainId: 0, isFirstTime: true }));
-    }
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
