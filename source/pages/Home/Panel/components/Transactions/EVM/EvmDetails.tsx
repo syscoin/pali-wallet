@@ -8,6 +8,7 @@ import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import {
@@ -65,8 +66,9 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   }, [copied, t]);
 
   useEffect(() => {
-    const ethereumTransactions: any =
-      transactions[TransactionsType.Ethereum][chainId];
+    const ethereumTransactions = transactions[TransactionsType.Ethereum][
+      chainId
+    ] as IEvmTransaction[];
 
     if (ethereumTransactions) {
       const foundTransaction = ethereumTransactions?.find((tx: any) => {
