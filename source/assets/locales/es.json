@@ -521,20 +521,5 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "¡Mantén en secreto tu seed frase!",
     "anyoneWithThisInfo": "Cualquier persona con esta información puede robar tus fondos."
-  },
-  "faucet": {
-    "grabTextOne": "¡Obtén ${{token}} con nuestra llave!",
-    "grabTextTwo": "¡Obtén ${{token}} con nuestra llave en el {{rpcName}}!",
-    "pleaseWait": "Por favor, espere mientras hacemos nuestra magia...",
-    "doNotClose": "No cierres la billetera.",
-    "ERROR": "¡ERROR!",
-    "CONGRATULATIONS": "¡FELICITACIONES!",
-    "someHasJust": "Algo de {{tokenSymbol}} acaba de ser enviado a tu billetera de {{networkName}}.",
-    "transactionHash": "Hash de transacción",
-    "requestNow": "Solicitar ahora",
-    "Close": "Cerrar",
-    "tryAgain": "Intentar de nuevo",
-    "withOurFaucet": "¡Obtén {{token}} con nuestra llave para comenzar a experimentar la red {{networkName}}!",
-    "youCanGet": "Puedes obtener {{quantity}} {{token}} por dirección de billetera cada 24 horas."
   }
 }
