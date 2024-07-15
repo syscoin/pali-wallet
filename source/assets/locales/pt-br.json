@@ -393,20 +393,5 @@
     "transactionDetails": "DETALLES DE LA TRANSACCIÓN",
     "importWallet": "Importar billetera",
     "congratulations": "PARABÉNS!"
-  },
-  "faucet": {
-    "grabTextOne": "Pegue ${{token}} com nossa torneira!",
-    "grabTextTwo": "Pegue ${{token}} com nossa torneira no {{rpcName}}!",
-    "pleaseWait": "Por favor, aguarde enquanto trabalhamos nossa mágica...",
-    "doNotClose": "Não feche a carteira.",
-    "ERROR": "ERRO!",
-    "CONGRATULATIONS": "PARABÉNS!",
-    "someHasJust": "Algum {{tokenSymbol}} acabou de ser enviado para sua carteira {{networkName}}.",
-    "transactionHash": "Hash da transação",
-    "requestNow": "Solicitar agora",
-    "Close": "Fechar",
-    "tryAgain": "Tentar novamente",
-    "withOurFaucet": "Pegue {{token}} com nossa torneira para começar a experimentar a rede {{networkName}}!",
-    "youCanGet": "Você pode obter {{quantity}} {{token}} por endereço de carteira a cada 24 horas."
-  } 
+  }
 }
