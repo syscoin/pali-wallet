@@ -33,7 +33,7 @@ const CustomRPCView = () => {
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
   const { activeNetwork, isBitcoinBased } = useSelector(
-    (stateVault: RootState) => stateVault.vault
+    (rootState: RootState) => rootState.vault
   );
   const { wallet } = getController();
   const { alert, navigate } = useUtils();
@@ -74,7 +74,6 @@ const CustomRPCView = () => {
         setAddedRpc(true);
         return;
       }
-
       await controller.wallet.editCustomRpc(customRpc, state.selected);
       setLoading(false);
       setAddedRpc(true);
@@ -99,7 +98,7 @@ const CustomRPCView = () => {
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
     symbol: (state && state.selected && state.selected.currency) ?? '',
-    explorer: (state && state.selected && state.selected.explorer) ?? '',
+    explorer: (state && state.selected && state.selected.url) ?? '',
   };
 
   const isInputDisableByEditMode = state ? state.isDefault : false;
