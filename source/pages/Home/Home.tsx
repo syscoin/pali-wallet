@@ -7,6 +7,7 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -105,7 +106,7 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  const formatFiatAmmount = useMemo(() => {
+  const formatFiatAmount = useMemo(() => {
     if (isTestnet) {
       return null;
     }
@@ -126,7 +127,7 @@ export const Home = () => {
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
-
+          <WalletProviderDefaultModal />
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">
@@ -148,7 +149,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{formatFiatAmmount}</p>
+              <p id="fiat-ammount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
