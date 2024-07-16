@@ -142,10 +142,30 @@ export const Home = () => {
     wallet.setFaucetModalState(activeNetwork.chainId);
   }, [activeNetwork, setFaucetModalState]);
 
-  const shouldShowFaucetFirstModal = useMemo(
-    () => faucetModal[activeNetwork.chainId],
-    [faucetModal, activeNetwork]
-  );
+  const FaucetModals = useMemo(() => {
+    const chainId = activeNetwork?.chainId;
+    if (
+      !isBitcoinBased &&
+      chainId &&
+      Object.values(FaucetChainIds).includes(chainId)
+    ) {
+      return (
+        <>
+          {faucetModal && faucetModal[chainId] ? (
+            <FaucetFirstAccessModal handleOnClose={handleOnCloseFaucetModal} />
+          ) : (
+            <FaucetAccessModal />
+          )}
+        </>
+      );
+    }
+    return null;
+  }, [
+    isBitcoinBased,
+    activeNetwork?.chainId,
+    faucetModal,
+    activeNetwork?.chainId,
+  ]);
 
   const formattedBalance = useMemo(
     () =>
@@ -169,20 +189,7 @@ export const Home = () => {
       {shouldRenderHomePage ? (
         <>
           <Header accountHeader />
-
-          {!isBitcoinBased &&
-            Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
-              <>
-                {shouldShowFaucetFirstModal ? (
-                  <FaucetFirstAccessModal
-                    handleOnClose={handleOnCloseFaucetModal}
-                  />
-                ) : (
-                  <FaucetAccessModal />
-                )}
-              </>
-            )}
-
+          {FaucetModals}
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
               <div className="balance-account flex gap-x-0.5 items-center justify-center">

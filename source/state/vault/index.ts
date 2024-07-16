@@ -308,13 +308,23 @@ const VaultState = createSlice({
     },
     setFaucetModalState: (
       state: IVaultState,
-      action: PayloadAction<number>
+      action: PayloadAction<{ chainId: number; isFirstTime?: boolean }>
     ) => {
+      const { chainId, isFirstTime } = action.payload;
       if (state.isBitcoinBased) {
         return;
       }
 
-      state.faucetModal[action.payload] = false;
+      if (isFirstTime && !state.isBitcoinBased) {
+        state.faucetModal = {
+          57: true,
+          570: true,
+          5700: true,
+          57000: true,
+        };
+        return;
+      }
+      state.faucetModal[chainId] = false;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
