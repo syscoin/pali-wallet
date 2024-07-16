@@ -130,6 +130,10 @@ const MainController = (walletState): IMainController => {
     store.dispatch(setSettings({ advancedProperty, isActive }));
   };
 
+  const setOpenDAppErrorModalState = () => {
+    store.dispatch(setOpenDAppErrorModal(true));
+  };
+
   const getKeyringManager = (): KeyringManager => keyringManager;
   const walletController = {
     account: {
@@ -1648,6 +1652,7 @@ const MainController = (walletState): IMainController => {
     ...keyringManager,
     openDAppErrorModal,
     setFaucetModalState,
+    setOpenDAppErrorModalState,
   };
 };
 

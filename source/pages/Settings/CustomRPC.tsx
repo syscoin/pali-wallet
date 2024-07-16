@@ -99,7 +99,7 @@ const CustomRPCView = () => {
     url: (state && state.selected && state.selected.url) ?? '',
     chainId: (state && state.selected && state.selected.chainId) ?? '',
     symbol: (state && state.selected && state.selected.currency) ?? '',
-    explorer: (state && state.selected && state.selected.explorer) ?? '',
+    explorer: (state && state.selected && state.selected.url) ?? '',
   };
 
   const isInputDisableByEditMode = state ? state.isDefault : false;
