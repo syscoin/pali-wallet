@@ -33,7 +33,7 @@ const CustomRPCView = () => {
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
   const { activeNetwork, isBitcoinBased } = useSelector(
-    (state: RootState) => state.vault
+    (stateRoot: RootState) => stateRoot.vault
   );
   const { wallet } = getController();
   const { alert, navigate } = useUtils();
