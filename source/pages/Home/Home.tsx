@@ -31,7 +31,7 @@ export const Home = () => {
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
-    (state: RootState) => state.price.fiat
+    (stateRoot: RootState) => stateRoot.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
   const {
@@ -42,7 +42,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((stateRoot: RootState) => stateRoot.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
