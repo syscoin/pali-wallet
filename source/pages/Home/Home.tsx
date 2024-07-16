@@ -189,6 +189,7 @@ export const Home = () => {
       {shouldRenderHomePage ? (
         <>
           <Header accountHeader />
+          <WalletProviderDefaultModal />
           {FaucetModals}
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
