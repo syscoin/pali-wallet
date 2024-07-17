@@ -52,7 +52,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
-      wallet.setOpenDAppErrorModalState(false);
+      wallet.setOpenDAppErrorModalState();
       await wallet.setActiveNetwork(network, chain);
       if (isDappAskingToChangeNetwork) window.close();
       navigate('/home');
