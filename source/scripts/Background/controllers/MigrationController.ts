@@ -11,11 +11,11 @@ const MigrationController = async () => {
     return;
   }
 
-  if (state.vault && !state.vault.faucetModal) {
-    console.log('chegou');
+  // if (state.vault && !state.vault?.faucetModal) {
+  //   console.log('chegou');
 
-    await versionX_X_X(state.vault);
-  }
+  //   await versionX_X_X(state.vault);
+  // }
 };
 
 export default MigrationController;
