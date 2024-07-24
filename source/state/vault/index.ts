@@ -81,6 +81,7 @@ export const initialState: IVaultState = {
   isPolling: false,
   currentBlock: undefined,
   coinsList: [],
+  version: 'X',
 };
 
 const VaultState = createSlice({

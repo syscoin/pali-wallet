@@ -43,6 +43,7 @@ export interface IVaultState {
   lastLogin: number;
   networks: INetworksVault;
   timer: number;
+  version: string;
 }
 
 export interface INetworksVault {
