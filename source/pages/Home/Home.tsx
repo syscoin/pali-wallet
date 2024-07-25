@@ -144,6 +144,11 @@ export const Home = () => {
 
   const FaucetModals = useMemo(() => {
     const chainId = activeNetwork?.chainId;
+
+    if (!faucetModal || !activeNetwork || !chainId) {
+      return false;
+    }
+
     if (
       !isBitcoinBased &&
       chainId &&
