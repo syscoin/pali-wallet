@@ -44,7 +44,9 @@ export class Queue {
     } else {
       this.queue.push(
         new Promise(async (resolve) => {
-          await new Promise<void>((resolve) => this.waiting.push(resolve));
+          await new Promise<void>((resolvePromise) =>
+            this.waiting.push(resolvePromise)
+          );
           const result = await this.runFn(fn);
           return resolve(result);
         })
