@@ -134,7 +134,7 @@ export interface IMainController extends IKeyringManager {
     wasConfirmed: boolean,
     isFirstTime?: boolean
   ) => void;
-  setOpenDAppErrorModalState: () => void;
+  setOpenDAppErrorModalState: (state: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,
