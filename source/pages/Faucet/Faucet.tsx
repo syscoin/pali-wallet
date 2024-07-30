@@ -13,6 +13,7 @@ import {
   FaucetCardAccount,
   FaucetFeedback,
 } from './Components';
+import { FaucetStatusResponse } from './Types';
 import { FaucetComponentStates } from './Utils/FaucetComponentStates';
 import { useHandleNetworkTokenNames } from './Utils/NetworksInfos';
 
@@ -32,7 +33,7 @@ export const Faucet = () => {
 
   return (
     <Layout title={networkName} canGoBack>
-      {status === `request` && !isLoading && (
+      {status === FaucetStatusResponse.REQUEST && !isLoading && (
         <>
           <FaucetFeedback
             icon={faucetRequestDetails.icon}
@@ -59,7 +60,7 @@ export const Faucet = () => {
           />
         </>
       )}
-      {status === `error` && !isLoading && (
+      {status === FaucetStatusResponse.ERROR && !isLoading && (
         <>
           <FaucetFeedback
             icon={errorIcon}
@@ -68,7 +69,7 @@ export const Faucet = () => {
           />
         </>
       )}
-      {status === `success` && !isLoading && (
+      {status === FaucetStatusResponse.SUCCESS && !isLoading && (
         <>
           <FaucetFeedback
             icon={successIcon}

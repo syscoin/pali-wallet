@@ -12,7 +12,7 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
+import { FaucetChainIds } from 'pages/Faucet/Types';
 import { RootState } from 'state/store';
 import { setFaucetModalState } from 'state/vault';
 import { getController } from 'utils/browser';

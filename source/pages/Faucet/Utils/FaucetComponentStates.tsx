@@ -2,18 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { faucetTxDetailsProps } from '../Types';
-import { useUtils } from 'hooks/useUtils';
-import { claimFaucet } from 'scripts/Background/controllers/faucetController';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
-import { RootState } from 'state/store';
-
 import {
   faucetTxRolluxInfo,
   faucetTxRolluxTestnetInfo,
   faucetTxSyscoinNEVMInfo,
   faucetTxSyscoinNEVMTestnetInfo,
-} from './NetworksInfos';
+} from '../consts';
+import {
+  FaucetChainIds,
+  FaucetStatusResponse,
+  faucetTxDetailsProps,
+} from '../Types';
+import { useUtils } from 'hooks/useUtils';
+import { claimFaucet } from 'scripts/Background/controllers/faucetController';
+import { RootState } from 'state/store';
 
 export const FaucetComponentStates = () => {
   const activeAccount = useSelector(
@@ -23,9 +25,9 @@ export const FaucetComponentStates = () => {
     (state: RootState) => state.vault
   );
 
-  const [status, setStatus] = useState(`request`);
+  const [status, setStatus] = useState(FaucetStatusResponse.REQUEST);
   const [isLoading, setIsLoading] = useState(false);
-  const [txHash, setTxHash] = useState(``);
+  const [txHash, setTxHash] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [faucetTxDetailsInfo, setFaucetTxDetailsInfo] = useState(
     {} as faucetTxDetailsProps
@@ -59,19 +61,17 @@ export const FaucetComponentStates = () => {
     setIsLoading(true);
     try {
       const data = await claimFaucet(activeNetwork.chainId, account.address);
-      console.log(data, 'data');
       if (!data?.status || !data?.data?.status) {
-        setStatus('error');
+        setStatus(FaucetStatusResponse.ERROR);
         setErrorMessage(
           data?.data?.message ? data?.data?.message : data?.message
         );
       } else {
         setTxHash(data?.data?.hash);
-        setStatus(`success`);
+        setStatus(FaucetStatusResponse.SUCCESS);
       }
     } catch (error) {
-      console.log(error, 'a');
-      setStatus('error');
+      setStatus(FaucetStatusResponse.ERROR);
       setErrorMessage(errorMessage);
     } finally {
       setIsLoading(false);
@@ -79,9 +79,12 @@ export const FaucetComponentStates = () => {
   };
 
   const handleFaucetButton = useCallback(() => {
-    if (status === 'request' || status === 'error') {
+    if (
+      status === FaucetStatusResponse.REQUEST ||
+      status === FaucetStatusResponse.ERROR
+    ) {
       return handleRequestFaucet();
-    } else if (status === 'success') {
+    } else if (status === FaucetStatusResponse.SUCCESS) {
       return navigate('/home');
     } else {
       return;
@@ -90,11 +93,11 @@ export const FaucetComponentStates = () => {
 
   const faucetButtonLabel = useMemo(() => {
     let buttonName: string;
-    if (status === 'request') {
+    if (status === FaucetStatusResponse.REQUEST) {
       buttonName = t('faucet.requestNow');
-    } else if (status === 'success') {
+    } else if (status === FaucetStatusResponse.SUCCESS) {
       buttonName = t('faucet.Close');
-    } else if (status === 'error') {
+    } else if (status === FaucetStatusResponse.ERROR) {
       buttonName = t('faucet.tryAgain');
     } else {
       return;

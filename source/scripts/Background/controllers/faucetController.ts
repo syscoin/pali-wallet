@@ -4,15 +4,15 @@ const claimFaucet = async (chainId: number, walletAddress: string) => {
   let chainName: string;
 
   if (chainId === 57) {
-    chainName = `nevm-mainnet`;
+    chainName = 'nevm-mainnet';
   } else if (chainId === 5700) {
-    chainName = `nevm-testnet`;
+    chainName = 'nevm-testnet';
   } else if (chainId === 57000) {
-    chainName = `rollux-testnet`;
+    chainName = 'rollux-testnet';
   } else if (chainId === 570) {
-    chainName = `rollux-mainnet`;
+    chainName = 'rollux-mainnet';
   } else {
-    chainName = ``;
+    chainName = '';
   }
   try {
     const { data } = await axios.get(
