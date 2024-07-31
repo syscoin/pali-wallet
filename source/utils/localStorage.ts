@@ -1,9 +1,10 @@
 import store from 'state/store';
 
-export const saveState = async (appState: any) => {
+export const saveState = async (appState) => {
   try {
     const serializedState = JSON.stringify(appState);
-    await localStorage.setItem('state', serializedState);
+    await localStorage.setItem('persist:root', serializedState);
+    console.log('State saved successfully!');
   } catch (e) {
     console.error('<!> Error saving state', e);
   }
