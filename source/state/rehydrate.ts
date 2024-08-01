@@ -8,7 +8,6 @@ import { loadState } from './paliStorage';
 export const rehydrateStore = async (store: Store) => {
   try {
     const storageState = await loadState();
-    console.log({ storageState });
     if (storageState) {
       store.dispatch(vaultRehydrate(storageState.vault));
       store.dispatch(dappRehydrate(storageState.dapp));

@@ -1,6 +1,8 @@
 /* eslint-disable import/no-extraneous-dependencies */
 import 'emoji-log';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import { rehydrate as dappRehydrate } from 'state/dapp';
 import { loadState } from 'state/paliStorage';
 import { rehydrate as priceRehydrate } from 'state/price';
@@ -35,7 +37,6 @@ let walletMethods = {} as any;
 let MasterControllerInstance = {} as IMasterController;
 (async () => {
   const storageState = await loadState();
-  console.log({ storageState });
   if (storageState) {
     store.dispatch(vaultRehydrate(storageState.vault));
     store.dispatch(dappRehydrate(storageState.dapp));
@@ -109,13 +110,6 @@ const handleLogout = () => {
   }
 };
 
-chrome.storage.onChanged.addListener((changes) => {
-  console.log({ changes });
-  console.log({
-    formatted: parseJsonRecursively(changes?.['persist:root']?.newValue),
-  });
-});
-
 let requestCount = 0;
 const requestsPerSecond = {};
 const requestCallback = (details: any) => {
@@ -168,7 +162,7 @@ const updateRequestsPerSecond = () => {
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
 
-chrome.runtime.onMessage.addListener(async ({ type, target }) => {
+chrome.runtime.onMessage.addListener(async ({ type, target, data }) => {
   switch (type) {
     case 'ping':
       if (target === 'background')
@@ -176,6 +170,14 @@ chrome.runtime.onMessage.addListener(async ({ type, target }) => {
       break;
     case 'reset_autolock':
       // if (target === 'background') restartLockTimeout();
+      break;
+    case 'changeNetwork':
+      if (walletMethods?.setActiveNetwork && data) {
+        walletMethods?.setActiveNetwork(
+          data?.network,
+          data?.isBitcoinBased ? 'syscoin' : 'ethereum'
+        );
+      }
       break;
     case 'verifyPaliRequests':
       if (target === 'background' && process.env.NODE_ENV === 'development')
@@ -465,6 +467,17 @@ export const resetPaliRequestsCount = () => {
   chrome.runtime.sendMessage({
     type: 'resetPaliRequestsCount',
     target: 'background',
+  });
+};
+
+export const dispatchChangeNetworkBgEvent = (
+  network: INetwork,
+  isBitcoinBased: boolean
+) => {
+  chrome.runtime.sendMessage({
+    type: 'changeNetwork',
+    target: 'background',
+    data: { network, isBitcoinBased },
   });
 };
 
