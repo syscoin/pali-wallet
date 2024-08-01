@@ -1,4 +1,6 @@
 import { Form, Input } from 'antd';
+import { Buffer } from 'buffer';
+import CryptoJS from 'crypto-js';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -16,11 +18,8 @@ import store from 'state/store';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
-  const {
-    wallet: { unlockFromController },
-  } = getController();
-  // console.log(getController());
-  // console.log({ vault: store.getState().vault });
+  const controller = getController();
+  // console.log('controller', getController());
   // const formattedVault = vaultToWalletState(store.getState().vault);
   // const { unlockFromController } = MainController(formattedVault);
   const { accounts, activeAccount } = useSelector(
@@ -31,9 +30,9 @@ export const Start = (props: any) => {
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { isExternal, externalRoute } = props;
-
-  const isFirstStep =
-    accounts[activeAccount.type][activeAccount.id].address === '';
+  const accountAddress = accounts[activeAccount.type][activeAccount.id].address;
+  const MV2Vault = JSON.parse(localStorage.getItem('sysweb3-vault'));
+  const isFirstStep = !accountAddress && !MV2Vault;
 
   const getStarted = (
     <>
@@ -60,9 +59,27 @@ export const Start = (props: any) => {
   const onSubmit = async ({ password }: { password: string }) => {
     try {
       console.log({ password });
-      const result = await unlockFromController(password);
+
+      if (MV2Vault && !accountAddress) {
+        const vault = Buffer.from(MV2Vault, 'ascii').toString('utf-8');
+
+        const decryptedVault = JSON.parse(
+          CryptoJS.AES.decrypt(vault, password).toString(CryptoJS.enc.Utf8)
+        );
+
+        const phrase = CryptoJS.AES.decrypt(
+          decryptedVault.mnemonic,
+          password
+        ).toString(CryptoJS.enc.Utf8);
+
+        if (phrase) {
+          await controller.wallet.createWallet(password, phrase);
+          return navigate('/home');
+        }
+      }
+
+      const result = await controller.wallet.unlockFromController(password);
       console.log({ result });
-      // const result = { password };
 
       if (!result) {
         setErrorMessage(t('start.wrongPassword'));
@@ -77,6 +94,7 @@ export const Start = (props: any) => {
 
       return navigate(externalRoute);
     } catch (e) {
+      console.log(e);
       setErrorMessage(t('start.wrongPassword'));
     }
   };
