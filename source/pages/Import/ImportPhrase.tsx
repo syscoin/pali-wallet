@@ -20,7 +20,6 @@ const eyeStyle = 'w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20';
 const ImportPhrase: React.FC = () => {
   const { TextArea } = Input;
   const controller = getController();
-  console.log({ controller });
   const [form] = useForm();
   const navigate = useNavigate();
   const { t } = useTranslation();
