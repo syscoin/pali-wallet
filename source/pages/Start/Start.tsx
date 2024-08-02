@@ -1,6 +1,4 @@
 import { Form, Input } from 'antd';
-import { Buffer } from 'buffer';
-import CryptoJS from 'crypto-js';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -10,18 +8,14 @@ import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
-import { vaultToWalletState } from 'scripts/Background/controllers';
-import MainController from 'scripts/Background/controllers/MainController';
+import { rehydrateStore } from 'state/rehydrate';
 import { RootState } from 'state/store';
 import store from 'state/store';
-// import { getController } from 'utils/browser';
+import { parseJsonRecursively } from 'utils/format';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
   const controller = getController();
-  // console.log('controller', getController());
-  // const formattedVault = vaultToWalletState(store.getState().vault);
-  // const { unlockFromController } = MainController(formattedVault);
   const { accounts, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
@@ -60,40 +54,19 @@ export const Start = (props: any) => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     try {
-      console.log({ password });
+      if (MV2Vault && MV2VaultKeys && !accountAddress) {
+        const MV2State = await chrome.storage.local.get('persist:root');
+        const newState = parseJsonRecursively(MV2State['persist:root'] || '{}');
 
-      const [MV3Vault, MV3VaultKeys, wasMigrated] = await Promise.all([
-        chrome.storage.local.get('sysweb3-vault'),
-        chrome.storage.local.get('sysweb3-vault-keys'),
-        chrome.storage.local.get('was-migrated'),
-      ]);
-
-      if ((!MV3Vault || !MV3VaultKeys) && MV2Vault && !wasMigrated) {
-        chrome.storage.local.clear();
-
-        chrome.storage.local.set({
+        await chrome.storage.local.set({
           'sysweb3-vault': MV2Vault,
           'sysweb3-vault-keys': MV2VaultKeys,
-          'was-migrated': true,
+          ...(Object.keys(newState).length && {
+            state: JSON.stringify(newState),
+          }),
         });
-      }
 
-      if (MV2Vault && !accountAddress) {
-        const vault = Buffer.from(MV2Vault, 'ascii').toString('utf-8');
-
-        const decryptedVault = JSON.parse(
-          CryptoJS.AES.decrypt(vault, password).toString(CryptoJS.enc.Utf8)
-        );
-
-        const phrase = CryptoJS.AES.decrypt(
-          decryptedVault.mnemonic,
-          password
-        ).toString(CryptoJS.enc.Utf8);
-
-        if (phrase) {
-          await controller.wallet.createWallet(password, phrase);
-          return navigate('/home');
-        }
+        await rehydrateStore(store);
       }
 
       const result = await controller.wallet.unlockFromController(password);
@@ -112,7 +85,6 @@ export const Start = (props: any) => {
 
       return navigate(externalRoute);
     } catch (e) {
-      console.log(e);
       setErrorMessage(t('start.wrongPassword'));
     }
   };
