@@ -32,6 +32,8 @@ export const Start = (props: any) => {
   const { isExternal, externalRoute } = props;
   const accountAddress = accounts[activeAccount.type][activeAccount.id].address;
   const MV2Vault = JSON.parse(localStorage.getItem('sysweb3-vault'));
+  const MV2VaultKeys = JSON.parse(localStorage.getItem('sysweb3-vault-keys'));
+
   const isFirstStep = !accountAddress && !MV2Vault;
 
   const getStarted = (
@@ -59,6 +61,22 @@ export const Start = (props: any) => {
   const onSubmit = async ({ password }: { password: string }) => {
     try {
       console.log({ password });
+
+      const [MV3Vault, MV3VaultKeys, wasMigrated] = await Promise.all([
+        chrome.storage.local.get('sysweb3-vault'),
+        chrome.storage.local.get('sysweb3-vault-keys'),
+        chrome.storage.local.get('was-migrated'),
+      ]);
+
+      if ((!MV3Vault || !MV3VaultKeys) && MV2Vault && !wasMigrated) {
+        chrome.storage.local.clear();
+
+        chrome.storage.local.set({
+          'sysweb3-vault': MV2Vault,
+          'sysweb3-vault-keys': MV2VaultKeys,
+          'was-migrated': true,
+        });
+      }
 
       if (MV2Vault && !accountAddress) {
         const vault = Buffer.from(MV2Vault, 'ascii').toString('utf-8');
