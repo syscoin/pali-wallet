@@ -1,9 +1,13 @@
-const { merge } = require('webpack-merge');
+/* eslint-disable @typescript-eslint/no-var-requires */
+
 const path = require('path');
-const ZipPlugin = require('zip-webpack-plugin');
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+const { merge } = require('webpack-merge');
+const ZipPlugin = require('zip-webpack-plugin');
+
 const common = require('./webpack.common');
-const version = require('../../../package.json').version;
+
+const version = require('../../package.json').version;
 
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
 
@@ -13,9 +17,7 @@ module.exports = merge(common, {
   plugins: [
     new ZipPlugin({
       filename: `pali-wallet-${targetBrowser}-${version}`,
-      path: path.resolve(__dirname, '../../../build'),
-      pathPrefix: `${targetBrowser}`,
-      include: [/\.js$/, /\.css$/, /\.html$/, /manifest\.json$/],
+      path: path.join(__dirname, '../../build'),
       extension: `${
         targetBrowser === 'opera'
           ? 'crx'
@@ -29,7 +31,7 @@ module.exports = merge(common, {
       openAnalyzer: false,
       reportFilename: path.join(
         __dirname,
-        '../../../build',
+        '../../build',
         `${targetBrowser}-report.html`
       ),
     }),
