@@ -96,7 +96,6 @@ const MainController = (walletState): IMainController => {
   } | null = null;
 
   const { verifyIfIsTestnet } = keyringManager;
-
   const createCancellablePromise = <T>(
     executor: (
       resolve: (value: T) => void,
