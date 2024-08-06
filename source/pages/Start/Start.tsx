@@ -1,34 +1,25 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { getController } from 'scripts/Background';
-import { rehydrateStore } from 'state/rehydrate';
-import { RootState } from 'state/store';
-import store from 'state/store';
-import { parseJsonRecursively } from 'utils/format';
+import { migrateWalletState } from 'state/migrateWalletState';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
-  const controller = getController();
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { wallet } = getController();
   const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { isExternal, externalRoute } = props;
-  const accountAddress = accounts[activeAccount.type][activeAccount.id].address;
-  const MV2Vault = JSON.parse(localStorage.getItem('sysweb3-vault'));
-  const MV2VaultKeys = JSON.parse(localStorage.getItem('sysweb3-vault-keys'));
-
-  const isFirstStep = !accountAddress && !MV2Vault;
+  const hasAccount = !!wallet.getActiveAccount().activeAccount.address;
+  const hasVault = !!JSON.parse(localStorage.getItem('sysweb3-vault'));
+  const isFirstStep = !hasAccount && !hasVault;
 
   const getStarted = (
     <>
@@ -54,23 +45,9 @@ export const Start = (props: any) => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     try {
-      if (MV2Vault && MV2VaultKeys && !accountAddress) {
-        const MV2State = await chrome.storage.local.get('persist:root');
-        const newState = parseJsonRecursively(MV2State['persist:root'] || '{}');
+      await migrateWalletState('persist:root', 'state');
 
-        await chrome.storage.local.set({
-          'sysweb3-vault': MV2Vault,
-          'sysweb3-vault-keys': MV2VaultKeys,
-          ...(Object.keys(newState).length && {
-            state: JSON.stringify(newState),
-          }),
-        });
-
-        await rehydrateStore(store);
-      }
-
-      const result = await controller.wallet.unlockFromController(password);
-      console.log({ result });
+      const result = await wallet.unlockFromController(password);
 
       if (!result) {
         setErrorMessage(t('start.wrongPassword'));
