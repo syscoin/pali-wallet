@@ -33,8 +33,8 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         with:
-          tag_name: ${{ github.sha }}
-          release_name: Release ${{ github.sha }} for ${{ github.ref }}
+          tag_name: v${{ github.event.repository.name }}-${{ github.ref_name }}-release
+          release_name: Release ${{ github.event.repository.name }} for ${{ github.ref_name }}
           draft: true
           prerelease: true
         env:
@@ -47,3 +47,5 @@ jobs:
           asset_path: ./build/chrome.zip
           asset_name: chrome.zip
           asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
