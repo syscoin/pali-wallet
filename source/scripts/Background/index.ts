@@ -11,6 +11,7 @@ import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
+import MigrationController from './controllers/MigrationController';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
@@ -33,6 +34,7 @@ const onWalletReady = (windowController: IMasterController) => {
 };
 
 if (!window.controller) {
+  MigrationController();
   window.controller = MasterController(onWalletReady);
 }
 
