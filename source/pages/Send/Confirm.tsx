@@ -121,6 +121,12 @@ export const SendConfirm = () => {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
           try {
+            if (activeAccount.isTrezorWallet) {
+              await wallet.trezorSigner.init();
+            }
+            if (activeAccount.isLedgerWallet) {
+              await wallet.ledgerSigner.connectToLedgerDevice();
+            }
             wallet.syscoinTransaction
               .sendTransaction(
                 { ...basicTxValues, fee: 0.00001 },

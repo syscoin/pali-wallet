@@ -805,7 +805,7 @@ class MainController extends KeyringManager {
     return importedAccount;
   }
 
-  public async importTrezorAccount(
+  public async importTrezorAccountFromController(
     coin: string,
     slip44: string,
     index: string
@@ -864,7 +864,7 @@ class MainController extends KeyringManager {
     return importedAccount;
   }
 
-  public async importLedgerAccount(
+  public async importLedgerAccountFromController(
     coin: string,
     slip44: string,
     index: string,

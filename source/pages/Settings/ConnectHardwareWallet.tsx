@@ -66,7 +66,8 @@ const ConnectHardwareWalletView: FC = () => {
     try {
       switch (selectedHardwareWallet) {
         case 'trezor':
-          await controller.wallet.importTrezorAccount(
+          await controller.wallet.trezorSigner.init();
+          await controller.wallet.importTrezorAccountFromController(
             isBitcoinBased ? activeNetwork.currency : 'eth',
             `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
             `${trezorAccounts.length}`
@@ -93,7 +94,7 @@ const ConnectHardwareWalletView: FC = () => {
           }
 
           if (webHidIsConnected) {
-            await controller.wallet.importLedgerAccount(
+            await controller.wallet.importLedgerAccountFromController(
               isBitcoinBased ? activeNetwork.currency : 'eth',
               `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
               `${ledgerAccounts.length}`,
