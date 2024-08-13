@@ -9,16 +9,11 @@ import { rehydrate as priceRehydrate } from 'state/price';
 import store from 'state/store';
 import { rehydrate as vaultRehydrate, setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
-// import { i18next } from 'utils/i18n';
-import { parseJsonRecursively } from 'utils/format';
 import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-import {
-  handleRehydrateStore,
-  handleStoreSubscribe,
-} from './controllers/handlers';
+import { handleRehydrateStore } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
@@ -33,7 +28,6 @@ let paliPopupPort: chrome.runtime.Port;
 let dappMethods = {} as any;
 let walletMethods = {} as any;
 
-// rehydrateStore(store).then(() => {});
 let MasterControllerInstance = {} as IMasterController;
 (async () => {
   const storageState = await loadState();
@@ -162,7 +156,41 @@ const updateRequestsPerSecond = () => {
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
 
-chrome.runtime.onMessage.addListener(async ({ type, target, data }) => {
+chrome.runtime.onMessage.addListener((message: any, _, sendResponse) => {
+  const { type, data } = message;
+
+  const isValidEvent = ['controller_action', 'controller_state'].includes(type);
+
+  if (type === 'controller_action') {
+    const { methods, params, importMethod } = data;
+
+    let targetMethod = MasterControllerInstance;
+
+    for (const method of methods) {
+      if (targetMethod && method in targetMethod) {
+        targetMethod = targetMethod[method];
+      } else {
+        throw new Error('Method not found');
+      }
+    }
+
+    if (typeof targetMethod === 'function' || importMethod) {
+      new Promise(async (resolve) => {
+        const response = importMethod
+          ? targetMethod
+          : await (targetMethod as any)(...params);
+
+        resolve(response);
+      }).then(sendResponse);
+    } else {
+      throw new Error('Target is not a function');
+    }
+  }
+
+  return isValidEvent;
+});
+
+chrome.runtime.onMessage.addListener(({ type, target, data }) => {
   switch (type) {
     case 'ping':
       if (target === 'background')

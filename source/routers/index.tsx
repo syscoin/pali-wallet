@@ -40,6 +40,7 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { ChainErrorPage } from 'pages/Chain';
 import { Faucet } from 'pages/Faucet';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
@@ -50,9 +51,7 @@ import {
   resetPaliRequestsCount,
   verifyPaliRequests,
 } from 'scripts/Background';
-// import MasterController from 'scripts/Background/controllers';
 import { RootState } from 'state/store';
-// import { getController } from 'utils/browser';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -69,7 +68,7 @@ export const Router = () => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
     wallet.ethereumTransaction.web3Provider;
-  const isUnlocked = wallet.isUnlocked();
+  const { isUnlocked } = useController();
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
       JSON.stringify({ hasUtf8Error: false })

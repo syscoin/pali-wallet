@@ -33,22 +33,20 @@ import {
 } from '../pages';
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
-import { getController } from 'scripts/Background';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const { appRoute, wallet } = getController();
   const { navigate, alert } = useUtils();
   const { pathname, search } = useLocation();
+  const { isUnlocked, isLoading, controllerEmitter } = useController();
 
   // defaultRoute stores info from createPopup
   // used to redirect after unlocking the wallet
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
-
-  const isUnlocked = wallet.isUnlocked();
 
   useEffect(() => {
     if (isUnlocked && defaultRoute) {
@@ -57,14 +55,24 @@ export const ExternalRoute = () => {
       return;
     }
 
-    const externalRoute = appRoute(null, true);
-    if (externalRoute !== '/') navigate(externalRoute);
+    async function checkExternalRoute() {
+      const externalRoute = await controllerEmitter(['appRoute'], [null, true]);
+      if (externalRoute !== '/') navigate(externalRoute);
+    }
+
+    checkExternalRoute();
+
+    return () => {
+      checkExternalRoute();
+    };
   }, [isUnlocked]);
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname + search, true);
+    controllerEmitter(['appRoute'], [pathname + search, true]);
   }, [pathname]);
+
+  if (isLoading && !isUnlocked) return <Loading />;
 
   return (
     <Suspense fallback={<Loading />}>

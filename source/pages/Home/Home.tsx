@@ -12,6 +12,7 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { getController } from 'scripts/Background';
 import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
@@ -32,6 +33,7 @@ export const Home = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
+  const { isUnlocked } = useController();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
@@ -62,9 +64,9 @@ export const Home = () => {
   const { isInCooldown }: CustomJsonRpcProvider =
     controller.wallet.ethereumTransaction.web3Provider;
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() &&
-    accounts[activeAccount.type][activeAccount.id].address !== '';
+  // const isUnlocked =
+  //   controller.wallet.isUnlocked() &&
+  //   accounts[activeAccount.type][activeAccount.id].address !== '';
 
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =

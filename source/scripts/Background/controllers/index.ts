@@ -52,6 +52,7 @@ export interface IMasterController {
   utils: Readonly<IControllerUtils>;
   wallet: MainController;
 }
+
 export const vaultToWalletState = (vaultState: IVaultState) => {
   const accounts: { [key in KeyringAccountType]: accountType } = Object.entries(
     vaultState.accounts
