@@ -52,7 +52,6 @@ import {
   setTransactionStatusToAccelerated,
   setUpdatedNftsToState,
   setOpenDAppErrorModal,
-  setFaucetModalState as setFaucetState,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -202,10 +201,6 @@ class MainController extends KeyringManager {
 
   public setHasEthProperty(exist: boolean) {
     store.dispatch(setEthProperty(exist));
-  }
-
-  public setFaucetModalState(chainId: number) {
-    store.dispatch(setFaucetState({ chainId }));
   }
 
   public setAdvancedSettings(advancedProperty: string, isActive: boolean) {

@@ -18,17 +18,12 @@ import {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setAdvancedSettings,
-  setFaucetModalState,
   setIsLastTxConfirmed,
   setNetwork,
   setTimer,
 } from 'state/vault';
 import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
-import {
-  IControllerUtils,
-  IDAppController,
-  IMainController,
-} from 'types/controllers';
+import { IControllerUtils, IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_MAINNET_DEFAULT_NETWORK,
@@ -181,15 +176,6 @@ const MasterController = (
     const isNetworkOldUTXOStateWithoutTestnet =
       externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
         ?.isTestnet === undefined;
-
-    const isOldFaucetState =
-      externalStore.getState()?.vault?.faucetModal === undefined;
-
-    if (isOldFaucetState) {
-      externalStore.dispatch(
-        setFaucetModalState({ chainId: 0, isFirstTime: true })
-      );
-    }
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
