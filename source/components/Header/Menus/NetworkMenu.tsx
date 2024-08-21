@@ -318,7 +318,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
-                                <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                <div className="absolute items-center flex gap-2 right-[1rem]">
                                   {!isBitcoinBased &&
                                     activeNetworkValidator(currentNetwork) && (
                                       <Icon
@@ -330,7 +330,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                   {Object.values(FaucetChainIds).includes(
                                     currentNetwork.chainId
                                   ) && (
-                                    <div className="flex justify-center w-[81px] h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
+                                    <div className="flex justify-center w-[81px] h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1">
                                       <div className="w-2 h-2 bg-brand-green rounded-full" />
                                       <p className="text-xs text-white">
                                         Faucet
