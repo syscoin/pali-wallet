@@ -18,18 +18,17 @@ export const Start = (props: any) => {
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { isExternal, externalRoute } = props;
-  // const hasAccount = !!wallet.getActiveAccount().activeAccount.address;
   const hasVault = !!JSON.parse(localStorage.getItem('sysweb3-vault'));
   const isFirstStep = !hasAccount && !hasVault;
 
-  console.log(isFirstStep, 'isFirstStep');
-
   useEffect(() => {
     const checkAccounts = async () => {
-      const result = await controllerEmitter(['wallet', 'getActiveAccount']);
+      const result: any = await controllerEmitter([
+        'wallet',
+        'getActiveAccount',
+      ]);
 
-      console.log(result, 'result');
-      setHasAccount(!!result);
+      setHasAccount(!!result.activeAccount.address);
     };
 
     checkAccounts();
@@ -41,18 +40,12 @@ export const Start = (props: any) => {
 
   const onSubmit = async ({ password }: { password: string }) => {
     try {
-      // await controllerEmitter(
-      //   ['migrateWalletState'],
-      //   ['persist:root', 'state', hasAccount]
-      // );
       await migrateWalletState('persist:root', 'state', hasAccount);
 
-      const result = false;
-
-      // const result = await controllerEmitter(
-      //   ['wallet', 'unlockFromController'],
-      //   [password]
-      // );
+      const result = await controllerEmitter(
+        ['wallet', 'unlockFromController'],
+        [password]
+      );
 
       if (!result) {
         setErrorMessage(t('start.wrongPassword'));

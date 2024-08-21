@@ -9,7 +9,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { ITokenEthProps } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
@@ -19,9 +19,8 @@ const ExternalWatchAsset = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [assetInfo, setAssetInfo] = useState<ITokenEthProps>();
   const { alert } = useUtils();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const wallet = controller.wallet;
 
   function formatAssetData(asset: any) {
     if (typeof asset === 'object') {
@@ -44,10 +43,17 @@ const ExternalWatchAsset = () => {
 
     try {
       const { type: assetType, options: assetOptions } = receivedAsset;
-      await wallet.handleWatchAsset(assetType, assetOptions);
+      await controllerEmitter(
+        ['wallet', 'handleWatchAsset'],
+        [assetType, assetOptions]
+      );
+
       const type = data.eventName;
+
       dispatchBackgroundEvent(`${type}.${host}`, true);
+
       setConfirmed(true);
+
       setLoading(false);
     } catch (error: any) {
       alert.removeAll();
@@ -60,7 +66,11 @@ const ExternalWatchAsset = () => {
   useEffect(() => {
     const getAssetData = async () => {
       const { type: assetType, options: assetOptions } = receivedAsset;
-      const currentAsset = await wallet.getAssetInfo(assetType, assetOptions);
+      const currentAsset = (await controllerEmitter(
+        ['wallet', 'getAssetInfo'],
+        [assetType, assetOptions]
+      )) as any;
+
       setAssetInfo(currentAsset);
     };
 

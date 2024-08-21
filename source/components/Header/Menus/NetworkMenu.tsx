@@ -12,10 +12,8 @@ import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
-import {
-  dispatchChangeNetworkBgEvent,
-  getController,
-} from 'scripts/Background';
+import { useController } from 'hooks/useController';
+import { dispatchChangeNetworkBgEvent } from 'scripts/Background';
 import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { NetworkType } from 'utils/types';
@@ -37,7 +35,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { dapps } = useSelector((state: RootState) => state.dapp);
@@ -97,7 +95,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await wallet.setActiveNetwork(network, chain);
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
+
       dispatchChangeNetworkBgEvent(network, !!network?.slip44);
     } catch (networkError) {
       navigate('/home');

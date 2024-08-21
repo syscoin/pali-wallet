@@ -41,7 +41,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 export const ExternalRoute = () => {
   const { navigate, alert } = useUtils();
   const { pathname, search } = useLocation();
-  const { isUnlocked, isLoading, controllerEmitter } = useController();
+  const { isUnlocked, controllerEmitter } = useController();
 
   // defaultRoute stores info from createPopup
   // used to redirect after unlocking the wallet
@@ -71,8 +71,6 @@ export const ExternalRoute = () => {
     alert.removeAll();
     controllerEmitter(['appRoute'], [pathname + search, true]);
   }, [pathname]);
-
-  if (isLoading && !isUnlocked) return <Loading />;
 
   return (
     <Suspense fallback={<Loading />}>

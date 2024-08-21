@@ -24,11 +24,7 @@ import {
   setTimer,
 } from 'state/vault';
 import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
-import {
-  IControllerUtils,
-  IDAppController,
-  IMainController,
-} from 'types/controllers';
+import { IControllerUtils, IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_MAINNET_DEFAULT_NETWORK,

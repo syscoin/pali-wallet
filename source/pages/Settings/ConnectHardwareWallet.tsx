@@ -8,7 +8,7 @@ import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 
@@ -22,6 +22,7 @@ const ConnectHardwareWalletView: FC = () => {
     useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const { alert } = useUtils();
+  const { controllerEmitter, web3Provider } = useController();
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
 
@@ -36,8 +37,6 @@ const ConnectHardwareWalletView: FC = () => {
   const modalDescription = isReconnect
     ? t('settings.ledgerConnectedMessage')
     : t('settings.walletSelectedMessage');
-
-  const controller = getController();
 
   const trezorSelectedButtonStyle = `${
     selectedHardwareWallet === 'trezor'
@@ -57,8 +56,7 @@ const ConnectHardwareWalletView: FC = () => {
       : 'opacity-100'
   }`;
 
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
+  const { isInCooldown }: CustomJsonRpcProvider = web3Provider;
   const isLedger = selectedHardwareWallet === 'ledger';
 
   const handleCreateHardwareWallet = async () => {
@@ -66,11 +64,15 @@ const ConnectHardwareWalletView: FC = () => {
     try {
       switch (selectedHardwareWallet) {
         case 'trezor':
-          await controller.wallet.importTrezorAccount(
-            isBitcoinBased ? activeNetwork.currency : 'eth',
-            `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-            `${trezorAccounts.length}`
+          await controllerEmitter(
+            ['wallet', 'importTrezorAccount'],
+            [
+              isBitcoinBased ? activeNetwork.currency : 'eth',
+              `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+              `${trezorAccounts.length}`,
+            ]
           );
+
           setIsModalOpen(true);
           setIsLoading(false);
           break;
@@ -86,19 +88,28 @@ const ConnectHardwareWalletView: FC = () => {
           );
 
           if (isReconnect) {
-            await controller.wallet.ledgerSigner.connectToLedgerDevice();
+            await controllerEmitter([
+              'wallet',
+              'ledgerSigner',
+              'connectToLedgerDevice',
+            ]);
+
             setIsModalOpen(true);
             setIsLoading(false);
             return;
           }
 
           if (webHidIsConnected) {
-            await controller.wallet.importLedgerAccount(
-              isBitcoinBased ? activeNetwork.currency : 'eth',
-              `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-              `${ledgerAccounts.length}`,
-              false
+            await controllerEmitter(
+              ['wallet', 'importLedgerAccount'],
+              [
+                isBitcoinBased ? activeNetwork.currency : 'eth',
+                `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+                `${ledgerAccounts.length}`,
+                false,
+              ]
             );
+
             setIsModalOpen(true);
             setIsLoading(false);
           }
@@ -110,11 +121,14 @@ const ConnectHardwareWalletView: FC = () => {
       const isDeviceLocked = error.message.includes('Locked device');
 
       if (isAlreadyConnected) {
-        await controller.wallet.importLedgerAccount(
-          isBitcoinBased ? activeNetwork.currency : 'eth',
-          `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
-          `${ledgerAccounts.length}`,
-          true
+        await controllerEmitter(
+          ['wallet', 'importLedgerAccount'],
+          [
+            isBitcoinBased ? activeNetwork.currency : 'eth',
+            `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+            `${ledgerAccounts.length}`,
+            true,
+          ]
         );
         setIsModalOpen(true);
         return;

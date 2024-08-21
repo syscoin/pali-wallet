@@ -4,14 +4,16 @@ import { useSelector } from 'react-redux';
 
 import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
 
 interface ISign {
   send?: boolean;
 }
 const EthSign: React.FC<ISign> = () => {
+  const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -38,17 +40,21 @@ const EthSign: React.FC<ISign> = () => {
   const warningMessage = t('transactions.warningSignMessage');
 
   const onSubmit = async () => {
-    const { ethereumTransaction } = getController().wallet;
-
     setLoading(true);
 
     try {
       let response = '';
       const type = data.eventName;
       if (data.eventName === 'eth_sign')
-        response = await ethereumTransaction.ethSign(data);
+        response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'ethSign'],
+          [data]
+        )) as string;
       else if (data.eventName === 'personal_sign')
-        response = await ethereumTransaction.signPersonalMessage(data);
+        response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
+          [data]
+        )) as string;
       else {
         let typedData;
         if (
@@ -66,23 +72,20 @@ const EthSign: React.FC<ISign> = () => {
         }
         if (typeof typedData === 'string') typedData = JSON.parse(typedData);
         if (data.eventName === 'eth_signTypedData') {
-          response = await ethereumTransaction.signTypedData(
-            address,
-            typedData,
-            'V1'
-          );
+          response = (await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'signTypedData'],
+            [address, typedData, 'V1']
+          )) as string;
         } else if (data.eventName === 'eth_signTypedData_v3') {
-          response = await ethereumTransaction.signTypedData(
-            address,
-            typedData,
-            'V3'
-          );
+          response = (await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'signTypedData'],
+            [address, typedData, 'V3']
+          )) as string;
         } else if (data.eventName === 'eth_signTypedData_v4') {
-          response = await ethereumTransaction.signTypedData(
-            address,
-            typedData,
-            'V4'
-          );
+          response = (await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'signTypedData'],
+            [address, typedData, 'V4']
+          )) as string;
         }
       }
       setConfirmed(true);
@@ -114,12 +117,14 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
   useEffect(() => {
-    const { ethereumTransaction } = getController().wallet;
     if (data.eventName === 'personal_sign') {
       const msg = data[0] === activeAccount.address ? data[1] : data[0];
-      const parsedMessage = ethereumTransaction.parsePersonalMessage(msg);
-      setMessage(parsedMessage);
+      controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'parsePersonalMessage'],
+        [msg]
+      ).then(setMessage);
     }
+
     if (data.eventName === 'eth_sign') {
       setMessage(data[1]);
     }

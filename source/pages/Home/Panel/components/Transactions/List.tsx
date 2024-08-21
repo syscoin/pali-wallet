@@ -8,7 +8,6 @@ import { IconButton } from 'components/IconButton';
 import { ConfirmationModal } from 'components/Modal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import { ellipsis, formatDate, handleUpdateTransaction } from 'utils/index';
 
@@ -17,7 +16,6 @@ export const TransactionsList = ({
 }: {
   userTransactions: any[]; //todo: adjust type
 }) => {
-  const { wallet } = getController();
   const { t } = useTranslation();
   const {
     activeNetwork: { chainId },
@@ -127,7 +125,6 @@ export const TransactionsList = ({
           handleUpdateTransaction={handleUpdateTransaction}
           alert={alert}
           chainId={chainId}
-          wallet={wallet}
           transaction={tx}
           setIsOpenModal={setIsOpenModal}
           setModalData={setModalData}

@@ -23,6 +23,7 @@ export const SendEth = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
   const {
     accounts,
     activeAccount: activeAccountMeta,

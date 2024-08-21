@@ -38,7 +38,7 @@ import {
 import { EditPriorityModal } from './EditPriority';
 
 export const SendConfirm = () => {
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, web3Provider, isLoading } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const url = chrome.runtime.getURL('app.html');
@@ -75,8 +75,7 @@ export const SendConfirm = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
-  const [isReconectModalOpen, setIsReconectModalOpen] =
-    useState<boolean>(false);
+  const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
 
   const basicTxValues = state.tx;
 
@@ -100,22 +99,22 @@ export const SendConfirm = () => {
           'wallet',
           'ethereumTransaction',
           'getRecommendedGasPrice',
-        ]);
+        ]).then((gas) => BigNumber.from(gas).toNumber());
 
     const gasLimit: any = await controllerEmitter(
       ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
       [basicTxValues]
-    );
+    ).then((gas) => BigNumber.from(gas).toNumber());
 
     const initialFee = INITIAL_FEE;
 
-    initialFee.gasPrice = Number(correctGasPrice);
+    initialFee.gasPrice = correctGasPrice;
 
     setFee({ ...initialFee, gasLimit });
 
-    setGasPrice(Number(correctGasPrice));
+    setGasPrice(correctGasPrice);
 
-    return { gasLimit, gasPrice: Number(correctGasPrice) };
+    return { gasLimit, gasPrice: correctGasPrice };
   };
 
   const handleConfirm = async () => {
@@ -210,27 +209,21 @@ export const SendConfirm = () => {
 
             if (isEIP1559Compatible === false) {
               try {
-                await (
-                  controllerEmitter(
-                    [
-                      'wallet',
-                      'ethereumTransaction',
-                      'sendFormattedTransaction',
-                    ],
-                    [
-                      {
-                        ...restTx,
-                        value,
-                        gasPrice: ethers.utils.hexlify(gasPrice),
-                        gasLimit: BigNumber.from(
-                          validateCustomGasLimit
-                            ? customFee.gasLimit
-                            : fee.gasLimit
-                        ),
-                      },
-                      !isEIP1559Compatible,
-                    ]
-                  ) as Promise<ISysTransaction | IEvmTransactionResponse>
+                await controllerEmitter(
+                  ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+                  [
+                    {
+                      ...restTx,
+                      value,
+                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasLimit: BigNumber.from(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit
+                          : fee.gasLimit
+                      ),
+                    },
+                    !isEIP1559Compatible,
+                  ]
                 )
                   .then((response) => {
                     if (activeAccountMeta.type === KeyringAccountType.Trezor)
@@ -238,6 +231,8 @@ export const SendConfirm = () => {
                         ['wallet', 'sendAndSaveTransaction'],
                         [response]
                       );
+
+                    console.log('response', response);
 
                     setConfirmedTx(response);
 
@@ -605,12 +600,6 @@ export const SendConfirm = () => {
 
             //HANDLE ERC721/ERC1155 NFTS TRANSACTIONS
             case true:
-              const web3Provider = await controllerEmitter(
-                ['wallet', 'ethereumTransaction', 'web3Provider'],
-                [],
-                true
-              );
-
               const { type } = await getContractType(
                 basicTxValues.token.contractAddress,
                 web3Provider
@@ -843,19 +832,22 @@ export const SendConfirm = () => {
 
     const getFeeRecomendation = async () => {
       try {
-        const { maxFeePerGas, maxPriorityFeePerGas } = await (controllerEmitter(
+        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
           [
             'wallet',
             'ethereumTransaction',
             'getFeeDataWithDynamicMaxPriorityFeePerGas',
           ]
-        ) as Promise<any>);
+        )) as any;
 
         const initialFeeDetails = {
-          maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
+          maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
           baseFee:
-            (Number(maxFeePerGas) - Number(maxPriorityFeePerGas)) / 10 ** 9,
-          maxPriorityFeePerGas: Number(maxPriorityFeePerGas) / 10 ** 9,
+            (BigNumber.from(maxFeePerGas).toNumber() -
+              BigNumber.from(maxPriorityFeePerGas).toNumber()) /
+            10 ** 9,
+          maxPriorityFeePerGas:
+            BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
           gasLimit: BigNumber.from(0),
         };
 
@@ -872,7 +864,7 @@ export const SendConfirm = () => {
         const getGasLimit = await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
           [formattedTxObject]
-        );
+        ).then((gas) => BigNumber.from(gas).toNumber());
 
         const finalFeeDetails = {
           ...initialFeeDetails,
@@ -925,13 +917,8 @@ export const SendConfirm = () => {
   }, [copied]);
 
   useEffect(() => {
+    if (isLoading) return;
     const validateEIP1559Compatibility = async () => {
-      const web3Provider = (await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'web3Provider'],
-        [],
-        true
-      )) as any;
-
       const isCompatible = await verifyNetworkEIP1559Compatibility(
         web3Provider,
         currentBlock
@@ -941,7 +928,7 @@ export const SendConfirm = () => {
     };
 
     validateEIP1559Compatibility();
-  }, []);
+  }, [isLoading, web3Provider]);
 
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>

@@ -1,5 +1,5 @@
 import { Form } from 'antd';
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -16,8 +16,8 @@ import {
   IconButton,
 } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
-import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 import {
   IApprovedTokenInfos,
@@ -35,7 +35,7 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
-  const { wallet } = getController();
+  const { controllerEmitter, web3Provider } = useController();
   const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
@@ -176,7 +176,7 @@ export const ApproveTransactionComponent = () => {
           ),
           9
         ),
-        gasLimit: wallet.ethereumTransaction.toBigNumber(
+        gasLimit: BigNumber.from(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
@@ -184,10 +184,14 @@ export const ApproveTransactionComponent = () => {
       };
 
       try {
-        const response =
-          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
+        const response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+          [newTxValue]
+        )) as { hash: string };
+
         if (activeAccountMeta.type === KeyringAccountType.Trezor)
-          wallet.sendAndSaveTransaction(response);
+          controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
+
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal)
@@ -248,12 +252,12 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getTokenName = async (contractAddress: string) => {
-      const getProvider = wallet.ethereumTransaction.contentScriptWeb3Provider;
+      // const getProvider = wallet.ethereumTransaction.contentScriptWeb3Provider;
 
       const contractInstance = new ethers.Contract(
         contractAddress,
         getErc20Abi(),
-        getProvider
+        web3Provider
       );
 
       const [tokenSymbolByContract, tokenDecimalsByContract] =

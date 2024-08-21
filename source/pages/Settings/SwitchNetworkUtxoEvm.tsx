@@ -10,13 +10,13 @@ import {
   DefaultModal,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { newNetwork, newChainValue } = data;
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,10 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await wallet.setActiveNetwork(newNetwork, correctTypeForChainValue);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [newNetwork, correctTypeForChainValue]
+      );
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

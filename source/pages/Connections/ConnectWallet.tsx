@@ -14,13 +14,13 @@ import {
 } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ConnectWallet = () => {
-  const { dapp, wallet } = getController();
+  const { controllerEmitter, isUnlocked } = useController();
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
@@ -33,23 +33,29 @@ export const ConnectWallet = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
-  const currentAccountId = dapp.get(host)?.accountId;
-  const currentAccountType = dapp.get(host)?.accountType;
+  let currentAccountId: number;
+  let currentAccountType: KeyringAccountType;
+
+  controllerEmitter(['dapp', 'get'], [host]).then((res: any) => {
+    currentAccountId = res?.accountId;
+    currentAccountType = res?.accountType;
+  });
 
   const [accountId, setAccountId] = useState(currentAccountId);
   const [accountType, setAccountType] = useState(currentAccountType);
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
   const date = Date.now();
 
-  const isUnlocked = wallet.isUnlocked();
   const handleConnect = () => {
-    dapp.connect({ host, chain, chainId, accountId, accountType, date });
-    wallet.setAccount(accountId, accountType);
-    dispatchBackgroundEvent(
-      `${eventName}.${host}`,
-      // dapp.getAccount(host).address
-      activeAccount.address
+    controllerEmitter(
+      ['dapp', 'connect'],
+      [host, chain, chainId, accountId, accountType, date]
     );
+
+    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+
+    dispatchBackgroundEvent(`${eventName}.${host}`, activeAccount.address);
+
     window.close();
   };
 
@@ -60,16 +66,24 @@ export const ConnectWallet = () => {
   };
 
   useEffect(() => {
-    if (dapp.isConnected(host) && isUnlocked) {
-      dapp.connect(
-        { host, chain, chainId, accountId, accountType, date: 0 },
-        true
+    if (isUnlocked) {
+      controllerEmitter(['dapp', 'isConnected'], [host]).then(
+        (isConnected: boolean) => {
+          if (isConnected) {
+            controllerEmitter(
+              ['dapp', 'connect'],
+              [host, chain, chainId, accountId, accountType, date]
+            );
+
+            dispatchBackgroundEvent(
+              `${eventName}.${host}`,
+              activeAccount.address
+            );
+
+            window.close();
+          }
+        }
       );
-      dispatchBackgroundEvent(
-        `${eventName}.${host}`,
-        dapp.getAccount(host).address
-      );
-      window.close();
     }
   }, [isUnlocked]);
 

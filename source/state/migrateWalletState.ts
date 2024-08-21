@@ -1,8 +1,5 @@
 import { parseJsonRecursively } from 'utils/format';
 
-import { rehydrateStore } from './rehydrate';
-import store from './store';
-
 export async function migrateWalletState(
   oldStateName: string,
   newStateName: string,
@@ -16,8 +13,6 @@ export async function migrateWalletState(
       const oldState = await chrome.storage.local.get(oldStateName);
       const newState = parseJsonRecursively(oldState[oldStateName] || '{}');
 
-      console.log(oldState, 'oldState');
-
       await chrome.storage.local.set({
         'sysweb3-vault': vault,
         'sysweb3-vault-keys': vaultKeys,
@@ -26,7 +21,15 @@ export async function migrateWalletState(
         }),
       });
 
-      await rehydrateStore(store);
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage('rehydrate', (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          }
+
+          resolve(response);
+        });
+      });
     }
   } catch (error) {
     console.error('<!> Error migrating state', error);

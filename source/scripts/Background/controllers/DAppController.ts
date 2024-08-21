@@ -48,6 +48,7 @@ const DAppController = (): IDAppController => {
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
+    console.log('connect', dapp);
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
     _dapps[dapp.host] = { activeAddress: '', hasWindow: false, port: null };

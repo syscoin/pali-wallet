@@ -25,7 +25,6 @@ export const methodRequest = async (
   host: string,
   data: { method: string; network?: string; params?: any[] }
 ) => {
-  console.log({ data });
   const { dapp, wallet } = getController();
   const controller = getController();
   const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
@@ -142,6 +141,7 @@ export const methodRequest = async (
 
   //* Wallet methods
   if (prefix === 'wallet') {
+    console.log(methodName);
     let tryingToAdd = false;
     const { activeNetwork, networks: chains } = store.getState().vault;
     switch (methodName) {

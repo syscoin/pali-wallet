@@ -28,7 +28,6 @@ export interface ITransactionOptions {
       isLegacy: boolean;
       txHash: string;
       updateType: UpdateTxAction;
-      wallet: IMainController;
     };
   }) => Promise<void>;
   isOpen?: boolean;
@@ -44,7 +43,6 @@ export interface ITransactionOptions {
     }>
   >;
   transaction: IEvmTransaction;
-  wallet: MainController;
 }
 
 export interface IEIP6963ProviderInfo {

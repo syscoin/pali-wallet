@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
-import { getController } from 'scripts/Background';
+import { controllerEmitter } from '../controllerEmitter';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -25,7 +25,6 @@ export const popupPromise = async ({
   host: string;
   route: string;
 }) => {
-  const { dapp, createPopup } = getController();
   // if (
   //   eventName !== 'connect' &&
   //   eventName !== 'wallet_switchEthereumChain' &&
@@ -35,17 +34,25 @@ export const popupPromise = async ({
   //   !dapp.isConnected(host)
   // )
   //   return;
-  if (dapp.hasWindow(host))
+
+  const hasWindow = await controllerEmitter(['dapp', 'hasWindow'], [host]);
+
+  if (hasWindow)
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
     );
-  dapp.setHasWindow(host, true);
+
+  await controllerEmitter(['dapp', 'setHasWindow'], [host, true]);
+
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
   let popup = null;
   try {
-    popup = await createPopup(route, { ...data, host, eventName });
+    popup = await controllerEmitter(
+      ['createPopup'],
+      [route, { ...data, host, eventName }]
+    );
   } catch (error) {
-    dapp.setHasWindow(host, false);
+    await controllerEmitter(['dapp', 'setHasWindow'], [host, false]);
     throw error;
   }
   return new Promise((resolve) => {
@@ -67,7 +74,9 @@ export const popupPromise = async ({
           route === 'switch-UtxoEvm'
         ) {
           resolve(null);
-          dapp.setHasWindow(host, false);
+
+          controllerEmitter(['dapp', 'setHasWindow'], [host, false]);
+
           return null;
         }
       }
@@ -89,7 +98,8 @@ export const popupPromise = async ({
         ) {
           resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
         }
-        dapp.setHasWindow(host, false);
+        controllerEmitter(['dapp', 'setHasWindow'], [host, false]);
+
         resolve({ success: false });
       }
     });

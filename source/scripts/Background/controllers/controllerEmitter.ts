@@ -1,5 +1,3 @@
-import { migrateWalletState } from 'state/migrateWalletState';
-
 import { IMasterController } from '.';
 
 type Methods<T> = {
@@ -10,18 +8,14 @@ type Methods<T> = {
     : never;
 }[keyof T];
 
-type Controller = IMasterController & {
-  migrateWalletState: typeof migrateWalletState;
-};
-
-export default function controllerEmitter<
+export function controllerEmitter<
   T extends IMasterController,
   P extends Methods<T>
 >(methods: P, params?: any[], importMethod = false) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
       {
-        type: `controller_action`,
+        type: 'CONTROLLER_ACTION',
         data: {
           methods,
           params: params || [],
@@ -36,24 +30,4 @@ export default function controllerEmitter<
       }
     );
   });
-}
-
-export function controllerState<T extends IMasterController>(
-  action: string,
-  state: T
-) {
-  chrome.runtime.sendMessage(
-    {
-      type: `controller_state`,
-      data: {
-        action,
-        state,
-      },
-    },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        console.log(chrome.runtime.lastError);
-      }
-    }
-  );
 }

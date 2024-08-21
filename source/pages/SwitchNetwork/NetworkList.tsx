@@ -5,8 +5,8 @@ import { useSelector } from 'react-redux';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Button } from 'components/Button';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { getController } from 'scripts/Background';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
 import { getChainIdPriority } from 'utils/chainIdPriority';
@@ -21,7 +21,7 @@ type currentNetwork = {
 };
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
@@ -54,8 +54,11 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
       store.dispatch(setOpenDAppErrorModal(false));
-      await wallet.setActiveNetwork(network, chain);
+
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
+
       if (isDappAskingToChangeNetwork) window.close();
+
       navigate('/home');
     } catch (networkError) {
       window.close();

@@ -13,7 +13,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   transaction,
   alert,
   chainId,
-  wallet,
   setIsOpenModal,
   setModalData,
 }) => {
@@ -41,7 +40,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 isLegacy: isLegacyTransaction,
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
-                wallet,
               },
             });
             setIsOpenModal(false);
@@ -62,7 +60,6 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 isLegacy: isLegacyTransaction,
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.SpeedUp,
-                wallet,
               },
             });
             setIsOpenModal(false);

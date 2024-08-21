@@ -6,11 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { validateEthRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout } from 'components/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 import { CustomToken } from './CustomToken';
@@ -25,9 +24,8 @@ export const AddToken: FC = () => {
   const [importCustom, setImportCustom] = useState(false);
   const [isTestnet, setIsTestnet] = useState(false);
 
-  const controller = getController();
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
+  const { web3Provider } = useController();
+  const { isInCooldown } = web3Provider;
   const { isBitcoinBased, activeNetwork: network } = useSelector(
     (paliState: RootState) => paliState.vault
   );
