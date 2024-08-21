@@ -1,9 +1,9 @@
 import V2_0_23_MigrationState from 'scripts/migrations/V2_0_23';
+import { loadState, saveState } from 'state/localStorage';
 import { reload } from 'utils/browser';
-import { loadState, saveState } from 'utils/localStorage';
 
 const MigrationController = async () => {
-  const state: any = await loadState();
+  const state: any = loadState();
 
   if (!state) {
     return;

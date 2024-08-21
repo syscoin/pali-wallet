@@ -11,9 +11,9 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import { persistor, RootState } from 'state/store';
+import { handleRehydrateStore } from '../handlers/handleRehydrateStore';
+import rehydrateStore from 'state/rehydrate';
 import store from 'state/store';
-import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
@@ -97,15 +97,12 @@ const MasterController = (
     return { wallet: sysweb3Wallet, activeChain };
   };
   // Subscribe to store updates
-  persistor.subscribe(() => {
-    const state = store.getState() as RootState & { _persist: IPersistState };
-    const {
-      _persist: { rehydrated },
-    } = state;
-    if (rehydrated) {
-      initializeMainController();
-    }
+  rehydrateStore(store).then(() => {
+    initializeMainController();
   });
+
+  handleRehydrateStore();
+
   const initializeMainController = () => {
     const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
     const trezorAccounts = Object.values(

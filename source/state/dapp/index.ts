@@ -12,6 +12,12 @@ const DAppState = createSlice({
   name: 'dapp',
   initialState,
   reducers: {
+    rehydrate(state: IDAppState, action: PayloadAction<{ dapps: any }>) {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    },
     addDApp(state: IDAppState, action: PayloadAction<IDApp>) {
       state.dapps[action.payload.host] = action.payload;
     },
@@ -41,6 +47,7 @@ const DAppState = createSlice({
   },
 });
 
-export const { addDApp, removeDApp, updateDAppAccount } = DAppState.actions;
+export const { rehydrate, addDApp, removeDApp, updateDAppAccount } =
+  DAppState.actions;
 
 export default DAppState.reducer;

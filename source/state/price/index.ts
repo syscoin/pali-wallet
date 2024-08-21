@@ -14,6 +14,18 @@ const PriceState = createSlice({
   name: 'price',
   initialState,
   reducers: {
+    rehydrate(
+      state: IPriceState,
+      action: PayloadAction<{
+        coins: any;
+        fiat: IAssetPrice;
+      }>
+    ) {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    },
     setPrices(state: IPriceState, action: PayloadAction<IAssetPrice>) {
       state.fiat = action.payload;
     },
@@ -23,6 +35,6 @@ const PriceState = createSlice({
   },
 });
 
-export const { setPrices, setCoins } = PriceState.actions;
+export const { rehydrate, setPrices, setCoins } = PriceState.actions;
 
 export default PriceState.reducer;

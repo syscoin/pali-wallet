@@ -71,7 +71,6 @@ import AssetsManager from './assets';
 import BalancesManager from './balances';
 import ControllerUtils from './ControllerUtils';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-import MigrationController from './MigrationController';
 import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
@@ -82,7 +81,6 @@ import { IEvmTransactionResponse, ISysTransaction } from './transactions/types';
 import { validateAndManageUserTransactions } from './transactions/utils';
 
 const MainController = (walletState): IMainController => {
-  MigrationController();
   const keyringManager = new KeyringManager(walletState);
   const utilsController = Object.freeze(ControllerUtils());
   const assetsManager = AssetsManager();

@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
@@ -89,10 +89,24 @@ export const initialState: IVaultState = {
   coinsList: [],
 };
 
+export const getHasEncryptedVault = createAsyncThunk(
+  'vault/getHasEncryptedVault',
+  async () => {
+    const hasEncryptedVault = await localStorage.getItem('sysweb3-vault');
+    return !!hasEncryptedVault;
+  }
+);
+
 const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    rehydrate(state: IVaultState, action: PayloadAction<IVaultState>) {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    },
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
@@ -789,6 +803,7 @@ const VaultState = createSlice({
 });
 
 export const {
+  rehydrate,
   setAccounts,
   setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,

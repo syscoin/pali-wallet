@@ -1,25 +1,37 @@
-import store from 'state/store';
-
-export const saveState = async (appState) => {
-  try {
-    const serializedState = JSON.stringify(appState);
-    await localStorage.setItem('persist:root', serializedState);
-    console.log('State saved successfully!');
-  } catch (e) {
-    console.error('<!> Error saving state', e);
-  }
+const localStorage = {
+  getItem: (key: string): Promise<any> =>
+    new Promise((resolve, reject) => {
+      // Use Chrome Storage API
+      chrome.storage.local.get([key], function (result) {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result[key] || null); // Return null if the key doesn't exist, mimicking AsyncStorage's behavior
+        }
+      });
+    }),
+  setItem: (key: string, value: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      // Use Chrome Storage API
+      chrome.storage.local.set({ [key]: value }, function () {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    }),
+  removeItem: (key: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      // Use Chrome Storage API
+      chrome.storage.local.remove([key], function () {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve();
+        }
+      });
+    }),
 };
 
-export const loadState = async () => {
-  try {
-    const state = store.getState();
-
-    if (state === null) {
-      return undefined;
-    }
-    return state;
-  } catch (e) {
-    console.error('<!> Error getting state', e);
-    return null;
-  }
-};
+export default localStorage;
