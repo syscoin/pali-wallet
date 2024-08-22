@@ -65,7 +65,13 @@ const ConnectHardwareWalletView: FC = () => {
       switch (selectedHardwareWallet) {
         case 'trezor':
           await controllerEmitter(
-            ['wallet', 'importTrezorAccount'],
+            ['wallet', 'trezorSigner', 'init'],
+            [],
+            false
+          );
+
+          await controllerEmitter(
+            ['wallet', 'importTrezorAccountFromController'],
             [
               isBitcoinBased ? activeNetwork.currency : 'eth',
               `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
