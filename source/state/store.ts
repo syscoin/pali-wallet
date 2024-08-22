@@ -4,17 +4,18 @@ import {
   getDefaultMiddleware,
   Store,
 } from '@reduxjs/toolkit';
+import { throttle } from 'lodash';
 import isEqual from 'lodash/isEqual';
 import { thunk } from 'redux-thunk';
 
+import MigrationController from 'scripts/Background/MigrationController';
+import { compareObjects } from 'utils/objects';
+
 import dapp from './dapp';
-import { IDAppState } from './dapp/types';
-import { loadState, saveState } from './paliStorage';
+import { loadState, saveState } from './localStorage';
 import price from './price';
-import { IPriceState } from './price/types';
-import { IPersistState } from './types';
+import { rehydrateStore } from './rehydrate';
 import vault from './vault';
-import { IVaultState } from './vault/types';
 
 const reducers = combineReducers({
   dapp,
@@ -30,37 +31,47 @@ middleware.push(thunk);
 
 const nodeEnv = process.env.NODE_ENV;
 
-const store: Store<{
-  dapp: IDAppState;
-  price: IPriceState;
-  vault: IVaultState;
-}> = configureStore({
+const store = configureStore({
   reducer: reducers,
   middleware,
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
 export async function updateState() {
-  try {
-    const state = store.getState();
+  const state = store.getState();
 
-    const currentState = await loadState();
+  const updatedState = {
+    vault: state.vault,
+    price: state.price,
+    dapp: state.dapp,
+  };
 
-    const isStateEqual = isEqual(currentState, state);
+  const currentState = await loadState();
 
-    if (isStateEqual) {
-      return false;
-    }
-
-    await saveState(state);
-    return true;
-  } catch (error) {
-    return false;
+  if (currentState) {
+    const updatedNoPrice = { ...updatedState };
+    const currentNoPrice = { ...currentState };
+    delete updatedNoPrice.price;
+    delete currentNoPrice.price;
+    const equalStates = compareObjects(updatedNoPrice, currentNoPrice);
+    if (equalStates) return false;
   }
+
+  await saveState(updatedState);
+  return true;
 }
 
-export type RootState = ReturnType<typeof store.getState> & {
-  _persist: IPersistState;
-};
+MigrationController().then(async () => {
+  await rehydrateStore(store);
+  store.subscribe(
+    throttle(async () => {
+      // every second we update store state
+      await updateState();
+    }, 1000)
+  );
+});
+
+export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
+
 export default store;

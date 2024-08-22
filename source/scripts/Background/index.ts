@@ -3,18 +3,16 @@ import 'emoji-log';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
-import { rehydrate as dappRehydrate } from 'state/dapp';
-import { loadState } from 'state/paliStorage';
-import { rehydrate as priceRehydrate } from 'state/price';
+import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
-import { rehydrate as vaultRehydrate, setIsPolling } from 'state/vault';
+import { setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-// import { handleRehydrateStore } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
+import { handleRehydrateStore } from './handlers/handleRehydrateStore';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 declare global {
@@ -31,12 +29,7 @@ let walletMethods = {} as any;
 let MasterControllerInstance = {} as IMasterController;
 
 (async () => {
-  const storageState = await loadState();
-  if (storageState) {
-    store.dispatch(vaultRehydrate(storageState.vault));
-    store.dispatch(dappRehydrate(storageState.dapp));
-    store.dispatch(priceRehydrate(storageState.price));
-  }
+  rehydrateStore(store);
 })().then(() => {
   const masterController = MasterController(store);
   MasterControllerInstance = masterController;
@@ -54,7 +47,7 @@ let MasterControllerInstance = {} as IMasterController;
   utils.setFiat();
 });
 
-// handleRehydrateStore();
+handleRehydrateStore();
 
 const isWatchRequestsActive = false;
 

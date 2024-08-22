@@ -1,9 +1,9 @@
-import { chromeStorage } from 'utils/storageAPI';
+import localStorage from '../utils/localStorage';
 
 export const saveState = async (appState: any) => {
   try {
     const serializedState = JSON.stringify(appState);
-    await chromeStorage.setItem('state', serializedState);
+    await localStorage.setItem('state', serializedState);
   } catch (e) {
     console.error('<!> Error saving state', e);
   }
@@ -11,7 +11,7 @@ export const saveState = async (appState: any) => {
 
 export const loadState = async () => {
   try {
-    const serializedState = await chromeStorage.getItem('state');
+    const serializedState = await localStorage.getItem('state');
     if (serializedState === null) {
       return undefined;
     }

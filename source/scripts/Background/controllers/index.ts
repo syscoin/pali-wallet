@@ -11,8 +11,11 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
+import { handleRehydrateStore } from '../handlers/handleRehydrateStore';
 import { IDAppState } from 'state/dapp/types';
 import { IPriceState } from 'state/price/types';
+import { rehydrateStore } from 'state/rehydrate';
+import store from 'state/store';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
@@ -101,6 +104,12 @@ const MasterController = (
       : account.isLedgerWallet
       ? KeyringAccountType.Ledger
       : KeyringAccountType.Imported;
+
+  rehydrateStore(store).then(() => {
+    initializeMainController();
+  });
+
+  handleRehydrateStore();
 
   const initializeMainController = () => {
     const hdAccounts = Object.values(
@@ -361,8 +370,6 @@ const MasterController = (
       left: window.width - 400,
     });
   };
-
-  initializeMainController();
 
   return {
     appRoute,

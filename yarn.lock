@@ -2321,18 +2321,22 @@
   resolved "https://registry.yarnpkg.com/@polka/url/-/url-1.0.0-next.25.tgz#f077fdc0b5d0078d30893396ff4827a13f99e817"
   integrity sha512-j7P6Rgr3mmtdkeDGTe0E/aYyWEWVtc5yFXtHCRHs28/jptDEWfaVOc5T7cblqy1XKPPfCxJc/8DwQ5YgLOZOVQ==
 
-"@pollum-io/sysweb3-core@file:../sysweb3/packages/sysweb3-core/dist":
+"@pollum-io/sysweb3-core@1.0.26":
   version "1.0.26"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.26.tgz#57a1fd60942b6d2261fb74f73807698205ecb344"
+  integrity sha512-6NG2s0PLEMVQyMQnC8voZOKWh+MAp6SX9B4Dseg79Xtfi/flWp2FV/uVg7WzY9C3bTpHJ+mqtLWeWRgG63dQ/w==
 
-"@pollum-io/sysweb3-keyring@file:../sysweb3/packages/sysweb3-keyring/dist":
-  version "1.0.478"
+"@pollum-io/sysweb3-keyring@^1.0.479":
+  version "1.0.479"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.479.tgz#0dd20786426c9d8ed8bb3f328f8bf8ecae133338"
+  integrity sha512-LvRUH2jZh2Pr4Dt/rsA2GWOVHeWNlFjBfsdVu7ijWMP0D+8bSUoamapX8PRvzHU7A6D5JzpzAN4/KrR7p1iIXg==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
     "@ledgerhq/hw-app-eth" "^6.34.8"
     "@ledgerhq/hw-transport-webhid" "^6.27.19"
     "@ledgerhq/logs" "^6.10.1"
-    "@pollum-io/sysweb3-core" "file:../sysweb3/packages/sysweb3-core/dist"
+    "@pollum-io/sysweb3-core" "1.0.26"
     "@pollum-io/sysweb3-network" "^1.0.95"
     "@pollum-io/sysweb3-utils" "^1.1.232"
     "@trezor/connect-web" "^9.1.5"

@@ -6,7 +6,9 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
-import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
+import { handleRehydrateStore } from 'scripts/Background/handlers/handleRehydrateStore';
+import { handleStoreSubscribe } from 'scripts/Background/handlers/handleStoreSubscribe';
+import MigrationController from 'scripts/Background/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import 'assets/styles/index.css';
@@ -33,16 +35,20 @@ const options = {
   transition: transitions.FADE,
 };
 
-rehydrateStore(store).then(() => {
-  ReactDOM.render(
-    <Provider store={store}>
-      <AlertProvider template={ToastAlert} {...options}>
-        <External />
-      </AlertProvider>
-    </Provider>,
-    app
-  );
+handleRehydrateStore();
 
-  // Subscribe store to updates
-  handleStoreSubscribe(store);
+MigrationController().then(() => {
+  rehydrateStore(store).then(() => {
+    ReactDOM.render(
+      <Provider store={store}>
+        <AlertProvider template={ToastAlert} {...options}>
+          <External />
+        </AlertProvider>
+      </Provider>,
+      app
+    );
+
+    // Subscribe store to updates
+    handleStoreSubscribe(store);
+  });
 });

@@ -4,7 +4,8 @@ import { rehydrate as dappRehydrate } from 'state/dapp';
 import { rehydrate as priceRehydrate } from 'state/price';
 import { rehydrate as vaultRehydrate } from 'state/vault';
 
-import { loadState } from './paliStorage';
+import { loadState } from './localStorage';
+
 export const rehydrateStore = async (store: Store, state?: any) => {
   try {
     const storageState = state || (await loadState());

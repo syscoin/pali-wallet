@@ -18,10 +18,8 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
-import {
-  handleRehydrateStore,
-  handleStoreSubscribe,
-} from 'scripts/Background/controllers/handlers';
+import { handleRehydrateStore } from 'scripts/Background/handlers/handleRehydrateStore';
+import { handleStoreSubscribe } from 'scripts/Background/handlers/handleStoreSubscribe';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
