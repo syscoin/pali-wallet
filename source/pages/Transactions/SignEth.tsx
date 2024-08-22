@@ -119,10 +119,13 @@ const EthSign: React.FC<ISign> = () => {
   useEffect(() => {
     if (data.eventName === 'personal_sign') {
       const msg = data[0] === activeAccount.address ? data[1] : data[0];
+
       controllerEmitter(
         ['wallet', 'ethereumTransaction', 'parsePersonalMessage'],
         [msg]
-      ).then(setMessage);
+      ).then((res: string) => {
+        setMessage(res);
+      });
     }
 
     if (data.eventName === 'eth_sign') {

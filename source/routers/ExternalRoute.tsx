@@ -67,10 +67,11 @@ export const ExternalRoute = () => {
     };
   }, [isUnlocked]);
 
-  useEffect(() => {
-    alert.removeAll();
-    controllerEmitter(['appRoute'], [pathname + search, true]);
-  }, [pathname]);
+  // what is this for?
+  // useEffect(() => {
+  //   alert.removeAll();
+  //   controllerEmitter(['appRoute'], [pathname + search, true]);
+  // }, [pathname]);
 
   return (
     <Suspense fallback={<Loading />}>

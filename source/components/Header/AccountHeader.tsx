@@ -302,17 +302,19 @@ export const AccountMenu: React.FC = () => {
       });
       const host = new URL(tabs[0].url).hostname;
 
-      controllerEmitter(['dapp', 'getAccount'], [host]).then(async (res) => {
-        controllerEmitter(
-          ['wallet', 'setAccount'],
-          [Number(id), type, host, res]
-        );
-      });
+      await controllerEmitter(['dapp', 'getAccount'], [host]).then(
+        async (res) => {
+          await controllerEmitter(
+            ['wallet', 'setAccount'],
+            [Number(id), type, host, res]
+          );
+        }
+      );
 
       return;
     }
 
-    controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
+    await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
   };
 
   const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
