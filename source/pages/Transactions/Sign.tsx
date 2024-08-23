@@ -34,7 +34,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     setLoading(true);
 
     try {
-      const response = await sign(data, send);
+      const response = await sign(data, send, data?.pathIn);
 
       setConfirmed(true);
       setLoading(false);
