@@ -141,7 +141,6 @@ export const methodRequest = async (
 
   //* Wallet methods
   if (prefix === 'wallet') {
-    console.log(methodName);
     let tryingToAdd = false;
     const { activeNetwork, networks: chains } = store.getState().vault;
     switch (methodName) {
@@ -401,7 +400,6 @@ export const methodRequest = async (
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host, activeNetwork);
-    console.log('INSIDE IF');
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     console.log({ responseInside: resp });
     // if (!wallet.isUnlocked()) return false;
@@ -435,7 +433,9 @@ export const enable = async (
   isHybridDapp = true
 ) => {
   // const { isBitcoinBased } = store.getState().vault;
-  // const { dapp, wallet } = getController();
+  const { dapp, wallet } = getController();
+  const isConnected = dapp.isConnected(host);
+  const isUnlocked = wallet.isUnlocked();
   // const { isOpen: isPopupOpen } = JSON.parse(
   //   window.localStorage.getItem('isPopupOpen')
   // );
@@ -452,8 +452,9 @@ export const enable = async (
   //     data: { code: 4101, message: 'Connected to Ethereum based chain' },
   //   });
   // }
-  // if (dapp.isConnected(host) && wallet.isUnlocked())
-  //   return [dapp.getAccount(host).address];
+  if (isConnected && isUnlocked) {
+    return [dapp.getAccount(host).address];
+  }
 
   // if (isPopupOpen)
   //   throw cleanErrorStack(

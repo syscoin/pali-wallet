@@ -452,8 +452,6 @@ async function checkForPendingTransactionsUpdate() {
     return;
   }
 
-  console.log('passou');
-
   const maxTransactionsToSend = 3;
 
   const cooldownTimeMs = 60 * 1000; //1 minute
