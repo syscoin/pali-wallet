@@ -134,13 +134,21 @@ export const SendConfirm = () => {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
           try {
+            if (activeAccount.isTrezorWallet) {
+              await controllerEmitter(
+                ['wallet', 'trezorSigner', 'init'],
+                [],
+                false
+              );
+            }
             controllerEmitter(
               ['wallet', 'syscoinTransaction', 'sendTransaction'],
               [
                 { ...basicTxValues, fee: 0.00001 },
                 activeAccount.isTrezorWallet,
                 activeAccount.isLedgerWallet,
-              ]
+              ],
+              false
             )
               .then((response) => {
                 setConfirmedTx(response);

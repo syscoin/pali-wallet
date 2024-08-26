@@ -89,6 +89,7 @@ const MV3_OPTIONS = {
     'clipboardWrite',
     'unlimitedStorage',
     'offscreen',
+    'scripting',
   ],
   host_permissions: [
     'http://*/*',
