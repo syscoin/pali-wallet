@@ -28,7 +28,10 @@ export const fetchGasAndDecodeFunction = async (
     'wallet',
     'ethereumTransaction',
     'getFeeDataWithDynamicMaxPriorityFeePerGas',
-  ])) as any; //todo: adjust to get from new keyringmanager
+  ]).then((res: any) => ({
+    maxFeePerGas: BigNumber.from(res.maxFeePerGas),
+    maxPriorityFeePerGas: BigNumber.from(res.maxPriorityFeePerGas),
+  }))) as any; //todo: adjust to get from new keyringmanager
 
   const nonce = (await controllerEmitter(
     ['wallet', 'ethereumTransaction', 'getRecommendedNonce'],

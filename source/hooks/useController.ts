@@ -53,22 +53,6 @@ export function useController() {
     };
   }, []);
 
-  // useEffect(() => {
-  //   function handleStateChange(message: any) {
-  //     if (message.type === 'CONTROLLER_STATE_CHANGE') {
-  //       rehydrateStore(store, message.data).then(() => {
-  //         fetchControllerData(false);
-  //       });
-  //     }
-  //   }
-
-  //   chrome.runtime.onMessage.addListener(handleStateChange);
-
-  //   return () => {
-  //     chrome.runtime.onMessage.removeListener(handleStateChange);
-  //   };
-  // }, []);
-
   return useMemo(
     () => ({
       isUnlocked,

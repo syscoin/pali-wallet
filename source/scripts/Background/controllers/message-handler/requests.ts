@@ -432,36 +432,36 @@ export const enable = async (
   isSyscoinDapp = false,
   isHybridDapp = true
 ) => {
-  // const { isBitcoinBased } = store.getState().vault;
+  const { isBitcoinBased } = store.getState().vault;
   const { dapp, wallet } = getController();
   const isConnected = dapp.isConnected(host);
   const isUnlocked = wallet.isUnlocked();
-  // const { isOpen: isPopupOpen } = JSON.parse(
-  //   window.localStorage.getItem('isPopupOpen')
-  // );
-  // if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
-  //   throw ethErrors.provider.custom({
-  //     code: 4101,
-  //     message: 'Connected to Bitcoin based chain',
-  //     data: { code: 4101, message: 'Connected to Bitcoin based chain' },
-  //   });
-  // } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
-  //   throw ethErrors.provider.custom({
-  //     code: 4101,
-  //     message: 'Connected to Ethereum based chain',
-  //     data: { code: 4101, message: 'Connected to Ethereum based chain' },
-  //   });
-  // }
+  const { isPopupOpen } = await chrome.storage.local.get('isPopupOpen');
+
+  if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Bitcoin based chain',
+      data: { code: 4101, message: 'Connected to Bitcoin based chain' },
+    });
+  } else if (isSyscoinDapp && !isBitcoinBased && !isHybridDapp) {
+    throw ethErrors.provider.custom({
+      code: 4101,
+      message: 'Connected to Ethereum based chain',
+      data: { code: 4101, message: 'Connected to Ethereum based chain' },
+    });
+  }
+
   if (isConnected && isUnlocked) {
     return [dapp.getAccount(host).address];
   }
 
-  // if (isPopupOpen)
-  //   throw cleanErrorStack(
-  //     ethErrors.rpc.resourceUnavailable({
-  //       message: 'Already processing eth_requestAccounts. Please wait.',
-  //     })
-  //   );
+  if (isPopupOpen)
+    throw cleanErrorStack(
+      ethErrors.rpc.resourceUnavailable({
+        message: 'Already processing eth_requestAccounts. Please wait.',
+      })
+    );
 
   const dAppActiveAddress: any = await popupPromise({
     host,

@@ -35,6 +35,8 @@ import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
+import { rehydrateStore } from 'state/rehydrate';
+import store from 'state/store';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -47,6 +49,20 @@ export const ExternalRoute = () => {
   // used to redirect after unlocking the wallet
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
+
+  useEffect(() => {
+    function handleStateChange(message: any) {
+      if (message.type === 'CONTROLLER_STATE_CHANGE') {
+        rehydrateStore(store, message.data);
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleStateChange);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleStateChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (isUnlocked && defaultRoute) {

@@ -34,6 +34,9 @@ export const GeneralMenu: React.FC = () => {
   useEffect(() => {
     const getTabData = async () => {
       const url = await getTabUrl();
+
+      if (!url) return;
+
       const host = getHost(url);
 
       controllerEmitter(['dapp', 'isConnected'], [host]).then(

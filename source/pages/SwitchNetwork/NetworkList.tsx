@@ -30,7 +30,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
     useState<currentNetwork>();
   const [selectedNetwork, setSelectedNetwork] = useState<string>(
-    isBitcoinBased ? 'UTXO' : 'EVM'
+    isBitcoinBased ? 'EVM' : 'UTXO'
   );
 
   const {
@@ -65,13 +65,10 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     }
   };
 
-  const chainName = useMemo(() => {
-    if (isChanging) {
-      return getNetworkChain(selectedNetwork === 'UTXO');
-    } else {
-      return getNetworkChain(isBitcoinBased);
-    }
-  }, [isBitcoinBased, isChanging, selectedNetwork]);
+  const chainName = useMemo(
+    () => getNetworkChain(selectedNetwork === 'UTXO'),
+    [isBitcoinBased, isChanging, selectedNetwork]
+  );
 
   const newNetworks = useMemo(() => {
     if (isChanging) {

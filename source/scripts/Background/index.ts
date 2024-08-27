@@ -289,11 +289,11 @@ chrome.runtime.onConnect.addListener(async (port) => {
     senderUrl?.includes(chrome.runtime.getURL('/external.html'))
   ) {
     port.onDisconnect.addListener(() => {
-      // handleIsOpen(false);
+      handleIsOpen(false);
       if (timeout) clearTimeout(timeout);
       if (isTimerEnabled) {
         timeout = setTimeout(() => {
-          // handleLogout();
+          handleLogout();
         }, timer * 60 * 1000);
       }
       log('pali disconnecting port', 'System');

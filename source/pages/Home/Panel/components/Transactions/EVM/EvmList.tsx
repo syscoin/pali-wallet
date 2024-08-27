@@ -86,7 +86,7 @@ export const EvmTransactionsList = ({
       ? typeof tx?.value === 'string'
         ? tx?.value
         : Number(tx?.value?.hex) / 1e18
-      : Number(tx?.value?.hex) / 1e18;
+      : Number(tx?.value) / 1e18;
     const finalTxValue = isErc20Tx
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : tokenValue;
