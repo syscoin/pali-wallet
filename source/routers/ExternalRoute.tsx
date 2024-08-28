@@ -41,8 +41,7 @@ import store from 'state/store';
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const { navigate, alert } = useUtils();
-  const { pathname, search } = useLocation();
+  const { navigate } = useUtils();
   const { isUnlocked, controllerEmitter } = useController();
 
   // defaultRoute stores info from createPopup

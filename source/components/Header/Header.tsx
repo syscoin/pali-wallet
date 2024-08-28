@@ -7,7 +7,6 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
 import { useController } from 'hooks/useController';
-import dapp from 'state/dapp';
 import { RootState } from 'state/store';
 
 import { AccountHeader } from '.';
