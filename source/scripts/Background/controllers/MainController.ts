@@ -18,6 +18,7 @@ import {
 } from '@pollum-io/sysweb3-network';
 import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
+import { getController } from '..';
 import PaliLogo from 'assets/icons/favicon-32.png';
 import store from 'state/store';
 import {
@@ -72,7 +73,7 @@ import { IAssetsManager, INftController } from './assets/types';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
 import ControllerUtils from './ControllerUtils';
-import { PaliEvents } from './message-handler/types';
+import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
@@ -230,6 +231,7 @@ class MainController extends KeyringManager {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    const controller = getController();
     const { canLogin, wallet } = await this.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
     if (!isEmpty(wallet)) {
@@ -240,6 +242,16 @@ class MainController extends KeyringManager {
         })
       );
     }
+
+    controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          accounts: [],
+          isUnlocked: this.isUnlocked(),
+        },
+      })
+      .catch((error) => console.error('Unlock', error));
 
     store.dispatch(setLastLogin());
     return canLogin;
@@ -308,9 +320,20 @@ class MainController extends KeyringManager {
   }
 
   public lock() {
+    const controller = getController();
     this.logout();
 
     store.dispatch(setLastLogin());
+
+    controller.dapp
+      .handleStateChange(PaliEvents.lockStateChanged, {
+        method: PaliEvents.lockStateChanged,
+        params: {
+          accounts: [],
+          isUnlocked: this.isUnlocked(),
+        },
+      })
+      .catch((error) => console.error(error));
     return;
   }
 
@@ -409,6 +432,7 @@ class MainController extends KeyringManager {
     network: INetwork,
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> {
+    const controller = getController();
     let cancelled = false;
     if (this.currentPromise) {
       this.currentPromise.cancel();
@@ -458,15 +482,73 @@ class MainController extends KeyringManager {
           },
         });
 
-        // switch (isBitcoinBased) {
-        //   case true:
-        //     const isTestnet = this.verifyIfIsTestnet();
-        //     break;
-        //   case false:
-        //     break;
-        //   default:
-        //     break;
-        // }
+        controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+          method: PaliEvents.chainChanged,
+          params: {
+            chainId: `0x${network.chainId.toString(16)}`,
+            networkVersion: network.chainId,
+          },
+        });
+
+        controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
+          method: PaliEvents.isBitcoinBased,
+          params: { isBitcoinBased },
+        });
+
+        controller.dapp.handleBlockExplorerChange(
+          PaliSyscoinEvents.blockExplorerChanged,
+          {
+            method: PaliSyscoinEvents.blockExplorerChanged,
+            params: isBitcoinBased ? network.url : null,
+          }
+        );
+
+        switch (isBitcoinBased) {
+          case true:
+            const isTestnet = this.verifyIfIsTestnet();
+
+            controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+              method: PaliEvents.isTestnet,
+              params: { isTestnet },
+            });
+
+            controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+              method: PaliEvents.xpubChanged,
+              params:
+                wallet.accounts[wallet.activeAccountType][
+                  wallet.activeAccountId
+                ].xpub,
+            });
+
+            controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
+              method: PaliEvents.accountsChanged,
+              params: null,
+            });
+            break;
+          case false:
+            controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+              method: PaliEvents.isTestnet,
+              params: { isTestnet: undefined },
+            });
+
+            controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+              method: PaliEvents.xpubChanged,
+              params: null,
+            });
+
+            controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
+              method: PaliEvents.accountsChanged,
+              params: [
+                wallet.accounts[wallet.activeAccountType][
+                  wallet.activeAccountId
+                ].address,
+              ],
+            });
+            break;
+          default:
+            break;
+        }
+
         store.dispatch(setIsNetworkChanging(false));
         return;
       })
@@ -481,11 +563,56 @@ class MainController extends KeyringManager {
             activeAccount: { id: activeAccountId, type: activeAccountType },
           } = store.getState().vault;
 
+          controller.dapp.handleStateChange(PaliEvents.chainChanged, {
+            method: PaliEvents.chainChanged,
+            params: {
+              chainId: `0x${activeNetwork.chainId.toString(16)}`,
+              networkVersion: activeNetwork.chainId,
+            },
+          });
+          controller.dapp.handleBlockExplorerChange(
+            PaliSyscoinEvents.blockExplorerChanged,
+            {
+              method: PaliSyscoinEvents.blockExplorerChanged,
+              params: isBitcoinBased ? network.url : null,
+            }
+          );
+
           switch (isBitcoinBased) {
             case true:
               const isTestnet = this.verifyIfIsTestnet();
+
+              controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+                method: PaliEvents.isTestnet,
+                params: { isTestnet },
+              });
+
+              controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+                method: PaliEvents.xpubChanged,
+                params: accounts[activeAccountType][activeAccountId].xpub,
+              });
+
+              controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
+                method: PaliEvents.accountsChanged,
+                params: null,
+              });
+
               break;
             case false:
+              controller.dapp.handleStateChange(PaliEvents.isTestnet, {
+                method: PaliEvents.isTestnet,
+                params: { isTestnet: undefined },
+              });
+
+              controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
+                method: PaliEvents.xpubChanged,
+                params: null,
+              });
+
+              controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
+                method: PaliEvents.accountsChanged,
+                params: [accounts[activeAccountType][activeAccountId].address],
+              });
             default:
               break;
           }
@@ -498,7 +625,8 @@ class MainController extends KeyringManager {
   }
 
   public removeWindowEthProperty() {
-    window.controller.dapp.handleStateChange(PaliEvents.removeProperty, {
+    const controller = getController();
+    controller.dapp.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
       params: {
         type: PaliEvents.removeProperty,
@@ -507,7 +635,8 @@ class MainController extends KeyringManager {
   }
 
   public addWindowEthProperty() {
-    window.controller.dapp.handleStateChange(PaliEvents.addProperty, {
+    const controller = getController();
+    controller.dapp.handleStateChange(PaliEvents.addProperty, {
       method: PaliEvents.addProperty,
       params: {
         type: PaliEvents.addProperty,

@@ -22,11 +22,12 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
-  const previousChain = getNetworkChain(newChainValue === 'Ethereum');
 
-  const correctTypeForChainValue = getNetworkChain(
-    newChainValue === 'Ethereum'
-  );
+  const isNewChainBtcBased = newChainValue === 'syscoin';
+
+  const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
+
+  const correctTypeForChainValue = getNetworkChain(isNewChainBtcBased);
 
   const titleValue = `${t(
     'buttons.switch'
