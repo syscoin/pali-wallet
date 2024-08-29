@@ -81,12 +81,6 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
-  faucetModal: {
-    57: true,
-    570: true,
-    5700: true,
-    57000: true,
-  },
   currentBlock: undefined,
   coinsList: [],
 };
@@ -321,27 +315,6 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
-    },
-    setFaucetModalState: (
-      state: IVaultState,
-      action: PayloadAction<{ chainId: number; isFirstTime?: boolean }>
-    ) => {
-      const { chainId, isFirstTime } = action.payload;
-      if (state.isBitcoinBased) {
-        return;
-      }
-
-      if (isFirstTime) {
-        state.faucetModal = {
-          57: true,
-          570: true,
-          5700: true,
-          57000: true,
-        };
-        return;
-      }
-
-      state.faucetModal[chainId] = false;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
@@ -865,7 +838,6 @@ export const {
   setTransactionStatusToAccelerated,
   setCoinsList,
   setIsLastTxConfirmed,
-  setFaucetModalState,
 } = VaultState.actions;
 
 export default VaultState.reducer;

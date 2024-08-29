@@ -34,7 +34,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     try {
       const response = await controllerEmitter(
         ['wallet', 'syscoinTransaction', 'signTransaction'],
-        [data, send]
+        [data, send, data?.pathIn]
       );
 
       setConfirmed(true);

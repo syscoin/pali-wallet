@@ -14,7 +14,6 @@ import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchChangeNetworkBgEvent } from 'scripts/Background';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { NetworkType } from 'utils/types';
 
@@ -117,7 +116,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   return (
     <Menu
       as="div"
-      className="absolute z-[888] w-full left-4 inline-block mr-8 text-left"
+      className="absolute z-[9999] w-full left-4 inline-block mr-8 text-left"
     >
       {(menuprops) => (
         <>
@@ -257,7 +256,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         <div className="absolute items-center flex gap-2 right-[1rem] ">
                                           <Icon
                                             name="check"
-                                            className="w-4 relative bottom-0.5"
+                                            className="absolute left-[21.5rem] bottom-2 w-4"
                                             wrapperClassname="w-6"
                                           />
                                         </div>
@@ -310,7 +309,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     : index === arr.length - 1
                                     ? 'rounded-bl-lg rounded-br-lg'
                                     : 'border-b border-dashed border-gray-600'
-                                } flex relative flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
+                                } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,
@@ -330,16 +329,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         wrapperClassname="w-6"
                                       />
                                     )}
-                                  {Object.values(FaucetChainIds).includes(
-                                    currentNetwork.chainId
-                                  ) && (
-                                    <div className="flex justify-center w-[81px] h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
-                                      <div className="w-2 h-2 bg-brand-green rounded-full" />
-                                      <p className="text-xs text-white">
-                                        Faucet
-                                      </p>
-                                    </div>
-                                  )}
                                 </div>
                               </li>
                             ))}

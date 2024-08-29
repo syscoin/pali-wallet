@@ -41,7 +41,6 @@ import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ChainErrorPage } from 'pages/Chain';
-import { Faucet } from 'pages/Faucet';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
   inactivityTime,
@@ -215,11 +214,6 @@ export const Router = () => {
         <Route
           path="/receive"
           element={<ProtectedRoute element={<Receive />} />}
-        />
-
-        <Route
-          path="/faucet"
-          element={<ProtectedRoute element={<Faucet />} />}
         />
 
         <Route

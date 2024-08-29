@@ -78,7 +78,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
   return (
     <div className={accountHeader ? 'pb-32' : 'pb-12'}>
-      <div className="fixed z-[888] w-full md:max-w-2xl">
+      <div className="fixed z-50 w-full md:max-w-2xl">
         <div className="relative flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
           <NetworkMenu
             setActiveAccountModalIsOpen={setIsOpen}
