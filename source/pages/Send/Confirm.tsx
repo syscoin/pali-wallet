@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -18,7 +18,11 @@ import {
 } from 'components/index';
 import { TxSuccessful } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
+import {
+  ISysTransaction,
+  IEvmTransactionResponse,
+} from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import {
@@ -34,7 +38,7 @@ import {
 import { EditPriorityModal } from './EditPriority';
 
 export const SendConfirm = () => {
-  const { wallet, callGetLatestUpdateForAccount } = getController();
+  const { controllerEmitter, web3Provider, isLoading } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const url = chrome.runtime.getURL('app.html');
@@ -71,8 +75,7 @@ export const SendConfirm = () => {
   const [confirmedTx, setConfirmedTx] = useState<any>();
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
-  const [isReconectModalOpen, setIsReconectModalOpen] =
-    useState<boolean>(false);
+  const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
 
   const basicTxValues = state.tx;
 
@@ -92,16 +95,26 @@ export const SendConfirm = () => {
       customFee.isCustom && customFee.gasPrice > 0
     )
       ? customFee.gasPrice * 10 ** 9 // Convert to WEI because injected gasPrices comes in GWEI
-      : await wallet.ethereumTransaction.getRecommendedGasPrice();
-    const gasLimit: any = await wallet.ethereumTransaction.getTxGasLimit(
-      basicTxValues
-    );
+      : await controllerEmitter([
+          'wallet',
+          'ethereumTransaction',
+          'getRecommendedGasPrice',
+        ]).then((gas) => BigNumber.from(gas).toNumber());
+
+    const gasLimit: any = await controllerEmitter(
+      ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+      [basicTxValues]
+    ).then((gas) => BigNumber.from(gas).toNumber());
+
     const initialFee = INITIAL_FEE;
-    initialFee.gasPrice = Number(correctGasPrice);
+
+    initialFee.gasPrice = correctGasPrice;
+
     setFee({ ...initialFee, gasLimit });
 
-    setGasPrice(Number(correctGasPrice));
-    return { gasLimit, gasPrice: Number(correctGasPrice) };
+    setGasPrice(correctGasPrice);
+
+    return { gasLimit, gasPrice: correctGasPrice };
   };
 
   const handleConfirm = async () => {
@@ -122,17 +135,21 @@ export const SendConfirm = () => {
         case isBitcoinBased === true:
           try {
             if (activeAccount.isTrezorWallet) {
-              await wallet.trezorSigner.init();
+              await controllerEmitter(
+                ['wallet', 'trezorSigner', 'init'],
+                [],
+                false
+              );
             }
-            if (activeAccount.isLedgerWallet) {
-              await wallet.ledgerSigner.connectToLedgerDevice();
-            }
-            wallet.syscoinTransaction
-              .sendTransaction(
+            controllerEmitter(
+              ['wallet', 'syscoinTransaction', 'sendTransaction'],
+              [
                 { ...basicTxValues, fee: 0.00001 },
                 activeAccount.isTrezorWallet,
-                activeAccount.isLedgerWallet
-              )
+                activeAccount.isLedgerWallet,
+              ],
+              false
+            )
               .then((response) => {
                 setConfirmedTx(response);
                 setConfirmed(true);
@@ -140,7 +157,7 @@ export const SendConfirm = () => {
 
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                 setTimeout(() => {
-                  callGetLatestUpdateForAccount();
+                  controllerEmitter(['callGetLatestUpdateForAccount']);
                 }, 3500);
               })
               .catch((error) => {
@@ -200,25 +217,35 @@ export const SendConfirm = () => {
 
             if (isEIP1559Compatible === false) {
               try {
-                await wallet.ethereumTransaction
-                  .sendFormattedTransaction(
+                await controllerEmitter(
+                  ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+                  [
                     {
                       ...restTx,
                       value,
                       gasPrice: ethers.utils.hexlify(gasPrice),
-                      gasLimit: wallet.ethereumTransaction.toBigNumber(
+                      gasLimit: BigNumber.from(
                         validateCustomGasLimit
                           ? customFee.gasLimit
                           : fee.gasLimit
                       ),
                     },
-                    !isEIP1559Compatible
-                  )
+                    !isEIP1559Compatible,
+                  ]
+                )
                   .then((response) => {
                     if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                      wallet.sendAndSaveTransaction(response);
+                      controllerEmitter(
+                        ['wallet', 'sendAndSaveTransaction'],
+                        [response]
+                      );
+
+                    console.log('response', response);
+
                     setConfirmedTx(response);
+
                     setConfirmed(true);
+
                     setLoading(false);
                   })
                   .catch((error) => {
@@ -267,44 +294,59 @@ export const SendConfirm = () => {
               }
             }
 
-            wallet.ethereumTransaction
-              .sendFormattedTransaction({
-                ...restTx,
-                value,
-                maxPriorityFeePerGas: ethers.utils.parseUnits(
-                  String(
-                    Boolean(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                    )
-                      ? customFee.maxPriorityFeePerGas.toFixed(9)
-                      : fee.maxPriorityFeePerGas.toFixed(9)
-                  ),
-                  9
-                ),
-                maxFeePerGas: ethers.utils.parseUnits(
-                  String(
-                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? customFee.maxFeePerGas.toFixed(9)
-                      : fee.maxFeePerGas.toFixed(9)
-                  ),
-                  9
-                ),
-                gasLimit: wallet.ethereumTransaction.toBigNumber(
-                  validateCustomGasLimit
-                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                    : fee.gasLimit
-                ),
-              })
+            (
+              controllerEmitter(
+                ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+                [
+                  {
+                    ...restTx,
+                    value,
+                    maxPriorityFeePerGas: ethers.utils.parseUnits(
+                      String(
+                        Boolean(
+                          customFee.isCustom &&
+                            customFee.maxPriorityFeePerGas > 0
+                        )
+                          ? customFee.maxPriorityFeePerGas.toFixed(9)
+                          : fee.maxPriorityFeePerGas.toFixed(9)
+                      ),
+                      9
+                    ),
+                    maxFeePerGas: ethers.utils.parseUnits(
+                      String(
+                        Boolean(
+                          customFee.isCustom && customFee.maxFeePerGas > 0
+                        )
+                          ? customFee.maxFeePerGas.toFixed(9)
+                          : fee.maxFeePerGas.toFixed(9)
+                      ),
+                      9
+                    ),
+                    gasLimit: BigNumber.from(
+                      validateCustomGasLimit
+                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                        : fee.gasLimit
+                    ),
+                  },
+                ]
+              ) as Promise<ISysTransaction | IEvmTransactionResponse>
+            )
               .then((response) => {
                 if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                  wallet.sendAndSaveTransaction(response);
+                  controllerEmitter(
+                    ['wallet', 'sendAndSaveTransaction'],
+                    [response]
+                  );
+
                 setConfirmedTx(response);
+
                 setConfirmed(true);
+
                 setLoading(false);
 
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                 setTimeout(() => {
-                  callGetLatestUpdateForAccount();
+                  controllerEmitter(['callGetLatestUpdateForAccount']);
                 }, 3500);
               })
               .catch((error: any) => {
@@ -357,31 +399,47 @@ export const SendConfirm = () => {
             case false:
               if (isEIP1559Compatible === false) {
                 try {
-                  wallet.ethereumTransaction
-                    .sendSignedErc20Transaction({
-                      networkUrl: activeNetwork.url,
-                      receiver: txObjectState.to,
-                      tokenAddress: basicTxValues.token.contractAddress,
-                      tokenAmount: `${basicTxValues.amount}`,
-                      isLegacy: !isEIP1559Compatible,
-                      decimals: basicTxValues?.token?.decimals,
-                      gasPrice: ethers.utils.hexlify(gasPrice),
-                      gasLimit: wallet.ethereumTransaction.toBigNumber(
-                        validateCustomGasLimit
-                          ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                          : fee.gasLimit * 4
-                      ),
-                    })
+                  (
+                    controllerEmitter(
+                      [
+                        'wallet',
+                        'ethereumTransaction',
+                        'sendSignedErc20Transaction',
+                      ],
+                      [
+                        {
+                          networkUrl: activeNetwork.url,
+                          receiver: txObjectState.to,
+                          tokenAddress: basicTxValues.token.contractAddress,
+                          tokenAmount: `${basicTxValues.amount}`,
+                          isLegacy: !isEIP1559Compatible,
+                          decimals: basicTxValues?.token?.decimals,
+                          gasPrice: ethers.utils.hexlify(gasPrice),
+                          gasLimit: BigNumber.from(
+                            validateCustomGasLimit
+                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                              : fee.gasLimit * 4
+                          ),
+                        },
+                      ]
+                    ) as Promise<IEvmTransactionResponse | ISysTransaction>
+                  )
                     .then(async (response) => {
                       if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                        wallet.sendAndSaveTransaction(response);
+                        controllerEmitter(
+                          ['wallet', 'sendAndSaveTransaction'],
+                          [response]
+                        );
+
                       setConfirmed(true);
+
                       setLoading(false);
+
                       setConfirmedTx(response);
 
                       //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                       setTimeout(() => {
-                        callGetLatestUpdateForAccount();
+                        controllerEmitter(['callGetLatestUpdateForAccount']);
                       }, 3500);
                     })
                     .catch((error) => {
@@ -436,51 +494,68 @@ export const SendConfirm = () => {
                 break;
               }
               try {
-                wallet.ethereumTransaction
-                  .sendSignedErc20Transaction({
-                    networkUrl: activeNetwork.url,
-                    receiver: txObjectState.to,
-                    tokenAddress: basicTxValues.token.contractAddress,
-                    tokenAmount: `${basicTxValues.amount}`,
-                    isLegacy: !isEIP1559Compatible,
-                    decimals: basicTxValues?.token?.decimals,
-                    maxPriorityFeePerGas: ethers.utils.parseUnits(
-                      String(
-                        Boolean(
-                          customFee.isCustom &&
-                            customFee.maxPriorityFeePerGas > 0
-                        )
-                          ? customFee.maxPriorityFeePerGas.toFixed(9)
-                          : fee.maxPriorityFeePerGas.toFixed(9)
-                      ),
-                      9
-                    ),
-                    maxFeePerGas: ethers.utils.parseUnits(
-                      String(
-                        Boolean(
-                          customFee.isCustom && customFee.maxFeePerGas > 0
-                        )
-                          ? customFee.maxFeePerGas.toFixed(9)
-                          : fee.maxFeePerGas.toFixed(9)
-                      ),
-                      9
-                    ),
-                    gasLimit: wallet.ethereumTransaction.toBigNumber(
-                      validateCustomGasLimit
-                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                        : fee.gasLimit * 4
-                    ),
-                  })
+                (
+                  controllerEmitter(
+                    [
+                      'wallet',
+                      'ethereumTransaction',
+                      'sendSignedErc20Transaction',
+                    ],
+                    [
+                      {
+                        networkUrl: activeNetwork.url,
+                        receiver: txObjectState.to,
+                        tokenAddress: basicTxValues.token.contractAddress,
+                        tokenAmount: `${basicTxValues.amount}`,
+                        isLegacy: !isEIP1559Compatible,
+                        decimals: basicTxValues?.token?.decimals,
+                        maxPriorityFeePerGas: ethers.utils.parseUnits(
+                          String(
+                            Boolean(
+                              customFee.isCustom &&
+                                customFee.maxPriorityFeePerGas > 0
+                            )
+                              ? customFee.maxPriorityFeePerGas.toFixed(9)
+                              : fee.maxPriorityFeePerGas.toFixed(9)
+                          ),
+                          9
+                        ),
+                        maxFeePerGas: ethers.utils.parseUnits(
+                          String(
+                            Boolean(
+                              customFee.isCustom && customFee.maxFeePerGas > 0
+                            )
+                              ? customFee.maxFeePerGas.toFixed(9)
+                              : fee.maxFeePerGas.toFixed(9)
+                          ),
+                          9
+                        ),
+                        gasLimit: BigNumber.from(
+                          validateCustomGasLimit
+                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                            : fee.gasLimit * 4
+                        ),
+                      },
+                    ]
+                  ) as Promise<IEvmTransactionResponse | ISysTransaction>
+                )
+
                   .then(async (response) => {
                     if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                      wallet.sendAndSaveTransaction(response);
+                      controllerEmitter(
+                        ['wallet', 'sendAndSaveTransaction'],
+                        [response]
+                      );
+
                     setConfirmed(true);
+
                     setLoading(false);
+
                     setConfirmedTx(response);
 
                     //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                     setTimeout(() => {
-                      callGetLatestUpdateForAccount();
+                      controllerEmitter(['callGetLatestUpdateForAccount']);
                     }, 3500);
                   })
                   .catch((error) => {
@@ -535,25 +610,34 @@ export const SendConfirm = () => {
             case true:
               const { type } = await getContractType(
                 basicTxValues.token.contractAddress,
-                wallet.ethereumTransaction.web3Provider
+                web3Provider
               );
+
               switch (type) {
                 case 'ERC-721':
                   try {
-                    wallet.ethereumTransaction
-                      .sendSignedErc721Transaction({
-                        networkUrl: activeNetwork.url,
-                        receiver: txObjectState.to,
-                        tokenAddress: basicTxValues.token.contractAddress,
-                        tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
-                        isLegacy: !isEIP1559Compatible,
-                        gasPrice: ethers.utils.hexlify(gasPrice),
-                        gasLimit: wallet.ethereumTransaction.toBigNumber(
-                          validateCustomGasLimit
-                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                            : fee.gasLimit * 4
-                        ),
-                      })
+                    controllerEmitter(
+                      [
+                        'wallet',
+                        'ethereumTransaction',
+                        'sendSignedErc721Transaction',
+                      ],
+                      [
+                        {
+                          networkUrl: activeNetwork.url,
+                          receiver: txObjectState.to,
+                          tokenAddress: basicTxValues.token.contractAddress,
+                          tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                          isLegacy: !isEIP1559Compatible,
+                          gasPrice: ethers.utils.hexlify(gasPrice),
+                          gasLimit: BigNumber.from(
+                            validateCustomGasLimit
+                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                              : fee.gasLimit * 4
+                          ),
+                        },
+                      ]
+                    )
                       .then(async (response) => {
                         setConfirmed(true);
                         setLoading(false);
@@ -561,7 +645,7 @@ export const SendConfirm = () => {
 
                         //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                         setTimeout(() => {
-                          callGetLatestUpdateForAccount();
+                          controllerEmitter(['callGetLatestUpdateForAccount']);
                         }, 3500);
                       })
                       .catch((error) => {
@@ -616,41 +700,49 @@ export const SendConfirm = () => {
                   }
                 case 'ERC-1155':
                   try {
-                    wallet.ethereumTransaction
-                      .sendSignedErc1155Transaction({
-                        networkUrl: activeNetwork.url,
-                        receiver: txObjectState.to,
-                        tokenAddress: basicTxValues.token.contractAddress,
-                        tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
-                        isLegacy: !isEIP1559Compatible,
-                        maxPriorityFeePerGas: ethers.utils.parseUnits(
-                          String(
-                            Boolean(
-                              customFee.isCustom &&
-                                customFee.maxPriorityFeePerGas > 0
-                            )
-                              ? customFee.maxPriorityFeePerGas.toFixed(9)
-                              : fee.maxPriorityFeePerGas.toFixed(9)
+                    controllerEmitter(
+                      [
+                        'wallet',
+                        'ethereumTransaction',
+                        'sendSignedErc1155Transaction',
+                      ],
+                      [
+                        {
+                          networkUrl: activeNetwork.url,
+                          receiver: txObjectState.to,
+                          tokenAddress: basicTxValues.token.contractAddress,
+                          tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                          isLegacy: !isEIP1559Compatible,
+                          maxPriorityFeePerGas: ethers.utils.parseUnits(
+                            String(
+                              Boolean(
+                                customFee.isCustom &&
+                                  customFee.maxPriorityFeePerGas > 0
+                              )
+                                ? customFee.maxPriorityFeePerGas.toFixed(9)
+                                : fee.maxPriorityFeePerGas.toFixed(9)
+                            ),
+                            9
                           ),
-                          9
-                        ),
-                        maxFeePerGas: ethers.utils.parseUnits(
-                          String(
-                            Boolean(
-                              customFee.isCustom && customFee.maxFeePerGas > 0
-                            )
-                              ? customFee.maxFeePerGas.toFixed(9)
-                              : fee.maxFeePerGas.toFixed(9)
+                          maxFeePerGas: ethers.utils.parseUnits(
+                            String(
+                              Boolean(
+                                customFee.isCustom && customFee.maxFeePerGas > 0
+                              )
+                                ? customFee.maxFeePerGas.toFixed(9)
+                                : fee.maxFeePerGas.toFixed(9)
+                            ),
+                            9
                           ),
-                          9
-                        ),
-                        gasPrice: ethers.utils.hexlify(gasPrice),
-                        gasLimit: wallet.ethereumTransaction.toBigNumber(
-                          validateCustomGasLimit
-                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                            : fee.gasLimit * 4
-                        ),
-                      })
+                          gasPrice: ethers.utils.hexlify(gasPrice),
+                          gasLimit: BigNumber.from(
+                            validateCustomGasLimit
+                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                              : fee.gasLimit * 4
+                          ),
+                        },
+                      ]
+                    )
                       .then(async (response) => {
                         setConfirmed(true);
                         setLoading(false);
@@ -658,7 +750,7 @@ export const SendConfirm = () => {
 
                         //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
                         setTimeout(() => {
-                          callGetLatestUpdateForAccount();
+                          controllerEmitter(['callGetLatestUpdateForAccount']);
                         }, 3500);
                       })
                       .catch((error) => {
@@ -748,14 +840,23 @@ export const SendConfirm = () => {
 
     const getFeeRecomendation = async () => {
       try {
-        const { maxFeePerGas, maxPriorityFeePerGas } =
-          await wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
+        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
+          [
+            'wallet',
+            'ethereumTransaction',
+            'getFeeDataWithDynamicMaxPriorityFeePerGas',
+          ]
+        )) as any;
+
         const initialFeeDetails = {
-          maxFeePerGas: Number(maxFeePerGas) / 10 ** 9,
+          maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
           baseFee:
-            (Number(maxFeePerGas) - Number(maxPriorityFeePerGas)) / 10 ** 9,
-          maxPriorityFeePerGas: Number(maxPriorityFeePerGas) / 10 ** 9,
-          gasLimit: wallet.ethereumTransaction.toBigNumber(0),
+            (BigNumber.from(maxFeePerGas).toNumber() -
+              BigNumber.from(maxPriorityFeePerGas).toNumber()) /
+            10 ** 9,
+          maxPriorityFeePerGas:
+            BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+          gasLimit: BigNumber.from(0),
         };
 
         const formattedTxObject = {
@@ -768,9 +869,10 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        const getGasLimit = await wallet.ethereumTransaction.getTxGasLimit(
-          formattedTxObject
-        );
+        const getGasLimit = await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+          [formattedTxObject]
+        ).then((gas) => BigNumber.from(gas).toNumber());
 
         const finalFeeDetails = {
           ...initialFeeDetails,
@@ -823,16 +925,18 @@ export const SendConfirm = () => {
   }, [copied]);
 
   useEffect(() => {
+    if (isLoading) return;
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        wallet.ethereumTransaction.web3Provider,
+        web3Provider,
         currentBlock
       );
+
       setIsEIP1559Compatible(isCompatible);
     };
 
     validateEIP1559Compatibility();
-  }, []);
+  }, [isLoading, web3Provider]);
 
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>
@@ -841,8 +945,16 @@ export const SendConfirm = () => {
         title={t('send.txSuccessfull')}
         phraseOne={t('send.txSuccessfullMessage')}
         onClose={() => {
-          wallet.sendAndSaveTransaction(confirmedTx);
-          wallet.setIsLastTxConfirmed(activeNetwork.chainId, false);
+          controllerEmitter(
+            ['wallet', 'sendAndSaveTransaction'],
+            [confirmedTx]
+          );
+
+          controllerEmitter(
+            ['wallet', 'setIsLastTxConfirmed'],
+            [activeNetwork.chainId, false]
+          );
+
           navigate('/home');
         }}
       />

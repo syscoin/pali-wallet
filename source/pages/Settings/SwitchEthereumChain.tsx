@@ -10,7 +10,7 @@ import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -25,12 +25,15 @@ const SwitchChain: React.FC = () => {
   );
   const networks = useSelector((state: RootState) => state.vault.networks);
   const network = networks.ethereum[chainId];
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await wallet.setActiveNetwork(network, 'ethereum');
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [network, 'ethereum']
+      );
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

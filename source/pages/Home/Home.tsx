@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import {
   ONE_MILLION,
@@ -28,6 +28,7 @@ export const Home = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
+  const { controllerEmitter, isUnlocked } = useController();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
@@ -51,15 +52,16 @@ export const Home = () => {
 
   //* Constants
   const { url } = activeNetwork;
-  const controller = getController();
-  const { wallet } = controller;
 
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
+  let isInCooldown: boolean;
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() &&
-    accounts[activeAccount.type][activeAccount.id].address !== '';
+  controllerEmitter(
+    ['wallet', 'ethereumTransaction', 'web3Provider'],
+    [],
+    true
+  ).then((response: CustomJsonRpcProvider) => {
+    isInCooldown = response?.isInCooldown || false;
+  });
 
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =

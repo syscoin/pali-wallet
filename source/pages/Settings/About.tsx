@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { version } from '../../../package.json';
+import packageJson from '../../../package.json';
 import paliLogo from 'assets/images/paliLogoSmall.png';
 import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -30,7 +30,7 @@ const AboutView: FC = () => {
         <img className="pb-6" src={paliLogo} />
         <p className=" text-white">Pali Wallet Browser Extension</p>
         <p className="text-brand-gray200">
-          {t('settings.version')}: {version}
+          {t('settings.version')}: {packageJson.version}
         </p>
 
         <Button

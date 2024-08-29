@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
@@ -14,6 +14,7 @@ interface ISign {
 }
 
 const Sign: React.FC<ISign> = ({ send = false }) => {
+  const { controllerEmitter } = useController();
   const { host, eventName, ...data } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -28,15 +29,16 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
   );
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
   const onSubmit = async () => {
-    const { syscoinTransaction } = getController().wallet;
-    const sign = syscoinTransaction.signTransaction;
-
     setLoading(true);
 
     try {
-      const response = await sign(data, send, data?.pathIn);
+      const response = await controllerEmitter(
+        ['wallet', 'syscoinTransaction', 'signTransaction'],
+        [data, send, data?.pathIn]
+      );
 
       setConfirmed(true);
+
       setLoading(false);
 
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
@@ -44,11 +46,13 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
       const isNecessaryReconnect = error.message.includes(
         'read properties of undefined'
       );
+
       if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
         setIsReconectModalOpen(true);
         setLoading(false);
         return;
       }
+
       setErrorMsg(error.message);
 
       setTimeout(window.close, 4000);

@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, Button } from 'components/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 
 export const CreatePhrase = ({ password }: { password: string }) => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
+  const [seed, setSeed] = useState('');
   const { t } = useTranslation();
 
   const [visible, setVisible] = useState<boolean>(false);
@@ -15,8 +16,12 @@ export const CreatePhrase = ({ password }: { password: string }) => {
 
   const navigate = useNavigate();
 
-  //todo: we need to call keyring manager with the new seed phrase function
-  const seed = useMemo(() => controller.wallet.createNewSeed(), []);
+  useEffect(() => {
+    //todo: we need to call keyring manager with the new seed phrase function
+    controllerEmitter(['wallet', 'createNewSeed']).then((response: string) => {
+      setSeed(response);
+    });
+  }, []);
 
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(seed);

@@ -11,7 +11,7 @@ import {
   NeutralButton,
   ConfirmationModal,
 } from 'components/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 const Advanced = () => {
@@ -30,14 +30,17 @@ const Advanced = () => {
   const [isOpenConfirmationModal, setIsOpenConfirmationModal] =
     useState<boolean>(false);
 
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const navigate = useNavigate();
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     setLoading(true);
 
     for (const prop of Object.keys(enabledProperties)) {
-      controller.wallet.setAdvancedSettings(prop, enabledProperties[prop]);
+      await controllerEmitter(
+        ['wallet', 'setAdvancedSettings'],
+        [prop, enabledProperties[prop]]
+      );
     }
 
     setConfirmed(true);

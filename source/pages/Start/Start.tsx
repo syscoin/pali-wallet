@@ -1,39 +1,68 @@
 import { Form, Input } from 'antd';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 
 import { Button } from 'components/index';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
-import { vaultToWalletState } from 'scripts/Background/controllers';
-import MainController from 'scripts/Background/controllers/MainController';
-import { RootState } from 'state/store';
-import store from 'state/store';
-// import { getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
+import { migrateWalletState } from 'state/migrateWalletState';
 
 export const Start = (props: any) => {
   const { navigate } = useUtils();
-  const {
-    wallet: { unlockFromController },
-  } = getController();
-  // console.log(getController());
-  // console.log({ vault: store.getState().vault });
-  // const formattedVault = vaultToWalletState(store.getState().vault);
-  // const { unlockFromController } = MainController(formattedVault);
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
-  const [isOpenValidation, setIsOpenValidation] = useState<boolean>(false);
+  const [isOpenValidation, setIsOpenValidation] = useState(false);
+  const [hasAccount, setHasAccount] = useState(false);
+  const { controllerEmitter } = useController();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { isExternal, externalRoute } = props;
+  const hasVault = !!JSON.parse(localStorage.getItem('sysweb3-vault'));
+  const isFirstStep = !hasAccount && !hasVault;
 
-  const isFirstStep =
-    accounts[activeAccount.type][activeAccount.id].address === '';
+  useEffect(() => {
+    const checkAccounts = async () => {
+      const result: any = await controllerEmitter([
+        'wallet',
+        'getActiveAccount',
+      ]);
+
+      setHasAccount(!!result.activeAccount.address);
+    };
+
+    checkAccounts();
+
+    return () => {
+      checkAccounts();
+    };
+  }, []);
+
+  const onSubmit = async ({ password }: { password: string }) => {
+    try {
+      await migrateWalletState('persist:root', 'state', hasAccount);
+
+      const result = await controllerEmitter(
+        ['wallet', 'unlockFromController'],
+        [password]
+      );
+
+      if (!result) {
+        setErrorMessage(t('start.wrongPassword'));
+        return;
+      }
+
+      setErrorMessage(null);
+
+      if (!isExternal) {
+        return navigate('/home');
+      }
+
+      return navigate(externalRoute);
+    } catch (e) {
+      setErrorMessage(t('start.wrongPassword'));
+    }
+  };
 
   const getStarted = (
     <>
@@ -56,30 +85,6 @@ export const Start = (props: any) => {
       </Link>
     </>
   );
-
-  const onSubmit = async ({ password }: { password: string }) => {
-    try {
-      console.log({ password });
-      const result = await unlockFromController(password);
-      console.log({ result });
-      // const result = { password };
-
-      if (!result) {
-        setErrorMessage(t('start.wrongPassword'));
-        return;
-      }
-
-      setErrorMessage(null);
-
-      if (!isExternal) {
-        return navigate('/home');
-      }
-
-      return navigate(externalRoute);
-    } catch (e) {
-      setErrorMessage(t('start.wrongPassword'));
-    }
-  };
 
   const unLock = (
     <>

@@ -5,14 +5,14 @@ import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import dafaultImage from 'assets/images/pali-blank.png';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { nftsVideoFormats } from 'utils/index';
 
 import { getChainImage } from './GetChainImage';
 
 export const EvmNftsList = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
@@ -26,10 +26,10 @@ export const EvmNftsList = () => {
 
   const getUserNfts = async () => {
     try {
-      await controller.wallet.fetchAndUpdateNftsState({
-        activeAccount,
-        activeNetwork,
-      });
+      await controllerEmitter(
+        ['wallet', 'fetchAndUpdateNftsState'],
+        [activeAccount, activeNetwork]
+      );
     } catch (error) {
       console.error('Error on get NFTs:', error);
     }

@@ -14,11 +14,11 @@
   },
   "scripts": {
     "generate-manifest": "node ./source/config/generateManifest.js",
-    "dev:chrome": "yarn generate-manifest && jq 'del(.environment) | .permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
+    "dev:chrome": "yarn generate-manifest && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --config source/config/webpack.dev.js --watch",
+    "build:chrome": "yarn generate-manifest && cross-env NODE_ENV=production cross-env TARGET_BROWSER=chrome webpack --config source/config/webpack.prod.js",
     "dev-watch-requests:chrome": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end | .environment = {\"WATCH_REQUESTS\": \"active\"}' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",
     "dev:firefox": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=firefox webpack --watch",
     "dev:opera": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=opera webpack --watch",
-    "build:chrome": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=chrome webpack",
     "build:firefox": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=firefox webpack",
     "build:opera": "jq '.permissions = if .permissions then (.permissions | map(select(. != \"webRequest\"))) else .permissions end' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=production cross-env TARGET_BROWSER=opera webpack",
     "build": "yarn run build:chrome && yarn run build:firefox && yarn run build:opera",
@@ -170,10 +170,12 @@
     "ts-jest": "^27.1.3",
     "typescript": "4.1.5",
     "webpack": "^5.82.0",
+    "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^5.0.2",
     "webpack-dev-server": "^4.13.3",
+    "webpack-merge": "^5.10.0",
     "wext-manifest-loader": "^3.0.0",
-    "wext-manifest-webpack-plugin": "^1.2.1"
+    "wext-manifest-webpack-plugin": "^1.4.1"
   },
   "main": "index.js",
   "bugs": {

@@ -72,7 +72,9 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     chainId
   ] as IEvmTransaction[];
 
-  ethereumTransactions?.find((tx: any) => {
+  ethereumTransactions?.forEach((transaction: any) => {
+    const tx = { ...transaction };
+
     tx.value = !!tx.value?.hex ? tx.value?.hex : tx.value;
 
     if (tx?.hash !== hash) return null;
@@ -106,8 +108,6 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
       if (isValid) formattedTransaction.push(formattedValue);
     }
-
-    return formattedTransaction;
   });
 
   const formattedTransactionDetails = formattedTransaction
