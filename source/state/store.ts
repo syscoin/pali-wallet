@@ -51,6 +51,7 @@ export async function updateState() {
     if (isStateEqual) {
       return false;
     }
+
     await saveState(state);
     return true;
   } catch (error) {

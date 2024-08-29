@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
@@ -13,6 +13,7 @@ interface ISign {
   send?: boolean;
 }
 const EncryptPubKey: React.FC<ISign> = () => {
+  const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -29,21 +30,32 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const { currency } = activeNetwork;
 
   const onSubmit = async () => {
-    const { ethereumTransaction } = getController().wallet;
     setLoading(true);
     const type = data.eventName;
+
     if (data.address !== address) {
       const response = {
         code: 4001,
         message: 'Pali: Asking for key of non connected account',
       };
+
       dispatchBackgroundEvent(`${type}.${host}`, response);
+
       window.close();
     }
-    const response = await ethereumTransaction.getEncryptedPubKey();
+
+    const response = await controllerEmitter([
+      'wallet',
+      'ethereumTransaction',
+      'getEncryptedPubKey',
+    ]);
+
     setConfirmed(true);
+
     setLoading(false);
+
     dispatchBackgroundEvent(`${type}.${host}`, response);
+
     window.close();
   };
   return (

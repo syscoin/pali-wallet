@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 import { Layout, DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import {
   ICustomFeeParams,
@@ -31,9 +31,7 @@ import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
 
 export const SendTransaction = () => {
-  const {
-    wallet: { ethereumTransaction, sendAndSaveTransaction },
-  } = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { navigate, alert } = useUtils();
   const [isReconectModalOpen, setIsReconectModalOpen] =
@@ -130,38 +128,45 @@ export const SendTransaction = () => {
           ),
           9
         ),
-        gasLimit: ethereumTransaction.toBigNumber(
+        gasLimit: BigNumber.from(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
         ),
       });
       try {
-        const response = await ethereumTransaction.sendFormattedTransaction({
-          ...tx,
-          nonce: customNonce,
-          maxPriorityFeePerGas: ethers.utils.parseUnits(
-            String(
-              Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
-                ? customFee.maxPriorityFeePerGas.toFixed(9)
-                : fee.maxPriorityFeePerGas.toFixed(9)
-            ),
-            9
-          ),
-          maxFeePerGas: ethers.utils.parseUnits(
-            String(
-              Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                ? customFee.maxFeePerGas.toFixed(9)
-                : fee.maxFeePerGas.toFixed(9)
-            ),
-            9
-          ),
-          gasLimit: ethereumTransaction.toBigNumber(
-            Boolean(customFee.isCustom && customFee.gasLimit > 0)
-              ? customFee.gasLimit
-              : fee.gasLimit
-          ),
-        });
+        const response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+          [
+            {
+              ...tx,
+              nonce: customNonce,
+              maxPriorityFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(
+                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                  )
+                    ? customFee.maxPriorityFeePerGas.toFixed(9)
+                    : fee.maxPriorityFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              maxFeePerGas: ethers.utils.parseUnits(
+                String(
+                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                    ? customFee.maxFeePerGas.toFixed(9)
+                    : fee.maxFeePerGas.toFixed(9)
+                ),
+                9
+              ),
+              gasLimit: BigNumber.from(
+                Boolean(customFee.isCustom && customFee.gasLimit > 0)
+                  ? customFee.gasLimit
+                  : fee.gasLimit
+              ),
+            },
+          ]
+        )) as any;
         setConfirmed(true);
         setLoading(false);
         setConfirmedTx(response);
@@ -243,7 +248,10 @@ export const SendTransaction = () => {
         title={t('send.txSuccessfull')}
         description={t('send.txSuccessfullMessage')}
         onClose={() => {
-          sendAndSaveTransaction(confirmedTx);
+          controllerEmitter(
+            ['wallet', 'sendAndSaveTransaction'],
+            [confirmedTx]
+          );
           if (isExternal) {
             window.close();
           } else {

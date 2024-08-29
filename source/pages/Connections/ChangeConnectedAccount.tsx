@@ -4,31 +4,40 @@ import { useSelector } from 'react-redux';
 
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeConnectedAccount = () => {
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
-  const { dapp, wallet } = getController();
   //TODO: validate this
   const { host, eventName, connectedAccount, accountType } = useQueryData();
 
   const handleConnectedAccount = () => {
-    wallet.setAccount(connectedAccount.id, accountType);
+    controllerEmitter(
+      ['wallet', 'setAccount'],
+      [connectedAccount.id, accountType]
+    );
+
     dispatchBackgroundEvent(`${eventName}.${host}`, true);
+
     window.close();
   };
 
   const handleActiveAccount = () => {
-    dapp.changeAccount(host, activeAccount.id, activeAccount.type);
+    controllerEmitter(
+      ['dapp', 'changeAccount'],
+      [host, activeAccount.id, activeAccount.type]
+    );
     //this should be passed to constant instead of being hardcoded
     dispatchBackgroundEvent(`${eventName}.${host}`, false);
+
     window.close();
   };
 
@@ -46,7 +55,7 @@ export const ChangeConnectedAccount = () => {
             <b className="text-gray-400">{host}</b>{' '}
             {t('header.hostIsConnected')} {connectedAccount.label} (
             {ellipsis(connectedAccount.address)}).
-            {t('header.yourAcctiveAccountIs')}{' '}
+            {t('header.yourAcctiveAccountIs')}
             {accounts[activeAccount.type][activeAccount.id].label} (
             {ellipsis(accounts[activeAccount.type][activeAccount.id].address)}).
             {t('connections.withWitchAccount')}

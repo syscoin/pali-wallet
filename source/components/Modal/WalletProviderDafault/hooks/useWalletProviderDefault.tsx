@@ -6,16 +6,15 @@ import {
   getContainerStyleAnimation,
   getIconStyleAnimation,
 } from '../utils/getModalStyleAnimation';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 export const useWalletProviderDefault = () => {
+  const { controllerEmitter } = useController();
   const { hasEthProperty } = useSelector((state: RootState) => state.vault);
   const [isHovered, setIsHovered] = useState(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [isNotVisible, setIsNotVisible] = useState(!!isEnabled);
-
-  const controller = getController();
 
   const containerStyleAnimation = getContainerStyleAnimation(
     isHovered,
@@ -27,19 +26,28 @@ export const useWalletProviderDefault = () => {
   const turnPaliAsDefault = () => {
     setIsEnabled(!isEnabled);
     if (isEnabled) {
-      controller.wallet.removeWindowEthProperty();
-      controller.wallet.setHasEthProperty(false);
-      const dapps = Object.values(controller.dapp.getAll());
-      // disconnect from all dapps when remove window.ethereum property
-      if (dapps.length) {
-        for (const dapp of dapps) {
-          if (controller.dapp.isConnected(dapp.host))
-            controller.dapp.disconnect(dapp.host);
+      controllerEmitter(['wallet', 'removeWindowEthProperty']);
+
+      controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+
+      controllerEmitter(['dapp', 'getAll']).then(async (response) => {
+        const dapps = Object.values(response);
+
+        if (dapps.length) {
+          for (const dapp of dapps) {
+            await controllerEmitter(['dapp', 'isConnected'], [dapp.host]).then(
+              async (isConnected: boolean) => {
+                if (isConnected) {
+                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
+                }
+              }
+            );
+          }
         }
-      }
+      });
     } else {
-      controller.wallet.addWindowEthProperty();
-      controller.wallet.setHasEthProperty(true);
+      controllerEmitter(['wallet', 'addWindowEthProperty']);
+      controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
     }
   };
 

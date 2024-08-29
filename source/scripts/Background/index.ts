@@ -9,16 +9,11 @@ import { rehydrate as priceRehydrate } from 'state/price';
 import store from 'state/store';
 import { rehydrate as vaultRehydrate, setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
-// import { i18next } from 'utils/i18n';
-import { parseJsonRecursively } from 'utils/format';
 import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-import {
-  handleRehydrateStore,
-  handleStoreSubscribe,
-} from './controllers/handlers';
+// import { handleRehydrateStore } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
@@ -33,8 +28,8 @@ let paliPopupPort: chrome.runtime.Port;
 let dappMethods = {} as any;
 let walletMethods = {} as any;
 
-// rehydrateStore(store).then(() => {});
 let MasterControllerInstance = {} as IMasterController;
+
 (async () => {
   const storageState = await loadState();
   if (storageState) {
@@ -59,7 +54,7 @@ let MasterControllerInstance = {} as IMasterController;
   utils.setFiat();
 });
 
-handleRehydrateStore();
+// handleRehydrateStore();
 
 const isWatchRequestsActive = false;
 
@@ -162,7 +157,41 @@ const updateRequestsPerSecond = () => {
 // Interval to perform the information update and display the requests per second every second.
 setInterval(updateRequestsPerSecond, 1000);
 
-chrome.runtime.onMessage.addListener(async ({ type, target, data }) => {
+chrome.runtime.onMessage.addListener((message: any, _, sendResponse) => {
+  const { type, data } = message;
+
+  const isEventValid = type === 'CONTROLLER_ACTION';
+
+  if (isEventValid) {
+    const { methods, params, importMethod } = data;
+
+    let targetMethod = MasterControllerInstance;
+
+    for (const method of methods) {
+      if (targetMethod && method in targetMethod) {
+        targetMethod = targetMethod[method];
+      } else {
+        throw new Error('Method not found');
+      }
+    }
+
+    if (typeof targetMethod === 'function' || importMethod) {
+      new Promise(async (resolve) => {
+        const response = importMethod
+          ? targetMethod
+          : await (targetMethod as any)(...params);
+
+        resolve(response);
+      }).then(sendResponse);
+    } else {
+      throw new Error('Method is not a function');
+    }
+  }
+
+  return isEventValid;
+});
+
+chrome.runtime.onMessage.addListener(({ type, target, data }) => {
   switch (type) {
     case 'ping':
       if (target === 'background')
@@ -217,11 +246,11 @@ export const inactivityTime = () => {
 };
 
 chrome.runtime.onConnect.addListener(async (port) => {
-  console.log({ port });
   if (port.name === 'pali') {
     handleIsOpen(true);
     paliPopupPort = port;
   }
+
   if (port.name === 'pali-inject') {
     port.onMessage.addListener((message) => {
       if (message.action === 'isInjected') {
@@ -260,11 +289,11 @@ chrome.runtime.onConnect.addListener(async (port) => {
     senderUrl?.includes(chrome.runtime.getURL('/external.html'))
   ) {
     port.onDisconnect.addListener(() => {
-      // handleIsOpen(false);
+      handleIsOpen(false);
       if (timeout) clearTimeout(timeout);
       if (isTimerEnabled) {
         timeout = setTimeout(() => {
-          // handleLogout();
+          handleLogout();
         }, timer * 60 * 1000);
       }
       log('pali disconnecting port', 'System');
@@ -313,11 +342,12 @@ async function checkForUpdates() {
 let stateIntervalId;
 let pendingTransactionsPollingIntervalId;
 let isListenerRegistered = false;
-let currentIsBitcoinBased = store.getState().vault.isBitcoinBased;
+let currentState = store.getState();
+let currentIsBitcoinBased = currentState.vault.isBitcoinBased;
 
 function getPollingInterval() {
   const { isBitcoinBased } = store.getState().vault;
-  return isBitcoinBased ? 2 * 60 * 1000 : 15 * 1000;
+  return isBitcoinBased ? 2 * 120 * 1000 : 15 * 1000;
 }
 
 function startPolling() {
@@ -366,16 +396,37 @@ function registerListener() {
   isListenerRegistered = true;
 }
 
-function observeVaultChanges() {
+function observeStateChanges() {
+  // send initial state to popup
+  chrome.runtime
+    .sendMessage({
+      type: 'CONTROLLER_STATE_CHANGE',
+      data: currentState,
+    })
+    .catch(() => {});
+
   store.subscribe(() => {
-    const nextState = store.getState().vault;
-    if (nextState.isBitcoinBased !== currentIsBitcoinBased) {
-      currentIsBitcoinBased = nextState.isBitcoinBased;
+    const nextState = store.getState();
+
+    if (nextState.vault.isBitcoinBased !== currentIsBitcoinBased) {
+      currentIsBitcoinBased = nextState.vault.isBitcoinBased;
       if (store.getState().vault.isPolling) {
         startPolling();
       }
       unregisterListener();
       registerListener();
+    }
+
+    if (JSON.stringify(currentState) !== JSON.stringify(nextState)) {
+      currentState = nextState;
+
+      // send state changes to popup
+      chrome.runtime
+        .sendMessage({
+          type: 'CONTROLLER_STATE_CHANGE',
+          data: nextState,
+        })
+        .catch(() => {}); // ignore errors when sending message and the extension is closed
     }
   });
 }
@@ -383,7 +434,7 @@ function observeVaultChanges() {
 function startPendingTransactionsPolling() {
   pendingTransactionsPollingIntervalId = setInterval(
     checkForPendingTransactionsUpdate,
-    2 * 60 * 60 * 1000 //run after 2 hours
+    1 * 60 * 1000 //run after 2 hours
   );
 }
 
@@ -431,7 +482,7 @@ async function checkForPendingTransactionsUpdate() {
   }
 }
 
-observeVaultChanges();
+observeStateChanges();
 registerListener();
 
 const port = chrome.runtime.connect(undefined, { name: 'polling' });

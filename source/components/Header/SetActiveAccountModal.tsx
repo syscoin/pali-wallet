@@ -6,8 +6,8 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { getController } from 'scripts/Background';
 import { RootState } from 'state/store';
 
 interface ISetActiveAccountModalProps {
@@ -17,12 +17,13 @@ interface ISetActiveAccountModalProps {
 }
 
 export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
+  const { controllerEmitter } = useController();
   const { showModal, setIsOpen, selectedNetwork } = props;
   const { accounts, isBitcoinBased, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
   const { t } = useTranslation();
-  const { wallet } = getController();
+
   const { alert } = useUtils();
 
   const [accountId, setAccountId] = useState<number>(activeAccount.id);
@@ -41,11 +42,14 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
       alert.error(t('header.pleaseSelect'));
       return;
     }
-    wallet.setAccount(accountId, accountType);
-    await wallet.setActiveNetwork(
-      selectedNetwork.network,
-      selectedNetwork.chain
+
+    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+
+    controllerEmitter(
+      ['wallet', 'setActiveAccount'],
+      [selectedNetwork.network, selectedNetwork.chain]
     );
+
     setIsOpen(false);
   };
 

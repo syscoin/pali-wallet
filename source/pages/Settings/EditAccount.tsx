@@ -9,7 +9,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Icon, Layout, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { ellipsis } from 'utils/format';
 
@@ -21,7 +21,7 @@ const EditAccountView = () => {
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copyText] = useCopyClipboard();
 
-  const controller = getController();
+  const { controllerEmitter } = useController();
 
   const [form] = useForm();
 
@@ -54,7 +54,10 @@ const EditAccountView = () => {
 
       const accountId = state.id;
 
-      controller.wallet.editAccountLabel(data.label, accountId, accountType);
+      controllerEmitter(
+        ['wallet', 'editAccountLabel'],
+        [data.label, accountId, accountType]
+      );
 
       alert.success(t('settings.accountLabelEditedSuccessfully'));
 

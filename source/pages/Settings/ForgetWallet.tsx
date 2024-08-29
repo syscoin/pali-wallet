@@ -6,13 +6,13 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Button, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 const ForgetWalletView = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
@@ -33,7 +33,7 @@ const ForgetWalletView = () => {
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const onSubmit = ({ password }: { password: string }) => {
-    controller.wallet.forgetWallet(password);
+    controllerEmitter(['wallet', 'forgetWallet'], [password]);
 
     navigate('/');
   };
@@ -63,17 +63,18 @@ const ForgetWalletView = () => {
             },
             () => ({
               validator(_, value) {
-                const seed = controller.wallet.getSeed(value);
+                return controllerEmitter(['wallet', 'getSeed'], [value]).then(
+                  (seed: string) => {
+                    if (seed) {
+                      setIsPasswordValid(true);
+                      return Promise.resolve();
+                    }
 
-                if (seed) {
-                  setIsPasswordValid(true);
+                    setIsPasswordValid(false);
 
-                  return Promise.resolve();
-                }
-
-                setIsPasswordValid(false);
-
-                return Promise.reject();
+                    return Promise.reject();
+                  }
+                );
               },
             }),
           ]}
@@ -98,19 +99,20 @@ const ForgetWalletView = () => {
                 },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
-                    const seed = controller.wallet.getSeed(
-                      getFieldValue('password')
-                    );
+                    return controllerEmitter(
+                      ['wallet', 'getSeed'],
+                      [getFieldValue('password')]
+                    ).then((seed: string) => {
+                      if (seed === value) {
+                        setIsSeedValid(true);
 
-                    if (seed === value) {
-                      setIsSeedValid(true);
+                        return Promise.resolve();
+                      }
 
-                      return Promise.resolve();
-                    }
+                      setIsSeedValid(false);
 
-                    setIsSeedValid(false);
-
-                    return Promise.reject();
+                      return Promise.reject();
+                    });
                   },
                 }),
               ]}
