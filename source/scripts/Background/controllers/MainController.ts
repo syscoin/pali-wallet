@@ -109,7 +109,7 @@ class MainController extends KeyringManager {
   constructor(walletState: any) {
     super(walletState);
     this.utilsController = ControllerUtils();
-    this.assetsManager = AssetsManager();
+    this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
     this.nftsController = NftsController();
     this.web3Provider = this.ethereumTransaction.web3Provider;
     this.transactionsManager = TransactionsManager(this.web3Provider);

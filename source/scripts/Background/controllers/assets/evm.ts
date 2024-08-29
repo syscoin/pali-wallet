@@ -23,14 +23,15 @@ import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
 
-const EvmAssetsController = (): IEvmAssetsController => {
+const EvmAssetsController = (
+  w3Provider: CustomJsonRpcProvider
+): IEvmAssetsController => {
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
-    accountAddress: string,
-    web3Provider: CustomJsonRpcProvider
+    accountAddress: string
   ): Promise<ITokenEthProps | boolean> => {
     try {
-      const provider = web3Provider;
+      const provider = w3Provider;
 
       const metadata = await getTokenStandardMetadata(
         token.contractAddress,
@@ -53,14 +54,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
   const handleERC20Tokens = async (
     walletAddres: string,
     contractAddress: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const metadata = await getTokenStandardMetadata(
         contractAddress,
         walletAddres,
-        web3Provider
+        w3Provider
       );
 
       const balance = `${
@@ -97,14 +97,13 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const getBalance = await getERC721StandardBalance(
         contractAddress,
         walletAddres,
-        web3Provider
+        w3Provider
       );
 
       const balanceToNumber = Number(getBalance);
@@ -116,12 +115,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         Number.isNaN(balanceToNumber) ||
         Boolean(String(getBalance).includes('Error'))
       ) {
-        await handleERC20Tokens(
-          walletAddres,
-          contractAddress,
-          decimals,
-          web3Provider
-        );
+        await handleERC20Tokens(walletAddres, contractAddress, decimals);
 
         return;
       }
@@ -151,20 +145,19 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const getBalance = await getERC1155StandardBalance(
         contractAddress,
         walletAddres,
-        web3Provider,
+        w3Provider,
         decimals
       );
 
       const { name: collectionName } = await getNftStandardMetadata(
         contractAddress,
-        web3Provider
+        w3Provider
       );
 
       const balanceToNumber = Number(getBalance);
@@ -176,12 +169,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         Number.isNaN(balanceToNumber) ||
         Boolean(String(getBalance).includes('Error'))
       ) {
-        await handleERC20Tokens(
-          walletAddres,
-          contractAddress,
-          decimals,
-          web3Provider
-        );
+        await handleERC20Tokens(walletAddres, contractAddress, decimals);
 
         return;
       }
@@ -219,14 +207,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ): Promise<IAddCustomTokenResponse> => {
     //First validate contract address type
     const contractTypeResponse = (await contractChecker(
       contractAddress,
-      web3Provider
+      w3Provider
     )) as ISupportsInterfaceProps;
+
     if (String(contractTypeResponse).includes('Invalid contract address')) {
       return {
         error: true,
@@ -243,8 +231,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             walletAddres,
             contractAddress,
             symbol,
-            decimals,
-            web3Provider
+            decimals
           );
         } catch (erc721Error) {
           return erc721Error;
@@ -255,8 +242,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
             walletAddres,
             contractAddress,
             symbol,
-            decimals,
-            web3Provider
+            decimals
           );
         } catch (erc1155Error) {
           return erc1155Error;
@@ -268,8 +254,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           return await handleERC20Tokens(
             walletAddres,
             contractAddress,
-            decimals,
-            web3Provider
+            decimals
           );
         } catch (erc20Error) {
           return erc20Error;
@@ -279,8 +264,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
   const updateAllEvmTokens = async (
     account: IPaliAccount,
-    currentNetworkChainId: number,
-    web3Provider: CustomJsonRpcProvider
+    currentNetworkChainId: number
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(account.assets.ethereum)) return [];
     const queue = new Queue(3);
@@ -291,7 +275,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           await Promise.all(
             account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
               if (vaultAssets.chainId === currentNetworkChainId) {
-                const provider = web3Provider;
+                const provider = w3Provider;
                 let nftContractType = null;
                 let currentAbi = null;
 

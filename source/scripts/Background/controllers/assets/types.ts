@@ -75,18 +75,15 @@ export interface IEvmAssetsController {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ) => Promise<IAddCustomTokenResponse>;
   addEvmDefaultToken: (
     token: ITokenEthProps,
-    accountAddress: string,
-    web3Provider: CustomJsonRpcProvider
+    accountAddress: string
   ) => Promise<ITokenEthProps | boolean>;
   updateAllEvmTokens: (
     account: IPaliAccount,
 
-    currentNetworkChainId: number,
-    web3Provider: CustomJsonRpcProvider
+    currentNetworkChainId: number
   ) => Promise<ITokenEthProps[]>;
 }

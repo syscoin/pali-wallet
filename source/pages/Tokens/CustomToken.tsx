@@ -92,13 +92,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         try {
           const addTokenMethodResponse = (await controllerEmitter(
             ['wallet', 'assets', 'evm', 'addCustomTokenByType'],
-            [
-              activeAccount.address,
-              contractAddress,
-              assetSymbol,
-              assetDecimals,
-              web3Provider,
-            ]
+            [activeAccount.address, contractAddress, assetSymbol, assetDecimals]
           )) as any;
 
           if (addTokenMethodResponse.error) {
