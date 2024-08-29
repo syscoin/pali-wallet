@@ -131,10 +131,10 @@ export const Router = () => {
     alert.removeAll();
     // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen) {
+    if (isFullscreen && isUnlocked) {
       navigate('/settings/account/hardware');
     }
-  }, [pathname]);
+  }, [pathname, isUnlocked]);
 
   useEffect(() => {
     if (
