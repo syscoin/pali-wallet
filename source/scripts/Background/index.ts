@@ -347,7 +347,7 @@ let currentIsBitcoinBased = currentState.vault.isBitcoinBased;
 
 function getPollingInterval() {
   const { isBitcoinBased } = store.getState().vault;
-  return isBitcoinBased ? 2 * 60 * 1000 : 15 * 1000;
+  return isBitcoinBased ? 2 * 120 * 1000 : 15 * 1000;
 }
 
 function startPolling() {
