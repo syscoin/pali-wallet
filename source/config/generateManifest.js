@@ -8,8 +8,6 @@ const { MV2_OPTIONS, MV3_OPTIONS } = require('./consts.js');
 
 dotenv.config();
 
-const manifestPath = path.join(__dirname, 'manifest.json');
-
 function generateManifest() {
   console.log(process.env.MANIFEST_TYPE);
   const manifestOptions =
@@ -36,7 +34,7 @@ function generateManifest() {
   }
 
   const manifestContent = JSON.stringify(manifestOptions, null, 2);
-  fs.writeFileSync(manifestPath, manifestContent);
+  fs.writeFileSync('manifest.json', manifestContent);
 }
 
 generateManifest();

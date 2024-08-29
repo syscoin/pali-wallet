@@ -9,7 +9,7 @@ import {
   SecondaryButton,
   Tooltip,
 } from 'components/index';
-import { getController } from 'scripts/Background';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
@@ -27,8 +27,13 @@ interface ITxData {
   value: any;
 }
 
-const callbackResolver = (txType: string) => {
-  let callbackName;
+const callbackResolver = async (txType: string, args: any[]) => {
+  let callbackName:
+    | 'confirmTokenCreation'
+    | 'confirmNftCreation'
+    | 'confirmTokenMint'
+    | 'confirmUpdateToken'
+    | 'transferAssetOwnership';
 
   switch (txType) {
     case 'CreateToken':
@@ -58,7 +63,10 @@ const callbackResolver = (txType: string) => {
       throw new Error('Unknown transaction type');
   }
 
-  return getController().wallet.syscoinTransaction[callbackName];
+  return controllerEmitter(
+    ['wallet', 'syscoinTransaction', callbackName],
+    args
+  );
 };
 
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
@@ -120,9 +128,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     }
 
     try {
-      const callback = callbackResolver(type);
-      const response = await callback(transaction);
+      const response = await callbackResolver(type, [transaction]);
+
       setLoading(false);
+
       setSubmitted(true);
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);

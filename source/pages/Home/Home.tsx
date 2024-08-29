@@ -12,7 +12,7 @@ import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
 import { setFaucetModalState } from 'state/vault';
@@ -32,6 +32,7 @@ export const Home = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
+  const { controllerEmitter, isUnlocked } = useController();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
@@ -56,15 +57,16 @@ export const Home = () => {
 
   //* Constants
   const { url } = activeNetwork;
-  const controller = getController();
-  const { wallet } = controller;
 
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
+  let isInCooldown: boolean;
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() &&
-    accounts[activeAccount.type][activeAccount.id].address !== '';
+  controllerEmitter(
+    ['wallet', 'ethereumTransaction', 'web3Provider'],
+    [],
+    true
+  ).then((response: CustomJsonRpcProvider) => {
+    isInCooldown = response?.isInCooldown || false;
+  });
 
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
@@ -72,7 +74,7 @@ export const Home = () => {
 
   const actualBalance = useMemo(
     () => (isBitcoinBased ? syscoinBalance : ethereumBalance),
-    [syscoinBalance, ethereumBalance]
+    [accounts[activeAccount.type][activeAccount.id]]
   );
 
   const moreThanMillion = useMemo(
@@ -139,7 +141,10 @@ export const Home = () => {
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
   const handleOnCloseFaucetModal = useCallback(() => {
-    wallet.setFaucetModalState(activeNetwork.chainId);
+    controllerEmitter(
+      ['wallet', 'setFaucetModalState'],
+      [activeNetwork.chainId]
+    );
   }, [activeNetwork, setFaucetModalState]);
 
   const shouldShowFaucetFirstModal = useMemo(
@@ -190,7 +195,7 @@ export const Home = () => {
                   id="home-balance"
                   className={`font-rubik text-5xl font-medium`}
                 >
-                  {formattedBalance}{' '}
+                  {formattedBalance}
                 </p>
 
                 <p

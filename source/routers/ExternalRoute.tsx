@@ -33,22 +33,35 @@ import {
 } from '../pages';
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
-import { getController } from 'scripts/Background';
+import { rehydrateStore } from 'state/rehydrate';
+import store from 'state/store';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const ExternalRoute = () => {
-  const { appRoute, wallet } = getController();
-  const { navigate, alert } = useUtils();
-  const { pathname, search } = useLocation();
+  const { navigate } = useUtils();
+  const { isUnlocked, controllerEmitter } = useController();
 
   // defaultRoute stores info from createPopup
   // used to redirect after unlocking the wallet
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 
-  const isUnlocked = wallet.isUnlocked();
+  useEffect(() => {
+    function handleStateChange(message: any) {
+      if (message.type === 'CONTROLLER_STATE_CHANGE') {
+        rehydrateStore(store, message.data);
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleStateChange);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleStateChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (isUnlocked && defaultRoute) {
@@ -57,14 +70,23 @@ export const ExternalRoute = () => {
       return;
     }
 
-    const externalRoute = appRoute(null, true);
-    if (externalRoute !== '/') navigate(externalRoute);
+    async function checkExternalRoute() {
+      const externalRoute = await controllerEmitter(['appRoute'], [null, true]);
+      if (externalRoute !== '/') navigate(externalRoute);
+    }
+
+    checkExternalRoute();
+
+    return () => {
+      checkExternalRoute();
+    };
   }, [isUnlocked]);
 
-  useEffect(() => {
-    alert.removeAll();
-    appRoute(pathname + search, true);
-  }, [pathname]);
+  // what is this for?
+  // useEffect(() => {
+  //   alert.removeAll();
+  //   controllerEmitter(['appRoute'], [pathname + search, true]);
+  // }, [pathname]);
 
   return (
     <Suspense fallback={<Loading />}>

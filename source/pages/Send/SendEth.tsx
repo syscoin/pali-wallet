@@ -12,7 +12,7 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { Card, Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { getAssetBalance, ellipsis } from 'utils/index';
@@ -23,6 +23,7 @@ export const SendEth = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
   const {
     accounts,
     activeAccount: activeAccountMeta,
@@ -39,8 +40,9 @@ export const SendEth = () => {
   const [isValidAddress, setIsValidAddress] = useState(null);
   const [isValidAmount, setIsValidAmount] = useState(null);
 
+  const { controllerEmitter } = useController();
+
   const [form] = Form.useForm();
-  const { wallet } = getController();
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
@@ -160,7 +162,12 @@ export const SendEth = () => {
   const getFees = async () => {
     try {
       const currentGasPrice =
-        +(await wallet.ethereumTransaction.getRecommendedGasPrice()) / 10 ** 9;
+        +(await controllerEmitter([
+          'wallet',
+          'ethereumTransaction',
+          'getRecommendedGasPrice',
+        ])) /
+        10 ** 9;
       if (currentBlock) {
         const currentGasLimit =
           parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;

@@ -7,20 +7,18 @@ import { useSelector } from 'react-redux';
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { truncate, getHost, getTabUrl } from 'utils/index';
 
 export const GeneralMenu: React.FC = () => {
-  const { wallet, dapp, refresh } = getController();
-
+  const { controllerEmitter } = useController();
+  const { t } = useTranslation();
+  const { navigate } = useUtils();
   const {
     changingConnectedAccount: { isChangingConnectedAccount },
     advancedSettings,
   } = useSelector((state: RootState) => state.vault);
-  const { t } = useTranslation();
-  const { navigate } = useUtils();
-
   const [currentTab, setCurrentTab] = useState({
     host: '',
     isConnected: false,
@@ -28,7 +26,7 @@ export const GeneralMenu: React.FC = () => {
   const className = currentTab.isConnected ? 'success' : 'error';
 
   const handleLogout = () => {
-    wallet.lock();
+    controllerEmitter(['wallet', 'lock']);
 
     navigate('/');
   };
@@ -36,10 +34,18 @@ export const GeneralMenu: React.FC = () => {
   useEffect(() => {
     const getTabData = async () => {
       const url = await getTabUrl();
+
+      if (!url) return;
+
       const host = getHost(url);
-      const isConnected = dapp.isConnected(host);
-      setCurrentTab({ host, isConnected });
+
+      controllerEmitter(['dapp', 'isConnected'], [host]).then(
+        (isConnected: boolean) => {
+          setCurrentTab({ host, isConnected });
+        }
+      );
     };
+
     getTabData();
   }, []);
 
@@ -47,9 +53,12 @@ export const GeneralMenu: React.FC = () => {
     if (!isChangingConnectedAccount) {
       getTabUrl().then(async (url: string) => {
         const host = getHost(url);
-        const isConnected = dapp.isConnected(host);
 
-        setCurrentTab({ host, isConnected });
+        controllerEmitter(['dapp', 'isConnected'], [host]).then(
+          (isConnected: boolean) => {
+            setCurrentTab({ host, isConnected });
+          }
+        );
       });
     }
   }, [isChangingConnectedAccount]);
@@ -77,7 +86,7 @@ export const GeneralMenu: React.FC = () => {
 
       {advancedSettings['refresh'] && (
         <div
-          onClick={() => refresh()}
+          onClick={() => controllerEmitter(['refresh'], [])}
           className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
         >
           <Icon name="reload" />

@@ -9,12 +9,12 @@ import { getTokenJson } from '@pollum-io/sysweb3-utils';
 
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 
 export const ImportToken: FC = () => {
-  const controller = getController();
+  const { controllerEmitter, web3Provider } = useController();
 
   const [form] = Form.useForm();
   const { navigate } = useUtils();
@@ -79,12 +79,10 @@ export const ImportToken: FC = () => {
   const addToken = async (token: ITokenEthProps) => {
     setIsLoading(true);
     try {
-      const addTokenMethodResponse =
-        await controller.wallet.assets.evm.addEvmDefaultToken(
-          token,
-          activeAccount.address,
-          controller.wallet.ethereumTransaction.web3Provider
-        );
+      const addTokenMethodResponse = await controllerEmitter(
+        ['wallet', 'assets', 'evm', 'addEvmDefaultToken'],
+        [token, activeAccount.address, web3Provider]
+      );
 
       if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
         setError(true);
@@ -93,7 +91,10 @@ export const ImportToken: FC = () => {
         return;
       }
 
-      await controller.wallet.account.eth.saveTokenInfo(addTokenMethodResponse);
+      await controllerEmitter(
+        ['wallet', 'account', 'eth', 'saveTokenInfo'],
+        [addTokenMethodResponse]
+      );
 
       setAdded(true);
     } catch (submitError) {

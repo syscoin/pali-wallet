@@ -1,18 +1,13 @@
-import { getController } from 'scripts/Background';
 import { parseJsonRecursively } from 'utils/format';
-
-import { rehydrateStore } from './rehydrate';
-import store from './store';
 
 export async function migrateWalletState(
   oldStateName: string,
-  newStateName: string
+  newStateName: string,
+  hasAccount: boolean
 ) {
   try {
-    const { wallet } = getController();
     const vault = JSON.parse(localStorage.getItem('sysweb3-vault'));
     const vaultKeys = JSON.parse(localStorage.getItem('sysweb3-vault-keys'));
-    const hasAccount = !!wallet.getActiveAccount().activeAccount.address;
 
     if (vault && vaultKeys && !hasAccount) {
       const oldState = await chrome.storage.local.get(oldStateName);
@@ -26,7 +21,15 @@ export async function migrateWalletState(
         }),
       });
 
-      await rehydrateStore(store);
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage('rehydrate', (response) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+          }
+
+          resolve(response);
+        });
+      });
     }
   } catch (error) {
     console.error('<!> Error migrating state', error);

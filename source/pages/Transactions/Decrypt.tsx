@@ -12,7 +12,7 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
@@ -30,7 +30,7 @@ const Decrypt: React.FC<ISign> = () => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-  const { ethereumTransaction } = getController().wallet;
+  const { controllerEmitter } = useController();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -61,10 +61,17 @@ const Decrypt: React.FC<ISign> = () => {
       window.close();
     }
     try {
-      const response = await ethereumTransaction.decryptMessage(data);
+      const response = await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'decryptMessage'],
+        [data]
+      );
+
       setConfirmed(true);
+
       setLoading(false);
+
       dispatchBackgroundEvent(`${type}.${host}`, response);
+
       window.close();
     } catch (error) {
       setErrorMsg(error.message);
@@ -105,7 +112,10 @@ const Decrypt: React.FC<ISign> = () => {
               <div
                 className="h-fit align-center justify-center mt-1 px-4 w-full text-xs cursor-pointer"
                 onClick={() =>
-                  setDecryptedMessage(ethereumTransaction.decryptMessage(data))
+                  controllerEmitter(
+                    ['wallet', 'ethereumTransaction', 'decryptMessage'],
+                    [data]
+                  ).then(setDecryptedMessage)
                 }
               >
                 <span className="w-full break-words opacity-20">{data[0]}</span>

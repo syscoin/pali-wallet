@@ -9,7 +9,7 @@ import {
   SecondaryButton,
   Fee as FeeFC,
 } from 'components/index';
-import { getController } from 'scripts/Background';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 interface IFee {
@@ -18,7 +18,7 @@ interface IFee {
 }
 
 const Fee: React.FC<IFee> = ({ title, onFinish }) => {
-  const { getRecommendedFee } = getController().wallet.syscoinTransaction;
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -29,8 +29,13 @@ const Fee: React.FC<IFee> = ({ title, onFinish }) => {
   const [fee, setFee] = useState(0.00001);
 
   const updateFee = async () => {
-    const _fee = await getRecommendedFee(activeNetwork.url);
+    const _fee = (await controllerEmitter(
+      ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
+      [activeNetwork.url]
+    )) as number;
+
     form.setFieldsValue({ fee: _fee });
+
     setFee(_fee);
   };
 

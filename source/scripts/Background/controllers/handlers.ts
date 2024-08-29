@@ -22,10 +22,15 @@ export const handleStoreSubscribe = (storeInside: Store) => {
   storeInside.subscribe(listener);
 };
 
-export const handleRehydrateMessage = async (message: any) => {
+export const handleRehydrateMessage = (message: any, _, sendResponse) => {
   if (message !== GlobalMessageEvent.rehydrate) return;
 
-  await rehydrateStore(store);
+  new Promise(async (resolve) => {
+    const response = await rehydrateStore(store);
+    resolve(response);
+  }).then(sendResponse);
+
+  return true;
 };
 
 export const handleRehydrateStore = () => {
