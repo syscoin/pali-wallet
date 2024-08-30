@@ -12,10 +12,10 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import {
   truncate,
   isNFT,
@@ -26,7 +26,7 @@ import {
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
@@ -47,15 +47,15 @@ export const SendSys = () => {
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const getRecommendedFee =
-      await controller.wallet.syscoinTransaction.getRecommendedFee(
-        activeNetwork.url
-      );
+    const getRecommendedFee = (await controllerEmitter(
+      ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
+      [activeNetwork.url]
+    )) as number;
 
     setRecommendedFee(getRecommendedFee || Number(0.00001));
 
     form.setFieldsValue({ fee: getRecommendedFee || Number(0.00001) });
-  }, [controller.wallet.account, form]);
+  }, [activeAccount, form]);
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
@@ -120,10 +120,10 @@ export const SendSys = () => {
   const nextStep = async ({ receiver, amount }: any) => {
     try {
       setIsLoading(true);
-      const transactionFee =
-        await controller.wallet.syscoinTransaction.getEstimateSysTransactionFee(
-          { amount, receivingAddress: receiver }
-        );
+      const transactionFee = await controllerEmitter(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        [{ amount, receivingAddress: receiver }]
+      );
       setIsLoading(false);
       navigate('/send/confirm', {
         state: {
@@ -300,7 +300,7 @@ export const SendSys = () => {
                             as="div"
                             className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
                           >
-                            <Menu.Item>
+                            <Menu.Item as="div" key={uniqueId()}>
                               <button
                                 onClick={() => handleSelectedAsset(-1)}
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"

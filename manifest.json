@@ -1,7 +1,7 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "2.0.19",
+  "version": "3.0.0",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -11,31 +11,27 @@
   "description": "A Non-Custodial Crypto Wallet",
   "short_name": "pali",
   "permissions": [
+    "storage",
+    "activeTab",
+    "clipboardWrite",
+    "unlimitedStorage",
+    "offscreen",
+    "scripting",
+    "webRequest"
+  ],
+  "host_permissions": [
     "http://*/*",
     "https://*/*",
     "*://connect.trezor.io/9/*",
-    "tabs",
-    "storage",
-    "activeTab",
     "*://*.eth/",
-    "clipboardWrite",
-    "unlimitedStorage",
-    "http://localhost:8545/",
-    "webRequest"
+    "http://localhost:8545/"
   ],
-  "content_security_policy": "script-src 'self'; object-src 'self'",
-  "__chrome|firefox__author": "pollum labs",
-  "__opera__developer": {
-    "name": "pollum labs"
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
-  "__firefox__applications": {
-    "gecko": {
-      "id": "{b3e96b5f-b5bf-8b48-846b-52f430365e80}"
-    }
-  },
-  "__chrome__minimum_chrome_version": "49",
-  "__opera__minimum_opera_version": "36",
-  "browser_action": {
+  "author": "pollum labs",
+  "minimum_chrome_version": "49",
+  "action": {
     "default_popup": "app.html",
     "default_icon": {
       "16": "assets/icons/favicon-16.png",
@@ -43,16 +39,10 @@
       "48": "assets/icons/favicon-48.png",
       "128": "assets/icons/favicon-128.png"
     },
-    "default_title": "Pali Wallet",
-    "__chrome|opera__chrome_style": false,
-    "__firefox__browser_style": false
+    "default_title": "Pali Wallet"
   },
   "background": {
-    "scripts": [
-      "js/webextension.bundle.js",
-      "js/background.bundle.js"
-    ],
-    "__chrome|opera__persistent": true
+    "service_worker": "js/background.bundle.js"
   },
   "content_scripts": [
     {
@@ -64,7 +54,6 @@
       ],
       "run_at": "document_start",
       "js": [
-        "js/webextension.bundle.js",
         "js/contentScript.bundle.js"
       ]
     },
@@ -74,18 +63,24 @@
         "https://localhost:8088/*"
       ],
       "js": [
-        "js/webextension.bundle.js",
         "js/trezorScript.bundle.js"
       ]
     }
   ],
   "web_accessible_resources": [
-    "js/inpage.bundle.js",
-    "js/handleWindowProperties.bundle.js",
-    "js/pali.bundle.js"
+    {
+      "resources": [
+        "js/inpage.bundle.js",
+        "js/handleWindowProperties.bundle.js",
+        "js/pali.bundle.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
   ],
   "commands": {
-    "_execute_browser_action": {
+    "_execute_action": {
       "suggested_key": {
         "default": "Ctrl+Shift+P"
       }

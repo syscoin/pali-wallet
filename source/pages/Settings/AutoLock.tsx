@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout, Button } from 'components/index';
 import { TimeSetSuccessfully } from 'components/Modal/WarningBaseModal';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const AutolockView = () => {
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
@@ -29,7 +29,7 @@ const AutolockView = () => {
     form.setFieldsValue({ minutes: 5 });
   };
 
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const navigate = useNavigate();
 
   const onSubmit = (data: any) => {
@@ -45,8 +45,8 @@ const AutolockView = () => {
       ) {
         throw new Error('Value must be between 5 and 120');
       }
-      controller.wallet.setAutolockTimer(+data.minutes);
-      controller.wallet.setIsAutolockEnabled(isEnabled);
+      controllerEmitter(['wallet', 'setAutolockTimer'], [+data.minutes]);
+      controllerEmitter(['wallet', 'setIsAutolockEnabled'], [isEnabled]);
 
       setConfirmed(true);
     } catch (error) {

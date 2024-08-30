@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   DefaultModal,
@@ -10,8 +9,9 @@ import {
   SecondaryButton,
   Tooltip,
 } from 'components/index';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { camelCaseToText, capitalizeFirstLetter, ellipsis } from 'utils/format';
 
 interface ITransactionConfirmation {
@@ -27,8 +27,13 @@ interface ITxData {
   value: any;
 }
 
-const callbackResolver = (txType: string) => {
-  let callbackName;
+const callbackResolver = async (txType: string, args: any[]) => {
+  let callbackName:
+    | 'confirmTokenCreation'
+    | 'confirmNftCreation'
+    | 'confirmTokenMint'
+    | 'confirmUpdateToken'
+    | 'transferAssetOwnership';
 
   switch (txType) {
     case 'CreateToken':
@@ -58,7 +63,10 @@ const callbackResolver = (txType: string) => {
       throw new Error('Unknown transaction type');
   }
 
-  return getController().wallet.syscoinTransaction[callbackName];
+  return controllerEmitter(
+    ['wallet', 'syscoinTransaction', callbackName],
+    args
+  );
 };
 
 const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
@@ -82,7 +90,7 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
 
   const advancedOptionsArray = [
     'notarydetails',
@@ -120,9 +128,10 @@ const TransactionConfirmation: React.FC<ITransactionConfirmation> = ({
     }
 
     try {
-      const callback = callbackResolver(type);
-      const response = await callback(transaction);
+      const response = await callbackResolver(type, [transaction]);
+
       setLoading(false);
+
       setSubmitted(true);
 
       dispatchBackgroundEvent(`tx${type}.${host}`, response);

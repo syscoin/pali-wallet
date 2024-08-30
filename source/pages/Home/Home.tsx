@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -6,16 +6,12 @@ import { useLocation } from 'react-router-dom';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
-import { FaucetAccessModal } from 'components/Modal/FaucetAccessModal';
-import { FaucetFirstAccessModal } from 'components/Modal/FaucetModal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { setFaucetModalState } from 'state/vault';
-import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,
@@ -32,6 +28,7 @@ export const Home = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
+  const { controllerEmitter, isUnlocked } = useController();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
@@ -46,7 +43,6 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
-    faucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
 
   //* States
@@ -56,34 +52,24 @@ export const Home = () => {
 
   //* Constants
   const { url } = activeNetwork;
-  const controller = getController();
-  const { wallet } = controller;
 
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
+  let isInCooldown: boolean;
 
-  const isUnlocked =
-    controller.wallet.isUnlocked() &&
-    accounts[activeAccount.type][activeAccount.id].address !== '';
+  controllerEmitter(
+    ['wallet', 'ethereumTransaction', 'web3Provider'],
+    [],
+    true
+  ).then((response: CustomJsonRpcProvider) => {
+    isInCooldown = response?.isInCooldown || false;
+  });
 
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
     accounts[activeAccount.type][activeAccount.id].balances;
 
-  const actualBalance = useMemo(
-    () => (isBitcoinBased ? syscoinBalance : ethereumBalance),
-    [syscoinBalance, ethereumBalance]
-  );
-
-  const moreThanMillion = useMemo(
-    () => actualBalance > ONE_MILLION,
-    [actualBalance]
-  );
-
-  const moreThanTrillion = useMemo(
-    () => actualBalance > ONE_TRILLION,
-    [actualBalance]
-  );
+  const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
+  const moreThanMillion = actualBalance >= ONE_MILLION;
+  const moreThanTrillion = actualBalance > ONE_TRILLION;
 
   const closeModal = () => {
     setShowModalCongrats(false);
@@ -138,50 +124,15 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
-  const handleOnCloseFaucetModal = useCallback(() => {
-    wallet.setFaucetModalState(activeNetwork.chainId);
-  }, [activeNetwork, setFaucetModalState]);
-
-  const shouldShowFaucetFirstModal = useMemo(
-    () => faucetModal[activeNetwork.chainId],
-    [faucetModal, activeNetwork]
-  );
-
-  const formattedBalance = useMemo(
-    () =>
-      moreThanMillion
-        ? formatMillionNumber(actualBalance)
-        : formatBalanceDecimals(actualBalance || 0, false),
-    [actualBalance, moreThanMillion]
-  );
-
-  const shouldRenderHomePage = useMemo(
-    () =>
-      accounts[activeAccount.type][activeAccount.id] &&
-      lastLogin &&
-      isUnlocked &&
-      !isNetworkChanging,
-    [accounts, activeAccount, lastLogin, isUnlocked, isNetworkChanging]
-  );
-
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
-      {shouldRenderHomePage ? (
+      {accounts[activeAccount.type][activeAccount.id] &&
+      lastLogin &&
+      isUnlocked &&
+      !isNetworkChanging ? (
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
-          {!isBitcoinBased &&
-            Object.values(FaucetChainIds).includes(activeNetwork.chainId) && (
-              <>
-                {shouldShowFaucetFirstModal ? (
-                  <FaucetFirstAccessModal
-                    handleOnClose={handleOnCloseFaucetModal}
-                  />
-                ) : (
-                  <FaucetAccessModal />
-                )}
-              </>
-            )}
 
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
@@ -190,7 +141,9 @@ export const Home = () => {
                   id="home-balance"
                   className={`font-rubik text-5xl font-medium`}
                 >
-                  {formattedBalance}{' '}
+                  {moreThanMillion
+                    ? formatMillionNumber(actualBalance)
+                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
                 </p>
 
                 <p

@@ -3,11 +3,11 @@ import { ethErrors } from 'helpers/errors';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { setIsDappAskingToChangeNetwork } from 'state/vault';
-import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
@@ -25,17 +25,26 @@ export const methodRequest = async (
   host: string,
   data: { method: string; network?: string; params?: any[] }
 ) => {
-  const { dapp, wallet } = window.controller;
+  const { dapp, wallet } = getController();
   const controller = getController();
   const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
+
   const isHybridDapp = areStringsPresent(host, hybridDapps);
   const [prefix, methodName] = data.method.split('_');
-  const { activeAccount, isBitcoinBased, isNetworkChanging, accounts } =
-    store.getState().vault;
+  const {
+    activeAccount,
+    isBitcoinBased,
+    isNetworkChanging,
+    accounts,
+    activeNetwork,
+    activeChain,
+  } = store.getState().vault;
+  const { chainId } = activeNetwork;
+
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased && prefix !== 'sys') {
-    const provider = EthProvider(host);
+    const provider = EthProvider(host, activeNetwork);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
       data.params
@@ -72,11 +81,15 @@ export const methodRequest = async (
       },
     });
   }
+  if (prefix === 'eth' && methodName === 'chainId') {
+    return `0x${chainId.toString(16)}`;
+  }
 
   if (prefix === 'eth' && methodName === 'requestAccounts') {
     try {
-      return await enable(host, undefined, undefined, false, isHybridDapp);
+      return await enable(host, activeChain, chainId, false, isHybridDapp);
     } catch (error) {
+      console.log({ error }, 'ERROR');
       store.dispatch(setIsDappAskingToChangeNetwork(true));
       await popupPromise({
         host,
@@ -112,19 +125,19 @@ export const methodRequest = async (
     return isBitcoinBased
       ? cleanErrorStack(ethErrors.rpc.internal())
       : wallet.isUnlocked()
-      ? [dapp.getAccount(host).address]
+      ? [dapp.getAccount(host)?.address]
       : [];
   }
-  if (
-    !isRequestAllowed &&
-    methodName !== 'switchEthereumChain' &&
-    methodName !== 'getProviderState' &&
-    methodName !== 'getSysProviderState' &&
-    methodName !== 'getAccount' &&
-    methodName !== 'changeUTXOEVM'
-  )
-    throw cleanErrorStack(ethErrors.provider.unauthorized());
-  const estimateFee = () => wallet.getRecommendedFee(dapp.getNetwork().url);
+  // if (
+  //   !isRequestAllowed &&
+  //   methodName !== 'switchEthereumChain' &&
+  //   methodName !== 'getProviderState' &&
+  //   methodName !== 'getSysProviderState' &&
+  //   methodName !== 'getAccount' &&
+  //   methodName !== 'changeUTXOEVM'
+  // )
+  //   throw cleanErrorStack(ethErrors.provider.unauthorized());
+  const estimateFee = () => wallet.getRecommendedFee();
 
   //* Wallet methods
   if (prefix === 'wallet') {
@@ -305,13 +318,13 @@ export const methodRequest = async (
   const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
 
   if (validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName) {
-    const { chainId } = data.params[0];
+    const { chainId: chain } = data.params[0];
 
     const networks = store.getState().vault.networks;
 
     const newChainValue = getNetworkChain(prefix === 'sys');
     const findCorrectNetwork: INetwork =
-      networks[newChainValue.toLowerCase()][chainId];
+      networks[newChainValue.toLowerCase()][chain];
     if (!findCorrectNetwork) {
       throw cleanErrorStack(
         ethErrors.provider.unauthorized('Network request does not exists')
@@ -358,11 +371,12 @@ export const methodRequest = async (
   }
 
   if (
+    dapp.getAccount(host)?.address &&
     prefix !== 'sys' &&
     !isBitcoinBased &&
-    EthProvider(host).checkIsBlocking(data.method) &&
+    EthProvider(host, activeNetwork).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
-      dapp.getAccount(host).address
+      dapp.getAccount(host)?.address
   ) {
     const dappAccount = dapp.getAccount(host);
     const dappAccountType = dappAccount.isImported
@@ -385,9 +399,10 @@ export const methodRequest = async (
 
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
-    const provider = EthProvider(host);
+    const provider = EthProvider(host, activeNetwork);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
-    if (!wallet.isUnlocked()) return false;
+    console.log({ responseInside: resp });
+    // if (!wallet.isUnlocked()) return false;
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
@@ -418,10 +433,11 @@ export const enable = async (
   isHybridDapp = true
 ) => {
   const { isBitcoinBased } = store.getState().vault;
-  const { dapp, wallet } = window.controller;
-  const { isOpen: isPopupOpen } = JSON.parse(
-    window.localStorage.getItem('isPopupOpen')
-  );
+  const { dapp, wallet } = getController();
+  const isConnected = dapp.isConnected(host);
+  const isUnlocked = wallet.isUnlocked();
+  const { isPopupOpen } = await chrome.storage.local.get('isPopupOpen');
+
   if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({
       code: 4101,
@@ -435,8 +451,10 @@ export const enable = async (
       data: { code: 4101, message: 'Connected to Ethereum based chain' },
     });
   }
-  if (dapp.isConnected(host) && wallet.isUnlocked())
+
+  if (isConnected && isUnlocked) {
     return [dapp.getAccount(host).address];
+  }
 
   if (isPopupOpen)
     throw cleanErrorStack(
@@ -459,6 +477,6 @@ export const enable = async (
 };
 
 export const isUnlocked = () => {
-  const { wallet } = window.controller;
+  const { wallet } = getController();
   return wallet.isUnlocked();
 };

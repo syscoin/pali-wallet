@@ -5,8 +5,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { camelCaseToText } from 'utils/format';
 
 import Fee from './Fee';
@@ -22,7 +22,7 @@ interface ITransaction {
 const Transaction: React.FC<ITransaction> = ({ type }) => {
   const { host, ...transaction } = useQueryData();
   const navigate = useNavigate();
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const [fee, setFee] = useState<number>();
   const titleResolver = (txType: string) =>
@@ -40,15 +40,20 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
   useEffect(() => {
     if (!fee) return;
 
-    const recommended = isBitcoinBased
-      ? wallet.syscoinTransaction.getRecommendedFee(activeNetwork.url)
-      : fee;
+    (async () => {
+      const recommended = isBitcoinBased
+        ? await controllerEmitter(
+            ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
+            [activeNetwork.url]
+          )
+        : fee;
 
-    const data = { host, ...transaction, fee: recommended };
+      const data = { host, ...transaction, fee: recommended };
 
-    if (type !== 'Send') return;
+      if (type !== 'Send') return;
 
-    navigate('/external/tx/send/confirm?data=' + JSON.stringify(data));
+      navigate('/external/tx/send/confirm?data=' + JSON.stringify(data));
+    })();
   }, [fee]);
 
   if (!fee) return <Fee title={title} onFinish={setFee} />;

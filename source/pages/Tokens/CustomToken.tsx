@@ -14,9 +14,9 @@ import {
 import { Card, NeutralButton } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 
 import { CustomTokenErrorModal } from './CustomTokenErrorModal';
 
@@ -38,7 +38,7 @@ const TOKEN_CONTRACT_TYPE_INITIAL_VALUE = {
 };
 
 export const CustomToken = (props: ICustomTokenComponentProps) => {
-  const controller = getController();
+  const { controllerEmitter, web3Provider } = useController();
   const { t } = useTranslation();
   const { isEdit, tokenToEdit } = props;
 
@@ -69,8 +69,6 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
-  const web3Provider = controller.wallet.ethereumTransaction.web3Provider;
-
   const isTokenErc20 = tokenContractType.contractType === 'ERC-20';
   const isTokenErc721 = tokenContractType.contractType === 'ERC-721';
 
@@ -92,14 +90,10 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     switch (isEdit) {
       case false:
         try {
-          const addTokenMethodResponse =
-            await controller.wallet.assets.evm.addCustomTokenByType(
-              activeAccount.address,
-              contractAddress,
-              assetSymbol,
-              assetDecimals,
-              web3Provider
-            );
+          const addTokenMethodResponse = (await controllerEmitter(
+            ['wallet', 'assets', 'evm', 'addCustomTokenByType'],
+            [activeAccount.address, contractAddress, assetSymbol, assetDecimals]
+          )) as any;
 
           if (addTokenMethodResponse.error) {
             setIsLoading(false);
@@ -158,10 +152,13 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           }
 
           //Save token at state
-          await controller.wallet.account.eth.saveTokenInfo(
-            tokenToAddWithSubmitValues,
-            tokenContractType.contractType,
-            currentTokens
+          await controllerEmitter(
+            ['wallet', 'account', 'eth', 'saveTokenInfo'],
+            [
+              tokenToAddWithSubmitValues,
+              tokenContractType.contractType,
+              currentTokens,
+            ]
           );
 
           setAdded(true);
@@ -190,7 +187,10 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             decimals: Number(assetDecimals),
           };
 
-          controller.wallet.account.eth.editTokenInfo(editedToken);
+          controllerEmitter(
+            ['wallet', 'account', 'eth', 'editTokenInfo'],
+            [editedToken]
+          );
 
           setAdded(true);
         } catch (error) {

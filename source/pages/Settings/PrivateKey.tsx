@@ -5,12 +5,12 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -29,13 +29,14 @@ const PrivateKeyView = () => {
   const [valid, setValid] = useState<boolean>(false);
   const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) => {
+  const getDecryptedPrivateKey = async (key: string) => {
     try {
-      return controller.wallet.getPrivateKeyByAccountId(
-        activeAccountMeta.id,
-        activeAccountMeta.type,
-        key
-      );
+      const privateKey = (await controllerEmitter(
+        ['wallet', 'getPrivateKeyByAccountId'],
+        [activeAccountMeta.id, activeAccountMeta.type, key]
+      )) as string;
+
+      return privateKey;
     } catch (e) {
       console.log('Wrong password', e);
     }
@@ -102,7 +103,10 @@ const PrivateKeyView = () => {
             },
             () => ({
               async validator(_, pwd) {
-                const { canLogin } = await controller.wallet.unlock(pwd, true);
+                const { canLogin } = (await controllerEmitter(
+                  ['wallet', 'unlock'],
+                  [pwd, true]
+                )) as any;
 
                 if (canLogin) {
                   setValid(true);
@@ -125,8 +129,10 @@ const PrivateKeyView = () => {
       <CopyCard
         onClick={
           valid
-            ? () =>
-                copyText(getDecryptedPrivateKey(form.getFieldValue('password')))
+            ? async () =>
+                copyText(
+                  await getDecryptedPrivateKey(form.getFieldValue('password'))
+                )
             : undefined
         }
         label={t('settings.yourPrivateKey')}

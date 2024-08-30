@@ -3,25 +3,22 @@ import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import slider from 'assets/images/sliderIcon.png';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate, getHost, getTabUrl } from 'utils/index';
 
 export const GeneralMenu: React.FC = () => {
-  const { wallet, dapp, refresh } = getController();
-
+  const { controllerEmitter } = useController();
+  const { t } = useTranslation();
+  const { navigate } = useUtils();
   const {
     changingConnectedAccount: { isChangingConnectedAccount },
     advancedSettings,
   } = useSelector((state: RootState) => state.vault);
-  const { t } = useTranslation();
-  const { navigate } = useUtils();
-
   const [currentTab, setCurrentTab] = useState({
     host: '',
     isConnected: false,
@@ -29,35 +26,39 @@ export const GeneralMenu: React.FC = () => {
   const className = currentTab.isConnected ? 'success' : 'error';
 
   const handleLogout = () => {
-    wallet.lock();
+    controllerEmitter(['wallet', 'lock']);
 
     navigate('/');
   };
 
   useEffect(() => {
-    let isMounted = true;
+    const getTabData = async () => {
+      const url = await getTabUrl();
 
-    getTabUrl(browser).then(async (url: string) => {
-      if (!isMounted) return;
+      if (!url) return;
 
       const host = getHost(url);
-      const isConnected = dapp.isConnected(host);
 
-      setCurrentTab({ host, isConnected });
-    });
-
-    return () => {
-      isMounted = false;
+      controllerEmitter(['dapp', 'isConnected'], [host]).then(
+        (isConnected: boolean) => {
+          setCurrentTab({ host, isConnected });
+        }
+      );
     };
-  }, [wallet.isUnlocked()]);
+
+    getTabData();
+  }, []);
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
-      getTabUrl(browser).then(async (url: string) => {
+      getTabUrl().then(async (url: string) => {
         const host = getHost(url);
-        const isConnected = dapp.isConnected(host);
 
-        setCurrentTab({ host, isConnected });
+        controllerEmitter(['dapp', 'isConnected'], [host]).then(
+          (isConnected: boolean) => {
+            setCurrentTab({ host, isConnected });
+          }
+        );
       });
     }
   }, [isChangingConnectedAccount]);
@@ -85,7 +86,7 @@ export const GeneralMenu: React.FC = () => {
 
       {advancedSettings['refresh'] && (
         <div
-          onClick={() => refresh()}
+          onClick={() => controllerEmitter(['refresh'], [])}
           className="mx-1.5 hover:text-brand-royalblue text-brand-white cursor-pointer"
         >
           <Icon name="reload" />

@@ -12,9 +12,9 @@ import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { FaucetChainIds } from 'scripts/Background/controllers/message-handler/types';
+import { useController } from 'hooks/useController';
+import { dispatchChangeNetworkBgEvent } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
@@ -34,7 +34,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { dapps } = useSelector((state: RootState) => state.dapp);
@@ -94,7 +94,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await wallet.setActiveNetwork(network, chain);
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
+
+      dispatchChangeNetworkBgEvent(network, !!network?.slip44);
     } catch (networkError) {
       navigate('/home');
     }
@@ -114,7 +116,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   return (
     <Menu
       as="div"
-      className="absolute z-[888] w-full left-4 inline-block mr-8 text-left"
+      className="absolute z-[9999] w-full left-4 inline-block mr-8 text-left"
     >
       {(menuprops) => (
         <>
@@ -254,7 +256,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         <div className="absolute items-center flex gap-2 right-[1rem] ">
                                           <Icon
                                             name="check"
-                                            className="w-4 relative bottom-0.5"
+                                            className="absolute left-[21.5rem] bottom-2 w-4"
                                             wrapperClassname="w-6"
                                           />
                                         </div>
@@ -307,7 +309,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     : index === arr.length - 1
                                     ? 'rounded-bl-lg rounded-br-lg'
                                     : 'border-b border-dashed border-gray-600'
-                                } flex relative flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
+                                } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                 onClick={() =>
                                   handleChangeNetwork(
                                     currentNetwork,
@@ -327,16 +329,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         wrapperClassname="w-6"
                                       />
                                     )}
-                                  {Object.values(FaucetChainIds).includes(
-                                    currentNetwork.chainId
-                                  ) && (
-                                    <div className="flex justify-center w-[81px] h-max bg-alpha-whiteAlpha200 rounded-[100px] items-center gap-2 py-[2px] px-1 ">
-                                      <div className="w-2 h-2 bg-brand-green rounded-full" />
-                                      <p className="text-xs text-white">
-                                        Faucet
-                                      </p>
-                                    </div>
-                                  )}
                                 </div>
                               </li>
                             ))}

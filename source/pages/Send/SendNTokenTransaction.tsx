@@ -1,9 +1,8 @@
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import omit from 'lodash/omit';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
@@ -11,9 +10,10 @@ import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import {
   logError,
   ellipsis,
@@ -25,9 +25,11 @@ import {
 import { EditPriorityModal } from './EditPriority';
 
 export const SendNTokenTransaction = () => {
-  const {
-    wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
-  } = getController();
+  // const {
+  //   wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
+  // }
+
+  const { controllerEmitter, web3Provider } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -69,7 +71,7 @@ export const SendNTokenTransaction = () => {
   const [isReconectModalOpen, setIsReconectModalOpen] =
     useState<boolean>(false);
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const isExternal = Boolean(externalTx.external);
 
   const transactionDataValidation = Boolean(
@@ -119,22 +121,32 @@ export const SendNTokenTransaction = () => {
             customFee.isCustom && customFee.gasPrice > 0
           )
             ? customFee.gasPrice * 10 ** 9 // Calculate custom value to send to transaction because it comes without decimals, only 8 -> 10 -> 12
-            : await ethereumTransaction.getRecommendedGasPrice();
+            : await controllerEmitter([
+                'wallet',
+                'ethereumTransaction',
+                'getRecommendedGasPrice',
+              ]);
 
-          await ethereumTransaction
-            .sendFormattedTransaction(
+          await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            [
               {
                 ...finalLegacyTx,
                 gasPrice: ethers.utils.hexlify(Number(getLegacyGasFee)),
-                gasLimit: ethereumTransaction.toBigNumber(
+                gasLimit: BigNumber.from(
                   validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
                 ),
               },
-              isLegacyTransaction
-            )
+              isLegacyTransaction,
+            ]
+          )
             .then((response) => {
               if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                sendAndSaveTransaction(response);
+                controllerEmitter(
+                  ['wallet', 'sendAndSaveTransaction'],
+                  [response]
+                );
+
               setConfirmedTx(response);
               setConfirmed(true);
               setLoading(false);
@@ -177,33 +189,37 @@ export const SendNTokenTransaction = () => {
         }
       } else {
         try {
-          await ethereumTransaction
-            .sendFormattedTransaction({
-              ...txWithoutType,
-              maxPriorityFeePerGas: ethers.utils.parseUnits(
-                String(
-                  Boolean(
-                    customFee.isCustom && customFee.maxPriorityFeePerGas > 0
-                  )
-                    ? customFee.maxPriorityFeePerGas.toFixed(9)
-                    : fee.maxPriorityFeePerGas.toFixed(9)
+          await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+            [
+              {
+                ...txWithoutType,
+                maxPriorityFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(
+                      customFee.isCustom && customFee.maxPriorityFeePerGas > 0
+                    )
+                      ? customFee.maxPriorityFeePerGas.toFixed(9)
+                      : fee.maxPriorityFeePerGas.toFixed(9)
+                  ),
+                  9
                 ),
-                9
-              ),
-              maxFeePerGas: ethers.utils.parseUnits(
-                String(
-                  Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? customFee.maxFeePerGas.toFixed(9)
-                    : fee.maxFeePerGas.toFixed(9)
+                maxFeePerGas: ethers.utils.parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? customFee.maxFeePerGas.toFixed(9)
+                      : fee.maxFeePerGas.toFixed(9)
+                  ),
+                  9
                 ),
-                9
-              ),
-              gasLimit: ethereumTransaction.toBigNumber(
-                validateCustomGasLimit
-                  ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                  : fee.gasLimit
-              ),
-            })
+                gasLimit: BigNumber.from(
+                  validateCustomGasLimit
+                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
+                    : fee.gasLimit
+                ),
+              },
+            ]
+          )
             .then((response) => {
               setConfirmedTx(response);
               setConfirmed(true);
@@ -253,7 +269,10 @@ export const SendNTokenTransaction = () => {
     const abortController = new AbortController();
 
     const getInitialFeeRecomendation = async () => {
-      const nonce = await ethereumTransaction.getRecommendedNonce(tx.from);
+      const nonce = await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'getRecommendedNonce'],
+        [tx.from]
+      );
       const baseTx = transactionDataValidation
         ? {
             from: tx.from,
@@ -273,19 +292,22 @@ export const SendNTokenTransaction = () => {
       let eip1559GasError = false;
       let gasLimitError = false;
       if (tx.gas) {
-        gasLimitResult = ethereumTransaction.toBigNumber(0);
+        gasLimitResult = BigNumber.from(0);
       } else {
-        const currentBlockRequest =
-          await ethereumTransaction.contentScriptWeb3Provider.send(
-            'eth_getBlockByNumber',
-            ['latest', false]
-          );
+        const currentBlockRequest = (await controllerEmitter(
+          [
+            'wallet',
+            'ethereumTransaction',
+            'contentScriptWeb3Provider',
+            'send',
+          ],
+          ['eth_getBlockByNumber', ['latest', false]]
+        )) as any;
+
         const gasLimitFromCurrentBlock = Math.floor(
           Number(currentBlockRequest.gasLimit) * 0.95
         ); //GasLimit from current block with 5% discount, whole limit from block is too much
-        gasLimitResult = ethereumTransaction.toBigNumber(
-          gasLimitFromCurrentBlock
-        );
+        gasLimitResult = BigNumber.from(gasLimitFromCurrentBlock);
         gasLimitError = false;
 
         // verify tx data
@@ -298,9 +320,14 @@ export const SendNTokenTransaction = () => {
             delete clonedTx.maxPriorityFeePerGas;
             delete clonedTx.maxFeePerGas;
             delete clonedTx.gasPrice;
-            await ethereumTransaction.contentScriptWeb3Provider.send(
-              'eth_call',
-              [clonedTx, 'latest']
+            await controllerEmitter(
+              [
+                'wallet',
+                'ethereumTransaction',
+                'contentScriptWeb3Provider',
+                'send',
+              ],
+              ['eth_call', [clonedTx, 'latest']]
             );
           }
         } catch (error) {
@@ -312,8 +339,9 @@ export const SendNTokenTransaction = () => {
         try {
           // if tx data is valid, Pali is able to estimate gas.
           if (!isInvalidTxData) {
-            gasLimitResult = await ethereumTransaction.getTxGasLimit(
-              baseTx as any
+            gasLimitResult = await controllerEmitter(
+              ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+              [baseTx as any]
             );
           }
         } catch (error) {
@@ -325,11 +353,17 @@ export const SendNTokenTransaction = () => {
       tx.gasLimit =
         (tx?.gas && Number(tx?.gas) > Number(gasLimitResult)) ||
         (tx?.gasLimit && Number(tx?.gasLimit) > Number(gasLimitResult))
-          ? ethereumTransaction.toBigNumber(tx.gas || tx.gasLimit)
+          ? BigNumber.from(tx.gas || tx.gasLimit)
           : gasLimitResult;
       try {
-        const { maxFeePerGas, maxPriorityFeePerGas } =
-          await ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas();
+        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
+          [
+            'wallet',
+            'ethereumTransaction',
+            'getFeeDataWithDynamicMaxPriorityFeePerGas',
+          ]
+        )) as any;
+
         const feeRecomendation = {
           maxFeePerGas: tx?.maxFeePerGas
             ? Number(tx?.maxFeePerGas) / 10 ** 9
@@ -345,7 +379,13 @@ export const SendNTokenTransaction = () => {
           gasLimit: tx.gasLimit,
           gasPrice: tx?.gasPrice
             ? Number(tx.gasPrice) / 10 ** 9
-            : Number(await ethereumTransaction.getRecommendedGasPrice()) /
+            : Number(
+                await controllerEmitter([
+                  'wallet',
+                  'ethereumTransaction',
+                  'getRecommendedGasPrice',
+                ])
+              ) /
               10 ** 9,
         };
 
@@ -394,7 +434,7 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {
       const isCompatible = await verifyNetworkEIP1559Compatibility(
-        ethereumTransaction.contentScriptWeb3Provider,
+        web3Provider,
         currentBlock
       );
       setIsEIP1559Compatible(isCompatible);
@@ -409,7 +449,10 @@ export const SendNTokenTransaction = () => {
         title={t('send.txSuccessfull')}
         description={t('send.txSuccessfullMessage')}
         onClose={() => {
-          sendAndSaveTransaction(confirmedTx);
+          controllerEmitter(
+            ['wallet', 'sendAndSaveTransaction'],
+            [confirmedTx]
+          );
           if (isExternal) window.close();
           else navigate('/home');
         }}

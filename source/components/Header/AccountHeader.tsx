@@ -3,7 +3,6 @@ import { toSvg } from 'jdenticon';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { browser } from 'webextension-polyfill-ts';
 
 import {
   IKeyringAccountState,
@@ -22,8 +21,8 @@ import {
   DefaultModal,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {
@@ -289,24 +288,33 @@ const RenderAccountsListByBitcoinBased = (
 
 export const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
-  const { wallet, dapp } = getController();
+  const { controllerEmitter } = useController();
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     if (!isBitcoinBased) {
-      const tabs = await browser.tabs.query({
+      const tabs = await chrome.tabs.query({
         active: true,
         currentWindow: true,
       });
       const host = new URL(tabs[0].url).hostname;
-      const connectedAccount = dapp.getAccount(host);
-      wallet.setAccount(Number(id), type, host, connectedAccount);
+
+      await controllerEmitter(['dapp', 'getAccount'], [host]).then(
+        async (res) => {
+          await controllerEmitter(
+            ['wallet', 'setAccount'],
+            [Number(id), type, host, res]
+          );
+        }
+      );
+
       return;
     }
-    wallet.setAccount(Number(id), type);
+
+    await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
   };
 
   const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
@@ -410,9 +418,9 @@ export const AccountHeader: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isOpenModal, setIsOpenModal] = useState(false);
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const isLedger = activeAccount.type === KeyringAccountType.Ledger;
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -444,25 +452,35 @@ export const AccountHeader: React.FC = () => {
   const handleVerifyAddress = async () => {
     try {
       setIsLoading(true);
-      await controller.wallet.ledgerSigner.utxo.verifyUtxoAddress(
-        activeAccount.id
+
+      await controllerEmitter(
+        ['wallet', 'ledgerSigner', 'utxo', 'verifyUtxoAddress'],
+        [activeAccount.id]
       );
+
       setIsLoading(false);
+
       setIsOpenModal(false);
+
       alert.success(t('home.addressVerified'));
     } catch (error) {
       const isNecessaryReconnect = error.message.includes(
         'read properties of undefined'
       );
+
       if (isNecessaryReconnect) {
         setIsReconectModalOpen(true);
         return;
       }
+
       const wasDeniedByUser = error?.message?.includes('denied by the user');
+
       if (wasDeniedByUser) {
         alert.error(t('home.verificationDeniedByUser'));
       }
+
       setIsOpenModal(false);
+
       setIsLoading(false);
     }
   };

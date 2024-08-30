@@ -189,16 +189,30 @@ export const useTransactionsListConfig = (
     return '';
   };
 
-  return {
-    getTxStatus,
-    getTxStatusIcons,
-    formatTimeStamp,
-    formatTimeStampUtxo,
-    filteredTransactions,
-    isShowedGroupBar,
-    txId,
-    getTxType,
-    blocktime,
-    getTokenSymbol,
-  };
+  return useMemo(
+    () => ({
+      getTxStatus,
+      getTxStatusIcons,
+      formatTimeStamp,
+      formatTimeStampUtxo,
+      filteredTransactions,
+      isShowedGroupBar,
+      txId,
+      getTxType,
+      blocktime,
+      getTokenSymbol,
+    }),
+    [
+      getTxStatus,
+      getTxStatusIcons,
+      formatTimeStamp,
+      formatTimeStampUtxo,
+      filteredTransactions,
+      isShowedGroupBar,
+      txId,
+      getTxType,
+      blocktime,
+      getTokenSymbol,
+    ]
+  );
 };

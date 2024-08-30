@@ -8,26 +8,31 @@ import {
   SecondaryButton,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
+import { dispatchBackgroundEvent } from 'utils/browser';
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { alert } = useUtils();
-  const controller = getController();
-  const wallet = controller.wallet;
+  const { controllerEmitter } = useController();
   const onSubmit = async (customRpc: any) => {
     setLoading(true);
 
     try {
-      await controller.wallet.addCustomRpc(customRpc).then(async (network) => {
-        setConfirmed(true);
-        setLoading(false);
-        const type = data.eventName;
-        dispatchBackgroundEvent(`${type}.${host}`, null);
-        await wallet.setActiveNetwork(network, 'ethereum');
-      });
+      await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]).then(
+        async (network) => {
+          setConfirmed(true);
+          setLoading(false);
+          const type = data.eventName;
+          dispatchBackgroundEvent(`${type}.${host}`, null);
+          await controllerEmitter(
+            ['wallet', 'setActiveNetwork'],
+            [network, 'ethereum']
+          );
+        }
+      );
     } catch (error: any) {
       alert.removeAll();
       alert.error(error.message);

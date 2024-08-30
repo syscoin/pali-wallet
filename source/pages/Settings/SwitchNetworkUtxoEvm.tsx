@@ -10,22 +10,24 @@ import {
   DefaultModal,
 } from 'components/index';
 import { useQueryData } from 'hooks/index';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
 
 const SwitchNeworkUtxoEvm: React.FC = () => {
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { host, ...data } = useQueryData();
   const { newNetwork, newChainValue } = data;
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
-  const previousChain = getNetworkChain(newChainValue === 'Ethereum');
 
-  const correctTypeForChainValue = getNetworkChain(
-    newChainValue === 'Ethereum'
-  );
+  const isNewChainBtcBased = newChainValue === 'syscoin';
+
+  const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
+
+  const correctTypeForChainValue = getNetworkChain(isNewChainBtcBased);
 
   const titleValue = `${t(
     'buttons.switch'
@@ -34,7 +36,10 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await wallet.setActiveNetwork(newNetwork, correctTypeForChainValue);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [newNetwork, correctTypeForChainValue]
+      );
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

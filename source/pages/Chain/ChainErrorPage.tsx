@@ -8,20 +8,22 @@ import rolluxChainImg from 'assets/images/rolluxChain.png';
 import sysChainImg from 'assets/images/sysChain.svg';
 import { Button } from 'components/Button';
 import { Header } from 'components/Header';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
-
 export const ChainErrorPage = () => {
+  const { controllerEmitter } = useController();
+  const { navigate } = useUtils();
+  const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const { navigate } = useUtils();
-  const { wallet } = getController();
-  const { t } = useTranslation();
 
   const handleRetryToConnect = async () => {
-    await wallet.setActiveNetwork(activeNetwork, String(activeNetwork.chainId));
+    await controllerEmitter(
+      ['wallet', 'setActiveNetwork'],
+      [activeNetwork, String(activeNetwork.chainId)]
+    );
   };
 
   const CurrentChains = () => {
@@ -112,7 +114,14 @@ export const ChainErrorPage = () => {
           <Button
             type="submit"
             className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
-            onClick={() => navigate('/home')}
+            onClick={() => {
+              controllerEmitter(
+                ['wallet', 'setIsPaliNetworkChanging'],
+                [false]
+              );
+
+              navigate('/home');
+            }}
           >
             {t('buttons.cancel')}
           </Button>

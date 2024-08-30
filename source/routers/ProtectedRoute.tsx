@@ -1,12 +1,17 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 
-import { getController } from 'utils/browser';
+import { Loading } from 'components/Loading';
+import { useController } from 'hooks/useController';
 
 export function ProtectedRoute({ element }: { element: JSX.Element }) {
-  const { isUnlocked } = getController().wallet;
+  const { isUnlocked, isLoading } = useController();
 
-  if (!isUnlocked()) {
+  if (isLoading) {
+    return <Loading />;
+  }
+
+  if (!isUnlocked) {
     return <Navigate to={{ pathname: '/' }} />;
   }
 

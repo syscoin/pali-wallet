@@ -13,9 +13,9 @@ import { Button, Layout, Tooltip } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
-import { getController } from 'utils/browser';
 import { NetworkType } from 'utils/types';
 
 const CustomRPCView = () => {
@@ -33,11 +33,11 @@ const CustomRPCView = () => {
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
   const { activeNetwork, isBitcoinBased } = useSelector(
+    // eslint-disable-next-line no-shadow
     (state: RootState) => state.vault
   );
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { alert, navigate } = useUtils();
-  const controller = getController();
 
   const [form] = useForm();
 
@@ -69,13 +69,16 @@ const CustomRPCView = () => {
 
     try {
       if (!state) {
-        await controller.wallet.addCustomRpc(customRpc);
+        await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]);
         setLoading(false);
         setAddedRpc(true);
         return;
       }
 
-      await controller.wallet.editCustomRpc(customRpc, state.selected);
+      await controllerEmitter(
+        ['wallet', 'editCustomRpc'],
+        [customRpc, state.selected]
+      );
       setLoading(false);
       setAddedRpc(true);
     } catch (error: any) {
@@ -119,7 +122,10 @@ const CustomRPCView = () => {
   }, [urlFieldValue]);
 
   const handleConnect = async (data: ICustomRpcParams) => {
-    await wallet.setActiveNetwork(data, String(activeNetwork.chainId));
+    await controllerEmitter(
+      ['wallet', 'setActiveNetwork'],
+      [data, String(activeNetwork.chainId)]
+    );
   };
   return (
     <Layout title={state?.isEditing ? 'EDIT RPC' : t('settings.customRpc')}>

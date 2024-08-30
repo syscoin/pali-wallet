@@ -3,10 +3,10 @@ import { useLocation } from 'react-router-dom';
 
 import { PasswordForm } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
 
 export const CreatePasswordImport = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { state } = useLocation();
 
   const { navigate } = useUtils();
@@ -18,7 +18,7 @@ export const CreatePasswordImport = () => {
     });
 
   const onSubmit = async ({ password }: { password: string }) => {
-    await controller.wallet.createWallet(password, phrase);
+    await controllerEmitter(['wallet', 'createWallet'], [password, phrase]);
 
     next();
   };

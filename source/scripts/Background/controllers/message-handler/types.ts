@@ -10,13 +10,6 @@ export enum HardWallets {
   TREZOR = 'TREZOR',
 }
 
-export enum FaucetChainIds {
-  RolluxMainnet = 570,
-  RolluxTestnet = 57000,
-  nevmTestnet = 5700,
-  nevmMainnet = 57,
-}
-
 //TODO: addtype for rpc subscription notifications here
 export enum PaliEvents {
   accountsChanged = 'pali_accountsChanged',

@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
@@ -24,6 +24,7 @@ import {
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
 import { SYSCOIN_MAINNET_NETWORK_57 } from 'utils/constants';
+import { chromeStorage } from 'utils/storageAPI';
 import { isTokenTransfer } from 'utils/transactions';
 
 import {
@@ -58,6 +59,7 @@ export const initialState: IVaultState = {
   },
   isLastTxConfirmed: {},
   hasEthProperty: true, //hasEthProperty true means pali as default provider
+  hasEncryptedVault: false,
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
@@ -79,20 +81,28 @@ export const initialState: IVaultState = {
   networks: initialNetworksState,
   error: false,
   isPolling: false,
-  faucetModal: {
-    57: true,
-    570: true,
-    5700: true,
-    57000: true,
-  },
   currentBlock: undefined,
   coinsList: [],
 };
+
+export const getHasEncryptedVault = createAsyncThunk(
+  'vault/getHasEncryptedVault',
+  async () => {
+    const hasEncryptedVault = await chromeStorage.getItem('sysweb3-vault');
+    return !!hasEncryptedVault;
+  }
+);
 
 const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    rehydrate(state: IVaultState, action: PayloadAction<IVaultState>) {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    },
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
@@ -305,27 +315,6 @@ const VaultState = createSlice({
     },
     setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
       state.isNetworkChanging = action.payload;
-    },
-    setFaucetModalState: (
-      state: IVaultState,
-      action: PayloadAction<{ chainId: number; isFirstTime?: boolean }>
-    ) => {
-      const { chainId, isFirstTime } = action.payload;
-      if (state.isBitcoinBased) {
-        return;
-      }
-
-      if (isFirstTime) {
-        state.faucetModal = {
-          57: true,
-          570: true,
-          5700: true,
-          57000: true,
-        };
-        return;
-      }
-
-      state.faucetModal[chainId] = false;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
@@ -797,9 +786,15 @@ const VaultState = createSlice({
       ] = removedTx;
     },
   },
+  extraReducers: (builder) => {
+    builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
+      state.hasEncryptedVault = action.payload;
+    });
+  },
 });
 
 export const {
+  rehydrate,
   setAccounts,
   setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,
@@ -843,7 +838,6 @@ export const {
   setTransactionStatusToAccelerated,
   setCoinsList,
   setIsLastTxConfirmed,
-  setFaucetModalState,
 } = VaultState.actions;
 
 export default VaultState.reducer;

@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import metamaskIcon from 'assets/icons/metamask.svg';
 import paliIcon from 'assets/icons/pali.svg';
 import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const RemoveEthView = () => {
   const { hasEthProperty } = useSelector((state: RootState) => state.vault);
@@ -15,31 +15,41 @@ const RemoveEthView = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [loading, setLoading] = useState<boolean>(false);
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const navigate = useNavigate();
 
   const onSubmit = () => {
     setLoading(true);
+
     setIsEnabled(!isEnabled);
+
     switch (isEnabled) {
       case true:
-        controller.wallet.removeWindowEthProperty();
-        controller.wallet.setHasEthProperty(false);
-        const dapps = Object.values(controller.dapp.getAll());
-        // disconnect from all dapps when remove window.ethereum property
-        if (dapps.length) {
-          for (const dapp of dapps) {
-            if (controller.dapp.isConnected(dapp.host))
-              controller.dapp.disconnect(dapp.host);
+        controllerEmitter(['wallet', 'removeWindowEthProperty']);
+
+        controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+
+        controllerEmitter(['dapp', 'getAll']).then((dapps) => {
+          for (const dapp of Object.values(dapps)) {
+            controllerEmitter(['dapp', 'isConnected'], [dapp.host]).then(
+              (isConnected: boolean) => {
+                if (isConnected)
+                  controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
+              }
+            );
           }
-        }
+        });
+
         setConfirmed(true);
         setLoading(false);
         break;
       case false:
-        controller.wallet.addWindowEthProperty();
-        controller.wallet.setHasEthProperty(true);
+        controllerEmitter(['wallet', 'addWindowEthProperty']);
+
+        controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+
         setConfirmed(true);
+
         setLoading(false);
         break;
       default:

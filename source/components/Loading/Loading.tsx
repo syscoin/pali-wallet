@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { Icon } from '..';
 import { RootState } from 'state/store';
 
-const FIVE_SECONDS = 5000;
+const TWENTY_SECONDS = 20000;
 
 export const Loading = ({
   opacity = 60,
@@ -23,7 +23,7 @@ export const Loading = ({
     if (isNetworkChanging) {
       setTimeout(() => {
         setTimeoutError(true);
-      }, FIVE_SECONDS);
+      }, TWENTY_SECONDS);
     }
   };
 

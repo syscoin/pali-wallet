@@ -7,15 +7,14 @@ import { useSelector } from 'react-redux';
 import { Layout, NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const [form] = useForm();
-  const { importAccountFromPrivateKey } = controller.wallet;
 
   //* States
   const [isAccountImported, setIsAccountImported] = useState(false);
@@ -33,9 +32,9 @@ const ImportAccountView = () => {
     setIsImporting(true);
     if (form.getFieldValue('privKey')) {
       try {
-        const account = await importAccountFromPrivateKey(
-          form.getFieldValue('privKey'),
-          form.getFieldValue('label')
+        const account = await controllerEmitter(
+          ['wallet', 'importAccountFromPrivateKey'],
+          [form.getFieldValue('privKey'), form.getFieldValue('label')]
         );
 
         if (account) setIsAccountImported(true);
