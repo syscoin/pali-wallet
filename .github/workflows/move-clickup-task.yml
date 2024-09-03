@@ -1,0 +1,37 @@
+name: Move ClickUp Task to CODE REVIEW and Add PR Link as Comment
+
+on:
+  pull_request:
+    types: [opened, closed]
+
+jobs:
+  update_task_status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract ClickUp Task ID from PR Title
+        id: extract_task_id
+        run: echo "::set-output name=task_id::$(echo ${{ github.event.pull_request.title }} | grep -o '[a-zA-Z0-9]\{9\}')"
+
+      - name: Move Task to CODE REVIEW
+        if: github.event.action == 'opened' && steps.extract_task_id.outputs.task_id != ''
+        run: |
+          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/status" \
+          -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"status": "CODE REVIEW"}'
+
+      - name: Add PR Link as Comment
+        if: github.event.action == 'opened' && steps.extract_task_id.outputs.task_id != ''
+        run: |
+          curl -X POST "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/comment" \
+          -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"comment": "Pull Request created: ${{ github.event.pull_request.html_url }}"}'
+
+      - name: Move Task to READY FOR PUBLISH
+        if: github.event.action == 'closed' && github.event.pull_request.merged == true && steps.extract_task_id.outputs.task_id != ''
+        run: |
+          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/status" \
+          -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
+          -H "Content-Type: application/json" \
+          -d '{"status": "READY FOR PUBLISH"}'
