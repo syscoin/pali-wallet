@@ -15,7 +15,7 @@ jobs:
       - name: Move Task to CODE REVIEW
         if: github.event.action == 'opened' && steps.extract_task_id.outputs.task_id != ''
         run: |
-          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/status" \
+          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}" \
           -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d '{"status": "CODE REVIEW"}'
@@ -26,12 +26,12 @@ jobs:
           curl -X POST "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/comment" \
           -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
           -H "Content-Type: application/json" \
-          -d '{"comment": "Pull Request created: ${{ github.event.pull_request.html_url }}"}'
+          -d '{"comment_text": "PR: ${{ github.event.pull_request.html_url }}", "notify_all": false }'
 
-      - name: Move Task to READY FOR PUBLISH
+      - name: Move Task to READY FOR PUBLISHING
         if: github.event.action == 'closed' && github.event.pull_request.merged == true && steps.extract_task_id.outputs.task_id != ''
         run: |
-          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}/status" \
+          curl -X PUT "https://api.clickup.com/api/v2/task/${{ steps.extract_task_id.outputs.task_id }}" \
           -H "Authorization: ${{ secrets.CLICKUP_API_KEY }}" \
           -H "Content-Type: application/json" \
-          -d '{"status": "READY FOR PUBLISH"}'
+          -d '{"status": "READY FOR PUBLISHING"}'
