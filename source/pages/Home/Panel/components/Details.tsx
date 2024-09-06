@@ -42,7 +42,9 @@ export const DetailsView = () => {
 
   const openSysExplorer = () => {
     window.open(
-      `${activeNetwork.url}${isAsset ? 'asset' : '/tx'}/${isAsset ? id : hash}`,
+      `${activeNetwork.url}${isAsset ? '/asset' : '/tx'}/${
+        isAsset ? id : hash
+      }`,
       '_blank'
     );
   };
