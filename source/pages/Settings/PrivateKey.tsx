@@ -27,7 +27,10 @@ const PrivateKeyView = () => {
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
+  const [currentXprv, setCurrentXprv] = useState<string>('');
   const [form] = Form.useForm();
+
+  const currentPassword = form.getFieldValue('password');
 
   const getDecryptedPrivateKey = async (key: string) => {
     try {
@@ -48,6 +51,22 @@ const PrivateKeyView = () => {
     alert.removeAll();
     alert.success(t('settings.successfullyCopied'));
   }, [copied]);
+
+  useEffect(() => {
+    (async () => {
+      if (currentPassword.length >= 8) {
+        try {
+          const xprv = await getDecryptedPrivateKey(
+            form.getFieldValue('password')
+          );
+
+          setCurrentXprv(xprv);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    })();
+  }, [currentPassword]);
 
   const { url: activeUrl, explorer } = activeNetwork;
 
@@ -120,30 +139,19 @@ const PrivateKeyView = () => {
           ]}
         >
           <Input.Password
-            className="input-small relative"
+            className="input-small relative custom-input-password"
             placeholder={t('settings.enterYourPassword')}
           />
         </Form.Item>
       </Form>
 
       <CopyCard
-        onClick={
-          valid
-            ? async () =>
-                copyText(
-                  await getDecryptedPrivateKey(form.getFieldValue('password'))
-                )
-            : undefined
-        }
+        onClick={valid ? () => copyText(currentXprv) : undefined}
         label={t('settings.yourPrivateKey')}
       >
         <p>
           {valid && activeAccount.xpub
-            ? ellipsis(
-                getDecryptedPrivateKey(form.getFieldValue('password')),
-                4,
-                16
-              )
+            ? ellipsis(currentXprv, 4, 16)
             : '********...************'}
         </p>
       </CopyCard>

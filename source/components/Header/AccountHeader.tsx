@@ -361,6 +361,17 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
+          onClick={() => navigate('/settings/account/private-key')}
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+        >
+          <Icon name="key" className="mb-2 text-brand-white" />
+
+          <span>{t('accountMenu.yourKeys')}</span>
+        </li>
+      </Menu.Item>
+
+      <Menu.Item>
+        <li
           onClick={() => window.open(url)}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
