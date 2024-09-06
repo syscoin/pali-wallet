@@ -1203,23 +1203,23 @@ class MainController extends KeyringManager {
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     if (isBitcoinBased) {
-      // Window.controller.wallet.transactions.sys
-      //   .getInitialUserTransactionsByXpub(
-      //     currentAccount.xpub,
-      //     activeNetwork.url
-      //   )
-      //   .then((txs) => {
-      //     if (isNil(txs) || isEmpty(txs)) {
-      //       return;
-      //     }
-      //     store.dispatch(
-      //       setMultipleTransactionToState({
-      //         chainId: activeNetwork.chainId,
-      //         networkType: TransactionsType.Syscoin,
-      //         transactions: txs,
-      //       })
-      //     );
-      //   });
+      this.transactions.sys
+        .getInitialUserTransactionsByXpub(
+          currentAccount.xpub,
+          activeNetwork.url
+        )
+        .then((txs) => {
+          if (isNil(txs) || isEmpty(txs)) {
+            return;
+          }
+          store.dispatch(
+            setMultipleTransactionToState({
+              chainId: activeNetwork.chainId,
+              networkType: TransactionsType.Syscoin,
+              transactions: txs,
+            })
+          );
+        });
     } else {
       this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
         currentAccount,
