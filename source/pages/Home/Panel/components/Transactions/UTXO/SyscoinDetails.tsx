@@ -141,15 +141,15 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
     const vinAddresses = tx.vin?.[0]?.addresses || [];
     const vinFormattedValue = {
       value: vinAddresses.join(', '),
-      label: 'To',
+      label: 'From',
       canCopy: vinAddresses.length > 0,
     };
     formattedTransaction.push(vinFormattedValue);
 
-    const voutAddress = tx?.vout?.[1]?.addresses || [];
+    const voutAddress = tx?.vout?.[0]?.addresses || [];
     const voutFormattedValue = {
       value: voutAddress.join(', '),
-      label: 'From',
+      label: 'To',
       canCopy: vinAddresses.length > 0,
     };
     formattedTransaction.push(voutFormattedValue);
