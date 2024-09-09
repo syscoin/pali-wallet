@@ -169,14 +169,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     this._sysState.initialized = true;
     this.emit('_sysInitialized');
   }
-  // private initializesysState() {
-  //   //TODO: create sysInitialized event, fetch actual active blockexplorer and create state updates only for sys
-  //   const blockExplorerURL = 'https://blockbook-dev.elint.services/'; //Hardcoded to mainnet just for testing porpuses
-  //   this._sysState = {
-  //     blockExplorerURL,
-  //     initialized: true,
-  //   };
-  // }
+
   public async isUnlocked(): Promise<boolean> {
     if (!this._sysState.initialized) {
       await new Promise<void>((resolve) => {
