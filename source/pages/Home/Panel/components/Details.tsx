@@ -7,7 +7,7 @@ import explorerImg from 'assets/icons/externalExplorer.svg';
 import { Layout, Icon } from 'components/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
-import { adjustUrl } from 'utils/adjustUrl';
+import { adjustUrl } from 'utils/index';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
