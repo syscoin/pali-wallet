@@ -12,6 +12,7 @@ import {
   truncate,
   camelCaseToText,
   syscoinKeysOfInterest,
+  adjustUrl,
 } from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
@@ -97,7 +98,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
       <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100">
         <a
-          href={`${activeNetwork.url}/asset/${id}`}
+          href={`${adjustUrl(activeNetwork.url)}asset/${id}`}
           target="_blank"
           className="flex items-center justify-center gap-x-2"
           rel="noreferrer"

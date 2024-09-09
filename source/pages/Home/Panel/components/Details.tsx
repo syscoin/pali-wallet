@@ -7,6 +7,7 @@ import explorerImg from 'assets/icons/externalExplorer.svg';
 import { Layout, Icon } from 'components/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
+import { adjustUrl } from 'utils/adjustUrl';
 
 import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
@@ -42,7 +43,7 @@ export const DetailsView = () => {
 
   const openSysExplorer = () => {
     window.open(
-      `${activeNetwork.url}${isAsset ? '/asset' : '/tx'}/${
+      `${adjustUrl(activeNetwork.url)}${isAsset ? 'asset' : 'tx'}/${
         isAsset ? id : hash
       }`,
       '_blank'
