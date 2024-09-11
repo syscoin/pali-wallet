@@ -107,7 +107,7 @@ const ConnectHardwareWalletView: FC = () => {
 
           if (webHidIsConnected) {
             await controllerEmitter(
-              ['wallet', 'importLedgerAccount'],
+              ['wallet', 'importLedgerAccountFromController'],
               [
                 isBitcoinBased ? activeNetwork.currency : 'eth',
                 `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
@@ -128,7 +128,7 @@ const ConnectHardwareWalletView: FC = () => {
 
       if (isAlreadyConnected) {
         await controllerEmitter(
-          ['wallet', 'importLedgerAccount'],
+          ['wallet', 'importLedgerAccountFromController'],
           [
             isBitcoinBased ? activeNetwork.currency : 'eth',
             `${activeNetwork.currency === 'sys' ? '57' : slip44}`,

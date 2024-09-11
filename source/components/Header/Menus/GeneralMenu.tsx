@@ -83,7 +83,6 @@ export const GeneralMenu: React.FC = () => {
           />
         </div>
       </Tooltip>
-
       {advancedSettings['refresh'] && (
         <div
           onClick={() => controllerEmitter(['refresh'], [])}
@@ -92,7 +91,6 @@ export const GeneralMenu: React.FC = () => {
           <Icon name="reload" />
         </div>
       )}
-
       <Menu.Button as="button" className="mx-1.5">
         <div id="general-settings-button">
           <Icon
@@ -101,7 +99,6 @@ export const GeneralMenu: React.FC = () => {
           />
         </div>
       </Menu.Button>
-
       <Transition
         as="div"
         enter="transition ease-out duration-100"
@@ -167,7 +164,6 @@ export const GeneralMenu: React.FC = () => {
               </li>
             </Menu.Item>
           </div>
-
           <div className="flex flex-col justify-start items-start">
             <span className="disabled text-xs flex justify-start px-5 mt-5 mb-1">
               {t('generalMenu.generalOptions')}

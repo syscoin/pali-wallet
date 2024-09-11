@@ -11,6 +11,14 @@ export const ONE_MILLION = 1000000;
 export const ONE_BILLION = 1000000000;
 export const ONE_TRILLION = 1000000000000;
 
+export type FieldValuesType = {
+  amount: string;
+  receiver: string;
+};
+export const FIELD_VALUES_INITIAL_STATE = { amount: '', receiver: '' };
+
+export const MINIMUN_FEE = 0.00001;
+
 // Define the keys you are interested in
 export const syscoinKeysOfInterest = [
   'symbol',
