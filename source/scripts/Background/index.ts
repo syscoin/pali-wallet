@@ -13,7 +13,7 @@ import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-// import { handleRehydrateStore } from './controllers/handlers';
+import { handleRehydrateStore } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
@@ -54,7 +54,7 @@ let MasterControllerInstance = {} as IMasterController;
   utils.setFiat();
 });
 
-// handleRehydrateStore();
+handleRehydrateStore();
 
 const isWatchRequestsActive = false;
 
