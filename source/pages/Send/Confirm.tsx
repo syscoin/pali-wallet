@@ -135,11 +135,7 @@ export const SendConfirm = () => {
         case isBitcoinBased === true:
           try {
             if (activeAccount.isTrezorWallet) {
-              await controllerEmitter(
-                ['wallet', 'trezorSigner', 'init'],
-                [],
-                false
-              );
+              await controllerEmitter(['wallet', 'trezorSigner', 'init'], []);
             }
             controllerEmitter(
               ['wallet', 'syscoinTransaction', 'sendTransaction'],
@@ -147,8 +143,7 @@ export const SendConfirm = () => {
                 { ...basicTxValues, fee: 0.00001 },
                 activeAccount.isTrezorWallet,
                 activeAccount.isLedgerWallet,
-              ],
-              false
+              ]
             )
               .then((response) => {
                 setConfirmedTx(response);
@@ -246,8 +241,6 @@ export const SendConfirm = () => {
                         ['wallet', 'sendAndSaveTransaction'],
                         [response]
                       );
-
-                    console.log('response', response);
 
                     setConfirmedTx(response);
 
