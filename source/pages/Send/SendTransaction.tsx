@@ -106,6 +106,10 @@ export const SendTransaction = () => {
 
     const balance = ethereum;
 
+    if (activeAccount.isTrezorWallet) {
+      await controllerEmitter(['wallet', 'trezorSigner', 'init'], [], false);
+    }
+
     if (activeAccount && balance > 0) {
       setLoading(true);
 
