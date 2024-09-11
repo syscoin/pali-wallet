@@ -22,6 +22,9 @@ import {
   getAssetBalance,
   formatCurrency,
   ellipsis,
+  MINIMUN_FEE,
+  FIELD_VALUES_INITIAL_STATE,
+  FieldValuesType,
 } from 'utils/index';
 
 export const SendSys = () => {
@@ -43,13 +46,12 @@ export const SendSys = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [recommendedFee, setRecommendedFee] = useState(0.00001);
-  const [txFeeForMaxValue, setTxFeeForMaxValue] = useState(0.00001);
+  const [recommendedFee, setRecommendedFee] = useState(MINIMUN_FEE);
+  const [txFeeForMaxValue, setTxFeeForMaxValue] = useState(MINIMUN_FEE);
   const [isMaxValue, setIsMaxValue] = useState(false);
-  const [fieldsValues, setFieldsValues] = useState<{
-    amount: string;
-    receiver: string;
-  }>({ amount: '', receiver: '' });
+  const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
+    FIELD_VALUES_INITIAL_STATE
+  );
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
@@ -58,9 +60,9 @@ export const SendSys = () => {
       [activeNetwork.url]
     )) as number;
 
-    setRecommendedFee(getRecommendedFee || Number(0.00001));
+    setRecommendedFee(getRecommendedFee || Number(MINIMUN_FEE));
 
-    form.setFieldsValue({ fee: getRecommendedFee || Number(0.00001) });
+    form.setFieldsValue({ fee: getRecommendedFee || Number(MINIMUN_FEE) });
   }, [activeAccount, form]);
 
   const isAccountImported =
@@ -96,6 +98,25 @@ export const SendSys = () => {
   const balance = selectedAsset
     ? +formattedAssetBalance
     : Number(activeAccount?.balances.syscoin);
+
+  const handleMaxButton = useCallback(() => {
+    setIsMaxValue(true);
+    form.setFieldValue('amount', balance * 0.97); // 97% of the balance to avoid failed transactions
+    setFieldsValues({
+      ...fieldsValues,
+      amount: `${balance * 0.97}`, // 97% of the balance to avoid failed transactions
+    });
+  }, [balance, form, fieldsValues]);
+
+  const handleInputChange = useCallback(
+    (type: 'receiver' | 'amount', e: any) => {
+      setFieldsValues({
+        ...fieldsValues,
+        [type]: e.target.value,
+      });
+    },
+    [fieldsValues]
+  );
 
   const handleSelectedAsset = (item: number) => {
     if (assets) {
@@ -196,11 +217,10 @@ export const SendSys = () => {
       }
     };
 
-    if (
-      !!fieldsValues.receiver &&
-      fieldsValues.amount.length > 0 &&
-      isMaxValue
-    ) {
+    const shouldGetTxFee =
+      !!fieldsValues.receiver && fieldsValues.amount.length > 0 && isMaxValue;
+
+    if (shouldGetTxFee) {
       getTxFee(fieldsValues.amount, fieldsValues.receiver);
     }
   }, [fieldsValues]);
@@ -289,12 +309,7 @@ export const SendSys = () => {
               type="text"
               placeholder={t('send.receiver')}
               className="sender-custom-input"
-              onChange={(e) => {
-                setFieldsValues({
-                  ...fieldsValues,
-                  receiver: e.target.value,
-                });
-              }}
+              onChange={(e) => handleInputChange('receiver', e)}
             />
           </Form.Item>
           <div className="flex gap-2 w-full items-center">
@@ -414,24 +429,12 @@ export const SendSys = () => {
                   className="value-custom-input"
                   type="number"
                   placeholder={'0.0'}
-                  onChange={(e) => {
-                    setFieldsValues({
-                      ...fieldsValues,
-                      amount: e.target.value,
-                    });
-                  }}
+                  onChange={(e) => handleInputChange('amount', e)}
                 />
               </Form.Item>
               <span
                 className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                onClick={() => {
-                  setIsMaxValue(true);
-                  form.setFieldValue('amount', balance * 0.97); // 97% of the balance to avoid failed transactions
-                  setFieldsValues({
-                    ...fieldsValues,
-                    amount: `${balance * 0.97}`, // 97% of the balance to avoid failed transactions
-                  });
-                }}
+                onClick={handleMaxButton}
               >
                 MAX
               </span>
