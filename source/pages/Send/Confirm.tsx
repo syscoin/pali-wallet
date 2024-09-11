@@ -197,6 +197,13 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
         case isBitcoinBased === false && basicTxValues.token === null:
+          if (activeAccount.isTrezorWallet) {
+            await controllerEmitter(
+              ['wallet', 'trezorSigner', 'init'],
+              [],
+              false
+            );
+          }
           try {
             const restTx = omitTransactionObjectData(txObjectState, [
               'chainId',
@@ -386,6 +393,13 @@ export const SendConfirm = () => {
 
         // ETHEREUM TRANSACTIONS FOR ERC20 & ERC721 TOKENS
         case isBitcoinBased === false && basicTxValues.token !== null:
+          if (activeAccount.isTrezorWallet) {
+            await controllerEmitter(
+              ['wallet', 'trezorSigner', 'init'],
+              [],
+              false
+            );
+          }
           //SWITCH CASE TO HANDLE DIFFERENT TOKENS TRANSACTION
           switch (basicTxValues.token.isNft) {
             //HANDLE ERC20 TRANSACTION
@@ -605,6 +619,14 @@ export const SendConfirm = () => {
                 basicTxValues.token.contractAddress,
                 web3Provider
               );
+
+              if (activeAccount.isTrezorWallet) {
+                await controllerEmitter(
+                  ['wallet', 'trezorSigner', 'init'],
+                  [],
+                  false
+                );
+              }
 
               switch (type) {
                 case 'ERC-721':
