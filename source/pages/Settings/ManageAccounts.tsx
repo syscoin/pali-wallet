@@ -77,7 +77,7 @@ const ManageAccountsView = () => {
             </li>
           )
         )}
-        {!existImportedAccounts ? (
+        {existImportedAccounts ? (
           <>
             {Object.values(accounts.Imported).map(
               (account: IKeyringAccountState) => (

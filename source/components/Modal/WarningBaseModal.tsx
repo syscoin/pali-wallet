@@ -34,7 +34,7 @@ export const ModalBase = ({ children, onClose, show }: IModal) => (
     >
       <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
 
-      <div className="min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
+      <div className="fixed z-1 min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-300"
@@ -44,7 +44,7 @@ export const ModalBase = ({ children, onClose, show }: IModal) => (
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Dialog.Overlay className="fixed inset-0" />
+          <Dialog.Overlay className="fixed z-[-1] inset-0" />
         </Transition.Child>
 
         <Transition.Child
