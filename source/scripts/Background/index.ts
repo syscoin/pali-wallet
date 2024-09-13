@@ -13,7 +13,6 @@ import { log } from 'utils/logger';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
-import { handleRehydrateStore } from './controllers/handlers';
 import { IEvmTransactionResponse } from './controllers/transactions/types';
 
 /* eslint-disable @typescript-eslint/ban-ts-comment */
@@ -54,7 +53,7 @@ let MasterControllerInstance = {} as IMasterController;
   utils.setFiat();
 });
 
-handleRehydrateStore();
+// handleRehydrateStore();
 
 const isWatchRequestsActive = false;
 
@@ -410,7 +409,7 @@ function observeStateChanges() {
 
     if (nextState.vault.isBitcoinBased !== currentIsBitcoinBased) {
       currentIsBitcoinBased = nextState.vault.isBitcoinBased;
-      if (store.getState().vault.isPolling) {
+      if (nextState.vault.isPolling) {
         startPolling();
       }
       unregisterListener();

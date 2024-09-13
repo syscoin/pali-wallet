@@ -184,6 +184,8 @@ class MainController extends KeyringManager {
     const networkVersion = network.chainId;
     if (sucess) {
       this.web3Provider = this.ethereumTransaction.web3Provider;
+      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
+      this.assets = this.assetsManager;
       this.transactionsManager = TransactionsManager(
         this.ethereumTransaction.web3Provider
       );

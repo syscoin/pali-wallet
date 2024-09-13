@@ -18,10 +18,7 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
-import {
-  handleRehydrateStore,
-  handleStoreSubscribe,
-} from 'scripts/Background/controllers/handlers';
+import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -36,7 +33,7 @@ const options = {
   transition: transitions.FADE,
 };
 
-handleRehydrateStore();
+// handleRehydrateStore();
 
 rehydrateStore(store).then(() => {
   ReactDOM.render(
