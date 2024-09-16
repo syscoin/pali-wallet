@@ -14,7 +14,7 @@ import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
 
 export const ImportToken: FC = () => {
-  const { controllerEmitter, web3Provider } = useController();
+  const { controllerEmitter } = useController();
 
   const [form] = Form.useForm();
   const { navigate } = useUtils();

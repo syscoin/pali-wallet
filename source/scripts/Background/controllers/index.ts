@@ -13,6 +13,8 @@ import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IDAppState } from 'state/dapp/types';
 import { IPriceState } from 'state/price/types';
+import { rehydrateStore } from 'state/rehydrate';
+import store from 'state/store';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
@@ -44,6 +46,7 @@ export interface IMasterController {
   ) => Promise<chrome.windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
+  rehydrate: () => void;
   utils: Readonly<IControllerUtils>;
   wallet: MainController;
 }
@@ -352,9 +355,14 @@ const MasterController = (
     });
   };
 
+  const rehydrate = async () => {
+    await rehydrateStore(store);
+  };
+
   initializeMainController();
 
   return {
+    rehydrate,
     appRoute,
     createPopup,
     dapp,

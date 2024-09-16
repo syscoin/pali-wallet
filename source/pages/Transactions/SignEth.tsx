@@ -27,13 +27,13 @@ const EthSign: React.FC<ISign> = () => {
   const tabLabel = ['Details', 'Data'];
   const url = chrome.runtime.getURL('app.html');
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
+    ({ vault }: RootState) => vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+    ({ vault }: RootState) => vault.activeNetwork
   );
-  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+  const { isBitcoinBased } = useSelector(({ vault }: RootState) => vault);
   const { label, balances, address } = activeAccount;
   const { currency } = activeNetwork;
 
@@ -236,17 +236,17 @@ const EthSign: React.FC<ISign> = () => {
 
           <div className="flex flex-col ">
             <div className="flex flex-row ml-[1.5rem] gap-3 items-center">
-              {tabLabel?.map((tabLabel, index) => (
+              {tabLabel?.map((name, index) => (
                 <div
                   key={index}
-                  onClick={() => setState(tabLabel)}
+                  onClick={() => setState(name)}
                   className={` ${
-                    tabLabel === state
+                    name === state
                       ? 'bg-brand-blue600'
                       : 'bg-alpha-whiteAlpha200'
                   } rounded-t-[20px] py-[8px] px-[16px] h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 text-center`}
                 >
-                  {tabLabel}
+                  {name}
                 </div>
               ))}
             </div>

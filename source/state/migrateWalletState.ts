@@ -1,3 +1,4 @@
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { parseJsonRecursively } from 'utils/format';
 
 export async function migrateWalletState(
@@ -21,15 +22,7 @@ export async function migrateWalletState(
         }),
       });
 
-      await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage('rehydrate', (response) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          }
-
-          resolve(response);
-        });
-      });
+      await controllerEmitter(['rehydrate'], []);
     }
   } catch (error) {
     console.error('<!> Error migrating state', error);
