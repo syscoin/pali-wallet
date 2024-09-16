@@ -83,6 +83,7 @@ export const initialState: IVaultState = {
   isPolling: false,
   currentBlock: undefined,
   coinsList: [],
+  version: '3.0.1',
 };
 
 export const getHasEncryptedVault = createAsyncThunk(

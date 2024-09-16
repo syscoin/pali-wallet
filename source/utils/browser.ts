@@ -12,3 +12,7 @@ export const dispatchBackgroundEvent = (eventName: string, data: any) => {
     detail: JSON.stringify(data),
   });
 };
+
+export const reload = () => {
+  chrome.runtime.reload();
+};
