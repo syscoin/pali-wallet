@@ -140,7 +140,9 @@ class MainController extends KeyringManager {
       reject: (reason?: any) => void
     ) => void
   ): { cancel: () => void; promise: Promise<T> } {
-    let cancel = () => {};
+    let cancel = () => {
+      // no-op
+    };
     const promise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
         reject('Network change cancelled');

@@ -55,7 +55,7 @@ export const methodRequest = async (
   }
   const activeAccountData = accounts[activeAccount.type][activeAccount.id];
   const account = dapp.getAccount(host);
-  const isRequestAllowed = dapp.isConnected(host) && account;
+  // const isRequestAllowed = dapp.isConnected(host) && account;
   const isTrezorAndUTXO =
     (isBitcoinBased && activeAccountData.isTrezorWallet) ||
     (isBitcoinBased && activeAccountData.isLedgerWallet);
