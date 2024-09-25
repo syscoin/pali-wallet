@@ -1,6 +1,8 @@
 import 'dotenv/config';
-import { test as base, chromium, BrowserContext } from '@playwright/test';
+import { test as base, chromium, BrowserContext, Page } from '@playwright/test';
 import path from 'path';
+
+export let page: Page;
 
 export const test = base.extend<{
   context: BrowserContext;
@@ -11,6 +13,7 @@ export const test = base.extend<{
     const context = await chromium.launchPersistentContext('', {
       headless: false,
       args: [
+        // `--headless=new`,
         `--disable-extensions-except=${pathToExtension}`,
         `--load-extension=${pathToExtension}`,
       ],
@@ -31,7 +34,11 @@ export const test = base.extend<{
     if (!background) background = await context.waitForEvent('serviceworker');
 
     const extensionId = background.url().split('/')[2];
+
+    page = context.pages()[0];
+
     await use(extensionId);
   },
 });
+
 export const expect = test.expect;

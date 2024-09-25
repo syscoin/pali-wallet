@@ -1,7 +1,18 @@
 {
   "collectCoverage": true,
-  "moduleFileExtensions": ["js", "mjs", "ts", "json"],
-  "moduleDirectories": ["source", "node_modules"],
+  "moduleFileExtensions": [
+    "js",
+    "mjs",
+    "ts",
+    "json"
+  ],
+  "moduleDirectories": [
+    "source",
+    "node_modules"
+  ],
+  "modulePathIgnorePatterns": [
+    "tests"
+  ],
   "transform": {
     "^.+\\.ts$": "ts-jest",
     "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "babel-jest"
@@ -11,5 +22,7 @@
   ],
   "testTimeout": 30000,
   "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$",
-  "setupFilesAfterEnv": ["./jest.setup.js"]
+  "setupFilesAfterEnv": [
+    "./jest.setup.js"
+  ]
 }
