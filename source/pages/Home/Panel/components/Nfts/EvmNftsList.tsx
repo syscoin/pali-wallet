@@ -28,7 +28,7 @@ export const EvmNftsList = () => {
     try {
       await controllerEmitter(
         ['wallet', 'fetchAndUpdateNftsState'],
-        [activeAccount, activeNetwork]
+        [{ activeAccount, activeNetwork }]
       );
     } catch (error) {
       console.error('Error on get NFTs:', error);

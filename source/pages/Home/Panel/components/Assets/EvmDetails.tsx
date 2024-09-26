@@ -35,6 +35,10 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
   const adjustedExplorer = useAdjustedExplorer(explorer);
 
+  const currentName = currentAsset?.is1155
+    ? currentAsset.collectionName
+    : currentAsset.name;
+
   const RenderCollectionItem: React.FC<{ currentNft: IERC1155Collection }> = ({
     currentNft,
   }) => (
@@ -97,17 +101,19 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
       {currentAsset.contractAddress ? (
         <>
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
-            <img
-              style={{ maxWidth: '50px', maxHeight: '50px' }}
-              src={currentAsset.logo}
-              alt={`${currentAsset.name} Logo`}
-            />
+            {!currentAsset?.is1155 && (
+              <img
+                style={{ maxWidth: '50px', maxHeight: '50px' }}
+                src={currentAsset.logo}
+                alt={`${currentAsset.name} Logo`}
+              />
+            )}
             <p className="flex flex-col items-center justify-center gap-y-0.5">
               <span className="text-xs font-light text-brand-gray200">
                 {currentAsset.tokenSymbol}
               </span>
               <span className="font-normal text-base text-brand-white">
-                {currentAsset.name} ({activeNetwork.label})
+                {currentName} ({activeNetwork.label})
               </span>
             </p>
           </div>
