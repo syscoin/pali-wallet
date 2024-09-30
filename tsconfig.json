@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "es6", // ECMAScript target version: 'ES3' (default), 'ES5', 'ES2015', 'ES2016', 'ES2017','ES2018' or 'ESNEXT'.
     "module": "esnext", // Module code generation: 'none', 'commonjs', 'amd', 'system', 'umd', 'es2015', or 'ESNext'.
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "jsx": "react",
     "declaration": false,
     "isolatedModules": true,
@@ -18,22 +22,58 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
-      "assets/*": ["source/assets/*"],
-      "components/*": ["source/components/*"],
-      "scripts/*": ["source/scripts/*"],
-      "containers/*": ["source/containers/*"],
-      "pages/*": ["source/pages/*"],
-      "routers/*": ["source/routers/*"],
-      "state/*": ["source/state/*"],
-      "constants/*": ["source/constants/*"],
-      "services/*": ["source/services/*"],
-      "hooks/*": ["source/hooks/*"],
-      "types/*": ["source/types/*"],
-      "utils/*": ["source/utils/*"],
-      "helpers/*": ["source/helpers/*"],
-      "tests/*": ["tests/*"]
+      "assets/*": [
+        "source/assets/*"
+      ],
+      "components/*": [
+        "source/components/*"
+      ],
+      "scripts/*": [
+        "source/scripts/*"
+      ],
+      "containers/*": [
+        "source/containers/*"
+      ],
+      "pages/*": [
+        "source/pages/*"
+      ],
+      "routers/*": [
+        "source/routers/*"
+      ],
+      "state/*": [
+        "source/state/*"
+      ],
+      "constants/*": [
+        "source/constants/*"
+      ],
+      "services/*": [
+        "source/services/*"
+      ],
+      "hooks/*": [
+        "source/hooks/*"
+      ],
+      "types/*": [
+        "source/types/*"
+      ],
+      "utils/*": [
+        "source/utils/*"
+      ],
+      "helpers/*": [
+        "source/helpers/*"
+      ],
+      "tests/*": [
+        "tests/*"
+      ]
     }
   },
-  "exclude": ["node_modules"],
-  "include": ["source", "webpack.config.ts", "cypress", "tests"]
+  "exclude": [
+    "node_modules"
+  ],
+  "include": [
+    "source",
+    "webpack.config.ts",
+    "cypress",
+    "tests",
+    "playwright.config.ts"
+  ]
 }
