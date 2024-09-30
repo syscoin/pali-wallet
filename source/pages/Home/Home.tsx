@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
+import { FaucetChainIds } from '../../types/faucet';
+import { FaucetAccessModal, FaucetFirstAccessModal } from 'components/index';
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
@@ -43,6 +45,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
+    shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
 
   //* States
@@ -51,7 +54,7 @@ export const Home = () => {
   const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
   //* Constants
-  const { url } = activeNetwork;
+  const { url, chainId } = activeNetwork;
 
   let isInCooldown: boolean;
 
@@ -124,6 +127,18 @@ export const Home = () => {
     return formatBalanceDecimals(fiatPriceValue, true);
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
+  const handleOnCloseFaucetModal = useCallback(() => {
+    controllerEmitter(
+      ['wallet', 'setFaucetModalState'],
+      [{ chainId: activeNetwork.chainId, state: false }]
+    );
+  }, [activeNetwork]);
+
+  const shouldShowFaucetFirstModal = !!isOpenFaucetModal?.[chainId];
+
+  const isFaucetAvailable =
+    !isBitcoinBased && Object.values(FaucetChainIds).includes(chainId);
+
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
@@ -133,6 +148,18 @@ export const Home = () => {
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
+
+          {isFaucetAvailable && (
+            <>
+              {shouldShowFaucetFirstModal ? (
+                <FaucetFirstAccessModal
+                  handleOnClose={handleOnCloseFaucetModal}
+                />
+              ) : (
+                <FaucetAccessModal />
+              )}
+            </>
+          )}
 
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">

@@ -1,5 +1,13 @@
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
+import {
+  FaucetChainIds,
+  FaucetChainNames,
+  FaucetChainSymbols,
+} from '../types/faucet';
+import rolluxChain from 'assets/images/rolluxChain.png';
+import sysChain from 'assets/images/sysChain.svg';
+
 export const INITIAL_FEE = {
   baseFee: 0,
   gasPrice: 0,
@@ -61,4 +69,63 @@ export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
   chain: INetworkType.Syscoin,
   network: SYSCOIN_MAINNET_NETWORK_57,
   isEdit: true,
+};
+
+interface IFaucetNetworkData {
+  [key: string]: {
+    network: string;
+    token: string;
+  };
+}
+
+// for faucet
+export const faucetNetworkData: IFaucetNetworkData = {
+  [FaucetChainIds.NevmMainnet]: {
+    token: FaucetChainSymbols.SYS,
+    network: FaucetChainNames.SYSCOIN_NEVM,
+  },
+  [FaucetChainIds.NevmTestnet]: {
+    token: FaucetChainSymbols.TSYS,
+    network: FaucetChainNames.SYSCOIN_NEVM_TESTNET,
+  },
+  [FaucetChainIds.RolluxMainnet]: {
+    token: FaucetChainSymbols.SYS,
+    network: FaucetChainNames.ROLLUX,
+  },
+  [FaucetChainIds.RolluxTestnet]: {
+    token: FaucetChainSymbols.TSYS,
+    network: FaucetChainNames.ROLLUX_TESTNET,
+  },
+};
+
+export const faucetTxRolluxInfo = {
+  icon: rolluxChain,
+  token: '$SYS',
+  networkName: 'Rollux',
+  quantity: 0.001,
+  smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
+};
+
+export const faucetTxRolluxTestnetInfo = {
+  icon: rolluxChain,
+  token: '$TSYS',
+  networkName: 'Rollux Testnet',
+  quantity: 1,
+  smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
+};
+
+export const faucetTxSyscoinNEVMInfo = {
+  icon: sysChain,
+  token: '$SYS',
+  networkName: 'Syscoin NEVM',
+  quantity: 0.01,
+  smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
+};
+
+export const faucetTxSyscoinNEVMTestnetInfo = {
+  icon: sysChain,
+  token: '$TSYS',
+  networkName: 'Syscoin NEVM Testnet',
+  quantity: 1,
+  smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
 };
