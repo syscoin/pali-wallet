@@ -1,17 +1,17 @@
 import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, useState } from 'react';
+import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate, ellipsis } from 'utils/index';
 
 const ConnectedSites = () => {
-  const { dapp } = getController();
+  const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
@@ -20,10 +20,18 @@ const ConnectedSites = () => {
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   const [selected, setSelected] = useState<IDApp>();
-  const dapps = Object.values(dapp.getAll());
+  const [dapps, setDapps] = useState<IDApp[]>([]);
+
+  useEffect(() => {
+    controllerEmitter(['dapp', 'getAll']).then(
+      (response: { [host: string]: IDApp }) => {
+        setDapps(Object.values(response));
+      }
+    );
+  }, []);
 
   const disconnectSelected = () => {
-    dapp.disconnect(selected.host);
+    controllerEmitter(['dapp', 'disconnect'], [selected.host]);
 
     setSelected(undefined);
   };

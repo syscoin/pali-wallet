@@ -12,8 +12,9 @@ import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
+import { dispatchChangeNetworkBgEvent } from 'scripts/Background';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
@@ -33,7 +34,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   props: INetworkComponent
 ) => {
   const { setActiveAccountModalIsOpen, setSelectedNetwork } = props;
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
   const { dapps } = useSelector((state: RootState) => state.dapp);
@@ -93,7 +94,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await wallet.setActiveNetwork(network, chain);
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
+
+      dispatchChangeNetworkBgEvent(network, !!network?.slip44);
     } catch (networkError) {
       navigate('/home');
     }
@@ -113,11 +116,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   return (
     <Menu
       as="div"
-      className="absolute w-full left-4 inline-block mr-8 text-left"
+      className="absolute z-[9999] w-full left-4 inline-block mr-8 text-left"
     >
       {(menuprops) => (
         <>
-          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-full text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+          <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-max text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
             <span className="font-light">{activeNetwork.label}</span>
             <span
               className={`px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor}`}
@@ -250,11 +253,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       activeNetworkValidator(
                                         currentNetwork
                                       ) && (
-                                        <Icon
-                                          name="check"
-                                          className="absolute left-[21.5rem] bottom-2 w-4"
-                                          wrapperClassname="w-6"
-                                        />
+                                        <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                          <Icon
+                                            name="check"
+                                            className="absolute left-[21.5rem] bottom-2 w-4"
+                                            wrapperClassname="w-6"
+                                          />
+                                        </div>
                                       )}
                                   </li>
                                 )
@@ -315,15 +320,16 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 <span className="ml-8 text-left">
                                   {currentNetwork.label}
                                 </span>
-
-                                {!isBitcoinBased &&
-                                  activeNetworkValidator(currentNetwork) && (
-                                    <Icon
-                                      name="check"
-                                      className="absolute left-[21.5rem] bottom-2 w-4"
-                                      wrapperClassname="w-6"
-                                    />
-                                  )}
+                                <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                  {!isBitcoinBased &&
+                                    activeNetworkValidator(currentNetwork) && (
+                                      <Icon
+                                        name="check"
+                                        className="w-4 relative bottom-0.5"
+                                        wrapperClassname="w-6"
+                                      />
+                                    )}
+                                </div>
                               </li>
                             ))}
                         </Disclosure.Panel>

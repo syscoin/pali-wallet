@@ -5,12 +5,12 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 const PrivateKeyView = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -27,15 +27,19 @@ const PrivateKeyView = () => {
 
   const [copied, copyText] = useCopyClipboard();
   const [valid, setValid] = useState<boolean>(false);
+  const [currentXprv, setCurrentXprv] = useState<string>('');
   const [form] = Form.useForm();
 
-  const getDecryptedPrivateKey = (key: string) => {
+  const currentPassword = form.getFieldValue('password');
+
+  const getDecryptedPrivateKey = async (key: string) => {
     try {
-      return controller.wallet.getPrivateKeyByAccountId(
-        activeAccountMeta.id,
-        activeAccountMeta.type,
-        key
-      );
+      const privateKey = (await controllerEmitter(
+        ['wallet', 'getPrivateKeyByAccountId'],
+        [activeAccountMeta.id, activeAccountMeta.type, key]
+      )) as string;
+
+      return privateKey;
     } catch (e) {
       console.log('Wrong password', e);
     }
@@ -47,6 +51,22 @@ const PrivateKeyView = () => {
     alert.removeAll();
     alert.success(t('settings.successfullyCopied'));
   }, [copied]);
+
+  useEffect(() => {
+    (async () => {
+      if (currentPassword.length >= 8) {
+        try {
+          const xprv = await getDecryptedPrivateKey(
+            form.getFieldValue('password')
+          );
+
+          setCurrentXprv(xprv);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+    })();
+  }, [currentPassword]);
 
   const { url: activeUrl, explorer } = activeNetwork;
 
@@ -102,7 +122,10 @@ const PrivateKeyView = () => {
             },
             () => ({
               async validator(_, pwd) {
-                const { canLogin } = await controller.wallet.unlock(pwd, true);
+                const { canLogin } = (await controllerEmitter(
+                  ['wallet', 'unlock'],
+                  [pwd, true]
+                )) as any;
 
                 if (canLogin) {
                   setValid(true);
@@ -116,28 +139,19 @@ const PrivateKeyView = () => {
           ]}
         >
           <Input.Password
-            className="input-small relative"
+            className="input-small relative custom-input-password"
             placeholder={t('settings.enterYourPassword')}
           />
         </Form.Item>
       </Form>
 
       <CopyCard
-        onClick={
-          valid
-            ? () =>
-                copyText(getDecryptedPrivateKey(form.getFieldValue('password')))
-            : undefined
-        }
+        onClick={valid ? () => copyText(currentXprv) : undefined}
         label={t('settings.yourPrivateKey')}
       >
         <p>
           {valid && activeAccount.xpub
-            ? ellipsis(
-                getDecryptedPrivateKey(form.getFieldValue('password')),
-                4,
-                16
-              )
+            ? ellipsis(currentXprv, 4, 16)
             : '********...************'}
         </p>
       </CopyCard>

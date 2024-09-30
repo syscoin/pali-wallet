@@ -1,32 +1,29 @@
 import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
+import { getController } from 'scripts/Background';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
   blockingRestrictedMethods,
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
-import { getController } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (host: string) => {
+export const EthProvider = (host: string, network?: INetwork) => {
   const sendTransaction = async (params: ITransactionParams) => {
-    const tx = params;
     const {
-      ethereumTransaction: { contentScriptWeb3Provider },
+      ethereumTransaction: { web3Provider },
     } = getController().wallet;
-    const validateTxToAddress = await validateEOAAddress(
-      tx.to,
-      contentScriptWeb3Provider
-    );
-    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(
-      contentScriptWeb3Provider
-    ));
+    // await setSignerNetwork(network, 'ethereum');
+    const tx = params;
+    const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
     const decodedTx = decodeTransactionData(
       tx,
       validateTxToAddress
@@ -162,17 +159,20 @@ export const EthProvider = (host: string) => {
   const send = async (args: any[]) => {
     const { ethereumTransaction } = getController().wallet;
 
-    return ethereumTransaction.contentScriptWeb3Provider.send(args[0], args);
+    return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const { ethereumTransaction } = getController().wallet;
-    const resp = await ethereumTransaction.contentScriptWeb3Provider.send(
-      method,
-      params
-    );
-    return resp;
+
+    try {
+      const resp = await ethereumTransaction.web3Provider.send(method, params);
+
+      return resp;
+    } catch (error) {
+      console.error({ error });
+    }
   };
 
   const checkIsBlocking = (method: string) =>
@@ -203,11 +203,19 @@ export const EthProvider = (host: string) => {
         return await decryptMessage(params);
       default:
         try {
-          return await ethereumTransaction.contentScriptWeb3Provider.send(
+          const requestResult = await ethereumTransaction.web3Provider.send(
             method,
             params
           );
+          console.log({
+            method,
+            params,
+            ethWeb3Provider: ethereumTransaction.web3Provider,
+            requestResult,
+          });
+          return requestResult;
         } catch (error) {
+          console.log({ requestError: error, method, params });
           throw cleanErrorStack(
             ethErrors.rpc.internal(error.error.data || error.error.message)
           );

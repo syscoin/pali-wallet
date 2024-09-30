@@ -12,21 +12,24 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import {
   truncate,
   isNFT,
   getAssetBalance,
   formatCurrency,
   ellipsis,
+  MINIMUN_FEE,
+  FIELD_VALUES_INITIAL_STATE,
+  FieldValuesType,
 } from 'utils/index';
 
 export const SendSys = () => {
   const { getFiatAmount } = usePrice();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const activeNetwork = useSelector(
@@ -43,19 +46,24 @@ export const SendSys = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [recommendedFee, setRecommendedFee] = useState(0.00001);
+  const [recommendedFee, setRecommendedFee] = useState(MINIMUN_FEE);
+  const [txFeeForMaxValue, setTxFeeForMaxValue] = useState(MINIMUN_FEE);
+  const [isMaxValue, setIsMaxValue] = useState(false);
+  const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
+    FIELD_VALUES_INITIAL_STATE
+  );
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
-    const getRecommendedFee =
-      await controller.wallet.syscoinTransaction.getRecommendedFee(
-        activeNetwork.url
-      );
+    const getRecommendedFee = (await controllerEmitter(
+      ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
+      [activeNetwork.url]
+    )) as number;
 
-    setRecommendedFee(getRecommendedFee || Number(0.00001));
+    setRecommendedFee(getRecommendedFee || Number(MINIMUN_FEE));
 
-    form.setFieldsValue({ fee: getRecommendedFee || Number(0.00001) });
-  }, [controller.wallet.account, form]);
+    form.setFieldsValue({ fee: getRecommendedFee || Number(MINIMUN_FEE) });
+  }, [activeAccount, form]);
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
@@ -91,6 +99,25 @@ export const SendSys = () => {
     ? +formattedAssetBalance
     : Number(activeAccount?.balances.syscoin);
 
+  const handleMaxButton = useCallback(() => {
+    setIsMaxValue(true);
+    form.setFieldValue('amount', balance * 0.97); // 97% of the balance to avoid failed transactions
+    setFieldsValues({
+      ...fieldsValues,
+      amount: `${balance * 0.97}`, // 97% of the balance to avoid failed transactions
+    });
+  }, [balance, form, fieldsValues]);
+
+  const handleInputChange = useCallback(
+    (type: 'receiver' | 'amount', e: any) => {
+      setFieldsValues({
+        ...fieldsValues,
+        [type]: e.target.value,
+      });
+    },
+    [fieldsValues]
+  );
+
   const handleSelectedAsset = (item: number) => {
     if (assets) {
       const getAsset = assets.find((asset: any) => asset.assetGuid === item);
@@ -120,10 +147,10 @@ export const SendSys = () => {
   const nextStep = async ({ receiver, amount }: any) => {
     try {
       setIsLoading(true);
-      const transactionFee =
-        await controller.wallet.syscoinTransaction.getEstimateSysTransactionFee(
-          { amount, receivingAddress: receiver }
-        );
+      const transactionFee = await controllerEmitter(
+        ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+        [{ amount, receivingAddress: receiver }]
+      );
       setIsLoading(false);
       navigate('/send/confirm', {
         state: {
@@ -131,7 +158,7 @@ export const SendSys = () => {
             sender: activeAccount.address,
             receivingAddress: receiver,
             amount: Number(amount),
-            fee: transactionFee,
+            fee: isMaxValue ? txFeeForMaxValue : transactionFee,
             token: selectedAsset
               ? { symbol: selectedAsset.symbol, guid: selectedAsset.assetGuid }
               : null,
@@ -173,6 +200,30 @@ export const SendSys = () => {
       }
     );
   }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
+
+  useEffect(() => {
+    const getTxFee = async (amount: string, receiver: string) => {
+      try {
+        const transactionFee = (await controllerEmitter(
+          ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+          [{ amount, receivingAddress: receiver }]
+        )) as number;
+
+        form.setFieldValue('amount', `${+amount - transactionFee}`);
+
+        setTxFeeForMaxValue(transactionFee);
+      } catch (error) {
+        console.log({ error });
+      }
+    };
+
+    const shouldGetTxFee =
+      !!fieldsValues.receiver && fieldsValues.amount.length > 0 && isMaxValue;
+
+    if (shouldGetTxFee) {
+      getTxFee(fieldsValues.amount, fieldsValues.receiver);
+    }
+  }, [fieldsValues]);
 
   return (
     <Layout
@@ -258,6 +309,7 @@ export const SendSys = () => {
               type="text"
               placeholder={t('send.receiver')}
               className="sender-custom-input"
+              onChange={(e) => handleInputChange('receiver', e)}
             />
           </Form.Item>
           <div className="flex gap-2 w-full items-center">
@@ -300,7 +352,7 @@ export const SendSys = () => {
                             as="div"
                             className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
                           >
-                            <Menu.Item>
+                            <Menu.Item as="div" key={uniqueId()}>
                               <button
                                 onClick={() => handleSelectedAsset(-1)}
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
@@ -377,13 +429,12 @@ export const SendSys = () => {
                   className="value-custom-input"
                   type="number"
                   placeholder={'0.0'}
+                  onChange={(e) => handleInputChange('amount', e)}
                 />
               </Form.Item>
               <span
                 className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                onClick={() =>
-                  form.setFieldValue('amount', balance - 1.01 * recommendedFee)
-                }
+                onClick={handleMaxButton}
               >
                 MAX
               </span>

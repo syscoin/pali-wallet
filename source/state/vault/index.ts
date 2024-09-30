@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { ethers } from 'ethers';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
@@ -24,6 +24,7 @@ import {
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
 import { SYSCOIN_MAINNET_NETWORK_57 } from 'utils/constants';
+import { chromeStorage } from 'utils/storageAPI';
 import { isTokenTransfer } from 'utils/transactions';
 
 import {
@@ -57,7 +58,8 @@ export const initialState: IVaultState = {
     ledger: false,
   },
   isLastTxConfirmed: {},
-  hasEthProperty: true,
+  hasEthProperty: true, //hasEthProperty true means pali as default provider
+  hasEncryptedVault: false,
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
   hasErrorOndAppEVM: false,
@@ -83,10 +85,24 @@ export const initialState: IVaultState = {
   coinsList: [],
 };
 
+export const getHasEncryptedVault = createAsyncThunk(
+  'vault/getHasEncryptedVault',
+  async () => {
+    const hasEncryptedVault = await chromeStorage.getItem('sysweb3-vault');
+    return !!hasEncryptedVault;
+  }
+);
+
 const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
+    rehydrate(state: IVaultState, action: PayloadAction<IVaultState>) {
+      return {
+        ...state,
+        ...action.payload,
+      };
+    },
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
@@ -770,9 +786,15 @@ const VaultState = createSlice({
       ] = removedTx;
     },
   },
+  extraReducers: (builder) => {
+    builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
+      state.hasEncryptedVault = action.payload;
+    });
+  },
 });
 
 export const {
+  rehydrate,
   setAccounts,
   setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,

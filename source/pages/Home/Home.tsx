@@ -7,10 +7,11 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { Header, Icon, Button, Loading } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
+import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import {
   ONE_MILLION,
   ONE_TRILLION,
@@ -27,10 +28,11 @@ export const Home = () => {
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
+  const { controllerEmitter, isUnlocked } = useController();
 
   //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
-    (state: RootState) => state.price.fiat
+    (priceState: RootState) => priceState.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
   const {
@@ -41,7 +43,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((rootState: RootState) => rootState.vault);
 
   //* States
   const [isTestnet, setIsTestnet] = useState(false);
@@ -50,19 +52,23 @@ export const Home = () => {
 
   //* Constants
   const { url } = activeNetwork;
-  const controller = getController();
-  const { isInCooldown }: CustomJsonRpcProvider =
-    controller.wallet.ethereumTransaction.web3Provider;
-  const isUnlocked =
-    controller.wallet.isUnlocked() &&
-    accounts[activeAccount.type][activeAccount.id].address !== '';
+
+  let isInCooldown: boolean;
+
+  controllerEmitter(
+    ['wallet', 'ethereumTransaction', 'web3Provider'],
+    [],
+    true
+  ).then((response: CustomJsonRpcProvider) => {
+    isInCooldown = response?.isInCooldown || false;
+  });
+
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
   const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
     accounts[activeAccount.type][activeAccount.id].balances;
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
   const moreThanMillion = actualBalance >= ONE_MILLION;
-
   const moreThanTrillion = actualBalance > ONE_TRILLION;
 
   const closeModal = () => {
@@ -105,7 +111,7 @@ export const Home = () => {
     actualBalance,
   ]);
 
-  const formatFiatAmmount = useMemo(() => {
+  const formatFiatAmount = useMemo(() => {
     if (isTestnet) {
       return null;
     }
@@ -126,6 +132,7 @@ export const Home = () => {
       !isNetworkChanging ? (
         <>
           <Header accountHeader />
+          <WalletProviderDefaultModal />
 
           <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
             <div className="flex flex-col items-center justify-center text-center">
@@ -148,7 +155,7 @@ export const Home = () => {
                 </p>
               </div>
 
-              <p id="fiat-ammount">{formatFiatAmmount}</p>
+              <p id="fiat-amount">{formatFiatAmount}</p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">

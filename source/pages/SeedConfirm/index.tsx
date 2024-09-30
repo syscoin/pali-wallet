@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { getController } from 'utils/browser';
 
 import { ConfirmPhrase } from './ConfirmPhrase';
 import { CreatePhrase } from './CreatePhrase';
 
 export const SeedConfirm = () => {
-  const controller = getController();
+  const { controllerEmitter } = useController();
 
   const { navigate } = useUtils();
 
@@ -20,7 +20,10 @@ export const SeedConfirm = () => {
 
   const handleConfirm = async () => {
     if (passed) {
-      await controller.wallet.createWallet(password, createdSeed);
+      await controllerEmitter(
+        ['wallet', 'createWallet'],
+        [password, createdSeed]
+      );
 
       navigate('/home');
     }

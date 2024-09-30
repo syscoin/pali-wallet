@@ -1,3 +1,4 @@
+import MainController from 'scripts/Background/controllers/MainController';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { IMainController } from 'types/controllers';
 
@@ -27,7 +28,6 @@ export interface ITransactionOptions {
       isLegacy: boolean;
       txHash: string;
       updateType: UpdateTxAction;
-      wallet: IMainController;
     };
   }) => Promise<void>;
   isOpen?: boolean;
@@ -43,7 +43,6 @@ export interface ITransactionOptions {
     }>
   >;
   transaction: IEvmTransaction;
-  wallet: IMainController;
 }
 
 export interface IEIP6963ProviderInfo {

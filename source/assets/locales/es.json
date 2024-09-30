@@ -88,7 +88,7 @@
     "languages": "Idiomas",
     "currency": "Moneda",
     "autolock": "Bloqueo automático",
-    "manageEth": "Administrar proveedor ETH",
+    "manageEth": "Set default wallet",
     "infoHelp": "Info/Ayuda",
     "lock": "Bloquear",
     "advanced": "Avanzado"
@@ -163,7 +163,6 @@
     "ifYouHaveAHardWallet": "Si tienes una billetera física, ¡puedes conectarla ahora!",
     "congratulations": "Felicidades",
     "youWalletWas": "Tu billetera se importó con éxito."
-
   },
   "titles": {
     "assetDetails": "DETALLES DEL ACTIVO",

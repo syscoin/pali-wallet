@@ -1,5 +1,4 @@
 //@ts-nocheck
-import { Runtime } from 'webextension-polyfill-ts';
 
 import {
   IKeyringManager,
@@ -82,6 +81,7 @@ export interface IMainController extends IKeyringManager {
           }
       >;
   getRpc: (data: ICustomRpcParams) => Promise<INetwork>;
+  getSeed: (pwd: string) => Promise<any>;
   handleWatchAsset: (
     type: string,
     asset: IWatchAssetTokenProps
@@ -133,6 +133,7 @@ export interface IMainController extends IKeyringManager {
     wasConfirmed: boolean,
     isFirstTime?: boolean
   ) => void;
+  setIsPaliNetworkChanging: (isChanging: boolean) => void;
   transactions: ITransactionsManager;
   unlock: (
     pwd: string,
@@ -333,5 +334,5 @@ export interface IDAppController {
   /**
    * Setup communication
    */
-  setup: (port: Runtime.Port) => void;
+  setup: (port: chrome.runtime.Port) => void;
 }

@@ -5,12 +5,12 @@ import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { ConfirmationModal } from 'components/Modal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
+import { useController } from 'hooks/useController';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
-import { getController } from 'utils/browser';
 import {
   getERC20TransferValue,
   handleUpdateTransaction,
@@ -42,7 +42,7 @@ export const EvmTransactionsList = ({
   } = useTransactionsListConfig(userTransactions);
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
@@ -64,7 +64,6 @@ export const EvmTransactionsList = ({
             handleUpdateTransaction={handleUpdateTransaction}
             alert={alert}
             chainId={chainId}
-            wallet={wallet}
             transaction={tx as any}
             setIsOpenModal={setIsOpenModal}
             setModalData={setModalData}
@@ -73,14 +72,7 @@ export const EvmTransactionsList = ({
       }
       return null;
     },
-    [
-      handleUpdateTransaction,
-      alert,
-      chainId,
-      wallet,
-      setIsOpenModal,
-      setModalData,
-    ]
+    [handleUpdateTransaction, alert, chainId, setIsOpenModal, setModalData]
   );
 
   const EvmTransactionsListComponent = useCallback(({ tx }) => {
@@ -170,12 +162,12 @@ export const EvmTransactionsList = ({
       return;
     }
     if (lastTx?.confirmations === 0) {
-      wallet.setIsLastTxConfirmed(chainId, false);
+      controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, false]);
       return;
     }
     if (lastTx?.confirmations > 0 && !isLastTxConfirmed?.[chainId]) {
       setShowModal(true);
-      wallet.setIsLastTxConfirmed(chainId, true);
+      controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, true]);
     }
   }, [currentAccount]);
 

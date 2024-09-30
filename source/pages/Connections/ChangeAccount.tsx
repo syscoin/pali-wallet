@@ -6,20 +6,27 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { Layout, SecondaryButton, PrimaryButton, Icon } from 'components/index';
 import { useQueryData } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
+  const { controllerEmitter } = useController();
   const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
-  const { dapp, wallet } = getController();
   const { host, eventName } = useQueryData();
   const { t } = useTranslation();
 
-  const currentAccountId = dapp.get(host).accountId;
-  const currentAccountType = dapp.get(host).accountType;
+  let currentAccountId: number;
+  let currentAccountType: KeyringAccountType;
+
+  controllerEmitter(['dapp', 'get'], [host]).then((res: any) => {
+    currentAccountId = res?.accountId;
+    currentAccountType = res?.accountType;
+  });
+
   const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [accountType, setCurrentAccountType] =
     useState<KeyringAccountType>(currentAccountType);
@@ -37,12 +44,24 @@ export const ChangeAccount = () => {
       return;
     }
     //this should be passed to constant instead of being hardcoded
-    if (eventName === 'requestPermissions')
-      dapp.requestPermissions(host, accountId, accountType);
-    else dapp.changeAccount(host, accountId, accountType);
-    wallet.setAccount(accountId, accountType);
+    if (eventName === 'requestPermissions') {
+      controllerEmitter(
+        ['dapp', 'requestPermissions'],
+        [host, accountId, accountType]
+      );
+    } else {
+      controllerEmitter(
+        ['dapp', 'changeAccount'],
+        [host, accountId, accountType]
+      );
+    }
+
+    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+
     const response = { accountId, accountType };
+
     dispatchBackgroundEvent(`${eventName}.${host}`, response);
+
     window.close();
   };
 

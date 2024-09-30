@@ -16,11 +16,11 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
-import { setCoins, setPrices } from 'state/price';
+import { getController } from 'scripts/Background';
+import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { setCoinsList } from 'state/vault';
 import { IControllerUtils } from 'types/controllers';
-import { getController } from 'utils/browser';
 import { getNetworkChain, logError } from 'utils/index';
 
 const ControllerUtils = (): IControllerUtils => {
@@ -54,10 +54,13 @@ const ControllerUtils = (): IControllerUtils => {
       case INetworkType.Syscoin:
         try {
           const { chain } = await validateSysRpc(activeNetwork.url);
+          const adjustedUrl = activeNetwork.url.endsWith('/')
+            ? activeNetwork.url
+            : `${activeNetwork.url}/`;
+
           if (chain !== 'test') {
-            //TODO: add check to verify if the active network has a / by the end of the url
             const currencies = await (
-              await fetch(`${activeNetwork.url}${ASSET_PRICE_API}`)
+              await fetch(`${adjustedUrl}${ASSET_PRICE_API}`)
             ).json();
             if (currencies && currencies.rates) {
               store.dispatch(setCoins(currencies.rates));

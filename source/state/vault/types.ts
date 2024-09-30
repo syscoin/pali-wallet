@@ -28,6 +28,7 @@ export interface IVaultState {
   coinsList: any[];
   currentBlock: ethers.providers.Block;
   error: boolean;
+  hasEncryptedVault: boolean;
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
   isBitcoinBased: boolean;

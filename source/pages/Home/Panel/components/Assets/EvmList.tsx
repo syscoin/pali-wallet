@@ -1,20 +1,20 @@
 import { uniqueId } from 'lodash';
 import React, { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import {
-  FiTrash as DeleteIcon,
   RiEditLine as EditIcon,
   RiShareForward2Line as DetailsIcon,
-} from 'react-icons/all';
+} from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
 import { LoadingComponent } from 'components/Loading';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { getController } from 'utils/browser';
 import { truncate } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
@@ -25,10 +25,10 @@ interface IDefaultEvmAssets {
 }
 
 const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
-  const controller = getController();
   const { navigate } = useUtils();
-
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
   const {
     accounts,
     activeAccount,
@@ -150,11 +150,12 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
                     className="cursor-pointer hover:text-fields-input-borderfocus"
                     color="text-brand-white"
                     size={16}
-                    onClick={() =>
-                      controller.wallet.account.eth.deleteTokenInfo(
-                        token.contractAddress
-                      )
-                    }
+                    onClick={() => {
+                      controllerEmitter(
+                        ['wallet', 'account', 'eth', 'deleteTokenInfo'],
+                        [token.contractAddress]
+                      );
+                    }}
                   />
                 </Tooltip>
               </div>

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import {
@@ -40,6 +39,7 @@ import {
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { ChainErrorPage } from 'pages/Chain';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
@@ -48,31 +48,45 @@ import {
   resetPaliRequestsCount,
   verifyPaliRequests,
 } from 'scripts/Background';
-import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { rehydrateStore } from 'state/rehydrate';
+import store, { RootState } from 'state/store';
 
 import { ProtectedRoute } from './ProtectedRoute';
 
 export const Router = () => {
-  const [showModal, setShowModal] = useState<boolean>(false);
-  const [modalMessage, setmodalMessage] = useState<string>('');
-  const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState<boolean>(false);
-  const { wallet, appRoute } = getController();
+  const [showModal, setShowModal] = useState(false);
+  const [modalMessage, setmodalMessage] = useState('');
+  const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState(false);
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { isTimerEnabled, isBitcoinBased, isNetworkChanging, activeNetwork } =
     useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { serverHasAnError, errorMessage }: CustomJsonRpcProvider =
-    wallet.ethereumTransaction.web3Provider;
-  const isUnlocked = wallet.isUnlocked();
+  const { isUnlocked, web3Provider } = useController();
+  const { serverHasAnError, errorMessage } = web3Provider;
+
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
       JSON.stringify({ hasUtf8Error: false })
   );
 
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
+
+  useEffect(() => {
+    function handleStateChange(message: any) {
+      if (message.type === 'CONTROLLER_STATE_CHANGE') {
+        rehydrateStore(store, message.data);
+      }
+    }
+
+    chrome.runtime.onMessage.addListener(handleStateChange);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleStateChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (isUnlocked) {
@@ -85,12 +99,12 @@ export const Router = () => {
 
     if (canProceed) {
       navigate('/home');
-
       return;
     }
 
-    const route = appRoute();
-    if (route !== '/') navigate(route);
+    controllerEmitter(['appRoute']).then((route) => {
+      if (route !== '/') navigate(route);
+    });
   }, [isUnlocked]);
 
   useEffect(() => {
@@ -114,12 +128,12 @@ export const Router = () => {
 
   useEffect(() => {
     alert.removeAll();
-    appRoute(pathname);
+    // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen) {
+    if (isFullscreen && isUnlocked) {
       navigate('/settings/account/hardware');
     }
-  }, [pathname]);
+  }, [pathname, isUnlocked]);
 
   useEffect(() => {
     if (
@@ -143,7 +157,7 @@ export const Router = () => {
 
   const SYS_UTXO_MAINNET_NETWORK = {
     chainId: 57,
-    url: 'https://blockbook.elint.services/',
+    url: 'https://blockbook.syscoin.org',
     label: 'Syscoin Mainnet',
     default: true,
     currency: 'sys',
@@ -159,9 +173,13 @@ export const Router = () => {
         onClose={async () => {
           setShowUtf8ErrorModal(false);
           if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
-            await wallet.setActiveNetwork(SYS_UTXO_MAINNET_NETWORK, 'syscoin');
+            await controllerEmitter(
+              ['wallet', 'setActiveNetwork'],
+              [SYS_UTXO_MAINNET_NETWORK, 'syscoin']
+            );
           }
-          wallet.lock();
+
+          controllerEmitter(['wallet', 'lock']);
           navigate('/');
         }}
       />
@@ -172,7 +190,7 @@ export const Router = () => {
         warningMessage={`Provider Error: ${
           errorMessage === 'string' || typeof errorMessage === 'undefined'
             ? errorMessage
-            : errorMessage.message
+            : errorMessage?.message
         }`}
         onClose={() => setShowModal(false)}
       />

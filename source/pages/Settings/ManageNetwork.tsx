@@ -12,8 +12,8 @@ import {
   Tooltip,
 } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
@@ -24,15 +24,19 @@ const ManageNetworkView = () => {
   const { t } = useTranslation();
 
   const { navigate } = useUtils();
-  const { wallet } = getController();
+  const { controllerEmitter } = useController();
 
-  const removeNetwork = (
+  const removeNetwork = async (
     chain: INetworkType,
     chainId: number,
     rpcUrl: string,
     label: string,
     key?: string
-  ) => wallet.removeKeyringNetwork(chain, chainId, rpcUrl, label, key);
+  ) =>
+    controllerEmitter(
+      ['wallet', 'removeKeyringNetwork'],
+      [chain, chainId, rpcUrl, label, key]
+    );
 
   const editNetwork = ({
     selected,

@@ -6,8 +6,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { Layout, NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -18,17 +18,16 @@ const CreateAccount = () => {
     (state: RootState) => state.vault
   );
   const { t } = useTranslation();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const navigate = useNavigate();
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const { address: newAddress } = await controller.wallet.createAccount(
-      isBitcoinBased,
-      activeNetwork.chainId,
-      label
-    );
+    const { address: newAddress } = (await controllerEmitter(
+      ['wallet', 'createAccount'],
+      [isBitcoinBased, activeNetwork.chainId, label]
+    )) as any;
 
     setAddress(newAddress);
     setLoading(false);

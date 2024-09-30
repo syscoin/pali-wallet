@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Layout, Card, Button } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
-import { getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
 
 const PhraseView = () => {
   const [phrase, setPhrase] = useState<string>();
@@ -16,7 +16,7 @@ const PhraseView = () => {
   const [visible, setVisible] = useState<boolean>(false);
   const { t } = useTranslation();
   const { useCopyClipboard, navigate } = useUtils();
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const [copied, copyText] = useCopyClipboard();
 
   const [showModal, setShowModal] = useState<boolean>(false);
@@ -61,19 +61,18 @@ const PhraseView = () => {
                 message: '',
               },
               () => ({
-                validator(_, value) {
-                  try {
-                    const seed = controller.wallet.getSeed(value);
-                    if (seed) {
-                      setPhrase(seed);
+                async validator(_, value) {
+                  return controllerEmitter(['wallet', 'getSeed'], [value]).then(
+                    (seed: string) => {
+                      if (seed) {
+                        setPhrase(seed);
 
-                      return Promise.resolve();
+                        return Promise.resolve();
+                      }
+
+                      return Promise.reject();
                     }
-                  } catch (e) {
-                    console.log('Error: ', e);
-                  }
-
-                  return Promise.reject();
+                  );
                 },
               }),
             ]}

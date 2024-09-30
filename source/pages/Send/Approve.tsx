@@ -1,10 +1,9 @@
 import { Form } from 'antd';
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { browser } from 'webextension-polyfill-ts';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
@@ -17,6 +16,7 @@ import {
   IconButton,
 } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
 import { RootState } from 'state/store';
 import {
@@ -27,7 +27,7 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
-import { dispatchBackgroundEvent, getController } from 'utils/browser';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
 
@@ -35,11 +35,11 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
-  const { wallet } = getController();
+  const { controllerEmitter, web3Provider } = useController();
   const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
-  const url = browser.runtime.getURL('app.html');
+  const url = chrome.runtime.getURL('app.html');
   const { navigate, alert, useCopyClipboard } = useUtils();
 
   const [copied, copy] = useCopyClipboard();
@@ -152,6 +152,10 @@ export const ApproveTransactionComponent = () => {
 
     const balance = ethereum;
 
+    if (activeAccount.isTrezorWallet) {
+      await controllerEmitter(['wallet', 'trezorSigner', 'init'], [], false);
+    }
+
     if (activeAccount && balance > 0) {
       setLoading(true);
 
@@ -176,7 +180,7 @@ export const ApproveTransactionComponent = () => {
           ),
           9
         ),
-        gasLimit: wallet.ethereumTransaction.toBigNumber(
+        gasLimit: BigNumber.from(
           Boolean(customFee.isCustom && customFee.gasLimit > 0)
             ? customFee.gasLimit
             : fee.gasLimit
@@ -184,10 +188,14 @@ export const ApproveTransactionComponent = () => {
       };
 
       try {
-        const response =
-          await wallet.ethereumTransaction.sendFormattedTransaction(newTxValue);
+        const response = (await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+          [newTxValue]
+        )) as { hash: string };
+
         if (activeAccountMeta.type === KeyringAccountType.Trezor)
-          wallet.sendAndSaveTransaction(response);
+          controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
+
         setConfirmedDefaultModal(true);
         setLoading(false);
         if (isExternal)
@@ -248,12 +256,12 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getTokenName = async (contractAddress: string) => {
-      const getProvider = wallet.ethereumTransaction.contentScriptWeb3Provider;
+      // const getProvider = wallet.ethereumTransaction.contentScriptWeb3Provider;
 
       const contractInstance = new ethers.Contract(
         contractAddress,
         getErc20Abi(),
-        getProvider
+        web3Provider
       );
 
       const [tokenSymbolByContract, tokenDecimalsByContract] =

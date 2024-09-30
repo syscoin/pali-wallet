@@ -1,4 +1,5 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IPaliAccount } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
@@ -14,6 +15,17 @@ export interface IAssetsManager {
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
   syscoin: ITokenSysProps[];
+}
+
+export interface INftController {
+  getUserNfts: (
+    userAddress: string,
+    chainId: number,
+    rpcUrl: string
+  ) => Promise<INftsStructure[]>;
+  validateAndManagerUserNfts: (
+    fetchedNfts: INftsStructure[]
+  ) => INftsStructure[];
 }
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
@@ -63,18 +75,15 @@ export interface IEvmAssetsController {
     walletAddres: string,
     contractAddress: string,
     symbol: string,
-    decimals: number,
-    web3Provider: CustomJsonRpcProvider
+    decimals: number
   ) => Promise<IAddCustomTokenResponse>;
   addEvmDefaultToken: (
     token: ITokenEthProps,
-    accountAddress: string,
-    web3Provider: CustomJsonRpcProvider
+    accountAddress: string
   ) => Promise<ITokenEthProps | boolean>;
   updateAllEvmTokens: (
     account: IPaliAccount,
 
-    currentNetworkChainId: number,
-    web3Provider: CustomJsonRpcProvider
+    currentNetworkChainId: number
   ) => Promise<ITokenEthProps[]>;
 }

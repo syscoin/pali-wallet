@@ -54,7 +54,7 @@
     "languages": "Languages",
     "currency": "Currency",
     "autolock": "Auto lock timer",
-    "manageEth": "Manage ETH provider",
+    "manageEth": "Set default wallet",
     "infoHelp": "Info/Help",
     "lock": "Lock",
     "advanced": "Advanced"
@@ -160,10 +160,9 @@
     "addressVerified": "Address successfully verified",
     "verificationDeniedByUser": "Verification denied by user.",
     "clickToVerify": "Click to verify your SYS address.",
-    "ifYouHaveAHardWallet":"If you have a hard wallet you can connect now!",
-    "congratulations":"Congratulations",
-    "youWalletWas":"Your wallet was successfully imported."
-
+    "ifYouHaveAHardWallet": "If you have a hard wallet you can connect now!",
+    "congratulations": "Congratulations",
+    "youWalletWas": "Your wallet was successfully imported."
   },
   "titles": {
     "assetDetails": "ASSET DETAILS",

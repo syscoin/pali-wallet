@@ -6,8 +6,8 @@ import { useSelector } from 'react-redux';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 
 import { AccountHeader } from '.';
 import { GeneralMenu, NetworkMenu } from './Menus';
@@ -18,7 +18,7 @@ interface IHeader {
 }
 
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
-  const { wallet, dapp } = getController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const error = useSelector((state: RootState) => state.vault.error);
 
@@ -54,18 +54,26 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
         title: t('header.errorSwitching'),
       });
 
-      wallet.resolveError();
+      controllerEmitter(['wallet', 'resolveError']);
     }
   }, [error]);
 
   const hanldeDisconnectFromDapp = () => {
-    dapp.disconnect(host);
-    wallet.resolveAccountConflict();
+    controllerEmitter(['dapp', 'disconnect'], [host]);
+    controllerEmitter(['wallet', 'resolveAccountConflict']);
   };
   const handleChangeConnectedAccount = () => {
-    dapp.changeAccount(host, newConnectedAccount.id, connectedAccountType);
-    wallet.setAccount(newConnectedAccount.id, connectedAccountType);
-    wallet.resolveAccountConflict();
+    controllerEmitter(
+      ['dapp', 'changeAccount'],
+      [host, newConnectedAccount.id, connectedAccountType]
+    );
+
+    controllerEmitter(
+      ['wallet', 'setAccount'],
+      [newConnectedAccount.id, connectedAccountType]
+    );
+
+    controllerEmitter(['wallet', 'resolveAccountConflict']);
   };
 
   return (
@@ -100,7 +108,9 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
 
           <Modal
             show={isChangingConnectedAccount}
-            onClose={() => wallet.resolveAccountConflict()}
+            onClose={() =>
+              controllerEmitter(['wallet', 'resolveAccountConflict'])
+            }
           >
             <div className="inline-block align-middle my-8 p-6 w-full max-w-2xl text-center font-poppins bg-bkg-4 border border-brand-royalblue rounded-2xl shadow-xl overflow-hidden transform transition-all">
               <Dialog.Title

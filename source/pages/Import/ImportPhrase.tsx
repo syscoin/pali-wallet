@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { OnboardingLayout, Button } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { getController } from 'utils/browser';
+import { useController } from 'hooks/useController';
 import { formatSeedPhrase } from 'utils/format';
 
 type SeedValidationType = {
@@ -18,7 +18,7 @@ const eyeStyle = 'w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20';
 
 const ImportPhrase: React.FC = () => {
   const { TextArea } = Input;
-  const controller = getController();
+  const { controllerEmitter } = useController();
   const [form] = useForm();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -41,11 +41,15 @@ const ImportPhrase: React.FC = () => {
   );
 
   const onSubmit = ({ phrase }: { phrase: string }) => {
-    if (controller.wallet.isSeedValid(phrase)) {
-      navigate('/create-password-import', {
-        state: { phrase, isWalletImported: true },
-      });
-    }
+    controllerEmitter(['wallet', 'isSeedValid'], [phrase]).then(
+      (isSeedValid: boolean) => {
+        if (isSeedValid) {
+          navigate('/create-password-import', {
+            state: { phrase, isWalletImported: true },
+          });
+        }
+      }
+    );
   };
 
   const handleKeypress = (event) => {
@@ -87,19 +91,27 @@ const ImportPhrase: React.FC = () => {
                 form.setFieldsValue({ phrase: value });
 
                 //todo: we should validate the seed phrase with the new fn
-                setSeedIsValid(controller.wallet.isSeedValid(value) && value);
-                if (controller.wallet.isSeedValid(value)) {
+                return controllerEmitter(
+                  ['wallet', 'isSeedValid'],
+                  [value]
+                ).then((isSeedValid: boolean) => {
+                  if (isSeedValid) {
+                    setSeedIsValid(isSeedValid && value);
+
+                    setSeedValidation({
+                      seedLength: value.seedLength,
+                      seedLengthError: false,
+                    });
+
+                    return Promise.resolve();
+                  }
+
                   setSeedValidation({
                     seedLength: value.seedLength,
-                    seedLengthError: false,
+                    seedLengthError: value.seedLengthError,
                   });
-                  return Promise.resolve();
-                }
-                setSeedValidation({
-                  seedLength: value.seedLength,
-                  seedLengthError: value.seedLengthError,
+                  return Promise.reject();
                 });
-                return Promise.reject();
               },
             }),
           ]}

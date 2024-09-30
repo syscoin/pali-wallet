@@ -6,12 +6,12 @@ import { useSelector } from 'react-redux';
 
 import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { getController } from 'utils/browser';
 import { formatNumber, getNetworkChain } from 'utils/index';
 
 const CurrencyView = () => {
-  const controller = getController();
+  const { controllerEmitter, isUnlocked: _isUnlocked } = useController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const { t } = useTranslation();
@@ -37,8 +37,7 @@ const CurrencyView = () => {
   };
 
   //* Constants
-  const isUnlocked =
-    controller.wallet.isUnlocked() && activeAccount.address !== '';
+  const isUnlocked = _isUnlocked && activeAccount.address !== '';
 
   const fiatCurrency = fiat.asset ? String(fiat.asset).toUpperCase() : 'USD';
 
@@ -58,7 +57,10 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (selectedCoin) {
-      controller.utils.setFiat(selectedCoin, getNetworkChain(isBitcoinBased));
+      controllerEmitter(
+        ['utils', 'setFiat'],
+        [selectedCoin, getNetworkChain(isBitcoinBased)]
+      );
     }
   }, [selectedCoin, isBitcoinBased]);
 

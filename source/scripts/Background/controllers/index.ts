@@ -1,5 +1,5 @@
 import omit from 'lodash/omit';
-import { browser, Windows } from 'webextension-polyfill-ts';
+import { AnyAction, Store } from 'redux';
 
 import {
   accountType,
@@ -11,9 +11,10 @@ import {
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import { persistor, RootState } from 'state/store';
+import { IDAppState } from 'state/dapp/types';
+import { IPriceState } from 'state/price/types';
+import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
-import { IPersistState } from 'state/types';
 import {
   setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
@@ -24,11 +25,7 @@ import {
   setTimer,
 } from 'state/vault';
 import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
-import {
-  IControllerUtils,
-  IDAppController,
-  IMainController,
-} from 'types/controllers';
+import { IControllerUtils, IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_MAINNET_DEFAULT_NETWORK,
@@ -43,76 +40,79 @@ import MainController from './MainController';
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
   callGetLatestUpdateForAccount: () => void;
-  createPopup: (route?: string, data?: object) => Promise<Windows.Window>;
+  createPopup: (
+    route?: string,
+    data?: object
+  ) => Promise<chrome.windows.Window>;
   dapp: Readonly<IDAppController>;
   refresh: () => void;
+  rehydrate: () => void;
   utils: Readonly<IControllerUtils>;
-  wallet: IMainController;
+  wallet: MainController;
 }
 
-const getAccountType = (account: IPaliAccount): KeyringAccountType =>
-  !account.isImported && !account.isTrezorWallet
-    ? KeyringAccountType.HDAccount
-    : account.isTrezorWallet
-    ? KeyringAccountType.Trezor
-    : account.isLedgerWallet
-    ? KeyringAccountType.Ledger
-    : KeyringAccountType.Imported;
+export const vaultToWalletState = (vaultState: IVaultState) => {
+  const accounts: { [key in KeyringAccountType]: accountType } = Object.entries(
+    vaultState.accounts
+  ).reduce((acc, [sysAccountType, paliAccountType]) => {
+    acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
+      Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
+        const keyringAccountState: IKeyringAccountState = omit(paliAccount, [
+          'assets',
+          'transactions',
+        ]) as IKeyringAccountState;
+        return [accountId, keyringAccountState];
+      })
+    );
+    return acc;
+  }, {} as { [key in KeyringAccountType]: accountType });
+
+  const sysweb3Wallet: IWalletState = {
+    accounts,
+    activeAccountId: vaultState.activeAccount.id,
+    activeAccountType: vaultState.activeAccount.type,
+    networks: vaultState.networks,
+    activeNetwork: vaultState.activeNetwork,
+  };
+  const activeChain: INetworkType = vaultState.activeChain;
+
+  return { wallet: sysweb3Wallet, activeChain };
+};
 
 const MasterController = (
-  readyCallback: (windowController: any) => void
+  externalStore: Store<
+    {
+      dapp: IDAppState;
+      price: IPriceState;
+      vault: IVaultState;
+    },
+    AnyAction
+  >
 ): IMasterController => {
   let route = '/';
   let externalRoute = '/';
-  let wallet: IMainController;
+  let wallet: MainController;
   let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
-  const vaultToWalletState = (vaultState: IVaultState) => {
-    const accounts: { [key in KeyringAccountType]: accountType } =
-      Object.entries(vaultState.accounts).reduce(
-        (acc, [sysAccountType, paliAccountType]) => {
-          acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
-            Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
-              const keyringAccountState: IKeyringAccountState = omit(
-                paliAccount,
-                ['assets', 'transactions']
-              ) as IKeyringAccountState;
-              return [accountId, keyringAccountState];
-            })
-          );
-          return acc;
-        },
-        {} as { [key in KeyringAccountType]: accountType }
-      );
 
-    const sysweb3Wallet: IWalletState = {
-      accounts,
-      activeAccountId: vaultState.activeAccount.id,
-      activeAccountType: vaultState.activeAccount.type,
-      networks: vaultState.networks,
-      activeNetwork: vaultState.activeNetwork,
-    };
-    const activeChain: INetworkType = vaultState.activeChain;
+  const getAccountType = (account: IPaliAccount): KeyringAccountType =>
+    !account.isImported && !account.isTrezorWallet
+      ? KeyringAccountType.HDAccount
+      : account.isTrezorWallet
+      ? KeyringAccountType.Trezor
+      : account.isLedgerWallet
+      ? KeyringAccountType.Ledger
+      : KeyringAccountType.Imported;
 
-    return { wallet: sysweb3Wallet, activeChain };
-  };
-  // Subscribe to store updates
-  persistor.subscribe(() => {
-    const state = store.getState() as RootState & { _persist: IPersistState };
-    const {
-      _persist: { rehydrated },
-    } = state;
-    if (rehydrated) {
-      initializeMainController();
-    }
-  });
   const initializeMainController = () => {
-    const hdAccounts = Object.values(store.getState().vault.accounts.HDAccount);
+    const hdAccounts = Object.values(
+      externalStore.getState().vault.accounts.HDAccount
+    );
     const trezorAccounts = Object.values(
-      store.getState().vault.accounts.Trezor
+      externalStore.getState().vault.accounts.Trezor
     );
     const importedAccounts = Object.values(
-      store.getState().vault.accounts.Imported
+      externalStore.getState().vault.accounts.Imported
     );
 
     const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
@@ -130,7 +130,7 @@ const MasterController = (
           nfts: [] as INftsStructure[],
         };
 
-        store.dispatch(
+        externalStore.dispatch(
           setAccountPropertyByIdAndType({
             id: account.id,
             type: accType,
@@ -141,17 +141,19 @@ const MasterController = (
       });
     }
 
-    if (!store.getState().vault.networks[TransactionsType.Ethereum][570]) {
-      store.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
+    if (
+      !externalStore.getState().vault.networks[TransactionsType.Ethereum][570]
+    ) {
+      externalStore.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
     }
 
     const currentRpcSysUtxoMainnet =
-      store.getState().vault.networks[TransactionsType.Syscoin][57].url;
+      externalStore.getState().vault.networks[TransactionsType.Syscoin][57].url;
 
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork } = externalStore.getState().vault;
 
     if (currentRpcSysUtxoMainnet !== 'https://blockbook.syscoin.org') {
-      store.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
+      externalStore.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
     }
 
     const isSysUtxoMainnetWithWrongRpcUrl =
@@ -159,30 +161,30 @@ const MasterController = (
       activeNetwork.url.includes('https://blockbook.elint.services');
 
     if (isSysUtxoMainnetWithWrongRpcUrl) {
-      store.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
+      externalStore.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
     }
 
     // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
-    if (Number(store.getState().vault.timer) === 5) {
-      store.dispatch(setTimer(30));
+    if (Number(externalStore.getState().vault.timer) === 5) {
+      externalStore.dispatch(setTimer(30));
     }
 
     const isNetworkOldState =
-      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.default ?? false;
 
     const isNetworkOldEVMStateWithoutTestnet =
-      store.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
         ?.isTestnet === undefined;
 
     const isNetworkOldUTXOStateWithoutTestnet =
-      store.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
         ?.isTestnet === undefined;
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
         (network) => {
-          store.dispatch(
+          externalStore.dispatch(
             setNetwork({
               chain: INetworkType.Ethereum,
               network: network as INetwork,
@@ -195,7 +197,7 @@ const MasterController = (
     if (isNetworkOldUTXOStateWithoutTestnet) {
       Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
         (network) => {
-          store.dispatch(
+          externalStore.dispatch(
             setNetwork({
               chain: INetworkType.Syscoin,
               network: network as INetwork,
@@ -205,18 +207,20 @@ const MasterController = (
       );
     }
 
-    if (store.getState().vault?.accounts?.Ledger === undefined) {
-      store.dispatch(setAccountTypeInAccountsObject(KeyringAccountType.Ledger));
+    if (externalStore.getState().vault?.accounts?.Ledger === undefined) {
+      externalStore.dispatch(
+        setAccountTypeInAccountsObject(KeyringAccountType.Ledger)
+      );
     }
-    if (store.getState().vault?.advancedSettings === undefined) {
-      store.dispatch(
+    if (externalStore.getState().vault?.advancedSettings === undefined) {
+      externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'refresh',
           isActive: false,
           isFirstTime: true,
         })
       );
-      store.dispatch(
+      externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'ledger',
           isActive: false,
@@ -225,8 +229,8 @@ const MasterController = (
       );
     }
 
-    if (store.getState().vault?.isLastTxConfirmed === undefined) {
-      store.dispatch(
+    if (externalStore.getState().vault?.isLastTxConfirmed === undefined) {
+      externalStore.dispatch(
         setIsLastTxConfirmed({
           chainId: 0,
           wasConfirmed: false,
@@ -235,7 +239,7 @@ const MasterController = (
       );
     }
 
-    const isBitcoinBased = store.getState()?.vault?.isBitcoinBased;
+    const isBitcoinBased = externalStore.getState()?.vault?.isBitcoinBased;
 
     const isTransactionsOldState = accountsObj.some((account) =>
       Array.isArray(account.transactions)
@@ -244,7 +248,7 @@ const MasterController = (
     if (isTransactionsOldState) {
       const {
         activeNetwork: { chainId },
-      } = store.getState().vault;
+      } = externalStore.getState().vault;
 
       accountsObj.forEach((account) => {
         const accType = getAccountType(account);
@@ -267,7 +271,7 @@ const MasterController = (
               ];
             });
 
-            store.dispatch(
+            externalStore.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
                 type: accType,
@@ -276,7 +280,7 @@ const MasterController = (
               })
             );
           } else {
-            store.dispatch(
+            externalStore.dispatch(
               setAccountPropertyByIdAndType({
                 id: account.id,
                 type: accType,
@@ -291,27 +295,27 @@ const MasterController = (
         }
       });
     }
-    const walletState = vaultToWalletState(store.getState().vault);
+    const walletState = vaultToWalletState(externalStore.getState().vault);
     dapp = Object.freeze(DAppController());
-    wallet = Object.freeze(MainController(walletState));
+    wallet = new MainController(walletState);
     utils = Object.freeze(ControllerUtils());
-    wallet.setStorage(window.localStorage);
-    readyCallback({
-      appRoute,
-      createPopup,
-      dapp,
-      refresh,
-      utils,
-      wallet,
-      callGetLatestUpdateForAccount,
-    });
+    wallet.setStorage(chrome.storage.local);
+    // readyCallback({
+    //   appRoute,
+    //   createPopup,
+    //   dapp,
+    //   refresh,
+    //   utils,
+    //   wallet,
+    //   callGetLatestUpdateForAccount,
+    // });
   };
 
   const callGetLatestUpdateForAccount = () =>
     wallet.getLatestUpdateForCurrentAccount();
 
   const refresh = () => {
-    const { activeAccount, accounts } = store.getState().vault;
+    const { activeAccount, accounts } = externalStore.getState().vault;
     if (!accounts[activeAccount.type][activeAccount.id].address) return;
     callGetLatestUpdateForAccount();
   };
@@ -333,7 +337,7 @@ const MasterController = (
    * @returns the window object from the popup
    */
   const createPopup = async (popUpRoute = '', data = {}) => {
-    const window = await browser.windows.getCurrent();
+    const window = await chrome.windows.getCurrent();
 
     if (!window || !window.width) return;
 
@@ -341,15 +345,24 @@ const MasterController = (
     if (popUpRoute) params.append('route', popUpRoute);
     if (data) params.append('data', JSON.stringify(data));
 
-    return browser.windows.create({
+    return await chrome.windows.create({
       url: '/external.html?' + params.toString(),
       width: 400,
       height: 620,
       type: 'popup',
+      top: 0,
+      left: window.width - 400,
     });
   };
 
+  const rehydrate = async () => {
+    await rehydrateStore(store);
+  };
+
+  initializeMainController();
+
   return {
+    rehydrate,
     appRoute,
     createPopup,
     dapp,
