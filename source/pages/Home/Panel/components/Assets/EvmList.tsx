@@ -57,12 +57,24 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   };
 
   const assetsFilteredBySearch = currentChainAssets.filter((token) => {
-    const lowercaseSearchValue = searchValue.toLowerCase();
+    const is1155 = token?.is1155;
+    const lowercaseSearchValue = searchValue?.toLowerCase();
+    const isHexSearch = searchValue.startsWith('0x');
+
+    if (is1155) {
+      const lowercaseCollectionName = token.collectionName.toLowerCase();
+      const lowercaseContractAddress = token.contractAddress.toLowerCase();
+      if (isHexSearch) {
+        return lowercaseContractAddress.includes(lowercaseSearchValue);
+      }
+      return lowercaseCollectionName.includes(lowercaseSearchValue);
+    }
+
     const lowercaseTokenName = token.name.toLowerCase();
     const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
     const lowercaseContractAddress = token.contractAddress.toLowerCase();
 
-    if (searchValue.startsWith('0x')) {
+    if (isHexSearch) {
       return lowercaseContractAddress.includes(lowercaseSearchValue);
     } else {
       return (
