@@ -39,6 +39,10 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     ? currentAsset.collectionName
     : currentAsset.name;
 
+  const is1155 = !!currentAsset?.is1155;
+
+  const hasImage = !is1155;
+
   const RenderCollectionItem: React.FC<{ currentNft: IERC1155Collection }> = ({
     currentNft,
   }) => (
@@ -101,7 +105,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
       {currentAsset.contractAddress ? (
         <>
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
-            {!currentAsset?.is1155 && (
+            {hasImage && (
               <img
                 style={{ maxWidth: '50px', maxHeight: '50px' }}
                 src={currentAsset.logo}
@@ -186,7 +190,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
         </>
       ) : null}
 
-      {currentAsset?.is1155 &&
+      {is1155 &&
         currentAsset.collection.map((nft) => renderAssetsDisclosure(nft))}
     </>
   );
