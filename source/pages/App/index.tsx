@@ -19,6 +19,7 @@ import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
 import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
+import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -34,17 +35,18 @@ const options = {
 };
 
 // handleRehydrateStore();
+MigrationController().then(() => {
+  rehydrateStore(store).then(() => {
+    ReactDOM.render(
+      <Provider store={store}>
+        <AlertProvider template={ToastAlert} {...options}>
+          <App />
+        </AlertProvider>
+      </Provider>,
+      app
+    );
 
-rehydrateStore(store).then(() => {
-  ReactDOM.render(
-    <Provider store={store}>
-      <AlertProvider template={ToastAlert} {...options}>
-        <App />
-      </AlertProvider>
-    </Provider>,
-    app
-  );
-
-  // Subscribe store to updates
-  handleStoreSubscribe(store);
+    // Subscribe store to updates
+    handleStoreSubscribe(store);
+  });
 });
