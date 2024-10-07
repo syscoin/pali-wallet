@@ -1,6 +1,7 @@
 /* eslint-disable camelcase */
 
 import { saveState } from 'state/paliStorage';
+import { initialState as initialVaultState } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 
 type V3_0_1 = {
@@ -13,7 +14,7 @@ const MigrateRunner = async (oldState: any) => {
       ...oldState,
       vault: {
         ...oldState.vault,
-        // add new properties here
+        shouldShowFaucetModal: initialVaultState.shouldShowFaucetModal,
       },
     };
     await saveState(newState);
