@@ -88,6 +88,7 @@ const svgIcons = {
   PaliWhiteSmall: '/assets/icons/pali-white-small.svg',
   PaliNotDefault: '/assets/icons/pali-not-default.svg',
   PaliDefault: '/assets/icons/pali-default.svg',
+  Bridge: '/assets/icons/bridge.svg',
 };
 
 interface IIcon {

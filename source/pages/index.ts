@@ -9,3 +9,4 @@ export * from './Settings';
 export * from './Start';
 export * from './Transactions';
 export * from './Tokens';
+export * from './Bridge';

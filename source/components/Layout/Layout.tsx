@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 
 import dotsImage from 'assets/images/dotsHeader.svg';
 import { Header, Icon, IconButton } from 'components/index';
+import { Steper } from 'pages/Bridge/components/Steper';
+import { useBridge } from 'pages/Bridge/context';
 
 interface ILayout {
   canGoBack?: boolean;
@@ -20,6 +22,7 @@ export const Layout: FC<ILayout> = ({
   titleOnly,
 }) => {
   const navigate = useNavigate();
+  const { isBridgePage, currentStep } = useBridge();
 
   const isSwitchChainPage =
     title === 'Switch Chain' || title === 'Cambiar Cadena';
@@ -40,6 +43,8 @@ export const Layout: FC<ILayout> = ({
       }`}
     >
       {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
+
+      {isBridgePage && <Steper currentStep={currentStep} />}
       <div
         className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white ${bgHeader}`}
       >

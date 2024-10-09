@@ -36,10 +36,12 @@ import {
   EditAccount,
   Advanced,
   Languages,
+  Bridge,
 } from '../pages';
 import { WarningModal } from 'components/Modal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { BridgeProvider } from 'pages/Bridge/context';
 import { ChainErrorPage } from 'pages/Chain';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
 import {
@@ -209,6 +211,15 @@ export const Router = () => {
         <Route
           path="home/details"
           element={<ProtectedRoute element={<DetailsView />} />}
+        />
+
+        <Route
+          path="/bridge"
+          element={
+            <BridgeProvider>
+              <ProtectedRoute element={<Bridge />} />
+            </BridgeProvider>
+          }
         />
 
         <Route

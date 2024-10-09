@@ -204,6 +204,22 @@ export const GeneralMenu: React.FC = () => {
 
             <Menu.Item>
               <li
+                onClick={() => navigate('/bridge')}
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+              >
+                <Icon
+                  name="Bridge"
+                  className="text-brand-white"
+                  wrapperClassname={`max-w-5`}
+                  isSvg
+                />
+
+                <span>{t('generalMenu.bridge')}</span>
+              </li>
+            </Menu.Item>
+
+            <Menu.Item>
+              <li
                 onClick={() => navigate('/settings/autolock')}
                 className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
               >

@@ -87,6 +87,7 @@
     "generalOptions": "OPCIONES GENERALES",
     "languages": "Idiomas",
     "currency": "Moneda",
+    "bridge": "Puente",
     "autolock": "Bloqueo automático",
     "manageEth": "Set default wallet",
     "infoHelp": "Info/Ayuda",
@@ -189,6 +190,10 @@
   "createPhrase": {
     "recoveryPhrase": "Frase de Recuperación",
     "whatIsRecoveryPhrase": "Una frase de recuperación es una serie de 12 palabras en un orden específico. Esta combinación de palabras es única para tu billetera. Asegúrate de tener un bolígrafo y papel a mano para anotarla."
+  },
+  "bridge": {
+    "bridgeTitle": "PUENTE",
+    "bridgeDescription": "Pali Bridge es una solución de puente de cadena cruzada que permite a los usuarios transferir activos entre las redes Syscoin y Ethereum. Pali Bridge es una solución de puente de cadena cruzada que permite a los usuarios transferir activos entre las redes Syscoin y Ethereum."
   },
   "send": {
     "approve": "Aprobar",
