@@ -25,7 +25,7 @@ function generateManifest() {
   // prod
   if (process.env.NODE_ENV === 'production') {
     if (manifestOptions.permissions) {
-      filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
     }
   }
 
@@ -33,7 +33,7 @@ function generateManifest() {
   if (process.env.NODE_ENV === 'canary') {
     manifestOptions.name = manifestOptions.name.replace('Pali Wallet', 'Pali Wallet Canary');
     if (manifestOptions.permissions) {
-      filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
     }
   }
 
