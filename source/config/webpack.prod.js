@@ -10,13 +10,14 @@ const common = require('./webpack.common');
 const version = require('../../package.json').version;
 
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
+const environment = process.env.NODE_ENV;
 
 module.exports = merge(common, {
   mode: 'production',
   devtool: 'source-map',
   plugins: [
     new ZipPlugin({
-      filename: `pali-wallet-${targetBrowser}-${version}`,
+      filename: `pali-wallet-${environment}-${targetBrowser}-${version}`,
       path: path.join(__dirname, '../../build'),
       extension: `${
         targetBrowser === 'opera'
