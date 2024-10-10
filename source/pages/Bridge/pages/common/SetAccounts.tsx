@@ -8,8 +8,10 @@ import { useSelector } from 'react-redux';
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import { useBridge } from '../../context';
+import errorIcon from 'assets/icons/errorIcon.svg';
+import successIcon from 'assets/icons/successIcon.svg';
 import arrow from 'assets/images/arrow.png';
-import { Card, Layout, Button, Icon } from 'components/index';
+import { Layout, Button, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IPaliAccount } from 'state/vault/types';
@@ -17,7 +19,7 @@ import { ellipsis } from 'utils/index';
 
 export const SetAccount: React.FC = () => {
   const { t } = useTranslation();
-  const { handleStepChange } = useBridge();
+  const { handleStepChange, currentStep } = useBridge();
   const {
     accounts,
     activeAccount: activeAccountMeta,
@@ -40,7 +42,8 @@ export const SetAccount: React.FC = () => {
     activeAccount && activeAccount.assets.ethereum?.length > 0;
   const totalMaxNativeTokenValue =
     +activeAccount?.balances.ethereum - txFees.gasLimit * txFees.gasPrice * 3;
-  const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
+
+  const topPosition = hasAccountAssets ? 'top-[-28.5px]' : 'top-[-26.5px]';
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -124,14 +127,16 @@ export const SetAccount: React.FC = () => {
       : 'border-b border-dashed border-gray-600';
 
     const itemClasses = `
-    backface-visibility-hidden ${roundedClasses} flex flex-row items-center justify-between p-2 w-full text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300
+    backface-visibility-hidden ${roundedClasses} flex flex-row items-center justify-between py-2 px-4 w-full text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue600 focus:outline-none cursor-pointer transform transition duration-300
   `;
 
     return (
       <li key={index} className={itemClasses}>
         <div className="flex gap-2">
           <span className="text-left">{currentAccount.label}</span>
-          <span className="text-right">{currentAccount.balances.syscoin}</span>
+          <span className="text-right text-brand-blue200">
+            {currentAccount.balances.syscoin} SYS
+          </span>
         </div>
         <span className="ml-auto text-right">
           {ellipsis(currentAccount.address, 10)}
@@ -141,7 +146,11 @@ export const SetAccount: React.FC = () => {
   };
 
   return (
-    <Layout title={t('bridge.bridgeTitle')}>
+    <Layout
+      title={t('bridge.bridgeTitle')}
+      isBridgePage
+      currentStep={currentStep}
+    >
       <div>
         <div className="flex flex-col items-center justify-center w-full">
           <div className="w-40 bg-white bg-opacity-10 px-4 py-2 flex justify-evenly rounded-xl">
@@ -183,8 +192,8 @@ export const SetAccount: React.FC = () => {
             <div className="relative w-full flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <div className="w-full flex justify-between">
-                  <p className="text-base">From</p>
-                  <p className="text-base">Syscoin Mainnet</p>
+                  <p className="text-sm font-medium">From</p>
+                  <p className="text-sm font-light">Syscoin Mainnet</p>
                 </div>
                 <Disclosure>
                   {({ open }) => (
@@ -196,7 +205,7 @@ export const SetAccount: React.FC = () => {
                               <span className="text-left">
                                 {activeAccount.label}
                               </span>
-                              <span className="text-right">
+                              <span className="text-right text-brand-blue200">
                                 {activeAccount.balances.syscoin} SYS
                               </span>
                             </div>
@@ -214,7 +223,7 @@ export const SetAccount: React.FC = () => {
                         </div>
                       </Disclosure.Button>
 
-                      <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm absolute w-full">
+                      <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm absolute z-[9999] w-full">
                         {Object.values(accounts[activeAccountMeta.type]).map(
                           renderAccountItem
                         )}
@@ -226,8 +235,9 @@ export const SetAccount: React.FC = () => {
 
               <div className="flex flex-col gap-2">
                 <div className="w-full flex justify-between">
-                  <p className="text-base">To</p>
-                  <p className="text-base">Syscoin NEVM</p>
+                  <p className="text-sm font-medium">To</p>
+
+                  <p className="text-sm font-light">Syscoin NEVM</p>
                 </div>
                 <Disclosure>
                   {({ open }) => (
@@ -239,7 +249,7 @@ export const SetAccount: React.FC = () => {
                               <span className="text-left">
                                 {activeAccount.label}
                               </span>
-                              <span className="text-right">
+                              <span className="text-right text-brand-blue200">
                                 {activeAccount.balances.syscoin} SYS
                               </span>
                             </div>
@@ -257,7 +267,7 @@ export const SetAccount: React.FC = () => {
                         </div>
                       </Disclosure.Button>
 
-                      <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm absolute w-full">
+                      <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm absolute z-[9999] w-full">
                         {Object.values(accounts[activeAccountMeta.type]).map(
                           renderAccountItem
                         )}
@@ -272,7 +282,7 @@ export const SetAccount: React.FC = () => {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-2">
               <div className="w-full flex justify-between">
-                <p className="text-base">Amount</p>
+                <p className="text-sm font-medium">Amount</p>
               </div>
               <Form.Item
                 name="amount"
@@ -321,24 +331,15 @@ export const SetAccount: React.FC = () => {
                     value={inputValue.amount}
                     onChange={handleInputChange}
                   />
+                  <span className="absolute bottom-[11px] right-[22px] text-xs h-[18px] px-2 py-[2px] w-[41px] flex items-center justify-center">
+                    SYS
+                  </span>
                   <div className="relative">
                     {isValidAmount !== null && (
                       <img
-                        src={
-                          isValidAmount === true
-                            ? '/assets/icons/successIcon.svg'
-                            : '/assets/icons/errorIcon.svg'
-                        }
-                        alt={isValidAmount === true ? 'Success' : 'Error'}
-                        className={`absolute`}
-                        style={
-                          hasAccountAssets
-                            ? {
-                                right: `5rem`,
-                                top: `-28.5px`,
-                              }
-                            : { right: `2rem`, top: `-26.5px` }
-                        }
+                        src={isValidAmount ? successIcon : errorIcon}
+                        alt={'icon'}
+                        className={`absolute right-[0.7rem] ${topPosition}`}
                       />
                     )}
                   </div>
@@ -347,16 +348,11 @@ export const SetAccount: React.FC = () => {
             </div>
           </div>
 
-          <div
-            className={`flex flex-col items-center justify-center w-full md:max-w-full mb-6 transition-all duration-500 ${messageOpacity}`}
-          >
-            <Card type="info" className="border-alert-darkwarning">
-              <div>
-                <div className="text-xs text-alert-darkwarning font-bold">
-                  <p>{t('send.maxMessage')}</p>
-                </div>
-              </div>
-            </Card>
+          <div className="flex items-center justify-start gap-2 mt-2 w-full">
+            <input type="checkbox" className="custom-checkbox" />
+            <p className="text-sm font-light">
+              I agree to the <u>terms and conditions</u>
+            </p>
           </div>
 
           <div className="absolute bottom-12 md:static md:mt-3">

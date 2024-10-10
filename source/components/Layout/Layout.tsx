@@ -1,15 +1,19 @@
 import React, { FC } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import dotsImage from 'assets/images/dotsHeader.svg';
 import { Header, Icon, IconButton } from 'components/index';
 import { Steper } from 'pages/Bridge/components/Steper';
-import { useBridge } from 'pages/Bridge/context';
+import { RootState } from 'state/store';
+import { BridgeSteps } from 'types/bridge';
 
 interface ILayout {
   canGoBack?: boolean;
   children: React.ReactNode;
+  currentStep?: BridgeSteps;
   id?: string;
+  isBridgePage?: boolean;
   title: string;
   titleOnly?: boolean;
 }
@@ -20,14 +24,22 @@ export const Layout: FC<ILayout> = ({
   id = '',
   title,
   titleOnly,
+  isBridgePage,
+  currentStep,
 }) => {
   const navigate = useNavigate();
-  const { isBridgePage, currentStep } = useBridge();
+  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+
+  const getBridgeBg = () =>
+    isBitcoinBased ? 'bg-gradient-utxo' : 'bg-gradiant-evm';
 
   const isSwitchChainPage =
     title === 'Switch Chain' || title === 'Cambiar Cadena';
+
   const bgHeader = isSwitchChainPage
     ? 'bg-gradient'
+    : isBridgePage
+    ? getBridgeBg()
     : 'bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]';
 
   const isConnectPage =

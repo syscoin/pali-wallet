@@ -85,6 +85,15 @@ div[role='alert'] {
   background: linear-gradient(180deg, #1e365c 0.67%, #061120 19.78%);
 }
 
+.bg-gradiant-evm{
+  background: linear-gradient(108.07deg, #2755A5 -3.12%, #1E365C -3.11%, #4D76B8 45.75%, #4CA1CF 100%);
+}
+
+.bg-gradient-utxo{
+  background: linear-gradient(101.93deg, #284F94 -23.52%, #9F0949 36.01%, #FE0077 94.31%);
+
+}
+
 .bg-gradient::before {
   content: '';
   position: absolute;
