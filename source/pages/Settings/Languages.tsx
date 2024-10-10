@@ -1,5 +1,5 @@
 import { Form } from 'antd';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -38,6 +38,14 @@ const Languages = () => {
   const handleLanguageChange = (e) => {
     setCurrentLang(e.target.value);
   };
+
+  useEffect(() => {
+    chrome.storage.local.get('language', ({ language }) => {
+      if (language) {
+        setCurrentLang(language);
+      }
+    });
+  }, []);
 
   return (
     <Layout title={t('settings.languages')} id="auto-lock-timer-title">

@@ -9,11 +9,7 @@ const LOCALE_VERSION = '1.5.1';
 
 const determineLngFn = (code: string): string => {
   let { language } = i18next;
-  // const storageLanguage = chrome.storage.local.get('language');
-  const storageLanguage = 'en';
-  if (storageLanguage) {
-    return storageLanguage;
-  }
+
   if (!code || code.length === 0) {
     language = defaultLocale;
 
@@ -39,9 +35,25 @@ const determineLngFn = (code: string): string => {
   return language;
 };
 
+const langDetector: any = {
+  type: 'languageDetector',
+  async: true,
+
+  detect: async function () {
+    const storageLanguage = await chrome.storage.local.get('language');
+
+    if (storageLanguage) {
+      return storageLanguage.language;
+    }
+
+    return 'en';
+  },
+};
+
 i18next
   .use(HttpApi)
   .use(initReactI18next)
+  .use(langDetector)
   .init({
     backend: {
       loadPath: `../assets/locales/{{lng}}.json`,
