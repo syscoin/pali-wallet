@@ -3,16 +3,20 @@ import i18next from 'i18next';
 import HttpApi from 'i18next-http-backend';
 import { initReactI18next } from 'react-i18next';
 
+import { chromeStorage } from 'utils/storageAPI';
+
 export const availableLanguages = ['en', 'es', 'pt-br'];
 export const defaultLocale = 'en';
 const LOCALE_VERSION = '1.5.1';
 
-const determineLngFn = (code: string): string => {
+const determineLngFn = async (code: string): Promise<string> => {
   let { language } = i18next;
-  // const storageLanguage = chrome.storage.local.get('language');
-  const storageLanguage = 'en';
-  if (storageLanguage) {
-    return storageLanguage;
+  const storageLanguage = async () =>
+    await chromeStorage.getItem('language').then((lng) => JSON.parse(lng));
+
+  const lng = (await storageLanguage()) ?? defaultLocale;
+  if (lng) {
+    return lng;
   }
   if (!code || code.length === 0) {
     language = defaultLocale;
@@ -39,22 +43,28 @@ const determineLngFn = (code: string): string => {
   return language;
 };
 
-i18next
-  .use(HttpApi)
-  .use(initReactI18next)
-  .init({
-    backend: {
-      loadPath: `../assets/locales/{{lng}}.json`,
-      queryStringParams: { v: LOCALE_VERSION },
-    },
-    react: {
-      useSuspense: true,
-    },
-    load: 'languageOnly',
-    lowerCaseLng: true,
-    fallbackLng: determineLngFn,
-    keySeparator: '.',
-    interpolation: { escapeValue: true },
-  });
+const initI18next = async () => {
+  const fallbackLng = await determineLngFn('');
+
+  i18next
+    .use(HttpApi)
+    .use(initReactI18next)
+    .init({
+      backend: {
+        loadPath: `../assets/locales/{{lng}}.json`,
+        queryStringParams: { v: LOCALE_VERSION },
+      },
+      react: {
+        useSuspense: true,
+      },
+      load: 'languageOnly',
+      lowerCaseLng: true,
+      fallbackLng,
+      keySeparator: '.',
+      interpolation: { escapeValue: true },
+    });
+};
+
+initI18next();
 
 export { i18next };
