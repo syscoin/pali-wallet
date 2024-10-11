@@ -83,6 +83,12 @@ export const initialState: IVaultState = {
   isPolling: false,
   currentBlock: undefined,
   coinsList: [],
+  shouldShowFaucetModal: {
+    57: true,
+    570: true,
+    5700: true,
+    57000: true,
+  },
 };
 
 export const getHasEncryptedVault = createAsyncThunk(
@@ -750,6 +756,18 @@ const VaultState = createSlice({
       } as IEvmTransactionResponse;
     },
 
+    setFaucetModalState: (
+      state: IVaultState,
+      action: PayloadAction<{ chainId: number; isOpen: boolean }>
+    ) => {
+      const { chainId, isOpen } = action.payload;
+      if (state.isBitcoinBased) {
+        return;
+      }
+
+      state.shouldShowFaucetModal[chainId] = isOpen;
+    },
+
     setTransactionStatusToAccelerated(
       state: IVaultState,
       action: PayloadAction<{
@@ -786,6 +804,7 @@ const VaultState = createSlice({
       ] = removedTx;
     },
   },
+
   extraReducers: (builder) => {
     builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
       state.hasEncryptedVault = action.payload;
@@ -807,6 +826,7 @@ export const {
   setActiveNetwork,
   setIsNetworkChanging,
   setIsDappAskingToChangeNetwork,
+  setFaucetModalState,
   setIsLoadingBalances,
   setIsLoadingAssets,
   setIsLoadingTxs,

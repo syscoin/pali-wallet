@@ -525,5 +525,20 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Keep your seed phrase secret!",
     "anyoneWithThisInfo": "Anyone with this information is able to steal your funds."
+  },
+  "faucet": {
+    "grabTextOne":"Grab ${{token}} with our faucet!",
+    "grabTextTwo":"Grab ${{token}} with our faucet on the {{rpcName}}!",
+    "pleaseWait":"Please wait while we work our magic...",
+    "doNotClose":"Do not close the wallet.",
+    "ERROR":"ERROR!",
+    "CONGRATULATIONS":"CONGRATULATIONS!",
+    "someHasJust":"Some {{tokenSymbol}} has just been sent to your {{networkName}} wallet.",
+    "transactionHash":"Transaction hash",
+    "requestNow": "Request Now",
+    "Close": "Close",
+    "tryAgain": "Try again",
+    "withOurFaucet": "Grab {{token}} with our faucet to begin experiencing the {{networkName}} network!",
+    "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h."
   }
 }

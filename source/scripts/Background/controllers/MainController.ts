@@ -53,6 +53,7 @@ import {
   setTransactionStatusToAccelerated,
   setUpdatedNftsToState,
   setOpenDAppErrorModal,
+  setFaucetModalState as setShouldShowFaucetModal,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -1548,6 +1549,16 @@ class MainController extends KeyringManager {
         activeAccount,
       }),
     ]);
+  }
+
+  public async setFaucetModalState({
+    chainId,
+    isOpen,
+  }: {
+    chainId: number;
+    isOpen: boolean;
+  }) {
+    store.dispatch(setShouldShowFaucetModal({ chainId, isOpen }));
   }
 }
 
