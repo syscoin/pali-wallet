@@ -43,6 +43,7 @@ export interface IVaultState {
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
+  shouldShowFaucetModal: { [k: number]: boolean };
   timer: number;
 }
 

@@ -14,7 +14,7 @@ const MigrationController = async () => {
 
   /**
    * version < 3.0.1
-   * Description: Example of migration from version 3.0.0 to 3.0.1
+   * Description: add faucet feature
    */
   if (currentPaliVersion === '3.0.1') {
     await v3_0_1(state);
