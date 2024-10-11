@@ -7,6 +7,11 @@ const MigrationController = async () => {
   const state = await loadState(); // get state from Storage API
   const currentPaliVersion = paliData.version;
 
+  if (!state) {
+    console.warn('<MigrationController> No state found in chrome storage');
+    return;
+  }
+
   /**
    * version < 3.0.1
    * Description: add faucet feature
