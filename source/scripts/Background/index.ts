@@ -10,6 +10,7 @@ import store from 'state/store';
 import { rehydrate as vaultRehydrate, setIsPolling } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 import { log } from 'utils/logger';
+import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
 import MasterController, { IMasterController } from './controllers';
@@ -531,8 +532,13 @@ export const dispatchChangeNetworkBgEvent = (
   });
 };
 
-export const setLanguageInLocalStorage = (lang: PaliLanguages) => {
-  chrome.storage.local.set({ language: lang });
+export const setLanguageInLocalStorage = async (lang: PaliLanguages) => {
+  try {
+    const serializedState = JSON.stringify(lang);
+    await chromeStorage.setItem('language', serializedState);
+  } catch (e) {
+    console.error('<!> Error saving language', e);
+  }
 };
 
 const isPollingRunNotValid = () => {
