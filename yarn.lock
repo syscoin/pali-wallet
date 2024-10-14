@@ -2379,11 +2379,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.27.tgz#2ecbf38c3b5f6821ec2bcc95472eed0a2f11cd10"
   integrity sha512-HHW2ozdXCac2Xo0oUQgRk/sczBIGQCBvsqYBIwondipA3Rx4/jGC6Y9U/M4wpTi5wQ+ZD18DyEbKAVMXElGcbQ==
 
-"@pollum-io/sysweb3-keyring@^1.0.482":
-  version "1.0.482"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.482.tgz#0ddbc78c035e7670841189598c1d917fbd489deb"
-  integrity sha512-BcOevxF+xy+mNkga282RZ336iJ7mnNK4i9ZH0fX/7I9Y+RWKEeomxQdNVsiXYLrXpDY5mD68KrnrYuTrO5UpgA==
-
+"@pollum-io/sysweb3-keyring@^1.0.483":
+  version "1.0.483"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.483.tgz#24243da720362cc2d94f4eb989a391551b17ff54"
+  integrity sha512-WwaJUSKdBzNC8/m62kXCMYVqpB9qq2TepJE9XePgdkQWuXWHjHxEIdf0Z5DeUiDXosshN7o9IeO8i0g1LeH33g==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2392,7 +2391,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@pollum-io/sysweb3-core" "^1.0.27"
     "@pollum-io/sysweb3-network" "^1.0.95"
-    "@pollum-io/sysweb3-utils" "^1.1.232"
+    "@pollum-io/sysweb3-utils" "^1.1.233"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.3.0"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2429,10 +2428,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.232":
-  version "1.1.232"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.232.tgz#f12d2ebf2c4eaf024008b0a90275ff21b663bfa1"
-  integrity sha512-g84Y80PzUgw6ZryXA9rrPrA6nESrkVUE9OzVYX1VgR8tkuqyk1o0fN/BZMDEiZCmhAE3F8JX//+gJfGNvdknLg==
+"@pollum-io/sysweb3-utils@^1.1.233":
+  version "1.1.233"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.233.tgz#e495649428a0f8f3cf13c8daff8f8b6f1de65a5d"
+  integrity sha512-yR/5Y25G3Ay0GbusmYTsdrt0MGT8l/d6/xG3WKk4MkgFjLo2UT47ZzcamxF/l9zb5nSiTRUCuCMMHy3GqM9BNQ==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
