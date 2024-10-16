@@ -350,8 +350,8 @@ const MasterController = (
       width: 400,
       height: 620,
       type: 'popup',
-      // top: 0,
-      // left: window.width - 400,
+      top: 0,
+      left: window.width - 400,
     });
   };
 
