@@ -81,7 +81,6 @@ export const SendEth = () => {
         setIsValidAmount(true);
       } else {
         setIsValidAmount(false);
-        console.warn('Insufficient funds or invalid amount');
       }
     } else {
       setIsValidAddress(null);
