@@ -57,7 +57,7 @@ export const SendEth = () => {
 
   const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
 
-  const handleInputChange = async (e) => {
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
 
     setInputValue((prevState) => ({ ...prevState, [name]: value }));
