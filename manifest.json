@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "3.0.2",
+  "version": "3.0.0",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -16,7 +16,8 @@
     "clipboardWrite",
     "unlimitedStorage",
     "offscreen",
-    "scripting"
+    "scripting",
+    "webRequest"
   ],
   "host_permissions": [
     "http://*/*",
