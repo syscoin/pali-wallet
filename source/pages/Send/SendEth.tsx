@@ -10,6 +10,8 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
+import errorIcon from 'assets/icons/errorIcon.svg';
+import successIcon from 'assets/icons/successIcon.svg';
 import { Card, Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -55,7 +57,7 @@ export const SendEth = () => {
 
   const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
 
-  const handleInputChange = (e) => {
+  const handleInputChange = async (e) => {
     const { name, value } = e.target;
 
     setInputValue((prevState) => ({ ...prevState, [name]: value }));
@@ -64,9 +66,23 @@ export const SendEth = () => {
       const validAddress = isValidEthereumAddress(value);
       setIsValidAddress(validAddress);
     } else if (name === 'amount') {
+      const balance = selectedAsset
+        ? selectedAsset.balance
+        : Number(activeAccount?.balances.ethereum);
+
       const validAmount =
-        value <= Number(activeAccount?.balances.ethereum) && value > 0;
-      setIsValidAmount(validAmount);
+        Number(value) > 0 && parseFloat(value) <= parseFloat(balance);
+
+      const isValidForSelectedAsset = selectedAsset
+        ? selectedAsset.isNft || (!selectedAsset.isNft && validAmount)
+        : validAmount;
+
+      if (isValidForSelectedAsset) {
+        setIsValidAmount(true);
+      } else {
+        setIsValidAmount(false);
+        console.warn('Insufficient funds or invalid amount');
+      }
     } else {
       setIsValidAddress(null);
     }
@@ -276,14 +292,10 @@ export const SendEth = () => {
               />
               {isValidAddress !== null && (
                 <img
-                  src={
-                    isValidAddress === true
-                      ? '/assets/icons/successIcon.svg'
-                      : '/assets/icons/errorIcon.svg'
-                  }
-                  alt={isValidAddress === true ? 'Success' : 'Error'}
+                  src={isValidAddress ? successIcon : errorIcon}
+                  alt={isValidAddress ? 'Success' : 'Error'}
                   className={`absolute right-8 ${
-                    isValidAmount === true ? 'top-[12.5px]' : 'top-[11.5px]'
+                    isValidAmount ? 'top-[12.5px]' : 'top-[11.5px]'
                   }`}
                 />
               )}
@@ -407,18 +419,14 @@ export const SendEth = () => {
                     }
 
                     if (
-                      Boolean(
-                        selectedAsset &&
-                          selectedAsset.isNft &&
-                          Number(value) > 0
-                      ) ||
-                      Boolean(
-                        selectedAsset &&
-                          !selectedAsset.isNft &&
-                          parseFloat(value) <=
-                            parseFloat(selectedAsset.balance) &&
-                          Number(value) > 0
-                      )
+                      (selectedAsset &&
+                        selectedAsset.isNft &&
+                        Number(value) > 0) ||
+                      (selectedAsset &&
+                        !selectedAsset.isNft &&
+                        parseFloat(value) <=
+                          parseFloat(selectedAsset.balance) &&
+                        Number(value) > 0)
                     ) {
                       return Promise.resolve();
                     }
