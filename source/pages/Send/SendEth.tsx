@@ -410,24 +410,32 @@ export const SendEth = () => {
                       ? selectedAsset.balance
                       : Number(activeAccount?.balances.ethereum);
 
-                    if (
-                      !selectedAsset &&
-                      parseFloat(value) <= parseFloat(balance) &&
-                      Number(value) > 0
-                    ) {
+                    const isValueLowerThanBalance = selectedAsset
+                      ? parseFloat(value) <= parseFloat(selectedAsset.balance)
+                      : parseFloat(value) <= parseFloat(balance);
+
+                    const isToken = !!selectedAsset;
+
+                    const isValidValue = Number(value) > 0;
+
+                    const isAssetSelectedWithValidBalance =
+                      isToken && isValidValue;
+
+                    const isNFT = selectedAsset.isNft;
+
+                    const isValidNFTValue =
+                      isAssetSelectedWithValidBalance && isNFT;
+
+                    const isValidTokenValue =
+                      isAssetSelectedWithValidBalance &&
+                      !isNFT &&
+                      isValueLowerThanBalance;
+
+                    if (!isToken && isValueLowerThanBalance && isValidValue) {
                       return Promise.resolve();
                     }
 
-                    if (
-                      (selectedAsset &&
-                        selectedAsset.isNft &&
-                        Number(value) > 0) ||
-                      (selectedAsset &&
-                        !selectedAsset.isNft &&
-                        parseFloat(value) <=
-                          parseFloat(selectedAsset.balance) &&
-                        Number(value) > 0)
-                    ) {
+                    if (isValidNFTValue || isValidTokenValue) {
                       return Promise.resolve();
                     }
 
