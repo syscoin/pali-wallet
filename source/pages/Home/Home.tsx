@@ -130,7 +130,7 @@ export const Home = () => {
   const handleOnCloseFaucetModal = useCallback(() => {
     controllerEmitter(
       ['wallet', 'setFaucetModalState'],
-      [{ chainId: activeNetwork.chainId, state: false }]
+      [{ chainId: activeNetwork.chainId, isOpen: false }]
     );
   }, [activeNetwork]);
 
