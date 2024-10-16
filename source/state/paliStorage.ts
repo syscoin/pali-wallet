@@ -41,7 +41,6 @@ export const setMigratedVersions = async (version: string) => {
 
   try {
     await chromeStorage.setItem(version, 'migrated');
-    console.log(`${version} ---> implemented`);
   } catch (err) {
     console.log({ err });
   }
