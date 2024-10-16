@@ -1,7 +1,7 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
 import v3_0_1 from '../migration/v3_0_1';
-import { loadState } from 'state/paliStorage';
+import { getIsMigratedVersion, loadState } from 'state/paliStorage';
 
 const MigrationController = async () => {
   const state = await loadState(); // get state from Storage API
@@ -12,11 +12,13 @@ const MigrationController = async () => {
     return;
   }
 
+  const isMigratedVersion = await getIsMigratedVersion(currentPaliVersion);
+
   /**
    * version < 3.0.1
    * Description: add faucet feature
    */
-  if (currentPaliVersion === '3.0.1') {
+  if (currentPaliVersion === '3.0.1' && !isMigratedVersion) {
     await v3_0_1(state);
   }
 };
