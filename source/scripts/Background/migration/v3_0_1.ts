@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 
-import { saveState } from 'state/paliStorage';
+import { saveState, setMigratedVersions } from 'state/paliStorage';
 import { initialState as initialVaultState } from 'state/vault';
 import { IVaultState } from 'state/vault/types';
 
@@ -17,7 +17,9 @@ const MigrateRunner = async (oldState: any) => {
         shouldShowFaucetModal: initialVaultState.shouldShowFaucetModal,
       },
     };
-    await saveState(newState);
+
+    await Promise.all([saveState(newState), setMigratedVersions('3.0.1')]);
+
     console.log('Migrate to <v3.0.1> successfully!');
   } catch (error) {
     console.log('<v3.0.1> Migration Error');

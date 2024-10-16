@@ -21,3 +21,28 @@ export const loadState = async () => {
     return null;
   }
 };
+
+export const getIsMigratedVersion = async (version: string) => {
+  if (!version) {
+    console.warn('getMigratedVersion ---> Invalid version');
+    return;
+  }
+
+  const serializedState = await chromeStorage.getItem(version);
+
+  return serializedState !== null;
+};
+
+export const setMigratedVersions = async (version: string) => {
+  if (!version) {
+    console.warn('setMigratedVersions ---> Invalid version');
+    return;
+  }
+
+  try {
+    await chromeStorage.setItem(version, 'migrated');
+    console.log(`${version} ---> implemented`);
+  } catch (err) {
+    console.log({ err });
+  }
+};
