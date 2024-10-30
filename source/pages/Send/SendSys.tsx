@@ -390,9 +390,7 @@ export const SendSys = () => {
                                               <p>{item?.symbol}</p>
 
                                               <small>
-                                                {isNFT(item.assetGuid)
-                                                  ? 'NFT'
-                                                  : 'SPT'}
+                                                {isNFT(item.assetGuid) && 'NFT'}
                                               </small>
                                             </button>
                                           </Menu.Item>

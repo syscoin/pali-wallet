@@ -20,18 +20,6 @@ export const useTransactionsListConfig = (
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
-      if (tx.tokenType === 'SPTAssetActivate') {
-        return 'SPT creation';
-      }
-
-      if (tx.tokenType === 'SPTAssetSend') {
-        return 'SPT mint';
-      }
-
-      if (tx.tokenType === 'SPTAssetUpdate') {
-        return 'SPT update';
-      }
-
       return 'Transaction';
     }
 
