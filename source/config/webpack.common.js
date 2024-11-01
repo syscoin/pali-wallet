@@ -161,6 +161,12 @@ module.exports = {
       inject: 'body',
       chunks: ['offscreenScript'],
     }),
+    new HtmlWebpackPlugin({
+      template: join(viewsPath, 'side_panel.html'),
+      filename: 'side_panel.html',
+      inject: 'body',
+      chunks: ['app'],
+    }),
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],

@@ -290,3 +290,10 @@ input[type='number']::-webkit-inner-spin-button {
 .ant-radio {
   @apply flex items-center justify-center;
 }
+
+.side-panel-open {
+  margin-left: 0 !important;
+  width: auto;
+  height: auto;
+  transition: margin-left 0.3s ease;
+}

@@ -112,12 +112,12 @@ export const Router = () => {
     if (isTimerEnabled) inactivityTime();
   }, []);
 
-  useEffect(() => {
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen) {
-      navigate('/settings/account/hardware');
-    }
-  }, []);
+  // useEffect(() => {
+  //   const isFullscreen = window.innerWidth > 600;
+  //   if (isFullscreen) {
+  //     navigate('/settings/account/hardware');
+  //   }
+  // }, []);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -127,14 +127,14 @@ export const Router = () => {
     }
   }, [isBitcoinBased, isNetworkChanging]);
 
-  useEffect(() => {
-    alert.removeAll();
-    // appRoute(pathname);
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen && isUnlocked) {
-      navigate('/settings/account/hardware');
-    }
-  }, [pathname, isUnlocked]);
+  // useEffect(() => {
+  //   alert.removeAll();
+  //   // appRoute(pathname);
+  //   const isFullscreen = window.innerWidth > 600;
+  //   if (isFullscreen && isUnlocked) {
+  //     navigate('/settings/account/hardware');
+  //   }
+  // }, [pathname, isUnlocked]);
 
   useEffect(() => {
     if (

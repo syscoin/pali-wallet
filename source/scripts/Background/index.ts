@@ -482,6 +482,42 @@ async function checkForPendingTransactionsUpdate() {
   }
 }
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'openSidePanel',
+    title: 'Open side panel',
+    contexts: ['all'],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'openSidePanel') {
+    chrome.sidePanel.open({ windowId: tab.windowId });
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  (async () => {
+    if (message.type === 'open_side_panel') {
+      await chrome.sidePanel.open({ tabId: sender.tab.id });
+      await chrome.sidePanel.setOptions({
+        tabId: sender.tab.id,
+        path: 'app.html',
+        enabled: true,
+      });
+    } else if (message.type === 'update_state') {
+      // Store the state in chrome.storage
+      await chrome.storage.local.set({ appState: message.state });
+      // Notify other parts of the extension about the state change
+      chrome.runtime.sendMessage({
+        type: 'state_updated',
+        state: message.state,
+      });
+    }
+  })();
+  return true;
+});
+
 observeStateChanges();
 registerListener();
 

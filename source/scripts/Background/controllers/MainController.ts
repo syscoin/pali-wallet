@@ -54,6 +54,7 @@ import {
   setUpdatedNftsToState,
   setOpenDAppErrorModal,
   setFaucetModalState as setShouldShowFaucetModal,
+  setIsSidePanelOpen as setSidePanelOpenedState,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -1559,6 +1560,10 @@ class MainController extends KeyringManager {
     isOpen: boolean;
   }) {
     store.dispatch(setShouldShowFaucetModal({ chainId, isOpen }));
+  }
+
+  public async setIsSidePanelOpen(isOpen: boolean) {
+    store.dispatch(setSidePanelOpenedState(isOpen));
   }
 }
 

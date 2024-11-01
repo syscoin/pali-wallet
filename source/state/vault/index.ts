@@ -89,6 +89,7 @@ export const initialState: IVaultState = {
     5700: true,
     57000: true,
   },
+  isSidePanelOpen: false,
 };
 
 export const getHasEncryptedVault = createAsyncThunk(
@@ -100,8 +101,14 @@ export const getHasEncryptedVault = createAsyncThunk(
 );
 
 const VaultState = createSlice({
-  name: 'vault',
+  extraReducers: (builder) => {
+    builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
+      state.hasEncryptedVault = action.payload;
+    });
+  },
   initialState,
+  name: 'vault',
+
   reducers: {
     rehydrate(state: IVaultState, action: PayloadAction<IVaultState>) {
       return {
@@ -803,12 +810,13 @@ const VaultState = createSlice({
         chainID
       ] = removedTx;
     },
-  },
 
-  extraReducers: (builder) => {
-    builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
-      state.hasEncryptedVault = action.payload;
-    });
+    setIsSidePanelOpen: (
+      state: IVaultState,
+      action: PayloadAction<boolean>
+    ) => {
+      state.isSidePanelOpen = action.payload;
+    },
   },
 });
 
@@ -858,6 +866,7 @@ export const {
   setTransactionStatusToAccelerated,
   setCoinsList,
   setIsLastTxConfirmed,
+  setIsSidePanelOpen,
 } = VaultState.actions;
 
 export default VaultState.reducer;

@@ -25,14 +25,12 @@ import {
 import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
-  //* Hooks
   const { getFiatAmount } = usePrice();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
   const { controllerEmitter, isUnlocked } = useController();
 
-  //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (priceState: RootState) => priceState.price.fiat
   );
@@ -48,12 +46,14 @@ export const Home = () => {
     shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
 
-  //* States
+  const isSidePanelOpen = useSelector(
+    (state: RootState) => state.vault.isSidePanelOpen
+  );
+
   const [isTestnet, setIsTestnet] = useState(false);
   const [showModalCongrats, setShowModalCongrats] = useState(false);
   const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
-  //* Constants
   const { url, chainId } = activeNetwork;
 
   let isInCooldown: boolean;
@@ -83,7 +83,6 @@ export const Home = () => {
     setShowModalCongrats(true);
   };
 
-  //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
@@ -92,7 +91,6 @@ export const Home = () => {
     );
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
-  //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
       actualBalance > 0 ? actualBalance : 0,
@@ -139,8 +137,27 @@ export const Home = () => {
   const isFaucetAvailable =
     !isBitcoinBased && Object.values(FaucetChainIds).includes(chainId);
 
+  const handleToggleSidePanel = async () => {
+    controllerEmitter(['wallet', 'setIsSidePanelOpen'], [!isSidePanelOpen]);
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+
+    await chrome.sidePanel.open({ tabId: tab.id });
+
+    const nextPath = tab.url.includes('app') ? 'side_panel.html' : 'app.html';
+    await chrome.sidePanel.setOptions({
+      tabId: tab.id,
+      path: nextPath,
+      enabled: true,
+    });
+
+    window.close();
+  };
+
   return (
-    <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
+    <div className={`scrollbar-styled w-full h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
       isUnlocked &&
@@ -220,6 +237,10 @@ export const Home = () => {
                 {t('buttons.receive')}
               </Button>
             </div>
+
+            <button id="openSidePanel" onClick={handleToggleSidePanel}>
+              toggle side panel
+            </button>
           </section>
           {isWalletImported && (
             <>

@@ -14,7 +14,7 @@ import {
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
+  accounts: { [key in KeyringAccountType]: PaliAccount };
   activeAccount: {
     id: number;
     type: KeyringAccountType;
@@ -40,6 +40,7 @@ export interface IVaultState {
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
   isPolling: boolean;
+  isSidePanelOpen: boolean;
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;

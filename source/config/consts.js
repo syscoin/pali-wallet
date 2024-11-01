@@ -90,7 +90,12 @@ const MV3_OPTIONS = {
     'unlimitedStorage',
     'offscreen',
     'scripting',
+    'sidePanel',
+    'contextMenus',
   ],
+  side_panel: {
+    default_path: 'app.html',
+  },
   host_permissions: [
     'http://*/*',
     'https://*/*',
