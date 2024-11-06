@@ -112,23 +112,28 @@ export const SendEth = () => {
     ? collectionItemSymbol || selectedAsset?.collectionName
     : selectedAsset?.tokenSymbol;
 
-  const nextStep = ({ receiver, amount }: any) => {
+  const nextStep = () => {
+    const receiver = form.getFieldValue('receiver');
+    const amount = form.getFieldValue('amount');
+
     try {
-      navigate('/send/confirm', {
-        state: {
-          tx: {
-            sender: activeAccount.address,
-            receivingAddress: receiver,
-            amount,
-            token: selectedAsset
-              ? {
-                  ...selectedAsset,
-                  symbol: finalSymbolToNextStep,
-                }
-              : null,
+      if (isValidAmount && isValidAddress) {
+        navigate('/send/confirm', {
+          state: {
+            tx: {
+              sender: activeAccount.address,
+              receivingAddress: receiver,
+              amount,
+              token: selectedAsset
+                ? {
+                    ...selectedAsset,
+                    symbol: finalSymbolToNextStep,
+                  }
+                : null,
+            },
           },
-        },
-      });
+        });
+      }
     } catch (error) {
       alert.removeAll();
       alert.error(t('send.internalError"'));
@@ -256,7 +261,6 @@ export const SendEth = () => {
           id="send-form"
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 8 }}
-          onFinish={nextStep}
           autoComplete="off"
           className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
         >
@@ -519,6 +523,7 @@ export const SendEth = () => {
                 isValidAmount && isValidAddress ? 'opacity-100' : 'opacity-60'
               }xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
               type="submit"
+              onClick={nextStep}
             >
               {t('buttons.next')}
             </Button>
