@@ -125,6 +125,7 @@ class MainController extends KeyringManager {
 
     this.bindMethods();
   }
+
   public setAutolockTimer(minutes: number) {
     store.dispatch(setTimer(minutes));
   }
@@ -1206,6 +1207,7 @@ class MainController extends KeyringManager {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -1213,10 +1215,21 @@ class MainController extends KeyringManager {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    let internalProvider: CustomJsonRpcProvider | undefined;
+
+    if (isPolling) {
+      const abortController = new AbortController();
+      internalProvider = new CustomJsonRpcProvider(
+        abortController.signal,
+        activeNetwork.url
+      );
+    }
 
     const { currentPromise: balancePromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -1226,7 +1239,8 @@ class MainController extends KeyringManager {
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url
+                activeNetwork.url,
+                internalProvider
               );
 
             const actualUserBalance = isBitcoinBased
@@ -1372,6 +1386,7 @@ class MainController extends KeyringManager {
     store.dispatch(setIsNetworkChanging(false));
     store.dispatch(setIsLoadingBalances(false));
   };
+
   private async configureNetwork(
     network: INetwork,
     chain: string
@@ -1437,6 +1452,7 @@ class MainController extends KeyringManager {
       wallet,
     });
   }
+
   private bindMethods() {
     const proto = Object.getPrototypeOf(this);
     for (const key of Object.getOwnPropertyNames(proto)) {

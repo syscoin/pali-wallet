@@ -73,6 +73,7 @@ async function createOffscreen() {
     })
     .catch(() => {});
 }
+
 chrome.runtime.onStartup.addListener(createOffscreen);
 self.onmessage = () => null; // keepAlive
 createOffscreen();
@@ -314,6 +315,7 @@ async function checkForUpdates() {
     walletMethods?.updateUserTransactionsState
   ) {
     walletMethods.updateUserNativeBalance({
+      isPolling: true,
       isBitcoinBased,
       activeNetwork,
       activeAccount,
