@@ -40,23 +40,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { dapps } = useSelector((state: RootState) => state.dapp);
 
   const networks = useSelector((state: RootState) => state.vault.networks);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const {
-    activeAccount: { type: activeAccountType },
+    isBitcoinBased,
+    activeAccount: { type: activeAccountType, id: activeAccountId },
+    activeNetwork,
+    accounts,
   } = useSelector((state: RootState) => state.vault);
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const activeAccount = useSelector(
-    (state: RootState) =>
-      state.vault.accounts[state.vault.activeAccount.type][
-        state.vault.activeAccount.id
-      ]
-  );
+  const activeAccount = accounts[activeAccountType][activeAccountId];
 
   const networkType = isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM;
 

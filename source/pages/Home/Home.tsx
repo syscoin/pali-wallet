@@ -83,16 +83,22 @@ export const Home = () => {
     setShowModalCongrats(true);
   };
 
-  //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
-    verifyIfIsTestnet(url, isBitcoinBased, isInCooldown).then((_isTestnet) =>
-      setIsTestnet(_isTestnet)
-    );
+    let isMounted = true;
+
+    verifyIfIsTestnet(url, isBitcoinBased, isInCooldown).then((_isTestnet) => {
+      if (isMounted) {
+        setIsTestnet(_isTestnet);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
-  //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
       actualBalance > 0 ? actualBalance : 0,

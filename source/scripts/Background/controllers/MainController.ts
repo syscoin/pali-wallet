@@ -1461,7 +1461,6 @@ class MainController extends KeyringManager {
     isBitcoinBased: boolean;
   }) {
     const { accounts } = store.getState().vault;
-
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: balancePromise, cancel } =
@@ -1497,7 +1496,6 @@ class MainController extends KeyringManager {
                   },
                 })
               );
-
               store.dispatch(setIsLoadingBalances(false));
             }
 
@@ -1509,7 +1507,7 @@ class MainController extends KeyringManager {
       );
 
     this.cancellablePromises.setPromise(PromiseTargets.BALANCE, {
-      balancePromise,
+      promise: balancePromise,
       cancel,
     });
 
