@@ -13,7 +13,8 @@ const BalancesManager = (
   const getBalanceUpdatedForAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
-    networkUrl: string
+    networkUrl: string,
+    provider?: CustomJsonRpcProvider
   ) => {
     switch (isBitcoinBased) {
       case true:
@@ -30,8 +31,9 @@ const BalancesManager = (
         }
       case false:
         try {
-          const getEvmBalance =
-            await evmBalanceController.getEvmBalanceForAccount(currentAccount);
+          const getEvmBalance = await EvmBalanceController(
+            provider || web3Provider
+          ).getEvmBalanceForAccount(currentAccount);
 
           return getEvmBalance;
         } catch (evmBalanceError) {
