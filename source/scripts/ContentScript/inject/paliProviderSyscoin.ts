@@ -36,6 +36,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   public readonly version: number = 2;
   public networkVersion: string | null;
   public chainId: string | null;
+
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
@@ -250,6 +251,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _handleActiveBlockExplorer(blockExplorerURL: string | null) {
     this._sysState.blockExplorerURL = blockExplorerURL;
   }
+
   private _handleIsBitcoinBased({
     isBitcoinBased,
   }: {
@@ -257,9 +259,11 @@ export class PaliInpageProviderSys extends BaseProvider {
   }) {
     this._sysState.isBitcoinBased = isBitcoinBased;
   }
+
   private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
     this._sysState.isTestnet = isTestnet;
   }
+
   private async _isSyscoinChain(): Promise<boolean> {
     let checkExplorer = false;
     try {
@@ -323,51 +327,6 @@ export class PaliInpageProviderSys extends BaseProvider {
         isNFT: (guid: number) => {
           const validated = _isNFT(guid);
           return validated;
-        },
-        /**
-         * Get the minted tokens by the current connected Xpub on UTXO chain.
-         *
-         * @returns Promise send back tokens data
-         */
-        getUserMintedTokens: async () => {
-          const account = await this.request({ method: 'wallet_getAccount' });
-          if (account) {
-            const { transactions } = account as any;
-
-            const filteredTxs = transactions?.filter(
-              (tx: any) => tx.tokenType === 'SPTAssetActivate'
-            );
-
-            const allTokens = [];
-
-            for (const txs of filteredTxs) {
-              for (const tokens of txs.tokenTransfers) {
-                if (tokens) {
-                  allTokens.push(tokens);
-                }
-              }
-            }
-
-            const txs = await Promise.all(
-              allTokens.map(async (t: any) => {
-                const assetInfo = await getAsset(
-                  this._sysState.blockExplorerURL,
-                  t.token
-                );
-                const formattedAssetInfo = {
-                  ...assetInfo,
-                  symbol: Buffer.from(
-                    String(assetInfo.symbol),
-                    'base64'
-                  ).toString('utf-8'),
-                };
-                if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
-              })
-            );
-
-            return txs.filter((item) => item !== undefined);
-          }
-          return [];
         },
         /**
          * Get held assets by current connected account on UTXO chain.
