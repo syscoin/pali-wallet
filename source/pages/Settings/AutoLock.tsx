@@ -19,6 +19,7 @@ const AutoLockView = () => {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const [inputValue, setInputValue] = useState(timer);
+  const [hasError, setHasError] = useState(false);
 
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
@@ -44,14 +45,11 @@ const AutoLockView = () => {
     setLoading(true);
     try {
       const autolockMinutes = +data.minutes;
-      if (autolockMinutes < 1 || autolockMinutes > 120) {
-        form.setFields([
-          {
-            name: 'minutes',
-            errors: ['Value must be between 1 and 120'],
-          },
-        ]);
+      if (autolockMinutes < 5 || autolockMinutes > 120) {
+        setHasError(true);
         return;
+      } else {
+        setHasError(false);
       }
       controllerEmitter(['wallet', 'setAutolockTimer'], [autolockMinutes]);
       controllerEmitter(['wallet', 'setIsAutolockEnabled'], [isEnabled]);
@@ -119,6 +117,11 @@ const AutoLockView = () => {
             </p>
           </div>
         </Form.Item>
+        <div className="flex flex-col items-center justify-center m-3">
+          {hasError && (
+            <p className="text-xs text-red-500">{t('settings.errorMinutes')}</p>
+          )}
+        </div>
 
         <div className="flex flex-col justify-start items-start my-6 text-sm text-brand-gray200">
           <p>{t('settings.defaultMinutes')}</p>
@@ -146,7 +149,6 @@ const AutoLockView = () => {
             </div>
           </div>
         </Form.Item>
-
         <div className="relative bottom-[-11rem] md:static">
           <Button
             className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
