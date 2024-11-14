@@ -1,5 +1,5 @@
 import { Form } from 'antd';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -7,17 +7,28 @@ import { useNavigate } from 'react-router-dom';
 import { Layout, Button } from 'components/index';
 import { TimeSetSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
+import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
 import { RootState } from 'state/store';
 
-const AutolockView = () => {
+const AutoLockView = () => {
   const { isTimerEnabled } = useSelector((state: RootState) => state.vault);
   const timer = useSelector((state: RootState) => state.vault.timer);
   const { t } = useTranslation();
-  const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [isEnabled, setIsEnabled] = useState<boolean>(isTimerEnabled);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(isTimerEnabled);
+  const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const [inputValue, setInputValue] = useState(timer);
+
+  const { controllerEmitter } = useController();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    form.setFieldsValue({ minutes: timer });
+    if (isEnabled) {
+      startInactivityTimer(timer);
+    }
+  }, [timer, form, isEnabled]);
 
   const handleMaxClick = () => {
     setInputValue(120);
@@ -29,25 +40,21 @@ const AutolockView = () => {
     form.setFieldsValue({ minutes: 5 });
   };
 
-  const { controllerEmitter } = useController();
-  const navigate = useNavigate();
-
   const onSubmit = (data: any) => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const minimumMinutesPossible = 5;
-      const maximumMinutesPossible = 120;
       const autolockMinutes = +data.minutes;
-
-      if (
-        autolockMinutes < minimumMinutesPossible ||
-        autolockMinutes > maximumMinutesPossible
-      ) {
-        throw new Error('Value must be between 5 and 120');
+      if (autolockMinutes < 1 || autolockMinutes > 120) {
+        form.setFields([
+          {
+            name: 'minutes',
+            errors: ['Value must be between 1 and 120'],
+          },
+        ]);
+        return;
       }
-      controllerEmitter(['wallet', 'setAutolockTimer'], [+data.minutes]);
+      controllerEmitter(['wallet', 'setAutolockTimer'], [autolockMinutes]);
       controllerEmitter(['wallet', 'setIsAutolockEnabled'], [isEnabled]);
-
       setConfirmed(true);
     } catch (error) {
       console.error('Error:', error);
@@ -56,8 +63,8 @@ const AutolockView = () => {
     }
   };
 
-  const handleInputChange = (e) => {
-    setInputValue(e.target.value);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(+e.target.value);
   };
 
   return (
@@ -89,7 +96,7 @@ const AutolockView = () => {
         initialValues={{ minutes: inputValue }}
         autoComplete="off"
       >
-        <Form.Item name="minutes" className=" bg-transparent" hasFeedback>
+        <Form.Item name="minutes" className="bg-transparent" hasFeedback>
           <div className="relative">
             <span
               onClick={handleMaxClick}
@@ -122,12 +129,6 @@ const AutolockView = () => {
           id="verify-address-switch"
           name="verify"
           className="flex flex-col w-full text-center"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
         >
           <div className="flex flex-row gap-2 align-center justify-between w-full">
             <span className="text-sm">{t('settings.enableAutolock')}</span>
@@ -160,4 +161,4 @@ const AutolockView = () => {
   );
 };
 
-export default AutolockView;
+export default AutoLockView;

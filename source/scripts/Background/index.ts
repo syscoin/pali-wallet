@@ -54,8 +54,6 @@ let MasterControllerInstance = {} as IMasterController;
   utils.setFiat();
 });
 
-// handleRehydrateStore();
-
 const isWatchRequestsActive = false;
 
 export const getController = () => MasterControllerInstance;
@@ -80,17 +78,17 @@ createOffscreen();
 
 let timeout: any;
 
-// const restartLockTimeout = () => {
-//   const { timer } = store.getState().vault;
+const restartLockTimeout = () => {
+  const { timer } = store.getState().vault;
 
-//   if (timeout) {
-//     clearTimeout(timeout);
-//   }
+  if (timeout) {
+    clearTimeout(timeout);
+  }
 
-//   timeout = setTimeout(() => {
-//     handleLogout();
-//   }, timer * 60 * 1000);
-// };
+  timeout = setTimeout(() => {
+    handleLogout();
+  }, timer * 60 * 1000);
+};
 
 const handleIsOpen = (isOpen: boolean) =>
   chrome.storage.local.set({ isPopupOpen: isOpen });
@@ -199,7 +197,10 @@ chrome.runtime.onMessage.addListener(({ type, target, data }) => {
         paliPopupPort?.postMessage({ action: 'pong' });
       break;
     case 'reset_autolock':
-      // if (target === 'background') restartLockTimeout();
+      if (target === 'background') restartLockTimeout();
+      break;
+    case 'lock_wallet':
+      handleLogout();
       break;
     case 'changeNetwork':
       if (walletMethods?.setActiveNetwork && data) {
@@ -223,28 +224,6 @@ chrome.runtime.onMessage.addListener(({ type, target, data }) => {
       break;
   }
 });
-
-export const inactivityTime = () => {
-  const resetTimer = () => {
-    chrome.runtime.sendMessage({
-      type: 'reset_autolock',
-      target: 'background',
-    });
-  };
-
-  // DOM Events
-  const events = [
-    'onmousemove',
-    'onkeydown',
-    'onload',
-    'onmousedown',
-    'ontouchstart',
-    'onclick',
-    'onkeydown',
-  ];
-
-  events.forEach((event) => (document[event] = resetTimer));
-};
 
 chrome.runtime.onConnect.addListener(async (port) => {
   if (port.name === 'pali') {
