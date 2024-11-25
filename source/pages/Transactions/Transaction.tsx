@@ -3,14 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { camelCaseToText } from 'utils/format';
 
 import Fee from './Fee';
-import TransactionConfirmation from './TransactionConfirmation';
 
 interface ITransaction {
   type: string;
@@ -57,17 +55,6 @@ const Transaction: React.FC<ITransaction> = ({ type }) => {
   }, [fee]);
 
   if (!fee) return <Fee title={title} onFinish={setFee} />;
-
-  return (
-    <Layout canGoBack={false} title={title}>
-      <TransactionConfirmation
-        host={host}
-        title={title}
-        type={type}
-        transaction={{ ...transaction, fee }}
-      />
-    </Layout>
-  );
 };
 
 export default Transaction;
