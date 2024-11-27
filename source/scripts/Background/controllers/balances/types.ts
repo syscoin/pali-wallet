@@ -1,4 +1,7 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  CustomL2JsonRpcProvider,
+} from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -18,7 +21,7 @@ export interface IBalancesManagerUtils {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider?: CustomJsonRpcProvider
+    provider?: CustomJsonRpcProvider | CustomL2JsonRpcProvider
   ) => Promise<string>;
 }
 

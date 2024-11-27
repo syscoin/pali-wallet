@@ -9,6 +9,7 @@ import {
   KeyringAccountType,
   IWalletState,
   CustomJsonRpcProvider,
+  CustomL2JsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -1218,14 +1219,23 @@ class MainController extends KeyringManager {
     isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
+    const L2Networks = [324, 300];
+    const isL2Network = L2Networks.includes(activeNetwork.chainId);
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    let internalProvider: CustomJsonRpcProvider | undefined;
+    let internalProvider:
+      | CustomJsonRpcProvider
+      | CustomL2JsonRpcProvider
+      | undefined;
 
     if (isPolling) {
+      const CurrentProvider = isL2Network
+        ? CustomL2JsonRpcProvider
+        : CustomJsonRpcProvider;
+
       const abortController = new AbortController();
-      internalProvider = new CustomJsonRpcProvider(
+      internalProvider = new CurrentProvider(
         abortController.signal,
         activeNetwork.url
       );
