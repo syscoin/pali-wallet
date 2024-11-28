@@ -14,11 +14,14 @@ const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
 const destPath = join(__dirname, '../../build');
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
+const backgroundFileName = process.env.NEW_BACKGROUND
+  ? 'NEW_Background-index.ts'
+  : 'index.ts';
 
 module.exports = {
   entry: {
     manifest: join(__dirname, '../../manifest.json'),
-    background: join(sourcePath, 'scripts/Background', 'index.ts'),
+    background: join(sourcePath, 'scripts/Background', backgroundFileName),
     inpage: join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     pali: join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),
     handleWindowProperties: join(

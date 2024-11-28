@@ -18,8 +18,8 @@ import {
 } from '@pollum-io/sysweb3-network';
 import { getSearch, getTokenStandardMetadata } from '@pollum-io/sysweb3-utils';
 
-import { getController } from '..';
 import PaliLogo from 'assets/icons/favicon-32.png';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import store from 'state/store';
 import {
   forgetWallet as forgetWalletState,
@@ -146,6 +146,7 @@ class MainController extends KeyringManager {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    const getController = await tempGetController();
     const controller = getController();
     const { canLogin, wallet } = await this.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
@@ -234,7 +235,8 @@ class MainController extends KeyringManager {
     store.dispatch(setLastLogin());
   }
 
-  public lock() {
+  public async lock() {
+    const getController = await tempGetController();
     const controller = getController();
     this.logout();
 
@@ -379,9 +381,10 @@ class MainController extends KeyringManager {
     return promiseWrapper.promise;
   }
 
-  public removeWindowEthProperty() {
+  public async removeWindowEthProperty() {
+    const getController = await tempGetController();
     const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.removeProperty, {
+    await controller.dapp.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
       params: {
         type: PaliEvents.removeProperty,
@@ -389,9 +392,10 @@ class MainController extends KeyringManager {
     });
   }
 
-  public addWindowEthProperty() {
+  public async addWindowEthProperty() {
+    const getController = await tempGetController();
     const controller = getController();
-    controller.dapp.handleStateChange(PaliEvents.addProperty, {
+    await controller.dapp.handleStateChange(PaliEvents.addProperty, {
       method: PaliEvents.addProperty,
       params: {
         type: PaliEvents.addProperty,
@@ -1329,9 +1333,10 @@ class MainController extends KeyringManager {
     store.dispatch(setShouldShowFaucetModal({ chainId, isOpen }));
   }
 
-  private handleStateChange(
+  private async handleStateChange(
     events: { method: PaliEvents | PaliSyscoinEvents; params: any }[]
   ) {
+    const getController = await tempGetController();
     const controller = getController();
     events.forEach((event: { method: PaliEvents; params: any }) => {
       controller.dapp.handleStateChange(event.method, event);

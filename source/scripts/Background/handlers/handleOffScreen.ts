@@ -1,4 +1,4 @@
-﻿export const createOffscreen = async () => {
+﻿export async function createOffscreen() {
   await chrome.offscreen
     .createDocument({
       url: 'offscreen.html',
@@ -6,4 +6,9 @@
       justification: 'keep service worker running',
     })
     .catch(() => {});
+}
+
+export const handleOffScreen = () => {
+  chrome.runtime.onStartup.addListener(createOffscreen);
+  createOffscreen();
 };

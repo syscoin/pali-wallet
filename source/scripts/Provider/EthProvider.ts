@@ -4,12 +4,12 @@ import { ethErrors } from 'helpers/errors';
 import { INetwork } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
-import { getController } from 'scripts/Background';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import {
   blockingRestrictedMethods,
   unrestrictedMethods,
 } from 'scripts/Background/controllers/message-handler/types';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -17,6 +17,7 @@ import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
 export const EthProvider = (host: string, network?: INetwork) => {
   const sendTransaction = async (params: ITransactionParams) => {
+    const getController = await tempGetController();
     const {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
@@ -157,12 +158,14 @@ export const EthProvider = (host: string, network?: INetwork) => {
   };
 
   const send = async (args: any[]) => {
+    const getController = await tempGetController();
     const { ethereumTransaction } = getController().wallet;
 
     return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
+    const getController = await tempGetController();
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const { ethereumTransaction } = getController().wallet;
 
@@ -179,6 +182,7 @@ export const EthProvider = (host: string, network?: INetwork) => {
     blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
+    const getController = await tempGetController();
     const { ethereumTransaction } = getController().wallet;
     switch (method) {
       case 'eth_sendTransaction':

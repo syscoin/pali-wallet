@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
-import { getController } from 'scripts/Background';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
@@ -21,7 +21,7 @@ const _messageHandler = async (host: string, message: Message) => {
   const { activeNetwork, isBitcoinBased } = store.getState().vault;
 
   const chain = getNetworkChain(isBitcoinBased);
-
+  const getController = await tempGetController();
   const { dapp } = getController();
   switch (message.type) {
     case 'ENABLE':

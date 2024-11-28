@@ -3,13 +3,12 @@
 const dotenv = require('dotenv');
 const fs = require('fs');
 
-const { MV2_OPTIONS, MV3_OPTIONS } = require('./consts.js');
+const { MV3_OPTIONS } = require('./cons' + 'ts.js');
 
 dotenv.config();
 
 function generateManifest() {
-  const manifestOptions =
-    process.env.MANIFEST_TYPE === 'MV2' ? MV2_OPTIONS : MV3_OPTIONS;
+  const manifestOptions = MV3_OPTIONS;
 
   // dev
   if (process.env.NODE_ENV === 'development') {
@@ -25,15 +24,22 @@ function generateManifest() {
   // prod
   if (process.env.NODE_ENV === 'production') {
     if (manifestOptions.permissions) {
-      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(
+        manifestOptions.permissions
+      );
     }
   }
 
   // canary
   if (process.env.NODE_ENV === 'canary') {
-    manifestOptions.name = manifestOptions.name.replace('Pali Wallet', 'Pali Wallet Canary');
+    manifestOptions.name = manifestOptions.name.replace(
+      'Pali Wallet',
+      'Pali Wallet Canary'
+    );
     if (manifestOptions.permissions) {
-      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(
+        manifestOptions.permissions
+      );
     }
   }
 
@@ -43,6 +49,6 @@ function generateManifest() {
 
 const filterWebRequest = (permissions) => {
   return permissions.filter((permission) => permission !== 'webRequest');
-}
+};
 
 generateManifest();

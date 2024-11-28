@@ -16,7 +16,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { ASSET_PRICE_API } from 'constants/index';
-import { getController } from 'scripts/Background';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { setCoinsList } from 'state/vault';
@@ -29,6 +29,7 @@ const ControllerUtils = (): IControllerUtils => {
       const storeCurrency = store.getState().price.fiat.asset;
       currency = storeCurrency || 'usd';
     }
+    const getController = await tempGetController();
     const controller = getController();
     const { isInCooldown }: CustomJsonRpcProvider =
       controller.wallet.ethereumTransaction.web3Provider;

@@ -3,7 +3,7 @@ import { ethErrors } from 'helpers/errors';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
-import { getController } from 'scripts/Background';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
@@ -25,6 +25,7 @@ export const methodRequest = async (
   host: string,
   data: { method: string; network?: string; params?: any[] }
 ) => {
+  const getController = await tempGetController();
   const { dapp, wallet } = getController();
   const controller = getController();
   const hybridDapps = ['bridge']; // create this array to be populated with hybrid dapps.
@@ -432,6 +433,7 @@ export const enable = async (
   isSyscoinDapp = false,
   isHybridDapp = true
 ) => {
+  const getController = await tempGetController();
   const { isBitcoinBased } = store.getState().vault;
   const { dapp, wallet } = getController();
   const isConnected = dapp.isConnected(host);
@@ -476,7 +478,8 @@ export const enable = async (
   return [dAppActiveAddress];
 };
 
-export const isUnlocked = () => {
+export const isUnlocked = async () => {
+  const getController = await tempGetController();
   const { wallet } = getController();
   return wallet.isUnlocked();
 };

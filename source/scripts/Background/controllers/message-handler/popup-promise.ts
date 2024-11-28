@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
-import { getController } from 'scripts/Background';
+import { tempGetController } from 'scripts/Background/tempConditionalControllerImport';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 /**
@@ -25,6 +25,7 @@ export const popupPromise = async ({
   host: string;
   route: string;
 }) => {
+  const getController = await tempGetController();
   const { dapp, createPopup } = getController();
   // if (
   //   eventName !== 'connect' &&

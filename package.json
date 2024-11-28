@@ -16,6 +16,7 @@
     "generate-manifest": "node ./source/config/generateManifest.js",
     "set-env": "node ./source/config/setEnvAndRun.js",
     "dev:chrome": "yarn generate-manifest && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --config source/config/webpack.dev.js --watch",
+    "new-background": "yarn generate-manifest && cross-env NODE_ENV=development && cross-env TARGET_BROWSER=chrome && cross-env NEW_BACKGROUND=true && webpack --config source/config/webpack.dev.js --watch",
     "build:chrome": "yarn set-env production chrome 'yarn generate-manifest && webpack --config source/config/webpack.prod.js'",
     "build:canary": "yarn set-env canary chrome 'yarn generate-manifest && webpack --config source/config/webpack.prod.js'",
     "dev-watch-requests:chrome": "jq '.permissions = if .permissions then (if (.permissions | index(\"webRequest\")) == null then .permissions + [\"webRequest\"] else .permissions end) else [\"webRequest\"] end | .environment = {\"WATCH_REQUESTS\": \"active\"}' manifest.json > modified_manifest.json && mv modified_manifest.json manifest.json && cross-env NODE_ENV=development cross-env TARGET_BROWSER=chrome webpack --watch",

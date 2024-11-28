@@ -1,19 +1,17 @@
 ﻿import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useLocation, useNavigate } from 'react-router-dom';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
 import {
   removeVerifyPaliRequestListener,
   resetPaliRequestsCount,
   verifyPaliRequests,
-} from 'scripts/Background';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
+} from 'scripts/Background/utils/updateRequestsPerSecond';
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
 import { SYS_UTXO_MAINNET_NETWORK } from 'utils/constants';
