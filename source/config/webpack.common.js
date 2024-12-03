@@ -14,9 +14,11 @@ const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
 const destPath = join(__dirname, '../../build');
 const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
-const backgroundFileName = process.env.NEW_BACKGROUND
-  ? 'NEW_Background-index.ts'
-  : 'index.ts';
+// const backgroundFileName = process.env.NEW_BACKGROUND
+//   ? 'NEW_Background-index.ts'
+//   : 'index.ts';
+const backgroundFileName = 'NEW_Background-index.ts';
+console.log(process.env, 'webpack');
 
 module.exports = {
   entry: {

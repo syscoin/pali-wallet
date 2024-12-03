@@ -2,6 +2,6 @@
 
 export const handleInstall = () => {
   chrome.runtime.onInstalled.addListener(async () => {
-    console.emoji('🤩', 'Stargazer extension installed');
+    console.emoji('🤩', 'Pali extension installed');
   });
 };
