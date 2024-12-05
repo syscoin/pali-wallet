@@ -415,7 +415,7 @@ function observeStateChanges() {
 function startPendingTransactionsPolling() {
   pendingTransactionsPollingIntervalId = setInterval(
     checkForPendingTransactionsUpdate,
-    1 * 60 * 1000 //run after 2 hours
+    60 * 1000 //run after 2 hours
   );
 }
 
@@ -537,14 +537,13 @@ const isPollingRunNotValid = () => {
 
   const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
 
-  const notValidToRunPolling =
+  return (
     !hasAccount0Address ||
     verifyIfUserIsNotRegistered ||
     isChangingConnectedAccount ||
     isLoadingAssets ||
     isLoadingBalances ||
     isLoadingTxs ||
-    isNetworkChanging;
-
-  return notValidToRunPolling;
+    isNetworkChanging
+  );
 };

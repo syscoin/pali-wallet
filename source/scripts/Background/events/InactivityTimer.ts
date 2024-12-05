@@ -1,5 +1,5 @@
 ﻿export const startInactivityTimer = (autolockMinutes: number) => {
-  const autolockMilliseconds = autolockMinutes * 60 * 1000;
+  const autoLockMilliseconds = autolockMinutes * 60 * 1000;
   let lastActivityTimestamp = Date.now();
 
   const resetTimer = () => {
@@ -8,7 +8,7 @@
 
   const checkInactivity = () => {
     const currentTime = Date.now();
-    if (currentTime - lastActivityTimestamp >= autolockMilliseconds) {
+    if (currentTime - lastActivityTimestamp >= autoLockMilliseconds) {
       chrome.runtime.sendMessage({
         type: 'lock_wallet',
         target: 'background',

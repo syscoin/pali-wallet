@@ -1,9 +1,7 @@
 ﻿import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useLocation, useNavigate } from 'react-router-dom';
-
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -33,7 +31,7 @@ export const useRouterLogic = () => {
     activeNetwork,
   } = useSelector((state: RootState) => state.vault);
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { web3Provider } = useController();
+  const { isUnlocked, web3Provider } = useController();
   const { serverHasAnError, errorMessage } = web3Provider;
 
   const utf8ErrorData = JSON.parse(
@@ -58,13 +56,13 @@ export const useRouterLogic = () => {
   }, []);
 
   useEffect(() => {
-    if (accounts) {
+    if (isUnlocked) {
       setShowUtf8ErrorModal(hasUtf8Error);
     }
-  }, [hasUtf8Error, accounts]);
+  }, [hasUtf8Error, isUnlocked]);
 
   useEffect(() => {
-    const canProceed = accounts;
+    const canProceed = isUnlocked && accounts;
 
     if (canProceed) {
       navigate('/home');
@@ -74,11 +72,7 @@ export const useRouterLogic = () => {
     controllerEmitter(['appRoute']).then((route) => {
       if (route !== '/') navigate(route);
     });
-  }, [accounts]);
-
-  useEffect(() => {
-    if (isTimerEnabled) startInactivityTimer(timer);
-  }, [isTimerEnabled, timer]);
+  }, [isUnlocked]);
 
   useEffect(() => {
     const isFullscreen = window.innerWidth > 600;
@@ -97,14 +91,20 @@ export const useRouterLogic = () => {
 
   useEffect(() => {
     alert.removeAll();
+    // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen && accounts) {
+    if (isFullscreen && isUnlocked) {
       navigate('/settings/account/hardware');
     }
-  }, [pathname, accounts]);
+  }, [pathname, isUnlocked]);
 
   useEffect(() => {
-    if (serverHasAnError && accounts && !isBitcoinBased && !isNetworkChanging) {
+    if (
+      serverHasAnError &&
+      isUnlocked &&
+      !isBitcoinBased &&
+      !isNetworkChanging
+    ) {
       if (errorMessage !== 'string' && errorMessage?.code === -32016) {
         setmodalMessage(
           'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
@@ -117,6 +117,10 @@ export const useRouterLogic = () => {
       setShowModal(true);
     }
   }, [serverHasAnError]);
+
+  useEffect(() => {
+    if (isTimerEnabled) startInactivityTimer(timer);
+  }, [isTimerEnabled, timer]);
 
   const handleUtf8ErrorClose = async () => {
     setShowUtf8ErrorModal(false);

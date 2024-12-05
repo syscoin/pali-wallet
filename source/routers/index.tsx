@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import {
@@ -40,7 +40,6 @@ import { SwitchNetwork } from 'pages/SwitchNetwork';
 import { useRouterLogic } from 'routers/useRouterLogic';
 
 import { ProtectedRoute } from './ProtectedRoute';
-
 export const Router = () => {
   const {
     showModal,
