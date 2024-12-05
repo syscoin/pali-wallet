@@ -1,35 +1,29 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
 import {
-  ChangeAccount,
-  ConnectWallet,
-  CreateToken,
-  CreateNFT,
-  CreatePass,
-  EthSign,
-  EncryptPubKey,
-  Import,
-  MintNFT,
-  MintToken,
-  SendToken,
-  SendConfirm,
-  SendTransaction,
-  SignAndSend,
-  Sign,
-  Start,
-  TransferToken,
-  UpdateToken,
-  SeedConfirm,
   ApproveTransactionComponent,
-  Decrypt,
+  ChangeAccount,
+  ChangeConnectedAccount,
+  ConnectWallet,
+  CreatePass,
+  CreatePasswordImport,
   CustomRPCExternal,
+  Decrypt,
+  EncryptPubKey,
+  EthSign,
+  ExternalWatchAsset,
+  Import,
+  SeedConfirm,
+  SendConfirm,
+  SendNTokenTransaction,
+  SendToken,
+  SendTransaction,
+  Sign,
+  SignAndSend,
+  Start,
   SwitchChain,
   SwitchNeworkUtxoEvm,
-  ChangeConnectedAccount,
-  SendNTokenTransaction,
-  CreatePasswordImport,
-  ExternalWatchAsset,
 } from '../pages';
 import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
@@ -192,38 +186,6 @@ export const ExternalRoute = () => {
               path="sign-psbt"
               element={<ProtectedRoute element={<Sign />} />}
             />
-
-            {/* /tx/asset */}
-            <Route path="asset">
-              <Route
-                path="create"
-                element={<ProtectedRoute element={<CreateToken />} />}
-              />
-              <Route
-                path="mint"
-                element={<ProtectedRoute element={<MintToken />} />}
-              />
-              <Route
-                path="transfer"
-                element={<ProtectedRoute element={<TransferToken />} />}
-              />
-              <Route
-                path="update"
-                element={<ProtectedRoute element={<UpdateToken />} />}
-              />
-
-              {/* /tx/asset/nft */}
-              <Route path="nft">
-                <Route
-                  path="create"
-                  element={<ProtectedRoute element={<CreateNFT />} />}
-                />
-                <Route
-                  path="mint"
-                  element={<ProtectedRoute element={<MintNFT />} />}
-                />
-              </Route>
-            </Route>
           </Route>
         </Route>
 
