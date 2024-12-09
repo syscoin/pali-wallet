@@ -52,7 +52,7 @@
     "@headlessui/react": "^1.6.0",
     "@heroicons/react": "^1.0.5",
     "@pollum-io/sysweb3-core": "^1.0.27",
-    "@pollum-io/sysweb3-keyring": "^1.0.485",
+    "@pollum-io/sysweb3-keyring": "^1.0.486",
     "@pollum-io/sysweb3-network": "^1.0.95",
     "@pollum-io/sysweb3-utils": "^1.1.235",
     "@reduxjs/toolkit": "^1.4.0",

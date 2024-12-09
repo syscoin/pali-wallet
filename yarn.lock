@@ -2379,10 +2379,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.27.tgz#2ecbf38c3b5f6821ec2bcc95472eed0a2f11cd10"
   integrity sha512-HHW2ozdXCac2Xo0oUQgRk/sczBIGQCBvsqYBIwondipA3Rx4/jGC6Y9U/M4wpTi5wQ+ZD18DyEbKAVMXElGcbQ==
 
-"@pollum-io/sysweb3-keyring@^1.0.485":
-  version "1.0.485"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.485.tgz#88095c5b87dd83e9f38e641db2ee90d5669e896c"
-  integrity sha512-sz6Q0Q49ObTo+ewYEcQBYW51fep5X57wkNLJialI2Y8h1mF/b4xg+dkHQvkqjEIx+05fpyVtpC4RrhiWifKTNQ==
+"@pollum-io/sysweb3-keyring@^1.0.486":
+  version "1.0.486"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.486.tgz#199b75b917a3cecf5e536c49999646898bec3ba1"
+  integrity sha512-vZpZ7PllQT2KAbL1I75mJH8rZlCjMJi5jA/1/Gi3urSIP/JLCqhx4jQ7iVK/rkuNU0ceCT0ZT/JAmVFBHzavgQ==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2415,6 +2415,7 @@
     syscoinjs-lib "^1.0.218"
     syscointx-js "^1.0.106"
     web3 "^1.7.1"
+    zksync-ethers "5"
 
 "@pollum-io/sysweb3-network@^1.0.95":
   version "1.0.95"
@@ -7233,7 +7234,7 @@ ethers-eip712@^0.2.0:
   resolved "https://registry.yarnpkg.com/ethers-eip712/-/ethers-eip712-0.2.0.tgz#52973b3a9a22638f7357283bf66624994c6e91ed"
   integrity sha512-fgS196gCIXeiLwhsWycJJuxI9nL/AoUPGSQ+yvd+8wdWR+43G+J1n69LmWVWvAON0M6qNaf2BF4/M159U8fujQ==
 
-ethers@5.7.2, ethers@^5.5.4, ethers@^5.6.4, ethers@^5.6.9:
+ethers@5.7.2, ethers@^5.5.4, ethers@^5.6.4, ethers@^5.6.9, ethers@~5.7.0:
   version "5.7.2"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.7.2.tgz#3a7deeabbb8c030d4126b24f84e525466145872e"
   integrity sha512-wswUsmWo1aOK8rR7DIKiWSw9DbLWe6x98Jrn8wcTflTVvaXhAMaB5zGAXy0GYQEQp9iO1iSHWVyARQm11zUtyg==
@@ -15270,3 +15271,10 @@ zip-webpack-plugin@^4.0.1:
   integrity sha512-G041Q4qUaog44Ynit6gs4o+o3JIv0WWfOLvc8Q3IxvPfuqd2KBHhpJWAXUB9Cm1JcWHTIOp9vS3oGMWa1p1Ehw==
   dependencies:
     yazl "^2.5.1"
+
+zksync-ethers@5:
+  version "5.10.0"
+  resolved "https://registry.yarnpkg.com/zksync-ethers/-/zksync-ethers-5.10.0.tgz#3caf25478539a3fd6e170c13555cec6a1dae32e2"
+  integrity sha512-OAjTGAHF9wbdkRGkj7XZuF/a1Sk/FVbwH4pmLjAKlR7mJ7sQtQhBhrPU2dCc67xLaNvEESPfwil19ES5wooYFg==
+  dependencies:
+    ethers "~5.7.0"
