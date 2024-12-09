@@ -2379,10 +2379,10 @@
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-core/-/sysweb3-core-1.0.27.tgz#2ecbf38c3b5f6821ec2bcc95472eed0a2f11cd10"
   integrity sha512-HHW2ozdXCac2Xo0oUQgRk/sczBIGQCBvsqYBIwondipA3Rx4/jGC6Y9U/M4wpTi5wQ+ZD18DyEbKAVMXElGcbQ==
 
-"@pollum-io/sysweb3-keyring@^1.0.484":
-  version "1.0.484"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.484.tgz#65d9fbd7305f9c6f2c1e19d88da1197c67b6980a"
-  integrity sha512-AMO+H/9NW2ETlXR/v06SRM7g7+nSOv1lW3YYondRzSIq0p15Un9nwRhGeJZ8F0vaD/S4vlsTtXLgsRfyV0fO8w==
+"@pollum-io/sysweb3-keyring@^1.0.485":
+  version "1.0.485"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-keyring/-/sysweb3-keyring-1.0.485.tgz#88095c5b87dd83e9f38e641db2ee90d5669e896c"
+  integrity sha512-sz6Q0Q49ObTo+ewYEcQBYW51fep5X57wkNLJialI2Y8h1mF/b4xg+dkHQvkqjEIx+05fpyVtpC4RrhiWifKTNQ==
   dependencies:
     "@bitcoinerlab/descriptors" "^2.0.1"
     "@bitcoinerlab/secp256k1" "^1.0.5"
@@ -2391,7 +2391,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@pollum-io/sysweb3-core" "^1.0.27"
     "@pollum-io/sysweb3-network" "^1.0.95"
-    "@pollum-io/sysweb3-utils" "^1.1.234"
+    "@pollum-io/sysweb3-utils" "^1.1.235"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.3.0"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2428,10 +2428,10 @@
     ethers "^5.6.9"
     web3 "^1.7.1"
 
-"@pollum-io/sysweb3-utils@^1.1.234":
-  version "1.1.234"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.234.tgz#f259e781510bef19fd74130eb60ea28845494f0e"
-  integrity sha512-Kgu2CPl3L22XYsfc0UCL9tBnoSCRT0sVda/zlxAUuTqIp1tP+3k6JNAwDOkJjPBc8h+wYds4Y39YSU+KYLgbdg==
+"@pollum-io/sysweb3-utils@^1.1.235":
+  version "1.1.235"
+  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.235.tgz#9ae08757631b40a4e2e4fe3da13b14457137f9f4"
+  integrity sha512-El0fvuZg1AQ/a/fb8dwEfLQwDuVPR8Xj12uVWC2hPal5HjAVH9fNDXyHwUWeblH9oUUUyR5bXjbbf5slVW3KgA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
