@@ -2391,7 +2391,7 @@
     "@ledgerhq/logs" "^6.10.1"
     "@pollum-io/sysweb3-core" "^1.0.27"
     "@pollum-io/sysweb3-network" "^1.0.95"
-    "@pollum-io/sysweb3-utils" "^1.1.235"
+    "@pollum-io/sysweb3-utils" "^1.1.234"
     "@trezor/connect-web" "^9.1.5"
     "@trezor/connect-webextension" "^9.3.0"
     "@trezor/utxo-lib" "^1.0.12"
@@ -2415,7 +2415,6 @@
     syscoinjs-lib "^1.0.218"
     syscointx-js "^1.0.106"
     web3 "^1.7.1"
-    zksync-ethers "5"
 
 "@pollum-io/sysweb3-network@^1.0.95":
   version "1.0.95"
@@ -2433,29 +2432,6 @@
   version "1.1.234"
   resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.234.tgz#f259e781510bef19fd74130eb60ea28845494f0e"
   integrity sha512-Kgu2CPl3L22XYsfc0UCL9tBnoSCRT0sVda/zlxAUuTqIp1tP+3k6JNAwDOkJjPBc8h+wYds4Y39YSU+KYLgbdg==
-  dependencies:
-    "@ethersproject/contracts" "^5.6.2"
-    axios "^0.26.1"
-    bech32 "^2.0.0"
-    bip32 "^3.0.1"
-    bip44-constants "^114.0.0"
-    bip84 "^0.2.7"
-    bitcoinjs-lib "^5.2.0"
-    camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
-    crypto-js "^4.1.1"
-    eth-object "https://github.com/syscoin/eth-object.git"
-    eth-proof "^2.1.6"
-    eth-util-lite "^1.0.1"
-    ethers "^5.6.4"
-    syscoinjs-lib "^1.0.218"
-    syscointx-js "^1.0.106"
-    web3 "^1.7.1"
-
-"@pollum-io/sysweb3-utils@^1.1.235":
-  version "1.1.235"
-  resolved "https://registry.yarnpkg.com/@pollum-io/sysweb3-utils/-/sysweb3-utils-1.1.235.tgz#9ae08757631b40a4e2e4fe3da13b14457137f9f4"
-  integrity sha512-El0fvuZg1AQ/a/fb8dwEfLQwDuVPR8Xj12uVWC2hPal5HjAVH9fNDXyHwUWeblH9oUUUyR5bXjbbf5slVW3KgA==
   dependencies:
     "@ethersproject/contracts" "^5.6.2"
     axios "^0.26.1"
@@ -7257,7 +7233,7 @@ ethers-eip712@^0.2.0:
   resolved "https://registry.yarnpkg.com/ethers-eip712/-/ethers-eip712-0.2.0.tgz#52973b3a9a22638f7357283bf66624994c6e91ed"
   integrity sha512-fgS196gCIXeiLwhsWycJJuxI9nL/AoUPGSQ+yvd+8wdWR+43G+J1n69LmWVWvAON0M6qNaf2BF4/M159U8fujQ==
 
-ethers@5.7.2, ethers@^5.5.4, ethers@^5.6.4, ethers@^5.6.9, ethers@~5.7.0:
+ethers@5.7.2, ethers@^5.5.4, ethers@^5.6.4, ethers@^5.6.9:
   version "5.7.2"
   resolved "https://registry.yarnpkg.com/ethers/-/ethers-5.7.2.tgz#3a7deeabbb8c030d4126b24f84e525466145872e"
   integrity sha512-wswUsmWo1aOK8rR7DIKiWSw9DbLWe6x98Jrn8wcTflTVvaXhAMaB5zGAXy0GYQEQp9iO1iSHWVyARQm11zUtyg==
@@ -15294,10 +15270,3 @@ zip-webpack-plugin@^4.0.1:
   integrity sha512-G041Q4qUaog44Ynit6gs4o+o3JIv0WWfOLvc8Q3IxvPfuqd2KBHhpJWAXUB9Cm1JcWHTIOp9vS3oGMWa1p1Ehw==
   dependencies:
     yazl "^2.5.1"
-
-zksync-ethers@5:
-  version "5.10.0"
-  resolved "https://registry.yarnpkg.com/zksync-ethers/-/zksync-ethers-5.10.0.tgz#3caf25478539a3fd6e170c13555cec6a1dae32e2"
-  integrity sha512-OAjTGAHF9wbdkRGkj7XZuF/a1Sk/FVbwH4pmLjAKlR7mJ7sQtQhBhrPU2dCc67xLaNvEESPfwil19ES5wooYFg==
-  dependencies:
-    ethers "~5.7.0"

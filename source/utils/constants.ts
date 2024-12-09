@@ -129,3 +129,12 @@ export const faucetTxSyscoinNEVMTestnetInfo = {
   quantity: 1,
   smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
 };
+
+export const SYS_UTXO_MAINNET_NETWORK = {
+  chainId: 57,
+  url: 'https://blockbook.syscoin.org',
+  label: 'Syscoin Mainnet',
+  default: true,
+  currency: 'sys',
+  slip44: 57,
+} as INetwork;
