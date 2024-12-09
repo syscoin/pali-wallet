@@ -424,7 +424,8 @@
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
     "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
-    "setAutoLockTime": "Set auto lock time",
+    "setAutoLockTime": "Set auto lock timer",
+    "errorMinutes": "the minutes must be between 5 and 120",
     "defaultMinutes": "Default: 5 minutes after no activity.",
     "maximumMinutes": "Maximum: 120 minutes."
   },
