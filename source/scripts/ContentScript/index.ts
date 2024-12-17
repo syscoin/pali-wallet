@@ -57,7 +57,6 @@ const start = () => {
   window.addEventListener(
     'message',
     (event) => {
-      console.debug({ event }, 'MESSAGE LISTENER');
       if (event.source !== window) return;
       if (!event.data) return;
 
@@ -76,10 +75,6 @@ const start = () => {
     },
     false
   );
-
-  chrome.runtime.onMessage.addListener((message, sender) => {
-    console.debug({ message, sender }, 'START LISTENER');
-  });
 };
 
 const startEventEmitter = () => {
