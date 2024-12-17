@@ -194,7 +194,6 @@ const DAppController = (): IDAppController => {
     id: PaliEvents,
     data: { method: string; params: any }
   ): Promise<void> => {
-    console.log({ id, data });
     new Promise<void>((resolve, reject) => {
       try {
         const hosts = Object.keys(_dapps) as unknown as string;
