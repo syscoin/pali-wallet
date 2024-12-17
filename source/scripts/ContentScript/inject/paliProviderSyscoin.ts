@@ -51,6 +51,7 @@ export class PaliInpageProviderSys extends BaseProvider {
         const initialState = state as Parameters<
           PaliInpageProviderSys['_initializeState']
         >[0];
+        console.log({ state, initialState });
         this._initializeState(initialState);
       })
       .catch((error) =>
@@ -59,11 +60,19 @@ export class PaliInpageProviderSys extends BaseProvider {
           error
         )
       );
+
+    this.initMessageListener();
+  }
+
+  public initMessageListener() {
     window.addEventListener(
-      'notification',
+      'paliNotification',
       (event: any) => {
-        const { method, params } = JSON.parse(event.detail);
+        const { data } = JSON.parse(event.detail);
+
+        const { method, params } = data;
         this.emit('walletUpdate');
+
         switch (method) {
           case 'pali_xpubChanged':
             this._handleConnectedXpub(params);
@@ -99,9 +108,7 @@ export class PaliInpageProviderSys extends BaseProvider {
             );
         }
       },
-      {
-        passive: true,
-      }
+      { passive: true }
     );
   }
 
@@ -157,6 +164,8 @@ export class PaliInpageProviderSys extends BaseProvider {
     if (initialState) {
       const { xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
         initialState;
+
+      console.log({ xpub, blockExplorerURL, isUnlocked, isBitcoinBased });
 
       // EIP-1193 connect
       this._handleConnectedXpub(xpub);
@@ -221,6 +230,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     xpub,
     isUnlocked,
   }: { isUnlocked?: boolean; xpub?: string | null } = {}) {
+    console.log({ xpub, isUnlocked });
     if (typeof isUnlocked !== 'boolean') {
       console.error(
         'Pali: Received invalid isUnlocked parameter. Please report this bug.'

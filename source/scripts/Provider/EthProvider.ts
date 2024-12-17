@@ -159,12 +159,20 @@ export const EthProvider = (host: string, network?: INetwork) => {
   const send = async (args: any[]) => {
     const { ethereumTransaction } = getController().wallet;
 
+    ethereumTransaction.web3Provider.send.bind(
+      ethereumTransaction.web3Provider
+    );
+
     return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const { ethereumTransaction } = getController().wallet;
+
+    ethereumTransaction.web3Provider.send.bind(
+      ethereumTransaction.web3Provider
+    );
 
     try {
       const resp = await ethereumTransaction.web3Provider.send(method, params);
