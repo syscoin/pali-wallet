@@ -16,6 +16,7 @@ import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { setTimer } from 'state/vault';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -52,7 +53,7 @@ export const ConnectWallet = () => {
 
     dispatchBackgroundEvent(`${eventName}.${host}`, activeAccount.address);
 
-    window.close();
+    setTimeout(window.close, 1000);
   }, [host, chain, chainId, accountId, accountType, date]);
 
   const onConfirm = () => {

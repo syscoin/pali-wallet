@@ -23,10 +23,9 @@ declare global {
     controller: Readonly<IMasterController>;
   }
 }
-let paliPort: chrome.runtime.Port;
-let paliPopupPort: chrome.runtime.Port;
-let dappMethods = {} as any;
+
 let walletMethods = {} as any;
+let dappMethods = {} as any;
 
 let MasterControllerInstance = {} as IMasterController;
 
@@ -48,9 +47,6 @@ let MasterControllerInstance = {} as IMasterController;
 
   setInterval(utils.setFiat, 3 * 60 * 1000);
 
-  if (paliPort) {
-    dapp.setup(paliPort);
-  }
   utils.setFiat();
 });
 
@@ -190,61 +186,72 @@ chrome.runtime.onMessage.addListener((message: any, _, sendResponse) => {
   return isEventValid;
 });
 
-chrome.runtime.onMessage.addListener(({ type, target, data }) => {
-  switch (type) {
-    case 'ping':
-      if (target === 'background')
-        paliPopupPort?.postMessage({ action: 'pong' });
-      break;
-    case 'reset_autolock':
-      if (target === 'background') restartLockTimeout();
-      break;
-    case 'lock_wallet':
-      handleLogout();
-      break;
-    case 'changeNetwork':
-      if (walletMethods?.setActiveNetwork && data) {
-        walletMethods?.setActiveNetwork(
-          data?.network,
-          data?.isBitcoinBased ? 'syscoin' : 'ethereum'
-        );
-      }
-      break;
-    case 'verifyPaliRequests':
-      if (target === 'background' && process.env.NODE_ENV === 'development')
-        verifyAllPaliRequests();
-      break;
-    case 'resetPaliRequestsCount':
-      if (target === 'background' && process.env.NODE_ENV === 'development')
-        requestCount = 0;
-      break;
-    case 'removeVerifyPaliRequestListener':
-      if (target === 'background' && process.env.NODE_ENV === 'development')
-        chrome.webRequest.onCompleted.removeListener(requestCallback);
-      break;
+chrome.runtime.onMessage.addListener(
+  ({ type, target, data, action }, sender, sendResponse) => {
+    const { isPolling, hasEthProperty } = store.getState().vault;
+    switch (type) {
+      case 'pw-msg-background':
+        if (action === 'isInjected') {
+          console.log({ type, target, data, action, sender });
+          dappMethods.setup(sender);
+          sendResponse({ isInjected: hasEthProperty });
+        }
+        break;
+      case 'reset_autolock':
+        if (target === 'background') restartLockTimeout();
+        break;
+      case 'lock_wallet':
+        handleLogout();
+        break;
+      case 'changeNetwork':
+        if (walletMethods?.setActiveNetwork && data) {
+          walletMethods?.setActiveNetwork(
+            data?.network,
+            data?.isBitcoinBased ? 'syscoin' : 'ethereum'
+          );
+        }
+        break;
+      case 'verifyPaliRequests':
+        if (target === 'background' && process.env.NODE_ENV === 'development')
+          verifyAllPaliRequests();
+        break;
+      case 'resetPaliRequestsCount':
+        if (target === 'background' && process.env.NODE_ENV === 'development')
+          requestCount = 0;
+        break;
+      case 'removeVerifyPaliRequestListener':
+        if (target === 'background' && process.env.NODE_ENV === 'development')
+          chrome.webRequest.onCompleted.removeListener(requestCallback);
+        break;
+      case 'startPolling':
+        if (!isPolling) {
+          store.dispatch(setIsPolling(true));
+          startPolling();
+          sendResponse({ stateIntervalId });
+        }
+        break;
+      case 'stopPolling':
+        clearInterval(stateIntervalId);
+        store.dispatch(setIsPolling(false));
+        break;
+      case 'startPendingTransactionsPolling':
+        store.dispatch(setIsPolling(true));
+        startPendingTransactionsPolling();
+        break;
+      case 'stopPendingTransactionsPolling':
+        clearInterval(pendingTransactionsPollingIntervalId);
+        store.dispatch(setIsPolling(false));
+        break;
+    }
   }
-});
+);
 
 chrome.runtime.onConnect.addListener(async (port) => {
+  console.log({ port });
   if (port.name === 'pali') {
     handleIsOpen(true);
-    paliPopupPort = port;
   }
 
-  if (port.name === 'pali-inject') {
-    port.onMessage.addListener((message) => {
-      if (message.action === 'isInjected') {
-        const { hasEthProperty } = store.getState().vault;
-        port.postMessage({ isInjected: hasEthProperty });
-      }
-    });
-
-    if (dappMethods !== undefined) {
-      dappMethods.setup(port);
-    }
-    paliPort = port;
-    return;
-  }
   const { changingConnectedAccount, timer, isTimerEnabled } =
     store.getState().vault;
 
@@ -322,7 +329,6 @@ async function checkForUpdates() {
 
 let stateIntervalId;
 let pendingTransactionsPollingIntervalId;
-let isListenerRegistered = false;
 let currentState = store.getState();
 let currentIsBitcoinBased = currentState.vault.isBitcoinBased;
 
@@ -334,47 +340,6 @@ function getPollingInterval() {
 function startPolling() {
   clearInterval(stateIntervalId);
   stateIntervalId = setInterval(checkForUpdates, getPollingInterval());
-}
-
-function unregisterListener() {
-  chrome.runtime.onConnect.removeListener(handleConnect);
-  isListenerRegistered = false;
-}
-
-function handleConnect(port) {
-  const { isPolling } = store.getState().vault;
-
-  if (port.name === 'polling') {
-    port.onMessage.addListener((message) => {
-      if (message.action === 'startPolling' && !isPolling) {
-        store.dispatch(setIsPolling(true));
-        startPolling();
-        port.postMessage({ stateIntervalId });
-      } else if (message.action === 'stopPolling') {
-        clearInterval(stateIntervalId);
-        store.dispatch(setIsPolling(false));
-      }
-    });
-  } else if (port.name === 'pendingTransactionsPolling') {
-    port.onMessage.addListener((message) => {
-      if (message.action === 'startPendingTransactionsPolling') {
-        store.dispatch(setIsPolling(true));
-        startPendingTransactionsPolling();
-      } else if (message.action === 'stopPendingTransactionsPolling') {
-        clearInterval(pendingTransactionsPollingIntervalId);
-        store.dispatch(setIsPolling(false));
-      }
-    });
-  }
-}
-
-function registerListener() {
-  if (isListenerRegistered) {
-    return;
-  }
-
-  chrome.runtime.onConnect.addListener(handleConnect);
-  isListenerRegistered = true;
 }
 
 function observeStateChanges() {
@@ -394,8 +359,6 @@ function observeStateChanges() {
       if (nextState.vault.isPolling) {
         startPolling();
       }
-      unregisterListener();
-      registerListener();
     }
 
     if (JSON.stringify(currentState) !== JSON.stringify(nextState)) {
@@ -463,16 +426,13 @@ async function checkForPendingTransactionsUpdate() {
   }
 }
 
-observeStateChanges();
-registerListener();
+const handleStartPolling = () => {
+  chrome.runtime.sendMessage({ type: 'startPolling' });
+};
 
-const port = chrome.runtime.connect(undefined, { name: 'polling' });
-port.postMessage({ action: 'startPolling' });
-
-const secondPort = chrome.runtime.connect(undefined, {
-  name: 'pendingTransactionsPolling',
-});
-secondPort.postMessage({ action: 'startPendingTransactionsPolling' });
+const handlePendingTransactionsPolling = () => {
+  chrome.runtime.sendMessage({ type: 'startPendingTransactionsPolling' });
+};
 
 export const verifyPaliRequests = () => {
   chrome.runtime.sendMessage({
@@ -547,3 +507,7 @@ const isPollingRunNotValid = () => {
     isNetworkChanging
   );
 };
+
+observeStateChanges();
+handleStartPolling();
+handlePendingTransactionsPolling();

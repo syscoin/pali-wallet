@@ -13,6 +13,7 @@ import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
+
 /**
  * Handles methods request.
  *
@@ -469,6 +470,8 @@ export const enable = async (
     eventName: 'connect',
     data: { chain, chainId },
   });
+
+  console.log({ dAppActiveAddress });
 
   if (!dAppActiveAddress)
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());

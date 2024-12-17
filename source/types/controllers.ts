@@ -334,5 +334,5 @@ export interface IDAppController {
   /**
    * Setup communication
    */
-  setup: (port: chrome.runtime.Port) => void;
+  setup: (sender: chrome.runtime.MessageSender) => void;
 }
