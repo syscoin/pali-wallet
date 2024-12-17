@@ -51,7 +51,7 @@ export class PaliInpageProviderSys extends BaseProvider {
         const initialState = state as Parameters<
           PaliInpageProviderSys['_initializeState']
         >[0];
-        console.log({ state, initialState });
+
         this._initializeState(initialState);
       })
       .catch((error) =>
@@ -165,8 +165,6 @@ export class PaliInpageProviderSys extends BaseProvider {
       const { xpub, blockExplorerURL, isUnlocked, isBitcoinBased } =
         initialState;
 
-      console.log({ xpub, blockExplorerURL, isUnlocked, isBitcoinBased });
-
       // EIP-1193 connect
       this._handleConnectedXpub(xpub);
       this._handleActiveBlockExplorer(blockExplorerURL);
@@ -230,7 +228,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     xpub,
     isUnlocked,
   }: { isUnlocked?: boolean; xpub?: string | null } = {}) {
-    console.log({ xpub, isUnlocked });
     if (typeof isUnlocked !== 'boolean') {
       console.error(
         'Pali: Received invalid isUnlocked parameter. Please report this bug.'

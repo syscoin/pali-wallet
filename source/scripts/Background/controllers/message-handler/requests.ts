@@ -471,8 +471,6 @@ export const enable = async (
     data: { chain, chainId },
   });
 
-  console.log({ dAppActiveAddress });
-
   if (!dAppActiveAddress)
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
 

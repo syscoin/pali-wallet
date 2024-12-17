@@ -247,7 +247,6 @@ chrome.runtime.onMessage.addListener(
 );
 
 chrome.runtime.onConnect.addListener(async (port) => {
-  console.log({ port });
   if (port.name === 'pali') {
     handleIsOpen(true);
   }

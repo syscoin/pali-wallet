@@ -45,7 +45,6 @@ export const onMessage = async (
   sender: chrome.runtime.MessageSender
 ) => {
   const { host } = new URL(sender.url);
-  console.log({ sender });
 
   try {
     const response = await _messageHandler(host, message);

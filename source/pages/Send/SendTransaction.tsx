@@ -201,14 +201,14 @@ export const SendTransaction = () => {
         alert.removeAll();
         alert.error(t('send.cantCompleteTxs'));
 
-        if (isExternal) setTimeout(console.log, 4000);
+        if (isExternal) setTimeout(window.close, 4000);
         else setLoading(false);
         return error;
       }
     } else {
       alert.removeAll();
       alert.error(t('send.enoughFunds'));
-      if (isExternal) setTimeout(console.log, 2000);
+      if (isExternal) setTimeout(window.close, 2000);
     }
   };
 
@@ -230,7 +230,7 @@ export const SendTransaction = () => {
         logError('error getting fees', 'Transaction', e);
         alert.removeAll();
         alert.error(t('send.txWillFail'), e);
-        setTimeout(console.log, 3000);
+        setTimeout(window.close, 3000);
       }
     };
 

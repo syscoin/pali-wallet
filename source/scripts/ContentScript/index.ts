@@ -15,7 +15,6 @@ const sendToBackground = (
 };
 
 const handleEthInjection = (message: any) => {
-  console.log({ message });
   const isInjected = message?.isInjected;
 
   if (typeof isInjected !== 'undefined') {
@@ -58,7 +57,7 @@ const start = () => {
   window.addEventListener(
     'message',
     (event) => {
-      console.log({ event }, 'MESSAGE LISTENER' + '');
+      console.debug({ event }, 'MESSAGE LISTENER');
       if (event.source !== window) return;
       if (!event.data) return;
 
@@ -79,7 +78,7 @@ const start = () => {
   );
 
   chrome.runtime.onMessage.addListener((message, sender) => {
-    console.log({ message, sender }, 'START LISTENER');
+    console.debug({ message, sender }, 'START LISTENER');
   });
 };
 

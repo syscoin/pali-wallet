@@ -90,7 +90,6 @@ export class PaliInpageProviderEth extends BaseProvider {
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
 
-        console.log({ event }, 'event');
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);
@@ -271,7 +270,6 @@ export class PaliInpageProviderEth extends BaseProvider {
     currentAccounts: unknown[] | null,
     isEthAccounts = false
   ): void {
-    console.log({ currentAccounts });
     if (currentAccounts === null) {
       this._state.accounts = currentAccounts as any;
 
@@ -343,7 +341,6 @@ export class PaliInpageProviderEth extends BaseProvider {
    * @emits PaliInpageProvider#connect
    */
   private _handleConnect(chainId: string) {
-    console.log({ chainId });
     if (!this._state.isConnected) {
       this._state.isConnected = true;
       this.emit('connect', { chainId });
