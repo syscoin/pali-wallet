@@ -192,7 +192,6 @@ chrome.runtime.onMessage.addListener(
     switch (type) {
       case 'pw-msg-background':
         if (action === 'isInjected') {
-          console.log({ type, target, data, action, sender });
           dappMethods.setup(sender);
           sendResponse({ isInjected: hasEthProperty });
         }
