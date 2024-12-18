@@ -91,7 +91,7 @@ const handleCloseWindow = (
       return;
     }
 
-    resolve({ success: true });
+    resolve({ success: false });
   };
 
   chrome.windows.onRemoved.addListener(handleWindowRemoval);
