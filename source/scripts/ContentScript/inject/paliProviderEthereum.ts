@@ -85,8 +85,13 @@ export class PaliInpageProviderEth extends BaseProvider {
           error
         )
       );
+
+    this.initMessageListener();
+  }
+
+  public initMessageListener() {
     window.addEventListener(
-      'notification',
+      'paliNotification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
 
