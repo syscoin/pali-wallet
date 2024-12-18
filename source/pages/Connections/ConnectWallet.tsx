@@ -52,7 +52,7 @@ export const ConnectWallet = () => {
 
     dispatchBackgroundEvent(`${eventName}.${host}`, activeAccount.address);
 
-    setTimeout(window.close, 1000);
+    window.close();
   }, [host, chain, chainId, accountId, accountType, date]);
 
   const onConfirm = () => {
