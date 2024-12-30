@@ -19,8 +19,8 @@ export const ChangeConnectedAccount = () => {
   //TODO: validate this
   const { host, eventName, connectedAccount, accountType } = useQueryData();
 
-  const handleConnectedAccount = () => {
-    controllerEmitter(
+  const handleConnectedAccount = async () => {
+    await controllerEmitter(
       ['wallet', 'setAccount'],
       [connectedAccount.id, accountType]
     );
@@ -30,8 +30,8 @@ export const ChangeConnectedAccount = () => {
     window.close();
   };
 
-  const handleActiveAccount = () => {
-    controllerEmitter(
+  const handleActiveAccount = async () => {
+    await controllerEmitter(
       ['dapp', 'changeAccount'],
       [host, activeAccount.id, activeAccount.type]
     );
