@@ -209,7 +209,6 @@ export const SendConfirm = () => {
               'chainId',
               'maxFeePerGas',
               'maxPriorityFeePerGas',
-              ,
             ]) as ITxState;
 
             const value = ethers.utils.parseUnits(

@@ -1,25 +1,27 @@
 import { ethers } from 'ethers';
 
-export const validatePrivateKeyValue = (privKey: string) => {
-  //Get 2 first characters to validate if starts with 0x or not
-  const initialValue = privKey.slice(0, 2);
+import { getController } from 'scripts/Background';
 
-  switch (initialValue) {
-    case '0x':
-      try {
-        new ethers.Wallet(`${privKey}`);
-      } catch (error) {
-        return false;
-      }
+export const validatePrivateKeyValue = (
+  privKey: string,
+  isBitcoinBased: boolean
+) => {
+  const mainController = getController();
+  const initialValue = privKey.match(/^(0x|zprv)/)?.[0];
+
+  if ([undefined, '0x'].includes(initialValue) && !isBitcoinBased) {
+    try {
+      new ethers.Wallet(initialValue === undefined ? `0x${privKey}` : privKey);
       return true;
-
-    default:
-      try {
-        new ethers.Wallet(`0x${privKey}`);
-      } catch (error) {
-        return false;
-      }
-
-      return true;
+    } catch (error) {
+      return false;
+    }
   }
+
+  if (initialValue === 'zprv' && isBitcoinBased) {
+    const { isValid } = mainController.wallet.validateZprv(privKey);
+    return isValid;
+  }
+
+  return false;
 };

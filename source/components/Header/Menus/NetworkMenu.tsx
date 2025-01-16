@@ -193,7 +193,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 </li>
               </Menu.Item>
               <div className="scrollbar-styled overflow-scroll">
-                {!activeAccount.isImported ? (
+                {isBitcoinBased || !activeAccount.isImported ? (
                   <Menu.Item>
                     <>
                       <span className="disabled text-xs flex justify-start px-5 py-4">
@@ -272,71 +272,77 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                   </Menu.Item>
                 ) : null}
 
-                <Menu.Item>
-                  <Disclosure>
-                    {({ open }) => (
-                      <>
-                        <Disclosure.Button className="flex items-center justify-start px-5 pt-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
-                          <img
-                            src={ethIcon}
-                            width="16px"
-                            className="ml-1 flex items-center text-brand-white"
-                          />
+                {activeAccount.isImported && isBitcoinBased ? null : (
+                  <Menu.Item>
+                    <Disclosure>
+                      {({ open }) => (
+                        <>
+                          <Disclosure.Button className="flex items-center justify-start px-5 pt-3 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200">
+                            <img
+                              src={ethIcon}
+                              width="16px"
+                              className="ml-1 flex items-center text-brand-white"
+                            />
 
-                          <span className="px-3 text-sm">
-                            {t('networkMenu.evmNetworks')}
-                          </span>
+                            <span className="px-3 text-sm">
+                              {t('networkMenu.evmNetworks')}
+                            </span>
 
-                          <img
-                            src={arrow}
-                            className={`relative left-[12.4rem] flex items-center ${
-                              open ? 'transform rotate-180' : ''
-                            } text-brand-white`}
-                            id="network-settings-btn"
-                          />
-                        </Disclosure.Button>
+                            <img
+                              src={arrow}
+                              className={`relative left-[12.4rem] flex items-center ${
+                                open ? 'transform rotate-180' : ''
+                              } text-brand-white`}
+                              id="network-settings-btn"
+                            />
+                          </Disclosure.Button>
 
-                        <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
-                          {Object.values(networks.ethereum)
-                            .sort(customSort)
+                          <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
+                            {Object.values(networks.ethereum)
+                              .sort(customSort)
 
-                            .map((currentNetwork: any, index: number, arr) => (
-                              <li
-                                key={uniqueId()}
-                                className={`backface-visibility-hidden ${
-                                  index === 0
-                                    ? 'rounded-tl-lg rounded-tr-lg border-b border-dashed border-gray-600 '
-                                    : index === arr.length - 1
-                                    ? 'rounded-bl-lg rounded-br-lg'
-                                    : 'border-b border-dashed border-gray-600'
-                                } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
-                                onClick={() =>
-                                  handleChangeNetwork(
-                                    currentNetwork,
-                                    'ethereum'
-                                  )
-                                }
-                              >
-                                <span className="ml-8 text-left">
-                                  {currentNetwork.label}
-                                </span>
-                                <div className="absolute items-center flex gap-2 right-[1rem] ">
-                                  {!isBitcoinBased &&
-                                    activeNetworkValidator(currentNetwork) && (
-                                      <Icon
-                                        name="check"
-                                        className="w-4 relative bottom-0.5"
-                                        wrapperClassname="w-6"
-                                      />
-                                    )}
-                                </div>
-                              </li>
-                            ))}
-                        </Disclosure.Panel>
-                      </>
-                    )}
-                  </Disclosure>
-                </Menu.Item>
+                              .map(
+                                (currentNetwork: any, index: number, arr) => (
+                                  <li
+                                    key={uniqueId()}
+                                    className={`backface-visibility-hidden ${
+                                      index === 0
+                                        ? 'rounded-tl-lg rounded-tr-lg border-b border-dashed border-gray-600 '
+                                        : index === arr.length - 1
+                                        ? 'rounded-bl-lg rounded-br-lg'
+                                        : 'border-b border-dashed border-gray-600'
+                                    } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
+                                    onClick={() =>
+                                      handleChangeNetwork(
+                                        currentNetwork,
+                                        'ethereum'
+                                      )
+                                    }
+                                  >
+                                    <span className="ml-8 text-left">
+                                      {currentNetwork.label}
+                                    </span>
+                                    <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                      {!isBitcoinBased &&
+                                        activeNetworkValidator(
+                                          currentNetwork
+                                        ) && (
+                                          <Icon
+                                            name="check"
+                                            className="w-4 relative bottom-0.5"
+                                            wrapperClassname="w-6"
+                                          />
+                                        )}
+                                    </div>
+                                  </li>
+                                )
+                              )}
+                          </Disclosure.Panel>
+                        </>
+                      )}
+                    </Disclosure>
+                  </Menu.Item>
+                )}
 
                 <span className="disabled text-xs flex justify-start px-5 py-3 mt-6">
                   {t('networkMenu.networkSettings')}
