@@ -15,14 +15,17 @@ const ImportAccountView = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const [form] = useForm();
+  const [validPrivateKey, setValidPrivateKey] = useState(false);
 
   //* States
   const [isAccountImported, setIsAccountImported] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    accounts,
+    activeAccount: activeAccountMeta,
+    isBitcoinBased,
+  } = useSelector((state: RootState) => state.vault);
 
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
@@ -96,15 +99,14 @@ const ImportAccountView = () => {
               className="md:w-full"
               hasFeedback
               rules={[
-                {
-                  required: true,
-                  message: '',
-                },
+                { required: true, message: '' },
                 () => ({
                   async validator(_, value) {
-                    if (validatePrivateKeyValue(value)) {
+                    if (validatePrivateKeyValue(value, isBitcoinBased)) {
+                      setValidPrivateKey(true);
                       return Promise.resolve();
                     }
+                    setValidPrivateKey(false);
                     return Promise.reject();
                   },
                 }),
@@ -124,6 +126,7 @@ const ImportAccountView = () => {
                 loading={isImporting}
                 onClick={handleImportAccount}
                 fullWidth={true}
+                disabled={!validPrivateKey}
               >
                 {t('buttons.import')}
               </NeutralButton>

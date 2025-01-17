@@ -89,6 +89,12 @@ import {
 import { validateAndManageUserTransactions } from './transactions/utils';
 
 class MainController extends KeyringManager {
+  public account: {
+    eth: IEthAccountController;
+    sys: ISysAccountController;
+  };
+  public assets: IAssetsManager;
+  public transactions: ITransactionsManager;
   private utilsController: IControllerUtils;
   private assetsManager: IAssetsManager;
   private nftsController: INftController;
@@ -96,13 +102,6 @@ class MainController extends KeyringManager {
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private cancellablePromises: CancellablePromises;
-  public account: {
-    eth: IEthAccountController;
-    sys: ISysAccountController;
-  };
-  public assets: IAssetsManager;
-  public transactions: ITransactionsManager;
-
   private currentPromise: {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
@@ -169,7 +168,23 @@ class MainController extends KeyringManager {
       })
       .catch((error) => console.error('Unlock', error));
 
+    const accounts = JSON.parse(
+      JSON.stringify(store.getState().vault.accounts)
+    );
+
+    // update xprv every time the wallet is unlocked
+    for (const type in accounts) {
+      for (const id in accounts[type]) {
+        accounts[type][id] = {
+          ...accounts[type][id],
+          xprv: this.wallet.accounts[type][id].xprv,
+        };
+      }
+    }
+
+    store.dispatch(setAccounts(accounts));
     store.dispatch(setLastLogin());
+
     return canLogin;
   }
 
@@ -340,8 +355,9 @@ class MainController extends KeyringManager {
       }
     }
 
-    this.setActiveAccount(id, type);
-    store.dispatch(setActiveAccount({ id, type }));
+    this.setActiveAccount(id, type).then(() => {
+      store.dispatch(setActiveAccount({ id, type }));
+    });
   }
 
   public async setActiveNetwork(
@@ -662,8 +678,10 @@ class MainController extends KeyringManager {
   }
 
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
-    const { accounts } = store.getState().vault;
+    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+      store.getState().vault;
     const importedAccount = await this.importAccount(privKey, label);
+
     const paliImp: IPaliAccount = {
       ...importedAccount,
       assets: {
@@ -675,6 +693,7 @@ class MainController extends KeyringManager {
         ethereum: {},
       },
     } as IPaliAccount;
+
     store.dispatch(
       setAccounts({
         ...accounts,
@@ -684,9 +703,24 @@ class MainController extends KeyringManager {
         },
       })
     );
+
+    await this.setActiveAccount(paliImp.id, KeyringAccountType.Imported);
+
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Imported })
     );
+
+    this.updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeAccount,
+      activeNetwork,
+    });
+    this.updateAssetsFromCurrentAccount({
+      activeAccount,
+      activeNetwork,
+      isBitcoinBased,
+    });
 
     return importedAccount;
   }
@@ -718,6 +752,7 @@ class MainController extends KeyringManager {
         ethereum: {},
       },
     } as IPaliAccount;
+
     store.dispatch(
       setAccounts({
         ...accounts,
@@ -727,7 +762,7 @@ class MainController extends KeyringManager {
         },
       })
     );
-    this.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
+    await this.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
