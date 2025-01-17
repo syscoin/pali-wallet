@@ -84,6 +84,7 @@ const MV3_OPTIONS = {
   description: 'A Non-Custodial Crypto Wallet',
   short_name: 'pali',
   permissions: [
+    'alarms',
     'storage',
     'activeTab',
     'clipboardWrite',

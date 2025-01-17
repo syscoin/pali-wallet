@@ -26,9 +26,6 @@ const AutoLockView = () => {
 
   useEffect(() => {
     form.setFieldsValue({ minutes: timer });
-    if (isEnabled) {
-      startInactivityTimer(timer);
-    }
   }, [timer, form, isEnabled]);
 
   const handleMaxClick = () => {
@@ -51,6 +48,7 @@ const AutoLockView = () => {
       } else {
         setHasError(false);
       }
+      startInactivityTimer(autolockMinutes);
       controllerEmitter(['wallet', 'setAutolockTimer'], [autolockMinutes]);
       controllerEmitter(['wallet', 'setIsAutolockEnabled'], [isEnabled]);
       setConfirmed(true);

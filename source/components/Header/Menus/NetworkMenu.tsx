@@ -13,7 +13,7 @@ import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { dispatchChangeNetworkBgEvent } from 'scripts/Background';
+import { dispatchChangeNetworkBgEvent } from 'scripts/Background/utils/bgActions';
 import { RootState } from 'state/store';
 import { NetworkType } from 'utils/types';
 
