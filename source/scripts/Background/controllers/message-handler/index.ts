@@ -46,6 +46,8 @@ export const onMessage = async (
 ) => {
   const { host } = new URL(sender.url);
 
+  if (!sender?.tab?.id) return;
+
   try {
     const response = await _messageHandler(host, message);
     if (response === undefined) return;
@@ -56,7 +58,7 @@ export const onMessage = async (
   } catch (error: any) {
     await chrome.tabs.sendMessage(sender.tab.id, {
       id: message.id,
-      data: { error: error },
-    }); //This was altered for better ethereum compatibility TODO: check on syscoin contentScript side
+      data: { error },
+    });
   }
 };

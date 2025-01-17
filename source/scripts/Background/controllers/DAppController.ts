@@ -42,7 +42,6 @@ const DAppController = (): IDAppController => {
     };
 
     chrome.runtime.onMessage.addListener(onMessage);
-    // port.onDisconnect.addListener(onDisconnect); //TODO: make contentScript unavailable to Dapp on disconnection of port
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {

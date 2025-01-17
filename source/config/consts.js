@@ -123,13 +123,6 @@ const MV3_OPTIONS = {
       run_at: 'document_start',
       js: ['js/contentScript.bundle.js'],
     },
-    {
-      matches: [
-        '*://connect.trezor.io/9/popup.html',
-        'https://localhost:8088/*',
-      ],
-      js: ['js/trezorScript.bundle.js'],
-    },
   ],
   web_accessible_resources: [
     {

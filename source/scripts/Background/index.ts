@@ -245,47 +245,6 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-chrome.runtime.onConnect.addListener(async (port) => {
-  if (port.name === 'pali') {
-    handleIsOpen(true);
-  }
-
-  const { changingConnectedAccount, timer, isTimerEnabled } =
-    store.getState().vault;
-
-  if (timeout) clearTimeout(timeout);
-
-  if (isTimerEnabled) {
-    timeout = setTimeout(() => {
-      handleLogout();
-    }, timer * 60 * 1000);
-  }
-
-  if (
-    changingConnectedAccount.isChangingConnectedAccount &&
-    walletMethods?.resolveAccountConflict
-  )
-    walletMethods.resolveAccountConflict();
-
-  const senderUrl = port.sender.url;
-
-  if (
-    senderUrl?.includes(chrome.runtime.getURL('/app.html')) ||
-    senderUrl?.includes(chrome.runtime.getURL('/external.html'))
-  ) {
-    port.onDisconnect.addListener(() => {
-      handleIsOpen(false);
-      if (timeout) clearTimeout(timeout);
-      if (isTimerEnabled) {
-        timeout = setTimeout(() => {
-          handleLogout();
-        }, timer * 60 * 1000);
-      }
-      log('pali disconnecting port', 'System');
-    });
-  }
-});
-
 async function checkForUpdates() {
   const { activeAccount, isBitcoinBased, activeNetwork } =
     store.getState().vault;
