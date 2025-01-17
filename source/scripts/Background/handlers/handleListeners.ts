@@ -37,7 +37,7 @@ export const handleListeners = (masterController: IMasterController) => {
           }
           break;
         case 'lock_wallet':
-          handleLogout();
+          handleLogout(masterController);
           break;
         case 'changeNetwork':
           if (data) {

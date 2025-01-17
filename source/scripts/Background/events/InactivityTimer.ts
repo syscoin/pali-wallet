@@ -14,7 +14,7 @@
     document.addEventListener(event, resetTimer);
   });
   await chrome.alarms.clear('check_inactivity');
-  await chrome.alarms.create('check_inactivity', { periodInMinutes: 0.5 });
+  await chrome.alarms.create('check_inactivity', { periodInMinutes: 0.01 });
 };
 
 export const checkInactivity = async () => {
