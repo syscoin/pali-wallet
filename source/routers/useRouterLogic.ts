@@ -5,13 +5,13 @@ import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
 import {
   removeVerifyPaliRequestListener,
   resetPaliRequestsCount,
   verifyPaliRequests,
-} from 'scripts/Background';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
+} from 'scripts/Background/utils/bgActions';
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
 import { SYS_UTXO_MAINNET_NETWORK } from 'utils/constants';

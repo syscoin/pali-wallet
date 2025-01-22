@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/icons/greenChecked.svg';
 import { DefaultModal, Layout, NeutralButton } from 'components/index';
-import { setLanguageInLocalStorage } from 'scripts/Background';
+import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
 import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
 import { chromeStorage } from 'utils/storageAPI';

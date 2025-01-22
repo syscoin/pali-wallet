@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-import { keepSWAlive } from 'scripts/Background';
+import { keepSWAlive } from 'scripts/Background/utils/bgActions';
 
 export const KeepAliveContainer = () => {
   const timer = useRef<undefined | NodeJS.Timer>(undefined);
