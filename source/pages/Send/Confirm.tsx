@@ -209,7 +209,6 @@ export const SendConfirm = () => {
               'chainId',
               'maxFeePerGas',
               'maxPriorityFeePerGas',
-              ,
             ]) as ITxState;
 
             const value = ethers.utils.parseUnits(
@@ -913,8 +912,6 @@ export const SendConfirm = () => {
     const arrayValidation = [
       !fee?.gasLimit,
       !fee?.maxFeePerGas,
-      !fee?.baseFee,
-      !fee?.maxPriorityFeePerGas,
       isBitcoinBased,
     ];
 
@@ -925,13 +922,7 @@ export const SendConfirm = () => {
         Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
       10 ** 9
     );
-  }, [
-    fee?.maxPriorityFeePerGas,
-    fee?.gasLimit,
-    fee?.maxFeePerGas,
-    customFee,
-    isBitcoinBased,
-  ]);
+  }, [fee?.gasLimit, fee?.maxFeePerGas, customFee, isBitcoinBased]);
 
   useEffect(() => {
     if (!copied) return;

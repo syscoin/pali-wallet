@@ -4,8 +4,6 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-// import { rehydrateStore } from 'state/rehydrate';
-// import store from 'state/store';
 
 export function useController() {
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -27,18 +25,21 @@ export function useController() {
         'getNetwork',
       ])) as INetwork;
 
-      const _web3Provider = new CustomJsonRpcProvider(
+      const walletWeb3Provider = new CustomJsonRpcProvider(
         abortController.signal,
         network.url
       );
 
-      const _isUnlocked = await controllerEmitter(['wallet', 'isUnlocked'], []);
+      const isWalletUnlocked = await controllerEmitter(
+        ['wallet', 'isUnlocked'],
+        []
+      );
 
       setActiveNetwork(network);
 
-      setWeb3Provider(_web3Provider);
+      setWeb3Provider(walletWeb3Provider);
 
-      setIsUnlocked(!!_isUnlocked);
+      setIsUnlocked(!!isWalletUnlocked);
 
       setIsLoading(false);
     },

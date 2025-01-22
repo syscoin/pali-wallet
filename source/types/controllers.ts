@@ -334,5 +334,28 @@ export interface IDAppController {
   /**
    * Setup communication
    */
-  setup: (port: chrome.runtime.Port) => void;
+  setup: (sender: chrome.runtime.MessageSender) => void;
+}
+
+export enum PaliRoutes {
+  AddEthChain = 'add-EthChain',
+  ChangeAccount = 'change-account',
+  EncryptKey = 'tx/encryptKey',
+  EthSign = 'tx/ethSign',
+  SendApprove = 'tx/send/approve',
+  SendEthTX = 'tx/send/ethTx',
+  SendNTokenTX = 'tx/send/nTokenTx',
+  SwitchEthChain = 'switch-EthChain',
+  SwitchNetwork = 'switch-network',
+  SwitchUtxo = 'switch-UtxoEvm',
+  WatchAsset = 'watch-asset',
+}
+
+export interface IEventData {
+  detail?: string;
+  eventName: string;
+}
+
+export interface ICustomEvent {
+  data: IEventData;
 }

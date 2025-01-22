@@ -207,12 +207,6 @@ export const EthProvider = (host: string, network?: INetwork) => {
             method,
             params
           );
-          console.log({
-            method,
-            params,
-            ethWeb3Provider: ethereumTransaction.web3Provider,
-            requestResult,
-          });
           return requestResult;
         } catch (error) {
           console.log({ requestError: error, method, params });

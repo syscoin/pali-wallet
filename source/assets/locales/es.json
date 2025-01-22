@@ -425,6 +425,7 @@
     "toRestoreThis": "Para restaurar esta billetera actual en el futuro, asegúrese de tener la frase de recuperación.",
     "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
     "setAutoLockTime": "Configurar tiempo de bloqueo automático",
+    "errorMinutes": "los minutos deben ser entre 5 y 120",
     "defaultMinutes": "Predeterminado: 5 minutos después de inactividad.",
     "maximumMinutes": "Máximo: 120 minutos."
   },

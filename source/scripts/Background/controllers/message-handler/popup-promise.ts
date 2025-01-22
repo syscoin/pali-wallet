@@ -1,7 +1,101 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  ICustomEvent,
+  IDAppController,
+  PaliRoutes,
+} from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
+
+const TX_ROUTES = [
+  PaliRoutes.SendEthTX,
+  PaliRoutes.SendApprove,
+  PaliRoutes.SendNTokenTX,
+] as const;
+
+const CHAIN_ROUTES = [
+  PaliRoutes.SwitchEthChain,
+  PaliRoutes.AddEthChain,
+  PaliRoutes.SwitchUtxo,
+] as const;
+
+const REJECTION_ROUTES = new Set([
+  PaliRoutes.SendEthTX,
+  PaliRoutes.SendApprove,
+  PaliRoutes.EthSign,
+  PaliRoutes.EncryptKey,
+  PaliRoutes.SwitchEthChain,
+  PaliRoutes.AddEthChain,
+  PaliRoutes.ChangeAccount,
+  PaliRoutes.SwitchUtxo,
+  PaliRoutes.WatchAsset,
+  PaliRoutes.SwitchNetwork,
+]);
+
+const handleResponseEvent = async (
+  event: ICustomEvent,
+  eventName: string,
+  host: string,
+  route: PaliRoutes,
+  dapp: Readonly<IDAppController>,
+  resolve: (value: unknown) => void
+): Promise<void> => {
+  const expectedEventName = `${eventName}.${host}`;
+
+  if (event.data.eventName !== expectedEventName) {
+    return;
+  }
+
+  if (CHAIN_ROUTES.includes(route as (typeof CHAIN_ROUTES)[number])) {
+    dapp.setHasWindow(host, false);
+    resolve(null);
+    return;
+  }
+
+  if (!event.data.detail) {
+    return;
+  }
+
+  try {
+    const parsedDetail = JSON.parse(event.data.detail);
+
+    if (TX_ROUTES.includes(route as (typeof TX_ROUTES)[number])) {
+      resolve(parsedDetail.hash);
+      return;
+    }
+
+    resolve(parsedDetail);
+  } catch (error) {
+    console.error('Error parsing event detail:', error);
+    throw new Error('Failed to parse event detail');
+  }
+};
+
+const handleCloseWindow = (
+  popup: any,
+  route: PaliRoutes,
+  host: string,
+  dapp: Readonly<IDAppController>,
+  resolve: (value: unknown) => void
+): void => {
+  const handleWindowRemoval = (windowId: number): void => {
+    if (windowId !== popup.id) {
+      return;
+    }
+
+    dapp.setHasWindow(host, false);
+
+    if (REJECTION_ROUTES.has(route)) {
+      resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
+      return;
+    }
+
+    resolve({ success: false });
+  };
+
+  chrome.windows.onRemoved.addListener(handleWindowRemoval);
+};
 
 /**
  * Opens a popup and adds events listener to resolve a promise.
@@ -26,15 +120,7 @@ export const popupPromise = async ({
   route: string;
 }) => {
   const { dapp, createPopup } = getController();
-  // if (
-  //   eventName !== 'connect' &&
-  //   eventName !== 'wallet_switchEthereumChain' &&
-  //   eventName !== 'wallet_addEthereumChain' &&
-  //   eventName !== 'change_UTXOEVM' &&
-  //   eventName !== 'switchNetwork' &&
-  //   !dapp.isConnected(host)
-  // )
-  //   return;
+
   if (dapp.hasWindow(host))
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
@@ -49,49 +135,16 @@ export const popupPromise = async ({
     throw error;
   }
   return new Promise((resolve) => {
-    self.addEventListener('message', (event) => {
-      if (event.data.eventName === `${eventName}.${host}`) {
-        if (event.data.detail !== undefined && event.data.detail !== null) {
-          if (
-            route === 'tx/send/ethTx' ||
-            route === 'tx/send/approve' ||
-            route === 'tx/send/nTokenTx'
-          ) {
-            resolve(JSON.parse(event.data.detail).hash);
-          }
-          resolve(JSON.parse(event.data.detail));
-        }
-        if (
-          route === 'switch-EthChain' ||
-          route === 'add-EthChain' ||
-          route === 'switch-UtxoEvm'
-        ) {
-          resolve(null);
-          dapp.setHasWindow(host, false);
-          return null;
-        }
-      }
-    });
-
-    chrome.windows.onRemoved.addListener((id) => {
-      if (id === popup.id) {
-        if (
-          route === 'tx/send/ethTx' ||
-          route === 'tx/send/approve' ||
-          route === 'tx/ethSign' ||
-          route === 'tx/encryptKey' ||
-          route === 'switch-EthChain' ||
-          route === 'add-EthChain' ||
-          route === 'change-account' ||
-          route === 'switch-UtxoEvm' ||
-          route === 'watch-asset' ||
-          route === 'switch-network'
-        ) {
-          resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
-        }
-        dapp.setHasWindow(host, false);
-        resolve({ success: false });
-      }
+    self.addEventListener('message', (swEvent) => {
+      handleResponseEvent(
+        swEvent,
+        eventName,
+        host,
+        route as PaliRoutes,
+        dapp,
+        resolve
+      );
+      handleCloseWindow(popup, route as PaliRoutes, host, dapp, resolve);
     });
   });
 };

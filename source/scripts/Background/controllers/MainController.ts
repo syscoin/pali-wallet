@@ -9,6 +9,7 @@ import {
   KeyringAccountType,
   IWalletState,
   CustomJsonRpcProvider,
+  CustomL2JsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
   getSysRpc,
@@ -89,6 +90,12 @@ import {
 import { validateAndManageUserTransactions } from './transactions/utils';
 
 class MainController extends KeyringManager {
+  public account: {
+    eth: IEthAccountController;
+    sys: ISysAccountController;
+  };
+  public assets: IAssetsManager;
+  public transactions: ITransactionsManager;
   private utilsController: IControllerUtils;
   private assetsManager: IAssetsManager;
   private nftsController: INftController;
@@ -96,13 +103,6 @@ class MainController extends KeyringManager {
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private cancellablePromises: CancellablePromises;
-  public account: {
-    eth: IEthAccountController;
-    sys: ISysAccountController;
-  };
-  public assets: IAssetsManager;
-  public transactions: ITransactionsManager;
-
   private currentPromise: {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
@@ -126,91 +126,6 @@ class MainController extends KeyringManager {
 
     this.bindMethods();
   }
-
-  private bindMethods() {
-    const proto = Object.getPrototypeOf(this);
-    for (const key of Object.getOwnPropertyNames(proto)) {
-      if (typeof this[key] === 'function' && key !== 'constructor') {
-        this[key] = this[key].bind(this);
-      }
-    }
-  }
-
-  private createCancellablePromise<T>(
-    executor: (
-      resolve: (value: T) => void,
-      reject: (reason?: any) => void
-    ) => void
-  ): { cancel: () => void; promise: Promise<T> } {
-    let cancel = () => {
-      // no-op
-    };
-    const promise: Promise<T> = new Promise((resolve, reject) => {
-      cancel = () => {
-        reject('Network change cancelled');
-      };
-      executor(resolve, reject);
-    });
-
-    return { promise, cancel };
-  }
-
-  private setActiveNetworkLogic = async (
-    network: INetwork,
-    chain: string,
-    cancelled: boolean,
-    resolve: (value: {
-      activeChain: INetworkType;
-      chain: string;
-      chainId: string;
-      isBitcoinBased: boolean;
-      network: INetwork;
-      networkVersion: number;
-      wallet: IWalletState;
-    }) => void,
-    reject: (reason?: any) => void
-  ) => {
-    if (store.getState().vault.isNetworkChanging && !cancelled) {
-      return;
-    }
-
-    store.dispatch(setIsNetworkChanging(true));
-    store.dispatch(setIsLoadingBalances(true));
-    store.dispatch(setCurrentBlock(undefined));
-
-    const isBitcoinBased = chain === INetworkType.Syscoin;
-
-    const { sucess, wallet, activeChain } = await this.setSignerNetwork(
-      network,
-      chain
-    );
-    const chainId = network.chainId.toString(16);
-    const networkVersion = network.chainId;
-    if (sucess) {
-      this.web3Provider = this.ethereumTransaction.web3Provider;
-      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
-      this.assets = this.assetsManager;
-      this.transactionsManager = TransactionsManager(
-        this.ethereumTransaction.web3Provider
-      );
-      this.balancesManager = BalancesManager(
-        this.ethereumTransaction.web3Provider
-      );
-      resolve({
-        activeChain,
-        chain,
-        chainId,
-        isBitcoinBased,
-        network,
-        networkVersion,
-        wallet,
-      });
-    } else {
-      reject(
-        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-      );
-    }
-  };
 
   public setAutolockTimer(minutes: number) {
     store.dispatch(setTimer(minutes));
@@ -254,7 +169,23 @@ class MainController extends KeyringManager {
       })
       .catch((error) => console.error('Unlock', error));
 
+    const accounts = JSON.parse(
+      JSON.stringify(store.getState().vault.accounts)
+    );
+
+    // update xprv every time the wallet is unlocked
+    for (const type in accounts) {
+      for (const id in accounts[type]) {
+        accounts[type][id] = {
+          ...accounts[type][id],
+          xprv: this.wallet.accounts[type][id].xprv,
+        };
+      }
+    }
+
+    store.dispatch(setAccounts(accounts));
     store.dispatch(setLastLogin());
+
     return canLogin;
   }
 
@@ -425,15 +356,15 @@ class MainController extends KeyringManager {
       }
     }
 
-    this.setActiveAccount(id, type);
-    store.dispatch(setActiveAccount({ id, type }));
+    this.setActiveAccount(id, type).then(() => {
+      store.dispatch(setActiveAccount({ id, type }));
+    });
   }
 
   public async setActiveNetwork(
     network: INetwork,
     chain: string
   ): Promise<{ chainId: string; networkVersion: number }> {
-    const controller = getController();
     let cancelled = false;
     if (this.currentPromise) {
       this.currentPromise.cancel();
@@ -454,174 +385,15 @@ class MainController extends KeyringManager {
     this.currentPromise = promiseWrapper;
     promiseWrapper.promise
       .then(async ({ wallet, activeChain, isBitcoinBased }) => {
-        store.dispatch(
-          setNetworkChange({
-            activeChain,
-            wallet,
-          })
-        );
-        store.dispatch(setIsBitcoinBased(isBitcoinBased));
-        store.dispatch(setIsLoadingBalances(false));
-        await this.utilsController.setFiat();
-
-        this.updateAssetsFromCurrentAccount({
+        await this.handleNetworkChangeSuccess(
+          wallet,
+          activeChain,
           isBitcoinBased,
-          activeNetwork: network,
-          activeAccount: {
-            id: wallet.activeAccountId,
-            type: wallet.activeAccountType,
-          },
-        });
-
-        this.updateUserTransactionsState({
-          isPolling: false,
-          isBitcoinBased,
-          activeNetwork: network,
-          activeAccount: {
-            id: wallet.activeAccountId,
-            type: wallet.activeAccountType,
-          },
-        });
-
-        controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-          method: PaliEvents.chainChanged,
-          params: {
-            chainId: `0x${network.chainId.toString(16)}`,
-            networkVersion: network.chainId,
-          },
-        });
-
-        controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
-          method: PaliEvents.isBitcoinBased,
-          params: { isBitcoinBased },
-        });
-
-        controller.dapp.handleBlockExplorerChange(
-          PaliSyscoinEvents.blockExplorerChanged,
-          {
-            method: PaliSyscoinEvents.blockExplorerChanged,
-            params: isBitcoinBased ? network.url : null,
-          }
+          network
         );
-
-        switch (isBitcoinBased) {
-          case true:
-            const isTestnet = this.verifyIfIsTestnet();
-
-            controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-              method: PaliEvents.isTestnet,
-              params: { isTestnet },
-            });
-
-            controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-              method: PaliEvents.xpubChanged,
-              params:
-                wallet.accounts[wallet.activeAccountType][
-                  wallet.activeAccountId
-                ].xpub,
-            });
-
-            controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
-              method: PaliEvents.accountsChanged,
-              params: null,
-            });
-            break;
-          case false:
-            controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-              method: PaliEvents.isTestnet,
-              params: { isTestnet: undefined },
-            });
-
-            controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-              method: PaliEvents.xpubChanged,
-              params: null,
-            });
-
-            controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
-              method: PaliEvents.accountsChanged,
-              params: [
-                wallet.accounts[wallet.activeAccountType][
-                  wallet.activeAccountId
-                ].address,
-              ],
-            });
-            break;
-          default:
-            break;
-        }
-
-        store.dispatch(setIsNetworkChanging(false));
-        return;
       })
-      .catch((reason) => {
-        if (reason === 'Network change cancelled') {
-          console.error('User asked to switch network - slow connection');
-        } else {
-          const {
-            activeNetwork,
-            isBitcoinBased,
-            accounts,
-            activeAccount: { id: activeAccountId, type: activeAccountType },
-          } = store.getState().vault;
+      .catch(this.handleNetworkChangeError);
 
-          controller.dapp.handleStateChange(PaliEvents.chainChanged, {
-            method: PaliEvents.chainChanged,
-            params: {
-              chainId: `0x${activeNetwork.chainId.toString(16)}`,
-              networkVersion: activeNetwork.chainId,
-            },
-          });
-          controller.dapp.handleBlockExplorerChange(
-            PaliSyscoinEvents.blockExplorerChanged,
-            {
-              method: PaliSyscoinEvents.blockExplorerChanged,
-              params: isBitcoinBased ? network.url : null,
-            }
-          );
-
-          switch (isBitcoinBased) {
-            case true:
-              const isTestnet = this.verifyIfIsTestnet();
-
-              controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-                method: PaliEvents.isTestnet,
-                params: { isTestnet },
-              });
-
-              controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-                method: PaliEvents.xpubChanged,
-                params: accounts[activeAccountType][activeAccountId].xpub,
-              });
-
-              controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
-                method: PaliEvents.accountsChanged,
-                params: null,
-              });
-
-              break;
-            case false:
-              controller.dapp.handleStateChange(PaliEvents.isTestnet, {
-                method: PaliEvents.isTestnet,
-                params: { isTestnet: undefined },
-              });
-
-              controller.dapp.handleStateChange(PaliEvents.xpubChanged, {
-                method: PaliEvents.xpubChanged,
-                params: null,
-              });
-
-              controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
-                method: PaliEvents.accountsChanged,
-                params: [accounts[activeAccountType][activeAccountId].address],
-              });
-            default:
-              break;
-          }
-        }
-        store.dispatch(setStoreError(true));
-        store.dispatch(setIsNetworkChanging(false));
-        store.dispatch(setIsLoadingBalances(false));
-      });
     return promiseWrapper.promise;
   }
 
@@ -907,8 +679,10 @@ class MainController extends KeyringManager {
   }
 
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
-    const { accounts } = store.getState().vault;
+    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
+      store.getState().vault;
     const importedAccount = await this.importAccount(privKey, label);
+
     const paliImp: IPaliAccount = {
       ...importedAccount,
       assets: {
@@ -920,6 +694,7 @@ class MainController extends KeyringManager {
         ethereum: {},
       },
     } as IPaliAccount;
+
     store.dispatch(
       setAccounts({
         ...accounts,
@@ -929,9 +704,24 @@ class MainController extends KeyringManager {
         },
       })
     );
+
+    await this.setActiveAccount(paliImp.id, KeyringAccountType.Imported);
+
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Imported })
     );
+
+    this.updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeAccount,
+      activeNetwork,
+    });
+    this.updateAssetsFromCurrentAccount({
+      activeAccount,
+      activeNetwork,
+      isBitcoinBased,
+    });
 
     return importedAccount;
   }
@@ -963,6 +753,7 @@ class MainController extends KeyringManager {
         ethereum: {},
       },
     } as IPaliAccount;
+
     store.dispatch(
       setAccounts({
         ...accounts,
@@ -972,7 +763,7 @@ class MainController extends KeyringManager {
         },
       })
     );
-    this.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
+    await this.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
@@ -1453,6 +1244,7 @@ class MainController extends KeyringManager {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -1460,10 +1252,30 @@ class MainController extends KeyringManager {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
+    const L2Networks = [324, 300];
+    const isL2Network = L2Networks.includes(activeNetwork.chainId);
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
+
+    let internalProvider:
+      | CustomJsonRpcProvider
+      | CustomL2JsonRpcProvider
+      | undefined;
+
+    if (isPolling) {
+      const CurrentProvider = isL2Network
+        ? CustomL2JsonRpcProvider
+        : CustomJsonRpcProvider;
+
+      const abortController = new AbortController();
+      internalProvider = new CurrentProvider(
+        abortController.signal,
+        activeNetwork.url
+      );
+    }
 
     const { currentPromise: balancePromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -1473,7 +1285,8 @@ class MainController extends KeyringManager {
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url
+                activeNetwork.url,
+                internalProvider
               );
 
             const actualUserBalance = isBitcoinBased
@@ -1564,6 +1377,300 @@ class MainController extends KeyringManager {
 
   public async setIsSidePanelOpen(isOpen: boolean) {
     store.dispatch(setSidePanelOpenedState(isOpen));
+  }
+
+  private handleStateChange(
+    events: { method: PaliEvents | PaliSyscoinEvents; params: any }[]
+  ) {
+    const controller = getController();
+    events.forEach((event: { method: PaliEvents; params: any }) => {
+      controller.dapp.handleStateChange(event.method, event);
+    });
+  }
+
+  private handleNetworkChangeError = (reason: any) => {
+    const {
+      activeNetwork,
+      isBitcoinBased,
+      accounts,
+      activeAccount: { id: activeAccountId, type: activeAccountType },
+    } = store.getState().vault;
+
+    if (reason === 'Network change cancelled') {
+      console.error('User asked to switch network - slow connection');
+    } else {
+      this.handleStateChange([
+        {
+          method: PaliEvents.chainChanged,
+          params: {
+            chainId: `0x${activeNetwork.chainId.toString(16)}`,
+            networkVersion: activeNetwork.chainId,
+          },
+        },
+        {
+          method: PaliSyscoinEvents.blockExplorerChanged,
+          params: isBitcoinBased ? activeNetwork.url : null,
+        },
+        {
+          method: PaliEvents.isTestnet,
+          params: {
+            isTestnet: isBitcoinBased ? this.verifyIfIsTestnet() : undefined,
+          },
+        },
+        {
+          method: PaliEvents.xpubChanged,
+          params: isBitcoinBased
+            ? accounts[activeAccountType][activeAccountId].xpub
+            : null,
+        },
+        {
+          method: PaliEvents.accountsChanged,
+          params: isBitcoinBased
+            ? null
+            : [accounts[activeAccountType][activeAccountId].address],
+        },
+      ]);
+    }
+
+    store.dispatch(setStoreError(true));
+    store.dispatch(setIsNetworkChanging(false));
+    store.dispatch(setIsLoadingBalances(false));
+  };
+
+  private async configureNetwork(
+    network: INetwork,
+    chain: string
+  ): Promise<{
+    activeChain: INetworkType;
+    success: boolean;
+    wallet: IWalletState;
+  }> {
+    const {
+      sucess: success,
+      wallet,
+      activeChain,
+    } = await this.setSignerNetwork(network, chain);
+    if (success) {
+      this.web3Provider = this.ethereumTransaction.web3Provider;
+      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
+      this.assets = this.assetsManager;
+      this.transactionsManager = TransactionsManager(
+        this.ethereumTransaction.web3Provider
+      );
+      this.balancesManager = BalancesManager(
+        this.ethereumTransaction.web3Provider
+      );
+    }
+    return { success, wallet, activeChain };
+  }
+
+  private resolveNetworkConfiguration(
+    resolve: (value: {
+      activeChain: INetworkType;
+      chain: string;
+      chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
+      networkVersion: number;
+      wallet: IWalletState;
+    }) => void,
+    {
+      activeChain,
+      chain,
+      chainId,
+      isBitcoinBased,
+      network,
+      networkVersion,
+      wallet,
+    }: {
+      activeChain: INetworkType;
+      chain: string;
+      chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
+      networkVersion: number;
+      wallet: IWalletState;
+    }
+  ) {
+    resolve({
+      activeChain,
+      chain,
+      chainId,
+      isBitcoinBased,
+      network,
+      networkVersion,
+      wallet,
+    });
+  }
+
+  private bindMethods() {
+    const proto = Object.getPrototypeOf(this);
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (typeof this[key] === 'function' && key !== 'constructor') {
+        this[key] = this[key].bind(this);
+      }
+    }
+  }
+
+  private createCancellablePromise<T>(
+    executor: (
+      resolve: (value: T) => void,
+      reject: (reason?: any) => void
+    ) => void
+  ): { cancel: () => void; promise: Promise<T> } {
+    let cancel = () => {
+      // no-op
+    };
+    const promise: Promise<T> = new Promise((resolve, reject) => {
+      cancel = () => {
+        reject('Network change cancelled');
+      };
+      executor(resolve, reject);
+    });
+
+    return { promise, cancel };
+  }
+
+  private setActiveNetworkLogic = async (
+    network: INetwork,
+    chain: string,
+    cancelled: boolean,
+    resolve: (value: {
+      activeChain: INetworkType;
+      chain: string;
+      chainId: string;
+      isBitcoinBased: boolean;
+      network: INetwork;
+      networkVersion: number;
+      wallet: IWalletState;
+    }) => void,
+    reject: (reason?: any) => void
+  ) => {
+    if (store.getState().vault.isNetworkChanging && !cancelled) {
+      return;
+    }
+
+    store.dispatch(setIsNetworkChanging(true));
+    store.dispatch(setIsLoadingBalances(true));
+    store.dispatch(setCurrentBlock(undefined));
+
+    const isBitcoinBased = chain === INetworkType.Syscoin;
+    const { success, wallet, activeChain } = await this.configureNetwork(
+      network,
+      chain
+    );
+    const chainId = network.chainId.toString(16);
+    const networkVersion = network.chainId;
+
+    if (success) {
+      this.resolveNetworkConfiguration(resolve, {
+        activeChain,
+        chain,
+        chainId,
+        isBitcoinBased,
+        network,
+        networkVersion,
+        wallet,
+      });
+    } else {
+      reject(
+        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
+      );
+    }
+  };
+
+  private async handleNetworkChangeSuccess(
+    wallet: IWalletState,
+    activeChain: INetworkType,
+    isBitcoinBased: boolean,
+    network: INetwork
+  ) {
+    store.dispatch(
+      setNetworkChange({
+        activeChain,
+        wallet,
+      })
+    );
+    store.dispatch(setIsBitcoinBased(isBitcoinBased));
+    store.dispatch(setIsLoadingBalances(false));
+    await this.utilsController.setFiat();
+
+    this.updateAssetsFromCurrentAccount({
+      isBitcoinBased,
+      activeNetwork: network,
+      activeAccount: {
+        id: wallet.activeAccountId,
+        type: wallet.activeAccountType,
+      },
+    });
+
+    this.updateUserTransactionsState({
+      isPolling: false,
+      isBitcoinBased,
+      activeNetwork: network,
+      activeAccount: {
+        id: wallet.activeAccountId,
+        type: wallet.activeAccountType,
+      },
+    });
+
+    this.handleStateChange([
+      {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${network.chainId.toString(16)}`,
+          networkVersion: network.chainId,
+        },
+      },
+      {
+        method: PaliEvents.isBitcoinBased,
+        params: { isBitcoinBased },
+      },
+      {
+        method: PaliSyscoinEvents.blockExplorerChanged,
+        params: isBitcoinBased ? network.url : null,
+      },
+    ]);
+
+    if (isBitcoinBased) {
+      const isTestnet = this.verifyIfIsTestnet();
+      this.handleStateChange([
+        {
+          method: PaliEvents.isTestnet,
+          params: { isTestnet },
+        },
+        {
+          method: PaliEvents.xpubChanged,
+          params:
+            wallet.accounts[wallet.activeAccountType][wallet.activeAccountId]
+              .xpub,
+        },
+        {
+          method: PaliEvents.accountsChanged,
+          params: null,
+        },
+      ]);
+    } else {
+      this.handleStateChange([
+        {
+          method: PaliEvents.isTestnet,
+          params: { isTestnet: undefined },
+        },
+        {
+          method: PaliEvents.xpubChanged,
+          params: null,
+        },
+        {
+          method: PaliEvents.accountsChanged,
+          params: [
+            wallet.accounts[wallet.activeAccountType][wallet.activeAccountId]
+              .address,
+          ],
+        },
+      ]);
+    }
+
+    store.dispatch(setIsNetworkChanging(false));
   }
 }
 

@@ -53,6 +53,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
+
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('ethereum', maxEventListeners, wallet);
     this._metamask = this._getExperimentalApi();
@@ -84,10 +85,16 @@ export class PaliInpageProviderEth extends BaseProvider {
           error
         )
       );
+
+    this.initMessageListener();
+  }
+
+  public initMessageListener() {
     window.addEventListener(
-      'notification',
+      'paliNotification',
       (event: any) => {
         const { method, params } = JSON.parse(event.detail);
+
         switch (method) {
           case 'pali_accountsChanged':
             this._handleAccountsChanged(params);
@@ -219,6 +226,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
     return super._rpcRequest(payload, cb);
   }
+
   /**
    * Internal backwards compatibility method, used in send.
    *

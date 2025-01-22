@@ -13,6 +13,7 @@ import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
+
 /**
  * Handles methods request.
  *

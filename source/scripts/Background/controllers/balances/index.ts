@@ -1,4 +1,7 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  CustomL2JsonRpcProvider,
+} from '@pollum-io/sysweb3-keyring';
 
 import { IPaliAccount } from 'state/vault/types';
 
@@ -7,13 +10,14 @@ import SyscoinBalanceController from './syscoin';
 import { IBalancesManager } from './types';
 
 const BalancesManager = (
-  web3Provider: CustomJsonRpcProvider
+  web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
 ): IBalancesManager => {
   const evmBalanceController = EvmBalanceController(web3Provider);
   const getBalanceUpdatedForAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
-    networkUrl: string
+    networkUrl: string,
+    provider?: CustomJsonRpcProvider | CustomL2JsonRpcProvider
   ) => {
     switch (isBitcoinBased) {
       case true:
@@ -30,8 +34,9 @@ const BalancesManager = (
         }
       case false:
         try {
-          const getEvmBalance =
-            await evmBalanceController.getEvmBalanceForAccount(currentAccount);
+          const getEvmBalance = await EvmBalanceController(
+            provider || web3Provider
+          ).getEvmBalanceForAccount(currentAccount);
 
           return getEvmBalance;
         } catch (evmBalanceError) {

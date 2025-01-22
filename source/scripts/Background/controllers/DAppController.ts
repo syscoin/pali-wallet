@@ -14,7 +14,6 @@ interface IDappsSession {
   [host: string]: {
     activeAddress: string | null;
     hasWindow: boolean;
-    port: chrome.runtime.Port;
   };
 }
 
@@ -31,29 +30,45 @@ const DAppController = (): IDAppController => {
     return !!dapps?.[host];
   };
 
-  const setup = (port: chrome.runtime.Port) => {
+  const setup = (sender: chrome.runtime.MessageSender) => {
     const { isBitcoinBased } = store.getState().vault;
-    const { host } = new URL(port.sender.url);
+    const { host } = new URL(sender.url);
     const activeAccount = isBitcoinBased
       ? getAccount(host)?.xpub
       : getAccount(host)?.address;
     _dapps[host] = {
       activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
-      port,
     };
 
-    port.onMessage.addListener(onMessage);
-    // port.onDisconnect.addListener(onDisconnect); //TODO: make contentScript unavailable to Dapp on disconnection of port
+    chrome.runtime.onMessage.addListener(onMessage);
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
     !isDappConnected && store.dispatch(addDApp(dapp));
     const { accounts, isBitcoinBased } = store.getState().vault;
-    _dapps[dapp.host] = { activeAddress: '', hasWindow: false, port: null };
+    _dapps[dapp.host] = { activeAddress: '', hasWindow: false };
     _dapps[dapp.host].activeAddress = isBitcoinBased
       ? accounts[dapp.accountType][dapp.accountId].xpub
       : accounts[dapp.accountType][dapp.accountId].address;
+
+    isBitcoinBased
+      ? _dispatchPaliEvent(
+          dapp.host,
+          {
+            method: PaliSyscoinEvents.xpubChanged,
+            params: accounts[dapp.accountType][dapp.accountId].xpub,
+          },
+          PaliSyscoinEvents.xpubChanged
+        )
+      : _dispatchPaliEvent(
+          dapp.host,
+          {
+            method: PaliEvents.accountsChanged,
+            params: [_dapps[dapp.host].activeAddress],
+          },
+          PaliEvents.accountsChanged
+        );
   };
 
   const requestPermissions = (
@@ -221,8 +236,22 @@ const DAppController = (): IDAppController => {
     data?: { method: string; params: any },
     id = 'notification'
   ) => {
-    if (_dapps[host] && _dapps[host].port) {
-      _dapps[host].port.postMessage({ id, data });
+    const tabs = await chrome.tabs.query({ url: `*://${host}/*` });
+
+    if (tabs.length) {
+      tabs.forEach((tab) => {
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: (eventData) => {
+            const event = new CustomEvent('paliNotification', {
+              detail: JSON.stringify(eventData),
+            });
+            window.dispatchEvent(event);
+          },
+          args: [{ id, data }],
+        });
+      });
     }
   };
 

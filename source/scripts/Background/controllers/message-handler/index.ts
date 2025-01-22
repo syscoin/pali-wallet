@@ -13,7 +13,7 @@ import { Message } from './types';
  * - Enable/disable requests
  * - Requests for Sys and Eth providers methods
  */
-const _messageHandler = async (host: string, message: Message) => {
+const _messageHandler = (host: string, message: Message) => {
   if (chrome.runtime.lastError) {
     throw new Error('Runtime last error');
   }
@@ -41,16 +41,24 @@ const _messageHandler = async (host: string, message: Message) => {
  * Receives and reply messages
  */
 export const onMessage = async (
-  message: Message,
-  port: chrome.runtime.Port
+  message: any,
+  sender: chrome.runtime.MessageSender
 ) => {
-  const { host } = new URL(port.sender.url);
+  const { host } = new URL(sender.url);
+
+  if (!sender?.tab?.id) return;
+
   try {
     const response = await _messageHandler(host, message);
     if (response === undefined) return;
-    port.postMessage({ id: message.id, data: response });
+    await chrome.tabs.sendMessage(sender.tab.id, {
+      id: message.id,
+      data: response,
+    });
   } catch (error: any) {
-    console.error(error);
-    port.postMessage({ id: message.id, data: { error: error } }); //This was altered for better ethereum compatibility TODO: check on syscoin contentScript side
+    await chrome.tabs.sendMessage(sender.tab.id, {
+      id: message.id,
+      data: { error },
+    });
   }
 };

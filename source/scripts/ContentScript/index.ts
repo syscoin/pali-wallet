@@ -4,27 +4,49 @@ import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
+
 const emitter = new EventEmitter();
 
-// Connect to pali
-const backgroundPort = chrome.runtime.connect(undefined, {
-  name: 'pali-inject',
-});
+const sendToBackground = (
+  message: any,
+  handleResponse?: (response: any) => void
+) => {
+  chrome.runtime.sendMessage(message, handleResponse);
+};
 
-backgroundPort.postMessage({ action: 'isInjected' });
+const handleEthInjection = (message: any) => {
+  const isInjected = message?.isInjected;
+
+  if (typeof isInjected !== 'undefined') {
+    if (isInjected) {
+      injectScriptFile('js/inpage.bundle.js', 'inpage');
+    } else {
+      injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
+    }
+    return;
+  }
+};
+
+sendToBackground(
+  { action: 'isInjected', type: 'pw-msg-background' },
+  handleEthInjection
+);
 
 // Add listener for pali events
-const checkForPaliRegisterEvent = (type, id) => {
+const checkForPaliRegisterEvent = (id: any) => {
   emitter.once(id, (result) => {
     if (typeof id === 'string') {
-      if (String(id).includes('isUnlocked'))
+      if (String(id).includes('isUnlocked')) {
         window.dispatchEvent(new CustomEvent(id, { detail: result }));
+      }
     }
-    if (result)
+    if (result) {
       window.dispatchEvent(
         new CustomEvent(id, { detail: JSON.stringify(result) })
       );
-    else window.dispatchEvent(new CustomEvent(id, { detail: null }));
+    } else {
+      window.dispatchEvent(new CustomEvent(id, { detail: null }));
+    }
   });
 };
 
@@ -43,9 +65,9 @@ const start = () => {
       if (!id || !type) return;
 
       // listen for the response
-      checkForPaliRegisterEvent(type, id);
+      checkForPaliRegisterEvent(id);
 
-      backgroundPort.postMessage({
+      sendToBackground({
         id,
         type,
         data,
@@ -73,31 +95,14 @@ const startEventEmitter = () => {
   }
 };
 
-// Every message from pali emits an event
-backgroundPort.onMessage.addListener(({ id, data }) => {
-  // verify if data params contains type property for remove or not window.ethereum object
-  switch (data?.params?.type) {
-    case 'pali_removeProperty':
-      injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
-      break;
-    case 'pali_addProperty':
-      injectScriptFile('js/inpage.bundle.js', 'inpage');
-      break;
-    default:
-      break;
-  }
-  emitter.emit(id, data);
-});
-
 const doctypeCheck = () => {
   const { doctype } = window.document;
-
   if (doctype) {
     return doctype.name === 'html';
   }
-
   return true;
 };
+
 const suffixCheck = () => {
   const prohibitedTypes = [/\.xml$/u, /\.pdf$/u];
   const currentUrl = window.location.pathname;
@@ -107,39 +112,32 @@ const suffixCheck = () => {
       return false;
     }
   }
-
   return true;
 };
 
 const documentElementCheck = () => {
   const documentElement = document.documentElement.nodeName;
-
   if (documentElement) {
     return documentElement.toLowerCase() === 'html';
   }
-
   return true;
 };
 
 const blockedDomainCheck = () => {
   const blockedDomains = ['dropbox.com', 'app.clickup.com'];
-
   const currentUrl = window.location.href;
   let currentRegex;
 
   for (let i = 0; i < blockedDomains.length; i++) {
     const blockedDomain = blockedDomains[i].replace('.', '\\.');
-
     currentRegex = new RegExp(
       `(?:https?:\\/\\/)(?:(?!${blockedDomain}).)*$`,
       'u'
     );
-
     if (!currentRegex.test(currentUrl)) {
       return true;
     }
   }
-
   return false;
 };
 
@@ -176,26 +174,34 @@ export const injectScriptFile = (file: string, id: string) => {
     console.error('Pali Wallet: Provider injection failed.', error);
   }
 };
-const startEthInjection = () => {
-  backgroundPort.onMessage.addListener((message) => {
-    const hasEthProp = message.isInjected;
-    switch (hasEthProp) {
-      case true:
-        injectScriptFile('js/inpage.bundle.js', 'inpage');
-        break;
-      case false:
+
+// listen for messages from background
+chrome.runtime.onMessage.addListener((message) => {
+  const { id, data } = message;
+
+  if (data?.params?.type) {
+    switch (data.params.type) {
+      case 'pali_removeProperty':
         injectScriptFile(
           'js/handleWindowProperties.bundle.js',
           'removeProperty'
         );
         break;
+      case 'pali_addProperty':
+        injectScriptFile('js/inpage.bundle.js', 'inpage');
+        break;
     }
-  });
-};
+  }
+
+  if (id) {
+    emitter.emit(id, data);
+  }
+});
+
+// Initial setup
 if (shouldInjectProvider()) {
   // inject window.pali property in browser
   injectScriptFile('js/pali.bundle.js', 'pali');
-  startEthInjection();
 }
 
 start();

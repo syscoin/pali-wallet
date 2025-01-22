@@ -74,7 +74,7 @@ const MV2_OPTIONS = {
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '3.1.0',
+  version: '3.2.3',
   icons: {
     16: 'assets/icons/favicon-16.png',
     32: 'assets/icons/favicon-32.png',
@@ -84,6 +84,7 @@ const MV3_OPTIONS = {
   description: 'A Non-Custodial Crypto Wallet',
   short_name: 'pali',
   permissions: [
+    'alarms',
     'storage',
     'activeTab',
     'clipboardWrite',
@@ -127,13 +128,6 @@ const MV3_OPTIONS = {
       matches: ['file://*/*', 'http://*/*', 'https://*/*'],
       run_at: 'document_start',
       js: ['js/contentScript.bundle.js'],
-    },
-    {
-      matches: [
-        '*://connect.trezor.io/9/popup.html',
-        'https://localhost:8088/*',
-      ],
-      js: ['js/trezorScript.bundle.js'],
     },
   ],
   web_accessible_resources: [

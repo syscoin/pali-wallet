@@ -58,8 +58,8 @@ const RenderAccountsListByBitcoinBased = (
                     className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center text-white text-sm 
                   font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
                    transition duration-300`}
-                    onClick={() => {
-                      setActiveAccount(
+                    onClick={async () => {
+                      await setActiveAccount(
                         account.id,
                         KeyringAccountType.HDAccount
                       );
@@ -72,7 +72,7 @@ const RenderAccountsListByBitcoinBased = (
                       style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
                       className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
                     >
-                      <img src={logo} className="mr-1 w-7"></img>
+                      <img src={logo} className="mr-1 w-7" alt="" />
                       {account.label} ({ellipsis(account.address, 4, 4)})
                     </span>
                     <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
@@ -80,6 +80,44 @@ const RenderAccountsListByBitcoinBased = (
                     </span>
                     {activeAccount.id === account.id &&
                       activeAccount.type === KeyringAccountType.HDAccount && (
+                        <Icon
+                          name="check"
+                          className="mb-1 ml-2 w-4"
+                          color="#8EC100"
+                        />
+                      )}
+                  </li>
+                ))}
+
+              {Object.values(accounts.Imported)
+                .filter((acc) => !acc.address.startsWith('0x'))
+                .map((account, index) => (
+                  <li
+                    className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center text-white text-sm 
+                  font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
+                   transition duration-300`}
+                    onClick={async () => {
+                      await setActiveAccount(
+                        account.id,
+                        KeyringAccountType.Imported
+                      );
+                      close();
+                    }}
+                    id={`account-${index}`}
+                    key={account.id}
+                  >
+                    <span
+                      style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+                      className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
+                    >
+                      <img src={logo} className="mr-1 w-7" alt="" />
+                      {account.label} ({ellipsis(account.address, 4, 4)})
+                    </span>
+                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
+                      Imported
+                    </span>
+                    {activeAccount.id === account.id &&
+                      activeAccount.type === KeyringAccountType.Imported && (
                         <Icon
                           name="check"
                           className="mb-1 ml-2 w-4"
@@ -100,11 +138,14 @@ const RenderAccountsListByBitcoinBased = (
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}
-                    onClick={() => {
+                    onClick={async () => {
                       if (account?.originNetwork.url !== activeNetwork.url) {
                         return;
                       }
-                      setActiveAccount(account.id, KeyringAccountType.Trezor);
+                      await setActiveAccount(
+                        account.id,
+                        KeyringAccountType.Trezor
+                      );
                       close();
                     }}
                     id={`account-${index}`}
@@ -119,12 +160,13 @@ const RenderAccountsListByBitcoinBased = (
                     >
                       <img
                         src={trezorLogo}
+                        alt=""
                         style={{
                           filter:
                             'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                         }}
                         className="mr-1 w-7"
-                      ></img>
+                      />
                       {account.label}{' '}
                       {!(account?.originNetwork.url !== activeNetwork.url) &&
                         `(${ellipsis(account.address, 4, 4)})`}
@@ -156,11 +198,14 @@ const RenderAccountsListByBitcoinBased = (
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}
-                    onClick={() => {
+                    onClick={async () => {
                       if (account?.originNetwork.url !== activeNetwork.url) {
                         return;
                       }
-                      setActiveAccount(account.id, KeyringAccountType.Ledger);
+                      await setActiveAccount(
+                        account.id,
+                        KeyringAccountType.Ledger
+                      );
                       close();
                     }}
                     id={`account-${index}`}
@@ -175,12 +220,13 @@ const RenderAccountsListByBitcoinBased = (
                     >
                       <img
                         src={ledgerLogo}
+                        alt=""
                         style={{
                           filter:
                             'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                         }}
                         className="mr-2 w-7"
-                      ></img>
+                      />
                       {account.label}{' '}
                       {!(account?.originNetwork.url !== activeNetwork.url) &&
                         `(${ellipsis(account.address, 4, 4)})`}
@@ -206,7 +252,7 @@ const RenderAccountsListByBitcoinBased = (
               ([keyringAccountType, accountTypeAccounts]) => (
                 <div key={keyringAccountType}>
                   {Object.values(accountTypeAccounts)
-                    .filter((account) => account.xpub !== '')
+                    .filter((account) => account.address.startsWith('0x'))
                     .map((account, index) => (
                       <li
                         className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center justify-start text-white text-sm 
@@ -219,7 +265,7 @@ const RenderAccountsListByBitcoinBased = (
                       : 'cursor-pointer'
                   } transform
                    transition duration-300`}
-                        onClick={() => {
+                        onClick={async () => {
                           if (
                             (account.isTrezorWallet &&
                               account?.originNetwork?.isBitcoinBased) ||
@@ -228,7 +274,7 @@ const RenderAccountsListByBitcoinBased = (
                           ) {
                             return;
                           }
-                          setActiveAccount(
+                          await setActiveAccount(
                             account.id,
                             keyringAccountType as KeyringAccountType
                           );
@@ -245,27 +291,29 @@ const RenderAccountsListByBitcoinBased = (
                           className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
                         >
                           {account.isImported ? (
-                            <img src={importIcon} className="mr-1 w-7"></img>
+                            <img src={importIcon} className="mr-1 w-7" alt="" />
                           ) : account.isTrezorWallet ? (
                             <img
                               src={trezorLogo}
+                              alt=""
                               style={{
                                 filter:
                                   'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                               }}
                               className="mr-1 w-7"
-                            ></img>
+                            />
                           ) : account.isLedgerWallet ? (
                             <img
                               src={ledgerLogo}
+                              alt=""
                               style={{
                                 filter:
                                   'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                               }}
                               className="mr-1 w-7"
-                            ></img>
+                            />
                           ) : (
-                            <img src={logo} className="mr-1 w-7"></img>
+                            <img src={logo} className="mr-1 w-7" alt="" />
                           )}{' '}
                           {account.label}{' '}
                           {!(
@@ -327,8 +375,6 @@ export const AccountMenu: React.FC = () => {
 
     await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
   };
-
-  const cursorType = isBitcoinBased ? 'cursor-not-allowed' : 'cursor-pointer';
 
   return (
     <div className="flex flex-col justify-start items-start">
@@ -394,27 +440,13 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <div className="flex flex-col gap-2">
           <li
-            onClick={() => {
-              isBitcoinBased ? null : navigate('/settings/account/import');
-            }}
-            className={`py-1.5 ${cursorType} px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
+            onClick={() => navigate('/settings/account/import')}
+            className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
           >
-            <Icon
-              name="ImportUser"
-              isSvg
-              className="mb-1 text-brand-white"
-              opacity={isBitcoinBased ? 0.6 : 1}
-            />
+            <Icon name="ImportUser" isSvg className="mb-1 text-brand-white" />
 
-            <span className={isBitcoinBased ? 'disabled' : ''}>
-              {t('accountMenu.importAccount')}
-            </span>
+            <span>{t('accountMenu.importAccount')}</span>
           </li>
-          {isBitcoinBased && (
-            <span className="disabled text-xs px-5 text-left">
-              {t('accountMenu.importAccMessage')}
-            </span>
-          )}
         </div>
       </Menu.Item>
     </div>

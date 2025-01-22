@@ -294,6 +294,7 @@
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
     "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
     "setAutoLockTime": "Configurar tempo de bloqueio automático",
+    "errorMinutes": "o valor para o autolock deve ser entre 5 e 120 minutos",
     "defaultMinutes": "Padrão: 5 minutos após inatividade.",
     "maximumMinutes": "Máximo: 120 minutos.",
     "connectYourWalletAndClick": "CONECTE SUA {{hardwalletName}} E CLIQUE PARA CONECTAR!",

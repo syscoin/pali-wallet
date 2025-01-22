@@ -29,16 +29,6 @@ module.exports = {
     contentScript: join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: join(sourcePath, 'pages/App', 'index.tsx'),
     external: join(sourcePath, 'pages/External', 'index.tsx'),
-    trezorScript: join(
-      sourcePath,
-      'scripts/ContentScript/trezor',
-      'trezor-content-script.ts'
-    ),
-    trezorUSB: join(
-      sourcePath,
-      'scripts/ContentScript/trezor',
-      'trezor-usb-permissions.ts'
-    ),
     offscreenScript: join(
       sourcePath,
       'scripts/ContentScript/offscreen',
@@ -148,12 +138,6 @@ module.exports = {
       chunks: ['external'],
       hash: true,
       filename: 'external.html',
-    }),
-    new HtmlWebpackPlugin({
-      template: join(viewsPath, 'trezor-usb-permissions.html'),
-      filename: 'trezor-usb-permissions.html',
-      inject: 'body',
-      chunks: ['trezorUSB'],
     }),
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'offscreen.html'),
