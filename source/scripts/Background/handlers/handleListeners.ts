@@ -4,6 +4,7 @@ import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { checkForUpdates } from 'scripts/Background/handlers/handlePaliUpdates';
 import { checkForPendingTransactionsUpdate } from 'scripts/Background/utils/checkForPendingTransactions';
 import { startPendingTransactionsPolling } from 'scripts/Background/utils/startPendingTransactionsPolling';
+import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
 
@@ -46,6 +47,9 @@ export const handleListeners = (masterController: IMasterController) => {
               data.isBitcoinBased ? 'syscoin' : 'ethereum'
             );
           }
+          break;
+        case 'startPolling':
+          startPolling();
           break;
         case 'startPendingTransactionsPolling':
           store.dispatch(setIsPolling(true));
