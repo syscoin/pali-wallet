@@ -1,4 +1,5 @@
 import { Dialog } from '@headlessui/react';
+import { isHexString } from 'ethers/lib/utils';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -104,14 +105,12 @@ export const ConnectWallet = () => {
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
             {Object.entries(accounts).map(([keyringAccountType, account]) => {
-              if (
-                isBitcoinBased &&
-                keyringAccountType === KeyringAccountType.Imported
-              ) {
-                return null;
-              }
+              const isValidAccount = (currentAccount: any) =>
+                isBitcoinBased
+                  ? !isHexString(currentAccount.address)
+                  : isHexString(currentAccount.address);
 
-              let accountList = Object.values(account);
+              let accountList = Object.values(account).filter(isValidAccount);
 
               if (!accountList.length) return null;
 
@@ -192,13 +191,13 @@ export const ConnectWallet = () => {
           </div>
         )}
 
-        <small className="absolute bottom-28 text-center text-brand-royalblue text-sm">
+        <small className="absolute bottom-32 text-center text-brand-royalblue text-sm">
           {t('connections.onlyConnect')}{' '}
           <a href="https://docs.syscoin.org/">{t('connections.learnMore')}</a>
         </small>
 
-        <div className="absolute bottom-10 flex gap-3 items-center justify-between px-10 w-full md:max-w-2xl">
-          <SecondaryButton type="button" action onClick={() => window.close()}>
+        <div className="absolute bottom-14 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <SecondaryButton type="button" onClick={() => window.close()}>
             {t('buttons.cancel')}
           </SecondaryButton>
 
