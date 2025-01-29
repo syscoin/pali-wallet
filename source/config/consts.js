@@ -89,7 +89,6 @@ const MV3_OPTIONS = {
     'activeTab',
     'clipboardWrite',
     'unlimitedStorage',
-    'offscreen',
     'scripting',
   ],
   host_permissions: [
