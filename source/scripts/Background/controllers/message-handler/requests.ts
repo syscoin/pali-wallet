@@ -129,15 +129,6 @@ export const methodRequest = async (
       ? [dapp.getAccount(host)?.address]
       : [];
   }
-  // if (
-  //   !isRequestAllowed &&
-  //   methodName !== 'switchEthereumChain' &&
-  //   methodName !== 'getProviderState' &&
-  //   methodName !== 'getSysProviderState' &&
-  //   methodName !== 'getAccount' &&
-  //   methodName !== 'changeUTXOEVM'
-  // )
-  //   throw cleanErrorStack(ethErrors.provider.unauthorized());
   const estimateFee = () => wallet.getRecommendedFee();
 
   //* Wallet methods
