@@ -1,6 +1,4 @@
-import MainController from 'scripts/Background/controllers/MainController';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
-import { IMainController } from 'types/controllers';
 
 import { UpdateTxAction } from './transactions';
 
