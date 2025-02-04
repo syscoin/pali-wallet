@@ -41,50 +41,6 @@ export class CancellablePromises {
     return { currentPromise, cancel };
   };
 
-  public cancelAllPromises = () => {
-    if (this.transactionPromise) {
-      this.transactionPromise.cancel();
-      this.transactionPromise = null;
-    }
-
-    if (this.assetsPromise) {
-      this.assetsPromise.cancel();
-      this.assetsPromise = null;
-    }
-    if (this.nftsPromise) {
-      this.nftsPromise.cancel();
-      this.nftsPromise = null;
-    }
-
-    if (this.balancePromise) {
-      this.balancePromise.cancel();
-      this.balancePromise = null;
-    }
-  };
-
-  public cancelPromise(target: PromiseTargets) {
-    switch (target) {
-      case PromiseTargets.TRANSACTION:
-        this.transactionPromise.cancel();
-        this.transactionPromise = null;
-        break;
-
-      case PromiseTargets.ASSETS:
-        this.assetsPromise.cancel();
-        this.assetsPromise = null;
-        break;
-      case PromiseTargets.NFTS:
-        this.nftsPromise.cancel();
-        this.nftsPromise = null;
-        break;
-
-      case PromiseTargets.BALANCE:
-        this.balancePromise.cancel();
-        this.balancePromise = null;
-        break;
-    }
-  }
-
   public setPromise(target: PromiseTargets, promiseState: any) {
     switch (target) {
       case PromiseTargets.TRANSACTION:

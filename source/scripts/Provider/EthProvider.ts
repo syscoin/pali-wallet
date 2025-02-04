@@ -15,12 +15,11 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (host: string, network?: INetwork) => {
+export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
-    // await setSignerNetwork(network, 'ethereum');
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
