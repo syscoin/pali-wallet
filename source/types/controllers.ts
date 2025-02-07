@@ -144,6 +144,7 @@ export interface IDAppController {
   setup: (sender: chrome.runtime.MessageSender) => void;
 }
 
+// eslint-disable-next-line no-shadow
 export enum PaliRoutes {
   AddEthChain = 'add-EthChain',
   ChangeAccount = 'change-account',
