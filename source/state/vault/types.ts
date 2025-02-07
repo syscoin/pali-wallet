@@ -75,6 +75,7 @@ export type PaliAccount = {
   [id: number]: IPaliAccount;
 };
 
+// eslint-disable-next-line no-shadow
 export enum TransactionsType {
   Ethereum = 'ethereum',
   Syscoin = 'syscoin',
