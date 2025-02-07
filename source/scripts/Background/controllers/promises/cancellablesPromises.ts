@@ -3,6 +3,7 @@ export interface IPromiseProps {
   promise: Promise<{}>;
 }
 
+// eslint-disable-next-line no-shadow
 export enum PromiseTargets {
   ASSETS = 'assets',
   BALANCE = 'balance',
@@ -29,7 +30,9 @@ export class CancellablePromises {
       reject: (reason?: any) => void
     ) => void
   ): { cancel: () => void; currentPromise: Promise<T> } => {
-    let cancel = () => {};
+    let cancel = () => {
+      //noop
+    };
 
     const currentPromise: Promise<T> = new Promise((resolve, reject) => {
       cancel = () => {
