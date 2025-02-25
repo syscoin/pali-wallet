@@ -11,7 +11,9 @@ export function handleObserveStateChanges() {
       type: 'CONTROLLER_STATE_CHANGE',
       data: currentState,
     })
-    .catch(() => {});
+    .catch(() => {
+      //no-op
+    });
 
   store.subscribe(() => {
     const nextState = store.getState();
@@ -32,7 +34,9 @@ export function handleObserveStateChanges() {
           type: 'CONTROLLER_STATE_CHANGE',
           data: nextState,
         })
-        .catch(() => {}); // ignore errors when sending message and the extension is closed
+        .catch(() => {
+          //no-op
+        }); // ignore errors when sending message and the extension is closed
     }
   });
 }

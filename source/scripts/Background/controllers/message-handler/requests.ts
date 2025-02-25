@@ -45,13 +45,13 @@ export const methodRequest = async (
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased && prefix !== 'sys') {
-    const provider = EthProvider(host, activeNetwork);
+    const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
       data.params
     );
     if (resp !== false && resp !== undefined) {
-      return resp; //Sending back to Dapp non restrictive method response
+      return resp; //Sending back to Dapp non-restrictive method response
     }
   }
   const activeAccountData = accounts[activeAccount.type][activeAccount.id];
@@ -129,21 +129,13 @@ export const methodRequest = async (
       ? [dapp.getAccount(host)?.address]
       : [];
   }
-  // if (
-  //   !isRequestAllowed &&
-  //   methodName !== 'switchEthereumChain' &&
-  //   methodName !== 'getProviderState' &&
-  //   methodName !== 'getSysProviderState' &&
-  //   methodName !== 'getAccount' &&
-  //   methodName !== 'changeUTXOEVM'
-  // )
-  //   throw cleanErrorStack(ethErrors.provider.unauthorized());
   const estimateFee = () => wallet.getRecommendedFee();
 
   //* Wallet methods
   if (prefix === 'wallet') {
     let tryingToAdd = false;
-    const { activeNetwork, networks: chains } = store.getState().vault;
+    const { activeNetwork: currentNetwork, networks: chains } =
+      store.getState().vault;
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
@@ -257,17 +249,17 @@ export const methodRequest = async (
         tryingToAdd = true;
       case 'switchEthereumChain':
         if (isBitcoinBased) throw cleanErrorStack(ethErrors.rpc.internal());
-        const chainId = tryingToAdd
+        const chainIdToAdd = tryingToAdd
           ? customRPCData.chainId
           : Number(data.params[0].chainId);
 
-        if (activeNetwork.chainId === chainId) return null;
-        else if (chains.ethereum[chainId] && !isNetworkChanging) {
+        if (currentNetwork.chainId === chainIdToAdd) return null;
+        else if (chains.ethereum[chainIdToAdd] && !isNetworkChanging) {
           return popupPromise({
             host,
             route: 'switch-EthChain',
             eventName: 'wallet_switchEthereumChain',
-            data: { chainId: chainId },
+            data: { chainId: chainIdToAdd },
           });
         } else if (isNetworkChanging)
           throw cleanErrorStack(
@@ -286,25 +278,23 @@ export const methodRequest = async (
           },
         });
       case 'getProviderState':
-        const providerState = {
+        return {
           accounts: dapp.getAccount(host)
             ? [dapp.getAccount(host).address]
             : [],
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          chainId: `0x${currentNetwork.chainId.toString(16)}`,
           isUnlocked: wallet.isUnlocked(),
-          networkVersion: activeNetwork.chainId,
+          networkVersion: currentNetwork.chainId,
           isBitcoinBased,
         };
-        return providerState;
       case 'getSysProviderState':
-        const blockExplorerURL = isBitcoinBased ? activeNetwork.url : null;
-        const sysProviderState = {
+        const blockExplorerURL = isBitcoinBased ? currentNetwork.url : null;
+        return {
           xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
           isUnlocked: wallet.isUnlocked(),
           isBitcoinBased,
         };
-        return sysProviderState;
       default:
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
@@ -375,7 +365,7 @@ export const methodRequest = async (
     dapp.getAccount(host)?.address &&
     prefix !== 'sys' &&
     !isBitcoinBased &&
-    EthProvider(host, activeNetwork).checkIsBlocking(data.method) &&
+    EthProvider(host).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
       dapp.getAccount(host)?.address
   ) {
@@ -400,7 +390,7 @@ export const methodRequest = async (
 
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
-    const provider = EthProvider(host, activeNetwork);
+    const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     console.log({ responseInside: resp });
     // if (!wallet.isUnlocked()) return false;
