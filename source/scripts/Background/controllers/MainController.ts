@@ -194,6 +194,7 @@ class MainController extends KeyringManager {
       accounts,
       activeAccount: activeAccountInfo,
       activeNetwork,
+      isBitcoinBased,
     } = store.getState().vault;
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
@@ -233,6 +234,16 @@ class MainController extends KeyringManager {
         },
       },
     };
+
+    // to get only the first 4 accounts
+    for (let i = 0; i < 4; i++) {
+      await this.createAccount(
+        isBitcoinBased,
+        activeNetwork.chainId,
+        null,
+        true
+      );
+    }
 
     store.dispatch(setIsLoadingBalances(false));
     store.dispatch(
@@ -275,9 +286,10 @@ class MainController extends KeyringManager {
   public async createAccount(
     isBitcoinBased: boolean,
     activeNetworkChainId: number,
-    label?: string
+    label?: string,
+    validate?: boolean
   ): Promise<IPaliAccount> {
-    const newAccount = await this.addNewAccount(label);
+    const newAccount = await this.addNewAccount(label, validate);
     let newAccountWithAssets: IPaliAccount;
 
     if (isBitcoinBased) {

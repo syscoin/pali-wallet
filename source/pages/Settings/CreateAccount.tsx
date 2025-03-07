@@ -26,7 +26,7 @@ const CreateAccount = () => {
 
     const { address: newAddress } = (await controllerEmitter(
       ['wallet', 'createAccount'],
-      [isBitcoinBased, activeNetwork.chainId, label]
+      [isBitcoinBased, activeNetwork.chainId, label, false]
     )) as any;
 
     setAddress(newAddress);
