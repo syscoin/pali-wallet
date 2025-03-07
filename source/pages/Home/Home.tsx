@@ -6,8 +6,13 @@ import { useLocation } from 'react-router-dom';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import { FaucetChainIds } from '../../types/faucet';
-import { FaucetAccessModal, FaucetFirstAccessModal } from 'components/index';
-import { Header, Icon, Button, Loading } from 'components/index';
+import {
+  FaucetAccessModal,
+  FaucetFirstAccessModal,
+  Loading,
+} from 'components/index';
+import { Header, Icon, Button } from 'components/index'; // Import SkeletonLoader
+import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
@@ -143,8 +148,7 @@ export const Home = () => {
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
       {accounts[activeAccount.type][activeAccount.id] &&
       lastLogin &&
-      isUnlocked &&
-      !isNetworkChanging ? (
+      isUnlocked ? (
         <>
           <Header accountHeader />
           <WalletProviderDefaultModal />
@@ -168,9 +172,13 @@ export const Home = () => {
                   id="home-balance"
                   className={`font-rubik text-5xl font-medium`}
                 >
-                  {moreThanMillion
-                    ? formatMillionNumber(actualBalance)
-                    : formatBalanceDecimals(actualBalance || 0, false)}{' '}
+                  {isNetworkChanging ? (
+                    <SkeletonLoader width="200px" height="40px" />
+                  ) : moreThanMillion ? (
+                    formatMillionNumber(actualBalance)
+                  ) : (
+                    formatBalanceDecimals(actualBalance || 0, false)
+                  )}{' '}
                 </p>
 
                 <p
@@ -193,7 +201,7 @@ export const Home = () => {
                 onClick={() =>
                   isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
                 }
-                disabled={isLoadingBalances}
+                disabled={isLoadingBalances || isNetworkChanging}
               >
                 <Icon
                   name="ArrowUpBoldIcon"
@@ -210,6 +218,7 @@ export const Home = () => {
                 className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                 id="receive-btn"
                 onClick={() => navigate('/receive')}
+                disabled={isLoadingBalances || isNetworkChanging}
               >
                 <Icon
                   name="ArrowDownLoad"

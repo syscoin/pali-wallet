@@ -238,12 +238,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
                                     } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
-                                    onClick={() =>
+                                    onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
                                         'syscoin'
-                                      )
-                                    }
+                                      );
+                                      menuprops.close();
+                                    }}
                                   >
                                     <span className="ml-8 text-left">
                                       {currentNetwork.label}
@@ -312,12 +313,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
                                     } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
-                                    onClick={() =>
+                                    onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
                                         'ethereum'
-                                      )
-                                    }
+                                      );
+                                      menuprops.close();
+                                    }}
                                   >
                                     <span className="ml-8 text-left">
                                       {currentNetwork.label}

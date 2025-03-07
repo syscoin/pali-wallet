@@ -58,7 +58,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     }
   }, [error]);
 
-  const hanldeDisconnectFromDapp = () => {
+  const handleDisconnectFromDapp = () => {
     controllerEmitter(['dapp', 'disconnect'], [host]);
     controllerEmitter(['wallet', 'resolveAccountConflict']);
   };
@@ -146,7 +146,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   action
                   width="32"
                   type="button"
-                  onClick={() => hanldeDisconnectFromDapp()}
+                  onClick={() => handleDisconnectFromDapp()}
                 >
                   {t('buttons.noCancel')}
                 </SecondaryButton>

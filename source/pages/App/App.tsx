@@ -6,12 +6,6 @@ import { Router } from 'routers/index';
 
 const App: FC = () => {
   useEffect(() => {
-    // Ensure compatibility between browsers
-
-    // store.subscribe(() => {
-    //   setDataStorage(store.getState());
-    // });
-
     const messageListener = ({ action }) => {
       if (action === 'logoutFS') {
         // Navigate to the home page
