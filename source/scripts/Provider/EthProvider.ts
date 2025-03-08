@@ -1,7 +1,6 @@
 import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';

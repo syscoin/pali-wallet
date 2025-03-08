@@ -4,13 +4,13 @@ import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
 import {
-  initialNetworksState,
+  IKeyringBalances,
   initialActiveHdAccountState,
   initialActiveImportedAccountState,
-  KeyringAccountType,
-  IWalletState,
-  IKeyringBalances,
   initialActiveTrezorAccountState,
+  initialNetworksState,
+  IWalletState,
+  KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
@@ -88,6 +88,12 @@ export const initialState: IVaultState = {
     570: true,
     5700: true,
     57000: true,
+  },
+  prevBalances: {
+    [0]: {
+      [INetworkType.Ethereum]: {},
+      [INetworkType.Syscoin]: {},
+    },
   },
 };
 
@@ -795,13 +801,35 @@ const VaultState = createSlice({
         TransactionsType.Ethereum
       ][chainID] as IEvmTransaction[];
 
-      const removedTx = userTransactions.filter(
-        (tx) => tx.hash !== oldTxHash
-      ) as IEvmTransaction[];
-
       state.accounts[type][id].transactions[TransactionsType.Ethereum][
         chainID
-      ] = removedTx;
+      ] = userTransactions.filter(
+        (tx) => tx.hash !== oldTxHash
+      ) as IEvmTransaction[];
+    },
+    setPrevBalances(
+      state: IVaultState,
+      action: PayloadAction<{
+        activeAccountId: number;
+        balance: number;
+        chain: INetworkType;
+        chainId: number;
+      }>
+    ) {
+      const { activeAccountId, chain, chainId, balance } = action.payload;
+
+      if (!state.prevBalances[activeAccountId]) {
+        state.prevBalances[activeAccountId] = {
+          [INetworkType.Ethereum]: {},
+          [INetworkType.Syscoin]: {},
+        };
+      }
+
+      if (!state.prevBalances[activeAccountId][chain]) {
+        state.prevBalances[activeAccountId][chain] = {};
+      }
+
+      state.prevBalances[activeAccountId][chain][chainId] = balance;
     },
   },
 
@@ -858,6 +886,7 @@ export const {
   setTransactionStatusToAccelerated,
   setCoinsList,
   setIsLastTxConfirmed,
+  setPrevBalances,
 } = VaultState.actions;
 
 export default VaultState.reducer;
