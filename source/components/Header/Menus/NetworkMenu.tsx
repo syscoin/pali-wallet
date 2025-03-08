@@ -11,6 +11,7 @@ import arrow from 'assets/images/arrow.png';
 import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
+import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchChangeNetworkBgEvent } from 'scripts/Background/utils/bgActions';
@@ -45,6 +46,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
   const {
     activeAccount: { type: activeAccountType },
+    isNetworkChanging,
   } = useSelector((state: RootState) => state.vault);
 
   const activeNetwork = useSelector(
@@ -127,6 +129,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             >
               {networkType}
             </span>
+            {isNetworkChanging && <Spinner size={16} color="#ffffff" />}
 
             <img
               src={arrow}
