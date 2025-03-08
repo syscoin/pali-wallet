@@ -1,6 +1,7 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
 import v3_0_1 from '../migration/v3_0_1';
+import v3_4_1 from '../migration/v3_4_1';
 import { getIsMigratedVersion, loadState } from 'state/paliStorage';
 
 const MigrationController = async () => {
@@ -20,6 +21,14 @@ const MigrationController = async () => {
    */
   if (currentPaliVersion === '3.0.1' && !isMigratedVersion) {
     await v3_0_1(state);
+  }
+
+  /**
+   * version < 3.4.1
+   * Description: remove 80001 network
+   */
+  if (currentPaliVersion === '3.4.1' && !isMigratedVersion) {
+    await v3_4_1(state);
   }
 };
 

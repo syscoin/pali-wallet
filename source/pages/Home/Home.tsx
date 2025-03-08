@@ -18,6 +18,7 @@ import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafau
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useNetworkChangeHandler } from 'hooks/useNetworkChangeHandler';
 import { RootState } from 'state/store';
 import {
   ONE_MILLION,
@@ -30,14 +31,13 @@ import {
 import { TxsPanel } from './TxsPanel';
 
 export const Home = () => {
-  //* Hooks
   const { getFiatAmount } = usePrice();
   const { navigate } = useUtils();
   const { t } = useTranslation();
   const { state } = useLocation();
   const { controllerEmitter, isUnlocked } = useController();
+  useNetworkChangeHandler();
 
-  //* Selectors
   const { asset: fiatAsset, price: fiatPrice } = useSelector(
     (priceState: RootState) => priceState.price.fiat
   );
@@ -53,12 +53,10 @@ export const Home = () => {
     shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
 
-  //* States
   const [isTestnet, setIsTestnet] = useState(false);
   const [showModalCongrats, setShowModalCongrats] = useState(false);
   const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
-  //* Constants
   const { url, chainId } = activeNetwork;
 
   let isInCooldown: boolean;
@@ -88,7 +86,6 @@ export const Home = () => {
     setShowModalCongrats(true);
   };
 
-  //* Effect for set Testnet or not
   useEffect(() => {
     if (!isUnlocked) return;
 
@@ -97,7 +94,6 @@ export const Home = () => {
     );
   }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
 
-  //* fiatPriceValue with useMemo to recalculate every time that something changes and be in cache if the value is the same
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
       actualBalance > 0 ? actualBalance : 0,

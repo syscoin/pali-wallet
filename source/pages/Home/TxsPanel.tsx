@@ -20,7 +20,6 @@ export const TxsPanel: FC = () => {
           id="assets-btn"
           type="button"
           onClick={() => setActivity(false)}
-          // create a disabled state
         >
           {t('buttons.assets')}
         </Button>
@@ -32,7 +31,6 @@ export const TxsPanel: FC = () => {
           id="activity-btn"
           type="button"
           onClick={() => setActivity(true)}
-          // create a disabled state
         >
           {t('buttons.activity')}
         </Button>

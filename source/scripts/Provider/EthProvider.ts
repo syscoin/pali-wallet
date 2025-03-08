@@ -20,7 +20,6 @@ export const EthProvider = (host: string) => {
     const {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
-    // await setSignerNetwork(network, 'ethereum');
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));

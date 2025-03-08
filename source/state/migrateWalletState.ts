@@ -1,3 +1,5 @@
+import { initialNetworksState } from '@pollum-io/sysweb3-keyring/types/initial-state';
+
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { parseJsonRecursively } from 'utils/format';
 
@@ -13,6 +15,15 @@ export async function migrateWalletState(
     if (vault && vaultKeys && !hasAccount) {
       const oldState = await chrome.storage.local.get(oldStateName);
       const newState = parseJsonRecursively(oldState[oldStateName] || '{}');
+
+      // Apply the new migration
+      if (
+        newState.vault &&
+        newState.vault.networks &&
+        newState.vault.networks.ethereum
+      ) {
+        delete newState.vault.networks.ethereum[80001];
+      }
 
       await chrome.storage.local.set({
         'sysweb3-vault': vault,

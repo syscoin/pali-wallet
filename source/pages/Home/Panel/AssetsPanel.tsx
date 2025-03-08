@@ -7,7 +7,7 @@ import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
-// todo: create a loading state
+
 export const AssetsPanel = () => {
   const { t } = useTranslation();
   const { id, type } = useSelector(

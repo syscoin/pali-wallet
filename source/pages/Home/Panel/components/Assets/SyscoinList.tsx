@@ -16,6 +16,7 @@ export const SyscoinAssetsList = () => {
     activeAccount,
     isLoadingAssets,
     activeNetwork: { chainId },
+    isNetworkChanging,
   } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
@@ -26,7 +27,7 @@ export const SyscoinAssetsList = () => {
   );
   return (
     <>
-      {isLoadingAssets ? (
+      {isLoadingAssets || isNetworkChanging ? (
         <LoadingComponent />
       ) : (
         <>
