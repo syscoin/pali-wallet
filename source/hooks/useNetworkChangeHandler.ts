@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { RootState } from 'state/store';
 
-const FIVE_SECONDS = 5000;
+const THREE_SECONDS = 3000;
 
 export const useNetworkChangeHandler = () => {
   const isNetworkChanging = useSelector(
@@ -18,7 +18,7 @@ export const useNetworkChangeHandler = () => {
     if (isNetworkChanging) {
       timeout = setTimeout(() => {
         navigate('/chain-fail-to-connect');
-      }, FIVE_SECONDS);
+      }, THREE_SECONDS);
     }
 
     return () => {
