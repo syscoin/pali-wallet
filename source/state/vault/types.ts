@@ -14,7 +14,7 @@ import {
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: PaliAccount }; //todo adjust and guarantee type is correct
+  accounts: { [key in KeyringAccountType]: PaliAccount };
   activeAccount: {
     id: number;
     type: KeyringAccountType;
@@ -43,6 +43,7 @@ export interface IVaultState {
   isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
+  prevBalances: IPrevBalances;
   shouldShowFaucetModal: { [k: number]: boolean };
   timer: number;
 }
@@ -53,6 +54,17 @@ export interface INetworksVault {
   };
   [INetworkType.Syscoin]: {
     [chainId: number]: INetwork;
+  };
+}
+
+export interface IPrevBalances {
+  [accountId: number]: {
+    [INetworkType.Ethereum]: {
+      [chainId: number]: number;
+    };
+    [INetworkType.Syscoin]: {
+      [chainId: number]: number;
+    };
   };
 }
 
@@ -75,6 +87,7 @@ export type PaliAccount = {
   [id: number]: IPaliAccount;
 };
 
+// eslint-disable-next-line no-shadow
 export enum TransactionsType {
   Ethereum = 'ethereum',
   Syscoin = 'syscoin',

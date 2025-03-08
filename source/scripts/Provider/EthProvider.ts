@@ -1,7 +1,6 @@
 import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
@@ -20,7 +19,6 @@ export const EthProvider = (host: string) => {
     const {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
-    // await setSignerNetwork(network, 'ethereum');
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
