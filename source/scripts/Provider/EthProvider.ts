@@ -15,7 +15,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (host: string, network?: INetwork) => {
+export const EthProvider = (host: string) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const {
       ethereumTransaction: { web3Provider },

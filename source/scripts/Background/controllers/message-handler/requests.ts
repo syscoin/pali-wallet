@@ -45,7 +45,7 @@ export const methodRequest = async (
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
   if (data.method && !isBitcoinBased && prefix !== 'sys') {
-    const provider = EthProvider(host, activeNetwork);
+    const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
       data.params
@@ -375,7 +375,7 @@ export const methodRequest = async (
     dapp.getAccount(host)?.address &&
     prefix !== 'sys' &&
     !isBitcoinBased &&
-    EthProvider(host, activeNetwork).checkIsBlocking(data.method) &&
+    EthProvider(host).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
       dapp.getAccount(host)?.address
   ) {
@@ -400,7 +400,7 @@ export const methodRequest = async (
 
   //* Providers methods
   if (prefix !== 'sys' && !isBitcoinBased) {
-    const provider = EthProvider(host, activeNetwork);
+    const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     console.log({ responseInside: resp });
     // if (!wallet.isUnlocked()) return false;

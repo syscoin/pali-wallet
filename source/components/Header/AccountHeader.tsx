@@ -125,66 +125,77 @@ export const AccountHeader: React.FC = () => {
         <div className="add-identicon ml-1 mr-2 my-2" />
 
         <div className="items-center justify-center px-1 text-brand-white">
-          <p
-            className="mb-1 text-base font-medium"
-            id="active-account-label items-center"
-          >
-            {accounts[activeAccount.type][activeAccount.id]?.label}
-
-            <IconButton
-              onClick={() =>
-                editAccount(accounts[activeAccount.type][activeAccount.id])
-              }
-              type="primary"
-              shape="circle"
-            >
-              <Icon
-                name="edit"
-                className="hover:text-brand-royalblue text-xs ml-1 flex justify-center w-4 h-4"
-              />
-            </IconButton>
-          </p>
-          <Tooltip
-            content={
-              isLedger && isBitcoinBased && activeNetwork.chainId === 57
-                ? t('home.clickToVerify')
-                : ''
-            }
-          >
+          {isNetworkChanging ? (
+            <SkeletonLoader width="150px" height="20px" />
+          ) : (
             <p
-              className={`text-xs ${
-                isLedger && isBitcoinBased && activeNetwork.chainId === 57
-                  ? 'cursor-pointer'
-                  : ''
-              }`}
-              onClick={() => {
-                if (isLedger && isBitcoinBased && activeNetwork.chainId === 57)
-                  setIsOpenModal(true);
-              }}
+              className="mb-1 text-base font-medium"
+              id="active-account-label items-center"
             >
-              {isNetworkChanging ? (
-                <SkeletonLoader width="100px" height="20px" />
-              ) : (
-                ellipsis(
-                  accounts[activeAccount.type][activeAccount.id]?.address,
-                  6,
-                  14
-                )
-              )}
+              {accounts[activeAccount.type][activeAccount.id]?.label}
+              <IconButton
+                onClick={() =>
+                  editAccount(accounts[activeAccount.type][activeAccount.id])
+                }
+                type="primary"
+                shape="circle"
+              >
+                <Icon
+                  name="edit"
+                  className="hover:text-brand-royalblue text-xs ml-1 flex justify-center w-4 h-4"
+                />
+              </IconButton>
             </p>
-          </Tooltip>
+          )}
+          {isNetworkChanging ? (
+            <SkeletonLoader width="200px" height="15px" margin="5px 0 0 0" />
+          ) : (
+            <div className="flex items-center">
+              <Tooltip
+                content={
+                  isLedger && isBitcoinBased && activeNetwork.chainId === 57
+                    ? t('home.clickToVerify')
+                    : ''
+                }
+              >
+                <p
+                  className={`text-xs ${
+                    isLedger && isBitcoinBased && activeNetwork.chainId === 57
+                      ? 'cursor-pointer'
+                      : ''
+                  }`}
+                  onClick={() => {
+                    if (
+                      isLedger &&
+                      isBitcoinBased &&
+                      activeNetwork.chainId === 57
+                    )
+                      setIsOpenModal(true);
+                  }}
+                >
+                  {ellipsis(
+                    accounts[activeAccount.type][activeAccount.id]?.address,
+                    6,
+                    14
+                  )}
+                </p>
+              </Tooltip>
+              <IconButton
+                onClick={() =>
+                  copy(
+                    accounts[activeAccount.type][activeAccount.id]?.address ??
+                      ''
+                  )
+                }
+                type="primary"
+                shape="circle"
+                className="ml-2"
+              >
+                <Icon name="copy" className="text-xs" id="copy-address-btn" />
+              </IconButton>
+            </div>
+          )}
         </div>
-
-        <IconButton
-          onClick={() =>
-            copy(accounts[activeAccount.type][activeAccount.id]?.address ?? '')
-          }
-          type="primary"
-          shape="circle"
-          className="mt-3"
-        >
-          <Icon name="copy" className="text-xs" id="copy-address-btn" />
-        </IconButton>
       </div>
     </div>
   );

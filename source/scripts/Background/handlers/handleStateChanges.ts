@@ -11,7 +11,9 @@ export function handleObserveStateChanges() {
       type: 'CONTROLLER_STATE_CHANGE',
       data: currentState,
     })
-    .catch(() => {});
+    .catch(() => {
+      // no-op
+    });
 
   store.subscribe(() => {
     const nextState = store.getState();

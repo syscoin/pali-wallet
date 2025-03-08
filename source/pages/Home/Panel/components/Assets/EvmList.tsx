@@ -179,6 +179,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   );
 };
 
+// todo: create a loading state
 export const EvmAssetsList = () => {
   const [isCoinSelected, setIsCoinSelected] = useState<boolean>(true);
 

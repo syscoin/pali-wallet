@@ -11,7 +11,7 @@ import {
   FaucetFirstAccessModal,
   Loading,
 } from 'components/index';
-import { Header, Icon, Button } from 'components/index'; // Import SkeletonLoader
+import { Header, Icon, Button } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafault';
@@ -181,16 +181,30 @@ export const Home = () => {
                   )}{' '}
                 </p>
 
-                <p
-                  className={`${
-                    moreThanTrillion ? 'text-lg' : 'mt-4'
-                  } font-poppins`}
-                >
-                  {activeNetwork.currency.toUpperCase()}
-                </p>
+                {isNetworkChanging ? (
+                  <SkeletonLoader width="50px" height="35px" />
+                ) : (
+                  <p
+                    className={`${
+                      moreThanTrillion ? 'text-lg' : 'mt-4'
+                    } font-poppins`}
+                  >
+                    {activeNetwork.currency.toUpperCase()}
+                  </p>
+                )}
               </div>
 
-              <p id="fiat-amount">{formatFiatAmount}</p>
+              <p id="fiat-amount">
+                {isNetworkChanging ? (
+                  <SkeletonLoader
+                    width="80px"
+                    height="30px"
+                    margin="10px 0 0 0"
+                  />
+                ) : (
+                  formatFiatAmount
+                )}
+              </p>
             </div>
 
             <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
