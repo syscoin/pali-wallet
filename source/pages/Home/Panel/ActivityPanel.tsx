@@ -12,7 +12,7 @@ import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 const SECONDS = 10000;
-// todo: create a loading state
+
 export const TransactionsPanel = () => {
   const {
     accounts,
@@ -143,7 +143,6 @@ export const TransactionsPanel = () => {
           {OpenTransactionExplorer}
         </div>
       )}
-      {/* <Fullscreen /> */}
     </>
   );
 };

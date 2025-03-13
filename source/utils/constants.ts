@@ -38,7 +38,7 @@ export const syscoinKeysOfInterest = [
 
 //Video formats for NFTs
 export const nftsVideoFormats = ['.mp4', '.webm', '.avi', '.ogg'];
-export const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
+export const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
 export const ROLLUX_DEFAULT_NETWORK = {
   chain: INetworkType.Ethereum,
