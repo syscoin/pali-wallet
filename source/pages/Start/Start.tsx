@@ -5,7 +5,6 @@ import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
 import { useController } from 'hooks/useController';
-import { migrateWalletState } from 'state/migrateWalletState';
 
 export const Start = (props: any) => {
   const [isOpenValidation, setIsOpenValidation] = useState(false);
