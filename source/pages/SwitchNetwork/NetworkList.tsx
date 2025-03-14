@@ -32,6 +32,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const [selectedNetwork, setSelectedNetwork] = useState<string>(
     isBitcoinBased ? 'EVM' : 'UTXO'
   );
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     networkThatNeedsChanging,
@@ -53,6 +54,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     try {
+      setIsLoading(true);
       store.dispatch(setOpenDAppErrorModal(false));
 
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
@@ -62,6 +64,8 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       navigate('/home');
     } catch (networkError) {
       window.close();
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -182,15 +186,9 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           ))}
         </div>
         <div className="mt-4">
-          {/* <div className="flex justify-center items-center gap-2 mb-4">
-            <img src={networkImg} alt="Network Icon" />
-            <span className="underline text-white font-normal text-sm">
-              Add new network
-            </span>
-          </div> */}
           <Button
             type="submit"
-            disabled={!selectCurrentNetwork?.current}
+            disabled={!selectCurrentNetwork?.current || isLoading}
             onClick={() =>
               handleChangeNetwork(
                 selectCurrentNetwork?.current,
@@ -198,6 +196,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
               )
             }
             className={`${isButtonDisabledBgStyle} rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium`}
+            loading={isLoading}
           >
             Connect
           </Button>

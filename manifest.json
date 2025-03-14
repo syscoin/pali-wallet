@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pali Wallet",
-  "version": "3.0.2",
+  "version": "3.4.1",
   "icons": {
     "16": "assets/icons/favicon-16.png",
     "32": "assets/icons/favicon-32.png",
@@ -11,13 +11,12 @@
   "description": "A Non-Custodial Crypto Wallet",
   "short_name": "pali",
   "permissions": [
+    "alarms",
     "storage",
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
-    "offscreen",
-    "scripting",
-    "webRequest"
+    "scripting"
   ],
   "host_permissions": [
     "http://*/*",
@@ -55,15 +54,6 @@
       "run_at": "document_start",
       "js": [
         "js/contentScript.bundle.js"
-      ]
-    },
-    {
-      "matches": [
-        "*://connect.trezor.io/9/popup.html",
-        "https://localhost:8088/*"
-      ],
-      "js": [
-        "js/trezorScript.bundle.js"
       ]
     }
   ],

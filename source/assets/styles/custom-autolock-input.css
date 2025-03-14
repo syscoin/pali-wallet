@@ -10,7 +10,6 @@
   font-size: 12px;
 }
 
-
 .custom-edit-input .ant-input {
   display: flex;
   width: 352px;
@@ -43,7 +42,7 @@
   cursor: pointer;
   font-size: 14px;
   line-height: 14px;
-} 
+}
 
 .custom-gas-input {
   display: flex;

@@ -143,7 +143,6 @@ export const TransactionsPanel = () => {
           {OpenTransactionExplorer}
         </div>
       )}
-      {/* <Fullscreen /> */}
     </>
   );
 };

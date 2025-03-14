@@ -39,13 +39,19 @@ export const Button: React.FC<IButton> = ({
   width = '36',
 }) => (
   <button
-    className={`${className} ${useDefaultWidth && `w-${width}`}`}
+    className={`${className} ${useDefaultWidth && `w-${width}`} ${
+      disabled || loading ? 'opacity-60 cursor-not-allowed' : ''
+    } flex justify-center items-center`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}
     id={id}
   >
-    {children}
+    {loading ? (
+      <Icon name="loading" color="#4d76b8" className="w-6 animate-spin-slow" />
+    ) : (
+      children
+    )}
   </button>
 );
 
@@ -74,7 +80,7 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
             : 'opacity-100 hover:bg-button-primaryhover'
-        } border-button-primary bg-button-primary  text-brand-white w-${width}`}
+        } border-button-primary bg-button-primary  text-brand-white w-${width} flex justify-center items-center`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -121,7 +127,7 @@ export const SecondButton: React.FC<IPrimaryButton> = ({
           disabled || loading
             ? 'opacity-60 cursor-not-allowed'
             : 'opacity-100 hover:bg-button-primaryhover'
-        } border-button-primary  text-brand-white w-${width}`}
+        } border-button-primary  text-brand-white w-${width} flex justify-center items-center`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -168,7 +174,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'
           : 'opacity-100 hover:bg-button-secondaryhover'
-      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5`}
+      } border-button-secondary  transition-all duration-300 bg-button-secondary text-brand-white w-36 py-2.5 flex justify-center items-center`}
       disabled={disabled || loading}
       onClick={onClick}
       type={type}
@@ -211,7 +217,7 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
           : 'opacity-100 hover:opacity-90'
       } border-button-neutral transition-all duration-300 bg-button-neutral  py-2.5 ${
       extraStyles ? extraStyles : 'text-sm text-brand-royalblue'
-    }`}
+    } flex justify-center items-center`}
     disabled={disabled || loading}
     onClick={onClick}
     type={type}

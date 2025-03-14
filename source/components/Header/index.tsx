@@ -1,3 +1,5 @@
 export * from './Header';
-export { AccountHeader, AccountMenu } from './AccountHeader';
+export * from './AccountHeader';
+export * from './AccountMenu';
+export * from './RenderAccountsListByBitcoinBased';
 export * from './LogoHeader';

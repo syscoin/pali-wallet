@@ -9,12 +9,14 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatCurrency, truncate } from 'utils/index';
 
+//todo: create a loading state
 export const SyscoinAssetsList = () => {
   const {
     accounts,
     activeAccount,
     isLoadingAssets,
     activeNetwork: { chainId },
+    isNetworkChanging,
   } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
@@ -25,7 +27,7 @@ export const SyscoinAssetsList = () => {
   );
   return (
     <>
-      {isLoadingAssets ? (
+      {isLoadingAssets || isNetworkChanging ? (
         <LoadingComponent />
       ) : (
         <>

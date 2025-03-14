@@ -11,6 +11,7 @@ import arrow from 'assets/images/arrow.png';
 import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
 import { Icon } from 'components/index';
+import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchChangeNetworkBgEvent } from 'scripts/Background/utils/bgActions';
@@ -45,6 +46,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
   const {
     activeAccount: { type: activeAccountType },
+    isNetworkChanging,
   } = useSelector((state: RootState) => state.vault);
 
   const activeNetwork = useSelector(
@@ -127,6 +129,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             >
               {networkType}
             </span>
+            {isNetworkChanging && <Spinner size={16} color="#ffffff" />}
 
             <img
               src={arrow}
@@ -238,12 +241,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
                                     } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
-                                    onClick={() =>
+                                    onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
                                         'syscoin'
-                                      )
-                                    }
+                                      );
+                                      menuprops.close();
+                                    }}
                                   >
                                     <span className="ml-8 text-left">
                                       {currentNetwork.label}
@@ -312,12 +316,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
                                     } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
-                                    onClick={() =>
+                                    onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
                                         'ethereum'
-                                      )
-                                    }
+                                      );
+                                      menuprops.close();
+                                    }}
                                   >
                                     <span className="ml-8 text-left">
                                       {currentNetwork.label}
