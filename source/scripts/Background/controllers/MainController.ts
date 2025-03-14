@@ -1131,6 +1131,11 @@ class MainController extends KeyringManager {
     );
   }
 
+  public async getState() {
+    const state = store.getState();
+    return state;
+  }
+
   public openDAppErrorModal() {
     store.dispatch(setOpenDAppErrorModal(true));
   }

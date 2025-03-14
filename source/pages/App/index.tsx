@@ -18,6 +18,7 @@ import ReactDOM from 'react-dom';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
@@ -34,9 +35,10 @@ const options = {
   transition: transitions.FADE,
 };
 
-// handleRehydrateStore();
-MigrationController().then(() => {
-  rehydrateStore(store).then(() => {
+MigrationController().then(async () => {
+  const state = await controllerEmitter(['wallet', 'getState']);
+
+  rehydrateStore(store, state).then(() => {
     ReactDOM.render(
       <Provider store={store}>
         <AlertProvider template={ToastAlert} {...options}>
