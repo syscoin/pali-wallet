@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -11,6 +11,7 @@ import { Header } from 'components/Header';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
@@ -24,7 +25,13 @@ export const ChainErrorPage = () => {
       ['wallet', 'setActiveNetwork'],
       [activeNetwork, String(activeNetwork.chainId)]
     );
+    navigate('/home');
   };
+
+  const handleConnectToAnotherRpc = () =>
+    navigate('/switch-network', {
+      state: { switchingFromTimeError: true },
+    });
 
   const CurrentChains = () => {
     let toChain: React.ReactNode;
@@ -86,16 +93,6 @@ export const ChainErrorPage = () => {
             <div
               className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
               onClick={() =>
-                navigate('/switch-network', {
-                  state: { switchingFromTimeError: true },
-                })
-              }
-            >
-              {t('chainError.goToAnotherNetwork')}
-            </div>
-            <div
-              className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
-              onClick={() =>
                 navigate('/settings/networks/custom-rpc', {
                   state: {
                     selected: activeNetwork,
@@ -110,20 +107,13 @@ export const ChainErrorPage = () => {
             </div>
           </div>
         </div>
-        <div className="flex gap-6 justify-between mt-[7.313rem]">
+        <div className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium">
           <Button
             type="submit"
             className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
-            onClick={() => {
-              controllerEmitter(
-                ['wallet', 'setIsPaliNetworkChanging'],
-                [false]
-              );
-
-              navigate('/home');
-            }}
+            onClick={handleConnectToAnotherRpc}
           >
-            {t('buttons.cancel')}
+            {t('chainError.goToAnotherNetwork')}
           </Button>
           <Button
             type="submit"

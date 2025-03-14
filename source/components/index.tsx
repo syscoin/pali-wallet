@@ -16,3 +16,4 @@ export * from './FiatComponent';
 export * from './Fee';
 export * from './KeepAliveContainer';
 export * from './Modal';
+export * from './Loader/SkeletonLoader';

@@ -12,7 +12,7 @@ export function handleObserveStateChanges() {
       data: currentState,
     })
     .catch(() => {
-      //no-op
+      // no-op
     });
 
   store.subscribe(() => {

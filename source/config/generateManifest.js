@@ -25,15 +25,22 @@ function generateManifest() {
   // prod
   if (process.env.NODE_ENV === 'production') {
     if (manifestOptions.permissions) {
-      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(
+        manifestOptions.permissions
+      );
     }
   }
 
   // canary
   if (process.env.NODE_ENV === 'canary') {
-    manifestOptions.name = manifestOptions.name.replace('Pali Wallet', 'Pali Wallet Canary');
+    manifestOptions.name = manifestOptions.name.replace(
+      'Pali Wallet',
+      'Pali Wallet Canary'
+    );
     if (manifestOptions.permissions) {
-      manifestOptions.permissions = filterWebRequest(manifestOptions.permissions);
+      manifestOptions.permissions = filterWebRequest(
+        manifestOptions.permissions
+      );
     }
   }
 
@@ -43,6 +50,6 @@ function generateManifest() {
 
 const filterWebRequest = (permissions) => {
   return permissions.filter((permission) => permission !== 'webRequest');
-}
+};
 
 generateManifest();

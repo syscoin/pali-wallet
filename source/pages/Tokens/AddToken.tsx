@@ -34,7 +34,7 @@ export const AddToken: FC = () => {
   const verifyIfIsTestnet = async () => {
     const { chain, chainId } = await validateEthRpc(network.url, isInCooldown);
 
-    const ethTestnetsChainsIds = [5700, 80001, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
+    const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
 
     return Boolean(
       chain === 'test' ||

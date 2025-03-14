@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
 
-// import { Fullscreen } from 'components/Fullscreen';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 
@@ -66,8 +65,6 @@ export const AssetsPanel = () => {
           {t('home.importToken')}
         </p>
       </div>
-
-      {/* <Fullscreen /> */}
     </div>
   );
 };

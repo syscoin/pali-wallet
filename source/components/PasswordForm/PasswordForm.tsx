@@ -20,6 +20,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
     password: '',
     repassword: '',
   });
+  const [isLoading, setIsLoading] = useState(false);
 
   const buttonIsValidStyle = useMemo(
     () =>
@@ -43,6 +44,12 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
       });
   }, []);
 
+  const handleSubmit = async (values: any) => {
+    setIsLoading(true);
+    await onSubmit(values);
+    setIsLoading(false);
+  };
+
   return (
     <OnboardingLayout title={t('settings.password')}>
       <Form
@@ -53,7 +60,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={{ remember: true }}
-        onFinish={onSubmit}
+        onFinish={handleSubmit}
         autoComplete="off"
         className="password flex flex-col gap-4 items-center justify-center w-full max-w-xs text-center md:max-w-md"
       >
@@ -121,6 +128,7 @@ export const PasswordForm: React.FC<IPasswordForm> = ({ onSubmit }) => {
             id="create-password-action"
             disabled={Object.keys(formErrors).length > 0}
             className={`${buttonIsValidStyle} bg-brand-deepPink100 w-[17.5rem] h-10 text-white text-base font-base font-medium rounded-2xl`}
+            loading={isLoading}
           >
             {t('buttons.next')}
           </Button>

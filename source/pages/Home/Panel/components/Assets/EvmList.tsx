@@ -179,15 +179,19 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   );
 };
 
+// todo: create a loading state
 export const EvmAssetsList = () => {
   const [isCoinSelected, setIsCoinSelected] = useState<boolean>(true);
 
   const [searchValue, setSearchValue] = useState<string>('');
   const [sortByValue, setSortyByValue] = useState<string>('');
 
-  const { isLoadingAssets } = useSelector((state: RootState) => state.vault);
+  const { isLoadingAssets, isNetworkChanging } = useSelector(
+    (state: RootState) => state.vault
+  );
 
-  const loadingValidation = isCoinSelected && isLoadingAssets;
+  const loadingValidation =
+    (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
   return (
     <>
