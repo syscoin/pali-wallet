@@ -24,8 +24,9 @@ export const ChainErrorPage = () => {
     await controllerEmitter(
       ['wallet', 'setActiveNetwork'],
       [activeNetwork, String(activeNetwork.chainId)]
-    );
-    navigate('/home');
+    ).then(() => {
+      navigate('/home');
+    });
   };
 
   const handleConnectToAnotherRpc = () =>
