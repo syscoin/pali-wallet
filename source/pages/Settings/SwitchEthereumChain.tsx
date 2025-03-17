@@ -9,7 +9,7 @@ import rolluxChainImg from 'assets/images/rolluxChain.png';
 import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -27,13 +27,16 @@ const SwitchChain: React.FC = () => {
   const network = networks.ethereum[chainId];
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const { navigate } = useUtils();
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await controllerEmitter(
+      controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         [network, 'ethereum']
-      );
+      ).then(() => {
+        navigate('/home');
+      });
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

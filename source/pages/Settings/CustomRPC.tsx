@@ -126,6 +126,7 @@ const CustomRPCView = () => {
       ['wallet', 'setActiveNetwork'],
       [data, String(activeNetwork.chainId)]
     );
+    navigate('/home');
   };
   return (
     <Layout title={state?.isEditing ? 'EDIT RPC' : t('settings.customRpc')}>

@@ -107,17 +107,17 @@ export const ChainErrorPage = () => {
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium">
+        <div className="flex flex-col gap-2 mt-6">
           <Button
             type="submit"
-            className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
+            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
             onClick={handleConnectToAnotherRpc}
           >
             {t('chainError.goToAnotherNetwork')}
           </Button>
           <Button
             type="submit"
-            className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
             onClick={handleRetryToConnect}
           >
             {t('buttons.retryConnect')}

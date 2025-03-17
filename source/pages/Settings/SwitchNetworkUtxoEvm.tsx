@@ -9,7 +9,7 @@ import {
   LoadingComponent,
   DefaultModal,
 } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -22,6 +22,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
+  const { navigate } = useUtils();
 
   const isNewChainBtcBased = newChainValue === 'syscoin';
 
@@ -36,10 +37,12 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await controllerEmitter(
+      controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         [newNetwork, correctTypeForChainValue]
-      );
+      ).then(() => {
+        navigate('/home');
+      });
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
