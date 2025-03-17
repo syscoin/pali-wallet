@@ -211,7 +211,7 @@ export const Home = () => {
                   id="send-btn"
                   onClick={() =>
                     isBitcoinBased
-                      ? navigate('/send/sys')
+                      ? navigate('/chain-fail-to-connect')
                       : navigate('/send/eth')
                   }
                   disabled={isLoadingBalances || isNetworkChanging}
