@@ -15,7 +15,7 @@ const CustomRPCExternal = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const { alert } = useUtils();
+  const { alert, navigate } = useUtils();
   const { controllerEmitter } = useController();
   const onSubmit = async (customRpc: any) => {
     setLoading(true);
@@ -31,6 +31,7 @@ const CustomRPCExternal = () => {
             ['wallet', 'setActiveNetwork'],
             [network, 'ethereum']
           );
+          navigate('/home');
         }
       );
     } catch (error: any) {

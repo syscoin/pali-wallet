@@ -57,11 +57,13 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       setIsLoading(true);
       store.dispatch(setOpenDAppErrorModal(false));
 
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
+      controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]).then(
+        () => {
+          navigate('/home');
+        }
+      );
 
       if (isDappAskingToChangeNetwork) window.close();
-
-      navigate('/home');
     } catch (networkError) {
       window.close();
     } finally {

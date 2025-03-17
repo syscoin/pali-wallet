@@ -6,7 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  INetworkType,
+  validateEthRpc,
+  validateSysRpc,
+} from '@pollum-io/sysweb3-network';
 
 import checkAtIcon from 'assets/icons/checkAt.svg';
 import { Button, Layout, Tooltip } from 'components/index';
@@ -122,9 +126,11 @@ const CustomRPCView = () => {
   }, [urlFieldValue]);
 
   const handleConnect = async (data: ICustomRpcParams) => {
-    await controllerEmitter(
-      ['wallet', 'setActiveNetwork'],
-      [data, String(activeNetwork.chainId)]
+    const chain = isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
+    controllerEmitter(['wallet', 'setActiveNetwork'], [data, chain]).then(
+      () => {
+        navigate('/home');
+      }
     );
   };
   return (

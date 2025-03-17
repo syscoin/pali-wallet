@@ -1,6 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import loadImg from 'assets/icons/loading.svg';
 import ethChainImg from 'assets/images/ethChain.svg';
@@ -14,18 +16,34 @@ import { RootState } from 'state/store';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
   const { t } = useTranslation();
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const [isRetrying, setIsRetrying] = useState(false);
 
   const handleRetryToConnect = async () => {
-    await controllerEmitter(
-      ['wallet', 'setActiveNetwork'],
-      [activeNetwork, String(activeNetwork.chainId)]
-    );
-    navigate('/home');
+    setIsRetrying(true);
+    try {
+      const chain = isBitcoinBased
+        ? INetworkType.Syscoin
+        : INetworkType.Ethereum;
+
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [activeNetwork, chain]
+      ).then(() => {
+        navigate('/home');
+      });
+    } catch (error) {
+      alert.error(t('chainError.connectionTooLong'));
+    } finally {
+      setIsRetrying(false);
+    }
   };
 
   const handleConnectToAnotherRpc = () =>
@@ -107,17 +125,18 @@ export const ChainErrorPage = () => {
             </div>
           </div>
         </div>
-        <div className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium">
+        <div className="flex flex-col gap-2 mt-6">
           <Button
             type="submit"
-            className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
+            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
             onClick={handleConnectToAnotherRpc}
           >
             {t('chainError.goToAnotherNetwork')}
           </Button>
           <Button
+            loading={isRetrying}
             type="submit"
-            className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
             onClick={handleRetryToConnect}
           >
             {t('buttons.retryConnect')}
