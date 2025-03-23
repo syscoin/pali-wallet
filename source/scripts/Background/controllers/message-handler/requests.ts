@@ -392,8 +392,6 @@ export const methodRequest = async (
   if (prefix !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
-    console.log({ responseInside: resp });
-    // if (!wallet.isUnlocked()) return false;
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;

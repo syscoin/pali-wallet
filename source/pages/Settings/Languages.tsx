@@ -13,8 +13,6 @@ import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
-  const { timer } = useSelector((state: RootState) => state.vault);
-
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [currentLang, setCurrentLang] = useState<PaliLanguages>(
     PaliLanguages.EN
@@ -95,7 +93,6 @@ const Languages = () => {
         onFinish={onSubmit}
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}
-        initialValues={{ minutes: timer }}
         autoComplete="off"
       >
         <Form.Item

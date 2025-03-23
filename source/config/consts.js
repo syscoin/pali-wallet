@@ -74,7 +74,7 @@ const MV2_OPTIONS = {
 const MV3_OPTIONS = {
   manifest_version: 3,
   name: 'Pali Wallet',
-  version: '3.4.2',
+  version: '3.4.3',
   icons: {
     16: 'assets/icons/favicon-16.png',
     32: 'assets/icons/favicon-32.png',

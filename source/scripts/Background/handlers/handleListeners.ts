@@ -1,5 +1,4 @@
 import { IMasterController } from 'scripts/Background/controllers';
-import { checkInactivity } from 'scripts/Background/events/InactivityTimer';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { checkForUpdates } from 'scripts/Background/handlers/handlePaliUpdates';
 import { checkForPendingTransactionsUpdate } from 'scripts/Background/utils/checkForPendingTransactions';
@@ -14,9 +13,6 @@ export const handleListeners = (masterController: IMasterController) => {
   });
 
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'check_inactivity') {
-      checkInactivity();
-    }
     if (alarm.name === 'check_for_updates') {
       checkForUpdates();
     }

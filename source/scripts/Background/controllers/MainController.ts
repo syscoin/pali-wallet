@@ -26,7 +26,6 @@ import {
   forgetWallet as forgetWalletState,
   setActiveAccount,
   setLastLogin,
-  setTimer,
   createAccount as addAccountToStore,
   setNetwork,
   removeNetwork as removeNetworkFromStore,
@@ -34,7 +33,6 @@ import {
   setIsBitcoinBased,
   setChangingConnectedAccount,
   setIsNetworkChanging,
-  setIsTimerEnabled as setIsTimerActive,
   setAccounts,
   setNetworkChange,
   setHasEthProperty as setEthProperty,
@@ -125,11 +123,6 @@ class MainController extends KeyringManager {
 
     this.bindMethods();
   }
-
-  public setAutolockTimer(minutes: number) {
-    store.dispatch(setTimer(minutes));
-  }
-
   public setHasEthProperty(exist: boolean) {
     store.dispatch(setEthProperty(exist));
   }
@@ -266,10 +259,6 @@ class MainController extends KeyringManager {
       })
       .catch((error) => console.error(error));
     return;
-  }
-
-  public setIsAutolockEnabled(isEnabled: boolean) {
-    store.dispatch(setIsTimerActive(isEnabled));
   }
 
   public async createAccount(
@@ -665,10 +654,6 @@ class MainController extends KeyringManager {
 
     this.removeNetwork(chain, chainId, rpcUrl, label, key);
   }
-
-  // public async getChangeAddress(accountId: number) {
-  //   return await this.getChangeAddress(accountId);
-  // }
 
   public getRecommendedFee() {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;

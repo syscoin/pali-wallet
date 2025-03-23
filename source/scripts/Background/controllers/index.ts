@@ -22,7 +22,6 @@ import {
   setAdvancedSettings,
   setIsLastTxConfirmed,
   setNetwork,
-  setTimer,
 } from 'state/vault';
 import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
 import { IControllerUtils, IDAppController } from 'types/controllers';
@@ -162,11 +161,6 @@ const MasterController = (
 
     if (isSysUtxoMainnetWithWrongRpcUrl) {
       externalStore.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
-    }
-
-    // if timer state is 5, it means that the user is coming from a previous version, with a default timer value of 5 minutes.
-    if (Number(externalStore.getState().vault.timer) === 5) {
-      externalStore.dispatch(setTimer(30));
     }
 
     const isNetworkOldState =
