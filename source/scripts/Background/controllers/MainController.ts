@@ -1316,7 +1316,7 @@ class MainController extends KeyringManager {
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
   }
 
-  public getLatestUpdateForCurrentAccount() {
+  public getLatestUpdateForCurrentAccount(isPolling = false) {
     const {
       isNetworkChanging,
       accounts,
@@ -1336,9 +1336,10 @@ class MainController extends KeyringManager {
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
       this.updateUserTransactionsState({
-        isPolling: false,
+        isPolling,
         isBitcoinBased,
         activeNetwork,
       }),
@@ -1346,6 +1347,7 @@ class MainController extends KeyringManager {
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
     ]);
   }
