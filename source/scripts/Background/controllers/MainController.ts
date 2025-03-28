@@ -703,7 +703,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount,
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -759,7 +758,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount,
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -819,7 +817,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -1019,17 +1016,12 @@ class MainController extends KeyringManager {
     isPolling,
     isBitcoinBased,
     activeNetwork,
-    activeAccount,
   }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) {
-    const { accounts } = store.getState().vault;
+    const { accounts, activeAccount } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -1349,7 +1341,6 @@ class MainController extends KeyringManager {
         isPolling: false,
         isBitcoinBased,
         activeNetwork,
-        activeAccount,
       }),
       this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
@@ -1598,10 +1589,6 @@ class MainController extends KeyringManager {
       isPolling: false,
       isBitcoinBased,
       activeNetwork: network,
-      activeAccount: {
-        id: wallet.activeAccountId,
-        type: wallet.activeAccountType,
-      },
     });
 
     this.handleStateChange([
