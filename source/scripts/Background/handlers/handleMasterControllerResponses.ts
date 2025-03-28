@@ -6,9 +6,13 @@ export const handleMasterControllerResponses = (
   chrome.runtime.onMessage.addListener((message: any, _, sendResponse) => {
     const { type, data } = message;
 
-    const isEventValid = type === 'CONTROLLER_ACTION';
+    try {
+      const isEventValid = type === 'CONTROLLER_ACTION';
 
-    if (isEventValid) {
+      if (!isEventValid) {
+        return false;
+      }
+
       const { methods, params, importMethod } = data;
 
       let targetMethod = MasterControllerInstance;
@@ -22,18 +26,31 @@ export const handleMasterControllerResponses = (
       }
 
       if (typeof targetMethod === 'function' || importMethod) {
-        new Promise(async (resolve) => {
-          const response = importMethod
-            ? targetMethod
-            : await (targetMethod as any)(...params);
+        new Promise(async (resolve, reject) => {
+          try {
+            const response = importMethod
+              ? targetMethod
+              : await (targetMethod as any)(...params);
+            resolve(response);
+          } catch (error) {
+            reject(error);
+          }
+        })
+          .then(sendResponse)
+          .catch((error) => {
+            console.error('Error executing method:', error);
+            sendResponse({ error: error.message, success: false });
+            return false;
+          });
 
-          resolve(response);
-        }).then(sendResponse);
+        return true;
       } else {
         throw new Error('Method is not a function');
       }
+    } catch (error) {
+      console.error('Error in message handler:', error);
+      sendResponse({ error: error.message, success: false });
+      return false;
     }
-
-    return isEventValid;
   });
 };

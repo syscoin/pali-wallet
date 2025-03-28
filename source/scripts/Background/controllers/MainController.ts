@@ -543,7 +543,12 @@ class MainController extends KeyringManager {
   }
 
   public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
+    const { networks } = store.getState().vault;
     const network = await this.getRpc(data);
+
+    if (networks[data.isSyscoinRpc ? 'syscoin' : 'ethereum'][network.chainId]) {
+      throw new Error('network already exists, remove or edit it');
+    }
 
     const networkWithCustomParams = {
       ...network,
