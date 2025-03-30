@@ -1,7 +1,9 @@
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
+import { getController } from '..';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
+import { saveState } from 'state/paliStorage';
 import store from 'state/store';
 import { setPrevBalances } from 'state/vault';
 
@@ -56,42 +58,17 @@ export async function checkForUpdates() {
     return;
   }
 
-  const { activeAccount, isBitcoinBased, activeNetwork } =
-    store.getState().vault;
-
   controllerEmitter(
-    ['wallet', 'updateUserNativeBalance'],
-    [
-      {
-        isPolling: true,
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-      },
-    ]
-  );
-
-  controllerEmitter(
-    ['wallet', 'updateUserTransactionsState'],
-    [
-      {
-        isPolling: true,
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-      },
-    ]
-  );
-
-  controllerEmitter(
-    ['wallet', 'updateAssetsFromCurrentAccount'],
-    [
-      {
-        isPolling: true,
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-      },
-    ]
-  );
+    ['wallet', 'getLatestUpdateForCurrentAccount'],
+    [true]
+  ).catch((error) => {
+    // save current state to localstorage if pali is not open
+    if (
+      error?.message ===
+      'Could not establish connection. Receiving end does not exist.'
+    ) {
+      getController().wallet.getLatestUpdateForCurrentAccount(true);
+      saveState(store.getState());
+    }
+  });
 }

@@ -543,7 +543,12 @@ class MainController extends KeyringManager {
   }
 
   public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
+    const { networks } = store.getState().vault;
     const network = await this.getRpc(data);
+
+    if (networks[data.isSyscoinRpc ? 'syscoin' : 'ethereum'][network.chainId]) {
+      throw new Error('network already exists, remove or edit it');
+    }
 
     const networkWithCustomParams = {
       ...network,
@@ -698,7 +703,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount,
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -754,7 +758,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount,
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -814,7 +817,6 @@ class MainController extends KeyringManager {
     this.updateUserTransactionsState({
       isPolling: false,
       isBitcoinBased,
-      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
       activeNetwork,
     });
     this.updateAssetsFromCurrentAccount({
@@ -1014,17 +1016,12 @@ class MainController extends KeyringManager {
     isPolling,
     isBitcoinBased,
     activeNetwork,
-    activeAccount,
   }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) {
-    const { accounts } = store.getState().vault;
+    const { accounts, activeAccount } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -1319,7 +1316,7 @@ class MainController extends KeyringManager {
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
   }
 
-  public getLatestUpdateForCurrentAccount() {
+  public getLatestUpdateForCurrentAccount(isPolling = false) {
     const {
       isNetworkChanging,
       accounts,
@@ -1339,17 +1336,18 @@ class MainController extends KeyringManager {
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
       this.updateUserTransactionsState({
-        isPolling: false,
+        isPolling,
         isBitcoinBased,
         activeNetwork,
-        activeAccount,
       }),
       this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
     ]);
   }
@@ -1593,10 +1591,6 @@ class MainController extends KeyringManager {
       isPolling: false,
       isBitcoinBased,
       activeNetwork: network,
-      activeAccount: {
-        id: wallet.activeAccountId,
-        type: wallet.activeAccountType,
-      },
     });
 
     this.handleStateChange([
