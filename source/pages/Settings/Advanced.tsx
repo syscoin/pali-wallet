@@ -15,9 +15,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 const Advanced = () => {
-  const { timer, advancedSettings } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { advancedSettings } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{
@@ -112,7 +110,6 @@ const Advanced = () => {
         onFinish={onSubmit}
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 16 }}
-        initialValues={{ minutes: timer }}
         autoComplete="off"
       >
         {ADVACED_SETTINGS.map((propName: string, index: number) => (

@@ -6,7 +6,6 @@ import { useLocation } from 'react-router-dom';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { startInactivityTimer } from 'scripts/Background/events/InactivityTimer';
 import {
   removeVerifyPaliRequestListener,
   resetPaliRequestsCount,
@@ -23,13 +22,9 @@ export const useRouterLogic = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const {
-    timer,
-    isTimerEnabled,
-    isBitcoinBased,
-    isNetworkChanging,
-    activeNetwork,
-  } = useSelector((state: RootState) => state.vault);
+  const { isBitcoinBased, isNetworkChanging, activeNetwork } = useSelector(
+    (state: RootState) => state.vault
+  );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { isUnlocked, web3Provider } = useController();
   const { serverHasAnError, errorMessage } = web3Provider;
@@ -91,7 +86,6 @@ export const useRouterLogic = () => {
 
   useEffect(() => {
     alert.removeAll();
-    // appRoute(pathname);
     const isFullscreen = window.innerWidth > 600;
     if (isFullscreen && isUnlocked) {
       navigate('/settings/account/hardware');
@@ -117,10 +111,6 @@ export const useRouterLogic = () => {
       setShowModal(true);
     }
   }, [serverHasAnError]);
-
-  useEffect(() => {
-    if (isTimerEnabled) startInactivityTimer(timer);
-  }, [isTimerEnabled, timer]);
 
   const handleUtf8ErrorClose = async () => {
     setShowUtf8ErrorModal(false);

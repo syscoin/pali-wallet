@@ -26,6 +26,11 @@ export function controllerEmitter<
         if (chrome.runtime.lastError) {
           return reject(chrome.runtime.lastError);
         }
+
+        if (response && response.error) {
+          return reject(new Error(response.error));
+        }
+
         resolve(response);
       }
     );

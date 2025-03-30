@@ -76,8 +76,6 @@ export const initialState: IVaultState = {
     newConnectedAccount: undefined,
     connectedAccountType: undefined,
   },
-  timer: 30,
-  isTimerEnabled: true,
   networks: initialNetworksState,
   error: false,
   isPolling: false,
@@ -284,12 +282,6 @@ const VaultState = createSlice({
       }
 
       state.networks[chain] = clonedNetworks;
-    },
-    setTimer(state: IVaultState, action: PayloadAction<number>) {
-      state.timer = action.payload;
-    },
-    setIsTimerEnabled(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isTimerEnabled = action.payload;
     },
     setLastLogin(state: IVaultState) {
       state.lastLogin = Date.now();
@@ -864,8 +856,6 @@ export const {
   setChangingConnectedAccount,
   setLastLogin,
   setNetwork,
-  setTimer,
-  setIsTimerEnabled,
   forgetWallet,
   removeAccount,
   setHasEthProperty,

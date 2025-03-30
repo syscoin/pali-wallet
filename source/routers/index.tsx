@@ -3,7 +3,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import {
   About,
-  AutoLock,
   ConnectedSites,
   ConnectHardwareWallet,
   CreateAccount,
@@ -113,10 +112,6 @@ export const Router = () => {
           <Route
             path="about"
             element={<ProtectedRoute element={<About />} />}
-          />
-          <Route
-            path="autolock"
-            element={<ProtectedRoute element={<AutoLock />} />}
           />
           <Route
             path="remove-eth"

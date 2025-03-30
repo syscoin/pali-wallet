@@ -36,7 +36,7 @@ const CustomRPCView = () => {
     number | null
   >(null);
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
-  const { activeNetwork, isBitcoinBased } = useSelector(
+  const { isBitcoinBased } = useSelector(
     // eslint-disable-next-line no-shadow
     (state: RootState) => state.vault
   );
@@ -203,7 +203,6 @@ const CustomRPCView = () => {
             </div>
           )}
         </Form.Item>
-
         <Form.Item
           name="label"
           className="md:w-full"
@@ -224,7 +223,6 @@ const CustomRPCView = () => {
             className="custom-input-normal relative"
           />
         </Form.Item>
-
         <Form.Item
           name="url"
           className="md:w-full"
@@ -362,7 +360,6 @@ const CustomRPCView = () => {
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
-
         <Form.Item
           name="symbol"
           hasFeedback
@@ -380,7 +377,6 @@ const CustomRPCView = () => {
             className={`${inputHiddenOrNotStyle} custom-input-normal relative`}
           />
         </Form.Item>
-
         <Form.Item
           hasFeedback
           className="md:w-full"

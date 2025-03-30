@@ -40,12 +40,10 @@ export interface IVaultState {
   isLoadingTxs: boolean;
   isNetworkChanging: boolean;
   isPolling: boolean;
-  isTimerEnabled: boolean;
   lastLogin: number;
   networks: INetworksVault;
   prevBalances: IPrevBalances;
   shouldShowFaucetModal: { [k: number]: boolean };
-  timer: number;
 }
 
 export interface INetworksVault {
