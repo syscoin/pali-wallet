@@ -204,5 +204,11 @@ if (shouldInjectProvider()) {
   injectScriptFile('js/pali.bundle.js', 'pali');
 }
 
+// keeps the background active
+const port = chrome.runtime.connect({ name: 'keepAlive' });
+setInterval(() => {
+  port.postMessage({ ping: true });
+}, 5e3);
+
 start();
 startEventEmitter();

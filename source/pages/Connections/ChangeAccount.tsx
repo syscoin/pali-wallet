@@ -14,19 +14,15 @@ import { ellipsis } from 'utils/index';
 
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();
+  const dapp = useSelector((state: RootState) => state.dapp.dapps);
   const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
   const { host, eventName } = useQueryData();
   const { t } = useTranslation();
 
-  let currentAccountId: number;
-  let currentAccountType: KeyringAccountType;
-
-  controllerEmitter(['dapp', 'get'], [host]).then((res: any) => {
-    currentAccountId = res?.accountId;
-    currentAccountType = res?.accountType;
-  });
+  const currentAccountId = dapp[host]?.accountId;
+  const currentAccountType = dapp[host]?.accountType;
 
   const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [accountType, setCurrentAccountType] =
@@ -37,7 +33,7 @@ export const ChangeAccount = () => {
     setCurrentAccountType(type);
   };
 
-  const handleChangeAccount = () => {
+  const handleChangeAccount = async () => {
     if (accountId === currentAccountId && accountType === currentAccountType) {
       const response = { accountId, accountType };
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
@@ -46,18 +42,18 @@ export const ChangeAccount = () => {
     }
     //this should be passed to constant instead of being hardcoded
     if (eventName === 'requestPermissions') {
-      controllerEmitter(
+      await controllerEmitter(
         ['dapp', 'requestPermissions'],
         [host, accountId, accountType]
       );
     } else {
-      controllerEmitter(
+      await controllerEmitter(
         ['dapp', 'changeAccount'],
         [host, accountId, accountType]
       );
     }
 
-    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+    await controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
 
     const response = { accountId, accountType };
 

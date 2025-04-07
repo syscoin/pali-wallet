@@ -44,10 +44,16 @@ export const ExternalRoute = () => {
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 
   useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'getCurrentState' }).then((message) => {
+      rehydrateStore(store, message.data);
+    });
+
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE') {
         rehydrateStore(store, message.data);
+        return true;
       }
+      return false;
     }
 
     chrome.runtime.onMessage.addListener(handleStateChange);
@@ -76,11 +82,25 @@ export const ExternalRoute = () => {
     };
   }, [isUnlocked]);
 
-  // what is this for?
-  // useEffect(() => {
-  //   alert.removeAll();
-  //   controllerEmitter(['appRoute'], [pathname + search, true]);
-  // }, [pathname]);
+  useEffect(() => {
+    const messageListener = (
+      message: { [key: string]: any; action: string },
+      sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: any) => void
+    ) => {
+      if (message.action === 'isPopupOpen') {
+        sendResponse(true);
+        return true;
+      }
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(messageListener);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(messageListener);
+    };
+  }, []);
 
   return (
     <Suspense fallback={<Loading />}>

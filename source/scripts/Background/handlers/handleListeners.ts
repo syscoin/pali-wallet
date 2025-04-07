@@ -51,6 +51,9 @@ export const handleListeners = (masterController: IMasterController) => {
           store.dispatch(setIsPolling(true));
           startPendingTransactionsPolling();
           break;
+        case 'getCurrentState':
+          sendResponse({ data: store.getState() });
+          break;
       }
     }
   );
