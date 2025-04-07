@@ -37,12 +37,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      controllerEmitter(
+      await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
         [newNetwork, correctTypeForChainValue]
-      ).then(() => {
-        navigate('/home');
-      });
+      );
+      navigate('/home');
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

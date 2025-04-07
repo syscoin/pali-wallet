@@ -37,10 +37,16 @@ export const useRouterLogic = () => {
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
   useEffect(() => {
+    chrome.runtime.sendMessage({ type: 'getCurrentState' }).then((message) => {
+      rehydrateStore(store, message.data);
+    });
+
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE') {
         rehydrateStore(store, message.data);
+        return true;
       }
+      return false;
     }
 
     chrome.runtime.onMessage.addListener(handleStateChange);

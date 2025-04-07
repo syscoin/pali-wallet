@@ -1,5 +1,4 @@
 import { ethers } from 'ethers';
-import dequal from 'fast-deep-equal';
 
 import {
   BaseProvider,
@@ -74,6 +73,7 @@ export class PaliInpageProviderEth extends BaseProvider {
     this.chainId = null;
     this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
+        console.log('state', state);
         const initialState = state as Parameters<
           PaliInpageProviderEth['_initializeState']
         >[0];
@@ -305,36 +305,34 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     // emit accountsChanged if anything about the accounts array has changed
-    if (!dequal(this._state.accounts, accounts)) {
-      // we should always have the correct accounts even before eth_accounts
-      // returns
-      this._state.accounts = []; // just for testing purposes
-      if (
-        isEthAccounts &&
-        this._state.accounts !== null &&
-        this._state.accounts.length !== 0
-      ) {
-        console.error(
-          `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
-          accounts
-        );
-      }
+    // we should always have the correct accounts even before eth_accounts
+    // returns
+    this._state.accounts = []; // just for testing purposes
+    if (
+      isEthAccounts &&
+      this._state.accounts !== null &&
+      this._state.accounts.length !== 0
+    ) {
+      console.error(
+        `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
+        accounts
+      );
+    }
 
+    if (ethers.utils.isHexString(accounts[0])) {
+      this._state.accounts = accounts as string[];
+    }
+
+    // handle selectedAddress
+    if (this.selectedAddress !== accounts[0]) {
       if (ethers.utils.isHexString(accounts[0])) {
-        this._state.accounts = accounts as string[];
+        this.selectedAddress = (accounts[0] as string) || null;
       }
+    }
 
-      // handle selectedAddress
-      if (this.selectedAddress !== accounts[0]) {
-        if (ethers.utils.isHexString(accounts[0])) {
-          this.selectedAddress = (accounts[0] as string) || null;
-        }
-      }
-
-      // finally, after all state has been updated, emit the event
-      if (this._state.initialized) {
-        this.emit('accountsChanged', accounts);
-      }
+    // finally, after all state has been updated, emit the event
+    if (this._state.initialized) {
+      this.emit('accountsChanged', accounts);
     }
   }
 

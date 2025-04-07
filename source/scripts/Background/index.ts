@@ -29,3 +29,11 @@ handleMasterControllerInstance().then((controller) => {
 });
 
 export const getController = () => MasterControllerInstance;
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'keepAlive') {
+    port.onMessage.addListener((msg) => {
+      if (msg.ping) port.postMessage({ pong: true });
+    });
+  }
+});

@@ -48,7 +48,6 @@ const handleResponseEvent = async (
   }
 
   if (CHAIN_ROUTES.includes(route as (typeof CHAIN_ROUTES)[number])) {
-    dapp.setHasWindow(host, false);
     resolve(null);
     return;
   }
@@ -75,16 +74,12 @@ const handleResponseEvent = async (
 const handleCloseWindow = (
   popup: any,
   route: PaliRoutes,
-  host: string,
-  dapp: Readonly<IDAppController>,
   resolve: (value: unknown) => void
 ): void => {
   const handleWindowRemoval = (windowId: number): void => {
     if (windowId !== popup.id) {
       return;
     }
-
-    dapp.setHasWindow(host, false);
 
     if (REJECTION_ROUTES.has(route)) {
       resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
@@ -121,17 +116,18 @@ export const popupPromise = async ({
 }) => {
   const { dapp, createPopup } = getController();
 
-  if (dapp.hasWindow(host))
+  if (await checkIfPopupIsOpen())
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
     );
-  dapp.setHasWindow(host, true);
+
   data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
+
   let popup = null;
+
   try {
     popup = await createPopup(route, { ...data, host, eventName });
   } catch (error) {
-    dapp.setHasWindow(host, false);
     throw error;
   }
   return new Promise((resolve) => {
@@ -144,7 +140,15 @@ export const popupPromise = async ({
         dapp,
         resolve
       );
-      handleCloseWindow(popup, route as PaliRoutes, host, dapp, resolve);
+      handleCloseWindow(popup, route as PaliRoutes, resolve);
     });
   });
 };
+
+function checkIfPopupIsOpen() {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ action: 'isPopupOpen' }, (response) => {
+      resolve(response === true);
+    });
+  });
+}
