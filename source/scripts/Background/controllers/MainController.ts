@@ -1624,6 +1624,7 @@ class MainController extends KeyringManager {
         params: {
           chainId: `0x${network.chainId.toString(16)}`,
           networkVersion: network.chainId,
+          isBitcoinBased: isBitcoinBased,
         },
       },
       {

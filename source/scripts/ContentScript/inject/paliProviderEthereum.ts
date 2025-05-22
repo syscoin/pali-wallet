@@ -366,7 +366,12 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _handleChainChanged({
     chainId,
     networkVersion,
-  }: { chainId?: string; networkVersion?: string } = {}) {
+    isBitcoinBased,
+  }: {
+    chainId?: string;
+    isBitcoinBased?: boolean;
+    networkVersion?: string;
+  } = {}) {
     if (!isValidChainId(chainId) || !isValidNetworkVersion(networkVersion)) {
       console.error(messages.errors.invalidNetworkParams(), {
         chainId,
@@ -374,18 +379,19 @@ export class PaliInpageProviderEth extends BaseProvider {
       });
       return;
     }
-    if (networkVersion === 'loading') {
-      this._handleDisconnect(true);
-      return;
+
+    if (this.isMetaMask && this.networkVersion !== networkVersion) {
+      this.networkVersion = networkVersion || null;
     }
 
-    this._handleConnect(chainId);
-
     if (chainId !== this.chainId) {
-      this.chainId = chainId;
-      this.networkVersion = networkVersion;
-      if (this._state.initialized) {
+      this.chainId = chainId || null;
+      if (this._state.initialized && !isBitcoinBased) {
         this.emit('chainChanged', this.chainId);
+      }
+    } else if (!isBitcoinBased) {
+      if (this._state.initialized) {
+        this.emit('chainChanged', chainId);
       }
     }
   }
@@ -488,7 +494,7 @@ export class PaliInpageProviderEth extends BaseProvider {
 
       // EIP-1193 connect
       this._handleConnect(chainId);
-      this._handleChainChanged({ chainId, networkVersion });
+      this._handleChainChanged({ chainId, networkVersion, isBitcoinBased });
       this._handleUnlockStateChanged({ accounts, isUnlocked });
       this._handleAccountsChanged(accounts);
       this._handleIsBitcoinBased({ isBitcoinBased });
