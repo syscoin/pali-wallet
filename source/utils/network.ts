@@ -120,23 +120,3 @@ export const isSyscoinUTXONetwork = (url: string, chainId: number): boolean => {
     utxoChainIds.includes(chainId)
   );
 };
-
-/**
- * Gets the appropriate network type (EVM or UTXO) based on network details
- */
-export const getNetworkTypeFromDetails = (
-  url: string,
-  chainId: number
-): INetworkType => {
-  if (isSyscoinNEVMNetwork(url, chainId)) {
-    return INetworkType.Ethereum;
-  } else if (isSyscoinUTXONetwork(url, chainId)) {
-    return INetworkType.Syscoin;
-  } else if (chainId === 57) {
-    // For chainId 57, default based on URL pattern
-    return url.includes('rpc.') ? INetworkType.Ethereum : INetworkType.Syscoin;
-  } else {
-    // For other chains, use existing logic
-    return chainId > 1000 ? INetworkType.Ethereum : INetworkType.Syscoin;
-  }
-};
