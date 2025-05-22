@@ -1,16 +1,21 @@
 {
   "collectCoverage": true,
-  "moduleFileExtensions": ["js", "mjs", "ts", "json"],
+  "moduleFileExtensions": ["js", "mjs", "ts", "json", "jsx", "tsx"],
   "moduleDirectories": ["source", "node_modules"],
   "modulePathIgnorePatterns": ["tests"],
   "transform": {
-    "^.+\\.ts$": "ts-jest",
-    "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "babel-jest"
+    "^.+\\.(js|jsx|mjs|cjs|ts|tsx)$": "ts-jest"
   },
   "transformIgnorePatterns": [
-    "node_modules/(?!(@pollum-io/sysweb3-utils|@pollum-io/sysweb3-network|@pollum-io/sysweb3-core|@pollum-io/sysweb3-keyring)/)"
+    "node_modules/(?!(@pollum-io/sysweb3-utils|@pollum-io/sysweb3-network|@pollum-io/sysweb3-core|@pollum-io/sysweb3-keyring|axios|@pollum-io/))"
   ],
   "testTimeout": 30000,
-  "testRegex": "((\\.|/*.)(spec)|(test))\\.ts?$",
-  "setupFilesAfterEnv": ["./jest.setup.js"]
+  "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.[jt]sx?$",
+  "setupFilesAfterEnv": ["./jest.setup.js"],
+  "moduleNameMapper": {
+    "^assets/.*\\.(jpg|jpeg|png|gif|svg)$": "<rootDir>/tests/__mocks__/fileMock.js",
+    "\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$": "<rootDir>/tests/__mocks__/fileMock.js",
+    "^assets/(.*)$": "<rootDir>/source/assets/$1",
+    "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+  }
 }

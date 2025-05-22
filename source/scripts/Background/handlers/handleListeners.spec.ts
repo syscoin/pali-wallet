@@ -15,6 +15,70 @@ import { setIsPolling } from 'state/vault';
 
 import { handleListeners } from './handleListeners';
 
+// --- Try mocking the core keyring module ---
+jest.mock('@pollum-io/sysweb3-keyring', () => ({
+  __esModule: true,
+  KeyringManager: jest.fn().mockImplementation(() => ({})),
+  KeyringAccountType: {
+    HDAccount: 'HDAccount',
+    Imported: 'Imported',
+    Trezor: 'Trezor',
+    Ledger: 'Ledger',
+  },
+  // Provide mock initial states as they are used in vault/index.ts
+  initialActiveHdAccountState: {
+    id: 0, // Or any appropriate default mock ID
+    type: 'HDAccount',
+    label: 'Account 1',
+    address: 'mockHdAddress0',
+    xpub: 'mockXpub0',
+    // Add other properties that initialActiveHdAccountState normally has
+    // based on its actual definition to avoid further undefined errors.
+    balance: '0', // Example
+    isImported: false,
+    isTrezorWallet: false,
+    isLedgerWallet: false,
+    zpub: 'mockZpub0',
+    transactions: [],
+    assets: [],
+    balances: { ethereum: '0', syscoin: '0' },
+  },
+  initialActiveImportedAccountState: {
+    id: 0, // Or any appropriate default mock ID for imported accounts if different
+    type: 'Imported',
+    label: 'Imported Account 1',
+    address: 'mockImportedAddress0',
+    xprv: 'mockXprv0',
+    // Add other properties for imported accounts
+    balance: '0',
+    isImported: true,
+    isTrezorWallet: false,
+    isLedgerWallet: false,
+    transactions: [],
+    assets: [],
+    balances: { ethereum: '0', syscoin: '0' },
+  },
+  // Mock other necessary constants or types if their absence causes import errors
+  CustomJsonRpcProvider: jest.fn(),
+  CustomL2JsonRpcProvider: jest.fn(),
+}));
+// --- End keyring mock ---
+
+// SIMPLIFIED Mock Ledger transport
+jest.mock('@ledgerhq/hw-transport-webhid', () => ({
+  __esModule: true,
+  default: jest.fn(() => ({
+    // Provide minimal mocks for methods that might be called during setup or type checking
+    // if absolutely necessary, otherwise keep it as empty as possible initially.
+    close: jest.fn(),
+    on: jest.fn(),
+    off: jest.fn(),
+    isSupported: jest.fn(() => Promise.resolve(true)),
+    // Add other methods only if essential for the file to parse/compile for tests
+  })),
+  // Mock other named exports if they are directly imported and used in the module under test
+}));
+
 // Mock dependencies
 jest.mock('scripts/Background/handlers/handleLogout');
 jest.mock('scripts/Background/handlers/handlePaliUpdates');
@@ -56,6 +120,17 @@ const mockMasterController: jest.Mocked<IMasterController> = {
   rehydrate: jest.fn(),
   utils: {
     setFiat: jest.fn(),
+    getAsset: jest.fn(),
+    getFeeRate: jest.fn(),
+    getPsbtFromJson: jest.fn(),
+    getRawTransaction: jest.fn(),
+    getSearch: jest.fn(),
+    getToken: jest.fn(),
+    getTokenByContract: jest.fn(),
+    getTokenJson: jest.fn(),
+    getTokenMap: jest.fn(),
+    isValidEthereumAddress: jest.fn(),
+    isValidSYSAddress: jest.fn(),
   },
   // Mock wallet methods used in handleListeners
   wallet: {
@@ -81,8 +156,10 @@ describe('Background: handleListeners', () => {
 
   describe('onInstalled Listener', () => {
     it('should create alarms on install', () => {
-      // Simulate the onInstalled event
-      chrome.runtime.onInstalled.callListeners();
+      // Simulate the onInstalled event with mock details
+      chrome.runtime.onInstalled.callListeners({
+        reason: 'install',
+      } as chrome.runtime.InstalledDetails);
 
       // Check if alarms are created
       expect(chrome.alarms.create).toHaveBeenCalledWith('check_for_updates', {
@@ -99,7 +176,9 @@ describe('Background: handleListeners', () => {
     });
 
     it('should trigger initial updates on install', () => {
-      chrome.runtime.onInstalled.callListeners();
+      chrome.runtime.onInstalled.callListeners({
+        reason: 'install',
+      } as chrome.runtime.InstalledDetails);
 
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);

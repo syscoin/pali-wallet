@@ -25,7 +25,7 @@ handleMasterControllerInstance().then((controller) => {
   handleObserveStateChanges();
   handleStartPolling();
   handlePendingTransactionsPolling();
-  handleFiatPrice(controller);
+  handleFiatPrice();
 });
 
 export const getController = () => MasterControllerInstance;
