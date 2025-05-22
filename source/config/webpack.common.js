@@ -153,12 +153,16 @@ module.exports = {
       patterns: [
         {
           from: './manifest.json',
-          to: join(__dirname, '../../build/chrome'),
+          to: join(__dirname, '../../build', targetBrowser),
           force: true,
           transform: function (content) {
-            return Buffer.from(
-              JSON.stringify({ ...JSON.parse(content.toString()) })
-            );
+            try {
+              const manifestObject = JSON.parse(content.toString());
+              return Buffer.from(JSON.stringify(manifestObject, null, 2));
+            } catch (e) {
+              console.error('Error transforming manifest.json:', e);
+              return content;
+            }
           },
         },
       ],
