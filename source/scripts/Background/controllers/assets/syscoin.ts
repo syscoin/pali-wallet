@@ -6,7 +6,7 @@ import { getAsset } from '@pollum-io/sysweb3-utils';
 import { ITokenSysProps } from 'types/tokens';
 
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
-import { validateAndManageUserAssets } from './utils';
+import { validateAndManageUserAssets, ensureTrailingSlash } from './utils';
 
 const SysAssetsControler = (): ISysAssetsController => {
   const addSysDefaultToken = async (assetGuid: string, networkUrl: string) => {
@@ -44,7 +44,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
       const { tokens, tokensAsset } = await sys.utils.fetchBackendAccount(
-        networkUrl,
+        ensureTrailingSlash(networkUrl),
         xpub,
         requestOptions,
         true

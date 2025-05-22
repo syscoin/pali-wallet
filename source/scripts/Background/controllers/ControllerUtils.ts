@@ -23,6 +23,8 @@ import { setCoinsList } from 'state/vault';
 import { IControllerUtils } from 'types/controllers';
 import { getNetworkChain, logError } from 'utils/index';
 
+import { ensureTrailingSlash } from './assets/utils';
+
 const ControllerUtils = (): IControllerUtils => {
   const setFiat = async (currency?: string) => {
     if (!currency) {
@@ -53,14 +55,11 @@ const ControllerUtils = (): IControllerUtils => {
     switch (id) {
       case INetworkType.Syscoin:
         try {
-          const { chain } = await validateSysRpc(activeNetwork.url);
-          const adjustedUrl = activeNetwork.url.endsWith('/')
-            ? activeNetwork.url
-            : `${activeNetwork.url}/`;
-
+          const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
+          const { chain } = await validateSysRpc(activeNetworkURL);
           if (chain !== 'test') {
             const currencies = await (
-              await fetch(`${adjustedUrl}${ASSET_PRICE_API}`)
+              await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
             ).json();
             if (currencies && currencies.rates) {
               store.dispatch(setCoins(currencies.rates));
