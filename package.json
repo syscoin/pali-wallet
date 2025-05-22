@@ -141,7 +141,7 @@
     "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@playwright/test": "^1.46.1",
     "@types/node": "^18.16.3",
-    "@types/react": "^17",
+    "@types/react": "^18.2.5",
     "@types/react-dom": "^18.2.3",
     "@types/selenium-webdriver": "^4.1.14",
     "@types/uuid": "^9.0.7",
