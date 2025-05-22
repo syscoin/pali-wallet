@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { transitions, positions, Provider as AlertProvider } from 'react-alert';
-import ReactDOM from 'react-dom';
+import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 
 import { ToastAlert } from 'components/index';
@@ -24,7 +24,7 @@ import 'assets/styles/custom-send-utxo-input.css';
 
 import External from './External';
 
-const app = document.getElementById('external-root');
+const externalRootElement = document.getElementById('external-root');
 
 const options = {
   position: positions.BOTTOM_CENTER,
@@ -33,16 +33,22 @@ const options = {
   transition: transitions.FADE,
 };
 
-rehydrateStore(store).then(() => {
-  ReactDOM.render(
-    <Provider store={store}>
-      <AlertProvider template={ToastAlert} {...options}>
-        <External />
-      </AlertProvider>
-    </Provider>,
-    app
-  );
+if (externalRootElement) {
+  rehydrateStore(store).then(() => {
+    const root = ReactDOM.createRoot(externalRootElement);
+    root.render(
+      <React.StrictMode>
+        <Provider store={store}>
+          <AlertProvider template={ToastAlert} {...options}>
+            <External />
+          </AlertProvider>
+        </Provider>
+      </React.StrictMode>
+    );
 
-  // Subscribe store to updates
-  handleStoreSubscribe(store);
-});
+    // Subscribe store to updates
+    handleStoreSubscribe(store);
+  });
+} else {
+  console.error("Failed to find the root element with ID 'external-root'.");
+}
