@@ -1,8 +1,11 @@
 import store from 'state/store';
 
-function getPollingInterval() {
+// Export the function so it can be imported elsewhere
+export function getPollingInterval() {
   const { isBitcoinBased } = store.getState().vault;
-  return isBitcoinBased ? 2 : 1; // polling interval in minutes, minimum acceptable by chrome alarm API is 1
+  // Increase polling intervals for better performance
+  // EVM: 5 minutes, Bitcoin-based: 10 minutes
+  return isBitcoinBased ? 10 : 5; // polling interval in minutes, minimum acceptable by chrome alarm API is 1
 }
 
 export const startPolling = () => {

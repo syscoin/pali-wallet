@@ -21,17 +21,17 @@ function shouldUpdate() {
 
   const currentBalance = isBitcoinBased
     ? accounts[activeAccount.type][activeAccount.id].balances.syscoin
-    : accounts[activeAccount.type][activeAccount.id].balances.syscoin;
+    : accounts[activeAccount.type][activeAccount.id].balances.ethereum;
 
   const previousBalance = prevBalances[activeAccount.id]?.[chain]?.[chainId];
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
-  const currentAccountTransactions = currentAccount.transactions[chain][
+  const currentAccountTransactions = currentAccount.transactions[chain]?.[
     chainId
   ] as any[];
 
-  const hasPendingTx = (currentAccountTransactions ?? []).every(
-    (tx) => tx.confirmations > 0
-  );
+  const hasPendingTx = Array.isArray(currentAccountTransactions)
+    ? currentAccountTransactions.every((tx) => tx.confirmations > 0)
+    : true;
 
   if (currentBalance === previousBalance && hasPendingTx) {
     return false;

@@ -3,6 +3,7 @@
     "target": "es6", // ECMAScript target version: 'ES3' (default), 'ES5', 'ES2015', 'ES2016', 'ES2017','ES2018' or 'ESNEXT'.
     "module": "esnext", // Module code generation: 'none', 'commonjs', 'amd', 'system', 'umd', 'es2015', or 'ESNext'.
     "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["chrome", "node"], // Explicitly include chrome and node types
     "jsx": "react",
     "declaration": false,
     "isolatedModules": true,

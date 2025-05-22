@@ -191,6 +191,13 @@ class MainController extends KeyringManager {
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
 
+    // --- BEGIN VALIDATION ---
+    if (!phrase || !this.isSeedValid(phrase)) {
+      store.dispatch(setIsLoadingBalances(false)); // Stop loading indicator
+      throw new Error('Invalid or empty seed phrase provided.');
+    }
+    // --- END VALIDATION ---
+
     const handleWalletInfo = () => {
       this.setSeed(phrase);
       this.setWalletPassword(password);
@@ -981,12 +988,12 @@ class MainController extends KeyringManager {
       type: KeyringAccountType;
     },
     activeNetwork: INetwork
-  ) {
+  ): Promise<any> {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     if (isBitcoinBased) {
-      this.transactions.sys
+      return this.transactions.sys
         .getInitialUserTransactionsByXpub(
           currentAccount.xpub,
           activeNetwork.url
@@ -1002,9 +1009,12 @@ class MainController extends KeyringManager {
               transactions: txs,
             })
           );
+        })
+        .catch((error) => {
+          console.error('Error fetching Syscoin transactions:', error);
         });
     } else {
-      this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
+      return this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
         activeNetwork.url
@@ -1020,56 +1030,56 @@ class MainController extends KeyringManager {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
-  }) {
+  }): Promise<void> {
     const { accounts, activeAccount } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    const { currentPromise: transactionPromise, cancel } =
-      this.cancellablePromises.createCancellablePromise<void>(
-        async (resolve, reject) => {
-          try {
-            if (isPolling) {
-              await this.transactionsManager.utils
-                .updateTransactionsFromCurrentAccount(
-                  currentAccount,
-                  isBitcoinBased,
-                  activeNetwork.url
-                )
-                .then((txs) => {
-                  const canDispatch =
-                    isBitcoinBased && !(isNil(txs) && isEmpty(txs));
-
-                  if (canDispatch) {
-                    store.dispatch(
-                      setMultipleTransactionToState({
-                        chainId: activeNetwork.chainId,
-                        networkType: TransactionsType.Syscoin,
-                        transactions: txs,
-                      })
-                    );
-                  }
-                });
-            } else {
-              this.callUpdateTxsMethodBasedByIsBitcoinBased(
+    const promiseObj = this.cancellablePromises.createCancellablePromise<void>(
+      async (resolve, reject) => {
+        try {
+          if (isPolling) {
+            await this.transactionsManager.utils
+              .updateTransactionsFromCurrentAccount(
+                currentAccount,
                 isBitcoinBased,
-                activeAccount,
-                activeNetwork
-              );
-            }
-            resolve();
-          } catch (error) {
-            reject(error);
+                activeNetwork.url
+              )
+              .then((txs) => {
+                const canDispatch =
+                  isBitcoinBased && !(isNil(txs) && isEmpty(txs));
+
+                if (canDispatch) {
+                  store.dispatch(
+                    setMultipleTransactionToState({
+                      chainId: activeNetwork.chainId,
+                      networkType: TransactionsType.Syscoin,
+                      transactions: txs,
+                    })
+                  );
+                }
+              });
+          } else {
+            this.callUpdateTxsMethodBasedByIsBitcoinBased(
+              isBitcoinBased,
+              activeAccount,
+              activeNetwork
+            );
           }
+          resolve();
+        } catch (error) {
+          reject(error);
         }
-      );
+      }
+    );
 
     this.cancellablePromises.setPromise(PromiseTargets.TRANSACTION, {
-      transactionPromise,
-      cancel,
+      currentPromise: promiseObj.currentPromise,
+      cancel: promiseObj.cancel,
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
+    return promiseObj.currentPromise;
   }
 
   public async validatePendingEvmTransactions({
@@ -1150,80 +1160,79 @@ class MainController extends KeyringManager {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
-  }) {
+  }): Promise<void> {
     const { accounts } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    const { currentPromise: assetsPromise, cancel } =
-      this.cancellablePromises.createCancellablePromise<void>(
-        async (resolve, reject) => {
-          try {
-            const updatedAssets =
-              await this.assetsManager.utils.updateAssetsFromCurrentAccount(
-                currentAccount,
-                isBitcoinBased,
-                activeNetwork.url,
-                activeNetwork.chainId,
-                this.ethereumTransaction.web3Provider
-              );
-            const validateUpdatedAndPreviousAssetsLength =
-              updatedAssets.ethereum.length <
-                currentAccount.assets.ethereum.length ||
-              updatedAssets.syscoin.length <
-                currentAccount.assets.syscoin.length;
-
-            const validateIfUpdatedAssetsStayEmpty =
-              (currentAccount.assets.ethereum.length > 0 &&
-                isEmpty(updatedAssets.ethereum)) ||
-              (currentAccount.assets.syscoin.length > 0 &&
-                isEmpty(updatedAssets.syscoin));
-
-            const validateIfBothUpdatedIsEmpty =
-              isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
-
-            const validateIfNotNullEthValues = updatedAssets.ethereum.some(
-              (value) => isNil(value)
+    const promiseObj = this.cancellablePromises.createCancellablePromise<void>(
+      async (resolve, reject) => {
+        try {
+          const updatedAssets =
+            await this.assetsManager.utils.updateAssetsFromCurrentAccount(
+              currentAccount,
+              isBitcoinBased,
+              activeNetwork.url,
+              activeNetwork.chainId,
+              this.ethereumTransaction.web3Provider
             );
+          const validateUpdatedAndPreviousAssetsLength =
+            updatedAssets.ethereum.length <
+              currentAccount.assets.ethereum.length ||
+            updatedAssets.syscoin.length < currentAccount.assets.syscoin.length;
 
-            const validateIfIsInvalidDispatch =
-              validateUpdatedAndPreviousAssetsLength ||
-              validateIfUpdatedAssetsStayEmpty ||
-              validateIfBothUpdatedIsEmpty ||
-              validateIfNotNullEthValues;
+          const validateIfUpdatedAssetsStayEmpty =
+            (currentAccount.assets.ethereum.length > 0 &&
+              isEmpty(updatedAssets.ethereum)) ||
+            (currentAccount.assets.syscoin.length > 0 &&
+              isEmpty(updatedAssets.syscoin));
 
-            if (validateIfIsInvalidDispatch) {
-              resolve();
-              return;
-            }
+          const validateIfBothUpdatedIsEmpty =
+            isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
 
-            if (!isPolling) {
-              store.dispatch(setIsLoadingAssets(true));
-            }
+          const validateIfNotNullEthValues = updatedAssets.ethereum.some(
+            (value) => isNil(value)
+          );
 
-            store.dispatch(
-              setAccountPropertyByIdAndType({
-                id: activeAccount.id,
-                type: activeAccount.type,
-                property: 'assets',
-                value: updatedAssets,
-              })
-            );
+          const validateIfIsInvalidDispatch =
+            validateUpdatedAndPreviousAssetsLength ||
+            validateIfUpdatedAssetsStayEmpty ||
+            validateIfBothUpdatedIsEmpty ||
+            validateIfNotNullEthValues;
 
-            store.dispatch(setIsLoadingAssets(false));
+          if (validateIfIsInvalidDispatch) {
             resolve();
-          } catch (error) {
-            reject(error);
+            return;
           }
+
+          if (!isPolling) {
+            store.dispatch(setIsLoadingAssets(true));
+          }
+
+          store.dispatch(
+            setAccountPropertyByIdAndType({
+              id: activeAccount.id,
+              type: activeAccount.type,
+              property: 'assets',
+              value: updatedAssets,
+            })
+          );
+
+          store.dispatch(setIsLoadingAssets(false));
+          resolve();
+        } catch (error) {
+          reject(error);
         }
-      );
+      }
+    );
 
     this.cancellablePromises.setPromise(PromiseTargets.ASSETS, {
-      assetsPromise,
-      cancel,
+      currentPromise: promiseObj.currentPromise,
+      cancel: promiseObj.cancel,
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.ASSETS);
+    return promiseObj.currentPromise;
   }
 
   public updateUserNativeBalance({
@@ -1239,7 +1248,7 @@ class MainController extends KeyringManager {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean;
-  }) {
+  }): Promise<void> {
     const { accounts } = store.getState().vault;
     const L2Networks = [324, 300];
     const isL2Network = L2Networks.includes(activeNetwork.chainId);
@@ -1263,93 +1272,109 @@ class MainController extends KeyringManager {
       );
     }
 
-    const { currentPromise: balancePromise, cancel } =
-      this.cancellablePromises.createCancellablePromise<void>(
-        async (resolve, reject) => {
-          try {
-            const updatedBalance =
-              await this.balancesManager.utils.getBalanceUpdatedForAccount(
-                currentAccount,
-                isBitcoinBased,
-                activeNetwork.url,
-                internalProvider
-              );
-
-            const actualUserBalance = isBitcoinBased
-              ? currentAccount.balances.syscoin
-              : currentAccount.balances.ethereum;
-            const validateIfCanDispatch = Boolean(
-              Number(actualUserBalance) !== parseFloat(updatedBalance)
+    const promiseObj = this.cancellablePromises.createCancellablePromise<void>(
+      async (resolve, reject) => {
+        try {
+          const updatedBalance =
+            await this.balancesManager.utils.getBalanceUpdatedForAccount(
+              currentAccount,
+              isBitcoinBased,
+              activeNetwork.url,
+              internalProvider
             );
 
-            if (validateIfCanDispatch) {
-              store.dispatch(setIsLoadingBalances(true));
-              store.dispatch(
-                setAccountPropertyByIdAndType({
-                  id: activeAccount.id,
-                  type: activeAccount.type,
-                  property: 'balances',
-                  value: {
-                    ...currentAccount.balances,
-                    [isBitcoinBased
-                      ? INetworkType.Syscoin
-                      : INetworkType.Ethereum]: updatedBalance,
-                  },
-                })
-              );
+          const actualUserBalance = isBitcoinBased
+            ? currentAccount.balances.syscoin
+            : currentAccount.balances.ethereum;
+          const validateIfCanDispatch = Boolean(
+            Number(actualUserBalance) !== parseFloat(updatedBalance)
+          );
 
-              store.dispatch(setIsLoadingBalances(false));
-            }
+          if (validateIfCanDispatch) {
+            store.dispatch(setIsLoadingBalances(true));
+            store.dispatch(
+              setAccountPropertyByIdAndType({
+                id: activeAccount.id,
+                type: activeAccount.type,
+                property: 'balances',
+                value: {
+                  ...currentAccount.balances,
+                  [isBitcoinBased
+                    ? INetworkType.Syscoin
+                    : INetworkType.Ethereum]: updatedBalance,
+                },
+              })
+            );
 
-            resolve();
-          } catch (error) {
-            reject(error);
+            store.dispatch(setIsLoadingBalances(false));
           }
+
+          resolve();
+        } catch (error) {
+          reject(error);
         }
-      );
+      }
+    );
 
     this.cancellablePromises.setPromise(PromiseTargets.BALANCE, {
-      balancePromise,
-      cancel,
+      currentPromise: promiseObj.currentPromise,
+      cancel: promiseObj.cancel,
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
+    return promiseObj.currentPromise;
   }
 
-  public getLatestUpdateForCurrentAccount(isPolling = false) {
+  public async getLatestUpdateForCurrentAccount(isPolling = false) {
     const {
-      isNetworkChanging,
-      accounts,
-      activeAccount,
-      isBitcoinBased,
+      activeAccount: activeAccountInfo,
       activeNetwork,
+      isBitcoinBased,
+      accounts,
     } = store.getState().vault;
 
-    const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
+    const activeAccount =
+      accounts[activeAccountInfo.type][activeAccountInfo.id];
 
-    if (isNetworkChanging || isNil(activeAccountValues.address)) {
-      throw new Error('Could not update account while changing network');
+    if (!activeAccount || !activeNetwork) {
+      return;
     }
 
-    Promise.all([
+    // Start with required updates
+    const accountUpdatePromises: Promise<any>[] = [
       this.updateUserNativeBalance({
-        isBitcoinBased,
+        activeAccount: activeAccountInfo,
         activeNetwork,
-        activeAccount,
-        isPolling,
-      }),
-      this.updateUserTransactionsState({
-        isPolling,
         isBitcoinBased,
-        activeNetwork,
+        isPolling,
       }),
       this.updateAssetsFromCurrentAccount({
-        isBitcoinBased,
+        activeAccount: activeAccountInfo,
         activeNetwork,
-        activeAccount,
+        isBitcoinBased,
         isPolling,
       }),
-    ]);
+      this.callUpdateTxsMethodBasedByIsBitcoinBased(
+        isBitcoinBased,
+        activeAccountInfo,
+        activeNetwork
+        // Note: isPolling is not currently passed here, consider if needed
+      ),
+    ];
+
+    // Conditionally add NFT update only if not polling
+    if (!isPolling) {
+      accountUpdatePromises.push(
+        this.fetchAndUpdateNftsState({
+          activeAccount: activeAccountInfo,
+          activeNetwork,
+        })
+      );
+    }
+
+    Promise.allSettled(accountUpdatePromises).catch((error) => {
+      console.error('Failed to update account data:', error);
+    });
   }
 
   public async setFaucetModalState({
