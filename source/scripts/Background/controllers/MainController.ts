@@ -1176,10 +1176,16 @@ class MainController extends KeyringManager {
               activeNetwork.chainId,
               this.ethereumTransaction.web3Provider
             );
+
           const validateUpdatedAndPreviousAssetsLength =
-            updatedAssets.ethereum.length <
-              currentAccount.assets.ethereum.length ||
-            updatedAssets.syscoin.length < currentAccount.assets.syscoin.length;
+            (updatedAssets.ethereum
+              ? updatedAssets.ethereum.length <
+                currentAccount.assets.ethereum.length
+              : false) ||
+            (updatedAssets.syscoin
+              ? updatedAssets.syscoin.length <
+                currentAccount.assets.syscoin.length
+              : false);
 
           const validateIfUpdatedAssetsStayEmpty =
             (currentAccount.assets.ethereum.length > 0 &&
@@ -1190,9 +1196,9 @@ class MainController extends KeyringManager {
           const validateIfBothUpdatedIsEmpty =
             isEmpty(updatedAssets.ethereum) && isEmpty(updatedAssets.syscoin);
 
-          const validateIfNotNullEthValues = updatedAssets.ethereum.some(
-            (value) => isNil(value)
-          );
+          const validateIfNotNullEthValues = updatedAssets.ethereum
+            ? updatedAssets.ethereum.some((value) => isNil(value))
+            : false;
 
           const validateIfIsInvalidDispatch =
             validateUpdatedAndPreviousAssetsLength ||
