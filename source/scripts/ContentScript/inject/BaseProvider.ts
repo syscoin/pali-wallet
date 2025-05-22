@@ -117,6 +117,32 @@ export class BaseProvider extends EventEmitter {
       throw messages.errors.invalidRequestParams();
     }
 
+    // For Ethereum provider, check if we should block certain calls based on network type
+    if (this.chainType === 'ethereum') {
+      const evmOnlyMethods = [
+        'eth_chainId',
+        'eth_accounts',
+        'eth_requestAccounts',
+        'net_version',
+        'getProviderState',
+      ];
+      const isEvmOnlyMethod = evmOnlyMethods.includes(method);
+
+      if (isEvmOnlyMethod) {
+        // Check current URL to determine if we're likely on a Bitcoin network
+        const currentUrl = window.location.href;
+        const isBlockbookUrl =
+          currentUrl.includes('blockbook') || currentUrl.includes('trezor.io');
+
+        if (isBlockbookUrl) {
+          console.log(`Blocking EVM method ${method} on Bitcoin-based network`);
+          throw new Error(
+            `${method} is not available on Bitcoin-based networks`
+          );
+        }
+      }
+    }
+
     return new Promise<T>((resolve, reject) => {
       this._rpcRequest(
         { method, params },

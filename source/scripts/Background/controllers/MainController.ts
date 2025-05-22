@@ -2,6 +2,8 @@ import { ethErrors } from 'helpers/errors';
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
+import { UnknownAction } from 'redux';
+import { batchActions } from 'redux-batched-actions';
 
 import {
   KeyringManager,
@@ -118,6 +120,8 @@ class MainController extends KeyringManager {
     transactions: 15000, // 15 seconds
     nfts: 120000, // 2 minutes
   };
+
+  private rpcProviderPool: Map<string, CustomJsonRpcProvider> | null = null;
 
   constructor(walletState: any) {
     super(walletState);
@@ -1473,20 +1477,21 @@ class MainController extends KeyringManager {
     isBitcoinBased: boolean,
     network: INetwork
   ) {
-    // Batch state updates to reduce re-renders
-    const updates = [
+    // Batch state updates with proper typing
+    const actions = [
       setNetworkChange({ activeChain, wallet }),
       setIsBitcoinBased(isBitcoinBased),
       setIsLoadingBalances(false),
-    ];
+    ] as UnknownAction[];
 
-    // Dispatch batched updates
-    updates.forEach((action) => store.dispatch(action));
+    // Dispatch batched actions – double-cast to avoid strict structural checks
+    store.dispatch(batchActions(actions) as unknown as UnknownAction);
 
+    // Update fiat rates
     await this.utilsController.setFiat();
 
-    // Batch asset and transaction updates
-    const updatePromises = [
+    // Batch asset and transaction updates in parallel
+    await Promise.all([
       this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork: network,
@@ -1500,15 +1505,12 @@ class MainController extends KeyringManager {
         isBitcoinBased,
         activeNetwork: network,
       }),
-    ];
+    ]);
 
-    // Run updates in parallel
-    await Promise.all(updatePromises);
-
-    // Notify DApps about network changes
+    // Batch DApp notifications
     const controller = getController();
 
-    // Chain changed event
+    // Handle chain changed notification
     await controller.dapp.handleStateChange(PaliEvents.chainChanged, {
       method: PaliEvents.chainChanged,
       params: {
@@ -1518,13 +1520,13 @@ class MainController extends KeyringManager {
       },
     });
 
-    // Bitcoin based status event
+    // Handle Bitcoin based status
     await controller.dapp.handleStateChange(PaliEvents.isBitcoinBased, {
       method: PaliEvents.isBitcoinBased,
       params: { isBitcoinBased },
     });
 
-    // Block explorer event
+    // Handle block explorer change
     await controller.dapp.handleBlockExplorerChange(
       PaliSyscoinEvents.blockExplorerChanged,
       {
@@ -1533,9 +1535,8 @@ class MainController extends KeyringManager {
       }
     );
 
-    // Chain-specific events
+    // Handle chain-specific notifications
     if (isBitcoinBased) {
-      // For Syscoin chain, we use xpubChanged
       await controller.dapp.handleBlockExplorerChange(
         PaliSyscoinEvents.xpubChanged,
         {
@@ -1546,7 +1547,6 @@ class MainController extends KeyringManager {
         }
       );
     } else {
-      // For Ethereum chain, we use accountsChanged
       await controller.dapp.handleStateChange(PaliEvents.accountsChanged, {
         method: PaliEvents.accountsChanged,
         params: [
@@ -1567,15 +1567,17 @@ class MainController extends KeyringManager {
     success: boolean;
     wallet: IWalletState;
   }> {
-    // Only create new provider if network actually changed
-    const currentNetwork = store.getState().vault.activeNetwork;
+    // Cache current state
+    const currentState = store.getState().vault;
+    const currentNetwork = currentState.activeNetwork;
+
+    // Check if network actually changed
     const networkChanged =
       currentNetwork.chainId !== network.chainId ||
       currentNetwork.url !== network.url;
 
     if (!networkChanged) {
-      // Network didn't actually change, return current state
-      const currentState = store.getState().vault;
+      // Return current state if network didn't change
       const walletState = {
         ...currentState,
         activeAccountId: currentState.activeAccount.id,
@@ -1591,16 +1593,21 @@ class MainController extends KeyringManager {
       };
     }
 
-    // Network changed, configure new signer and providers
+    // Only configure new network if actually changed
     const result = await this.setSignerNetwork(network, chain);
 
-    // Create new provider and managers if needed
+    // Create new providers only if needed
     if (result.sucess && (!this.web3Provider || networkChanged)) {
       this.web3Provider = this.ethereumTransaction.web3Provider;
-      this.assetsManager = AssetsManager(this.web3Provider);
+
+      // Initialize managers in parallel
+      await Promise.all([
+        (this.assetsManager = AssetsManager(this.web3Provider)),
+        (this.transactionsManager = TransactionsManager(this.web3Provider)),
+        (this.balancesManager = BalancesManager(this.web3Provider)),
+      ]);
+
       this.assets = this.assetsManager;
-      this.transactionsManager = TransactionsManager(this.web3Provider);
-      this.balancesManager = BalancesManager(this.web3Provider);
     }
 
     return {
@@ -1608,9 +1615,9 @@ class MainController extends KeyringManager {
       wallet:
         result.wallet ||
         ({
-          ...store.getState().vault,
-          activeAccountId: store.getState().vault.activeAccount.id,
-          activeAccountType: store.getState().vault.activeAccount.type,
+          ...currentState,
+          activeAccountId: currentState.activeAccount.id,
+          activeAccountType: currentState.activeAccount.type,
         } as IWalletState),
       activeChain: result.activeChain || (chain as INetworkType),
     };
@@ -1728,6 +1735,85 @@ class MainController extends KeyringManager {
       reject(
         'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
       );
+    }
+  };
+
+  public setSignerNetwork = async (
+    network: INetwork,
+    chain: string
+  ): Promise<{
+    activeChain?: INetworkType;
+    sucess: boolean;
+    wallet?: IWalletState;
+  }> => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000;
+
+    if (!this.rpcProviderPool) {
+      this.rpcProviderPool = new Map();
+    }
+
+    const getOrCreateProvider = async (networkUrl: string) => {
+      const existingProvider = this.rpcProviderPool.get(networkUrl);
+      if (existingProvider?.ready) {
+        return existingProvider;
+      }
+
+      // Create new provider with retry logic
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const _provider = new CustomJsonRpcProvider(networkUrl as any) as any;
+          await _provider.ready;
+          this.rpcProviderPool.set(networkUrl, _provider);
+          return _provider;
+        } catch (error) {
+          if (attempt === MAX_RETRIES) {
+            throw error;
+          }
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        }
+      }
+    };
+
+    try {
+      await getOrCreateProvider(network.url);
+
+      // Call parent class method
+      const result = await KeyringManager.prototype.setSignerNetwork.call(
+        this,
+        network,
+        chain as INetworkType
+      );
+
+      if (!result.sucess) {
+        throw new Error('Failed to set network');
+      }
+
+      // Clean up unused providers
+      for (const [url, oldProvider] of this.rpcProviderPool.entries()) {
+        if (url !== network.url) {
+          try {
+            await oldProvider.ready;
+            // Clean up provider resources if available at runtime
+            if ((oldProvider as any).destroy) {
+              await (oldProvider as any).destroy();
+            }
+          } catch (error) {
+            console.error('Error cleaning up provider:', error);
+          }
+          this.rpcProviderPool.delete(url);
+        }
+      }
+
+      return {
+        sucess: true,
+        wallet: result.wallet,
+        activeChain: chain as INetworkType,
+      };
+    } catch (error) {
+      console.error('Network switch error:', error);
+      store.dispatch(setStoreError(true));
+      return { sucess: false };
     }
   };
 }

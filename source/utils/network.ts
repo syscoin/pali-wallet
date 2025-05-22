@@ -94,3 +94,49 @@ export const verifyNetworkEIP1559Compatibility = async (
 
 export const getNetworkChain = (isBtcBased: boolean) =>
   isBtcBased ? INetworkType.Syscoin : INetworkType.Ethereum;
+
+/**
+ * Determines if a network is Syscoin NEVM (EVM-compatible) based on URL and chainId
+ */
+export const isSyscoinNEVMNetwork = (url: string, chainId: number): boolean => {
+  const nevmUrls = ['rpc.syscoin.org', 'rpc.tanenbaum.io'];
+  const nevmChainIds = [57, 5700]; // NEVM Mainnet and Testnet
+
+  return (
+    nevmUrls.some((nevmUrl) => url.includes(nevmUrl)) &&
+    nevmChainIds.includes(chainId)
+  );
+};
+
+/**
+ * Determines if a network is Syscoin UTXO based on URL and chainId
+ */
+export const isSyscoinUTXONetwork = (url: string, chainId: number): boolean => {
+  const utxoUrls = ['explorer-blockbook.syscoin.org', 'blockbook.syscoin.org'];
+  const utxoChainIds = [57]; // UTXO uses same chainId but different URL pattern
+
+  return (
+    utxoUrls.some((utxoUrl) => url.includes(utxoUrl)) &&
+    utxoChainIds.includes(chainId)
+  );
+};
+
+/**
+ * Gets the appropriate network type (EVM or UTXO) based on network details
+ */
+export const getNetworkTypeFromDetails = (
+  url: string,
+  chainId: number
+): INetworkType => {
+  if (isSyscoinNEVMNetwork(url, chainId)) {
+    return INetworkType.Ethereum;
+  } else if (isSyscoinUTXONetwork(url, chainId)) {
+    return INetworkType.Syscoin;
+  } else if (chainId === 57) {
+    // For chainId 57, default based on URL pattern
+    return url.includes('rpc.') ? INetworkType.Ethereum : INetworkType.Syscoin;
+  } else {
+    // For other chains, use existing logic
+    return chainId > 1000 ? INetworkType.Ethereum : INetworkType.Syscoin;
+  }
+};

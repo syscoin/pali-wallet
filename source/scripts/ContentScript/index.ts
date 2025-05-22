@@ -208,7 +208,7 @@ if (shouldInjectProvider()) {
 const port = chrome.runtime.connect({ name: 'keepAlive' });
 setInterval(() => {
   port.postMessage({ ping: true });
-}, 5e3);
+}, 120000); // Reduced frequency from 30s to 2 minutes to minimize overhead and prevent excessive RPC calls
 
 start();
 startEventEmitter();

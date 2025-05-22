@@ -7,39 +7,71 @@ import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
 import { IEvmTransactionResponse, ITransactionsManager } from './types';
 
+// Cache for transaction results
+const transactionCache = new Map();
+const CACHE_TTL = 60000; // 1 minute TTL
+
 const TransactionsManager = (
   web3Provider: CustomJsonRpcProvider
 ): ITransactionsManager => {
   const evmTransactionsController = EvmTransactionsController(web3Provider);
+
+  const clearExpiredCache = () => {
+    const now = Date.now();
+    for (const [key, value] of transactionCache.entries()) {
+      if (now - value.timestamp > CACHE_TTL) {
+        transactionCache.delete(key);
+      }
+    }
+  };
+
+  const getCacheKey = (account: string, networkUrl: string) =>
+    `${account}:${networkUrl}`;
+
   const updateTransactionsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string
   ) => {
-    switch (isBitcoinBased) {
-      case true:
-        try {
-          const getSysTxs =
-            await SysTransactionController().pollingSysTransactions(
-              currentAccount.xpub,
-              activeNetworkUrl
-            );
+    // Clear expired cache entries
+    clearExpiredCache();
 
-          return getSysTxs;
-        } catch (sysTxError) {
-          return sysTxError;
-        }
-      case false:
-        try {
-          const getEvmTxs =
-            await evmTransactionsController.pollingEvmTransactions();
+    // Generate cache key
+    const cacheKey = getCacheKey(
+      isBitcoinBased ? currentAccount.xpub : currentAccount.address,
+      activeNetworkUrl
+    );
 
-          return getEvmTxs;
-        } catch (evmTxError) {
-          return evmTxError;
-        }
+    // Check cache
+    const cachedResult = transactionCache.get(cacheKey);
+    if (cachedResult && Date.now() - cachedResult.timestamp < CACHE_TTL) {
+      return cachedResult.data;
+    }
+
+    try {
+      let result;
+      if (isBitcoinBased) {
+        result = await SysTransactionController().pollingSysTransactions(
+          currentAccount.xpub,
+          activeNetworkUrl
+        );
+      } else {
+        result = await evmTransactionsController.pollingEvmTransactions();
+      }
+
+      // Cache the result
+      transactionCache.set(cacheKey, {
+        data: result,
+        timestamp: Date.now(),
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Transaction polling error:', error);
+      return error;
     }
   };
+
   const checkPendingTransactions = async (
     pendingTransactions: IEvmTransactionResponse[]
   ): Promise<IEvmTransactionResponse[]> => {
@@ -66,6 +98,7 @@ const TransactionsManager = (
 
     return confirmedTransactions.filter((tx) => tx.confirmations > 0);
   };
+
   return {
     evm: evmTransactionsController,
     sys: SysTransactionController(),

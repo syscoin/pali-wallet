@@ -55,9 +55,54 @@ export const ROLLUX_DEFAULT_NETWORK = {
   isEdit: false,
 };
 
-export const SYSCOIN_MAINNET_NETWORK_57 = {
+/**
+ * SYSCOIN NETWORK ARCHITECTURE EXPLANATION:
+ *
+ * Syscoin has two different network types that can share the same chain ID (57):
+ *
+ * 1. Syscoin NEVM (Network Enhanced Virtual Machine):
+ *    - EVM-compatible layer built on top of Syscoin
+ *    - Uses RPC endpoints like https://rpc.syscoin.org
+ *    - Supports Ethereum-style transactions, smart contracts, etc.
+ *    - Chain ID 57 (mainnet) and 5700 (testnet)
+ *    - Handles eth_chainId, eth_requestAccounts, etc.
+ *
+ * 2. Syscoin UTXO (Bitcoin-style):
+ *    - Traditional UTXO-based blockchain (like Bitcoin)
+ *    - Uses Blockbook endpoints like https://explorer-blockbook.syscoin.org
+ *    - Supports Bitcoin-style transactions
+ *    - Chain ID 57 (same as NEVM but different protocol)
+ *    - Does NOT support eth_* methods
+ *
+ * The distinction is made by URL pattern:
+ * - rpc.syscoin.org or rpc.tanenbaum.io = NEVM (EVM-compatible)
+ * - explorer-blockbook.syscoin.org = UTXO (Bitcoin-style)
+ *
+ * Other networks:
+ * - Chain ID 57000: Rollux Testnet
+ */
+
+export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
+  chainId: 5700,
+  url: 'https://rpc.tanenbaum.io',
+  label: 'Syscoin NEVM Testnet',
+  default: true,
+  currency: 'tsys',
+  isTestnet: true,
+} as INetwork;
+
+export const SYSCOIN_NEVM_NETWORK_57 = {
   chainId: 57,
-  url: 'https://blockbook.syscoin.org',
+  url: 'https://rpc.syscoin.org',
+  label: 'Syscoin NEVM',
+  default: true,
+  currency: 'sys',
+  isTestnet: false,
+} as INetwork;
+
+export const SYSCOIN_UTXO_NETWORK_57 = {
+  chainId: 57,
+  url: 'https://explorer-blockbook.syscoin.org',
   label: 'Syscoin Mainnet',
   default: true,
   currency: 'sys',
@@ -65,11 +110,16 @@ export const SYSCOIN_MAINNET_NETWORK_57 = {
   isTestnet: false,
 } as INetwork;
 
+// For backwards compatibility - this should be the UTXO network
+export const SYSCOIN_MAINNET_NETWORK_57 = SYSCOIN_UTXO_NETWORK_57;
+
 export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
   chain: INetworkType.Syscoin,
-  network: SYSCOIN_MAINNET_NETWORK_57,
+  network: SYSCOIN_UTXO_NETWORK_57,
   isEdit: true,
 };
+
+export const SYS_UTXO_MAINNET_NETWORK = SYSCOIN_UTXO_NETWORK_57;
 
 interface IFaucetNetworkData {
   [key: string]: {
@@ -129,12 +179,3 @@ export const faucetTxSyscoinNEVMTestnetInfo = {
   quantity: 1,
   smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
 };
-
-export const SYS_UTXO_MAINNET_NETWORK = {
-  chainId: 57,
-  url: 'https://blockbook.syscoin.org',
-  label: 'Syscoin Mainnet',
-  default: true,
-  currency: 'sys',
-  slip44: 57,
-} as INetwork;

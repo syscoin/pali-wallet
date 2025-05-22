@@ -52,3 +52,5 @@ if (externalRootElement) {
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");
 }
+
+export { default as External } from './External';

@@ -36,6 +36,8 @@ export class PaliInpageProviderSys extends BaseProvider {
   public readonly version: number = 2;
   public networkVersion: string | null;
   public chainId: string | null;
+  private _isInitializing = false;
+  private _initializationPromise: Promise<void> | null = null;
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('syscoin', maxEventListeners, wallet);
     this._sys = this._getSysAPI();
@@ -45,20 +47,28 @@ export class PaliInpageProviderSys extends BaseProvider {
     };
     this.chainId = null;
     this.networkVersion = null;
-    this.request({ method: 'wallet_getSysProviderState' })
-      .then((state) => {
-        const initialState = state as Parameters<
-          PaliInpageProviderSys['_initializeState']
-        >[0];
-
-        this._initializeState(initialState);
+    if (!this._isInitializing && !this._initializationPromise) {
+      this._isInitializing = true;
+      this._initializationPromise = this.request({
+        method: 'wallet_getSysProviderState',
       })
-      .catch((error) =>
-        console.error(
-          'Pali: Failed to get initial state. Please report this bug.',
-          error
+        .then((state) => {
+          const initialState = state as Parameters<
+            PaliInpageProviderSys['_initializeState']
+          >[0];
+
+          this._initializeState(initialState);
+        })
+        .catch((error) =>
+          console.error(
+            'Pali: Failed to get initial state. Please report this bug.',
+            error
+          )
         )
-      );
+        .finally(() => {
+          this._isInitializing = false;
+        });
+    }
 
     this.initMessageListener();
   }

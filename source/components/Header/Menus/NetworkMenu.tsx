@@ -76,6 +76,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
     setSelectedNetwork({ network, chain });
+
+    // Check if user is trying to switch to the same network that's already active
+    if (activeNetworkValidator(network)) {
+      // Already on this network, no need to switch
+      return;
+    }
+
     const cannotContinueWithTrezorAccount =
       // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
       (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||

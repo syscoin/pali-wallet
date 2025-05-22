@@ -52,6 +52,8 @@ export class PaliInpageProviderEth extends BaseProvider {
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
+  private _isInitializing = false;
+  private _initializationPromise: Promise<void> | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
     super('ethereum', maxEventListeners, wallet);
@@ -71,7 +73,84 @@ export class PaliInpageProviderEth extends BaseProvider {
     // Public state
     this.selectedAddress = null;
     this.chainId = null;
-    this.request({ method: 'wallet_getProviderState' })
+
+    // Only initialize provider state for EVM-compatible networks
+    // Check network type before making any provider state requests
+    if (!this._isInitializing && !this._initializationPromise) {
+      this._isInitializing = true;
+      this._initializationPromise =
+        this._checkNetworkTypeAndInitialize().finally(() => {
+          this._isInitializing = false;
+        });
+    }
+
+    this.initMessageListener();
+  }
+
+  private async _checkNetworkTypeAndInitialize(): Promise<void> {
+    try {
+      // First, try to get the syscoin provider state to determine network type
+      const sysState = (await this.request({
+        method: 'wallet_getSysProviderState',
+      })) as any;
+
+      // If we successfully get syscoin state and it's Bitcoin-based, skip EVM initialization
+      if (sysState?.isBitcoinBased) {
+        console.log(
+          'Network is Bitcoin-based (UTXO), skipping Ethereum provider initialization'
+        );
+        this._state.isBitcoinBased = true;
+        return;
+      }
+
+      // If not Bitcoin-based, try to initialize as EVM network
+      if (sysState && !sysState.isBitcoinBased) {
+        console.log(
+          'Network is EVM-compatible, initializing Ethereum provider'
+        );
+        return this._initializeEthereumProvider();
+      }
+    } catch (sysError) {
+      console.log(
+        'Syscoin provider state call failed, checking if this is an EVM network:',
+        sysError.message
+      );
+
+      // If syscoin provider state fails, it might be a non-Syscoin EVM network
+      // Only proceed if we're confident this is an EVM network (not localhost or blockbook URLs)
+      const currentUrl = window.location.href;
+      const isLocalhost =
+        currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
+
+      if (isLocalhost) {
+        console.log('Detected localhost environment, proceeding with caution');
+      }
+
+      try {
+        // Try a lightweight check first - just get network version without full provider state
+        const networkVersionResult = (await this.request({
+          method: 'net_version',
+        })) as string;
+
+        if (networkVersionResult) {
+          console.log(
+            'Successfully got net_version, this appears to be an EVM network'
+          );
+          return this._initializeEthereumProvider();
+        }
+      } catch (netError) {
+        console.log(
+          'net_version call failed, this is likely not an EVM network:',
+          netError.message
+        );
+        // If both syscoin and basic EVM calls fail, don't initialize
+        return;
+      }
+    }
+  }
+
+  private _initializeEthereumProvider() {
+    return this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
         console.log('state', state);
         const initialState = state as Parameters<
@@ -85,8 +164,6 @@ export class PaliInpageProviderEth extends BaseProvider {
           error
         )
       );
-
-    this.initMessageListener();
   }
 
   public initMessageListener() {

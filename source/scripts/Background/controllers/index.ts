@@ -151,7 +151,7 @@ const MasterController = (
 
     const { activeNetwork } = externalStore.getState().vault;
 
-    if (currentRpcSysUtxoMainnet !== 'https://blockbook.syscoin.org') {
+    if (currentRpcSysUtxoMainnet !== 'https://explorer-blockbook.syscoin.org') {
       externalStore.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
     }
 

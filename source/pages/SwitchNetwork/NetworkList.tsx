@@ -22,9 +22,12 @@ type currentNetwork = {
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { controllerEmitter } = useController();
-  const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const {
+    isBitcoinBased,
+    networks,
+    isDappAskingToChangeNetwork,
+    activeNetwork,
+  } = useSelector((state: RootState) => state.vault);
   const { navigate } = useUtils();
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
@@ -53,6 +56,24 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     selectedNetwork === NetworkType.UTXO ? 'opacity-100' : 'opacity-60';
 
   const handleChangeNetwork = async (network: INetwork, chain: string) => {
+    // Get current active network from store
+    const { activeNetwork: currentNetwork, activeChain } =
+      store.getState().vault;
+
+    // Check if user is trying to switch to the same network
+    const isSameNetwork =
+      currentNetwork.chainId === network.chainId &&
+      currentNetwork.url === network.url &&
+      currentNetwork.label === network.label &&
+      getNetworkChain(chain === 'syscoin') === activeChain;
+
+    if (isSameNetwork) {
+      // Already on this network, just navigate home
+      navigate('/home');
+      if (isDappAskingToChangeNetwork) window.close();
+      return;
+    }
+
     try {
       setIsLoading(true);
       store.dispatch(setOpenDAppErrorModal(false));
@@ -75,6 +96,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     () => getNetworkChain(selectedNetwork === 'UTXO'),
     [isBitcoinBased, isChanging, selectedNetwork]
   );
+
+  // Helper function to check if a network is currently active
+  const isCurrentlyActiveNetwork = (network: INetwork): boolean =>
+    activeNetwork.chainId === network.chainId &&
+    activeNetwork.url === network.url &&
+    activeNetwork.label === network.label;
 
   const newNetworks = useMemo(() => {
     if (isChanging) {
@@ -151,8 +178,10 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
               className={`${
                 selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
+                  : isCurrentlyActiveNetwork(currentNetworks)
+                  ? 'bg-brand-blue700 border-2 border-brand-blue400'
                   : 'bg-brand-blue600'
-              } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+              } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
               onClick={() =>
                 setSelectCurrentNetwork({
                   current: currentNetworks,
@@ -160,7 +189,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              {currentNetworks.label}
+              <span>{currentNetworks.label}</span>
+              {isCurrentlyActiveNetwork(currentNetworks) && (
+                <span className="text-xs text-brand-blue200 bg-brand-blue500 px-2 py-1 rounded">
+                  Active
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -174,8 +208,10 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
               className={`${
                 selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
+                  : isCurrentlyActiveNetwork(currentNetworks)
+                  ? 'bg-brand-blue700 border-2 border-brand-blue400'
                   : 'bg-brand-blue600'
-              } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+              } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
               onClick={() =>
                 setSelectCurrentNetwork({
                   current: currentNetworks,
@@ -183,7 +219,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              {currentNetworks?.label}
+              <span>{currentNetworks?.label}</span>
+              {isCurrentlyActiveNetwork(currentNetworks) && (
+                <span className="text-xs text-brand-blue200 bg-brand-blue500 px-2 py-1 rounded">
+                  Active
+                </span>
+              )}
             </div>
           ))}
         </div>

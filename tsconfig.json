@@ -26,6 +26,7 @@
       "scripts/*": ["source/scripts/*"],
       "containers/*": ["source/containers/*"],
       "pages/*": ["source/pages/*"],
+      "pages": ["source/pages/index.ts"],
       "routers/*": ["source/routers/*"],
       "state/*": ["source/state/*"],
       "constants/*": ["source/constants/*"],

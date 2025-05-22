@@ -5,6 +5,9 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 
+// Cache providers to avoid creating multiple instances for the same network
+const providerCache = new Map<string, CustomJsonRpcProvider>();
+
 export function useController() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -14,45 +17,88 @@ export function useController() {
     errorMessage: '',
   } as CustomJsonRpcProvider);
 
-  const abortController = new AbortController();
+  const abortController = useMemo(() => new AbortController(), []);
 
   const fetchControllerData = useCallback(
     async (shouldSetIsLoading = true) => {
       if (shouldSetIsLoading) setIsLoading(true);
 
-      const network = (await controllerEmitter([
-        'wallet',
-        'getNetwork',
-      ])) as INetwork;
+      try {
+        const network = (await controllerEmitter([
+          'wallet',
+          'getNetwork',
+        ])) as INetwork;
 
-      const walletWeb3Provider = new CustomJsonRpcProvider(
-        abortController.signal,
-        network.url
-      );
+        // Clear provider cache on network change to prevent stale providers
+        if (
+          activeNetwork &&
+          (activeNetwork.url !== network.url ||
+            activeNetwork.chainId !== network.chainId)
+        ) {
+          console.log('Network changed, clearing provider cache');
+          providerCache.clear();
+        }
 
-      const isWalletUnlocked = await controllerEmitter(
-        ['wallet', 'isUnlocked'],
-        []
-      );
+        // Check if this is a Bitcoin-based UTXO network with enhanced detection
+        const isBitcoinBased =
+          network.url.includes('blockbook') ||
+          network.url.includes('explorer-blockbook') ||
+          network.url.includes('trezor.io') ||
+          (network.chainId === 57 &&
+            !network.url.includes('rpc.syscoin.org') &&
+            !network.url.includes('rpc.tanenbaum.io'));
 
-      setActiveNetwork(network);
+        // Use cached provider if available for this network URL
+        const cacheKey = network.url;
+        let walletWeb3Provider = providerCache.get(cacheKey);
 
-      setWeb3Provider(walletWeb3Provider);
+        // Only create web3 provider for EVM-compatible networks
+        if (!walletWeb3Provider && !isBitcoinBased) {
+          console.log(
+            `Creating new web3 provider for EVM network: ${network.url}`
+          );
+          walletWeb3Provider = new CustomJsonRpcProvider(
+            abortController.signal,
+            network.url
+          );
+          providerCache.set(cacheKey, walletWeb3Provider);
+        } else if (isBitcoinBased) {
+          console.log(
+            `Skipping web3 provider creation for Bitcoin UTXO network: ${network.url}`
+          );
+        }
 
-      setIsUnlocked(!!isWalletUnlocked);
+        const isWalletUnlocked = await controllerEmitter(
+          ['wallet', 'isUnlocked'],
+          []
+        );
 
-      setIsLoading(false);
+        setActiveNetwork(network);
+        setWeb3Provider(
+          walletWeb3Provider ||
+            ({
+              serverHasAnError: false,
+              errorMessage: '',
+            } as CustomJsonRpcProvider)
+        );
+        setIsUnlocked(!!isWalletUnlocked);
+      } catch (error) {
+        console.error('Error fetching controller data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     },
-    [setIsUnlocked, web3Provider, setIsLoading, controllerEmitter]
+    [abortController, setIsUnlocked, setIsLoading, activeNetwork]
   );
 
   useEffect(() => {
     fetchControllerData();
 
+    // Cleanup function should abort requests, not make new ones
     return () => {
-      fetchControllerData();
+      abortController.abort();
     };
-  }, []);
+  }, [fetchControllerData, abortController]);
 
   return useMemo(
     () => ({

@@ -83,6 +83,20 @@ export const methodRequest = async (
     });
   }
   if (prefix === 'eth' && methodName === 'chainId') {
+    // For NEVM networks (Syscoin EVM-compatible), return chainId
+    // For UTXO networks, eth_chainId is not available
+    const { activeNetwork } = store.getState().vault;
+    const isNEVMNetwork =
+      activeNetwork.url.includes('rpc.syscoin.org') ||
+      activeNetwork.url.includes('rpc.tanenbaum.io');
+
+    if (isBitcoinBased && !isNEVMNetwork) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'eth_chainId is not available on Bitcoin UTXO networks. Use Syscoin NEVM for EVM compatibility.'
+        )
+      );
+    }
     return `0x${chainId.toString(16)}`;
   }
 
@@ -278,17 +292,31 @@ export const methodRequest = async (
           },
         });
       case 'getProviderState':
+        // For NEVM networks, return EVM provider state
+        // For UTXO networks, redirect to getSysProviderState
+        const { activeNetwork } = store.getState().vault;
+        const isNEVMNetwork =
+          activeNetwork.url.includes('rpc.syscoin.org') ||
+          activeNetwork.url.includes('rpc.tanenbaum.io');
+
+        if (isBitcoinBased && !isNEVMNetwork) {
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'getProviderState is not available on Bitcoin UTXO networks. Use getSysProviderState instead.'
+            )
+          );
+        }
         return {
           accounts: dapp.getAccount(host)
             ? [dapp.getAccount(host).address]
             : [],
-          chainId: `0x${currentNetwork.chainId.toString(16)}`,
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
           isUnlocked: wallet.isUnlocked(),
-          networkVersion: currentNetwork.chainId,
-          isBitcoinBased,
+          networkVersion: activeNetwork.chainId,
+          isBitcoinBased: isBitcoinBased && !isNEVMNetwork,
         };
       case 'getSysProviderState':
-        const blockExplorerURL = isBitcoinBased ? currentNetwork.url : null;
+        const blockExplorerURL = isBitcoinBased ? activeNetwork.url : null;
         return {
           xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
