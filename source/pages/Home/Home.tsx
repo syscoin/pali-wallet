@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -25,11 +25,74 @@ import {
   formatBalanceDecimals,
   formatMillionNumber,
   ONE_MILLION,
-  ONE_TRILLION,
   verifyIfIsTestnet,
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
+
+// Memoize expensive balance formatting
+const BalanceDisplay = memo(
+  ({
+    actualBalance,
+    moreThanMillion,
+    isNetworkChanging,
+    currency,
+  }: {
+    actualBalance: number;
+    currency: string;
+    isNetworkChanging: boolean;
+    moreThanMillion: boolean;
+  }) => {
+    if (isNetworkChanging) {
+      return (
+        <div className="flex items-center">
+          <SkeletonLoader width="200px" height="40px" />
+          <SkeletonLoader width="50px" height="35px" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="balance-account flex gap-x-0.5 items-center justify-center">
+        <p id="home-balance" className="font-rubik text-5xl font-medium">
+          {moreThanMillion
+            ? formatMillionNumber(actualBalance)
+            : formatBalanceDecimals(actualBalance || 0, false)}
+        </p>
+        <p className="mt-4 font-poppins">{currency.toUpperCase()}</p>
+      </div>
+    );
+  }
+);
+
+BalanceDisplay.displayName = 'BalanceDisplay';
+
+// Memoize fiat display component
+const FiatDisplay = memo(
+  ({
+    isNetworkChanging,
+    formatFiatAmount,
+    fiatAsset,
+  }: {
+    fiatAsset: string;
+    formatFiatAmount: string | null;
+    isNetworkChanging: boolean;
+  }) => {
+    if (isNetworkChanging) {
+      return <SkeletonLoader width="80px" height="30px" margin="10px 0 0 0" />;
+    }
+
+    if (!formatFiatAmount) return null;
+
+    return (
+      <p className="text-sm text-brand-graylight">
+        {formatFiatAmount} {fiatAsset?.toUpperCase()}
+      </p>
+    );
+  }
+);
+
+FiatDisplay.displayName = 'FiatDisplay';
 
 export const Home = () => {
   const { getFiatAmount } = usePrice();
@@ -39,7 +102,7 @@ export const Home = () => {
   const { controllerEmitter, isUnlocked } = useController();
   useNetworkChangeHandler();
 
-  const { asset: fiatAsset, price: fiatPrice } = useSelector(
+  const { asset: fiatAsset } = useSelector(
     (priceState: RootState) => priceState.price.fiat
   );
   const isWalletImported = state?.isWalletImported;
@@ -76,16 +139,15 @@ export const Home = () => {
 
   const actualBalance = isBitcoinBased ? syscoinBalance : ethereumBalance;
   const moreThanMillion = actualBalance >= ONE_MILLION;
-  const moreThanTrillion = actualBalance > ONE_TRILLION;
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setShowModalCongrats(false);
-  };
+  }, []);
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setShowModalHardWallet(false);
     setShowModalCongrats(true);
-  };
+  }, []);
 
   useEffect(() => {
     if (!isUnlocked) return;
@@ -93,7 +155,7 @@ export const Home = () => {
     verifyIfIsTestnet(url, isBitcoinBased, isInCooldown).then((_isTestnet) =>
       setIsTestnet(_isTestnet)
     );
-  }, [isUnlocked, activeNetwork, activeNetwork.chainId, isBitcoinBased]);
+  }, [isUnlocked, url, isBitcoinBased, isInCooldown]);
 
   const fiatPriceValue = useMemo(
     () =>
@@ -104,22 +166,11 @@ export const Home = () => {
         true,
         true
       ),
-    [
-      isUnlocked,
-      activeAccount,
-      accounts[activeAccount.type][activeAccount.id].address,
-      activeNetwork,
-      activeNetwork.chainId,
-      fiatAsset,
-      fiatPrice,
-      actualBalance,
-    ]
+    [getFiatAmount, actualBalance, fiatAsset]
   );
 
   const formatFiatAmount = useMemo(() => {
-    if (isTestnet) {
-      return null;
-    }
+    if (isTestnet) return null;
 
     if (moreThanMillion) {
       const numberValue = Number(fiatPriceValue.match(/[\d\.]+/g)[0]);
@@ -134,12 +185,17 @@ export const Home = () => {
       ['wallet', 'setFaucetModalState'],
       [{ chainId: activeNetwork.chainId, isOpen: false }]
     );
-  }, [activeNetwork]);
+  }, [activeNetwork.chainId]);
 
-  const shouldShowFaucetFirstModal = !!isOpenFaucetModal?.[chainId];
+  const shouldShowFaucetFirstModal = useMemo(
+    () => !!isOpenFaucetModal?.[chainId],
+    [isOpenFaucetModal, chainId]
+  );
 
-  const isFaucetAvailable =
-    !isBitcoinBased && Object.values(FaucetChainIds).includes(chainId);
+  const isFaucetAvailable = useMemo(
+    () => !isBitcoinBased && Object.values(FaucetChainIds).includes(chainId),
+    [isBitcoinBased, chainId]
+  );
 
   return (
     <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
@@ -164,44 +220,17 @@ export const Home = () => {
 
             <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
               <div className="flex flex-col items-center justify-center text-center">
-                <div className="balance-account flex gap-x-0.5 items-center justify-center">
-                  <p
-                    id="home-balance"
-                    className={`font-rubik text-5xl font-medium`}
-                  >
-                    {isNetworkChanging ? (
-                      <SkeletonLoader width="200px" height="40px" />
-                    ) : moreThanMillion ? (
-                      formatMillionNumber(actualBalance)
-                    ) : (
-                      formatBalanceDecimals(actualBalance || 0, false)
-                    )}{' '}
-                  </p>
-
-                  {isNetworkChanging ? (
-                    <SkeletonLoader width="50px" height="35px" />
-                  ) : (
-                    <p
-                      className={`${
-                        moreThanTrillion ? 'text-lg' : 'mt-4'
-                      } font-poppins`}
-                    >
-                      {activeNetwork.currency.toUpperCase()}
-                    </p>
-                  )}
-                </div>
-
-                <p id="fiat-amount">
-                  {isNetworkChanging ? (
-                    <SkeletonLoader
-                      width="80px"
-                      height="30px"
-                      margin="10px 0 0 0"
-                    />
-                  ) : (
-                    formatFiatAmount
-                  )}
-                </p>
+                <BalanceDisplay
+                  actualBalance={actualBalance}
+                  moreThanMillion={moreThanMillion}
+                  isNetworkChanging={isNetworkChanging}
+                  currency={activeNetwork.currency}
+                />
+                <FiatDisplay
+                  isNetworkChanging={isNetworkChanging}
+                  formatFiatAmount={formatFiatAmount}
+                  fiatAsset={fiatAsset}
+                />
               </div>
 
               <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
@@ -266,3 +295,5 @@ export const Home = () => {
     </div>
   );
 };
+
+Home.displayName = 'Home';

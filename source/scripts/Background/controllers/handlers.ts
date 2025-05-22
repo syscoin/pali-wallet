@@ -11,12 +11,20 @@ export enum GlobalMessageEvent {
 }
 
 export const handleStoreSubscribe = (storeInside: Store) => {
-  const listener = throttle(async () => {
-    const notifyUpdate = await updateState();
-    if (notifyUpdate) {
-      await chrome.runtime.sendMessage(GlobalMessageEvent.rehydrate);
+  // Persist at most once every 3 seconds. This alone cuts storage I/O by ~66 %.
+  const listener = throttle(
+    async () => {
+      const notifyUpdate = await updateState();
+      if (notifyUpdate) {
+        await chrome.runtime.sendMessage(GlobalMessageEvent.rehydrate);
+      }
+    },
+    3000,
+    {
+      leading: false,
+      trailing: true,
     }
-  }, 1000);
+  );
 
   // Subscribe store to updates
   storeInside.subscribe(listener);

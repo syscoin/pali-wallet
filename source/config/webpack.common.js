@@ -17,7 +17,6 @@ const targetBrowser = process.env.TARGET_BROWSER || 'chrome';
 
 module.exports = {
   entry: {
-    manifest: join(__dirname, '../../manifest.json'),
     background: join(sourcePath, 'scripts/Background', 'index.ts'),
     inpage: join(sourcePath, 'scripts/ContentScript', 'inject/inpage.ts'),
     pali: join(sourcePath, 'scripts/ContentScript', 'inject/pali.ts'),

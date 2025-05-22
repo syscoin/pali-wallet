@@ -55,21 +55,41 @@ const store: Store<{
   devTools: nodeEnv !== 'production' && nodeEnv !== 'test',
 });
 
+// Cache the last persisted state locally to avoid the expensive
+// read-&-parse cycle from chrome.storage on every store update. This
+// drastically reduces the amount of asynchronous I/O **and** the number of
+// full-state JSON serialisations, which were happening every second via the
+// throttled subscriber in `handleStoreSubscribe`.
+
+let lastPersistedState: any | null = null;
+
+// Initialize cache once on startup.
+(async () => {
+  try {
+    lastPersistedState = await loadState();
+  } catch (e) {
+    // Non-fatal – cache will be initialised on first successful persist.
+    console.warn('Unable to preload persisted state cache', e);
+  }
+})();
+
 export async function updateState() {
   try {
     const state = store.getState();
 
-    const currentState = await loadState();
-
-    const isStateEqual = isEqual(currentState, state);
-
-    if (isStateEqual) {
+    // Fast in-memory comparison first. This avoids hitting chrome.storage
+    // for the common case where nothing relevant has changed.
+    if (lastPersistedState && isEqual(lastPersistedState, state)) {
       return false;
     }
 
+    // Persist and update the cache.
     await saveState(state);
+    lastPersistedState = state;
+
     return true;
   } catch (error) {
+    console.error('updateState() failed', error);
     return false;
   }
 }
