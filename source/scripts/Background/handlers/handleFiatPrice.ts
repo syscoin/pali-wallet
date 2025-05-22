@@ -1,6 +1,4 @@
-import { IMasterController } from 'scripts/Background/controllers';
-
-export const handleFiatPrice = (masterController: IMasterController) => {
+export const handleFiatPrice = () => {
   // We will set up the recurring alarm in handleListeners.ts
   // Trigger the first update shortly after launch.
   chrome.alarms.create('update_fiat_price_initial', { delayInMinutes: 0.1 });

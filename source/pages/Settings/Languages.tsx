@@ -1,13 +1,11 @@
 import { Form } from 'antd';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/icons/greenChecked.svg';
 import { DefaultModal, Layout, NeutralButton } from 'components/index';
 import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
-import { RootState } from 'state/store';
 import { i18next } from 'utils/i18n';
 import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
