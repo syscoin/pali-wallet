@@ -770,8 +770,12 @@ class MainController extends KeyringManager {
 
       store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
       this.updateNetworkConfig(newNetwork, chain as INetworkType);
-      this.transactionsManager = TransactionsManager(this.web3Provider);
-      this.balancesManager = BalancesManager(this.web3Provider);
+      this.transactionsManager = TransactionsManager(
+        this.ethereumTransaction.web3Provider
+      );
+      this.balancesManager = BalancesManager(
+        this.ethereumTransaction.web3Provider
+      );
 
       return newNetwork;
     }
