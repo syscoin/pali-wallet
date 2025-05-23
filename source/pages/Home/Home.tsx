@@ -147,10 +147,10 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked) return;
 
-    verifyIfIsTestnet(url, isBitcoinBased, isInCooldown).then((_isTestnet) =>
-      setIsTestnet(_isTestnet)
+    verifyIfIsTestnet(url, isBitcoinBased, isInCooldown, activeNetwork).then(
+      (_isTestnet) => setIsTestnet(_isTestnet)
     );
-  }, [isUnlocked, url, isBitcoinBased, isInCooldown]);
+  }, [isUnlocked, url, isBitcoinBased, isInCooldown, activeNetwork]);
 
   const fiatPriceValue = useMemo(
     () =>

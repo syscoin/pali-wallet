@@ -213,7 +213,7 @@ const DAppController = (): IDAppController => {
         }
         resolve();
       } catch (error) {
-        reject(`Error: ${error}`);
+        reject(`${error}`);
       }
     });
   };

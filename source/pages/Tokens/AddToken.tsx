@@ -6,11 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { validateEthRpc } from '@pollum-io/sysweb3-network';
-
 import { Layout } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { verifyIfIsTestnet } from 'utils/network';
 
 import { CustomToken } from './CustomToken';
 import { ImportToken } from './ImportToken';
@@ -31,23 +30,12 @@ export const AddToken: FC = () => {
   );
   const { t } = useTranslation();
 
-  const verifyIfIsTestnet = async () => {
-    const { chain, chainId } = await validateEthRpc(network.url, isInCooldown);
-
-    const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
-    return Boolean(
-      chain === 'test' ||
-        chain === 'testnet' ||
-        ethTestnetsChainsIds.some(
-          (validationChain) => validationChain === chainId
-        )
-    );
-  };
-
   useEffect(() => {
-    verifyIfIsTestnet().then((_isTestnet) => setIsTestnet(_isTestnet));
-  }, [network, network.chainId]);
+    // Use optimized verifyIfIsTestnet that checks network object properties first
+    verifyIfIsTestnet(network.url, isBitcoinBased, isInCooldown, network).then(
+      (_isTestnet) => setIsTestnet(_isTestnet)
+    );
+  }, [network, network.chainId, isBitcoinBased, isInCooldown]);
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
 

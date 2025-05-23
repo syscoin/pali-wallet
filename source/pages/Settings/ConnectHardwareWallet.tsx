@@ -4,13 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
+import { verifyIfIsTestnet } from 'utils/network';
 
 const ConnectHardwareWalletView: FC = () => {
   const [isTestnet, setIsTestnet] = useState<boolean>(false);
@@ -149,16 +149,6 @@ const ConnectHardwareWalletView: FC = () => {
     }
   };
 
-  const verifyIfIsTestnet = async () => {
-    const { url } = activeNetwork;
-
-    const { chain }: any = isBitcoinBased
-      ? await validateSysRpc(url)
-      : await validateEthRpc(url, isInCooldown);
-
-    return Boolean(chain === 'test' || chain === 'testnet');
-  };
-
   const ButtonLabel = () => {
     switch (isReconnect) {
       case true:
@@ -200,10 +190,13 @@ const ConnectHardwareWalletView: FC = () => {
   }, [isLedger]);
 
   useEffect(() => {
-    verifyIfIsTestnet().then((isTestnetResponse) =>
-      setIsTestnet(isTestnetResponse)
-    );
-  }, [activeNetwork, activeNetwork.chainId]);
+    verifyIfIsTestnet(
+      activeNetwork.url,
+      isBitcoinBased,
+      isInCooldown,
+      activeNetwork
+    ).then((isTestnetResponse) => setIsTestnet(isTestnetResponse));
+  }, [activeNetwork, activeNetwork.chainId, isBitcoinBased, isInCooldown]);
 
   useEffect(() => {
     const urlSearch = window.location.search;
