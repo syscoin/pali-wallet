@@ -247,7 +247,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         : index === arr.length - 1
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
-                                    } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
+                                    } flex flex-row items-center justify-between mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                     onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
@@ -264,10 +264,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       activeNetworkValidator(
                                         currentNetwork
                                       ) && (
-                                        <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                        <div className="flex items-center">
                                           <Icon
                                             name="check"
-                                            className="absolute left-[21.5rem] bottom-2 w-4"
+                                            className="w-4"
                                             wrapperClassname="w-6"
                                           />
                                         </div>
@@ -322,7 +322,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                         : index === arr.length - 1
                                         ? 'rounded-bl-lg rounded-br-lg'
                                         : 'border-b border-dashed border-gray-600'
-                                    } flex flex-row items-center justify-start mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
+                                    } flex flex-row items-center justify-between mx-auto p-2 max-w-95 text-white text-sm font-medium active:bg-opacity-40 bg-brand-blue500 focus:outline-none cursor-pointer transform transition duration-300`}
                                     onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
@@ -334,14 +334,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     <span className="ml-8 text-left">
                                       {currentNetwork.label}
                                     </span>
-                                    <div className="absolute items-center flex gap-2 right-[1rem] ">
+                                    <div className="flex items-center">
                                       {!isBitcoinBased &&
                                         activeNetworkValidator(
                                           currentNetwork
                                         ) && (
                                           <Icon
                                             name="check"
-                                            className="w-4 relative bottom-0.5"
+                                            className="w-4"
                                             wrapperClassname="w-6"
                                           />
                                         )}
