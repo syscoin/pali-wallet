@@ -3,7 +3,7 @@ import paliData from '../../../../package.json';
 import v3_0_1 from '../migration/v3_0_1';
 import v3_3_2 from '../migration/v3_3_2';
 import v3_4_1 from '../migration/v3_4_1';
-import v3_4_4 from '../migration/v3_5_0';
+import v3_5_0 from '../migration/v3_5_0';
 import { getIsMigratedVersion, loadState } from 'state/paliStorage';
 
 const MigrationController = async () => {
@@ -46,7 +46,7 @@ const MigrationController = async () => {
    * Description: fix networks without kind properties
    */
   if (currentPaliVersion === '3.5.0' && !isMigratedVersion) {
-    await v3_4_4(state);
+    await v3_5_0(state);
   }
 };
 
