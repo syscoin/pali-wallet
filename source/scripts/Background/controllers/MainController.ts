@@ -534,6 +534,9 @@ class MainController extends KeyringManager {
 
     this.setActiveAccount(id, type).then(() => {
       store.dispatch(setActiveAccount({ id, type }));
+
+      // Update all account data when switching accounts
+      this.getLatestUpdateForCurrentAccount();
     });
   }
 
@@ -1087,9 +1090,11 @@ class MainController extends KeyringManager {
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     if (isBitcoinBased) {
-      return this.transactions.sys
-        .getInitialUserTransactionsByXpub(
-          currentAccount.xpub,
+      // UTXO: Use centralized caching and handle Redux dispatch
+      return this.transactionsManager.utils
+        .updateTransactionsFromCurrentAccount(
+          currentAccount,
+          isBitcoinBased,
           activeNetwork.url
         )
         .then((txs) => {
@@ -1108,6 +1113,7 @@ class MainController extends KeyringManager {
           console.error('Error fetching Syscoin transactions:', error);
         });
     } else {
+      // EVM: Use centralized caching (handles its own Redux dispatch via validateAndManageUserTransactions)
       return this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
         currentAccount,
         isBitcoinBased,
@@ -1425,6 +1431,7 @@ class MainController extends KeyringManager {
         this.balancesManager = BalancesManager(this.web3Provider);
         this.assets = this.assetsManager;
       }
+
       // Update Redux state - useController will handle UI provider creation when status becomes 'idle'
       store.dispatch(switchNetworkSuccess(target));
       store.dispatch(setNetworkType(chain as INetworkType));
