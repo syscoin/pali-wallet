@@ -122,7 +122,7 @@ const CustomRPCView = () => {
   }, [urlFieldValue]);
 
   const handleConnect = async (data: ICustomRpcParams) => {
-    controllerEmitter(['wallet', 'switchNetwork'], [data]).then(() => {
+    controllerEmitter(['wallet', 'setActiveNetwork'], [data]).then(() => {
       navigate('/home');
     });
   };

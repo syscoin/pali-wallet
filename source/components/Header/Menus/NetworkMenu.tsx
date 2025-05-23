@@ -106,7 +106,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await controllerEmitter(['wallet', 'switchNetwork'], [network]);
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
     } catch (networkError) {
       navigate('/home');
     }

@@ -45,7 +45,12 @@ export const ChainErrorPage = () => {
   const handleRetryToConnect = async () => {
     setIsRetrying(true);
     try {
-      await controllerEmitter(['wallet', 'switchNetwork'], [displayNetwork]);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [displayNetwork]
+      ).then(() => {
+        navigate('/home');
+      });
     } catch (error) {
       // Show the actual error message instead of generic one
       const errorMessage = error?.message || t('chainError.connectionTooLong');

@@ -39,7 +39,6 @@ import {
   setStoreError,
   setIsBitcoinBased,
   setChangingConnectedAccount,
-  setIsNetworkChanging,
   setAccounts,
   setNetworkChange,
   setHasEthProperty as setEthProperty,
@@ -60,6 +59,10 @@ import {
   setUpdatedNftsToState,
   setOpenDAppErrorModal,
   setFaucetModalState as setShouldShowFaucetModal,
+  setCoinsList,
+  startSwitchNetwork,
+  switchNetworkError,
+  switchNetworkSuccess,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -556,13 +559,14 @@ class MainController extends KeyringManager {
 
     const promiseWrapper = this.createCancellablePromise<{
       activeChain: INetworkType;
-      chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetwork;
+      network: INetworkWithKind;
       networkVersion: number;
       wallet: IWalletState;
     }>((resolve, reject) => {
+      const chain =
+        network.kind === 'utxo' ? INetworkType.Syscoin : INetworkType.Ethereum;
       this.setActiveNetworkLogic(network, chain, cancelled, resolve, reject);
     });
     this.currentPromise = promiseWrapper;
@@ -629,10 +633,6 @@ class MainController extends KeyringManager {
         'Could not add your network, please try a different RPC endpoint'
       );
     }
-  }
-
-  public setIsPaliNetworkChanging(isChanging: boolean) {
-    store.dispatch(setIsNetworkChanging(isChanging));
   }
 
   public async handleWatchAsset(
@@ -1515,15 +1515,15 @@ class MainController extends KeyringManager {
 
   public getLatestUpdateForCurrentAccount(isPolling = false) {
     const {
-      isNetworkChanging,
       accounts,
       activeAccount,
       isBitcoinBased,
       activeNetwork,
+      networkStatus,
     } = store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
-
+    const isNetworkChanging = networkStatus === 'switching';
     if (isNetworkChanging || isNil(activeAccountValues.address)) {
       throw new Error('Could not update account while changing network');
     }
@@ -1610,14 +1610,22 @@ class MainController extends KeyringManager {
         },
       ]);
     }
-
-    store.dispatch(setStoreError(true));
-    store.dispatch(setIsNetworkChanging(false));
+    let errorMessage = `Failed to switch to ${activeNetwork.label}`;
+    if (reason?.message) {
+      // Remove any "Error:" or "Error " prefixes to prevent duplication in UI
+      const cleanMessage = reason.message
+        .replace(/^Error:\s*/i, '')
+        .replace(/^Error\s+/i, '')
+        .trim();
+      errorMessage = cleanMessage || errorMessage;
+    }
+    store.dispatch(setStoreError(errorMessage));
+    store.dispatch(switchNetworkError());
     store.dispatch(setIsLoadingBalances(false));
   };
 
   private async configureNetwork(
-    network: INetwork,
+    network: INetworkWithKind,
     chain: string
   ): Promise<{
     activeChain: INetworkType;
@@ -1649,7 +1657,7 @@ class MainController extends KeyringManager {
       chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetwork;
+      network: INetworkWithKind;
       networkVersion: number;
       wallet: IWalletState;
     }) => void,
@@ -1666,7 +1674,7 @@ class MainController extends KeyringManager {
       chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetwork;
+      network: INetworkWithKind;
       networkVersion: number;
       wallet: IWalletState;
     }
@@ -1709,7 +1717,7 @@ class MainController extends KeyringManager {
     return { promise, cancel };
   }
   private setActiveNetworkLogic = async (
-    network: INetwork,
+    network: INetworkWithKind,
     chain: string,
     cancelled: boolean,
     resolve: (value: {
@@ -1717,14 +1725,14 @@ class MainController extends KeyringManager {
       chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetwork;
+      network: INetworkWithKind;
       networkVersion: number;
       wallet: IWalletState;
     }) => void,
     reject: (reason?: any) => void
   ) => {
-    if (store.getState().vault.isNetworkChanging && !cancelled) {
-      store.dispatch(setIsNetworkChanging(true));
+    if (store.getState().vault.networkStatus === 'switching' && !cancelled) {
+      store.dispatch(startSwitchNetwork());
       store.dispatch(setIsLoadingBalances(true));
       store.dispatch(setCurrentBlock(undefined));
 
@@ -1757,7 +1765,7 @@ class MainController extends KeyringManager {
     wallet: IWalletState,
     activeChain: INetworkType,
     isBitcoinBased: boolean,
-    network: INetwork
+    network: INetworkWithKind
   ) {
     store.dispatch(
       setNetworkChange({
@@ -1835,7 +1843,7 @@ class MainController extends KeyringManager {
         },
       ]);
     }
-    store.dispatch(setIsNetworkChanging(false));
+    store.dispatch(switchNetworkSuccess());
   }
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();
@@ -1846,7 +1854,9 @@ class MainController extends KeyringManager {
 
   // Network status management
   public resetNetworkStatus(): void {
-    store.dispatch(resetNetworkStatus());
+    if (this.currentPromise) {
+      this.currentPromise.cancel();
+    }
   }
 }
 

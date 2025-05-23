@@ -57,7 +57,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       store.dispatch(setOpenDAppErrorModal(false));
 
       // Wait for the network change to complete
-      await controllerEmitter(['wallet', 'switchNetwork'], [network]);
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
 
       // Navigate only after successful network change
       navigate('/home');
