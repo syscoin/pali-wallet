@@ -859,7 +859,7 @@ const VaultState = createSlice({
       state.networkTarget = undefined;
     },
     switchNetworkError(state: IVaultState) {
-      state.networkStatus = 'idle';
+      state.networkStatus = 'error';
     },
     resetNetworkStatus(state: IVaultState) {
       state.networkStatus = 'idle';
