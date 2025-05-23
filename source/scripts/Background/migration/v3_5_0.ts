@@ -1,7 +1,7 @@
 import { saveState, setMigratedVersions } from 'state/paliStorage';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
-type V3_4_4 = {
+type V3_5_0 = {
   dapp: any;
   price: any;
   vault: any;
@@ -10,7 +10,7 @@ type V3_4_4 = {
 const MigrateRunner = async (oldState: any) => {
   try {
     console.log(
-      'Starting migration to v3.4.4 - fixing networks without kind property'
+      'Starting migration to v3.5.0 - fixing networks without kind property'
     );
 
     // Fix networks to ensure they all have kind properties
@@ -73,7 +73,7 @@ const MigrateRunner = async (oldState: any) => {
       };
     }
 
-    const newState: V3_4_4 = {
+    const newState: V3_5_0 = {
       ...oldState,
       vault: {
         ...oldState.vault,
@@ -82,13 +82,13 @@ const MigrateRunner = async (oldState: any) => {
       },
     };
 
-    await Promise.all([saveState(newState), setMigratedVersions('3.4.4')]);
+    await Promise.all([saveState(newState), setMigratedVersions('3.5.0')]);
 
     console.log(
-      'Migrate to <v3.4.4> successfully! Fixed networks with kind properties.'
+      'Migrate to <v3.5.0> successfully! Fixed networks with kind properties.'
     );
   } catch (error) {
-    console.log('<v3.4.4> Migration Error');
+    console.log('<v3.5.0> Migration Error');
     console.log(error);
   }
 };
