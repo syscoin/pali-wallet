@@ -8,11 +8,10 @@ import {
   initialActiveHdAccountState,
   initialActiveImportedAccountState,
   initialActiveTrezorAccountState,
-  initialNetworksState,
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -23,7 +22,10 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
-import { SYSCOIN_MAINNET_NETWORK_57 } from 'utils/constants';
+import {
+  PALI_NETWORKS_STATE,
+  SYSCOIN_MAINNET_DEFAULT_NETWORK,
+} from 'utils/constants';
 import { chromeStorage } from 'utils/storageAPI';
 import { isTokenTransfer } from 'utils/transactions';
 
@@ -33,6 +35,7 @@ import {
   IVaultState,
   PaliAccount,
   TransactionsType,
+  INetworkWithKind,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -61,12 +64,11 @@ export const initialState: IVaultState = {
   hasEthProperty: true,
   hasEncryptedVault: false,
   activeChain: INetworkType.Syscoin,
-  activeNetwork: SYSCOIN_MAINNET_NETWORK_57,
+  activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
   hasErrorOndAppEVM: false,
   isBitcoinBased: true,
   isDappAskingToChangeNetwork: false,
   isLoadingBalances: false,
-  isNetworkChanging: false,
   isLoadingTxs: false,
   isLoadingAssets: false,
   isLoadingNfts: false,
@@ -76,8 +78,8 @@ export const initialState: IVaultState = {
     newConnectedAccount: undefined,
     connectedAccountType: undefined,
   },
-  networks: initialNetworksState,
-  error: false,
+  networks: PALI_NETWORKS_STATE,
+  error: null,
   isPolling: false,
   currentBlock: undefined,
   coinsList: [],
@@ -93,6 +95,8 @@ export const initialState: IVaultState = {
       [INetworkType.Syscoin]: {},
     },
   },
+  networkStatus: 'idle',
+  networkTarget: undefined,
 };
 
 export const getHasEncryptedVault = createAsyncThunk(
@@ -157,12 +161,31 @@ const VaultState = createSlice({
     ) {
       const { activeChain, wallet } = action.payload;
       state.activeChain = activeChain;
-      state.activeNetwork = wallet.activeNetwork;
+
+      // Find the correct network with kind property from our networks state
+      const networksInChain =
+        activeChain === INetworkType.Syscoin
+          ? state.networks.syscoin
+          : state.networks.ethereum;
+      const networkWithKind = Object.values(networksInChain).find(
+        (network) =>
+          network.chainId === wallet.activeNetwork.chainId &&
+          network.url === wallet.activeNetwork.url
+      );
+
+      // Use the network with proper kind property, falling back to wallet network with inferred kind
+      state.activeNetwork =
+        networkWithKind ||
+        ({
+          ...wallet.activeNetwork,
+          kind: activeChain === INetworkType.Syscoin ? 'utxo' : 'evm',
+        } as INetworkWithKind);
+
       state.activeAccount = {
         id: wallet.activeAccountId,
         type: wallet.activeAccountType,
       };
-      state.networks = wallet.networks;
+      state.networks = state.networks;
       for (const accountType in wallet.accounts) {
         for (const accountId in wallet.accounts[accountType]) {
           const account = wallet.accounts[accountType][accountId];
@@ -220,7 +243,7 @@ const VaultState = createSlice({
         chain: string;
         isEdit?: boolean;
         isFirstTime?: boolean;
-        network: INetwork;
+        network: INetworkWithKind;
       }>
     ) {
       const { chain, network, isEdit, isFirstTime } = action.payload;
@@ -299,7 +322,10 @@ const VaultState = createSlice({
       //reset current block number on changing accounts
       state.currentBlock = undefined;
     },
-    setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
+    setActiveNetwork(
+      state: IVaultState,
+      action: PayloadAction<INetworkWithKind>
+    ) {
       state.activeNetwork = action.payload;
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
@@ -316,9 +342,6 @@ const VaultState = createSlice({
     },
     setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingNfts = action.payload;
-    },
-    setIsNetworkChanging(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isNetworkChanging = action.payload;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
@@ -483,7 +506,7 @@ const VaultState = createSlice({
 
       state.accounts[type][id].label = label;
     },
-    setStoreError(state: IVaultState, action: PayloadAction<boolean>) {
+    setStoreError(state: IVaultState, action: PayloadAction<string | null>) {
       state.error = action.payload;
     },
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
@@ -496,16 +519,13 @@ const VaultState = createSlice({
       }>
     ) {
       const { updatedTokens } = action.payload;
-      const { isBitcoinBased, accounts, activeAccount, isNetworkChanging } =
-        state;
+      const { isBitcoinBased, accounts, activeAccount } = state;
       const { type, id } = activeAccount;
       const findAccount = accounts[type][id];
 
       if (
         !Boolean(
-          findAccount.address === accounts[type][id].address ||
-            isNetworkChanging ||
-            isBitcoinBased
+          findAccount.address === accounts[type][id].address || isBitcoinBased
         )
       )
         return;
@@ -722,7 +742,7 @@ const VaultState = createSlice({
     ) {
       const { txHash, chainID } = action.payload;
 
-      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+      const { isBitcoinBased, activeAccount } = state;
 
       const { id, type } = activeAccount;
 
@@ -732,7 +752,7 @@ const VaultState = createSlice({
         );
       }
 
-      if (isNetworkChanging || isBitcoinBased) {
+      if (isBitcoinBased) {
         return;
       }
 
@@ -775,7 +795,7 @@ const VaultState = createSlice({
     ) {
       const { oldTxHash, chainID } = action.payload;
 
-      const { isBitcoinBased, activeAccount, isNetworkChanging } = state;
+      const { isBitcoinBased, activeAccount } = state;
 
       const { id, type } = activeAccount;
 
@@ -785,7 +805,7 @@ const VaultState = createSlice({
         );
       }
 
-      if (isNetworkChanging || isBitcoinBased) {
+      if (isBitcoinBased) {
         return;
       }
 
@@ -823,6 +843,28 @@ const VaultState = createSlice({
 
       state.prevBalances[activeAccountId][chain][chainId] = balance;
     },
+    startSwitchNetwork(
+      state: IVaultState,
+      action: PayloadAction<INetworkWithKind>
+    ) {
+      state.networkStatus = 'switching';
+      state.networkTarget = action.payload;
+    },
+    switchNetworkSuccess(
+      state: IVaultState,
+      action: PayloadAction<INetworkWithKind>
+    ) {
+      state.activeNetwork = action.payload;
+      state.networkStatus = 'idle';
+      state.networkTarget = undefined;
+    },
+    switchNetworkError(state: IVaultState) {
+      state.networkStatus = 'error';
+    },
+    resetNetworkStatus(state: IVaultState) {
+      state.networkStatus = 'idle';
+      state.networkTarget = undefined;
+    },
   },
 
   extraReducers: (builder) => {
@@ -844,7 +886,6 @@ export const {
   setNetworkChange,
   setAccountTypeInAccountsObject,
   setActiveNetwork,
-  setIsNetworkChanging,
   setIsDappAskingToChangeNetwork,
   setFaucetModalState,
   setIsLoadingBalances,
@@ -877,6 +918,10 @@ export const {
   setCoinsList,
   setIsLastTxConfirmed,
   setPrevBalances,
+  startSwitchNetwork,
+  switchNetworkSuccess,
+  switchNetworkError,
+  resetNetworkStatus,
 } = VaultState.actions;
 
 export default VaultState.reducer;

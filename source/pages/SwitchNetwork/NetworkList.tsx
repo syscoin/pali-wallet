@@ -2,13 +2,12 @@ import { uniqueId } from 'lodash';
 import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
-
 import { Button } from 'components/Button';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { setOpenDAppErrorModal } from 'state/vault';
+import { INetworkWithKind } from 'state/vault/types';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 import { getNetworkChain } from 'utils/network';
 import { NetworkType } from 'utils/types';
@@ -17,17 +16,14 @@ import { useNetworkInfo } from './NetworkInfo';
 
 type currentNetwork = {
   chain: string;
-  current: INetwork;
+  current: INetworkWithKind;
 };
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { controllerEmitter } = useController();
-  const {
-    isBitcoinBased,
-    networks,
-    isDappAskingToChangeNetwork,
-    activeNetwork,
-  } = useSelector((state: RootState) => state.vault);
+  const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
+    (state: RootState) => state.vault
+  );
   const { navigate } = useUtils();
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
@@ -55,38 +51,26 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const seletedUtxoButtonStyle =
     selectedNetwork === NetworkType.UTXO ? 'opacity-100' : 'opacity-60';
 
-  const handleChangeNetwork = async (network: INetwork, chain: string) => {
-    // Get current active network from store
-    const { activeNetwork: currentNetwork, activeChain } =
-      store.getState().vault;
-
-    // Check if user is trying to switch to the same network
-    const isSameNetwork =
-      currentNetwork.chainId === network.chainId &&
-      currentNetwork.url === network.url &&
-      currentNetwork.label === network.label &&
-      getNetworkChain(chain === 'syscoin') === activeChain;
-
-    if (isSameNetwork) {
-      // Already on this network, just navigate home
-      navigate('/home');
-      if (isDappAskingToChangeNetwork) window.close();
-      return;
-    }
-
+  const handleChangeNetwork = async (network: INetworkWithKind) => {
     try {
       setIsLoading(true);
       store.dispatch(setOpenDAppErrorModal(false));
 
-      controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]).then(
-        () => {
-          navigate('/home');
-        }
-      );
+      // Wait for the network change to complete
+      await controllerEmitter(['wallet', 'switchNetwork'], [network]);
 
+      // Navigate only after successful network change
+      navigate('/home');
       if (isDappAskingToChangeNetwork) window.close();
     } catch (networkError) {
-      window.close();
+      console.error('Network change failed:', networkError);
+      // Show the actual error to the user
+      const errorMessage = networkError?.message || 'Network change failed';
+      // We can use the existing error modal system or create an alert
+      // For now, let's set an error state that can be displayed
+      console.error('Network switch error:', errorMessage);
+      // Don't close window on error, let user try again
+      // The error modal will be handled by the Header component
     } finally {
       setIsLoading(false);
     }
@@ -94,14 +78,8 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   const chainName = useMemo(
     () => getNetworkChain(selectedNetwork === 'UTXO'),
-    [isBitcoinBased, isChanging, selectedNetwork]
+    [selectedNetwork]
   );
-
-  // Helper function to check if a network is currently active
-  const isCurrentlyActiveNetwork = (network: INetwork): boolean =>
-    activeNetwork.chainId === network.chainId &&
-    activeNetwork.url === network.url &&
-    activeNetwork.label === network.label;
 
   const newNetworks = useMemo(() => {
     if (isChanging) {
@@ -155,7 +133,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           </div>
         </div>
       )}
-      <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
+      <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">
         <div className="relative flex mb-4">
           <img src={leftLogo} className="relative z-[0px]" />
           <img src={rightLogo} className="absolute top-[2px] left-8 z-[1px]" />
@@ -172,14 +150,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             {selectedNetworkText}
           </p>
-          {mainnetNetworks.map((currentNetworks: INetwork) => (
+          {mainnetNetworks.map((currentNetworks: INetworkWithKind) => (
             <div
               key={uniqueId()}
               className={`${
                 selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
-                  : isCurrentlyActiveNetwork(currentNetworks)
-                  ? 'bg-brand-blue700 border-2 border-brand-blue400'
                   : 'bg-brand-blue600'
               } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
               onClick={() =>
@@ -189,12 +165,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              <span>{currentNetworks.label}</span>
-              {isCurrentlyActiveNetwork(currentNetworks) && (
-                <span className="text-xs text-brand-blue200 bg-brand-blue500 px-2 py-1 rounded">
-                  Active
-                </span>
-              )}
+              {currentNetworks.label}
             </div>
           ))}
         </div>
@@ -202,14 +173,12 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             Testnet network:
           </p>
-          {testnetNetworks.map((currentNetworks: INetwork) => (
+          {testnetNetworks.map((currentNetworks: INetworkWithKind) => (
             <div
               key={uniqueId()}
               className={`${
                 selectCurrentNetwork?.current?.label === currentNetworks?.label
                   ? 'bg-brand-blue800'
-                  : isCurrentlyActiveNetwork(currentNetworks)
-                  ? 'bg-brand-blue700 border-2 border-brand-blue400'
                   : 'bg-brand-blue600'
               } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
               onClick={() =>
@@ -219,12 +188,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              <span>{currentNetworks?.label}</span>
-              {isCurrentlyActiveNetwork(currentNetworks) && (
-                <span className="text-xs text-brand-blue200 bg-brand-blue500 px-2 py-1 rounded">
-                  Active
-                </span>
-              )}
+              {currentNetworks?.label}
             </div>
           ))}
         </div>
@@ -232,13 +196,8 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <Button
             type="submit"
             disabled={!selectCurrentNetwork?.current || isLoading}
-            onClick={() =>
-              handleChangeNetwork(
-                selectCurrentNetwork?.current,
-                selectCurrentNetwork?.chain
-              )
-            }
-            className={`${isButtonDisabledBgStyle} rounded-[100px] w-[19.5rem] h-[40px] text-brand-blue400 text-base font-medium`}
+            onClick={() => handleChangeNetwork(selectCurrentNetwork?.current)}
+            className={`${isButtonDisabledBgStyle} rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium`}
             loading={isLoading}
           >
             Connect

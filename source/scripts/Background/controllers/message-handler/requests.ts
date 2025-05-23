@@ -1,14 +1,15 @@
 import { ethErrors } from 'helpers/errors';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { setIsDappAskingToChangeNetwork } from 'state/vault';
+import { INetworkWithKind } from 'state/vault/types';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { CHAIN_IDS } from 'utils/constants';
 import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
 
@@ -35,12 +36,14 @@ export const methodRequest = async (
   const {
     activeAccount,
     isBitcoinBased,
-    isNetworkChanging,
+    networkStatus,
     accounts,
     activeNetwork,
     activeChain,
   } = store.getState().vault;
   const { chainId } = activeNetwork;
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
@@ -85,10 +88,10 @@ export const methodRequest = async (
   if (prefix === 'eth' && methodName === 'chainId') {
     // For NEVM networks (Syscoin EVM-compatible), return chainId
     // For UTXO networks, eth_chainId is not available
-    const { activeNetwork } = store.getState().vault;
+    const { activeNetwork: currentActiveNetwork } = store.getState().vault;
     const isNEVMNetwork =
-      activeNetwork.url.includes('rpc.syscoin.org') ||
-      activeNetwork.url.includes('rpc.tanenbaum.io');
+      currentActiveNetwork.chainId === CHAIN_IDS.SYSCOIN_MAINNET ||
+      currentActiveNetwork.chainId === CHAIN_IDS.SYSCOIN_NEVM_TESTNET;
 
     if (isBitcoinBased && !isNEVMNetwork) {
       throw cleanErrorStack(
@@ -294,10 +297,10 @@ export const methodRequest = async (
       case 'getProviderState':
         // For NEVM networks, return EVM provider state
         // For UTXO networks, redirect to getSysProviderState
-        const { activeNetwork } = store.getState().vault;
+        const { activeNetwork: currentActiveNetwork2 } = store.getState().vault;
         const isNEVMNetwork =
-          activeNetwork.url.includes('rpc.syscoin.org') ||
-          activeNetwork.url.includes('rpc.tanenbaum.io');
+          currentActiveNetwork2.chainId === CHAIN_IDS.SYSCOIN_MAINNET ||
+          currentActiveNetwork2.chainId === CHAIN_IDS.SYSCOIN_NEVM_TESTNET;
 
         if (isBitcoinBased && !isNEVMNetwork) {
           throw cleanErrorStack(
@@ -342,7 +345,7 @@ export const methodRequest = async (
     const networks = store.getState().vault.networks;
 
     const newChainValue = getNetworkChain(prefix === 'sys');
-    const findCorrectNetwork: INetwork =
+    const findCorrectNetwork: INetworkWithKind =
       networks[newChainValue.toLowerCase()][chain];
     if (!findCorrectNetwork) {
       throw cleanErrorStack(

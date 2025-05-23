@@ -52,7 +52,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const setTx = async () =>
     setRawTransaction(
       await controllerEmitter(
-        ['utils', 'getRawTransaction'],
+        ['wallet', 'getRawTransaction'],
         [activeNetworkUrl, hash]
       )
     );
@@ -88,7 +88,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
               }
             } else {
               controllerEmitter(
-                ['utils', 'getRawTransaction'],
+                ['wallet', 'getRawTransaction'],
                 [activeNetworkUrl, item.txid]
               ).then((response: any) => {
                 for (const responseVout of response.vout) {

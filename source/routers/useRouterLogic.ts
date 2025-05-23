@@ -13,7 +13,7 @@ import {
 } from 'scripts/Background/utils/bgActions';
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
-import { SYS_UTXO_MAINNET_NETWORK } from 'utils/constants';
+import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 export const useRouterLogic = () => {
   const [showModal, setShowModal] = useState(false);
@@ -22,12 +22,14 @@ export const useRouterLogic = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const { isBitcoinBased, isNetworkChanging, activeNetwork } = useSelector(
+  const { isBitcoinBased, networkStatus, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { isUnlocked, web3Provider } = useController();
   const { serverHasAnError, errorMessage } = web3Provider;
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   const utf8ErrorData = JSON.parse(
     window.localStorage.getItem('sysweb3-utf8Error') ??
@@ -120,10 +122,10 @@ export const useRouterLogic = () => {
 
   const handleUtf8ErrorClose = async () => {
     setShowUtf8ErrorModal(false);
-    if (activeNetwork.chainId !== SYS_UTXO_MAINNET_NETWORK.chainId) {
+    if (activeNetwork.chainId !== SYSCOIN_UTXO_MAINNET_NETWORK.chainId) {
       await controllerEmitter(
         ['wallet', 'setActiveNetwork'],
-        [SYS_UTXO_MAINNET_NETWORK, 'syscoin']
+        [SYSCOIN_UTXO_MAINNET_NETWORK]
       );
     }
 

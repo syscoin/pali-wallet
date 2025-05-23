@@ -16,11 +16,13 @@ export const SyscoinAssetsList = () => {
     activeAccount,
     isLoadingAssets,
     activeNetwork: { chainId },
-    isNetworkChanging,
+    networkStatus,
   } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
   const { t } = useTranslation();
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   const filteredAssets = assets.syscoin.filter(
     (asset) => asset.chainId === chainId

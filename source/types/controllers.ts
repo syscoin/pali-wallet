@@ -1,65 +1,12 @@
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
-import {
-  ITokenMap,
-  ICoingeckoToken,
-  ICoingeckoSearchResults,
-} from '@pollum-io/sysweb3-utils';
 
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
+import { INetworkWithKind } from 'state/vault/types';
 import { IOmmitedAccount } from 'state/vault/types';
-
-export interface IControllerUtils {
-  getAsset: (
-    explorerUrl: string,
-    assetGuid: string
-  ) => Promise<{
-    assetGuid: string;
-    contract: string;
-    decimals: number;
-    maxSupply: string;
-    pubData: any;
-    symbol: string;
-    totalSupply: string;
-    updateCapabilityFlags: number;
-  }>;
-  getFeeRate: (fee: number) => bigint;
-  getPsbtFromJson: (psbt: JSON) => string;
-  getRawTransaction: (explorerUrl: string, txid: string) => any;
-  getSearch: (query: string) => Promise<ICoingeckoSearchResults>;
-  getToken: (tokenId: string) => Promise<ICoingeckoToken>;
-  getTokenByContract: (contractAddress: string) => Promise<ICoingeckoToken>;
-  getTokenJson: () => {
-    address: string;
-    chainId: number;
-    decimals: number;
-    logoURI: string;
-    name: string;
-    symbol: string;
-  }[];
-  getTokenMap: ({
-    guid,
-    changeAddress,
-    amount,
-    receivingAddress,
-  }: {
-    amount: number;
-    changeAddress: string;
-    guid: number | string;
-    receivingAddress: string;
-  }) => ITokenMap;
-  isValidEthereumAddress: (value: string, activeNetwork: INetwork) => boolean;
-  isValidSYSAddress: (
-    address: string,
-    purpose: number,
-    verification?: boolean
-  ) => boolean;
-  setFiat: (currency?: string, assetId?: string) => Promise<void>;
-}
 
 export interface IDAppController {
   /**
@@ -90,11 +37,8 @@ export interface IDAppController {
    */
   getAccount: (host: string) => IOmmitedAccount;
   getAll: () => { [host: string]: IDApp };
-  getNetwork: () => INetwork;
+  getNetwork: () => INetworkWithKind;
   getState: () => any;
-  /**
-   * Changes the active network
-   */
   /**
    * Update state and emit events to all connected dApps
    * @emits PaliSyscoinEvents
@@ -103,10 +47,6 @@ export interface IDAppController {
     id: PaliSyscoinEvents,
     data: { method: string; params: any }
   ) => Promise<void>;
-
-  /**
-   * Changes the active network
-   */
 
   /**
    * Update state and emit events to all connected dApps

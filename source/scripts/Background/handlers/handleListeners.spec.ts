@@ -118,23 +118,10 @@ const mockMasterController: jest.Mocked<IMasterController> = {
   } as any, // Using 'as any' here for brevity in mocking the nested dapp object
   refresh: jest.fn(),
   rehydrate: jest.fn(),
-  utils: {
-    setFiat: jest.fn(),
-    getAsset: jest.fn(),
-    getFeeRate: jest.fn(),
-    getPsbtFromJson: jest.fn(),
-    getRawTransaction: jest.fn(),
-    getSearch: jest.fn(),
-    getToken: jest.fn(),
-    getTokenByContract: jest.fn(),
-    getTokenJson: jest.fn(),
-    getTokenMap: jest.fn(),
-    isValidEthereumAddress: jest.fn(),
-    isValidSYSAddress: jest.fn(),
-  },
   // Mock wallet methods used in handleListeners
   wallet: {
     setActiveNetwork: jest.fn(),
+    setFiat: jest.fn(),
   } as any, // Use 'as any' for brevity, ideally mock all methods
 };
 
@@ -182,7 +169,7 @@ describe('Background: handleListeners', () => {
 
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
-      expect(mockMasterController.utils.setFiat).toHaveBeenCalledTimes(1);
+      expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -208,7 +195,7 @@ describe('Background: handleListeners', () => {
 
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
-      expect(mockMasterController.utils.setFiat).toHaveBeenCalledTimes(1);
+      expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -218,7 +205,7 @@ describe('Background: handleListeners', () => {
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
-      expect(mockMasterController.utils.setFiat).not.toHaveBeenCalled();
+      expect(mockMasterController.wallet.setFiat).not.toHaveBeenCalled();
     });
 
     it('should call checkForPendingTransactionsUpdate for check_pending_transactions alarm', () => {
@@ -228,7 +215,7 @@ describe('Background: handleListeners', () => {
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).not.toHaveBeenCalled();
       expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
-      expect(mockMasterController.utils.setFiat).not.toHaveBeenCalled();
+      expect(mockMasterController.wallet.setFiat).not.toHaveBeenCalled();
     });
 
     it('should call setFiat for update_fiat_price alarm', () => {
@@ -236,7 +223,7 @@ describe('Background: handleListeners', () => {
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).not.toHaveBeenCalled();
       expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
-      expect(mockMasterController.utils.setFiat).toHaveBeenCalledTimes(1);
+      expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
 
     it('should call setFiat for update_fiat_price_initial alarm', () => {
@@ -246,7 +233,7 @@ describe('Background: handleListeners', () => {
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).not.toHaveBeenCalled();
       expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
-      expect(mockMasterController.utils.setFiat).toHaveBeenCalledTimes(1);
+      expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -279,8 +266,7 @@ describe('Background: handleListeners', () => {
       };
       chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
       expect(mockMasterController.wallet.setActiveNetwork).toHaveBeenCalledWith(
-        message.data.network,
-        'syscoin'
+        message.data.network
       );
       expect(sendResponse).not.toHaveBeenCalled();
     });
@@ -292,8 +278,7 @@ describe('Background: handleListeners', () => {
       };
       chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
       expect(mockMasterController.wallet.setActiveNetwork).toHaveBeenCalledWith(
-        message.data.network,
-        'ethereum'
+        message.data.network
       );
       expect(sendResponse).not.toHaveBeenCalled();
     });

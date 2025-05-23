@@ -151,9 +151,25 @@ export const SendConfirm = () => {
                 setLoading(false);
 
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                setTimeout(() => {
-                  controllerEmitter(['callGetLatestUpdateForAccount']);
-                }, 3500);
+                // Use Chrome alarms for delayed update (proper MV3 approach)
+                const alarmName = `tx-update-${Date.now()}`;
+                chrome.alarms.create(alarmName, { delayInMinutes: 4 / 60 });
+
+                const handleTxUpdateAlarm = (alarm: chrome.alarms.Alarm) => {
+                  if (alarm.name === alarmName) {
+                    try {
+                      controllerEmitter(['callGetLatestUpdateForAccount']);
+                    } catch (error) {
+                      console.warn(
+                        'Failed to update account after transaction:',
+                        error
+                      );
+                    }
+                    chrome.alarms.onAlarm.removeListener(handleTxUpdateAlarm);
+                  }
+                };
+
+                chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
               })
               .catch((error) => {
                 const isNecessaryReconnect = error.message.includes(
@@ -246,6 +262,31 @@ export const SendConfirm = () => {
                     setConfirmed(true);
 
                     setLoading(false);
+
+                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
+                    // Use Chrome alarms for delayed update (proper MV3 approach)
+                    const alarmName = `tx-update-${Date.now()}`;
+                    chrome.alarms.create(alarmName, { delayInMinutes: 4 / 60 });
+
+                    const handleTxUpdateAlarm = (
+                      alarm: chrome.alarms.Alarm
+                    ) => {
+                      if (alarm.name === alarmName) {
+                        try {
+                          controllerEmitter(['callGetLatestUpdateForAccount']);
+                        } catch (error) {
+                          console.warn(
+                            'Failed to update account after transaction:',
+                            error
+                          );
+                        }
+                        chrome.alarms.onAlarm.removeListener(
+                          handleTxUpdateAlarm
+                        );
+                      }
+                    };
+
+                    chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
                   })
                   .catch((error) => {
                     const isNecessaryReconnect = error.message.includes(
@@ -344,9 +385,25 @@ export const SendConfirm = () => {
                 setLoading(false);
 
                 //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                setTimeout(() => {
-                  controllerEmitter(['callGetLatestUpdateForAccount']);
-                }, 3500);
+                // Use Chrome alarms for delayed update (proper MV3 approach)
+                const alarmName = `tx-update-${Date.now()}`;
+                chrome.alarms.create(alarmName, { delayInMinutes: 4 / 60 });
+
+                const handleTxUpdateAlarm = (alarm: chrome.alarms.Alarm) => {
+                  if (alarm.name === alarmName) {
+                    try {
+                      controllerEmitter(['callGetLatestUpdateForAccount']);
+                    } catch (error) {
+                      console.warn(
+                        'Failed to update account after transaction:',
+                        error
+                      );
+                    }
+                    chrome.alarms.onAlarm.removeListener(handleTxUpdateAlarm);
+                  }
+                };
+
+                chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
               })
               .catch((error: any) => {
                 const isNecessaryReconnect = error.message.includes(
@@ -444,9 +501,33 @@ export const SendConfirm = () => {
                       setConfirmedTx(response);
 
                       //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                      setTimeout(() => {
-                        controllerEmitter(['callGetLatestUpdateForAccount']);
-                      }, 3500);
+                      // Use Chrome alarms for delayed update (proper MV3 approach)
+                      const alarmName = `tx-update-${Date.now()}`;
+                      chrome.alarms.create(alarmName, {
+                        delayInMinutes: 4 / 60,
+                      }); // 4 seconds
+
+                      const handleTxUpdateAlarm = (
+                        alarm: chrome.alarms.Alarm
+                      ) => {
+                        if (alarm.name === alarmName) {
+                          try {
+                            controllerEmitter([
+                              'callGetLatestUpdateForAccount',
+                            ]);
+                          } catch (error) {
+                            console.warn(
+                              'Failed to update account after transaction:',
+                              error
+                            );
+                          }
+                          chrome.alarms.onAlarm.removeListener(
+                            handleTxUpdateAlarm
+                          );
+                        }
+                      };
+
+                      chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
                     })
                     .catch((error) => {
                       const isNecessaryReconnect = error.message.includes(
@@ -560,9 +641,29 @@ export const SendConfirm = () => {
                     setConfirmedTx(response);
 
                     //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                    setTimeout(() => {
-                      controllerEmitter(['callGetLatestUpdateForAccount']);
-                    }, 3500);
+                    // Use Chrome alarms for delayed update (proper MV3 approach)
+                    const alarmName = `tx-update-${Date.now()}`;
+                    chrome.alarms.create(alarmName, { delayInMinutes: 4 / 60 });
+
+                    const handleTxUpdateAlarm = (
+                      alarm: chrome.alarms.Alarm
+                    ) => {
+                      if (alarm.name === alarmName) {
+                        try {
+                          controllerEmitter(['callGetLatestUpdateForAccount']);
+                        } catch (error) {
+                          console.warn(
+                            'Failed to update account after transaction:',
+                            error
+                          );
+                        }
+                        chrome.alarms.onAlarm.removeListener(
+                          handleTxUpdateAlarm
+                        );
+                      }
+                    };
+
+                    chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
                   })
                   .catch((error) => {
                     const isNecessaryReconnect = error.message.includes(
@@ -658,9 +759,33 @@ export const SendConfirm = () => {
                         setConfirmedTx(response);
 
                         //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                        setTimeout(() => {
-                          controllerEmitter(['callGetLatestUpdateForAccount']);
-                        }, 3500);
+                        // Use Chrome alarms for delayed update (proper MV3 approach)
+                        const alarmName = `tx-update-${Date.now()}`;
+                        chrome.alarms.create(alarmName, {
+                          delayInMinutes: 4 / 60,
+                        });
+
+                        const handleTxUpdateAlarm = (
+                          alarm: chrome.alarms.Alarm
+                        ) => {
+                          if (alarm.name === alarmName) {
+                            try {
+                              controllerEmitter([
+                                'callGetLatestUpdateForAccount',
+                              ]);
+                            } catch (error) {
+                              console.warn(
+                                'Failed to update account after transaction:',
+                                error
+                              );
+                            }
+                            chrome.alarms.onAlarm.removeListener(
+                              handleTxUpdateAlarm
+                            );
+                          }
+                        };
+
+                        chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
                       })
                       .catch((error) => {
                         const isNecessaryReconnect = error.message.includes(
@@ -763,9 +888,33 @@ export const SendConfirm = () => {
                         setConfirmedTx(response);
 
                         //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                        setTimeout(() => {
-                          controllerEmitter(['callGetLatestUpdateForAccount']);
-                        }, 3500);
+                        // Use Chrome alarms for delayed update (proper MV3 approach)
+                        const alarmName = `tx-update-${Date.now()}`;
+                        chrome.alarms.create(alarmName, {
+                          delayInMinutes: 4 / 60,
+                        });
+
+                        const handleTxUpdateAlarm = (
+                          alarm: chrome.alarms.Alarm
+                        ) => {
+                          if (alarm.name === alarmName) {
+                            try {
+                              controllerEmitter([
+                                'callGetLatestUpdateForAccount',
+                              ]);
+                            } catch (error) {
+                              console.warn(
+                                'Failed to update account after transaction:',
+                                error
+                              );
+                            }
+                            chrome.alarms.onAlarm.removeListener(
+                              handleTxUpdateAlarm
+                            );
+                          }
+                        };
+
+                        chrome.alarms.onAlarm.addListener(handleTxUpdateAlarm);
                       })
                       .catch((error) => {
                         const isNecessaryReconnect = error.message.includes(

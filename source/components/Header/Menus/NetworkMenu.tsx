@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetwork } from '@pollum-io/sysweb3-network';
 
 import arrow from 'assets/images/arrow.png';
 import btcIcon from 'assets/images/btcIcon.svg';
@@ -14,18 +13,18 @@ import { Icon } from 'components/index';
 import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { dispatchChangeNetworkBgEvent } from 'scripts/Background/utils/bgActions';
 import { RootState } from 'state/store';
+import { INetworkWithKind } from 'state/vault/types';
 import { NetworkType } from 'utils/types';
 
 interface INetworkComponent {
   setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSelectedNetwork: React.Dispatch<
-    React.SetStateAction<{ chain: string; network: INetwork }>
+    React.SetStateAction<{ chain: string; network: INetworkWithKind }>
   >;
 }
 
-const customSort = (a: INetwork, b: INetwork) => {
+const customSort = (a: INetworkWithKind, b: INetworkWithKind) => {
   const order = { 570: 2, 57: 1 };
 
   return (order[b.chainId] || 0) - (order[a.chainId] || 0);
@@ -46,7 +45,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
   const {
     activeAccount: { type: activeAccountType },
-    isNetworkChanging,
+    networkStatus,
   } = useSelector((state: RootState) => state.vault);
 
   const activeNetwork = useSelector(
@@ -60,12 +59,13 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       ]
   );
 
+  const isNetworkChanging = networkStatus === 'switching';
   const networkType = isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM;
 
   const bgColor =
     networkType === NetworkType.UTXO ? 'bg-brand-pink' : 'bg-brand-blue';
 
-  const activeNetworkValidator = (currentNetwork: INetwork): boolean =>
+  const activeNetworkValidator = (currentNetwork: INetworkWithKind): boolean =>
     Boolean(
       activeNetwork.chainId === currentNetwork.chainId &&
         activeNetwork.url === currentNetwork.url &&
@@ -74,7 +74,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   const { navigate } = useUtils();
 
-  const handleChangeNetwork = async (network: INetwork, chain: string) => {
+  const handleChangeNetwork = async (
+    network: INetworkWithKind,
+    chain: string
+  ) => {
     setSelectedNetwork({ network, chain });
 
     // Check if user is trying to switch to the same network that's already active
@@ -103,9 +106,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, chain]);
-
-      dispatchChangeNetworkBgEvent(network, !!network?.slip44);
+      await controllerEmitter(['wallet', 'switchNetwork'], [network]);
     } catch (networkError) {
       navigate('/home');
     }
@@ -235,7 +236,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                             <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                               {Object.values(networks.syscoin).map(
                                 (
-                                  currentNetwork: INetwork,
+                                  currentNetwork: INetworkWithKind,
                                   index: number,
                                   arr
                                 ) => (

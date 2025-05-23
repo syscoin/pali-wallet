@@ -25,7 +25,7 @@ export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const { accounts, isBitcoinBased, activeNetwork, isNetworkChanging } =
+  const { accounts, isBitcoinBased, activeNetwork, networkStatus } =
     useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
@@ -36,6 +36,8 @@ export const AccountHeader: React.FC = () => {
   const { controllerEmitter } = useController();
   const isLedger = activeAccount.type === KeyringAccountType.Ledger;
   const url = chrome.runtime.getURL('app.html');
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');

@@ -4,11 +4,10 @@ import { AnyAction, Store } from 'redux';
 import {
   accountType,
   IKeyringAccountState,
-  initialNetworksState,
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IDAppState } from 'state/dapp/types';
@@ -24,15 +23,15 @@ import {
   setNetwork,
 } from 'state/vault';
 import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
-import { IControllerUtils, IDAppController } from 'types/controllers';
+import { IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
   SYSCOIN_MAINNET_DEFAULT_NETWORK,
-  SYSCOIN_MAINNET_NETWORK_57,
+  CHAIN_IDS,
+  PALI_NETWORKS_STATE,
 } from 'utils/constants';
 import { getNetworkChain } from 'utils/network';
 
-import ControllerUtils from './ControllerUtils';
 import DAppController from './DAppController';
 import MainController from './MainController';
 
@@ -46,7 +45,6 @@ export interface IMasterController {
   dapp: Readonly<IDAppController>;
   refresh: () => void;
   rehydrate: () => void;
-  utils: Readonly<IControllerUtils>;
   wallet: MainController;
 }
 
@@ -91,7 +89,6 @@ const MasterController = (
   let route = '/';
   let externalRoute = '/';
   let wallet: MainController;
-  let utils: Readonly<IControllerUtils>;
   let dapp: Readonly<IDAppController>;
 
   const getAccountType = (account: IPaliAccount): KeyringAccountType =>
@@ -141,64 +138,76 @@ const MasterController = (
     }
 
     if (
-      !externalStore.getState().vault.networks[TransactionsType.Ethereum][570]
+      !externalStore.getState().vault.networks[TransactionsType.Ethereum][
+        CHAIN_IDS.ROLLUX_MAINNET
+      ]
     ) {
       externalStore.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
     }
 
     const currentRpcSysUtxoMainnet =
-      externalStore.getState().vault.networks[TransactionsType.Syscoin][57].url;
+      externalStore.getState().vault.networks[TransactionsType.Syscoin][
+        CHAIN_IDS.SYSCOIN_MAINNET
+      ];
 
     const { activeNetwork } = externalStore.getState().vault;
 
-    if (currentRpcSysUtxoMainnet !== 'https://explorer-blockbook.syscoin.org') {
+    if (
+      currentRpcSysUtxoMainnet &&
+      currentRpcSysUtxoMainnet.url !==
+        SYSCOIN_MAINNET_DEFAULT_NETWORK.network.url
+    ) {
       externalStore.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
     }
 
-    const isSysUtxoMainnetWithWrongRpcUrl =
-      activeNetwork.chainId === 57 &&
-      activeNetwork.url.includes('https://blockbook.elint.services');
+    const DEPRECATED_RPC_PATTERN = 'blockbook.elint.services';
+    const isSysUtxoMainnetWithDeprecatedRpc =
+      activeNetwork.chainId === CHAIN_IDS.SYSCOIN_MAINNET &&
+      activeNetwork.url.includes(DEPRECATED_RPC_PATTERN);
 
-    if (isSysUtxoMainnetWithWrongRpcUrl) {
-      externalStore.dispatch(setActiveNetwork(SYSCOIN_MAINNET_NETWORK_57));
+    if (isSysUtxoMainnetWithDeprecatedRpc) {
+      externalStore.dispatch(
+        setActiveNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK.network)
+      );
     }
 
     const isNetworkOldState =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
-        ?.default ?? false;
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][
+        CHAIN_IDS.ETHEREUM_MAINNET
+      ]?.default ?? false;
 
     const isNetworkOldEVMStateWithoutTestnet =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][1]
-        ?.isTestnet === undefined;
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][
+        CHAIN_IDS.ETHEREUM_MAINNET
+      ]?.isTestnet === undefined;
 
     const isNetworkOldUTXOStateWithoutTestnet =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][57]
-        ?.isTestnet === undefined;
+      externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][
+        CHAIN_IDS.SYSCOIN_MAINNET
+      ]?.isTestnet === undefined;
 
     if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
-      Object.values(initialNetworksState[TransactionsType.Ethereum]).forEach(
-        (network) => {
-          externalStore.dispatch(
-            setNetwork({
-              chain: INetworkType.Ethereum,
-              network: network as INetwork,
-            })
-          );
-        }
-      );
+      Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
+        externalStore.dispatch(
+          setNetwork({
+            chain: INetworkType.Ethereum,
+            network: network,
+            isFirstTime: true,
+          })
+        );
+      });
     }
 
     if (isNetworkOldUTXOStateWithoutTestnet) {
-      Object.values(initialNetworksState[TransactionsType.Syscoin]).forEach(
-        (network) => {
-          externalStore.dispatch(
-            setNetwork({
-              chain: INetworkType.Syscoin,
-              network: network as INetwork,
-            })
-          );
-        }
-      );
+      Object.values(PALI_NETWORKS_STATE.syscoin).forEach((network) => {
+        externalStore.dispatch(
+          setNetwork({
+            chain: INetworkType.Syscoin,
+            network: network,
+            isFirstTime: true,
+          })
+        );
+      });
     }
 
     if (externalStore.getState().vault?.accounts?.Ledger === undefined) {
@@ -250,8 +259,8 @@ const MasterController = (
         if (Array.isArray(account.transactions)) {
           if (account.transactions.length > 0) {
             const updatedTransactions = {
-              syscoin: {},
-              ethereum: {},
+              [INetworkType.Syscoin]: {},
+              [INetworkType.Ethereum]: {},
             } as { [chainType: string]: { [chainId: string]: any } };
 
             account.transactions.forEach((tx) => {
@@ -280,8 +289,8 @@ const MasterController = (
                 type: accType,
                 property: 'transactions',
                 value: {
-                  syscoin: {},
-                  ethereum: {},
+                  [INetworkType.Syscoin]: {},
+                  [INetworkType.Ethereum]: {},
                 },
               })
             );
@@ -292,17 +301,7 @@ const MasterController = (
     const walletState = vaultToWalletState(externalStore.getState().vault);
     dapp = Object.freeze(DAppController());
     wallet = new MainController(walletState);
-    utils = Object.freeze(ControllerUtils());
     wallet.setStorage(chrome.storage.local);
-    // readyCallback({
-    //   appRoute,
-    //   createPopup,
-    //   dapp,
-    //   refresh,
-    //   utils,
-    //   wallet,
-    //   callGetLatestUpdateForAccount,
-    // });
   };
 
   const callGetLatestUpdateForAccount = async () =>
@@ -360,7 +359,6 @@ const MasterController = (
     dapp,
     refresh,
     callGetLatestUpdateForAccount,
-    utils,
     wallet,
   };
 };

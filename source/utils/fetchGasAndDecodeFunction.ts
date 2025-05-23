@@ -1,13 +1,12 @@
 import { BigNumber } from 'ethers';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
-
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { INetworkWithKind } from 'state/vault/types';
 import { ITransactionParams } from 'types/transactions';
 
 export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
-  activeNetwork: INetwork
+  activeNetwork: INetworkWithKind
 ) => {
   const currentBlock = (await controllerEmitter(
     ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],

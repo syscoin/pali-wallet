@@ -8,7 +8,7 @@ import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { formatNumber, getNetworkChain } from 'utils/index';
+import { formatNumber } from 'utils/index';
 
 const CurrencyView = () => {
   const { controllerEmitter, isUnlocked: _isUnlocked } = useController();
@@ -57,12 +57,9 @@ const CurrencyView = () => {
 
   useEffect(() => {
     if (selectedCoin) {
-      controllerEmitter(
-        ['utils', 'setFiat'],
-        [selectedCoin, getNetworkChain(isBitcoinBased)]
-      );
+      controllerEmitter(['wallet', 'setFiat'], [selectedCoin]);
     }
-  }, [selectedCoin, isBitcoinBased]);
+  }, [selectedCoin]);
 
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
@@ -131,6 +128,7 @@ const CurrencyView = () => {
                   <input
                     className="text-xs text-brand-gray200 w-[304px] h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
                     placeholder="Search"
+                    value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                   />
                 </div>
@@ -138,7 +136,10 @@ const CurrencyView = () => {
                   <Menu.Item as="div" key={index}>
                     <button
                       key={index}
-                      onClick={() => setSelectedCoin(coin)}
+                      onClick={() => {
+                        setSelectedCoin(coin);
+                        setInputValue(''); // Clear search when currency is selected
+                      }}
                       className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300"
                     >
                       {getSymbolFromCurrency(coin.toUpperCase())}

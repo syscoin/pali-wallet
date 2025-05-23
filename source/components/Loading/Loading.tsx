@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Icon } from '..';
@@ -13,32 +13,57 @@ export const Loading = ({
   opacity?: number;
   usePopupSize?: boolean;
 }) => {
-  const isNetworkChanging = useSelector(
-    (state: RootState) => state.vault.isNetworkChanging
+  const networkStatus = useSelector(
+    (state: RootState) => state.vault.networkStatus
   );
 
+  const isNetworkChanging = networkStatus === 'switching';
+
   const [timeoutError, setTimeoutError] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const validateTimeoutError = () => {
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
     if (isNetworkChanging) {
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
         setTimeoutError(true);
       }, TEN_SECONDS);
-      3;
     }
   };
 
   useEffect(() => {
     validateTimeoutError();
+
     return () => {
+      // Cleanup timeout on unmount
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       setTimeoutError(false);
     };
-  }, []);
+  }, [isNetworkChanging]); // Add isNetworkChanging as dependency
 
   useEffect(() => {
-    timeoutError
-      ? (window.location.hash = '/chain-fail-to-connect')
-      : setTimeoutError(false);
+    // If network status changed to idle/error, clear timeout and reset error
+    if (!isNetworkChanging) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setTimeoutError(false);
+    }
+  }, [isNetworkChanging]);
+
+  useEffect(() => {
+    if (timeoutError) {
+      window.location.hash = '/chain-fail-to-connect';
+    }
   }, [timeoutError]);
 
   return (

@@ -27,8 +27,6 @@ export async function checkForPendingTransactionsUpdate() {
 
   const maxTransactionsToSend = 3;
 
-  const cooldownTimeMs = 60 * 1000; //1 minute
-
   for (let i = 0; i < pendingTransactions.length; i += maxTransactionsToSend) {
     const batchTransactions = pendingTransactions.slice(
       i,
@@ -43,8 +41,22 @@ export async function checkForPendingTransactionsUpdate() {
       pendingTransactions: batchTransactions,
     });
 
+    // Add cooldown between batches to avoid overwhelming RPC endpoints
     if (i + maxTransactionsToSend < pendingTransactions.length) {
-      await new Promise((resolve) => setTimeout(resolve, cooldownTimeMs));
+      const alarmName = `pending-tx-batch-cooldown-${Date.now()}`;
+
+      await new Promise<void>((resolve) => {
+        chrome.alarms.create(alarmName, { delayInMinutes: 1 });
+
+        const handleCooldownAlarm = (alarm: chrome.alarms.Alarm) => {
+          if (alarm.name === alarmName) {
+            chrome.alarms.onAlarm.removeListener(handleCooldownAlarm);
+            resolve();
+          }
+        };
+
+        chrome.alarms.onAlarm.addListener(handleCooldownAlarm);
+      });
     }
   }
 }

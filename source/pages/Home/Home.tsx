@@ -72,9 +72,7 @@ const FiatDisplay = memo(
   ({
     isNetworkChanging,
     formatFiatAmount,
-    fiatAsset,
   }: {
-    fiatAsset: string;
     formatFiatAmount: string | null;
     isNetworkChanging: boolean;
   }) => {
@@ -84,11 +82,7 @@ const FiatDisplay = memo(
 
     if (!formatFiatAmount) return null;
 
-    return (
-      <p className="text-sm text-brand-graylight">
-        {formatFiatAmount} {fiatAsset?.toUpperCase()}
-      </p>
-    );
+    return <p className="text-sm text-brand-graylight">{formatFiatAmount}</p>;
   }
 );
 
@@ -108,7 +102,7 @@ export const Home = () => {
   const isWalletImported = state?.isWalletImported;
   const {
     accounts,
-    isNetworkChanging,
+    networkStatus,
     activeAccount,
     activeNetwork,
     isBitcoinBased,
@@ -121,6 +115,7 @@ export const Home = () => {
   const [showModalCongrats, setShowModalCongrats] = useState(false);
   const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
+  const isNetworkChanging = networkStatus === 'switching';
   const { url, chainId } = activeNetwork;
 
   let isInCooldown: boolean;
@@ -229,7 +224,6 @@ export const Home = () => {
                 <FiatDisplay
                   isNetworkChanging={isNetworkChanging}
                   formatFiatAmount={formatFiatAmount}
-                  fiatAsset={fiatAsset}
                 />
               </div>
 

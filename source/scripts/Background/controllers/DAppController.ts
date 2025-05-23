@@ -3,7 +3,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
-import { IOmittedVault } from 'state/vault/types';
+import { IOmittedVault, INetworkWithKind } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
@@ -284,13 +284,11 @@ const DAppController = (): IDAppController => {
   const getState = (): IOmittedVault =>
     removeSensitiveDataFromVault(store.getState().vault);
 
-  const getNetwork = () => {
-    const { activeNetwork, isBitcoinBased } = store.getState().vault;
+  const getNetwork = (): INetworkWithKind => {
+    const { activeNetwork } = store.getState().vault;
 
-    return {
-      ...activeNetwork,
-      isBitcoinBased,
-    };
+    // Return the exact network object from Redux state to preserve kind property
+    return activeNetwork;
   };
 
   const hasWindow = (host: string) => _dapps[host].hasWindow;

@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import loadImg from 'assets/icons/loading.svg';
 import ethChainImg from 'assets/images/ethChain.svg';
@@ -21,28 +19,50 @@ export const ChainErrorPage = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const networkTarget = useSelector(
+    (state: RootState) => state.vault.networkTarget
   );
+  const networkStatus = useSelector(
+    (state: RootState) => state.vault.networkStatus
+  );
+
+  // Use the target network if we're trying to switch, otherwise use active network
+  const displayNetwork = networkTarget || activeNetwork;
+
   const [isRetrying, setIsRetrying] = useState(false);
+
+  // Auto-navigate back to home if network switch succeeds
+  useEffect(() => {
+    if (networkStatus === 'idle' && !networkTarget) {
+      // Network switch completed successfully, go back to home
+      console.log(
+        'ChainErrorPage: Network switch completed, navigating to home'
+      );
+      navigate('/home');
+    }
+  }, [networkStatus, networkTarget, navigate]);
 
   const handleRetryToConnect = async () => {
     setIsRetrying(true);
     try {
-      const chain = isBitcoinBased
-        ? INetworkType.Syscoin
-        : INetworkType.Ethereum;
-
-      await controllerEmitter(
-        ['wallet', 'setActiveNetwork'],
-        [activeNetwork, chain]
-      ).then(() => {
-        navigate('/home');
-      });
+      await controllerEmitter(['wallet', 'switchNetwork'], [displayNetwork]);
     } catch (error) {
-      alert.error(t('chainError.connectionTooLong'));
+      // Show the actual error message instead of generic one
+      const errorMessage = error?.message || t('chainError.connectionTooLong');
+      alert.error(errorMessage);
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const handleCancelSwitch = async () => {
+    try {
+      // Reset network status and navigate back to home
+      await controllerEmitter(['wallet', 'resetNetworkStatus'], []);
+      navigate('/home');
+    } catch (error) {
+      console.error('Failed to reset network status:', error);
+      navigate('/home'); // Navigate anyway
     }
   };
 
@@ -54,7 +74,7 @@ export const ChainErrorPage = () => {
   const CurrentChains = () => {
     let toChain: React.ReactNode;
 
-    switch (activeNetwork.chainId) {
+    switch (displayNetwork.chainId) {
       case 1:
         toChain = <img src={ethChainImg} alt="eth" width="39px" />;
         break;
@@ -73,7 +93,7 @@ export const ChainErrorPage = () => {
             className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
             style={{ width: '39px', height: '39px' }}
           >
-            {activeNetwork.currency}
+            {displayNetwork.currency}
           </div>
         );
     }
@@ -103,7 +123,7 @@ export const ChainErrorPage = () => {
                 {t('chainError.tryingToConnectOn')}
               </h1>
               <h1 className="text-lg font-bold text-white">
-                {activeNetwork.label}
+                {displayNetwork.label}
               </h1>
             </div>
           </div>
@@ -113,9 +133,9 @@ export const ChainErrorPage = () => {
               onClick={() =>
                 navigate('/settings/networks/custom-rpc', {
                   state: {
-                    selected: activeNetwork,
-                    chain: activeNetwork.chainId,
-                    isDefault: activeNetwork.default,
+                    selected: displayNetwork,
+                    chain: displayNetwork.chainId,
+                    isDefault: displayNetwork.default,
                     isEditing: true,
                   },
                 })
@@ -140,6 +160,13 @@ export const ChainErrorPage = () => {
             onClick={handleRetryToConnect}
           >
             {t('buttons.retryConnect')}
+          </Button>
+          <Button
+            type="submit"
+            className="bg-gray-500 rounded-[100px] w-[13.25rem] h-[40px] text-white text-base font-medium"
+            onClick={handleCancelSwitch}
+          >
+            {t('buttons.cancel')}
           </Button>
         </div>
       </div>

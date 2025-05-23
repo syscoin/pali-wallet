@@ -28,8 +28,6 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
   const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
 
-  const correctTypeForChainValue = getNetworkChain(isNewChainBtcBased);
-
   const titleValue = `${t(
     'buttons.switch'
   )} ${previousChain} -> ${newChainValue}`;
@@ -37,10 +35,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await controllerEmitter(
-        ['wallet', 'setActiveNetwork'],
-        [newNetwork, correctTypeForChainValue]
-      );
+      await controllerEmitter(['wallet', 'switchNetwork'], [newNetwork]);
       navigate('/home');
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());

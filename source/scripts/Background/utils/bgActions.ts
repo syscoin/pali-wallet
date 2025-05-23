@@ -1,5 +1,3 @@
-import { INetwork } from '@pollum-io/sysweb3-network';
-
 import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
@@ -28,17 +26,6 @@ export const resetPaliRequestsCount = () => {
   chrome.runtime.sendMessage({
     type: 'resetPaliRequestsCount',
     target: 'background',
-  });
-};
-
-export const dispatchChangeNetworkBgEvent = (
-  network: INetwork,
-  isBitcoinBased: boolean
-) => {
-  chrome.runtime.sendMessage({
-    type: 'changeNetwork',
-    target: 'background',
-    data: { network, isBitcoinBased },
   });
 };
 

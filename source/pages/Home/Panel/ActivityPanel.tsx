@@ -77,14 +77,6 @@ export const TransactionsPanel = () => {
     </div>
   );
 
-  const validateTimeoutError = () => {
-    if (isLoadingTxs) {
-      setTimeout(() => {
-        setInternalLoading(false);
-      }, SECONDS);
-    }
-  };
-
   const OpenTransactionExplorer = useMemo(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
@@ -109,12 +101,40 @@ export const TransactionsPanel = () => {
     );
   }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);
 
+  // Handle loading timeout with Chrome alarms (proper MV3 approach)
   useEffect(() => {
-    validateTimeoutError();
-    setInternalLoading(isLoadingTxs);
-    return () => {
+    const alarmName = `loading-timeout-${Date.now()}`;
+
+    if (isLoadingTxs) {
+      setInternalLoading(true);
+
+      // Create alarm for 10 second timeout
+      chrome.alarms.create(alarmName, { delayInMinutes: SECONDS / 60 });
+
+      // Listen for this specific alarm
+      const handleAlarm = (alarm: chrome.alarms.Alarm) => {
+        if (alarm.name === alarmName) {
+          try {
+            setInternalLoading(false);
+            console.warn('Loading timeout reached for transactions');
+          } catch (error) {
+            console.warn('Failed to update loading state:', error);
+          }
+          chrome.alarms.onAlarm.removeListener(handleAlarm);
+        }
+      };
+
+      chrome.alarms.onAlarm.addListener(handleAlarm);
+
+      return () => {
+        chrome.alarms.clear(alarmName);
+        chrome.alarms.onAlarm.removeListener(handleAlarm);
+      };
+    } else {
       setInternalLoading(false);
-    };
+      // Clear any existing loading timeouts
+      chrome.alarms.clear(alarmName);
+    }
   }, [isLoadingTxs]);
 
   const allTransactions = useMemo(

@@ -31,10 +31,7 @@ const SwitchChain: React.FC = () => {
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await controllerEmitter(
-        ['wallet', 'setActiveNetwork'],
-        [network, 'ethereum']
-      );
+      await controllerEmitter(['wallet', 'switchNetwork'], [network]);
       navigate('/home');
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());

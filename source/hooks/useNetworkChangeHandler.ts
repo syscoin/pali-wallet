@@ -7,10 +7,12 @@ import { RootState } from 'state/store';
 const TEN_SECONDS = 10000;
 
 export const useNetworkChangeHandler = () => {
-  const isNetworkChanging = useSelector(
-    (state: RootState) => state.vault.isNetworkChanging
+  const networkStatus = useSelector(
+    (state: RootState) => state.vault.networkStatus
   );
   const navigate = useNavigate();
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;

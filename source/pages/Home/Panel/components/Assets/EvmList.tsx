@@ -186,9 +186,11 @@ export const EvmAssetsList = () => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [sortByValue, setSortyByValue] = useState<string>('');
 
-  const { isLoadingAssets, isNetworkChanging } = useSelector(
+  const { isLoadingAssets, networkStatus } = useSelector(
     (state: RootState) => state.vault
   );
+
+  const isNetworkChanging = networkStatus === 'switching';
 
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;

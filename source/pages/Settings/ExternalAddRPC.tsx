@@ -27,10 +27,7 @@ const CustomRPCExternal = () => {
           setLoading(false);
           const type = data.eventName;
           dispatchBackgroundEvent(`${type}.${host}`, null);
-          await controllerEmitter(
-            ['wallet', 'setActiveNetwork'],
-            [network, 'ethereum']
-          );
+          await controllerEmitter(['wallet', 'switchNetwork'], [network]);
           navigate('/home');
         }
       );

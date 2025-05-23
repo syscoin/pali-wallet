@@ -31,7 +31,7 @@ export const handleListeners = (masterController: IMasterController) => {
     // Trigger initial updates immediately after installation/update
     checkForUpdates();
     checkForPendingTransactionsUpdate();
-    masterController.utils.setFiat(); // Initial fiat price fetch
+    masterController.wallet.setFiat(); // Initial fiat price fetch
   });
 
   // Called when the browser first starts
@@ -52,7 +52,7 @@ export const handleListeners = (masterController: IMasterController) => {
     // Trigger initial updates on startup
     checkForUpdates();
     checkForPendingTransactionsUpdate();
-    masterController.utils.setFiat();
+    masterController.wallet.setFiat();
   });
 
   // Listener for all alarms
@@ -71,7 +71,7 @@ export const handleListeners = (masterController: IMasterController) => {
       alarm.name === 'update_fiat_price' ||
       alarm.name === 'update_fiat_price_initial'
     ) {
-      masterController.utils.setFiat();
+      masterController.wallet.setFiat();
     }
   });
 
@@ -91,10 +91,7 @@ export const handleListeners = (masterController: IMasterController) => {
           break;
         case 'changeNetwork':
           if (data) {
-            masterController.wallet.setActiveNetwork(
-              data.network,
-              data.isBitcoinBased ? 'syscoin' : 'ethereum'
-            );
+            masterController.wallet.setActiveNetwork(data.network);
           }
           break;
         case 'startPolling':

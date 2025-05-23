@@ -2,26 +2,30 @@ import store from 'state/store';
 
 export const isPollingRunNotValid = () => {
   const {
-    isNetworkChanging,
+    networkStatus,
     isLoadingTxs,
     isLoadingBalances,
     isLoadingAssets,
+    isLoadingNfts,
     changingConnectedAccount: { isChangingConnectedAccount },
-    accounts,
     lastLogin,
   } = store.getState().vault;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;
 
-  const hasAccount0Address = Boolean(accounts.HDAccount[0].address);
+  const isNetworkChanging = networkStatus === 'switching';
 
-  return (
-    !hasAccount0Address ||
-    verifyIfUserIsNotRegistered ||
-    isChangingConnectedAccount ||
-    isLoadingAssets ||
-    isLoadingBalances ||
+  if (
+    isNetworkChanging ||
     isLoadingTxs ||
-    isNetworkChanging
-  );
+    isLoadingBalances ||
+    isLoadingAssets ||
+    isLoadingNfts ||
+    verifyIfUserIsNotRegistered ||
+    isChangingConnectedAccount
+  ) {
+    return true;
+  }
+
+  return false;
 };

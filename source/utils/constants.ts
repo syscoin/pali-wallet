@@ -1,5 +1,6 @@
-import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
+import { INetworkWithKind } from '../state/vault/types';
 import {
   FaucetChainIds,
   FaucetChainNames,
@@ -7,6 +8,17 @@ import {
 } from '../types/faucet';
 import rolluxChain from 'assets/images/rolluxChain.png';
 import sysChain from 'assets/images/sysChain.svg';
+
+// Chain ID Constants
+export const CHAIN_IDS = {
+  SYSCOIN_MAINNET: 57,
+  SYSCOIN_TESTNET: 5700,
+  POLYGON_MAINNET: 137,
+  SYSCOIN_NEVM_TESTNET: 5700,
+  ROLLUX_MAINNET: 570,
+  ROLLUX_TESTNET: 57000,
+  ETHEREUM_MAINNET: 1,
+} as const;
 
 export const INITIAL_FEE = {
   baseFee: 0,
@@ -43,7 +55,7 @@ export const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69]; // Some Cha
 export const ROLLUX_DEFAULT_NETWORK = {
   chain: INetworkType.Ethereum,
   network: {
-    chainId: 570,
+    chainId: CHAIN_IDS.ROLLUX_MAINNET,
     currency: 'sys',
     default: true,
     label: 'Rollux',
@@ -51,7 +63,8 @@ export const ROLLUX_DEFAULT_NETWORK = {
     apiUrl: 'https://explorer.rollux.com/api',
     explorer: 'https://explorer.rollux.com/',
     isTestnet: false,
-  } as INetwork,
+    kind: 'evm',
+  } as INetworkWithKind,
   isEdit: false,
 };
 
@@ -66,6 +79,7 @@ export const ROLLUX_DEFAULT_NETWORK = {
  *    - Supports Ethereum-style transactions, smart contracts, etc.
  *    - Chain ID 57 (mainnet) and 5700 (testnet)
  *    - Handles eth_chainId, eth_requestAccounts, etc.
+ *    - kind: 'evm'
  *
  * 2. Syscoin UTXO (Bitcoin-style):
  *    - Traditional UTXO-based blockchain (like Bitcoin)
@@ -73,53 +87,69 @@ export const ROLLUX_DEFAULT_NETWORK = {
  *    - Supports Bitcoin-style transactions
  *    - Chain ID 57 (same as NEVM but different protocol)
  *    - Does NOT support eth_* methods
+ *    - kind: 'utxo'
  *
- * The distinction is made by URL pattern:
- * - rpc.syscoin.org or rpc.tanenbaum.io = NEVM (EVM-compatible)
- * - explorer-blockbook.syscoin.org = UTXO (Bitcoin-style)
+ * The distinction is made by network.kind field:
+ * - kind: 'evm' = NEVM (EVM-compatible)
+ * - kind: 'utxo' = UTXO (Bitcoin-style)
  *
  * Other networks:
  * - Chain ID 57000: Rollux Testnet
  */
 
 export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
-  chainId: 5700,
+  chainId: CHAIN_IDS.SYSCOIN_NEVM_TESTNET,
   url: 'https://rpc.tanenbaum.io',
   label: 'Syscoin NEVM Testnet',
   default: true,
   currency: 'tsys',
   isTestnet: true,
-} as INetwork;
+  kind: 'evm',
+} as INetworkWithKind;
 
-export const SYSCOIN_NEVM_NETWORK_57 = {
-  chainId: 57,
+export const SYSCOIN_MAINNET_NETWORK = {
+  chainId: CHAIN_IDS.SYSCOIN_MAINNET,
   url: 'https://rpc.syscoin.org',
   label: 'Syscoin NEVM',
   default: true,
   currency: 'sys',
   isTestnet: false,
-} as INetwork;
+  kind: 'evm',
+} as INetworkWithKind;
 
-export const SYSCOIN_UTXO_NETWORK_57 = {
-  chainId: 57,
+export const SYSCOIN_UTXO_MAINNET_NETWORK = {
+  chainId: CHAIN_IDS.SYSCOIN_MAINNET,
   url: 'https://explorer-blockbook.syscoin.org',
   label: 'Syscoin Mainnet',
   default: true,
   currency: 'sys',
   slip44: 57,
   isTestnet: false,
-} as INetwork;
+  kind: 'utxo',
+} as INetworkWithKind;
 
-// For backwards compatibility - this should be the UTXO network
-export const SYSCOIN_MAINNET_NETWORK_57 = SYSCOIN_UTXO_NETWORK_57;
+export const SYSCOIN_UTXO_TESTNET_NETWORK = {
+  chainId: CHAIN_IDS.SYSCOIN_TESTNET,
+  url: 'https://blockbook-dev.syscoin.org',
+  label: 'Syscoin Testnet',
+  default: true,
+  currency: 'tsys',
+  slip44: 0,
+  isTestnet: true,
+  kind: 'utxo',
+} as INetworkWithKind;
 
 export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
   chain: INetworkType.Syscoin,
-  network: SYSCOIN_UTXO_NETWORK_57,
+  network: SYSCOIN_UTXO_MAINNET_NETWORK,
   isEdit: true,
 };
 
-export const SYS_UTXO_MAINNET_NETWORK = SYSCOIN_UTXO_NETWORK_57;
+export const SYSCOIN_TESTNET_DEFAULT_NETWORK = {
+  chain: INetworkType.Syscoin,
+  network: SYSCOIN_UTXO_TESTNET_NETWORK,
+  isEdit: true,
+};
 
 interface IFaucetNetworkData {
   [key: string]: {
@@ -178,4 +208,38 @@ export const faucetTxSyscoinNEVMTestnetInfo = {
   networkName: 'Syscoin NEVM Testnet',
   quantity: 1,
   smartContract: '0x35EE5876Db071b527dC62FD3EE3c32e4304d8C23',
+};
+
+// Our own networks state with proper 'kind' properties - replaces broken initialNetworksState
+export const PALI_NETWORKS_STATE = {
+  ethereum: {
+    [CHAIN_IDS.ETHEREUM_MAINNET]: {
+      chainId: CHAIN_IDS.ETHEREUM_MAINNET,
+      url: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      label: 'Ethereum Mainnet',
+      default: true,
+      currency: 'eth',
+      explorer: 'https://etherscan.io/',
+      apiUrl: 'https://api.etherscan.io/api',
+      isTestnet: false,
+      kind: 'evm',
+    } as INetworkWithKind,
+    [CHAIN_IDS.POLYGON_MAINNET]: {
+      chainId: CHAIN_IDS.POLYGON_MAINNET,
+      currency: 'matic',
+      default: true,
+      label: 'Polygon Mainnet',
+      url: 'https://polygon-rpc.com/',
+      apiUrl: 'https://api.polygonscan.com/api',
+      explorer: 'https://polygonscan.com/',
+      isTestnet: false,
+      kind: 'evm',
+    } as INetworkWithKind,
+    [CHAIN_IDS.ROLLUX_MAINNET]: ROLLUX_DEFAULT_NETWORK.network,
+    [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
+  },
+  syscoin: {
+    [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_UTXO_MAINNET_NETWORK,
+    [CHAIN_IDS.SYSCOIN_TESTNET]: SYSCOIN_UTXO_TESTNET_NETWORK,
+  },
 };

@@ -13,6 +13,11 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
+// Extend INetwork with kind field for type safety
+export interface INetworkWithKind extends INetwork {
+  kind: 'evm' | 'utxo';
+}
+
 export interface IVaultState {
   accounts: { [key in KeyringAccountType]: PaliAccount };
   activeAccount: {
@@ -20,14 +25,14 @@ export interface IVaultState {
     type: KeyringAccountType;
   };
   activeChain: INetworkType;
-  activeNetwork: INetwork;
+  activeNetwork: INetworkWithKind;
   advancedSettings: {
     [k: string]: boolean;
   };
   changingConnectedAccount: IChangingConnectedAccount;
   coinsList: any[];
   currentBlock: ethers.providers.Block;
-  error: boolean;
+  error: string | null;
   hasEncryptedVault: boolean;
   hasErrorOndAppEVM: boolean;
   hasEthProperty: boolean;
@@ -38,9 +43,10 @@ export interface IVaultState {
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
-  isNetworkChanging: boolean;
   isPolling: boolean;
   lastLogin: number;
+  networkStatus: 'idle' | 'switching' | 'error';
+  networkTarget?: INetworkWithKind;
   networks: INetworksVault;
   prevBalances: IPrevBalances;
   shouldShowFaucetModal: { [k: number]: boolean };
@@ -48,10 +54,10 @@ export interface IVaultState {
 
 export interface INetworksVault {
   [INetworkType.Ethereum]: {
-    [chainId: number]: INetwork;
+    [chainId: number]: INetworkWithKind;
   };
   [INetworkType.Syscoin]: {
-    [chainId: number]: INetwork;
+    [chainId: number]: INetworkWithKind;
   };
 }
 
