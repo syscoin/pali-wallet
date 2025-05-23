@@ -1425,7 +1425,6 @@ class MainController extends KeyringManager {
         this.balancesManager = BalancesManager(this.web3Provider);
         this.assets = this.assetsManager;
       }
-
       // Update Redux state - useController will handle UI provider creation when status becomes 'idle'
       store.dispatch(switchNetworkSuccess(target));
       store.dispatch(setNetworkType(chain as INetworkType));
@@ -1437,8 +1436,18 @@ class MainController extends KeyringManager {
         `switchNetwork: Failed to switch to ${target.label}:`,
         error
       );
-      const errorMessage =
-        error?.message || `Failed to switch to ${target.label}`;
+
+      // Extract clean error message, removing any existing "Error:" prefixes to prevent duplication
+      let errorMessage = `Failed to switch to ${target.label}`;
+      if (error?.message) {
+        // Remove any "Error:" or "Error " prefixes to prevent duplication in UI
+        const cleanMessage = error.message
+          .replace(/^Error:\s*/i, '')
+          .replace(/^Error\s+/i, '')
+          .trim();
+        errorMessage = cleanMessage || errorMessage;
+      }
+
       store.dispatch(switchNetworkError());
       store.dispatch(setStoreError(errorMessage));
 
