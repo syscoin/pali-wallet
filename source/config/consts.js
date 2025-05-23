@@ -99,7 +99,7 @@ const MV3_OPTIONS = {
     'http://localhost:8545/',
   ],
   content_security_policy: {
-    extension_pages: "script-src 'self'; object-src 'self'",
+    extension_pages: "script-src 'self' 'unsafe-eval'; object-src 'self'",
   },
   author: 'pollum labs',
   minimum_chrome_version: '88',
