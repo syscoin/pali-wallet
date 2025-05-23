@@ -62,6 +62,7 @@ import {
   setCoinsList,
   startSwitchNetwork,
   switchNetworkError,
+  resetNetworkStatus,
   switchNetworkSuccess,
 } from 'state/vault';
 import {
@@ -328,6 +329,8 @@ class MainController extends KeyringManager {
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {
+    // Ensure clean network state during login
+    store.dispatch(resetNetworkStatus());
     const controller = getController();
     const { canLogin, wallet } = await this.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
@@ -1622,6 +1625,14 @@ class MainController extends KeyringManager {
     store.dispatch(setStoreError(errorMessage));
     store.dispatch(switchNetworkError());
     store.dispatch(setIsLoadingBalances(false));
+    // Ensure we don't leave the network in switching state
+    setTimeout(() => {
+      const currentStatus = store.getState().vault.networkStatus;
+      if (currentStatus === 'switching' || currentStatus === 'error') {
+        console.log('switchNetwork: Forcing network status reset after error');
+        store.dispatch(resetNetworkStatus());
+      }
+    }, 1000);
   };
 
   private async configureNetwork(
@@ -1854,9 +1865,7 @@ class MainController extends KeyringManager {
 
   // Network status management
   public resetNetworkStatus(): void {
-    if (this.currentPromise) {
-      this.currentPromise.cancel();
-    }
+    store.dispatch(resetNetworkStatus());
   }
 }
 
