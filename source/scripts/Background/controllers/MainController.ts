@@ -90,6 +90,10 @@ import {
   CancellablePromises,
   PromiseTargets,
 } from './promises/cancellablesPromises';
+import {
+  patchFetchWithPaliHeaders,
+  getPaliHeaders,
+} from './providers/patchFetchWithPaliHeaders';
 import TransactionsManager from './transactions';
 import {
   IEvmTransactionResponse,
@@ -122,6 +126,10 @@ class MainController extends KeyringManager {
 
   constructor(walletState: any) {
     super(walletState);
+
+    // Patch fetch to add Pali headers to all RPC requests
+    patchFetchWithPaliHeaders();
+
     this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
     this.nftsController = NftsController();
 
@@ -1578,6 +1586,19 @@ class MainController extends KeyringManager {
       activeAccount: { id: activeAccountId, type: activeAccountType },
     } = store.getState().vault;
 
+    console.error('Network change error:', reason);
+    console.error('Error type:', typeof reason);
+    if (reason) {
+      console.error('Error structure:', {
+        hasResponse: !!reason.response,
+        hasData: !!reason.data,
+        hasMessage: !!reason.message,
+        hasError: !!reason.error,
+        responseData: reason.response?.data,
+        errorMessage: reason.message,
+      });
+    }
+
     if (reason === 'Network change cancelled') {
       console.error('User asked to switch network - slow connection');
     } else {
@@ -1613,15 +1634,57 @@ class MainController extends KeyringManager {
         },
       ]);
     }
+
     let errorMessage = `Failed to switch to ${activeNetwork.label}`;
-    if (reason?.message) {
-      // Remove any "Error:" or "Error " prefixes to prevent duplication in UI
-      const cleanMessage = reason.message
-        .replace(/^Error:\s*/i, '')
-        .replace(/^Error\s+/i, '')
-        .trim();
-      errorMessage = cleanMessage || errorMessage;
+
+    // Try to extract the actual error message from various error structures
+    if (reason) {
+      // Check for API response error (like from Infura)
+      if (reason.response?.data?.message) {
+        errorMessage = reason.response.data.message;
+      } else if (reason.response?.data?.error?.message) {
+        errorMessage = reason.response.data.error.message;
+      } else if (
+        reason.response?.data &&
+        typeof reason.response?.data === 'string'
+      ) {
+        // Handle plain text responses (like "project ID does not have access to this network")
+        errorMessage = reason.response.data;
+      } else if (reason.data?.message) {
+        errorMessage = reason.data.message;
+      } else if (reason.error?.message) {
+        errorMessage = reason.error.message;
+      } else if (reason.message) {
+        // Standard Error object - extract the meaningful part
+        const msg = reason.message;
+
+        // Look for JSON parsing errors that might contain the actual message
+        // Match patterns like: Unexpected token 'p', "project ID..." is not valid JSON
+        const jsonErrorMatch = msg.match(
+          /Unexpected token\s*'.*?',\s*"([^"]+)"\s*.*?is not valid JSON/i
+        );
+        if (jsonErrorMatch && jsonErrorMatch[1]) {
+          errorMessage = jsonErrorMatch[1];
+        } else {
+          // Also try to match simpler patterns
+          const simpleMatch = msg.match(/"([^"]+)"\s*is not valid JSON/i);
+          if (simpleMatch && simpleMatch[1]) {
+            errorMessage = simpleMatch[1];
+          } else {
+            // Remove error prefixes
+            errorMessage = msg
+              .replace(/^Error:\s*/i, '')
+              .replace(/^Error\s+/i, '')
+              .trim();
+          }
+        }
+      } else if (typeof reason === 'string') {
+        errorMessage = reason;
+      }
     }
+
+    console.log('Final error message to display:', errorMessage);
+
     store.dispatch(setStoreError(errorMessage));
     store.dispatch(switchNetworkError());
     store.dispatch(setIsLoadingBalances(false));
@@ -1640,26 +1703,103 @@ class MainController extends KeyringManager {
     chain: string
   ): Promise<{
     activeChain: INetworkType;
+    error?: any;
     success: boolean;
     wallet: IWalletState;
   }> {
-    const {
-      sucess: success,
-      wallet,
-      activeChain,
-    } = await this.setSignerNetwork(network, chain);
-    if (success) {
-      this.web3Provider = this.ethereumTransaction.web3Provider;
-      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
-      this.assets = this.assetsManager;
-      this.transactionsManager = TransactionsManager(
-        this.ethereumTransaction.web3Provider
-      );
-      this.balancesManager = BalancesManager(
-        this.ethereumTransaction.web3Provider
-      );
+    let networkCallError: any = null;
+
+    try {
+      const {
+        sucess: success,
+        wallet,
+        activeChain,
+      } = await this.setSignerNetwork(network, chain);
+
+      if (success) {
+        this.web3Provider = this.ethereumTransaction.web3Provider;
+        this.assetsManager = AssetsManager(
+          this.ethereumTransaction.web3Provider
+        );
+        this.assets = this.assetsManager;
+        this.transactionsManager = TransactionsManager(
+          this.ethereumTransaction.web3Provider
+        );
+        this.balancesManager = BalancesManager(
+          this.ethereumTransaction.web3Provider
+        );
+        return { success, wallet, activeChain };
+      } else {
+        // setSignerNetwork failed but didn't throw an error
+        // Try to get the actual error by making a test call
+
+        if (chain === INetworkType.Ethereum) {
+          try {
+            // Create a simple fetch request to test the network
+            const response = await fetch(network.url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                // Add Pali headers for this test request
+                ...getPaliHeaders(),
+              },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'eth_chainId',
+                params: [],
+                id: 1,
+              }),
+              // Prevent browser authentication dialogs
+              credentials: 'omit',
+            });
+
+            if (!response.ok) {
+              const responseText = await response.text();
+              console.error(
+                'Network test response:',
+                response.status,
+                responseText
+              );
+
+              // Try to parse the error message
+              if (responseText) {
+                networkCallError = new Error(responseText);
+              } else {
+                networkCallError = new Error(
+                  `Network returned ${response.status} ${response.statusText}`
+                );
+              }
+            }
+          } catch (testError) {
+            console.error('Network test error:', testError);
+            networkCallError = testError;
+          }
+        }
+
+        return {
+          success: false,
+          wallet: wallet || this.wallet,
+          activeChain:
+            activeChain ||
+            (chain === INetworkType.Syscoin
+              ? INetworkType.Syscoin
+              : INetworkType.Ethereum),
+          error: networkCallError || new Error('Failed to configure network'),
+        };
+      }
+    } catch (error) {
+      console.error('configureNetwork error:', error);
+      // Return with success: false and include the error
+      return {
+        success: false,
+        wallet: this.wallet,
+        activeChain:
+          chain === INetworkType.Syscoin
+            ? INetworkType.Syscoin
+            : INetworkType.Ethereum,
+        error,
+      };
     }
-    return { success, wallet, activeChain };
   }
 
   private resolveNetworkConfiguration(
@@ -1750,27 +1890,34 @@ class MainController extends KeyringManager {
     store.dispatch(setCurrentBlock(undefined));
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
-    const { success, wallet, activeChain } = await this.configureNetwork(
-      network,
-      chain
-    );
-    const chainId = network.chainId.toString(16);
-    const networkVersion = network.chainId;
+    try {
+      const { success, wallet, activeChain, error } =
+        await this.configureNetwork(network, chain);
+      const chainId = network.chainId.toString(16);
+      const networkVersion = network.chainId;
 
-    if (success) {
-      this.resolveNetworkConfiguration(resolve, {
-        activeChain,
-        chain,
-        chainId,
-        isBitcoinBased,
-        network,
-        networkVersion,
-        wallet,
-      });
-    } else {
-      reject(
-        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-      );
+      if (success) {
+        this.resolveNetworkConfiguration(resolve, {
+          activeChain,
+          chain,
+          chainId,
+          isBitcoinBased,
+          network,
+          networkVersion,
+          wallet,
+        });
+      } else {
+        // If there's an error from configureNetwork, use it; otherwise use a generic message
+        const errorToReject =
+          error ||
+          new Error(
+            'Failed to configure network - please check your connection'
+          );
+        reject(errorToReject);
+      }
+    } catch (error) {
+      // Propagate the actual error instead of replacing it
+      reject(error);
     }
   };
   private async handleNetworkChangeSuccess(
