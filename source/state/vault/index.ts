@@ -586,30 +586,53 @@ const VaultState = createSlice({
             ? IEvmTransaction
             : ISysTransaction)[];
         } else {
-          // If the chainId exists, add the new transaction to the existing chainId array
+          // If the chainId exists, check for duplicates before adding
           const currentUserTransactions = currentAccount.transactions[
             networkType
           ][chainId] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[];
 
-          // Check if the array length is 30
-          if (currentUserTransactions.length === 30) {
-            // Create a new array by adding the new transaction at the beginning and limiting to 30 items
-            const updatedTransactions = take(
-              [transaction, ...currentUserTransactions],
-              30
-            );
+          // Get the transaction hash/txid
+          const isEvmTx = (
+            tx: IEvmTransaction | ISysTransaction
+          ): tx is IEvmTransaction => 'hash' in tx;
+          const newTxId: string = isEvmTx(transaction)
+            ? transaction.hash
+            : transaction.txid;
 
-            currentAccount.transactions[networkType][chainId] =
-              updatedTransactions as IEvmTransaction[] & ISysTransaction[];
+          // Check if transaction already exists
+          const existingTxIndex = currentUserTransactions.findIndex((tx) => {
+            const txId: string = isEvmTx(tx) ? tx.hash : tx.txid;
+            return txId.toLowerCase() === newTxId.toLowerCase();
+          });
+
+          if (existingTxIndex !== -1) {
+            // Transaction already exists, update it if the new one has more confirmations
+            const existingTx = currentUserTransactions[existingTxIndex];
+            if (transaction.confirmations > existingTx.confirmations) {
+              currentUserTransactions[existingTxIndex] = transaction as any;
+            }
           } else {
-            // If the array length is less than 30, simply push the new transaction
-            currentUserTransactions.push(
-              transaction as typeof networkType extends TransactionsType.Ethereum
-                ? IEvmTransaction
-                : ISysTransaction
-            );
+            // New transaction, add it
+            // Check if the array length is 30
+            if (currentUserTransactions.length === 30) {
+              // Create a new array by adding the new transaction at the beginning and limiting to 30 items
+              const updatedTransactions = take(
+                [transaction, ...currentUserTransactions],
+                30
+              );
+
+              currentAccount.transactions[networkType][chainId] =
+                updatedTransactions as IEvmTransaction[] & ISysTransaction[];
+            } else {
+              // If the array length is less than 30, simply add the new transaction at the beginning
+              currentUserTransactions.unshift(
+                transaction as typeof networkType extends TransactionsType.Ethereum
+                  ? IEvmTransaction
+                  : ISysTransaction
+              );
+            }
           }
         }
       }

@@ -29,24 +29,32 @@ function shouldUpdate() {
     chainId
   ] as any[];
 
-  const hasPendingTx = Array.isArray(currentAccountTransactions)
-    ? currentAccountTransactions.every((tx) => tx.confirmations > 0)
-    : true;
+  // Check if there are any pending transactions (confirmations === 0)
+  const hasPendingTransactions = Array.isArray(currentAccountTransactions)
+    ? currentAccountTransactions.some((tx) => tx.confirmations === 0)
+    : false;
 
-  if (currentBalance === previousBalance && hasPendingTx) {
-    return false;
+  // Always update if:
+  // 1. Balance has changed
+  // 2. There are pending transactions (need to check confirmations)
+  // 3. First time checking (no previous balance)
+  const shouldPerformUpdate =
+    currentBalance !== previousBalance ||
+    hasPendingTransactions ||
+    previousBalance === undefined;
+
+  if (shouldPerformUpdate && currentBalance !== undefined) {
+    store.dispatch(
+      setPrevBalances({
+        activeAccountId: activeAccount.id,
+        balance: currentBalance,
+        chain: isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
+        chainId: activeNetwork.chainId,
+      })
+    );
   }
 
-  store.dispatch(
-    setPrevBalances({
-      activeAccountId: activeAccount.id,
-      balance: currentBalance,
-      chain: isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
-      chainId: activeNetwork.chainId,
-    })
-  );
-
-  return true;
+  return shouldPerformUpdate;
 }
 
 export async function checkForUpdates() {

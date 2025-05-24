@@ -526,12 +526,12 @@ class MainController extends KeyringManager {
     return newAccountWithAssets;
   }
 
-  public setAccount(
+  public async setAccount(
     id: number,
     type: KeyringAccountType,
     host?: string,
     connectedAccount?: IOmmitedAccount
-  ) {
+  ): Promise<void> {
     const { accounts, activeAccount } = store.getState().vault;
     if (
       connectedAccount &&
@@ -541,13 +541,12 @@ class MainController extends KeyringManager {
       if (connectedAccount.address !== accounts[type][id].address) {
         store.dispatch(
           setChangingConnectedAccount({
-            host,
             isChangingConnectedAccount: true,
             newConnectedAccount: accounts[type][id],
             connectedAccountType: type,
+            host: host || undefined,
           })
         );
-        return;
       }
     }
 
@@ -1018,7 +1017,7 @@ class MainController extends KeyringManager {
         },
       })
     );
-    this.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
+    await this.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
     );

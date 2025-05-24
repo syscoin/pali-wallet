@@ -11,7 +11,7 @@ export const availableLanguages = [
   'pt-br',
   'fr',
   'de',
-  'zh-cn',
+  'zh',
   'ja',
   'ko',
   'ru',

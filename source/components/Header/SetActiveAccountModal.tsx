@@ -43,12 +43,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
       return;
     }
 
-    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
-
-    controllerEmitter(
-      ['wallet', 'setActiveAccount'],
-      [selectedNetwork.network, selectedNetwork.chain]
-    );
+    await controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
 
     setIsOpen(false);
   };

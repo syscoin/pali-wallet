@@ -17,7 +17,7 @@ export enum PaliLanguages {
   KO = 'ko',
   PT = 'pt-br',
   RU = 'ru',
-  ZH = 'zh-cn',
+  ZH = 'zh',
 }
 
 export interface ITransactionOptions {

@@ -980,6 +980,20 @@ export const SendConfirm = () => {
   };
 
   useEffect(() => {
+    if (isLoading || isBitcoinBased) return;
+    const validateEIP1559Compatibility = async () => {
+      const isCompatible = await verifyNetworkEIP1559Compatibility(
+        web3Provider,
+        currentBlock
+      );
+
+      setIsEIP1559Compatible(isCompatible);
+    };
+
+    validateEIP1559Compatibility();
+  }, [isLoading, web3Provider, isBitcoinBased]);
+
+  useEffect(() => {
     if (isBitcoinBased) return;
     if (isEIP1559Compatible === undefined) {
       return; // Not calculate fees before being aware of EIP1559 compatibility
@@ -1078,20 +1092,6 @@ export const SendConfirm = () => {
     alert.removeAll();
     alert.success(t('home.addressCopied'));
   }, [copied]);
-
-  useEffect(() => {
-    if (isLoading) return;
-    const validateEIP1559Compatibility = async () => {
-      const isCompatible = await verifyNetworkEIP1559Compatibility(
-        web3Provider,
-        currentBlock
-      );
-
-      setIsEIP1559Compatible(isCompatible);
-    };
-
-    validateEIP1559Compatibility();
-  }, [isLoading, web3Provider]);
 
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>

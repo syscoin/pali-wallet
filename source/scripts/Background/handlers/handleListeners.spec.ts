@@ -4,8 +4,6 @@ import { chrome } from 'jest-chrome';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { checkForUpdates } from 'scripts/Background/handlers/handlePaliUpdates';
-import { checkForPendingTransactionsUpdate } from 'scripts/Background/utils/checkForPendingTransactions';
-import { startPendingTransactionsPolling } from 'scripts/Background/utils/startPendingTransactionsPolling';
 import {
   startPolling,
   getPollingInterval,
@@ -152,10 +150,6 @@ describe('Background: handleListeners', () => {
       expect(chrome.alarms.create).toHaveBeenCalledWith('check_for_updates', {
         periodInMinutes: 5, // Based on mocked getPollingInterval
       });
-      expect(chrome.alarms.create).toHaveBeenCalledWith(
-        'check_pending_transactions',
-        { periodInMinutes: 120 }
-      );
       expect(chrome.alarms.create).toHaveBeenCalledWith('update_fiat_price', {
         periodInMinutes: 3, // FIAT_UPDATE_INTERVAL_MINUTES
       });
@@ -168,7 +162,6 @@ describe('Background: handleListeners', () => {
       } as chrome.runtime.InstalledDetails);
 
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
-      expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
@@ -180,10 +173,6 @@ describe('Background: handleListeners', () => {
       expect(chrome.alarms.create).toHaveBeenCalledWith('check_for_updates', {
         periodInMinutes: 5,
       });
-      expect(chrome.alarms.create).toHaveBeenCalledWith(
-        'check_pending_transactions',
-        { periodInMinutes: 120 }
-      );
       expect(chrome.alarms.create).toHaveBeenCalledWith('update_fiat_price', {
         periodInMinutes: 3,
       });
@@ -194,7 +183,6 @@ describe('Background: handleListeners', () => {
       chrome.runtime.onStartup.callListeners();
 
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
-      expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
@@ -204,17 +192,6 @@ describe('Background: handleListeners', () => {
       const alarm = { name: 'check_for_updates' } as chrome.alarms.Alarm;
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
-      expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
-      expect(mockMasterController.wallet.setFiat).not.toHaveBeenCalled();
-    });
-
-    it('should call checkForPendingTransactionsUpdate for check_pending_transactions alarm', () => {
-      const alarm = {
-        name: 'check_pending_transactions',
-      } as chrome.alarms.Alarm;
-      chrome.alarms.onAlarm.callListeners(alarm);
-      expect(checkForUpdates).not.toHaveBeenCalled();
-      expect(checkForPendingTransactionsUpdate).toHaveBeenCalledTimes(1);
       expect(mockMasterController.wallet.setFiat).not.toHaveBeenCalled();
     });
 
@@ -222,7 +199,6 @@ describe('Background: handleListeners', () => {
       const alarm = { name: 'update_fiat_price' } as chrome.alarms.Alarm;
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).not.toHaveBeenCalled();
-      expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
 
@@ -232,7 +208,6 @@ describe('Background: handleListeners', () => {
       } as chrome.alarms.Alarm;
       chrome.alarms.onAlarm.callListeners(alarm);
       expect(checkForUpdates).not.toHaveBeenCalled();
-      expect(checkForPendingTransactionsUpdate).not.toHaveBeenCalled();
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
     });
   });
@@ -294,7 +269,6 @@ describe('Background: handleListeners', () => {
       const message = { type: 'startPendingTransactionsPolling' };
       chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
       expect(store.dispatch).toHaveBeenCalledWith(setIsPolling(true));
-      expect(startPendingTransactionsPolling).toHaveBeenCalledTimes(1);
       expect(sendResponse).not.toHaveBeenCalled();
     });
   });
