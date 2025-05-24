@@ -5,32 +5,57 @@ import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
 import { useController } from 'hooks/useController';
+import { chromeStorage } from 'utils/storageAPI';
 
 export const Start = (props: any) => {
   const [isOpenValidation, setIsOpenValidation] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
+  const [hasVault, setHasVault] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { isExternal, externalRoute } = props;
-  const hasVault = !!JSON.parse(localStorage.getItem('sysweb3-vault'));
   const isFirstStep = !hasAccount && !hasVault;
 
   useEffect(() => {
-    const checkAccounts = async () => {
-      const result: any = await controllerEmitter([
-        'wallet',
-        'getActiveAccount',
-      ]);
+    const checkVaultAndAccounts = async () => {
+      try {
+        // Check for vault in Chrome storage
+        const vault = await chromeStorage.getItem('sysweb3-vault');
+        setHasVault(!!vault);
 
-      setHasAccount(!!result.activeAccount.address);
+        // Check for active account
+        const result: any = await controllerEmitter([
+          'wallet',
+          'getActiveAccount',
+        ]);
+        setHasAccount(!!result.activeAccount.address);
+      } catch (error) {
+        console.error('Error checking vault/accounts:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
-    checkAccounts();
-
-    return () => {
-      checkAccounts();
-    };
+    checkVaultAndAccounts();
   }, []);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
+        <div className="animate-pulse">
+          <div className="flex flex-row gap-3">
+            <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
+              Pali
+            </h1>
+            <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
+              Wallet
+            </h1>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
