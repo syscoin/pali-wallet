@@ -75,17 +75,21 @@ export const DetailsView = () => {
             {isNft ? (
               <NftsDetails nftId={nftId} nftAddress={nftAddress} />
             ) : null}
-          </ul>
 
-          {!isAsset && !isNft ? (
-            <div
-              className="mt-6 flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60"
-              onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
-            >
-              <img className="w-4 h-4" src={explorerImg} />
-              <p className="text-sm text-white underline">View on Explorer</p>
-            </div>
-          ) : null}
+            {!isAsset && !isNft ? (
+              <li className="mt-6 mb-4 flex items-center justify-center">
+                <div
+                  className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
+                  onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
+                >
+                  <img className="w-4 h-4" src={explorerImg} />
+                  <p className="text-sm text-white underline">
+                    View on Explorer
+                  </p>
+                </div>
+              </li>
+            ) : null}
+          </ul>
         </>
       )}
     </Layout>
