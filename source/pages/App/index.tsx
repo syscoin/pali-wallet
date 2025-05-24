@@ -36,24 +36,48 @@ const options = {
 };
 
 if (appRootElement) {
+  console.log('[App] Starting app initialization...');
   MigrationController().then(async () => {
-    const state = await controllerEmitter(['wallet', 'getState']);
+    console.log('[App] MigrationController completed, getting state...');
+    try {
+      const state = await controllerEmitter(['wallet', 'getState']);
+      console.log('[App] Successfully got state from background script');
 
-    rehydrateStore(store, state).then(() => {
-      const root = ReactDOM.createRoot(appRootElement);
-      root.render(
-        <React.StrictMode>
-          <Provider store={store}>
-            <AlertProvider template={ToastAlert} {...options}>
-              <App />
-            </AlertProvider>
-          </Provider>
-        </React.StrictMode>
-      );
+      rehydrateStore(store, state).then(() => {
+        console.log('[App] Store rehydrated, rendering React app...');
+        const root = ReactDOM.createRoot(appRootElement);
+        root.render(
+          <React.StrictMode>
+            <Provider store={store}>
+              <AlertProvider template={ToastAlert} {...options}>
+                <App />
+              </AlertProvider>
+            </Provider>
+          </React.StrictMode>
+        );
 
-      // Subscribe store to updates
-      handleStoreSubscribe(store);
-    });
+        // Subscribe store to updates
+        handleStoreSubscribe(store);
+        console.log('[App] App rendered and store subscribed');
+      });
+    } catch (error) {
+      console.error('[App] Failed to get state from background script:', error);
+      // Still try to render the app even if initial state fetch fails
+      console.log('[App] Attempting to render app without initial state...');
+      rehydrateStore(store).then(() => {
+        const root = ReactDOM.createRoot(appRootElement);
+        root.render(
+          <React.StrictMode>
+            <Provider store={store}>
+              <AlertProvider template={ToastAlert} {...options}>
+                <App />
+              </AlertProvider>
+            </Provider>
+          </React.StrictMode>
+        );
+        handleStoreSubscribe(store);
+      });
+    }
   });
 } else {
   console.error("Failed to find the root element with ID 'app-root'.");

@@ -27,6 +27,7 @@ export const ChangeAccount = () => {
   const [accountId, setAccountId] = useState<number>(currentAccountId);
   const [accountType, setCurrentAccountType] =
     useState<KeyringAccountType>(currentAccountType);
+  const [isChanging, setIsChanging] = useState<boolean>(false);
 
   const handleSetAccountId = (id: number, type: KeyringAccountType) => {
     setAccountId(id);
@@ -40,26 +41,37 @@ export const ChangeAccount = () => {
       window.close();
       return;
     }
-    //this should be passed to constant instead of being hardcoded
-    if (eventName === 'requestPermissions') {
+
+    setIsChanging(true);
+
+    try {
+      //this should be passed to constant instead of being hardcoded
+      if (eventName === 'requestPermissions') {
+        await controllerEmitter(
+          ['dapp', 'requestPermissions'],
+          [host, accountId, accountType]
+        );
+      } else {
+        await controllerEmitter(
+          ['dapp', 'changeAccount'],
+          [host, accountId, accountType]
+        );
+      }
+
       await controllerEmitter(
-        ['dapp', 'requestPermissions'],
-        [host, accountId, accountType]
+        ['wallet', 'setAccount'],
+        [accountId, accountType]
       );
-    } else {
-      await controllerEmitter(
-        ['dapp', 'changeAccount'],
-        [host, accountId, accountType]
-      );
+
+      const response = { accountId, accountType };
+
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+
+      window.close();
+    } catch (error) {
+      setIsChanging(false);
+      console.error('Failed to change account:', error);
     }
-
-    await controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
-
-    const response = { accountId, accountType };
-
-    dispatchBackgroundEvent(`${eventName}.${host}`, response);
-
-    window.close();
   };
 
   return (
@@ -172,6 +184,8 @@ export const ChangeAccount = () => {
             type="button"
             width="40"
             onClick={() => handleChangeAccount()}
+            loading={isChanging}
+            disabled={isChanging}
           >
             {t('buttons.change')}
           </PrimaryButton>

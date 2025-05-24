@@ -64,6 +64,7 @@ import {
   switchNetworkError,
   resetNetworkStatus,
   switchNetworkSuccess,
+  setIsSwitchingAccount,
 } from 'state/vault';
 import {
   IOmmitedAccount,
@@ -533,6 +534,10 @@ class MainController extends KeyringManager {
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
     const { accounts, activeAccount } = store.getState().vault;
+
+    // Set switching account loading state
+    store.dispatch(setIsSwitchingAccount(true));
+
     if (
       connectedAccount &&
       connectedAccount.address ===
@@ -550,15 +555,20 @@ class MainController extends KeyringManager {
       }
     }
 
-    this.setActiveAccount(id, type).then(() => {
-      store.dispatch(setActiveAccount({ id, type }));
+    this.setActiveAccount(id, type)
+      .then(() => {
+        store.dispatch(setActiveAccount({ id, type }));
 
-      // Clear transaction cache when switching accounts
-      this.transactionsManager.utils.clearCache();
+        // Clear transaction cache when switching accounts
+        this.transactionsManager.utils.clearCache();
 
-      // Update all account data when switching accounts
-      this.getLatestUpdateForCurrentAccount();
-    });
+        // Update all account data when switching accounts
+        this.getLatestUpdateForCurrentAccount();
+      })
+      .finally(() => {
+        // Always clear switching account loading state, even if there's an error
+        store.dispatch(setIsSwitchingAccount(false));
+      });
   }
 
   public async setActiveNetwork(

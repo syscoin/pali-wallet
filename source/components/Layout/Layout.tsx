@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import dotsImage from 'assets/images/dotsHeader.svg';
 import { Header, Icon, IconButton } from 'components/index';
@@ -20,6 +20,10 @@ export const Layout: FC<ILayout> = ({
   titleOnly,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check if this page was accessed from a dropdown menu
+  const cameFromMenu = location.state?.fromMenu === true;
 
   const isSwitchChainPage =
     title === 'Switch Chain' || title === 'Cambiar Cadena';
@@ -32,6 +36,17 @@ export const Layout: FC<ILayout> = ({
 
   const isHardwareWalletPage =
     title === 'HARDWARE WALLET' || title === 'MONEDERO HARDWARE';
+
+  // Back navigation handler
+  const handleBackNavigation = () => {
+    // If we came from a dropdown menu, go to home since menus are overlays on home page
+    if (cameFromMenu) {
+      navigate('/home');
+    } else {
+      // Otherwise use browser back navigation
+      navigate(-1);
+    }
+  };
 
   return (
     <div
@@ -52,7 +67,7 @@ export const Layout: FC<ILayout> = ({
         {!titleOnly && canGoBack && !isHardwareWalletPage && (
           <IconButton
             className="z-40 cursor-pointer"
-            onClick={() => navigate(-1)}
+            onClick={handleBackNavigation}
           >
             <Icon isSvg={true} name="ArrowLeft" />
           </IconButton>

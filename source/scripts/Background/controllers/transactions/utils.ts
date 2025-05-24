@@ -109,57 +109,70 @@ export const findUserTxsInProviderByBlocksRange = async (
 
 export const treatDuplicatedTxs = (
   transactions: IEvmTransactionResponse[] | ISysTransaction[]
-) =>
-  uniqWith(
-    transactions,
-    (
-      a: IEvmTransactionResponse | ISysTransaction,
-      b: IEvmTransactionResponse | ISysTransaction
-    ) => {
-      const idA = 'hash' in a ? a.hash : a.txid;
-      const idB = 'hash' in b ? b.hash : b.txid;
+) => {
+  // Group transactions by their ID (hash or txid)
+  const txGroups = new Map<
+    string,
+    (IEvmTransactionResponse | ISysTransaction)[]
+  >();
 
-      const TSTAMP_PROP = 'timestamp';
-      const BLOCKTIME_PROP = 'blockTime';
-
-      if (idA.toLowerCase() === idB.toLowerCase()) {
-        // Keep the transaction with the higher confirmation number
-        if (a.confirmations > b.confirmations) {
-          // Preserve timestamp if available and valid
-          if (
-            b[TSTAMP_PROP] &&
-            (!a[TSTAMP_PROP] || a[TSTAMP_PROP] > b[TSTAMP_PROP])
-          ) {
-            a[TSTAMP_PROP] = b[TSTAMP_PROP];
-          }
-          // Preserve blockTime if available and valid
-          if (
-            b[BLOCKTIME_PROP] &&
-            (!a[BLOCKTIME_PROP] || a[BLOCKTIME_PROP] < b[BLOCKTIME_PROP])
-          ) {
-            a[BLOCKTIME_PROP] = b[BLOCKTIME_PROP];
-          }
-        } else {
-          // Preserve timestamp if available and valid
-          if (
-            a[TSTAMP_PROP] &&
-            (!b[TSTAMP_PROP] || b[TSTAMP_PROP] > a[TSTAMP_PROP])
-          ) {
-            b[TSTAMP_PROP] = a[TSTAMP_PROP];
-          }
-          // Preserve blockTime if available and valid
-          if (
-            a[BLOCKTIME_PROP] &&
-            (!b[BLOCKTIME_PROP] || b[BLOCKTIME_PROP] < a[BLOCKTIME_PROP])
-          ) {
-            b[BLOCKTIME_PROP] = a[BLOCKTIME_PROP];
-          }
-        }
-        return true;
-      }
-      return false;
+  for (const tx of transactions) {
+    const id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
+    if (!txGroups.has(id)) {
+      txGroups.set(id, []);
     }
-  );
+    txGroups.get(id)!.push(tx);
+  }
+
+  // For each group, select the best transaction and merge properties
+  const deduplicatedTxs = [];
+
+  for (const [, txGroup] of txGroups) {
+    if (txGroup.length === 1) {
+      deduplicatedTxs.push(txGroup[0]);
+      continue;
+    }
+
+    // Find the transaction with the highest confirmations
+    let bestTx = txGroup[0];
+    for (let i = 1; i < txGroup.length; i++) {
+      const currentTx = txGroup[i];
+      if (currentTx.confirmations > bestTx.confirmations) {
+        bestTx = currentTx;
+      }
+    }
+
+    // Create a merged transaction preserving the best properties from all duplicates
+    const mergedTx = { ...bestTx };
+
+    // Preserve the earliest valid timestamp
+    const TSTAMP_PROP = 'timestamp';
+    const BLOCKTIME_PROP = 'blockTime';
+
+    for (const tx of txGroup) {
+      // Preserve earliest timestamp if available and valid
+      if (
+        tx[TSTAMP_PROP] &&
+        (!mergedTx[TSTAMP_PROP] || tx[TSTAMP_PROP] < mergedTx[TSTAMP_PROP])
+      ) {
+        mergedTx[TSTAMP_PROP] = tx[TSTAMP_PROP];
+      }
+
+      // Preserve earliest blockTime if available and valid
+      if (
+        tx[BLOCKTIME_PROP] &&
+        (!mergedTx[BLOCKTIME_PROP] ||
+          tx[BLOCKTIME_PROP] < mergedTx[BLOCKTIME_PROP])
+      ) {
+        mergedTx[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
+      }
+    }
+
+    deduplicatedTxs.push(mergedTx);
+  }
+
+  return deduplicatedTxs;
+};
 
 //todo: there's a potential issue here when we call this function and the active account has changed
 export const validateAndManageUserTransactions = (

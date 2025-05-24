@@ -165,7 +165,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             >
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/settings/networks/connected-sites')}
+                  onClick={() =>
+                    navigate('/settings/networks/connected-sites', {
+                      state: { fromMenu: true },
+                    })
+                  }
                   className={`flex items-center justify-start mb-2 mx-3 px-2 py-1  text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
                 >
                   <Icon
@@ -189,7 +193,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
               <Menu.Item>
                 <li
-                  onClick={() => navigate('/settings/networks/trusted-sites')}
+                  onClick={() =>
+                    navigate('/settings/networks/trusted-sites', {
+                      state: { fromMenu: true },
+                    })
+                  }
                   className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
                 >
                   <Icon
@@ -363,7 +371,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                 <Menu.Item>
                   <li
-                    onClick={() => navigate('/settings/networks/custom-rpc')}
+                    onClick={() =>
+                      navigate('/settings/networks/custom-rpc', {
+                        state: { fromMenu: true },
+                      })
+                    }
                     className="flex px-5 py-2 w-full text-base hover:bg-bkg-3 cursor-pointer transition-all duration-200"
                   >
                     <Icon

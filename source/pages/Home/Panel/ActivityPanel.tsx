@@ -20,6 +20,7 @@ export const TransactionsPanel = () => {
     activeNetwork: { url: networkUrl, chainId, explorer },
     isBitcoinBased,
     isLoadingTxs,
+    isSwitchingAccount,
   } = useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
   const networkExplorer = useAdjustedExplorer(explorer);
@@ -28,7 +29,9 @@ export const TransactionsPanel = () => {
     ? adjustedNetworkUrl
     : networkExplorer;
 
-  const [internalLoading, setInternalLoading] = useState<boolean>(isLoadingTxs);
+  const [internalLoading, setInternalLoading] = useState<boolean>(
+    isLoadingTxs || isSwitchingAccount
+  );
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
   const transactions = useMemo(() => {
@@ -105,7 +108,7 @@ export const TransactionsPanel = () => {
   useEffect(() => {
     const alarmName = `loading-timeout-${Date.now()}`;
 
-    if (isLoadingTxs) {
+    if (isLoadingTxs || isSwitchingAccount) {
       setInternalLoading(true);
 
       // Create alarm for 10 second timeout
@@ -135,7 +138,7 @@ export const TransactionsPanel = () => {
       // Clear any existing loading timeouts
       chrome.alarms.clear(alarmName);
     }
-  }, [isLoadingTxs]);
+  }, [isLoadingTxs, isSwitchingAccount]);
 
   const allTransactions = useMemo(
     () => (hasTransactions ? transactions : previousTransactions),

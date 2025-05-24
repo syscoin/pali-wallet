@@ -57,7 +57,9 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => navigate('/settings/account/new')}
+          onClick={() =>
+            navigate('/settings/account/new', { state: { fromMenu: true } })
+          }
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon name="AddUser" isSvg className="mb-1 text-brand-white" />
@@ -68,7 +70,9 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => navigate('/settings/manage-accounts')}
+          onClick={() =>
+            navigate('/settings/manage-accounts', { state: { fromMenu: true } })
+          }
           className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon name="ManageUser" isSvg className="mb-2 text-brand-white" />
@@ -79,7 +83,11 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => navigate('/settings/account/private-key')}
+          onClick={() =>
+            navigate('/settings/account/private-key', {
+              state: { fromMenu: true },
+            })
+          }
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
         >
           <Icon name="key" className="mb-2 text-brand-white" />
@@ -107,7 +115,11 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <div className="flex flex-col gap-2">
           <li
-            onClick={() => navigate('/settings/account/import')}
+            onClick={() =>
+              navigate('/settings/account/import', {
+                state: { fromMenu: true },
+              })
+            }
             className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
           >
             <Icon name="ImportUser" isSvg className="mb-1 text-brand-white" />

@@ -419,7 +419,7 @@ const CustomRPCView = () => {
             <Input
               type="text"
               placeholder="https://api.example.com/api"
-              className={`${inputHiddenOrNotStyle} custom-input-normal `}
+              className="custom-input-normal relative"
             />
           </Form.Item>
         </div>

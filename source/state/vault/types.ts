@@ -44,6 +44,7 @@ export interface IVaultState {
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
   isPolling: boolean;
+  isSwitchingAccount: boolean;
   lastLogin: number;
   networkStatus: 'idle' | 'switching' | 'error';
   networkTarget?: INetworkWithKind;

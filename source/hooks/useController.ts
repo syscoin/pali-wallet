@@ -20,27 +20,36 @@ const isConnectionError = (error: any): boolean => {
 
 // Health check to ensure background script is ready
 const checkBackgroundConnection = async (): Promise<boolean> => {
+  console.log('[useController] Starting background connection health check...');
   try {
     // Try a simple ping to the background script
     await new Promise((resolve, reject) => {
       if (!chrome?.runtime?.sendMessage) {
+        console.error('[useController] Chrome runtime not available');
         reject(new Error('Chrome runtime not available'));
         return;
       }
 
+      console.log('[useController] Sending ping to background script...');
       chrome.runtime.sendMessage(
         { type: 'ping', target: 'background' },
         (response) => {
           if (chrome.runtime.lastError) {
+            console.error(
+              '[useController] Ping failed:',
+              chrome.runtime.lastError
+            );
             reject(chrome.runtime.lastError);
           } else {
+            console.log('[useController] Ping successful, response:', response);
             resolve(response);
           }
         }
       );
     });
     return true;
-  } catch {
+  } catch (error) {
+    console.error('[useController] Background connection check failed:', error);
     return false;
   }
 };
@@ -51,11 +60,25 @@ const retryWithBackoff = async <T>(
   maxRetries = 3,
   baseDelay = 100
 ): Promise<T> => {
+  console.log(
+    '[useController] retryWithBackoff called with maxRetries:',
+    maxRetries
+  );
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      console.log(
+        `[useController] Attempt ${attempt + 1}/${
+          maxRetries + 1
+        } to execute function...`
+      );
       return await fn();
     } catch (error) {
+      console.error(`[useController] Attempt ${attempt + 1} failed:`, error);
       if (attempt === maxRetries || !isConnectionError(error)) {
+        console.error(
+          '[useController] Max retries exceeded or non-connection error, throwing:',
+          error
+        );
         throw error;
       }
 
@@ -88,14 +111,23 @@ export function useController() {
 
   const fetchControllerData = useCallback(
     async (shouldSetIsLoading = true) => {
+      console.log(
+        '[useController] fetchControllerData called, shouldSetIsLoading:',
+        shouldSetIsLoading
+      );
       if (shouldSetIsLoading) setIsLoading(true);
 
       try {
         // First, ensure the background script is responsive
+        console.log('[useController] Checking background script connection...');
         const isConnected = await checkBackgroundConnection();
         if (!isConnected) {
+          console.error('[useController] Background script is not responsive!');
           throw new Error('Background script not responsive');
         }
+        console.log(
+          '[useController] Background script is responsive, proceeding...'
+        );
 
         const network = (await retryWithBackoff(() =>
           controllerEmitter(['wallet', 'getNetwork'])
@@ -213,10 +245,14 @@ export function useController() {
   );
 
   useEffect(() => {
+    console.log(
+      '[useController] useEffect triggered, calling fetchControllerData...'
+    );
     fetchControllerData();
 
     // Cleanup function should abort requests and clear timeouts
     return () => {
+      console.log('[useController] useEffect cleanup triggered');
       abortController.abort();
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);

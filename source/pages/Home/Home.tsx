@@ -36,14 +36,16 @@ const BalanceDisplay = memo(
     actualBalance,
     moreThanMillion,
     isNetworkChanging,
+    isSwitchingAccount,
     currency,
   }: {
     actualBalance: number;
     currency: string;
     isNetworkChanging: boolean;
+    isSwitchingAccount: boolean;
     moreThanMillion: boolean;
   }) => {
-    if (isNetworkChanging) {
+    if (isNetworkChanging || isSwitchingAccount) {
       return (
         <div className="flex items-center">
           <SkeletonLoader width="200px" height="40px" />
@@ -71,12 +73,14 @@ BalanceDisplay.displayName = 'BalanceDisplay';
 const FiatDisplay = memo(
   ({
     isNetworkChanging,
+    isSwitchingAccount,
     formatFiatAmount,
   }: {
     formatFiatAmount: string | null;
     isNetworkChanging: boolean;
+    isSwitchingAccount: boolean;
   }) => {
-    if (isNetworkChanging) {
+    if (isNetworkChanging || isSwitchingAccount) {
       return <SkeletonLoader width="80px" height="30px" margin="10px 0 0 0" />;
     }
 
@@ -108,6 +112,7 @@ export const Home = () => {
     isBitcoinBased,
     lastLogin,
     isLoadingBalances,
+    isSwitchingAccount,
     shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
 
@@ -229,10 +234,12 @@ export const Home = () => {
                   actualBalance={actualBalance}
                   moreThanMillion={moreThanMillion}
                   isNetworkChanging={isNetworkChanging}
+                  isSwitchingAccount={isSwitchingAccount}
                   currency={activeNetwork.currency}
                 />
                 <FiatDisplay
                   isNetworkChanging={isNetworkChanging}
+                  isSwitchingAccount={isSwitchingAccount}
                   formatFiatAmount={formatFiatAmount}
                 />
               </div>
@@ -247,7 +254,9 @@ export const Home = () => {
                       ? navigate('/send/sys')
                       : navigate('/send/eth')
                   }
-                  disabled={isLoadingBalances || isNetworkChanging}
+                  disabled={
+                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
+                  }
                 >
                   <Icon
                     name="ArrowUpBoldIcon"
@@ -264,7 +273,9 @@ export const Home = () => {
                   className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   onClick={() => navigate('/receive')}
-                  disabled={isLoadingBalances || isNetworkChanging}
+                  disabled={
+                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
+                  }
                 >
                   <Icon
                     name="ArrowDownLoad"

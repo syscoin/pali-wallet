@@ -25,8 +25,13 @@ export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
-  const { accounts, isBitcoinBased, activeNetwork, networkStatus } =
-    useSelector((state: RootState) => state.vault);
+  const {
+    accounts,
+    isBitcoinBased,
+    activeNetwork,
+    networkStatus,
+    isSwitchingAccount,
+  } = useSelector((state: RootState) => state.vault);
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const [copied, copy] = useCopyClipboard();
@@ -127,7 +132,7 @@ export const AccountHeader: React.FC = () => {
         <div className="add-identicon ml-1 mr-2 my-2" />
 
         <div className="items-center justify-center px-1 text-brand-white">
-          {isNetworkChanging ? (
+          {isNetworkChanging || isSwitchingAccount ? (
             <SkeletonLoader width="150px" height="20px" />
           ) : (
             <p
@@ -149,7 +154,7 @@ export const AccountHeader: React.FC = () => {
               </IconButton>
             </p>
           )}
-          {isNetworkChanging ? (
+          {isNetworkChanging || isSwitchingAccount ? (
             <SkeletonLoader width="200px" height="15px" margin="5px 0 0 0" />
           ) : (
             <div className="flex items-center">

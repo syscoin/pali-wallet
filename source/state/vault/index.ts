@@ -72,6 +72,7 @@ export const initialState: IVaultState = {
   isLoadingTxs: false,
   isLoadingAssets: false,
   isLoadingNfts: false,
+  isSwitchingAccount: false,
   changingConnectedAccount: {
     host: undefined,
     isChangingConnectedAccount: false,
@@ -342,6 +343,9 @@ const VaultState = createSlice({
     },
     setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingNfts = action.payload;
+    },
+    setIsSwitchingAccount(state: IVaultState, action: PayloadAction<boolean>) {
+      state.isSwitchingAccount = action.payload;
     },
     setIsDappAskingToChangeNetwork(
       state: IVaultState,
@@ -952,6 +956,7 @@ export const {
   switchNetworkSuccess,
   switchNetworkError,
   resetNetworkStatus,
+  setIsSwitchingAccount,
 } = VaultState.actions;
 
 export default VaultState.reducer;
