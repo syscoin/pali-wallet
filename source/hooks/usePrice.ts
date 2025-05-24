@@ -18,7 +18,7 @@ export const usePrice = () => {
   const getFiatAmount: IGetFiatAmount = (
     amount: number,
     precision = 4,
-    currency = 'usd',
+    currency = fiat.asset || 'usd',
     withCurrency = true,
     withSymbol?: boolean
   ): string => {
