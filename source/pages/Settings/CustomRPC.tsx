@@ -177,14 +177,16 @@ const CustomRPCView = () => {
               <p className="text-brand-blue200 text-xs">EVM</p>
               <Tooltip
                 content={
-                  !!state ? 'Cant change type of network while editing' : ''
+                  state?.selected
+                    ? 'Cant change type of network while editing'
+                    : ''
                 }
               >
                 <Switch
                   checked={isSyscoinRpc}
                   onChange={() => setIsSyscoinRpc(!isSyscoinRpc)}
                   className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
-                  disabled={!!state}
+                  disabled={!!state?.selected}
                 >
                   <span className="sr-only">Syscoin Network</span>
                   <span
