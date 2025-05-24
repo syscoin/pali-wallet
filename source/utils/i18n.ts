@@ -5,7 +5,17 @@ import { initReactI18next } from 'react-i18next';
 
 import { chromeStorage } from 'utils/storageAPI';
 
-export const availableLanguages = ['en', 'es', 'pt-br'];
+export const availableLanguages = [
+  'en',
+  'es',
+  'pt-br',
+  'fr',
+  'de',
+  'zh-cn',
+  'ja',
+  'ko',
+  'ru',
+];
 export const defaultLocale = 'en';
 const LOCALE_VERSION = '1.5.1';
 

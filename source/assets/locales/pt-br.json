@@ -306,7 +306,16 @@
     "defaultMinutes": "Padrão: 5 minutos após inatividade",
     "maximumMinutes": "Máximo: 120 minutos",
     "connectYourWalletAndClick": "CONECTE SUA {{hardwalletName}} E CLIQUE PARA CONECTAR!",
-    "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}."
+    "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}.",
+    "english": "Inglês",
+    "portuguese": "Português",
+    "spanish": "Espanhol",
+    "french": "Francês",
+    "german": "Alemão",
+    "chinese": "Chinês (Simplificado)",
+    "japanese": "Japonês",
+    "korean": "Coreano",
+    "russian": "Russo"
   },
   "start": {
     "getStarted": "Get started",

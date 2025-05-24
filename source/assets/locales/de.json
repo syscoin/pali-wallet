@@ -1,0 +1,184 @@
+{
+  "buttons": {
+    "cancel": "Abbrechen",
+    "change": "Ändern",
+    "noCancel": "Nein, abbrechen",
+    "yesContinue": "Ja, fortfahren",
+    "connected": "Verbunden",
+    "active": "Aktiv",
+    "send": "Senden",
+    "receive": "Empfangen",
+    "assets": "Assets",
+    "activity": "Aktivität",
+    "ok": "Ok",
+    "import": "Importieren",
+    "copy": "Kopieren",
+    "validate": "Validieren",
+    "edit": "Bearbeiten",
+    "hide": "Ausblenden",
+    "show": "Anzeigen",
+    "save": "Speichern",
+    "next": "Weiter",
+    "confirm": "Bestätigen",
+    "close": "Schließen",
+    "connect": "Verbinden",
+    "addAccount": "Konto hinzufügen",
+    "create": "Erstellen",
+    "addNetwork": "Netzwerk hinzufügen",
+    "addToken": "Token hinzufügen",
+    "forget": "Vergessen",
+    "switchNetwork": "Netzwerk wechseln",
+    "unlock": "Entsperren",
+    "done": "Fertig",
+    "iveWrittenIt": "Ich habe es aufgeschrieben",
+    "reject": "Ablehnen",
+    "switch": "Wechseln",
+    "success": "Erfolg",
+    "error": "Fehler",
+    "reconnect": "Neu verbinden",
+    "verify": "Überprüfen",
+    "retryConnect": "Verbindung erneut versuchen"
+  },
+  "header": {
+    "accounts": "Konten",
+    "accountHeader": "Kontoeinstellungen",
+    "createNewAccount": "Neues Konto erstellen",
+    "manageAccounts": "Konten verwalten",
+    "yourKeys": "Ihre Schlüssel",
+    "connectTrezor": "Trezor verbinden",
+    "importAccount": "Konto importieren"
+  },
+  "home": {
+    "importToken": "Token importieren",
+    "youHaveNoTokens": "Keine Token oder NFTs vorhanden",
+    "youHaveNoTxs": "Keine Transaktionshistorie",
+    "seeAllTxs": "Alle Transaktionen anzeigen",
+    "congratulations": "Glückwunsch!",
+    "youWalletWas": "Ihre Wallet wurde erfolgreich importiert"
+  },
+  "settings": {
+    "version": "Version",
+    "userSupport": "Benutzer-Support",
+    "languages": "Sprachen",
+    "currency": "Währung",
+    "autolock": "Automatische Sperre",
+    "advanced": "Erweitert",
+    "password": "Passwort",
+    "setAutoLockTime": "Sperrzeit einstellen",
+    "errorMinutes": "Die Zeit muss zwischen 5 und 120 Minuten liegen",
+    "defaultMinutes": "Standard: 5 Minuten Inaktivität",
+    "maximumMinutes": "Maximum: 120 Minuten",
+    "english": "Englisch",
+    "portuguese": "Portugiesisch",
+    "spanish": "Spanisch",
+    "french": "Französisch",
+    "german": "Deutsch",
+    "chinese": "Chinesisch (Vereinfacht)",
+    "japanese": "Japanisch",
+    "korean": "Koreanisch",
+    "russian": "Russisch"
+  },
+  "components": {
+    "newPassword": "Neues Passwort (min. 8 Zeichen)",
+    "confirmPassword": "Passwort bestätigen",
+    "atLeast": "Mindestens 8 Zeichen, 1 Kleinbuchstabe und 1 Zahl.",
+    "doNotForget": "Vergessen Sie nicht, Ihr Passwort zu speichern. Sie benötigen dieses Passwort, um Ihre Wallet zu entsperren.",
+    "useRecommendedFee": "Verwenden Sie die empfohlene Gebühr. Für SYS-Netzwerke deaktiviert, da die in Transaktionen verwendete Gebühr bereits die empfohlene unter aktuellen Netzwerkbedingungen ist."
+  },
+  "tooltip": {
+    "editAsset": "Asset bearbeiten",
+    "assetDetails": "Asset-Details",
+    "deleteAsset": "Asset löschen",
+    "clickToOpen": "Klicken Sie zum Öffnen des NFT-Bildes"
+  },
+  "networkMenu": {
+    "viewConnected": "Verbundene Websites anzeigen",
+    "noConnected": "Keine verbundenen Websites",
+    "trustedSites": "Vertrauenswürdige Seiten",
+    "networks": "NETZWERKE",
+    "utxoNetworks": "UTXO-Netzwerke",
+    "evmNetworks": "EVM-Netzwerke",
+    "networkSettings": "NETZWERKEINSTELLUNGEN",
+    "customRpc": "Benutzerdefiniertes RPC",
+    "manageNetworks": "Netzwerke verwalten"
+  },
+  "accountMenu": {
+    "accounts": "KONTEN",
+    "accountsSettings": "KONTOEINSTELLUNGEN",
+    "createNewAccount": "Neues Konto erstellen",
+    "manageAccounts": "Konten verwalten",
+    "yourKeys": "Ihre Schlüssel",
+    "connectTrezor": "Hardware Wallet verbinden",
+    "importAccount": "Konto importieren",
+    "importAccMessage": "Pali ist die einzige Erweiterungswallet mit UTXO! Um eine Wallet zu importieren, müssen Sie zu einem EVM-Netzwerk wechseln."
+  },
+  "connections": {
+    "connectedAccount": "VERBUNDENES KONTO",
+    "onlyConnect": "Verbinden Sie sich nur mit vertrauenswürdigen Seiten.",
+    "learnMore": "Mehr erfahren.",
+    "theWebsite": "Die Website",
+    "withWitchAccount": "Mit welchem Konto möchten Sie fortfahren?",
+    "connectAccount": "KONTO VERBINDEN",
+    "nonTrusted": "Nicht vertrauenswürdige Seite erkannt",
+    "nonTrustedMessage": "Diese Seite ist nicht in unserer Vertrauensliste. Sind Sie sicher, dass Sie sich verbinden möchten?"
+  },
+  "titles": {
+    "assetDetails": "ASSET-DETAILS",
+    "transactionDetails": "TRANSAKTIONSDETAILS",
+    "importWallet": "WALLET IMPORTIEREN",
+    "congratulations": "GLÜCKWUNSCH!"
+  },
+  "start": {
+    "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",
+    "ifYouPlan": "Wenn Sie eine neue geheime Wiederherstellungsphrase importieren möchten, stellen Sie sicher, dass Sie die aktuelle notiert haben, um keine zugehörigen Gelder zu verlieren.",
+    "getStarted": "Loslegen",
+    "importUsing": "Mit Wallet-Seed-Phrase importieren",
+    "wrongPassword": "Falsches Passwort",
+    "welcomeTo": "WILLKOMMEN BEI"
+  },
+  "tokens": {
+    "editToken": "TOKEN BEARBEITEN",
+    "importToken": "TOKEN IMPORTIEREN",
+    "search": "Suchen",
+    "searchOrCustomToken": "Suchen oder benutzerdefinierter Token",
+    "customToken": "Benutzerdefinierter Token",
+    "invalidContractAddress": "Ungültige Vertragsadresse. Überprüfen Sie die aktuelle Vertragsadresse oder das aktuelle Netzwerk!",
+    "pleaseTypeContract": "Bitte geben Sie die Token-Vertragsadresse ein",
+    "contractAddress": "Vertragsadresse",
+    "pleaseTypeSymbol": "Bitte geben Sie das Token-Symbol ein!",
+    "pleaseTypeDecimals": "Bitte geben Sie die Token-Dezimalstellen ein!",
+    "tokenDecimal": "Token-Dezimalstellen",
+    "tokenSymbol": "Token-Symbol",
+    "tokenDecimals": "Token-Dezimalstellen"
+  },
+  "transactions": {
+    "messageCopied": "Nachricht erfolgreich kopiert",
+    "decryptRequest": "Entschlüsselungsanfrage",
+    "signatureFailed": "Signaturanfrage fehlgeschlagen",
+    "sorryWeCould": "Entschuldigung, wir konnten Ihre Anfrage nicht übermitteln. Versuchen Sie es später erneut.",
+    "message": "Nachricht",
+    "fee": "GEBÜHR",
+    "sys": "SYS",
+    "transaction": "TRANSAKTION"
+  },
+  "switchNetwork": {
+    "connectedOn": "Sie sind verbunden mit",
+    "toUse": "um diese dApp zu nutzen, müssen Sie wechseln zu",
+    "learnAbout": "Mehr über UTXO und EVM erfahren"
+  },
+  "chainError": {
+    "connectionTooLong": "VERBINDUNG DAUERT ZU LANGE",
+    "tryingToConnectOn": "Sie versuchen sich zu verbinden mit:",
+    "goToAnotherNetwork": "Zu einem anderen Netzwerk wechseln",
+    "editCurrentRpc": "RPC des aktuellen Netzwerks bearbeiten"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
+    "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
+    "saveProperly": "Speichern Sie diese Seed-Phrase sicher, damit Sie diese Wallet in Zukunft importieren können."
+  },
+  "walletSeedPhrasePage": {
+    "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",
+    "anyoneWithThisInfo": "Jeder mit dieser Information kann Ihre Gelder stehlen."
+  }
+} 

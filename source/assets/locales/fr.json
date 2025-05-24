@@ -1,0 +1,224 @@
+{
+  "buttons": {
+    "cancel": "Annuler",
+    "change": "Modifier",
+    "noCancel": "Non, annuler",
+    "yesContinue": "Oui, continuer",
+    "connected": "Connecté",
+    "active": "Actif",
+    "send": "Envoyer",
+    "receive": "Recevoir",
+    "assets": "Actifs",
+    "activity": "Activité",
+    "ok": "Ok",
+    "import": "Importer",
+    "copy": "Copier",
+    "validate": "Valider",
+    "edit": "Modifier",
+    "hide": "Masquer",
+    "show": "Afficher",
+    "save": "Enregistrer",
+    "next": "Suivant",
+    "confirm": "Confirmer",
+    "close": "Fermer",
+    "connect": "Connecter",
+    "addAccount": "Ajouter un compte",
+    "create": "Créer",
+    "addNetwork": "Ajouter un réseau",
+    "addToken": "Ajouter un jeton",
+    "forget": "Oublier",
+    "switchNetwork": "Changer de réseau",
+    "unlock": "Déverrouiller",
+    "done": "Terminé",
+    "iveWrittenIt": "Je l'ai noté",
+    "reject": "Rejeter",
+    "switch": "Changer",
+    "success": "Succès",
+    "error": "Erreur",
+    "reconnect": "Reconnecter",
+    "verify": "Vérifier",
+    "retryConnect": "Réessayer la connexion"
+  },
+  "header": {
+    "accounts": "Comptes",
+    "accountHeader": "Paramètres des comptes",
+    "createNewAccount": "Créer un nouveau compte",
+    "manageAccounts": "Gérer les comptes",
+    "yourKeys": "Vos clés",
+    "connectTrezor": "Connecter Trezor",
+    "importAccount": "Importer un compte"
+  },
+  "home": {
+    "importToken": "Importer un jeton",
+    "youHaveNoTokens": "Vous n'avez pas de jetons ou NFTs",
+    "youHaveNoTxs": "Aucun historique de transactions",
+    "seeAllTxs": "Voir toutes les transactions",
+    "congratulations": "Félicitations !",
+    "youWalletWas": "Votre portefeuille a été importé avec succès",
+    "addressCopied": "Adresse copiée avec succès",
+    "hashCopied": "Hash copié avec succès",
+    "contractCopied": "Contrat copié avec succès",
+    "verifySysAddress": "Vérifiez votre adresse SYS",
+    "verifySysAddressDescription": "Cliquez sur le bouton ci-dessous pour vérifier votre adresse SYS.",
+    "addressVerified": "Adresse vérifiée avec succès",
+    "verificationDeniedByUser": "Vérification refusée par l'utilisateur.",
+    "clickToVerify": "Cliquez pour vérifier votre adresse SYS."
+  },
+  "settings": {
+    "version": "Version",
+    "userSupport": "Support utilisateur",
+    "languages": "Langues",
+    "currency": "Devise",
+    "autolock": "Verrouillage automatique",
+    "advanced": "Avancé",
+    "password": "Mot de passe",
+    "setAutoLockTime": "Définir le délai de verrouillage",
+    "errorMinutes": "Le délai doit être entre 5 et 120 minutes",
+    "defaultMinutes": "Par défaut : 5 minutes d'inactivité",
+    "maximumMinutes": "Maximum : 120 minutes",
+    "english": "Anglais",
+    "portuguese": "Portugais",
+    "spanish": "Espagnol",
+    "french": "Français",
+    "german": "Allemand",
+    "chinese": "Chinois (Simplifié)",
+    "japanese": "Japonais",
+    "korean": "Coréen",
+    "russian": "Russe",
+    "bgError": "Erreur en arrière-plan",
+    "bgErrorMessage": "Nous allons verrouiller votre portefeuille pour résoudre ce problème. Ne vous inquiétez pas, toutes vos données resteront en sécurité.",
+    "ledgerConnectedMessage": "Ledger connecté avec succès",
+    "ledgerConnected": "Ledger connecté",
+    "ledgerReconnection": "Reconnexion Ledger nécessaire",
+    "ledgerReconnectionMessage": "Veuillez reconnecter votre appareil Ledger."
+  },
+  "components": {
+    "newPassword": "Nouveau mot de passe (min 8 caractères)",
+    "confirmPassword": "Confirmer le mot de passe",
+    "atLeast": "Au moins 8 caractères, 1 minuscule et 1 chiffre.",
+    "doNotForget": "N'oubliez pas de sauvegarder votre mot de passe. Vous en aurez besoin pour déverrouiller votre portefeuille.",
+    "useRecommendedFee": "Utilisez les frais recommandés. Désactivé pour les réseaux SYS car les frais utilisés dans les transactions sont déjà les recommandés avec les conditions actuelles du réseau."
+  },
+  "tooltip": {
+    "editAsset": "Modifier l'actif",
+    "assetDetails": "Détails de l'actif",
+    "deleteAsset": "Supprimer l'actif",
+    "clickToOpen": "Cliquer pour ouvrir l'image NFT"
+  },
+  "networkMenu": {
+    "viewConnected": "Voir les sites web connectés",
+    "noConnected": "Aucun site web connecté",
+    "trustedSites": "Sites de confiance",
+    "networks": "RÉSEAUX",
+    "utxoNetworks": "Réseaux UTXO",
+    "evmNetworks": "Réseaux EVM",
+    "networkSettings": "PARAMÈTRES RÉSEAU",
+    "customRpc": "RPC personnalisé",
+    "manageNetworks": "Gérer les réseaux"
+  },
+  "accountMenu": {
+    "accounts": "COMPTES",
+    "accountsSettings": "PARAMÈTRES DES COMPTES",
+    "createNewAccount": "Créer un nouveau compte",
+    "manageAccounts": "Gérer les comptes",
+    "yourKeys": "Vos clés",
+    "connectTrezor": "Connecter un portefeuille matériel",
+    "importAccount": "Importer un compte",
+    "importAccMessage": "Pali est le seul portefeuille d'extension avec UTXO ! Pour importer un portefeuille, vous devez passer à un réseau EVM."
+  },
+  "connections": {
+    "connectedAccount": "COMPTE CONNECTÉ",
+    "onlyConnect": "Ne vous connectez qu'aux sites de confiance.",
+    "learnMore": "En savoir plus.",
+    "theWebsite": "Le site web",
+    "withWitchAccount": "Avec quel compte souhaitez-vous continuer ?",
+    "connectAccount": "CONNECTER LE COMPTE",
+    "nonTrusted": "Site non fiable détecté",
+    "nonTrustedMessage": "Ce site n'est pas dans notre liste de confiance. Êtes-vous sûr de vouloir vous connecter ?"
+  },
+  "import": {
+    "importModalWordMissing": "Mot manquant !",
+    "importModalSeed": "La phrase de récupération doit contenir 12 ou 24 mots et vous en avez inséré {{seedLength}}.",
+    "importAttention": "ATTENTION : ",
+    "importingYourAccount": "Après l'importation de votre portefeuille, vous devrez ajouter à nouveau vos portefeuilles matériels et ajuster les paramètres personnels.",
+    "pasteYourWalletSeed": "Collez votre phrase de récupération"
+  },
+  "receive": {
+    "receiveTitle": "RECEVOIR"
+  },
+  "seedConfirm": {
+    "seedError": "La phrase de récupération est incorrecte. Vérifiez-la et réessayez.",
+    "confirmRecovery": "Confirmer la phrase de récupération",
+    "yourWalletIsReady": "VOTRE PORTEFEUILLE EST PRÊT !",
+    "youShould": "Vous devriez maintenant avoir noté votre phrase de récupération et votre mot de passe pour référence future."
+  },
+  "createPhrase": {
+    "recoveryPhrase": "Phrase de récupération",
+    "whatIsRecoveryPhrase": "Une phrase de récupération est une série de 12 mots dans un ordre spécifique. Cette combinaison de mots est unique à votre portefeuille. Assurez-vous d'avoir un stylo et du papier pour la noter."
+  },
+  "send": {
+    "approve": "Approuver",
+    "assetGuid": "GUID de l'actif",
+    "paliVerifies": "Pali vérifie votre adresse pour s'assurer qu'il s'agit d'une adresse SYS valide. Il est utile de désactiver cette vérification si vous souhaitez envoyer à des types d'adresses spécifiques, comme les adresses legacy. Ne désactivez cette vérification que si vous êtes pleinement conscient de ce que vous faites.",
+    "disableThisOption": "Désactivez cette option pour Replace-by-fee (RBF) et activez-la pour Z-DAG, une fonctionnalité exclusive de Syscoin. Z-DAG permet des transactions plus rapides mais ne doit pas être utilisé pour des montants élevés."
+  },
+  "titles": {
+    "assetDetails": "Détails de l'actif",
+    "transactionDetails": "Détails de la transaction",
+    "importWallet": "Importer le portefeuille",
+    "congratulations": "Félicitations!"
+  },
+  "start": {
+    "paliDoesnt": "Pali ne stocke pas votre mot de passe. La récupération d'accès nécessite une réinitialisation du portefeuille avec votre phrase de récupération secrète.",
+    "ifYouPlan": "Si vous prévoyez d'importer une nouvelle phrase de récupération secrète, assurez-vous d'avoir noté la phrase actuelle pour éviter de perdre les fonds associés.",
+    "getStarted": "Commencer",
+    "importUsing": "Importer avec la phrase de récupération",
+    "wrongPassword": "Mot de passe incorrect",
+    "welcomeTo": "BIENVENUE SUR"
+  },
+  "tokens": {
+    "editToken": "MODIFIER LE JETON",
+    "importToken": "IMPORTER UN JETON",
+    "search": "Rechercher",
+    "searchOrCustomToken": "Rechercher ou jeton personnalisé",
+    "customToken": "Jeton personnalisé",
+    "invalidContractAddress": "Adresse de contrat invalide. Vérifiez l'adresse du contrat ou le réseau actuel !",
+    "pleaseTypeContract": "Veuillez saisir l'adresse du contrat du jeton",
+    "contractAddress": "Adresse du contrat",
+    "pleaseTypeSymbol": "Veuillez saisir le symbole du jeton !",
+    "pleaseTypeDecimals": "Veuillez saisir les décimales du jeton !",
+    "tokenDecimal": "Décimales du jeton",
+    "tokenSymbol": "Symbole du jeton",
+    "tokenDecimals": "Décimales du jeton"
+  },
+  "transactions": {
+    "messageCopied": "Message copié avec succès",
+    "decryptRequest": "Demande de déchiffrement",
+    "signatureFailed": "La demande de signature a échoué",
+    "sorryWeCould": "Désolé, nous n'avons pas pu soumettre votre demande. Réessayez plus tard.",
+    "message": "Message",
+    "fee": "FRAIS",
+    "sys": "SYS",
+    "transaction": "TRANSACTION"
+  },
+  "switchNetwork": {
+    "connectedOn": "Vous êtes connecté sur",
+    "toUse": "pour utiliser cette dApp, vous devez passer à",
+    "learnAbout": "En savoir plus sur UTXO et EVM"
+  },
+  "chainError": {
+    "connectionTooLong": "LA CONNEXION PREND TROP DE TEMPS À RÉPONDRE",
+    "tryingToConnectOn": "Vous essayez de vous connecter sur :",
+    "goToAnotherNetwork": "Aller sur un autre réseau",
+    "editCurrentRpc": "Modifier le RPC du réseau actuel"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",
+    "stillHaveFunds": "Vous avez encore des fonds dans votre portefeuille !",
+    "saveProperly": "Sauvegardez correctement cette phrase de récupération pour pouvoir importer ce portefeuille à l'avenir."
+  },
+  "walletSeedPhrasePage": {
+    "keepSeedPhrase": "Gardez votre phrase de récupération secrète !",
+    "anyoneWithThisInfo": "Quiconque possède cette information peut voler vos fonds."
+  }
+} 

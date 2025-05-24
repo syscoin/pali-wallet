@@ -9,9 +9,15 @@ export enum NetworkType {
 }
 // eslint-disable-next-line no-shadow
 export enum PaliLanguages {
+  DE = 'de',
   EN = 'en',
   ES = 'es',
+  FR = 'fr',
+  JA = 'ja',
+  KO = 'ko',
   PT = 'pt-br',
+  RU = 'ru',
+  ZH = 'zh-cn',
 }
 
 export interface ITransactionOptions {

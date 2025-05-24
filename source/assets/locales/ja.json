@@ -1,0 +1,184 @@
+{
+  "buttons": {
+    "cancel": "キャンセル",
+    "change": "変更",
+    "noCancel": "いいえ、キャンセル",
+    "yesContinue": "はい、続行",
+    "connected": "接続済み",
+    "active": "アクティブ",
+    "send": "送信",
+    "receive": "受信",
+    "assets": "資産",
+    "activity": "アクティビティ",
+    "ok": "OK",
+    "import": "インポート",
+    "copy": "コピー",
+    "validate": "検証",
+    "edit": "編集",
+    "hide": "非表示",
+    "show": "表示",
+    "save": "保存",
+    "next": "次へ",
+    "confirm": "確認",
+    "close": "閉じる",
+    "connect": "接続",
+    "addAccount": "アカウント追加",
+    "create": "作成",
+    "addNetwork": "ネットワーク追加",
+    "addToken": "トークン追加",
+    "forget": "削除",
+    "switchNetwork": "ネットワーク切替",
+    "unlock": "ロック解除",
+    "done": "完了",
+    "iveWrittenIt": "書き留めました",
+    "reject": "拒否",
+    "switch": "切り替え",
+    "success": "成功",
+    "error": "エラー",
+    "reconnect": "再接続",
+    "verify": "確認",
+    "retryConnect": "接続を再試行"
+  },
+  "header": {
+    "accounts": "アカウント",
+    "accountHeader": "アカウント設定",
+    "createNewAccount": "新規アカウント作成",
+    "manageAccounts": "アカウント管理",
+    "yourKeys": "あなたの鍵",
+    "connectTrezor": "Trezor接続",
+    "importAccount": "アカウントインポート"
+  },
+  "home": {
+    "importToken": "トークンインポート",
+    "youHaveNoTokens": "トークンやNFTがありません",
+    "youHaveNoTxs": "取引履歴がありません",
+    "seeAllTxs": "全取引を表示",
+    "congratulations": "おめでとう！",
+    "youWalletWas": "ウォレットのインポートに成功しました"
+  },
+  "settings": {
+    "version": "バージョン",
+    "userSupport": "ユーザーサポート",
+    "languages": "言語",
+    "currency": "通貨",
+    "autolock": "自動ロック",
+    "advanced": "詳細設定",
+    "password": "パスワード",
+    "setAutoLockTime": "自動ロック時間設定",
+    "errorMinutes": "5分から120分の間で設定してください",
+    "defaultMinutes": "デフォルト：5分間の非アクティブ",
+    "maximumMinutes": "最大：120分",
+    "english": "英語",
+    "portuguese": "ポルトガル語",
+    "spanish": "スペイン語",
+    "french": "フランス語",
+    "german": "ドイツ語",
+    "chinese": "中国語（簡体字）",
+    "japanese": "日本語",
+    "korean": "韓国語",
+    "russian": "ロシア語"
+  },
+  "components": {
+    "newPassword": "新しいパスワード（最低8文字）",
+    "confirmPassword": "パスワードの確認",
+    "atLeast": "最低8文字、1つの小文字と1つの数字が必要です。",
+    "doNotForget": "パスワードを保存することを忘れないでください。このパスワードはウォレットのロックを解除するために必要です。",
+    "useRecommendedFee": "推奨手数料を使用します。SYSネットワークでは、取引で使用される手数料が既に現在のネットワーク状況での推奨手数料であるため無効化されています。"
+  },
+  "tooltip": {
+    "editAsset": "資産を編集",
+    "assetDetails": "資産の詳細",
+    "deleteAsset": "資産を削除",
+    "clickToOpen": "NFT画像を開くにはクリック"
+  },
+  "networkMenu": {
+    "viewConnected": "接続済みウェブサイトを表示",
+    "noConnected": "接続済みウェブサイトはありません",
+    "trustedSites": "信頼済みサイト",
+    "networks": "ネットワーク",
+    "utxoNetworks": "UTXOネットワーク",
+    "evmNetworks": "EVMネットワーク",
+    "networkSettings": "ネットワーク設定",
+    "customRpc": "カスタムRPC",
+    "manageNetworks": "ネットワークを管理"
+  },
+  "accountMenu": {
+    "accounts": "アカウント",
+    "accountsSettings": "アカウント設定",
+    "createNewAccount": "新規アカウントを作成",
+    "manageAccounts": "アカウントを管理",
+    "yourKeys": "あなたの鍵",
+    "connectTrezor": "ハードウェアウォレットを接続",
+    "importAccount": "アカウントをインポート",
+    "importAccMessage": "PaliはUTXO機能を持つ唯一の拡張機能ウォレットです！ウォレットをインポートするには、EVMネットワークに切り替える必要があります。"
+  },
+  "connections": {
+    "connectedAccount": "接続済みアカウント",
+    "onlyConnect": "信頼できるサイトにのみ接続してください。",
+    "learnMore": "詳細を見る。",
+    "theWebsite": "ウェブサイト",
+    "withWitchAccount": "どのアカウントで続行しますか？",
+    "connectAccount": "アカウントを接続",
+    "nonTrusted": "信頼できないサイトを検出",
+    "nonTrustedMessage": "このサイトは信頼リストにありません。接続してもよろしいですか？"
+  },
+  "titles": {
+    "assetDetails": "資産詳細",
+    "transactionDetails": "取引詳細",
+    "importWallet": "ウォレットをインポート",
+    "congratulations": "おめでとうございます！"
+  },
+  "start": {
+    "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",
+    "ifYouPlan": "新しいシークレットリカバリーフレーズをインポートする予定がある場合は、関連する資金を失わないように、現在のフレーズを必ず書き留めてください。",
+    "getStarted": "始める",
+    "importUsing": "ウォレットのシードフレーズを使用してインポート",
+    "wrongPassword": "パスワードが間違っています",
+    "welcomeTo": "ようこそ"
+  },
+  "tokens": {
+    "editToken": "トークンを編集",
+    "importToken": "トークンをインポート",
+    "search": "検索",
+    "searchOrCustomToken": "検索またはカスタムトークン",
+    "customToken": "カスタムトークン",
+    "invalidContractAddress": "無効なコントラクトアドレスです。現在のコントラクトアドレスまたはネットワークを確認してください！",
+    "pleaseTypeContract": "トークンのコントラクトアドレスを入力してください",
+    "contractAddress": "コントラクトアドレス",
+    "pleaseTypeSymbol": "トークンのシンボルを入力してください！",
+    "pleaseTypeDecimals": "トークンの小数点以下の桁数を入力してください！",
+    "tokenDecimal": "トークンの小数点",
+    "tokenSymbol": "トークンのシンボル",
+    "tokenDecimals": "トークンの小数点以下の桁数"
+  },
+  "transactions": {
+    "messageCopied": "メッセージが正常にコピーされました",
+    "decryptRequest": "復号化リクエスト",
+    "signatureFailed": "署名リクエストが失敗しました",
+    "sorryWeCould": "申し訳ありません。リクエストを送信できませんでした。後でもう一度お試しください。",
+    "message": "メッセージ",
+    "fee": "手数料",
+    "sys": "SYS",
+    "transaction": "取引"
+  },
+  "switchNetwork": {
+    "connectedOn": "接続中：",
+    "toUse": "このdAppを使用するには、次に切り替える必要があります：",
+    "learnAbout": "UTXOとEVMについて学ぶ"
+  },
+  "chainError": {
+    "connectionTooLong": "接続に時間がかかりすぎています",
+    "tryingToConnectOn": "接続を試みています：",
+    "goToAnotherNetwork": "別のネットワークに切り替える",
+    "editCurrentRpc": "現在のネットワークのRPCを編集"
+  },
+  "forgetWalletPage": {
+    "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",
+    "stillHaveFunds": "ウォレットにまだ資金があります！",
+    "saveProperly": "このシードフレーズを安全に保管して、将来このウォレットをインポートできるようにしてください。"
+  },
+  "walletSeedPhrasePage": {
+    "keepSeedPhrase": "シードフレーズは秘密にしてください！",
+    "anyoneWithThisInfo": "この情報を持っている人は誰でもあなたの資金を盗むことができます。"
+  }
+} 

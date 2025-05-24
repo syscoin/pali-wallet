@@ -31,6 +31,13 @@ const Languages = () => {
   const availableLanguages = [
     { id: 1, name: t('settings.english'), value: PaliLanguages.EN },
     { id: 2, name: t('settings.spanish'), value: PaliLanguages.ES },
+    { id: 3, name: t('settings.portuguese'), value: PaliLanguages.PT },
+    { id: 4, name: t('settings.french'), value: PaliLanguages.FR },
+    { id: 5, name: t('settings.german'), value: PaliLanguages.DE },
+    { id: 6, name: t('settings.chinese'), value: PaliLanguages.ZH },
+    { id: 7, name: t('settings.japanese'), value: PaliLanguages.JA },
+    { id: 8, name: t('settings.korean'), value: PaliLanguages.KO },
+    { id: 9, name: t('settings.russian'), value: PaliLanguages.RU },
   ];
 
   const navigate = useNavigate();

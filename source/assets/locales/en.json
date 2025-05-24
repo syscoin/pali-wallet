@@ -311,6 +311,12 @@
     "english": "English",
     "portuguese": "Portuguese",
     "spanish": "Spanish",
+    "french": "French",
+    "german": "German",
+    "chinese": "Chinese (Simplified)",
+    "japanese": "Japanese",
+    "korean": "Korean",
+    "russian": "Russian",
     "enableAutolock": "Enable autolock",
     "connectedSites": "CONNECTED SITES",
     "isConnected": "is connected to these sites. They can view your account public information.",
@@ -422,7 +428,7 @@
     "importWalletWarning": "IMPORT WALLET WARNING!",
     "thisActionErases": "This action erases your current wallet.",
     "toRestoreThis": "To restore this current wallet in the future ensure you have the recovery phrase.",
-    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it’s saved!",
+    "allYourSettings": "All your settings, like custom tokens and imported accounts, will get lost, however, your funds it's saved!",
     "setAutoLockTime": "Set auto lock timer",
     "errorMinutes": "the minutes must be between 5 and 120",
     "defaultMinutes": "Default: 5 minutes after no activity.",
@@ -514,7 +520,7 @@
     "editCurrentRpc": "Edit RPC of current network"
   },
   "forgetWalletPage": {
-    "importedAccountsWont": "Imported accounts won’t link to your initial Pali account Secret Recovery Phrase",
+    "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in you wallet!",
     "saveProperly": "Save properly this seed phrase, so you can import this wallet in the future."
   },
@@ -535,6 +541,6 @@
     "Close": "Close",
     "tryAgain": "Try again",
     "withOurFaucet": "Grab {{token}} with our faucet to begin experiencing the {{networkName}} network!",
-    "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h."
+    "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h."
   }
 }
