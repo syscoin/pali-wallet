@@ -52,7 +52,7 @@ export const Layout: FC<ILayout> = ({
         {!titleOnly && canGoBack && !isHardwareWalletPage && (
           <IconButton
             className="z-40 cursor-pointer"
-            onClick={() => navigate('/home')}
+            onClick={() => navigate(-1)}
           >
             <Icon isSvg={true} name="ArrowLeft" />
           </IconButton>

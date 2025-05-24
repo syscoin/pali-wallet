@@ -9,7 +9,7 @@ import { useLocation } from 'react-router-dom';
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
 
 import checkAtIcon from 'assets/icons/checkAt.svg';
-import { Button, Layout, Tooltip } from 'components/index';
+import { Button, Layout, Tooltip, Icon } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
@@ -388,23 +388,41 @@ const CustomRPCView = () => {
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
-        <Form.Item
-          hasFeedback
-          className="md:w-full"
-          name="apiUrl"
-          rules={[
-            {
-              required: false,
-              message: '',
-            },
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder="Block Explorer API URL (optional, include ?apikey=YOUR_KEY if needed)"
-            className={`${inputHiddenOrNotStyle} custom-input-normal `}
-          />
-        </Form.Item>
+        <div className="md:w-full">
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-sm text-white font-medium">
+              Block Explorer API URL (optional)
+            </label>
+            <Tooltip
+              content="Include your API key in the URL if needed (e.g., https://api.etherscan.io/api?apikey=YOUR_KEY). This enables enhanced transaction details and history."
+              placement="top"
+            >
+              <Icon
+                name="Info"
+                isSvg
+                size={14}
+                className="text-brand-gray200 hover:text-white cursor-pointer"
+              />
+            </Tooltip>
+          </div>
+          <Form.Item
+            hasFeedback
+            className="md:w-full mb-0"
+            name="apiUrl"
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
+          >
+            <Input
+              type="text"
+              placeholder="https://api.example.com/api"
+              className={`${inputHiddenOrNotStyle} custom-input-normal `}
+            />
+          </Form.Item>
+        </div>
         {state?.isEditing ? (
           <div
             className="flex justify-center items-center gap-2 cursor-pointer"

@@ -80,8 +80,6 @@ export const findUserTxsInProviderByBlocksRange = async (
 
   return flatMap(
     allResponses.map((response: any) => {
-      const currentBlock = parseInt(response.number, 16);
-
       const filterTxsByAddress = response.transactions
         .filter((tx) => tx?.from || tx?.to)
         .map((txWithConfirmations) => {

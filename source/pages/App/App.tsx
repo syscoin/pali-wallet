@@ -1,7 +1,7 @@
 import React, { FC, Suspense, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 
-import { Container, Loading } from 'components/index';
+import { Container, Loading, KeepAliveContainer } from 'components/index';
 import { Router } from 'routers/index';
 
 const App: FC = () => {
@@ -27,6 +27,7 @@ const App: FC = () => {
   // other logic
   return (
     <section className="mx-auto h-full min-w-popup min-h-popup bg-brand-blue700 md:max-w-2xl">
+      <KeepAliveContainer />
       <Suspense fallback={<Loading />}>
         <Container>
           <HashRouter>
