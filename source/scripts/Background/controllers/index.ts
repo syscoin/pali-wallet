@@ -304,8 +304,8 @@ const MasterController = (
     wallet.setStorage(chrome.storage.local);
   };
 
-  const callGetLatestUpdateForAccount = async () =>
-    await wallet.getLatestUpdateForCurrentAccount();
+  const callGetLatestUpdateForAccount = () =>
+    wallet.getLatestUpdateForCurrentAccount();
 
   const refresh = () => {
     const { activeAccount, accounts } = externalStore.getState().vault;

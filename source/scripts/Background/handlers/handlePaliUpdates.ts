@@ -61,13 +61,13 @@ export async function checkForUpdates() {
   controllerEmitter(
     ['wallet', 'getLatestUpdateForCurrentAccount'],
     [true]
-  ).catch(async (error) => {
+  ).catch((error) => {
     // save current state to localstorage if pali is not open
     if (
       error?.message ===
       'Could not establish connection. Receiving end does not exist.'
     ) {
-      await getController().wallet.getLatestUpdateForCurrentAccount(true);
+      getController().wallet.getLatestUpdateForCurrentAccount(true);
       saveState(store.getState());
     }
   });
