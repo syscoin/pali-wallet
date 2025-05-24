@@ -53,24 +53,32 @@ export const findUserTxsInProviderByBlocksRange = async (
   endBlock: number
 ): Promise<IEvmTransactionResponse[] | any> => {
   const rangeBlocksToRun = range(startBlock, endBlock);
+  const BATCH_SIZE = 10; // Maximum blocks per batch to avoid "Batch size too large" errors
+  const allResponses = [];
 
-  const batchRequest = rangeBlocksToRun.map((blockNumber) =>
-    provider.sendBatch('eth_getBlockByNumber', [
-      `0x${blockNumber.toString(16)}`,
-      true,
-    ])
-  );
+  // Process blocks in chunks to avoid batch size limits
+  for (let i = 0; i < rangeBlocksToRun.length; i += BATCH_SIZE) {
+    const chunk = rangeBlocksToRun.slice(i, i + BATCH_SIZE);
 
-  const responses = await Promise.all(batchRequest);
+    const batchRequest = chunk.map((blockNumber) =>
+      provider.sendBatch('eth_getBlockByNumber', [
+        `0x${blockNumber.toString(16)}`,
+        true,
+      ])
+    );
+
+    const responses = await Promise.all(batchRequest);
+    allResponses.push(...responses);
+  }
 
   store.dispatch(
-    setCurrentBlock(omit(last(responses) as any, 'transactions') as any)
+    setCurrentBlock(omit(last(allResponses) as any, 'transactions') as any)
   );
 
   const lastBlockNumber = rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
 
   return flatMap(
-    responses.map((response: any) => {
+    allResponses.map((response: any) => {
       const currentBlock = parseInt(response.number, 16);
 
       const filterTxsByAddress = response.transactions
@@ -151,6 +159,14 @@ export const validateAndManageUserTransactions = (
   const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
     store.getState().vault;
 
+  // Safety check: if activeNetwork is undefined, return empty array
+  if (!activeNetwork) {
+    console.warn(
+      'validateAndManageUserTransactions: activeNetwork is undefined'
+    );
+    return [];
+  }
+
   let userTx;
 
   for (const accountType in accounts) {
@@ -166,21 +182,17 @@ export const validateAndManageUserTransactions = (
           !isNil(tx.blockNumber)
       );
 
-      const updatedTxs = isBitcoinBased
-        ? (compact(
-            clone(
-              account.transactions[TransactionsType.Syscoin][
-                activeNetwork.chainId
-              ]
-            )
-          ) as ISysTransaction[])
-        : (compact(
-            clone(
-              account.transactions[TransactionsType.Ethereum][
-                activeNetwork.chainId
-              ]
-            )
-          ) as IEvmTransactionResponse[]);
+      const transactionType = isBitcoinBased
+        ? TransactionsType.Syscoin
+        : TransactionsType.Ethereum;
+
+      const accountTransactions =
+        account.transactions?.[transactionType]?.[activeNetwork.chainId];
+
+      const updatedTxs = accountTransactions
+        ? (compact(clone(accountTransactions)) as IEvmTransactionResponse[] &
+            ISysTransaction[])
+        : [];
 
       const mergedTxs = [
         ...updatedTxs,
@@ -206,7 +218,7 @@ export const validateAndManageUserTransactions = (
     }
   }
 
-  return userTx;
+  return userTx || [];
 };
 
 export const convertTransactionValueToCompare = (
