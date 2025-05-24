@@ -1855,7 +1855,7 @@ class MainController extends KeyringManager {
         },
       ]);
     }
-    store.dispatch(switchNetworkSuccess());
+    store.dispatch(switchNetworkSuccess(network));
   }
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();
