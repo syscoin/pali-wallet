@@ -1,3 +1,4 @@
+import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import store from 'state/store';
 
 // Export the function so it can be imported elsewhere
@@ -27,6 +28,10 @@ export function getPollingInterval() {
 }
 
 export function startPolling() {
+  // Immediately check for updates when polling starts
+  checkForUpdates();
+
+  // Then set up the periodic alarm
   chrome.alarms.clear('check_for_updates', () => {
     chrome.alarms.create('check_for_updates', {
       periodInMinutes: getPollingInterval(),

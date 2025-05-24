@@ -75,7 +75,8 @@ export const findUserTxsInProviderByBlocksRange = async (
     setCurrentBlock(omit(last(allResponses) as any, 'transactions') as any)
   );
 
-  const lastBlockNumber = rangeBlocksToRun[rangeBlocksToRun.length - 1] + 1;
+  // Get the actual latest block number for accurate confirmation calculation
+  const latestBlockNumber = await provider.getBlockNumber();
 
   return flatMap(
     allResponses.map((response: any) => {
@@ -83,12 +84,25 @@ export const findUserTxsInProviderByBlocksRange = async (
 
       const filterTxsByAddress = response.transactions
         .filter((tx) => tx?.from || tx?.to)
-        .map((txWithConfirmations) => ({
-          ...txWithConfirmations,
-          chainId: Number(txWithConfirmations.chainId),
-          confirmations: lastBlockNumber - currentBlock,
-          timestamp: Number(response.timestamp),
-        }));
+        .map((txWithConfirmations) => {
+          // Calculate confirmations based on actual latest block number
+          // Confirmations = (latest block number - transaction block number) + 1
+          // But if transaction is in pending state (blockNumber is null), confirmations = 0
+          const txBlockNumber = txWithConfirmations.blockNumber
+            ? parseInt(txWithConfirmations.blockNumber, 16)
+            : null;
+
+          const confirmations = txBlockNumber
+            ? Math.max(0, latestBlockNumber - txBlockNumber)
+            : 0;
+
+          return {
+            ...txWithConfirmations,
+            chainId: Number(txWithConfirmations.chainId),
+            confirmations,
+            timestamp: Number(response.timestamp),
+          };
+        });
 
       return filterTxsByAddress;
     })
@@ -199,12 +213,16 @@ export const validateAndManageUserTransactions = (
         ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
       ];
 
+      const deduplicatedTxs = treatDuplicatedTxs(mergedTxs);
+
       if (filteredTxs.length > 0) {
         store.dispatch(
           setMultipleTransactionToState({
             chainId: activeNetwork.chainId,
             networkType: TransactionsType.Ethereum,
-            transactions: mergedTxs,
+            transactions: deduplicatedTxs,
+            accountId: Number(accountId),
+            accountType: accountType as any,
           })
         );
       }
@@ -213,7 +231,7 @@ export const validateAndManageUserTransactions = (
         accountType === activeAccount.type &&
         Number(accountId) === activeAccount.id
       ) {
-        userTx = updatedTxs;
+        userTx = deduplicatedTxs;
       }
     }
   }

@@ -553,6 +553,9 @@ class MainController extends KeyringManager {
     this.setActiveAccount(id, type).then(() => {
       store.dispatch(setActiveAccount({ id, type }));
 
+      // Clear transaction cache when switching accounts
+      this.transactionsManager.utils.clearCache();
+
       // Update all account data when switching accounts
       this.getLatestUpdateForCurrentAccount();
     });

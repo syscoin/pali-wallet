@@ -105,6 +105,8 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   currency: 'tsys',
   isTestnet: true,
   kind: 'evm',
+  apiUrl: 'https://tanenbaum.io/api',
+  explorer: 'https://tanenbaum.io/',
 } as INetworkWithKind;
 
 export const SYSCOIN_MAINNET_NETWORK = {
@@ -115,6 +117,8 @@ export const SYSCOIN_MAINNET_NETWORK = {
   currency: 'sys',
   isTestnet: false,
   kind: 'evm',
+  apiUrl: 'https://explorer.syscoin.org/api',
+  explorer: 'https://explorer.syscoin.org/',
 } as INetworkWithKind;
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = {
@@ -213,6 +217,9 @@ export const faucetTxSyscoinNEVMTestnetInfo = {
 // Our own networks state with proper 'kind' properties - replaces broken initialNetworksState
 export const PALI_NETWORKS_STATE = {
   ethereum: {
+    [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_MAINNET_NETWORK,
+    [CHAIN_IDS.ROLLUX_MAINNET]: ROLLUX_DEFAULT_NETWORK.network,
+    [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
     [CHAIN_IDS.ETHEREUM_MAINNET]: {
       chainId: CHAIN_IDS.ETHEREUM_MAINNET,
       url: 'https://mainnet.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
@@ -235,8 +242,6 @@ export const PALI_NETWORKS_STATE = {
       isTestnet: false,
       kind: 'evm',
     } as INetworkWithKind,
-    [CHAIN_IDS.ROLLUX_MAINNET]: ROLLUX_DEFAULT_NETWORK.network,
-    [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
   },
   syscoin: {
     [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_UTXO_MAINNET_NETWORK,

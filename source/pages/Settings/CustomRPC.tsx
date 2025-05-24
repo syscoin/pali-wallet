@@ -103,6 +103,7 @@ const CustomRPCView = () => {
     chainId: (state && state.selected && state.selected.chainId) ?? '',
     symbol: (state && state.selected && state.selected.currency) ?? '',
     explorer: (state && state.selected && state.selected.explorer) ?? '',
+    apiUrl: (state && state.selected && state.selected.apiUrl) ?? '',
   };
 
   const isInputDisableByEditMode = state ? state.isDefault : false;
@@ -384,6 +385,23 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.explorer')}
+            className={`${inputHiddenOrNotStyle} custom-input-normal `}
+          />
+        </Form.Item>
+        <Form.Item
+          hasFeedback
+          className="md:w-full"
+          name="apiUrl"
+          rules={[
+            {
+              required: false,
+              message: '',
+            },
+          ]}
+        >
+          <Input
+            type="text"
+            placeholder="Block Explorer API URL (optional, include ?apikey=YOUR_KEY if needed)"
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>

@@ -18,7 +18,7 @@ interface ISetActiveAccountModalProps {
 
 export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   const { controllerEmitter } = useController();
-  const { showModal, setIsOpen, selectedNetwork } = props;
+  const { showModal, setIsOpen } = props;
   const { accounts, isBitcoinBased, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );

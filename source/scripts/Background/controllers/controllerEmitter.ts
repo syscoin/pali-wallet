@@ -8,31 +8,74 @@ type Methods<T> = {
     : never;
 }[keyof T];
 
+// Check if the runtime is available and not invalidated
+const isRuntimeAvailable = (): boolean => {
+  try {
+    return !!chrome?.runtime?.id;
+  } catch {
+    return false;
+  }
+};
+
 export function controllerEmitter<
   T extends IMasterController,
   P extends Methods<T>
 >(methods: P, params?: any[], importMethod = false) {
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      {
-        type: 'CONTROLLER_ACTION',
-        data: {
-          methods,
-          params: params || [],
-          importMethod,
+    // Check if runtime is available before attempting to send message
+    if (!isRuntimeAvailable()) {
+      return reject(
+        new Error('Extension context invalidated. Please reload the extension.')
+      );
+    }
+
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: 'CONTROLLER_ACTION',
+          data: {
+            methods,
+            params: params || [],
+            importMethod,
+          },
         },
-      },
-      (response) => {
-        if (chrome.runtime.lastError) {
-          return reject(chrome.runtime.lastError);
-        }
+        (response) => {
+          // Check for runtime errors
+          if (chrome.runtime.lastError) {
+            const error = chrome.runtime.lastError;
+            console.error('Runtime error in controllerEmitter:', error);
 
-        if (response && response.error) {
-          return reject(new Error(response.error));
-        }
+            // Provide more specific error messages for common issues
+            if (error.message?.includes('Receiving end does not exist')) {
+              return reject(
+                new Error(
+                  'Could not establish connection. Receiving end does not exist.'
+                )
+              );
+            } else if (
+              error.message?.includes('Extension context invalidated')
+            ) {
+              return reject(
+                new Error(
+                  'Extension context invalidated. Please reload the extension.'
+                )
+              );
+            }
 
-        resolve(response);
-      }
-    );
+            return reject(error);
+          }
+
+          // Check for application-level errors
+          if (response && response.error) {
+            return reject(new Error(response.error));
+          }
+
+          resolve(response);
+        }
+      );
+    } catch (error) {
+      console.error('Error sending message in controllerEmitter:', error);
+      reject(error);
+    }
   });
 }

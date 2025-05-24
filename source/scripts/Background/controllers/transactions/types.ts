@@ -101,6 +101,10 @@ export type TransactionValueType =
   | { hex: string; type: string };
 
 export interface IEvmTransactionsController {
+  fetchTransactionDetailsFromAPI: (
+    hash: string,
+    apiUrl: string
+  ) => Promise<any>;
   getUserTransactionByDefaultProvider: (
     startBlock: number,
     endBlock: number
@@ -146,6 +150,7 @@ export interface ITransactionsManagerUtils {
   checkPendingTransactions: (
     pendingTransactions: IEvmTransactionResponse[]
   ) => Promise<IEvmTransactionResponse[]>;
+  clearCache: () => void;
   updateTransactionsFromCurrentAccount: (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,

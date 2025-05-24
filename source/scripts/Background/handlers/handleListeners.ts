@@ -65,6 +65,10 @@ export const handleListeners = (masterController: IMasterController) => {
     ({ type, data, action }, sender, sendResponse) => {
       const { hasEthProperty } = store.getState().vault;
       switch (type) {
+        case 'ping':
+          // Health check ping - respond immediately to confirm the background script is alive
+          sendResponse({ pong: true, timestamp: Date.now() });
+          return true; // Keep message channel open for async response
         case 'pw-msg-background':
           if (action === 'isInjected') {
             masterController.dapp.setup(sender);

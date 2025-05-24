@@ -69,7 +69,7 @@ const initI18next = async () => {
       },
       load: 'languageOnly',
       lowerCaseLng: true,
-      fallbackLng: 'en',
+      fallbackLng: fallbackLng,
       fallbackNS: 'translation',
       keySeparator: '.',
       interpolation: { escapeValue: true },

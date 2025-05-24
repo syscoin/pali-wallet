@@ -641,15 +641,22 @@ const VaultState = createSlice({
     setMultipleTransactionToState(
       state: IVaultState,
       action: PayloadAction<{
+        accountId?: number;
+        accountType?: KeyringAccountType;
         chainId: number;
         networkType: TransactionsType;
         transactions: Array<IEvmTransaction | ISysTransaction>;
       }>
     ) {
       const { activeAccount, isBitcoinBased } = state;
-      const { networkType, chainId, transactions } = action.payload;
-      const currentAccount =
-        state.accounts[activeAccount.type][activeAccount.id];
+      const { networkType, chainId, transactions, accountId, accountType } =
+        action.payload;
+
+      // Use provided account info if available, otherwise use active account
+      const targetAccountType = accountType ?? activeAccount.type;
+      const targetAccountId = accountId ?? activeAccount.id;
+
+      const currentAccount = state.accounts[targetAccountType][targetAccountId];
 
       const uniqueTxs: {
         [key: string]: IEvmTransactionResponse | ISysTransaction;

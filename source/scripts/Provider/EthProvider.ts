@@ -22,10 +22,10 @@ export const EthProvider = (host: string) => {
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
-    const decodedTx = decodeTransactionData(
+    const decodedTx = (await decodeTransactionData(
       tx,
       validateTxToAddress
-    ) as IDecodedTx;
+    )) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     //Open Contract Interaction component

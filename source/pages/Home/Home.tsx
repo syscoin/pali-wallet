@@ -152,6 +152,16 @@ export const Home = () => {
     );
   }, [isUnlocked, url, isBitcoinBased, isInCooldown, activeNetwork]);
 
+  // Fetch latest transactions, balances, and assets when Home component mounts
+  useEffect(() => {
+    if (!isUnlocked || !lastLogin) return;
+
+    // Trigger immediate update when Home page loads
+    controllerEmitter(['callGetLatestUpdateForAccount']).catch((error) => {
+      console.warn('Failed to fetch initial account data:', error);
+    });
+  }, [isUnlocked, lastLogin, controllerEmitter]);
+
   const fiatPriceValue = useMemo(
     () =>
       getFiatAmount(

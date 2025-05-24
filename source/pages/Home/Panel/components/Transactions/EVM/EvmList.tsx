@@ -27,7 +27,7 @@ export const EvmTransactionsList = ({
     activeAccount,
     accounts,
     coinsList,
-    activeNetwork: { chainId },
+    activeNetwork: { chainId, currency },
     isLastTxConfirmed,
   } = useSelector((state: RootState) => state.vault);
 
@@ -75,66 +75,93 @@ export const EvmTransactionsList = ({
     [handleUpdateTransaction, alert, chainId, setIsOpenModal, setModalData]
   );
 
-  const EvmTransactionsListComponent = useCallback(({ tx }) => {
-    const isTxCanceled = tx?.isCanceled === true;
-    const isConfirmed = tx?.confirmations > 0;
-    const isErc20Tx = isERC20Transfer(tx as any);
-    const isTxSent = isBitcoinBased
-      ? false
-      : tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
-    const tokenValue = !isConfirmed
-      ? typeof tx?.value === 'string'
-        ? tx?.value
-        : Number(tx?.value?.hex) / 1e18
-      : Number(tx?.value) / 1e18;
-    const finalTxValue = isErc20Tx
-      ? Number(getERC20TransferValue(tx as any)) / 1e18
-      : tokenValue;
+  const EvmTransactionsListComponent = useCallback(
+    ({ tx }) => {
+      const isTxCanceled = tx?.isCanceled === true;
+      const isConfirmed = tx?.confirmations > 0;
+      const isErc20Tx = isERC20Transfer(tx as any);
+      const isTxSent = isBitcoinBased
+        ? false
+        : tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
+      const tokenValue = (() => {
+        if (typeof tx?.value === 'string') {
+          // Check if it's hex (starts with 0x)
+          if (tx.value.startsWith('0x')) {
+            return parseInt(tx.value, 16) / 1e18;
+          }
+          // Otherwise it's a decimal string
+          return Number(tx.value) / 1e18;
+        } else if (tx?.value?.hex) {
+          return parseInt(tx.value.hex, 16) / 1e18;
+        } else if (tx?.value?._hex) {
+          return parseInt(tx.value._hex, 16) / 1e18;
+        } else if (typeof tx?.value === 'number') {
+          return tx.value / 1e18;
+        }
+        return 0;
+      })();
+      const finalTxValue = isErc20Tx
+        ? Number(getERC20TransferValue(tx as any)) / 1e18
+        : tokenValue;
 
-    const handleGoTxDetails = () => {
-      navigate('/home/details', {
-        state: { id: null, hash: tx[txId] },
-      });
-    };
+      const handleGoTxDetails = () => {
+        navigate('/home/details', {
+          state: { id: null, hash: tx[txId] },
+        });
+      };
 
-    return (
-      <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
-        <div className="flex justify-between py-2 w-full">
-          <div className="flex items-center">
-            {getTxStatusIcons(getTxType(tx, isTxSent), false)}
-            <div className="flex flex-col ">
-              <div className="text-white text-xs font-normal">
-                {getTxType(tx, isTxSent)}
-              </div>
-              <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col justify-end items-end">
-              <div className="text-white text-xs font-normal">
-                {Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, coinsList, tx)}
-              </div>
-              <div className="text-brand-gray200 text-xs font-normal">
-                ${getFiatAmount(+tx?.value / 1e18, 6)}
+      return (
+        <div className="flex flex-col w-full border-b border-dashed border-bkg-deepBlue">
+          <div className="flex justify-between py-2 w-full">
+            <div className="flex items-center">
+              {getTxStatusIcons(getTxType(tx, isTxSent), false)}
+              <div className="flex flex-col ">
+                <div className="text-white text-xs font-normal">
+                  {getTxType(tx, isTxSent)}
+                </div>
+                <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
               </div>
             </div>
-            <div className="m-auto">
-              {isConfirmed || isTxCanceled ? (
-                <img
-                  className="cursor-pointer transition-all hover:opacity-60"
-                  src="/assets/icons/detailArrow.svg"
-                  onClick={handleGoTxDetails}
-                />
-              ) : (
-                getTxOptions(isTxCanceled, isConfirmed, tx)
-              )}
+            <div className="flex items-center gap-4">
+              <div className="flex flex-col justify-end items-end">
+                <div className="text-white text-xs font-normal">
+                  {Number(finalTxValue).toFixed(4)}
+                  {getTokenSymbol(isErc20Tx, coinsList, tx, currency)}
+                </div>
+                <div className="text-brand-gray200 text-xs font-normal">
+                  {getFiatAmount(finalTxValue, 6)}
+                </div>
+              </div>
+              <div className="m-auto">
+                {isConfirmed || isTxCanceled ? (
+                  <img
+                    className="cursor-pointer transition-all hover:opacity-60"
+                    src="/assets/icons/detailArrow.svg"
+                    onClick={handleGoTxDetails}
+                  />
+                ) : (
+                  getTxOptions(isTxCanceled, isConfirmed, tx)
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }, []);
+      );
+    },
+    [
+      currentAccount,
+      isBitcoinBased,
+      getTxStatusIcons,
+      getTxType,
+      getTxStatus,
+      getTokenSymbol,
+      coinsList,
+      getFiatAmount,
+      navigate,
+      txId,
+      getTxOptions,
+    ]
+  );
 
   useEffect(() => {
     const grouped = {};

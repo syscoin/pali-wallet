@@ -32,25 +32,10 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
-  const { getTxStatusIcons, getTxStatus, getTxType } =
+  const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
     useTransactionsListConfig();
 
   const [copied, copy] = useCopyClipboard();
-  const getTokenSymbol = (isErc20Tx: boolean, tx: any) => {
-    if (isErc20Tx) {
-      const token = coinsList.find((coin) =>
-        Object.values(coin?.platforms || {})?.includes(tx?.to)
-      );
-
-      if (token) {
-        return `${token?.symbol}`.toUpperCase();
-      }
-
-      return `${currency || 'SYS'}`.toUpperCase();
-    }
-
-    return `${currency || 'SYS'}`.toUpperCase();
-  };
 
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
@@ -83,12 +68,12 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     txValue = isErc20Tx
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : parseInt(tx.value, 16) / 1e18;
-    txSymbol = getTokenSymbol(isErc20Tx, tx);
+    txSymbol = getTokenSymbol(isErc20Tx, coinsList, tx, currency);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
       ? false
-      : tx.from.toLowerCase() === currentAccount.address;
+      : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);

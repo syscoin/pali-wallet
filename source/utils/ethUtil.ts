@@ -9,7 +9,25 @@ import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
 export const erc20DataDecoder = () => new InputDataDecoder(getErc20Abi());
 
-export const decodeTransactionData = (
+// Fetch function signature from 4byte.directory
+export const fetchFunctionSignature = async (
+  methodId: string
+): Promise<string | null> => {
+  try {
+    const response = await fetch(
+      `https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodId}`
+    );
+    const data = await response.json();
+    if (data.results && data.results.length > 0) {
+      return data.results[0].text_signature;
+    }
+  } catch (error) {
+    console.error('Failed to fetch function signature:', error);
+  }
+  return null;
+};
+
+export const decodeTransactionData = async (
   params: ITransactionParams,
   validateTxToAddress: IValidateEOAAddressResponse
 ) => {
@@ -35,7 +53,14 @@ export const decodeTransactionData = (
       const decoderInstance = new InputDataDecoder(JSON.stringify(pegasysABI));
       decoderValue = decoderInstance.decodeData(validatedData);
       if (decoderValue.method === null) {
-        decoderValue.method = 'Contract Interaction';
+        // Try to fetch function signature from 4byte.directory
+        const methodId = data.slice(0, 10); // Get first 4 bytes (0x + 8 chars)
+        const signature = await fetchFunctionSignature(methodId);
+        if (signature) {
+          decoderValue.method = signature;
+        } else {
+          decoderValue.method = 'Contract Interaction';
+        }
       }
       return decoderValue;
     }

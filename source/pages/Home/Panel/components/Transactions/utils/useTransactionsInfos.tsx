@@ -171,7 +171,12 @@ export const useTransactionsListConfig = (
     );
   };
 
-  const getTokenSymbol = (isErc20Tx: boolean, coinsList: any[], tx: any) => {
+  const getTokenSymbol = (
+    isErc20Tx: boolean,
+    coinsList: any[],
+    tx: any,
+    currency?: string
+  ) => {
     if (isErc20Tx) {
       const token = coinsList.find((coin) =>
         Object.values(coin?.platforms || {})
@@ -183,10 +188,10 @@ export const useTransactionsListConfig = (
         return `${token?.symbol}`.toUpperCase();
       }
 
-      return '';
+      return `${currency || 'SYS'}`.toUpperCase();
     }
 
-    return '';
+    return `${currency || 'SYS'}`.toUpperCase();
   };
 
   return useMemo(
