@@ -172,7 +172,7 @@ export const Home = () => {
       return formatMillionNumber(numberValue);
     }
 
-    return formatBalanceDecimals(fiatPriceValue, true);
+    return fiatPriceValue;
   }, [fiatPriceValue, isTestnet, moreThanMillion]);
 
   const handleOnCloseFaucetModal = useCallback(() => {
