@@ -69,9 +69,15 @@ const initI18next = async () => {
       },
       load: 'languageOnly',
       lowerCaseLng: true,
-      fallbackLng,
+      fallbackLng: 'en',
+      fallbackNS: 'translation',
       keySeparator: '.',
       interpolation: { escapeValue: true },
+      saveMissing: true,
+      saveMissingTo: 'all',
+      missingKeyHandler: (lng, ns, key) => {
+        console.warn(`Missing translation key: ${key} for language: ${lng}`);
+      },
     });
 };
 
