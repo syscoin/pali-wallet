@@ -1743,33 +1743,34 @@ class MainController extends KeyringManager {
     reject: (reason?: any) => void
   ) => {
     if (store.getState().vault.networkStatus === 'switching' && !cancelled) {
-      store.dispatch(startSwitchNetwork());
-      store.dispatch(setIsLoadingBalances(true));
-      store.dispatch(setCurrentBlock(undefined));
+      return;
+    }
+    store.dispatch(startSwitchNetwork(network));
+    store.dispatch(setIsLoadingBalances(true));
+    store.dispatch(setCurrentBlock(undefined));
 
-      const isBitcoinBased = chain === INetworkType.Syscoin;
-      const { success, wallet, activeChain } = await this.configureNetwork(
+    const isBitcoinBased = chain === INetworkType.Syscoin;
+    const { success, wallet, activeChain } = await this.configureNetwork(
+      network,
+      chain
+    );
+    const chainId = network.chainId.toString(16);
+    const networkVersion = network.chainId;
+
+    if (success) {
+      this.resolveNetworkConfiguration(resolve, {
+        activeChain,
+        chain,
+        chainId,
+        isBitcoinBased,
         network,
-        chain
+        networkVersion,
+        wallet,
+      });
+    } else {
+      reject(
+        'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
       );
-      const chainId = network.chainId.toString(16);
-      const networkVersion = network.chainId;
-
-      if (success) {
-        this.resolveNetworkConfiguration(resolve, {
-          activeChain,
-          chain,
-          chainId,
-          isBitcoinBased,
-          network,
-          networkVersion,
-          wallet,
-        });
-      } else {
-        reject(
-          'Pali: fail on setActiveNetwork - keyringManager.setSignerNetwork'
-        );
-      }
     }
   };
   private async handleNetworkChangeSuccess(
