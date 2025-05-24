@@ -123,7 +123,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
               <div className="mt-4">
                 <p className="text-brand-white text-sm">
                   <b className="text-gray-400">{host}</b>{' '}
-                  {t('header.hostIsConnectedTo')}{' '}
+                  {t('header.hostIsConnected')}{' '}
                   {newConnectedAccount ? newConnectedAccount.label : ''}.{' '}
                   {t('header.yourActiveAccountIs')}{' '}
                   {accounts[activeAccount.type][activeAccount.id].label}.{' '}

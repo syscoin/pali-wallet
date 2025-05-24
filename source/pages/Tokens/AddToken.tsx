@@ -94,7 +94,7 @@ export const AddToken: FC = () => {
                     </Switch>
 
                     <p className="text-brand-deepPink100">
-                      {t('token.customToke')}
+                      {t('tokens.customToken')}
                     </p>
                   </div>
                 </Form.Item>

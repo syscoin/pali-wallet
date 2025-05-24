@@ -48,8 +48,8 @@ const CustomRPCView = () => {
   const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
 
   const modalMessageOnSuccessful = state
-    ? t('settings.rpcSucessfullyEdited')
-    : t('settings.rpcSucessfullyAdded');
+    ? t('settings.rpcSuccessfullyEdited')
+    : t('settings.rpcSuccessfullyAdded');
 
   const populateForm = (field: string, value: number | string) => {
     if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
