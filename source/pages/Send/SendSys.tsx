@@ -116,31 +116,40 @@ export const SendSys = () => {
           fee: 0,
         };
       } else {
-        // For native SYS, always try to get actual fee estimate
+        // For native SYS, use cached fee if available
         let fee = MINIMUN_FEE;
 
-        try {
-          // Use a test amount that's most of the balance
-          const testAmount = currency(balanceStr, { precision: 8 }).multiply(
-            0.99
-          ).value;
+        // If we have a cached fee estimate, use it immediately
+        if (cachedFeeEstimate !== null) {
+          fee = cachedFeeEstimate;
+        } else {
+          // Otherwise, get actual fee estimate
+          try {
+            // Use a test amount that's most of the balance
+            const testAmount = currency(balanceStr, { precision: 8 }).multiply(
+              0.99
+            ).value;
 
-          // Create a dummy receiver if none provided (for fee estimation)
-          const addressForFeeCalc =
-            receiver || 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
+            // Create a dummy receiver if none provided (for fee estimation)
+            const addressForFeeCalc =
+              receiver || 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
 
-          const estimatedFee = (await controllerEmitter(
-            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-            [{ amount: testAmount, receivingAddress: addressForFeeCalc }]
-          )) as number;
+            const estimatedFee = (await controllerEmitter(
+              ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+              [{ amount: testAmount, receivingAddress: addressForFeeCalc }]
+            )) as number;
 
-          // Use the actual fee estimate and cache it
-          fee = estimatedFee;
-          setCachedFeeEstimate(estimatedFee);
-          console.log('Fee estimate for MAX calculation:', fee);
-        } catch (error) {
-          console.log('Error getting fee estimate, using minimum fee:', error);
-          fee = MINIMUN_FEE;
+            // Use the actual fee estimate and cache it
+            fee = estimatedFee;
+            setCachedFeeEstimate(estimatedFee);
+            console.log('Fee estimate for MAX calculation:', fee);
+          } catch (error) {
+            console.log(
+              'Error getting fee estimate, using minimum fee:',
+              error
+            );
+            fee = MINIMUN_FEE;
+          }
         }
 
         const maxAmount = currency(balanceStr, { precision: 8 })
@@ -153,12 +162,16 @@ export const SendSys = () => {
         };
       }
     },
-    [balanceStr, selectedAsset, controllerEmitter]
+    [balanceStr, selectedAsset, controllerEmitter, cachedFeeEstimate]
   );
 
   const handleMaxButton = useCallback(async () => {
     setIsMaxValue(true);
-    setIsCalculatingMax(true);
+
+    // Only show loading if we don't have a cached fee
+    if (!selectedAsset && cachedFeeEstimate === null) {
+      setIsCalculatingMax(true);
+    }
 
     try {
       const { maxAmount, fee } = await calculateMaxSendableAmount(
@@ -176,14 +189,20 @@ export const SendSys = () => {
     } finally {
       setIsCalculatingMax(false);
     }
-  }, [calculateMaxSendableAmount, fieldsValues, form]);
+  }, [
+    calculateMaxSendableAmount,
+    fieldsValues,
+    form,
+    selectedAsset,
+    cachedFeeEstimate,
+  ]);
 
   const handleInputChange = useCallback(
     (type: 'receiver' | 'amount', e: any) => {
-      // Reset isMaxValue and clear cached fee when user manually changes amount
+      // Reset isMaxValue when user manually changes amount
       if (type === 'amount') {
         setIsMaxValue(false);
-        setCachedFeeEstimate(null);
+        // Don't clear cache on every keystroke - let validation handle it
       }
       setFieldsValues({
         ...fieldsValues,
@@ -199,11 +218,14 @@ export const SendSys = () => {
 
       if (getAsset) {
         setSelectedAsset(getAsset);
-
+        // Clear cached fee when switching assets
+        setCachedFeeEstimate(null);
         return;
       }
 
       setSelectedAsset(null);
+      // Clear cached fee when switching to native
+      setCachedFeeEstimate(null);
     }
   };
 
@@ -509,7 +531,6 @@ export const SendSys = () => {
                 name="amount"
                 className="relative w-full"
                 hasFeedback
-                validateTrigger="onBlur"
                 rules={[
                   {
                     required: true,
@@ -558,51 +579,27 @@ export const SendSys = () => {
                           return Promise.reject('');
                         }
 
-                        // Check if amount exceeds what can be sent
-                        if (!selectedAsset) {
-                          // For native SYS, always estimate fee for validation
-                          let feeToUse: number;
-
-                          try {
-                            const receiverAddress =
-                              form.getFieldValue('receiver') ||
-                              'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
-
-                            const estimatedFee = (await controllerEmitter(
-                              [
-                                'wallet',
-                                'syscoinTransaction',
-                                'getEstimateSysTransactionFee',
-                              ],
-                              [
-                                {
-                                  amount: inputAmount,
-                                  receivingAddress: receiverAddress,
-                                },
-                              ]
-                            )) as number;
-
-                            feeToUse = estimatedFee;
-                            // Cache for future use (including MAX button)
-                            setCachedFeeEstimate(estimatedFee);
-                          } catch (error) {
-                            console.log(
-                              'Error estimating fee in validation:',
-                              error
-                            );
-                            // Use conservative buffer if API fails
-                            feeToUse = 0.001;
-                          }
-
-                          // Check if amount + fee exceeds balance
-                          const totalNeeded = inputCurrency.add(feeToUse);
-
-                          if (totalNeeded.value > balanceCurrency.value) {
+                        // For tokens, just check against balance
+                        if (selectedAsset) {
+                          if (inputCurrency.value > balanceCurrency.value) {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
                         } else {
-                          // For tokens, just check against balance
-                          if (inputCurrency.value > balanceCurrency.value) {
+                          // For native SYS, use cached fee if available
+                          let feeToUse: number;
+
+                          if (cachedFeeEstimate !== null) {
+                            // Use cached fee for validation
+                            feeToUse = cachedFeeEstimate;
+                          } else {
+                            // Use conservative estimate if no cache
+                            // Don't fetch on every keystroke
+                            feeToUse = 0.001;
+                          }
+
+                          const totalNeeded = inputCurrency.add(feeToUse);
+
+                          if (totalNeeded.value > balanceCurrency.value) {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
                         }
@@ -623,6 +620,37 @@ export const SendSys = () => {
                   type="number"
                   placeholder={t('send.amount')}
                   onChange={(e) => handleInputChange('amount', e)}
+                  onFocus={async () => {
+                    // Fetch and cache fee when user focuses on amount field
+                    if (!selectedAsset && cachedFeeEstimate === null) {
+                      try {
+                        const receiver =
+                          form.getFieldValue('receiver') ||
+                          'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
+                        // Use half the balance for fee estimation to ensure tx creation succeeds
+                        const testAmount = currency(balanceStr, {
+                          precision: 8,
+                        }).multiply(0.5).value;
+
+                        const estimatedFee = (await controllerEmitter(
+                          [
+                            'wallet',
+                            'syscoinTransaction',
+                            'getEstimateSysTransactionFee',
+                          ],
+                          [{ amount: testAmount, receivingAddress: receiver }]
+                        )) as number;
+
+                        setCachedFeeEstimate(estimatedFee);
+                      } catch (error) {
+                        console.log('Error pre-fetching fee:', error);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    // Clear cache when user leaves the field to ensure fresh calculation next time
+                    setCachedFeeEstimate(null);
+                  }}
                 />
               </Form.Item>
               <span

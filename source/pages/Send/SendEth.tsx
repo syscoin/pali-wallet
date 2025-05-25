@@ -36,6 +36,12 @@ export const SendEth = () => {
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<number>(0);
   const [isCalculatingFee, setIsCalculatingFee] = useState(false);
+  const [cachedFeeData, setCachedFeeData] = useState<{
+    gasLimit: string;
+    maxFeePerGas: string;
+    maxPriorityFeePerGas: string;
+    totalFeeEth: number;
+  } | null>(null);
   const [inputValue, setInputValue] = useState({ address: '', amount: 0 });
   const [isValidAddress, setIsValidAddress] = useState(null);
   const [isValidAmount, setIsValidAmount] = useState(null);
@@ -59,6 +65,8 @@ export const SendEth = () => {
       const validAddress = isValidEthereumAddress(value);
       setIsValidAddress(validAddress);
     } else if (name === 'amount') {
+      // Don't clear cache on every keystroke - let validation handle it
+
       const balance = selectedAsset
         ? selectedAsset.balance
         : Number(activeAccount?.balances.ethereum);
@@ -81,6 +89,9 @@ export const SendEth = () => {
   };
 
   const handleSelectedAsset = (item: string) => {
+    // Clear cached fee when switching assets
+    setCachedFeeData(null);
+
     if (activeAccount.assets.ethereum?.length > 0) {
       const getAsset = activeAccount.assets.ethereum.find(
         (asset) => asset.contractAddress === item
@@ -178,38 +189,59 @@ export const SendEth = () => {
       return selectedAsset.balance;
     }
 
-    setIsCalculatingFee(true);
+    // Only show calculating if we don't have cached data
+    if (!cachedFeeData) {
+      setIsCalculatingFee(true);
+    }
+
     try {
-      // Get fee data for EIP-1559 transaction
-      const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter([
-        'wallet',
-        'ethereumTransaction',
-        'getFeeDataWithDynamicMaxPriorityFeePerGas',
-      ])) as any;
+      let totalFeeEth;
 
-      // Estimate gas limit for a simple transfer
-      const receiver =
-        form.getFieldValue('receiver') ||
-        '0x0000000000000000000000000000000000000000';
-      // Use a minimal amount for gas estimation (1 wei)
-      const testAmount = '1';
+      // Use cached fee data if available
+      if (cachedFeeData) {
+        totalFeeEth = cachedFeeData.totalFeeEth;
+      } else {
+        // Get fee data for EIP-1559 transaction
+        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
+          [
+            'wallet',
+            'ethereumTransaction',
+            'getFeeDataWithDynamicMaxPriorityFeePerGas',
+          ]
+        )) as any;
 
-      const txObject = {
-        from: activeAccount.address,
-        to: receiver,
-        value: testAmount,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      };
+        // Estimate gas limit for a simple transfer
+        const receiver =
+          form.getFieldValue('receiver') ||
+          '0x0000000000000000000000000000000000000000';
+        // Use a minimal amount for gas estimation (1 wei)
+        const testAmount = '1';
 
-      const gasLimit = await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-        [txObject]
-      ).then((gas) => BigNumber.from(gas));
+        const txObject = {
+          from: activeAccount.address,
+          to: receiver,
+          value: testAmount,
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+        };
 
-      // Calculate total fee in ETH
-      const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
-      const totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
+        const gasLimit = await controllerEmitter(
+          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+          [txObject]
+        ).then((gas) => BigNumber.from(gas));
+
+        // Calculate total fee in ETH
+        const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
+        totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
+
+        // Cache the fee data
+        setCachedFeeData({
+          maxFeePerGas,
+          maxPriorityFeePerGas,
+          gasLimit: gasLimit.toString(),
+          totalFeeEth,
+        });
+      }
 
       setEstimatedFee(totalFeeEth);
 
@@ -482,70 +514,31 @@ export const SendEth = () => {
                     }
 
                     try {
-                      // Estimate fee for this transaction
-                      const { maxFeePerGas, maxPriorityFeePerGas } =
-                        (await controllerEmitter([
-                          'wallet',
-                          'ethereumTransaction',
-                          'getFeeDataWithDynamicMaxPriorityFeePerGas',
-                        ])) as any;
+                      let totalFeeEth;
 
-                      const receiver =
-                        form.getFieldValue('receiver') ||
-                        '0x0000000000000000000000000000000000000000';
+                      // Use cached fee data if available
+                      if (cachedFeeData) {
+                        totalFeeEth = cachedFeeData.totalFeeEth;
+                      } else {
+                        // Use a conservative fee estimate for initial validation
+                        // Don't fetch on every keystroke during typing
+                        totalFeeEth =
+                          activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
+                      }
 
-                      const txObject = {
-                        from: activeAccount.address,
-                        to: receiver,
-                        value: ethers.utils.parseEther(value),
-                        maxFeePerGas,
-                        maxPriorityFeePerGas,
-                      };
-
-                      const gasLimit = await controllerEmitter(
-                        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-                        [txObject]
-                      ).then((gas) => BigNumber.from(gas));
-
-                      // Calculate total fee in ETH
-                      const totalFeeWei = gasLimit.mul(
-                        BigNumber.from(maxFeePerGas)
-                      );
-                      const totalFeeEth =
-                        Number(totalFeeWei.toString()) / 10 ** 18;
-
-                      // Check if amount + fee exceeds balance
                       const amountBN = ethers.utils.parseEther(value);
-                      const totalFeeBN = ethers.utils.parseEther(
+                      const feeBN = ethers.utils.parseEther(
                         totalFeeEth.toString()
                       );
                       const balanceBN = ethers.utils.parseEther(balanceStr);
 
-                      if (amountBN.add(totalFeeBN).gt(balanceBN)) {
+                      if (amountBN.add(feeBN).gt(balanceBN)) {
                         return Promise.reject(t('send.insufficientFunds'));
                       }
 
                       return Promise.resolve();
-                    } catch (error) {
-                      // If fee estimation fails, use a conservative estimate
-                      const conservativeFee =
-                        activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
-
-                      try {
-                        const amountBN = ethers.utils.parseEther(value);
-                        const feeBN = ethers.utils.parseEther(
-                          conservativeFee.toString()
-                        );
-                        const balanceBN = ethers.utils.parseEther(balanceStr);
-
-                        if (amountBN.add(feeBN).gt(balanceBN)) {
-                          return Promise.reject(t('send.insufficientFunds'));
-                        }
-                      } catch (e) {
-                        return Promise.reject('');
-                      }
-
-                      return Promise.resolve();
+                    } catch (e) {
+                      return Promise.reject('');
                     }
                   },
                 }),
@@ -580,6 +573,55 @@ export const SendEth = () => {
                   className="custom-autolock-input"
                   value={inputValue.amount}
                   onChange={handleInputChange}
+                  onFocus={async () => {
+                    // Fetch and cache fee when user focuses on amount field
+                    if (!selectedAsset && !cachedFeeData) {
+                      try {
+                        const feeData = (await controllerEmitter([
+                          'wallet',
+                          'ethereumTransaction',
+                          'getFeeDataWithDynamicMaxPriorityFeePerGas',
+                        ])) as any;
+
+                        const receiver =
+                          form.getFieldValue('receiver') ||
+                          '0x0000000000000000000000000000000000000000';
+
+                        const testAmount = '1';
+                        const txObject = {
+                          from: activeAccount.address,
+                          to: receiver,
+                          value: testAmount,
+                          maxFeePerGas: feeData.maxFeePerGas,
+                          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                        };
+
+                        const gasLimitBN = await controllerEmitter(
+                          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+                          [txObject]
+                        ).then((gas) => BigNumber.from(gas));
+
+                        const totalFeeWei = gasLimitBN.mul(
+                          BigNumber.from(feeData.maxFeePerGas)
+                        );
+                        const totalFeeEth =
+                          Number(totalFeeWei.toString()) / 10 ** 18;
+
+                        setCachedFeeData({
+                          maxFeePerGas: feeData.maxFeePerGas,
+                          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+                          gasLimit: gasLimitBN.toString(),
+                          totalFeeEth,
+                        });
+                      } catch (error) {
+                        console.log('Error pre-fetching fee:', error);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    // Clear cache when user leaves the field to ensure fresh calculation next time
+                    setCachedFeeData(null);
+                  }}
                 />
                 <div className="relative">
                   {isValidAmount !== null && (
