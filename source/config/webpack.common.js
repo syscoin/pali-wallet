@@ -8,7 +8,7 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
-const { DefinePlugin } = require('webpack');
+const { DefinePlugin, ProvidePlugin } = require('webpack');
 
 const viewsPath = join(__dirname, '../../views');
 const sourcePath = join(__dirname, '../../source');
@@ -57,6 +57,12 @@ module.exports = {
     },
     fallback: {
       fs: false,
+      // Only polyfill what's absolutely necessary
+      buffer: require.resolve('buffer/'),
+      crypto: require.resolve('crypto-browserify'),
+      stream: require.resolve('stream-browserify'),
+      path: false,
+      os: false,
     },
   },
   module: {
@@ -65,7 +71,7 @@ module.exports = {
         test: /\.(jpg|png|xlsx|xls|csv)$/i,
         type: 'asset/resource',
         generator: {
-          filename: '[path][name][ext]',
+          filename: 'assets/[name][ext]',
         },
         exclude: /node_modules/,
       },
@@ -78,6 +84,10 @@ module.exports = {
         test: /\.(js|ts)x?$/,
         loader: 'babel-loader',
         exclude: /node_modules/,
+        options: {
+          cacheDirectory: true,
+          cacheCompression: false,
+        },
       },
       {
         test: /\.less$/,
@@ -103,7 +113,7 @@ module.exports = {
         test: /\.(ttf)$/,
         type: 'asset/resource',
         generator: {
-          filename: '[path][name][ext]',
+          filename: 'assets/fonts/[name][ext]',
         },
       },
       {
@@ -112,17 +122,27 @@ module.exports = {
           MiniCssExtractPlugin.loader,
           'css-loader',
           'postcss-loader',
-          'resolve-url-loader',
           'sass-loader',
         ],
       },
     ],
   },
   plugins: [
-    new ForkTsCheckerWebpackPlugin(),
+    new ForkTsCheckerWebpackPlugin({
+      typescript: {
+        memoryLimit: 4096,
+      },
+    }),
     new DefinePlugin({
       NODE_ENV: JSON.stringify(process.env.NODE_ENV),
       TARGET_BROWSER: JSON.stringify(targetBrowser),
+    }),
+    new ProvidePlugin({
+      Buffer: ['buffer', 'Buffer'],
+      process: 'process/browser.js',
+    }),
+    new NodePolyfillPlugin({
+      excludeAliases: ['console'],
     }),
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'app.html'),
@@ -130,6 +150,11 @@ module.exports = {
       chunks: ['app'],
       hash: true,
       filename: 'app.html',
+      minify: {
+        removeComments: true,
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+      },
     }),
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
@@ -137,12 +162,22 @@ module.exports = {
       chunks: ['external'],
       hash: true,
       filename: 'external.html',
+      minify: {
+        removeComments: true,
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+      },
     }),
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'offscreen.html'),
       filename: 'offscreen.html',
       inject: 'body',
       chunks: ['offscreenScript'],
+      minify: {
+        removeComments: true,
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+      },
     }),
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     new CopyWebpackPlugin({
@@ -166,23 +201,43 @@ module.exports = {
         },
       ],
     }),
-    new NodePolyfillPlugin(),
   ],
   optimization: {
+    minimize: true,
     minimizer: [
       new CssMinimizerPlugin(),
       new TerserPlugin({
         parallel: true,
         terserOptions: {
+          parse: {
+            ecma: 8,
+          },
           compress: {
+            ecma: 5,
+            warnings: false,
+            comparisons: false,
+            inline: 2,
             drop_console: true,
+            drop_debugger: true,
+            pure_funcs: ['console.log', 'console.info', 'console.debug'],
+          },
+          mangle: {
+            safari10: true,
           },
           output: {
+            ecma: 5,
             comments: false,
+            ascii_only: true,
           },
         },
         extractComments: false,
       }),
     ],
+  },
+  // Performance hints
+  performance: {
+    hints: 'warning',
+    maxEntrypointSize: 512000,
+    maxAssetSize: 512000,
   },
 };
