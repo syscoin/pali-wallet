@@ -1,6 +1,7 @@
 import { Menu, Transition } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form } from 'antd';
+import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
 import React, { useEffect } from 'react';
@@ -12,12 +13,12 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import errorIcon from 'assets/icons/errorIcon.svg';
 import successIcon from 'assets/icons/successIcon.svg';
-import { Card, Layout, Button } from 'components/index';
+import { Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { getAssetBalance, ellipsis } from 'utils/index';
+import { getAssetBalance, ellipsis, formatBalanceDecimals } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
@@ -33,11 +34,8 @@ export const SendEth = () => {
   } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [txFees, setTxFees] = useState<{ gasLimit: number; gasPrice: number }>({
-    gasLimit: 0,
-    gasPrice: 0,
-  });
-  const [isMessageVisible, setIsMessageVisible] = useState(false);
+  const [estimatedFee, setEstimatedFee] = useState<number>(0);
+  const [isCalculatingFee, setIsCalculatingFee] = useState(false);
   const [inputValue, setInputValue] = useState({ address: '', amount: 0 });
   const [isValidAddress, setIsValidAddress] = useState(null);
   const [isValidAmount, setIsValidAmount] = useState(null);
@@ -51,11 +49,6 @@ export const SendEth = () => {
 
   const hasAccountAssets =
     activeAccount && activeAccount.assets.ethereum?.length > 0;
-
-  const totalMaxNativeTokenValue =
-    +activeAccount?.balances.ethereum - txFees.gasLimit * txFees.gasPrice * 3;
-
-  const messageOpacity = isMessageVisible ? 'opacity-100' : 'opacity-0';
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -179,36 +172,69 @@ export const SendEth = () => {
     return `${t('send.send')} NFT`;
   };
 
-  const getFees = async () => {
-    try {
-      const currentGasPrice =
-        +(await controllerEmitter([
-          'wallet',
-          'ethereumTransaction',
-          'getRecommendedGasPrice',
-        ])) /
-        10 ** 9;
-      if (currentBlock) {
-        const currentGasLimit =
-          parseInt(currentBlock.gasLimit.toString()) / 10 ** 9;
+  const calculateMaxAmount = async () => {
+    if (selectedAsset) {
+      // For tokens, use full balance as fees are paid in native token
+      return selectedAsset.balance;
+    }
 
-        setTxFees({ gasLimit: currentGasLimit, gasPrice: currentGasPrice });
-      }
+    setIsCalculatingFee(true);
+    try {
+      // Get fee data for EIP-1559 transaction
+      const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter([
+        'wallet',
+        'ethereumTransaction',
+        'getFeeDataWithDynamicMaxPriorityFeePerGas',
+      ])) as any;
+
+      // Estimate gas limit for a simple transfer
+      const receiver =
+        form.getFieldValue('receiver') ||
+        '0x0000000000000000000000000000000000000000';
+      // Use a minimal amount for gas estimation (1 wei)
+      const testAmount = '1';
+
+      const txObject = {
+        from: activeAccount.address,
+        to: receiver,
+        value: testAmount,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      };
+
+      const gasLimit = await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+        [txObject]
+      ).then((gas) => BigNumber.from(gas));
+
+      // Calculate total fee in ETH
+      const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
+      const totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
+
+      setEstimatedFee(totalFeeEth);
+
+      // Calculate max amount (balance - fee)
+      const maxAmount = Math.max(
+        0,
+        Number(activeAccount.balances.ethereum) - totalFeeEth
+      );
+
+      setIsCalculatingFee(false);
+      return maxAmount;
     } catch (error) {
-      alert.removeAll();
-      alert.error(t('send.internalError'));
+      console.error('Error calculating max amount:', error);
+      setIsCalculatingFee(false);
+      // Fallback: use a conservative fee estimate based on network
+      // For Rollux/Syscoin NEVM, fees are typically much lower
+      const conservativeFee = activeNetwork.chainId === 570 ? 0.00001 : 0.0001; // Much lower for Rollux
+      return Math.max(
+        0,
+        Number(activeAccount.balances.ethereum) - conservativeFee
+      );
     }
   };
 
-  useEffect(() => {
-    getFees();
-  }, []);
-
-  useEffect(() => {
-    if (isMessageVisible) {
-      setTimeout(() => setIsMessageVisible(false), 4000);
-    }
-  }, [isMessageVisible]);
+  // Remove the useEffect that was calling getFees since we calculate on demand now
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -402,71 +428,146 @@ export const SendEth = () => {
               name="amount"
               className="w-full"
               hasFeedback
+              help={form.getFieldError('amount')[0]}
+              validateStatus={
+                form.getFieldError('amount').length > 0 ? 'error' : ''
+              }
               rules={[
                 {
                   required: true,
-                  message: '',
+                  message: t('send.amountRequired'),
                 },
                 () => ({
                   async validator(_, value) {
-                    const balance = selectedAsset
-                      ? selectedAsset.balance
-                      : Number(activeAccount?.balances.ethereum);
-
-                    const isValueLowerThanBalance = selectedAsset
-                      ? parseFloat(value) <= parseFloat(selectedAsset.balance)
-                      : parseFloat(value) <= parseFloat(balance);
+                    if (!value || Number(value) <= 0) {
+                      return Promise.reject('');
+                    }
 
                     const isToken = !!selectedAsset;
+                    const isNFT = selectedAsset?.isNft;
 
-                    const isValidValue = Number(value) > 0;
+                    // For tokens and NFTs
+                    if (isToken) {
+                      const balance = selectedAsset.balance;
+                      const isValueLowerThanBalance =
+                        parseFloat(value) <= parseFloat(balance);
 
-                    const isAssetSelectedWithValidBalance =
-                      isToken && isValidValue;
+                      if (isNFT) {
+                        return Promise.resolve(); // NFTs don't need balance check for tokenId
+                      }
 
-                    const isNFT = selectedAsset.isNft;
+                      if (isValueLowerThanBalance) {
+                        return Promise.resolve();
+                      }
 
-                    const isValidNFTValue =
-                      isAssetSelectedWithValidBalance && isNFT;
-
-                    const isValidTokenValue =
-                      isAssetSelectedWithValidBalance &&
-                      !isNFT &&
-                      isValueLowerThanBalance;
-
-                    if (!isToken && isValueLowerThanBalance && isValidValue) {
-                      return Promise.resolve();
+                      return Promise.reject(t('send.insufficientFunds'));
                     }
 
-                    if (isValidNFTValue || isValidTokenValue) {
-                      return Promise.resolve();
+                    // For native currency, we need to check amount + fee
+                    const balanceStr = String(
+                      activeAccount?.balances.ethereum || '0'
+                    );
+
+                    // Quick check if amount alone exceeds balance using string comparison
+                    try {
+                      const amountBN = ethers.utils.parseEther(value);
+                      const balanceBN = ethers.utils.parseEther(balanceStr);
+
+                      if (amountBN.gt(balanceBN)) {
+                        return Promise.reject(t('send.insufficientFunds'));
+                      }
+                    } catch (e) {
+                      // Invalid amount format
+                      return Promise.reject('');
                     }
 
-                    return Promise.reject(t('send.insufficientFunds'));
+                    try {
+                      // Estimate fee for this transaction
+                      const { maxFeePerGas, maxPriorityFeePerGas } =
+                        (await controllerEmitter([
+                          'wallet',
+                          'ethereumTransaction',
+                          'getFeeDataWithDynamicMaxPriorityFeePerGas',
+                        ])) as any;
+
+                      const receiver =
+                        form.getFieldValue('receiver') ||
+                        '0x0000000000000000000000000000000000000000';
+
+                      const txObject = {
+                        from: activeAccount.address,
+                        to: receiver,
+                        value: ethers.utils.parseEther(value),
+                        maxFeePerGas,
+                        maxPriorityFeePerGas,
+                      };
+
+                      const gasLimit = await controllerEmitter(
+                        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+                        [txObject]
+                      ).then((gas) => BigNumber.from(gas));
+
+                      // Calculate total fee in ETH
+                      const totalFeeWei = gasLimit.mul(
+                        BigNumber.from(maxFeePerGas)
+                      );
+                      const totalFeeEth =
+                        Number(totalFeeWei.toString()) / 10 ** 18;
+
+                      // Check if amount + fee exceeds balance
+                      const amountBN = ethers.utils.parseEther(value);
+                      const totalFeeBN = ethers.utils.parseEther(
+                        totalFeeEth.toString()
+                      );
+                      const balanceBN = ethers.utils.parseEther(balanceStr);
+
+                      if (amountBN.add(totalFeeBN).gt(balanceBN)) {
+                        return Promise.reject(t('send.insufficientFunds'));
+                      }
+
+                      return Promise.resolve();
+                    } catch (error) {
+                      // If fee estimation fails, use a conservative estimate
+                      const conservativeFee =
+                        activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
+
+                      try {
+                        const amountBN = ethers.utils.parseEther(value);
+                        const feeBN = ethers.utils.parseEther(
+                          conservativeFee.toString()
+                        );
+                        const balanceBN = ethers.utils.parseEther(balanceStr);
+
+                        if (amountBN.add(feeBN).gt(balanceBN)) {
+                          return Promise.reject(t('send.insufficientFunds'));
+                        }
+                      } catch (e) {
+                        return Promise.reject('');
+                      }
+
+                      return Promise.resolve();
+                    }
                   },
                 }),
               ]}
             >
               <div className="relative">
                 <span
-                  onClick={() => {
-                    setIsMessageVisible(true);
-                    form.setFieldValue(
-                      'amount',
-                      selectedAsset
-                        ? selectedAsset.balance
-                        : totalMaxNativeTokenValue
-                    );
+                  onClick={async () => {
+                    const maxAmount = await calculateMaxAmount();
+                    form.setFieldValue('amount', maxAmount);
                     setInputValue((prev) => ({
                       ...prev,
-                      amount: selectedAsset
-                        ? selectedAsset.balance
-                        : totalMaxNativeTokenValue,
+                      amount: maxAmount,
                     }));
+                    // Manually trigger validation and set the field as valid
+                    setIsValidAmount(true);
+                    // Validate the form field to enable the Next button
+                    form.validateFields(['amount']);
                   }}
-                  className="absolute bottom-[11px] left-[22px] text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px]"
+                  className="absolute bottom-[11px] left-[22px] text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200"
                 >
-                  MAX
+                  {isCalculatingFee ? '...' : 'MAX'}
                 </span>
                 <input
                   type="number"
@@ -503,18 +604,6 @@ export const SendEth = () => {
                 </div>
               </div>
             </Form.Item>
-          </div>
-
-          <div
-            className={`flex flex-col items-center justify-center w-full md:max-w-full mb-6 transition-all duration-500 ${messageOpacity}`}
-          >
-            <Card type="info" className="border-alert-darkwarning">
-              <div>
-                <div className="text-xs text-alert-darkwarning font-bold">
-                  <p>{t('send.maxMessage')}</p>
-                </div>
-              </div>
-            </Card>
           </div>
 
           <div className="absolute bottom-12 md:static md:mt-3">

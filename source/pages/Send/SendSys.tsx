@@ -56,6 +56,7 @@ export const SendSys = () => {
   const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
     FIELD_VALUES_INITIAL_STATE
   );
+
   const [form] = Form.useForm();
 
   const handleGetFee = useCallback(async () => {
@@ -167,6 +168,8 @@ export const SendSys = () => {
       amount: maxAmount,
     });
     setTxFeeForMaxValue(fee);
+    // Validate the form field after setting the value
+    form.validateFields(['amount']);
   }, [calculateMaxSendableAmount, fieldsValues, form]);
 
   const handleInputChange = useCallback(
@@ -499,7 +502,7 @@ export const SendSys = () => {
               <Form.Item
                 name="amount"
                 className="relative w-full"
-                hasFeedback
+                validateTrigger="onBlur"
                 rules={[
                   {
                     required: true,
@@ -617,11 +620,9 @@ export const SendSys = () => {
                   id="with-max-button"
                   className="value-custom-input"
                   type="number"
-                  placeholder={'0.0'}
+                  placeholder={t('send.amount')}
                   onChange={(e) => {
                     handleInputChange('amount', e);
-                    // Trigger validation on change
-                    form.validateFields(['amount']);
                   }}
                 />
               </Form.Item>
@@ -633,6 +634,7 @@ export const SendSys = () => {
               </span>
             </div>
           </div>
+
           <Fee
             disabled={true}
             recommend={recommendedFee}

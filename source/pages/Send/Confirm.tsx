@@ -1178,7 +1178,12 @@ export const SendConfirm = () => {
               <p className="text-brand-gray200 text-xs font-light">
                 {t('buttons.send')}
               </p>
-              <p className="text-white text-base">{basicTxValues.amount}</p>
+              <p className="text-white text-base">
+                {basicTxValues.amount}{' '}
+                {basicTxValues.token
+                  ? basicTxValues.token.symbol
+                  : activeNetwork.currency?.toUpperCase()}
+              </p>
             </div>
           )}
 
@@ -1235,7 +1240,9 @@ export const SendConfirm = () => {
               <p className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
                 {t('send.estimatedGasFee')}
                 <span className="text-white text-xs">
-                  {isBitcoinBased
+                  {basicTxValues.fee !== undefined
+                    ? getFormattedFee(basicTxValues.fee)
+                    : isBitcoinBased
                     ? getFormattedFee(basicTxValues.fee)
                     : !isBitcoinBased && isEIP1559Compatible === false
                     ? getFormattedFee(gasPrice / 10 ** 18)
@@ -1264,7 +1271,11 @@ export const SendConfirm = () => {
                 <>
                   Total ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
-                    {isBitcoinBased
+                    {basicTxValues.fee !== undefined
+                      ? `${currency(basicTxValues.fee, { precision: 8 })
+                          .add(basicTxValues.amount)
+                          .format({ symbol: '' })}`
+                      : isBitcoinBased
                       ? `${currency(basicTxValues.fee, { precision: 8 })
                           .add(basicTxValues.amount)
                           .format({ symbol: '' })}`
