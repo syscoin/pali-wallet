@@ -1,3 +1,4 @@
+import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -140,7 +141,7 @@ export const SendConfirm = () => {
             controllerEmitter(
               ['wallet', 'syscoinTransaction', 'sendTransaction'],
               [
-                { ...basicTxValues, fee: 0.00001 },
+                basicTxValues, // Use the actual calculated fee from SendSys
                 activeAccount.isTrezorWallet,
                 activeAccount.isLedgerWallet,
               ]
@@ -1264,15 +1265,18 @@ export const SendConfirm = () => {
                   Total ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
                     {isBitcoinBased
-                      ? `${
-                          Number(basicTxValues.fee) +
-                          Number(basicTxValues.amount)
-                        }`
+                      ? `${currency(basicTxValues.fee, { precision: 8 })
+                          .add(basicTxValues.amount)
+                          .format({ symbol: '' })}`
                       : !isBitcoinBased && isEIP1559Compatible === false
                       ? `${removeScientificNotation(
-                          Number(basicTxValues.amount) + gasPrice / 10 ** 18
+                          currency(basicTxValues.amount, { precision: 18 }).add(
+                            gasPrice / 10 ** 18
+                          ).value
                         )}`
-                      : `${Number(basicTxValues.amount) + getCalculatedFee}`}
+                      : `${currency(basicTxValues.amount, { precision: 18 })
+                          .add(getCalculatedFee || 0)
+                          .format({ symbol: '' })}`}
                     &nbsp;
                     {`${
                       activeNetwork.currency

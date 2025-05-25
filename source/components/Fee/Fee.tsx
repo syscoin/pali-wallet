@@ -2,7 +2,7 @@ import { Form, Input } from 'antd';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Tooltip } from '..';
+import { Icon, Tooltip } from '..';
 
 export const Fee = ({
   recommend,
@@ -17,8 +17,8 @@ export const Fee = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <Tooltip content={disabled ? t('components.useRecommendedFee') : ''}>
-      <div className="disabled flex cursor-not-allowed md:w-96">
+    <div className="flex flex-col gap-2 md:w-96">
+      <div className="flex">
         <Form.Item
           name="fee"
           className="w-full"
@@ -42,7 +42,19 @@ export const Fee = ({
                 form.setFieldsValue({ fee: event.target.value })
               }
             />
-            <p className="flex absolute right-[10%] top-[32%] text-xs flex-col items-center justify-center p-0 max-w-xs text-center text-brand-gray200 sm:w-full md:my-4">
+            {disabled && (
+              <Tooltip
+                content={t('components.useRecommendedFee')}
+                childrenClassName="absolute right-3 top-1/2 transform -translate-y-1/2 z-20"
+              >
+                <Icon
+                  isSvg
+                  name="Info"
+                  className="w-4 h-4 text-brand-gray200 hover:text-brand-white transition-colors"
+                />
+              </Tooltip>
+            )}
+            <p className="flex absolute right-[15%] top-[32%] text-xs flex-col items-center justify-center p-0 max-w-xs text-center text-brand-gray200 sm:w-full md:my-4">
               <span>
                 {'≈ '}
                 {fiatValue}
@@ -51,6 +63,6 @@ export const Fee = ({
           </div>
         </Form.Item>
       </div>
-    </Tooltip>
+    </div>
   );
 };
