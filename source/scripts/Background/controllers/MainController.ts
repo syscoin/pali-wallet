@@ -534,7 +534,18 @@ class MainController extends KeyringManager {
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
     const { accounts, activeAccount } = store.getState().vault;
-
+    if (this.cancellablePromises.transactionPromise) {
+      this.cancellablePromises.transactionPromise.cancel();
+    }
+    if (this.cancellablePromises.assetsPromise) {
+      this.cancellablePromises.assetsPromise.cancel();
+    }
+    if (this.cancellablePromises.balancePromise) {
+      this.cancellablePromises.balancePromise.cancel();
+    }
+    if (this.cancellablePromises.nftsPromise) {
+      this.cancellablePromises.nftsPromise.cancel();
+    }
     // Set switching account loading state
     store.dispatch(setIsSwitchingAccount(true));
 
@@ -561,9 +572,6 @@ class MainController extends KeyringManager {
 
         // Clear transaction cache when switching accounts
         this.transactionsManager.utils.clearCache();
-
-        // Update all account data when switching accounts
-        this.getLatestUpdateForCurrentAccount();
       })
       .finally(() => {
         // Always clear switching account loading state, even if there's an error
