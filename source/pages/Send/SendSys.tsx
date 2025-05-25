@@ -621,13 +621,11 @@ export const SendSys = () => {
                   className="value-custom-input"
                   type="number"
                   placeholder={t('send.amount')}
-                  onChange={(e) => {
-                    handleInputChange('amount', e);
-                  }}
+                  onChange={(e) => handleInputChange('amount', e)}
                 />
               </Form.Item>
               <span
-                className="z-[9999] left-[6%] top-[50%] transform -translate-y-1/2 text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
                 onClick={handleMaxButton}
               >
                 MAX
