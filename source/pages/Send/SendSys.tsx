@@ -53,6 +53,7 @@ export const SendSys = () => {
   const [cachedFeeEstimate, setCachedFeeEstimate] = useState<number | null>(
     null
   );
+  const [isCalculatingMax, setIsCalculatingMax] = useState(false);
   const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
     FIELD_VALUES_INITIAL_STATE
   );
@@ -157,19 +158,24 @@ export const SendSys = () => {
 
   const handleMaxButton = useCallback(async () => {
     setIsMaxValue(true);
+    setIsCalculatingMax(true);
 
-    const { maxAmount, fee } = await calculateMaxSendableAmount(
-      fieldsValues.receiver
-    );
+    try {
+      const { maxAmount, fee } = await calculateMaxSendableAmount(
+        fieldsValues.receiver
+      );
 
-    form.setFieldValue('amount', maxAmount);
-    setFieldsValues({
-      ...fieldsValues,
-      amount: maxAmount,
-    });
-    setTxFeeForMaxValue(fee);
-    // Validate the form field after setting the value
-    form.validateFields(['amount']);
+      form.setFieldValue('amount', maxAmount);
+      setFieldsValues({
+        ...fieldsValues,
+        amount: maxAmount,
+      });
+      setTxFeeForMaxValue(fee);
+      // Validate the form field after setting the value
+      form.validateFields(['amount']);
+    } finally {
+      setIsCalculatingMax(false);
+    }
   }, [calculateMaxSendableAmount, fieldsValues, form]);
 
   const handleInputChange = useCallback(
@@ -502,6 +508,7 @@ export const SendSys = () => {
               <Form.Item
                 name="amount"
                 className="relative w-full"
+                hasFeedback
                 validateTrigger="onBlur"
                 rules={[
                   {
@@ -553,44 +560,38 @@ export const SendSys = () => {
 
                         // Check if amount exceeds what can be sent
                         if (!selectedAsset) {
-                          // For native SYS, check if amount + fee exceeds balance
+                          // For native SYS, always estimate fee for validation
                           let feeToUse: number;
 
-                          // Use cached fee if available (from MAX button)
-                          if (cachedFeeEstimate !== null && isMaxValue) {
-                            feeToUse = cachedFeeEstimate;
-                          } else {
-                            // Only call API if we don't have a cached value
-                            try {
-                              const receiverAddress =
-                                form.getFieldValue('receiver') ||
-                                'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
+                          try {
+                            const receiverAddress =
+                              form.getFieldValue('receiver') ||
+                              'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
 
-                              const estimatedFee = (await controllerEmitter(
-                                [
-                                  'wallet',
-                                  'syscoinTransaction',
-                                  'getEstimateSysTransactionFee',
-                                ],
-                                [
-                                  {
-                                    amount: inputAmount,
-                                    receivingAddress: receiverAddress,
-                                  },
-                                ]
-                              )) as number;
+                            const estimatedFee = (await controllerEmitter(
+                              [
+                                'wallet',
+                                'syscoinTransaction',
+                                'getEstimateSysTransactionFee',
+                              ],
+                              [
+                                {
+                                  amount: inputAmount,
+                                  receivingAddress: receiverAddress,
+                                },
+                              ]
+                            )) as number;
 
-                              feeToUse = estimatedFee;
-                              // Cache for future use
-                              setCachedFeeEstimate(estimatedFee);
-                            } catch (error) {
-                              console.log(
-                                'Error estimating fee in validation:',
-                                error
-                              );
-                              // Use conservative buffer if API fails
-                              feeToUse = 0.001;
-                            }
+                            feeToUse = estimatedFee;
+                            // Cache for future use (including MAX button)
+                            setCachedFeeEstimate(estimatedFee);
+                          } catch (error) {
+                            console.log(
+                              'Error estimating fee in validation:',
+                              error
+                            );
+                            // Use conservative buffer if API fails
+                            feeToUse = 0.001;
                           }
 
                           // Check if amount + fee exceeds balance
@@ -628,7 +629,7 @@ export const SendSys = () => {
                 className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
                 onClick={handleMaxButton}
               >
-                MAX
+                {isCalculatingMax ? '...' : 'MAX'}
               </span>
             </div>
           </div>
