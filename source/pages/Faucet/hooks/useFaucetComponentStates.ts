@@ -7,6 +7,7 @@ import {
   FaucetStatusResponse,
   faucetTxDetailsProps,
 } from '../../../types/faucet';
+import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import {
@@ -20,6 +21,7 @@ import { claimFaucet } from 'utils/faucet';
 export const useFaucetComponentStates = () => {
   const { t } = useTranslation();
   const { navigate } = useUtils();
+  const { controllerEmitter } = useController();
 
   const {
     accounts,
@@ -67,6 +69,41 @@ export const useFaucetComponentStates = () => {
       if (data?.data?.status) {
         setTxHash(data.data.hash);
         setStatus(FaucetStatusResponse.SUCCESS);
+
+        // Trigger immediate balance update after successful faucet request
+        try {
+          controllerEmitter(['callGetLatestUpdateForAccount']);
+        } catch (error) {
+          console.warn(
+            'Failed to trigger immediate update after faucet:',
+            error
+          );
+        }
+
+        // Schedule a single delayed update to catch the balance change once transaction is processed
+        // Faucet transactions are often internal and may not appear in transaction lists
+        const alarmName = `faucet-balance-update-${Date.now()}`;
+        chrome.alarms.create(alarmName, {
+          delayInMinutes: 10 / 60, // 10 seconds delay for balance to be updated
+        });
+
+        const handleFaucetBalanceUpdateAlarm = (alarm: chrome.alarms.Alarm) => {
+          if (alarm.name === alarmName) {
+            try {
+              controllerEmitter(['callGetLatestUpdateForAccount']);
+            } catch (error) {
+              console.warn(
+                'Failed to update balance after faucet transaction:',
+                error
+              );
+            }
+            chrome.alarms.onAlarm.removeListener(
+              handleFaucetBalanceUpdateAlarm
+            );
+          }
+        };
+
+        chrome.alarms.onAlarm.addListener(handleFaucetBalanceUpdateAlarm);
       } else {
         throw new Error(
           data?.data?.message || data?.message || 'Unknown error'
@@ -78,7 +115,7 @@ export const useFaucetComponentStates = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [chainId, account.address]);
+  }, [chainId, account.address, controllerEmitter]);
 
   const handleFaucetButton = useCallback(() => {
     if (
