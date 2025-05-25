@@ -147,7 +147,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'app.html'),
       inject: 'body',
-      chunks: ['app'],
+      chunks: ['vendor', 'app'],
       hash: true,
       filename: 'app.html',
       minify: {
@@ -159,7 +159,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
       inject: 'body',
-      chunks: ['external'],
+      chunks: ['vendor', 'external'],
       hash: true,
       filename: 'external.html',
       minify: {
@@ -233,6 +233,20 @@ module.exports = {
         extractComments: false,
       }),
     ],
+    // Simple vendor splitting for app and external only
+    splitChunks: {
+      chunks(chunk) {
+        // Only split chunks for app and external, NOT background
+        return chunk.name === 'app' || chunk.name === 'external';
+      },
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendor',
+          priority: 10,
+        },
+      },
+    },
   },
   // Performance hints
   performance: {
