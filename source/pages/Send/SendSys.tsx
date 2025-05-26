@@ -47,7 +47,6 @@ export const SendSys = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [recommendedFee, setRecommendedFee] = useState(MINIMUN_FEE);
   const [cachedFeeEstimate, setCachedFeeEstimate] = useState<number | null>(
     null
   );
@@ -61,29 +60,19 @@ export const SendSys = () => {
 
   const [form] = Form.useForm();
 
-  const handleGetFee = useCallback(async () => {
-    const getRecommendedFee = (await controllerEmitter(
-      ['wallet', 'syscoinTransaction', 'getRecommendedFee'],
-      [activeNetwork.url]
-    )) as number;
-
-    setRecommendedFee(getRecommendedFee || Number(MINIMUN_FEE));
-
-    form.setFieldsValue({ fee: getRecommendedFee || Number(MINIMUN_FEE) });
-  }, [activeAccount, form]);
+  // Use a fixed fee rate instead of fetching from API
+  const feeRate = MINIMUN_FEE; // 0.00001 SYS = 1 sat/byte when used as fee rate
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
 
   useEffect(() => {
-    handleGetFee();
-
     form.setFieldsValue({
       verify: true,
       ZDAG: false,
-      fee: recommendedFee,
+      fee: feeRate,
     });
-  }, [form, handleGetFee]);
+  }, [form]);
 
   const assets = activeAccount.assets.syscoin
     ? Object.values(activeAccount.assets.syscoin)
@@ -294,13 +283,12 @@ export const SendSys = () => {
         setIsLoading(false);
 
         // The sysweb3-keyring library expects a fee rate (SYS per byte), not a total fee.
-        // The recommendedFee from getRecommendedFee API is already a fee rate, so we can use it directly.
 
         const txData = {
           sender: activeAccount.address,
           receivingAddress: receiver,
           amount: Number(amount),
-          fee: recommendedFee, // This is a fee rate from the API
+          fee: feeRate, // Fixed fee rate
           token: null,
           isToken: false,
           rbf: !ZDAG,
@@ -322,7 +310,7 @@ export const SendSys = () => {
               sender: activeAccount.address,
               receivingAddress: receiver,
               amount: Number(amount),
-              fee: recommendedFee, // Use a reasonable fee rate (1 sat/byte in SYS)
+              fee: feeRate, // Fixed fee rate
               token: {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
@@ -341,18 +329,14 @@ export const SendSys = () => {
   };
 
   const fiatValueToShow = useMemo(() => {
-    const valueToUse = selectedAsset
-      ? Number(recommendedFee) + Number(recommendedFee)
-      : Number(recommendedFee);
-
     const getAmount = getFiatAmount(
-      valueToUse,
+      Number(feeRate),
       6,
       String(fiat.asset).toUpperCase()
     );
 
     return getAmount;
-  }, [selectedAsset, recommendedFee]);
+  }, [feeRate]);
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -418,7 +402,7 @@ export const SendSys = () => {
           initialValues={{
             verify: true,
             ZDAG: false,
-            fee: recommendedFee,
+            fee: feeRate,
           }}
           onFinish={nextStep}
           autoComplete="off"
@@ -700,7 +684,7 @@ export const SendSys = () => {
 
           <Fee
             disabled={true}
-            recommend={recommendedFee}
+            recommend={feeRate}
             form={form}
             fiatValue={fiatValueToShow}
           />
