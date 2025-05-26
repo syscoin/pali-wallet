@@ -37,7 +37,9 @@
     "postinstall": "patch-package",
     "test-all": "yarn lint && yarn test:unit",
     "generate-hardhat-log": "npx hardhat node --verbose > hardhat.log",
-    "watch-local-rpc": "tail -f hardhat.log"
+    "watch-local-rpc": "tail -f hardhat.log",
+    "analyze": "cross-env NODE_ENV=production webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json",
+    "analyze:chrome": "cross-env NODE_ENV=production TARGET_BROWSER=chrome webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": "eslint --fix"
@@ -122,8 +124,7 @@
     "reduxed-chrome-storage": "^3.0.10",
     "sass": "^1.62.1",
     "selenium-webdriver": "^4.1.1",
-    "syscoinjs-lib": "1.0.218",
-    "syscointx-js": "^1.0.106",
+    "syscoinjs-lib": "1.0.228",
     "tailwindcss": "^3.3.2",
     "tippy.js": "^6.3.7",
     "trezor-connect": "^8.1.29",
