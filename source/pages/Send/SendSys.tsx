@@ -110,16 +110,8 @@ export const SendSys = () => {
   // Reusable function to calculate max sendable amount
   const calculateMaxSendableAmount = useCallback(
     async (receiver?: string) => {
-      console.log(
-        '🔍 calculateMaxSendableAmount called with receiver:',
-        receiver
-      );
-      console.log('🔍 selectedAsset:', selectedAsset);
-      console.log('🔍 balanceStr:', balanceStr);
-
       if (selectedAsset) {
         // For tokens, use full balance as fees are paid in SYS
-        console.log('🔍 Token selected, returning full balance:', balanceStr);
         return {
           maxAmount: String(balanceStr),
           fee: 0,
@@ -127,84 +119,53 @@ export const SendSys = () => {
       } else {
         // For native SYS, use cached fee if available
         let fee = MINIMUN_FEE;
-        console.log('🔍 Native SYS, cachedFeeEstimate:', cachedFeeEstimate);
 
         // If we have a cached fee estimate, use it immediately
         if (cachedFeeEstimate !== null) {
           fee = cachedFeeEstimate;
-          console.log('🔍 Using cached fee:', fee);
         } else {
           // Otherwise, get actual fee estimate using iterative approach
           try {
             // Create a dummy receiver if none provided (for fee estimation)
             const addressForFeeCalc =
               receiver || 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
-            console.log('🔍 Address for fee calculation:', addressForFeeCalc);
 
-            // Start with an initial estimate using 90% of balance
+            // Start with an initial estimate using 97% of balance
             const testAmount = currency(balanceStr, { precision: 8 }).multiply(
               0.97
             ).value;
-            console.log(
-              '🔍 Initial test amount for fee calculation (97% of balance):',
-              testAmount
-            );
-
-            console.log('🔍 Calling getEstimateSysTransactionFee with:', {
-              amount: String(testAmount),
-              receivingAddress: addressForFeeCalc,
-            });
 
             const estimatedFee = (await controllerEmitter(
               ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
               [
                 {
-                  amount: String(testAmount),
+                  amount: testAmount,
                   receivingAddress: addressForFeeCalc,
                 },
               ]
             )) as number;
-
-            console.log('🔍 Estimated fee returned:', estimatedFee);
 
             // Now calculate what the actual max would be with this fee
             const potentialMax = currency(balanceStr, {
               precision: 8,
             }).subtract(estimatedFee).value;
-            console.log('🔍 Potential max with this fee:', potentialMax);
 
-            // Always refine the fee estimate with the potential max amount for accuracy
-            console.log(
-              '🔍 Refining fee estimate with potential max amount:',
-              potentialMax
-            );
-
+            // Refine the fee estimate with the potential max amount for accuracy
             const refinedFee = (await controllerEmitter(
               ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
               [
                 {
-                  amount: String(potentialMax),
+                  amount: potentialMax,
                   receivingAddress: addressForFeeCalc,
                 },
               ]
             )) as number;
 
-            console.log('🔍 Refined fee estimate:', refinedFee);
-            console.log(
-              '🔍 Fee difference:',
-              Math.abs(refinedFee - estimatedFee)
-            );
-
             // Use the refined fee for final calculation
             fee = refinedFee;
-
             setCachedFeeEstimate(fee);
-            console.log('🔍 Final fee cached:', fee);
           } catch (error) {
-            console.log(
-              '🔍 Error getting fee estimate, using minimum fee:',
-              error
-            );
+            // Use minimum fee if estimation fails
             fee = MINIMUN_FEE;
           }
         }
@@ -213,23 +174,14 @@ export const SendSys = () => {
         const maxAmountCurrency = currency(balanceStr, {
           precision: 8,
         }).subtract(fee);
-        console.log(
-          '🔍 Balance currency:',
-          currency(balanceStr, { precision: 8 }).value
-        );
-        console.log('🔍 Fee to subtract:', fee);
-        console.log('🔍 Max amount currency value:', maxAmountCurrency.value);
 
         // Use currency.js format to maintain proper precision
         const maxAmount = maxAmountCurrency.format({ symbol: '' });
-        console.log('🔍 Final max amount formatted:', maxAmount);
 
-        const result = {
+        return {
           maxAmount,
           fee,
         };
-        console.log('🔍 Returning result:', result);
-        return result;
       }
     },
     [balanceStr, selectedAsset, controllerEmitter, cachedFeeEstimate]
@@ -311,7 +263,6 @@ export const SendSys = () => {
   const nextStep = async ({ receiver, amount }: any) => {
     try {
       setIsLoading(true);
-      console.log('🚀 nextStep called with:', { receiver, amount });
 
       // For native SYS, validate that amount + fee doesn't exceed balance
       if (!selectedAsset) {
@@ -320,37 +271,20 @@ export const SendSys = () => {
           precision: 8,
         });
 
-        console.log('🚀 Amount currency:', amountCurrency.value);
-        console.log('🚀 Balance currency:', balanceCurrency.value);
+        // For validation, we need to estimate the total fee to ensure sufficient funds
+        let estimatedTotalFee = 0.001; // Conservative default
+        try {
+          estimatedTotalFee = (await controllerEmitter(
+            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+            [{ amount: Number(amount), receivingAddress: receiver }]
+          )) as number;
+        } catch (error) {
+          // Use conservative estimate if fee estimation fails
+        }
 
-        // Get actual fee estimate - ensure amount is a number
-        console.log(
-          '🚀 Calling getEstimateSysTransactionFee for nextStep with:',
-          {
-            amount: amount,
-            receivingAddress: receiver,
-          }
-        );
-
-        const estimatedFee = (await controllerEmitter(
-          ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-          [{ amount: amount, receivingAddress: receiver }]
-        )) as number;
-
-        console.log('🚀 Estimated fee for nextStep:', estimatedFee);
-
-        const actualFee = estimatedFee; // Use the actual fee from the API
-        const totalNeeded = amountCurrency.add(actualFee);
-
-        console.log('🚀 Total needed (amount + fee):', totalNeeded.value);
-        console.log('🚀 Available balance:', balanceCurrency.value);
-        console.log(
-          '🚀 Sufficient funds?',
-          totalNeeded.value <= balanceCurrency.value
-        );
+        const totalNeeded = amountCurrency.add(estimatedTotalFee);
 
         if (totalNeeded.value > balanceCurrency.value) {
-          console.log('🚀 INSUFFICIENT FUNDS - rejecting transaction');
           setIsLoading(false);
           alert.removeAll();
           alert.error(t('send.insufficientFunds'));
@@ -358,29 +292,37 @@ export const SendSys = () => {
         }
 
         setIsLoading(false);
+
+        // The sysweb3-keyring library expects a fee rate (SYS per byte), not a total fee.
+        // The recommendedFee from getRecommendedFee API is already a fee rate, so we can use it directly.
+
+        const txData = {
+          sender: activeAccount.address,
+          receivingAddress: receiver,
+          amount: Number(amount),
+          fee: recommendedFee, // This is a fee rate from the API
+          token: null,
+          isToken: false,
+          rbf: !ZDAG,
+        };
+
         navigate('/send/confirm', {
           state: {
-            tx: {
-              sender: activeAccount.address,
-              receivingAddress: receiver,
-              amount: amount, // Keep as string to preserve precision
-              fee: actualFee,
-              token: null,
-              isToken: false,
-              rbf: !ZDAG,
-            },
+            tx: txData,
           },
         });
       } else {
-        // For tokens, just use the amount as is
+        // For tokens, we don't need to validate funds since fees are paid in SYS
+        // and we're sending tokens, not SYS
+
         setIsLoading(false);
         navigate('/send/confirm', {
           state: {
             tx: {
               sender: activeAccount.address,
               receivingAddress: receiver,
-              amount: amount, // Keep as string to preserve precision
-              fee: MINIMUN_FEE, // Fee is paid in SYS for tokens
+              amount: Number(amount),
+              fee: recommendedFee, // Use a reasonable fee rate (1 sat/byte in SYS)
               token: {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
