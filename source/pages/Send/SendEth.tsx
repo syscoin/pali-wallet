@@ -18,7 +18,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { getAssetBalance, ellipsis, formatBalanceDecimals } from 'utils/index';
+import { getAssetBalance, ellipsis } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
@@ -27,14 +27,11 @@ export const SendEth = () => {
     (state: RootState) => state.vault.activeNetwork
   );
 
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    currentBlock,
-  } = useSelector((state: RootState) => state.vault);
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
+  );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [estimatedFee, setEstimatedFee] = useState<number>(0);
   const [isCalculatingFee, setIsCalculatingFee] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<{
     gasLimit: string;
@@ -242,8 +239,6 @@ export const SendEth = () => {
           totalFeeEth,
         });
       }
-
-      setEstimatedFee(totalFeeEth);
 
       // Calculate max amount (balance - fee)
       const maxAmount = Math.max(
@@ -576,51 +571,6 @@ export const SendEth = () => {
                   className="custom-autolock-input"
                   value={inputValue.amount}
                   onChange={handleInputChange}
-                  onFocus={async () => {
-                    // Fetch and cache fee when user focuses on amount field
-                    if (!selectedAsset && !cachedFeeData) {
-                      try {
-                        const feeData = (await controllerEmitter([
-                          'wallet',
-                          'ethereumTransaction',
-                          'getFeeDataWithDynamicMaxPriorityFeePerGas',
-                        ])) as any;
-
-                        const receiver =
-                          form.getFieldValue('receiver') ||
-                          '0x0000000000000000000000000000000000000000';
-
-                        const testAmount = '1';
-                        const txObject = {
-                          from: activeAccount.address,
-                          to: receiver,
-                          value: testAmount,
-                          maxFeePerGas: feeData.maxFeePerGas,
-                          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-                        };
-
-                        const gasLimitBN = await controllerEmitter(
-                          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-                          [txObject]
-                        ).then((gas) => BigNumber.from(gas));
-
-                        const totalFeeWei = gasLimitBN.mul(
-                          BigNumber.from(feeData.maxFeePerGas)
-                        );
-                        const totalFeeEth =
-                          Number(totalFeeWei.toString()) / 10 ** 18;
-
-                        setCachedFeeData({
-                          maxFeePerGas: feeData.maxFeePerGas,
-                          maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
-                          gasLimit: gasLimitBN.toString(),
-                          totalFeeEth,
-                        });
-                      } catch (error) {
-                        console.log('Error pre-fetching fee:', error);
-                      }
-                    }
-                  }}
                 />
                 <div className="relative">
                   {isValidAmount !== null && (
