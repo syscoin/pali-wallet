@@ -190,9 +190,9 @@ export const SendSys = () => {
       form.setFieldValue('amount', maxAmount);
       setFieldsValues({
         ...fieldsValues,
-        amount: maxAmount,
+        amount: String(maxAmount),
       });
-      setCalculatedMaxAmount(maxAmount); // Store the exact max amount
+      setCalculatedMaxAmount(String(maxAmount)); // Store the exact max amount
       // Validate the form field after setting the value
       form.validateFields(['amount']);
     } finally {
