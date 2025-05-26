@@ -618,10 +618,6 @@ export const SendEth = () => {
                       }
                     }
                   }}
-                  onBlur={() => {
-                    // Clear cache when user leaves the field to ensure fresh calculation next time
-                    setCachedFeeData(null);
-                  }}
                 />
                 <div className="relative">
                   {isValidAmount !== null && (

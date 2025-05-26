@@ -647,10 +647,6 @@ export const SendSys = () => {
                       }
                     }
                   }}
-                  onBlur={() => {
-                    // Clear cache when user leaves the field to ensure fresh calculation next time
-                    setCachedFeeEstimate(null);
-                  }}
                 />
               </Form.Item>
               <span
