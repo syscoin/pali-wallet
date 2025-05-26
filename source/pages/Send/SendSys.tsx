@@ -242,7 +242,7 @@ export const SendSys = () => {
     }
 
     try {
-      const { maxAmount, fee } = await calculateMaxSendableAmount(
+      const { maxAmount } = await calculateMaxSendableAmount(
         fieldsValues.receiver
       );
 
@@ -642,15 +642,15 @@ export const SendSys = () => {
                       }
 
                       // Get balance as string to preserve precision
-                      let balanceStr: string;
+                      let validationBalanceStr: string;
                       if (selectedAsset) {
                         // For assets, the balance is already formatted
-                        balanceStr = formattedAssetBalance
+                        validationBalanceStr = formattedAssetBalance
                           ? String(formattedAssetBalance)
                           : '0';
                       } else {
                         // For native SYS, balance is already in decimal format
-                        balanceStr = activeAccount?.balances.syscoin
+                        validationBalanceStr = activeAccount?.balances.syscoin
                           ? String(activeAccount.balances.syscoin)
                           : '0';
                       }
@@ -660,7 +660,7 @@ export const SendSys = () => {
                         const inputCurrency = currency(inputAmount, {
                           precision: 8,
                         });
-                        const balanceCurrency = currency(balanceStr, {
+                        const balanceCurrency = currency(validationBalanceStr, {
                           precision: 8,
                         });
 

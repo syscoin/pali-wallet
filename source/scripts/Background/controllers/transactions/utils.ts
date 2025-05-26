@@ -7,7 +7,6 @@ import isNil from 'lodash/isNil';
 import last from 'lodash/last';
 import omit from 'lodash/omit';
 import range from 'lodash/range';
-import uniqWith from 'lodash/uniqWith';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
