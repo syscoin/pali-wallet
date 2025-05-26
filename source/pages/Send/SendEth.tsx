@@ -558,7 +558,11 @@ export const SendEth = () => {
                   }}
                   className="absolute bottom-[11px] left-[22px] text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200"
                 >
-                  {isCalculatingFee ? '...' : 'MAX'}
+                  {isCalculatingFee ? (
+                    <span className="animate-pulse">...</span>
+                  ) : (
+                    'MAX'
+                  )}
                 </span>
                 <input
                   type="number"

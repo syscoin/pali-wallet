@@ -647,7 +647,11 @@ export const SendSys = () => {
                 className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
                 onClick={handleMaxButton}
               >
-                {isCalculatingMax ? '...' : 'MAX'}
+                {isCalculatingMax ? (
+                  <span className="animate-pulse">...</span>
+                ) : (
+                  'MAX'
+                )}
               </span>
             </div>
           </div>
