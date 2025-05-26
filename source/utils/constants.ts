@@ -37,7 +37,7 @@ export type FieldValuesType = {
 };
 export const FIELD_VALUES_INITIAL_STATE = { amount: '', receiver: '' };
 
-export const MINIMUN_FEE = 0.00001;
+export const MINIMUM_FEE = 0.00001;
 
 // Define the keys you are interested in
 export const syscoinKeysOfInterest = [

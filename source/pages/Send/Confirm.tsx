@@ -1241,9 +1241,13 @@ export const SendConfirm = () => {
                 {t('send.estimatedGasFee')}
                 <span className="text-white text-xs">
                   {basicTxValues.fee !== undefined
-                    ? getFormattedFee(basicTxValues.fee)
+                    ? getFormattedFee(
+                        basicTxValues.estimatedFee || basicTxValues.fee
+                      )
                     : isBitcoinBased
-                    ? getFormattedFee(basicTxValues.fee)
+                    ? getFormattedFee(
+                        basicTxValues.estimatedFee || basicTxValues.fee
+                      )
                     : !isBitcoinBased && isEIP1559Compatible === false
                     ? getFormattedFee(gasPrice / 10 ** 18)
                     : getFormattedFee(getCalculatedFee)}
@@ -1272,11 +1276,17 @@ export const SendConfirm = () => {
                   Total ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
                     {basicTxValues.fee !== undefined
-                      ? `${currency(basicTxValues.fee, { precision: 8 })
+                      ? `${currency(
+                          basicTxValues.estimatedFee || basicTxValues.fee,
+                          { precision: 8 }
+                        )
                           .add(basicTxValues.amount)
                           .format({ symbol: '' })}`
                       : isBitcoinBased
-                      ? `${currency(basicTxValues.fee, { precision: 8 })
+                      ? `${currency(
+                          basicTxValues.estimatedFee || basicTxValues.fee,
+                          { precision: 8 }
+                        )
                           .add(basicTxValues.amount)
                           .format({ symbol: '' })}`
                       : !isBitcoinBased && isEIP1559Compatible === false

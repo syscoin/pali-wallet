@@ -23,7 +23,7 @@ import {
   getAssetBalance,
   formatCurrency,
   ellipsis,
-  MINIMUN_FEE,
+  MINIMUM_FEE,
   FIELD_VALUES_INITIAL_STATE,
   FieldValuesType,
 } from 'utils/index';
@@ -61,7 +61,7 @@ export const SendSys = () => {
   const [form] = Form.useForm();
 
   // Define our desired fee rate and the estimation fee rate
-  const ESTIMATION_FEE_RATE = MINIMUN_FEE; // 1000 sat/byte - what the library uses for estimation
+  const ESTIMATION_FEE_RATE = MINIMUM_FEE; // 1000 sat/byte - what the library uses for estimation
   const DESIRED_FEE_RATE = 0.0000001; // 10 sat/byte - what we actually want to pay
   const FEE_SCALING_FACTOR = DESIRED_FEE_RATE / ESTIMATION_FEE_RATE; // 0.001
 
@@ -112,7 +112,7 @@ export const SendSys = () => {
         };
       } else {
         // For native SYS, we need to calculate the fee more accurately
-        let fee = MINIMUN_FEE;
+        let fee = MINIMUM_FEE;
 
         // If we have a cached fee estimate, use it immediately
         if (cachedFeeEstimate !== null) {
@@ -239,8 +239,19 @@ export const SendSys = () => {
         amount: String(maxAmount),
       });
       setCalculatedMaxAmount(String(maxAmount)); // Store the exact max amount
+
+      // Clear any validation errors and re-validate
+      form.setFields([
+        {
+          name: 'amount',
+          errors: [],
+        },
+      ]);
+
       // Validate the form field after setting the value
-      form.validateFields(['amount']);
+      setTimeout(() => {
+        form.validateFields(['amount']);
+      }, 0);
     } finally {
       setIsCalculatingMax(false);
     }
@@ -339,6 +350,7 @@ export const SendSys = () => {
           receivingAddress: receiver,
           amount: Number(amount),
           fee: feeRate, // Fixed fee rate
+          estimatedFee: estimatedTotalFee, // Pass the actual estimated fee for display
           token: null,
           isToken: false,
           rbf: !ZDAG,
@@ -364,8 +376,19 @@ export const SendSys = () => {
           },
         });
       } else {
-        // For tokens, we don't need to validate funds since fees are paid in SYS
-        // and we're sending tokens, not SYS
+        // For tokens, we need to estimate the fee for display
+        let tokenFeeEstimate = MINIMUM_FEE; // Default
+        try {
+          const estimatedFeeAt1000 = (await controllerEmitter(
+            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+            [{ amount: Number(amount), receivingAddress: receiver }]
+          )) as number;
+
+          // Scale the fee to our desired rate
+          tokenFeeEstimate = estimatedFeeAt1000 * FEE_SCALING_FACTOR;
+        } catch (error) {
+          console.error('Error estimating token fee:', error);
+        }
 
         setIsLoading(false);
         navigate('/send/confirm', {
@@ -375,6 +398,7 @@ export const SendSys = () => {
               receivingAddress: receiver,
               amount: Number(amount),
               fee: feeRate, // Fixed fee rate
+              estimatedFee: tokenFeeEstimate, // Pass the actual estimated fee for display
               token: {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
