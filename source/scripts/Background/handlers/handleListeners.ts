@@ -63,12 +63,10 @@ export const handleListeners = (masterController: IMasterController) => {
 
   chrome.runtime.onMessage.addListener(
     ({ type, data, action }, sender, sendResponse) => {
-      console.log('[Background] Received message:', { type, data, action });
       const { hasEthProperty } = store.getState().vault;
       switch (type) {
         case 'ping':
           // Health check ping - respond immediately to confirm the background script is alive
-          console.log('[Background] Responding to ping with pong');
           sendResponse({ pong: true, timestamp: Date.now() });
           return true; // Keep message channel open for async response
         case 'pw-msg-background':
