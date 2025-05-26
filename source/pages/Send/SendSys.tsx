@@ -102,7 +102,7 @@ export const SendSys = () => {
       if (selectedAsset) {
         // For tokens, use full balance as fees are paid in SYS
         return {
-          maxAmount: String(balanceStr),
+          maxAmount: balanceStr,
           fee: 0,
         };
       } else {
@@ -607,28 +607,7 @@ export const SendSys = () => {
                               precision: 8,
                             });
                             // Allow a tiny tolerance for floating point precision (0.00000001 SYS)
-
-                            console.log(
-                              '🔍 Validation - calculatedMaxAmount exists:',
-                              calculatedMaxAmount
-                            );
-                            console.log(
-                              '🔍 Validation - inputCurrency.value:',
-                              inputCurrency.value
-                            );
-                            console.log(
-                              '🔍 Validation - maxCurrency.value:',
-                              maxCurrency.value
-                            );
-                            console.log(
-                              '🔍 Validation - exceeds max?',
-                              inputCurrency.value > maxCurrency.value
-                            );
-
                             if (inputCurrency.value > maxCurrency.value) {
-                              console.log(
-                                '🔍 Validation - REJECTING: exceeds calculated max'
-                              );
                               return Promise.reject(
                                 t('send.insufficientFunds')
                               );
@@ -637,17 +616,8 @@ export const SendSys = () => {
                             // No calculated max, use conservative fee estimate for validation
                             const feeToUse = 0.001;
                             const totalNeeded = inputCurrency.add(feeToUse);
-                            console.log(
-                              '🔍 Validation - no calculatedMaxAmount, checking totalNeeded:',
-                              totalNeeded.value,
-                              'vs balance:',
-                              balanceCurrency.value
-                            );
 
                             if (totalNeeded.value > balanceCurrency.value) {
-                              console.log(
-                                '🔍 Validation - REJECTING: totalNeeded exceeds balance'
-                              );
                               return Promise.reject(
                                 t('send.insufficientFunds')
                               );
