@@ -413,7 +413,10 @@ export const SendEth = () => {
                                 onClick={() => handleSelectedAsset('-1')}
                                 className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                               >
-                                <p>{activeNetwork.currency.toUpperCase()}</p>
+                                <p>
+                                  {activeNetwork?.currencytoUpperCase() ||
+                                    'SYS'}
+                                </p>
                                 <small>{t('send.receiver')}</small>
                               </button>
                             </Menu.Item>

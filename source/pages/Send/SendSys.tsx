@@ -54,6 +54,9 @@ export const SendSys = () => {
     null
   );
   const [isCalculatingMax, setIsCalculatingMax] = useState(false);
+  const [calculatedMaxAmount, setCalculatedMaxAmount] = useState<string | null>(
+    null
+  );
   const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
     FIELD_VALUES_INITIAL_STATE
   );
@@ -152,9 +155,14 @@ export const SendSys = () => {
           }
         }
 
-        const maxAmount = currency(balanceStr, { precision: 8 })
-          .subtract(fee)
-          .format({ symbol: '' });
+        // Calculate max amount with proper precision
+        const maxAmountCurrency = currency(balanceStr, {
+          precision: 8,
+        }).subtract(fee);
+        // Format to 8 decimal places to avoid precision issues
+        const maxAmount = maxAmountCurrency.value
+          .toFixed(8)
+          .replace(/\.?0+$/, '');
 
         return {
           maxAmount,
@@ -184,6 +192,7 @@ export const SendSys = () => {
         amount: maxAmount,
       });
       setTxFeeForMaxValue(fee);
+      setCalculatedMaxAmount(maxAmount); // Store the exact max amount
       // Validate the form field after setting the value
       form.validateFields(['amount']);
     } finally {
@@ -202,6 +211,7 @@ export const SendSys = () => {
       // Reset isMaxValue when user manually changes amount
       if (type === 'amount') {
         setIsMaxValue(false);
+        setCalculatedMaxAmount(null); // Clear the calculated max when user edits
         // Don't clear cache on every keystroke - let validation handle it
       }
       setFieldsValues({
@@ -220,12 +230,14 @@ export const SendSys = () => {
         setSelectedAsset(getAsset);
         // Clear cached fee when switching assets
         setCachedFeeEstimate(null);
+        setCalculatedMaxAmount(null);
         return;
       }
 
       setSelectedAsset(null);
       // Clear cached fee when switching to native
       setCachedFeeEstimate(null);
+      setCalculatedMaxAmount(null);
     }
   };
 
@@ -597,10 +609,33 @@ export const SendSys = () => {
                             feeToUse = 0.001;
                           }
 
-                          const totalNeeded = inputCurrency.add(feeToUse);
+                          // If we have a calculated max amount and user tries to exceed it, reject
+                          if (calculatedMaxAmount) {
+                            // Use currency.js for precise comparison
+                            const maxCurrency = currency(calculatedMaxAmount, {
+                              precision: 8,
+                            });
+                            // Allow a tiny tolerance for floating point precision (0.00000001 SYS)
+                            const tolerance = 0.00000001;
+                            if (
+                              inputCurrency.value >
+                              maxCurrency.value + tolerance
+                            ) {
+                              return Promise.reject(
+                                t('send.insufficientFunds')
+                              );
+                            }
+                          }
 
-                          if (totalNeeded.value > balanceCurrency.value) {
-                            return Promise.reject(t('send.insufficientFunds'));
+                          // Otherwise, do the regular validation with fee
+                          if (!calculatedMaxAmount) {
+                            const totalNeeded = inputCurrency.add(feeToUse);
+
+                            if (totalNeeded.value > balanceCurrency.value) {
+                              return Promise.reject(
+                                t('send.insufficientFunds')
+                              );
+                            }
                           }
                         }
 
