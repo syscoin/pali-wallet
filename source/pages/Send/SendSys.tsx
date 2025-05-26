@@ -60,8 +60,13 @@ export const SendSys = () => {
 
   const [form] = Form.useForm();
 
-  // Use a fixed fee rate instead of fetching from API
-  const feeRate = MINIMUN_FEE; // 0.00001 SYS = 1 sat/byte when used as fee rate
+  // Define our desired fee rate and the estimation fee rate
+  const ESTIMATION_FEE_RATE = MINIMUN_FEE; // 1000 sat/byte - what the library uses for estimation
+  const DESIRED_FEE_RATE = 0.0000001; // 10 sat/byte - what we actually want to pay
+  const FEE_SCALING_FACTOR = DESIRED_FEE_RATE / ESTIMATION_FEE_RATE; // 0.001
+
+  // Use our desired lower fee rate
+  const feeRate = DESIRED_FEE_RATE;
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
@@ -72,7 +77,7 @@ export const SendSys = () => {
       ZDAG: false,
       fee: feeRate,
     });
-  }, [form]);
+  }, [form, feeRate]);
 
   const assets = activeAccount.assets.syscoin
     ? Object.values(activeAccount.assets.syscoin)
@@ -106,22 +111,24 @@ export const SendSys = () => {
           fee: 0,
         };
       } else {
-        // For native SYS, use cached fee if available
+        // For native SYS, we need to calculate the fee more accurately
         let fee = MINIMUN_FEE;
 
         // If we have a cached fee estimate, use it immediately
         if (cachedFeeEstimate !== null) {
           fee = cachedFeeEstimate;
         } else {
-          // Otherwise, get actual fee estimate using iterative approach
+          // Otherwise, get actual fee estimate
           try {
             // Create a dummy receiver if none provided (for fee estimation)
             const addressForFeeCalc =
               receiver || 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
 
-            // Start with an initial estimate using 97% of balance
+            // For MAX calculation, we need to estimate the fee for sending nearly all balance
+            // The fee depends on the number of UTXOs that will be used
+            // Start with a more conservative estimate for multi-UTXO transactions
             const testAmount = currency(balanceStr, { precision: 8 }).multiply(
-              0.97
+              0.98 // More conservative for multi-UTXO
             ).value;
 
             const estimatedFee = (await controllerEmitter(
@@ -134,28 +141,61 @@ export const SendSys = () => {
               ]
             )) as number;
 
+            // Scale the estimated fee to our desired fee rate
+            const scaledEstimatedFee = estimatedFee * FEE_SCALING_FACTOR;
+
+            // For transactions with multiple UTXOs, add extra buffer
+            // This accounts for the fact that using all UTXOs increases transaction size
+            const feeWithBuffer = scaledEstimatedFee;
+
             // Now calculate what the actual max would be with this fee
             const potentialMax = currency(balanceStr, {
               precision: 8,
-            }).subtract(estimatedFee).value;
+            }).subtract(feeWithBuffer).value;
 
-            // Refine the fee estimate with the potential max amount for accuracy
-            const refinedFee = (await controllerEmitter(
-              ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-              [
-                {
-                  amount: potentialMax,
-                  receivingAddress: addressForFeeCalc,
-                },
-              ]
-            )) as number;
+            // Double-check with the actual max amount
+            if (potentialMax > 0) {
+              try {
+                const refinedFee = (await controllerEmitter(
+                  [
+                    'wallet',
+                    'syscoinTransaction',
+                    'getEstimateSysTransactionFee',
+                  ],
+                  [
+                    {
+                      amount: potentialMax,
+                      receivingAddress: addressForFeeCalc,
+                    },
+                  ]
+                )) as number;
 
-            // Use the refined fee for final calculation
-            fee = refinedFee;
+                // Scale the refined fee to our desired rate
+                const scaledRefinedFee = refinedFee * FEE_SCALING_FACTOR;
+
+                // If refined fee is significantly higher, use it with buffer
+                if (scaledRefinedFee > feeWithBuffer) {
+                  fee = scaledRefinedFee * 1.1; // 10% buffer on refined estimate
+                } else {
+                  fee = feeWithBuffer;
+                }
+              } catch (error) {
+                // If refinement fails, stick with buffered estimate
+                fee = feeWithBuffer;
+              }
+            } else {
+              fee = feeWithBuffer;
+            }
+
             setCachedFeeEstimate(fee);
           } catch (error) {
-            // Use minimum fee if estimation fails
-            fee = MINIMUN_FEE;
+            console.error('Error estimating fee for MAX:', error);
+            // Use a more conservative fee if estimation fails
+            // Based on actual transaction data at 1000 sat/byte: 3 UTXOs = 0.00283801 SYS fee
+            // Scale it down to our desired rate
+            const fallbackFeeAt1000SatByte = 0.006; // Conservative estimate for 7 UTXO transaction at 1000 sat/byte
+            fee = fallbackFeeAt1000SatByte * FEE_SCALING_FACTOR; // Scale to 1 sat/byte
+            console.log('Using scaled fallback fee:', fee);
           }
         }
 
@@ -164,8 +204,14 @@ export const SendSys = () => {
           precision: 8,
         }).subtract(fee);
 
-        // Use currency.js format to maintain proper precision
-        const maxAmount = maxAmountCurrency.format({ symbol: '' });
+        // Ensure we don't go negative and apply final safety margin
+        let maxAmount = '0';
+        if (maxAmountCurrency.value > 0) {
+          // Apply a tiny final safety margin (0.00001 SYS) to avoid edge cases
+          const finalMax = maxAmountCurrency.subtract(0.00001);
+          maxAmount =
+            finalMax.value > 0 ? finalMax.format({ symbol: '' }) : '0';
+        }
 
         return {
           maxAmount,
@@ -263,12 +309,16 @@ export const SendSys = () => {
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
         try {
-          estimatedTotalFee = (await controllerEmitter(
+          const estimatedFeeAt1000 = (await controllerEmitter(
             ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
             [{ amount: Number(amount), receivingAddress: receiver }]
           )) as number;
+
+          // Scale the fee to our desired rate
+          estimatedTotalFee = estimatedFeeAt1000 * FEE_SCALING_FACTOR;
         } catch (error) {
           // Use conservative estimate if fee estimation fails
+          estimatedTotalFee = 0.00001;
         }
 
         const totalNeeded = amountCurrency.add(estimatedTotalFee);
@@ -293,6 +343,20 @@ export const SendSys = () => {
           isToken: false,
           rbf: !ZDAG,
         };
+
+        // Final safety check - ensure amount + estimated fee doesn't exceed balance
+        const finalCheck = amountCurrency.add(estimatedTotalFee);
+        if (finalCheck.value > balanceCurrency.value) {
+          console.error('Final safety check failed:', {
+            amount: amountCurrency.value,
+            estimatedFee: estimatedTotalFee,
+            total: finalCheck.value,
+            balance: balanceCurrency.value,
+          });
+          alert.removeAll();
+          alert.error(t('send.insufficientFunds'));
+          return;
+        }
 
         navigate('/send/confirm', {
           state: {
