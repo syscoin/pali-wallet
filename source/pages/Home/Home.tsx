@@ -121,7 +121,7 @@ export const Home = () => {
   const [showModalHardWallet, setShowModalHardWallet] = useState(true);
 
   const isNetworkChanging = networkStatus === 'switching';
-  const { url, chainId } = activeNetwork;
+  const { url, chainId } = activeNetwork || {};
 
   let isInCooldown: boolean;
 
@@ -193,9 +193,9 @@ export const Home = () => {
   const handleOnCloseFaucetModal = useCallback(() => {
     controllerEmitter(
       ['wallet', 'setFaucetModalState'],
-      [{ chainId: activeNetwork.chainId, isOpen: false }]
+      [{ chainId: activeNetwork?.chainId, isOpen: false }]
     );
-  }, [activeNetwork.chainId]);
+  }, [activeNetwork?.chainId]);
 
   const shouldShowFaucetFirstModal = useMemo(
     () => !!isOpenFaucetModal?.[chainId],
