@@ -7,7 +7,8 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { setActiveAccount, setIsSwitchingAccount } from 'state/vault';
 import { INetworkWithKind } from 'state/vault/types';
 
 interface ISetActiveAccountModalProps {
@@ -43,9 +44,27 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
       return;
     }
 
-    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+    // Optimistic update: immediately update the UI
+    store.dispatch(setActiveAccount({ id: accountId, type: accountType }));
+    store.dispatch(setIsSwitchingAccount(true));
 
+    // Close modal immediately for better UX
     setIsOpen(false);
+
+    // Then perform the actual account switch in the background
+    controllerEmitter(['wallet', 'setAccount'], [accountId, accountType])
+      .then(() => {
+        // Success - the controller will handle updating the full state
+        store.dispatch(setIsSwitchingAccount(false));
+      })
+      .catch((error) => {
+        // On error, revert to the previous account
+        store.dispatch(
+          setActiveAccount({ id: activeAccount.id, type: activeAccount.type })
+        );
+        store.dispatch(setIsSwitchingAccount(false));
+        alert.error(t('header.errorSwitchingAccount'));
+      });
   };
 
   return (

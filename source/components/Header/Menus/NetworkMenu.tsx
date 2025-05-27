@@ -13,7 +13,8 @@ import { Icon } from 'components/index';
 import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
+import { startSwitchNetwork, switchNetworkError } from 'state/vault';
 import { INetworkWithKind } from 'state/vault/types';
 import { NetworkType } from 'utils/types';
 
@@ -106,7 +107,20 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         setActiveAccountModalIsOpen(true);
         return;
       }
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
+
+      // Optimistic update: dispatch the network switch action immediately
+      store.dispatch(startSwitchNetwork(network));
+
+      // Then perform the actual network switch in the background
+      controllerEmitter(['wallet', 'setActiveNetwork'], [network])
+        .then(() => {
+          // Success is already handled by the controller via setNetworkChange
+        })
+        .catch(() => {
+          // On error, revert the optimistic update
+          store.dispatch(switchNetworkError());
+          navigate('/home');
+        });
     } catch (networkError) {
       navigate('/home');
     }
