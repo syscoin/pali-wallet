@@ -19,6 +19,7 @@ export const useRouterLogic = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalMessage, setmodalMessage] = useState('');
   const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState(false);
+  const [initialCheckComplete, setInitialCheckComplete] = useState(false);
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
@@ -26,7 +27,7 @@ export const useRouterLogic = () => {
     (state: RootState) => state.vault
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { isUnlocked, web3Provider } = useController();
+  const { isUnlocked, web3Provider, isLoading } = useController();
   const { serverHasAnError, errorMessage } = web3Provider;
 
   const isNetworkChanging = networkStatus === 'switching';
@@ -65,17 +66,25 @@ export const useRouterLogic = () => {
   }, [hasUtf8Error, isUnlocked]);
 
   useEffect(() => {
+    // Don't navigate until we've completed the initial check
+    if (isLoading) return;
+
     const canProceed = isUnlocked && accounts;
 
     if (canProceed) {
       navigate('/home');
+      setInitialCheckComplete(true);
       return;
     }
 
-    controllerEmitter(['appRoute']).then((route) => {
-      if (route !== '/') navigate(route);
-    });
-  }, [isUnlocked]);
+    // Only check app route after initial loading is complete
+    if (!initialCheckComplete) {
+      controllerEmitter(['appRoute']).then((route) => {
+        if (route !== '/') navigate(route);
+        setInitialCheckComplete(true);
+      });
+    }
+  }, [isUnlocked, isLoading, initialCheckComplete]);
 
   useEffect(() => {
     const isFullscreen = window.innerWidth > 600;

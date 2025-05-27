@@ -1,14 +1,14 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 
-import { Loading } from 'components/Loading';
 import { useController } from 'hooks/useController';
 
 export function ProtectedRoute({ element }: { element: JSX.Element }) {
   const { isUnlocked, isLoading } = useController();
 
+  // Don't render anything while loading - the HTML loader is showing
   if (isLoading) {
-    return <Loading />;
+    return null;
   }
 
   if (!isUnlocked) {

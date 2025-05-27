@@ -11,7 +11,7 @@ export const Start = (props: any) => {
   const [isOpenValidation, setIsOpenValidation] = useState(false);
   const [hasAccount, setHasAccount] = useState(false);
   const [hasVault, setHasVault] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { isExternal, externalRoute } = props;
@@ -33,28 +33,16 @@ export const Start = (props: any) => {
       } catch (error) {
         console.error('Error checking vault/accounts:', error);
       } finally {
-        setIsLoading(false);
+        setIsInitialLoading(false);
       }
     };
 
     checkVaultAndAccounts();
   }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
-        <div className="animate-pulse">
-          <div className="flex flex-row gap-3">
-            <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
-              Pali
-            </h1>
-            <h1 className="text-[#4DA2CF] font-poppins text-[37.87px] font-light leading-[37.87px] tracking-[0.379px]">
-              Wallet
-            </h1>
-          </div>
-        </div>
-      </div>
-    );
+  // Don't render anything while loading - the HTML loader is showing
+  if (isInitialLoading) {
+    return null;
   }
 
   return (
