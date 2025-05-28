@@ -57,7 +57,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
         // Success - the controller will handle updating the full state
         store.dispatch(setIsSwitchingAccount(false));
       })
-      .catch((error) => {
+      .catch(() => {
         // On error, revert to the previous account
         store.dispatch(
           setActiveAccount({ id: activeAccount.id, type: activeAccount.type })
