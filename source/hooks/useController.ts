@@ -259,7 +259,7 @@ export function useController() {
         retryTimeoutRef.current = null;
       }
     };
-  }, [fetchControllerData, abortController]);
+  }, [fetchControllerData]);
 
   return useMemo(
     () => ({

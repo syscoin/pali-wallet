@@ -84,14 +84,14 @@ export const useRouterLogic = () => {
         setInitialCheckComplete(true);
       });
     }
-  }, [isUnlocked, isLoading, initialCheckComplete]);
+  }, [isUnlocked, isLoading, initialCheckComplete, accounts, navigate]);
 
   useEffect(() => {
     const isFullscreen = window.innerWidth > 600;
     if (isFullscreen) {
       navigate('/settings/account/hardware');
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -107,7 +107,7 @@ export const useRouterLogic = () => {
     if (isFullscreen && isUnlocked) {
       navigate('/settings/account/hardware');
     }
-  }, [pathname, isUnlocked]);
+  }, [pathname, isUnlocked, navigate, alert]);
 
   useEffect(() => {
     if (

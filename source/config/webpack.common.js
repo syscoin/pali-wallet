@@ -77,7 +77,10 @@ module.exports = {
       },
       {
         test: /\.(svg)$/i,
-        type: 'asset/inline',
+        type: 'asset/resource',
+        generator: {
+          filename: 'assets/icons/[name][ext]',
+        },
         exclude: /node_modules/,
       },
       {
