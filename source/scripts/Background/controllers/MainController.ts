@@ -15,7 +15,6 @@ import {
   getSysRpc,
   getEthRpc,
   INetworkType,
-  validateSysRpc,
   validateEthRpc,
 } from '@pollum-io/sysweb3-network';
 import {
@@ -218,8 +217,7 @@ class MainController extends KeyringManager {
       case INetworkType.Syscoin:
         try {
           const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
-          const { chain } = await validateSysRpc(activeNetworkURL);
-          if (chain !== 'test') {
+          if (!activeNetwork.isTestnet) {
             const currencies = await (
               await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
             ).json();

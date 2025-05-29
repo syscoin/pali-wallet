@@ -27,31 +27,6 @@ export const isActiveNetwork = (chain: string, chainId: number) => {
 export const networkChain = () =>
   getNetworkChain(store.getState().vault.isBitcoinBased);
 
-/**
- * `{ chaindId, url }` is compatible with `INetworkWithKind`
- */
-export const isBitcoinBasedNetwork = async ({
-  chainId,
-  url,
-}: {
-  chainId: number;
-  url: string;
-}) => {
-  try {
-    const { networks } = store.getState().vault;
-
-    const isSyscoinChain = Boolean(networks.syscoin[chainId]);
-
-    if (!isSyscoinChain) return false;
-
-    const { valid } = await validateSysRpc(url);
-
-    return isSyscoinChain && valid;
-  } catch (error) {
-    return false;
-  }
-};
-
 export const verifyIfIsTestnet = async (
   networkUrl: string,
   isBitcoinBased: boolean,
