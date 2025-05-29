@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+﻿import { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -20,6 +20,10 @@ export const useRouterLogic = () => {
   const [modalMessage, setmodalMessage] = useState('');
   const [showUtf8ErrorModal, setShowUtf8ErrorModal] = useState(false);
   const [initialCheckComplete, setInitialCheckComplete] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(window.innerWidth > 600);
+  const navigationLockRef = useRef(false);
+  const lastNavigationRef = useRef<string>('');
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
@@ -38,6 +42,54 @@ export const useRouterLogic = () => {
   );
 
   const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
+
+  // Debounced navigation function to prevent rapid navigation
+  const debouncedNavigate = useCallback(
+    (targetRoute: string) => {
+      // Clear any existing timeout
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+
+      // Skip if we just navigated to this route
+      if (lastNavigationRef.current === targetRoute) {
+        return;
+      }
+
+      // Set a small delay to debounce navigation
+      navigationTimeoutRef.current = setTimeout(() => {
+        if (pathname !== targetRoute && !navigationLockRef.current) {
+          navigationLockRef.current = true;
+          lastNavigationRef.current = targetRoute;
+
+          navigate(targetRoute);
+
+          // Release lock after navigation is complete
+          setTimeout(() => {
+            navigationLockRef.current = false;
+          }, 200);
+        }
+      }, 50);
+    },
+    [navigate, pathname]
+  );
+
+  // Handle window resize events to properly track fullscreen state
+  useEffect(() => {
+    const handleResize = () => {
+      const newIsFullscreen = window.innerWidth > 600;
+      setIsFullscreen(newIsFullscreen);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      // Clean up navigation timeout
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'getCurrentState' }).then((message) => {
@@ -65,33 +117,59 @@ export const useRouterLogic = () => {
     }
   }, [hasUtf8Error, isUnlocked]);
 
+  // CONSOLIDATED NAVIGATION LOGIC - Single source of truth for all navigation
   useEffect(() => {
-    // Don't navigate until we've completed the initial check
-    if (isLoading) return;
+    // Prevent navigation loops with a lock mechanism
+    if (navigationLockRef.current) {
+      return;
+    }
+
+    // Don't navigate while loading or if network is changing
+    if (isLoading || isNetworkChanging) {
+      return;
+    }
 
     const canProceed = isUnlocked && accounts;
 
-    if (canProceed) {
-      navigate('/home');
+    // Handle initial navigation after unlock
+    if (canProceed && !initialCheckComplete) {
+      // Determine target route based on screen size
+      const targetRoute = isFullscreen ? '/settings/account/hardware' : '/home';
+
+      debouncedNavigate(targetRoute);
       setInitialCheckComplete(true);
       return;
     }
 
-    // Only check app route after initial loading is complete
-    if (!initialCheckComplete) {
+    // Handle navigation based on screen size changes (only after initial setup)
+    if (canProceed && initialCheckComplete) {
+      if (isFullscreen && pathname !== '/settings/account/hardware') {
+        debouncedNavigate('/settings/account/hardware');
+      } else if (!isFullscreen && pathname === '/settings/account/hardware') {
+        debouncedNavigate('/home');
+      }
+      return;
+    }
+
+    // Handle app route check for locked state
+    if (!canProceed && !initialCheckComplete) {
       controllerEmitter(['appRoute']).then((route) => {
-        if (route !== '/') navigate(route);
+        if (route !== '/' && typeof route === 'string') {
+          debouncedNavigate(route);
+        }
         setInitialCheckComplete(true);
       });
     }
-  }, [isUnlocked, isLoading, initialCheckComplete, accounts, navigate]);
-
-  useEffect(() => {
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen) {
-      navigate('/settings/account/hardware');
-    }
-  }, [navigate]);
+  }, [
+    isUnlocked,
+    isLoading,
+    initialCheckComplete,
+    accounts,
+    pathname,
+    isFullscreen,
+    isNetworkChanging,
+    debouncedNavigate,
+  ]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -103,11 +181,7 @@ export const useRouterLogic = () => {
 
   useEffect(() => {
     alert.removeAll();
-    const isFullscreen = window.innerWidth > 600;
-    if (isFullscreen && isUnlocked) {
-      navigate('/settings/account/hardware');
-    }
-  }, [pathname, isUnlocked, navigate, alert]);
+  }, [pathname, alert]);
 
   useEffect(() => {
     if (
