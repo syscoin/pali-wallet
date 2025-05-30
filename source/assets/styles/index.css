@@ -290,3 +290,44 @@ input[type='number']::-webkit-inner-spin-button {
 .ant-radio {
   @apply flex items-center justify-center;
 }
+
+/* NAVIGATION ANIMATIONS - Prevent flash during page transitions */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 200ms ease-in-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 200ms ease-in-out;
+}
+
+/* Smooth transitions for all layout elements */
+.layout-transition {
+  transition: all 200ms ease-in-out;
+}
+
+/* Prevent flash of unstyled content */
+.page-content {
+  opacity: 0;
+  animation: fadeIn 200ms ease-in-out forwards;
+  animation-delay: 50ms;
+}

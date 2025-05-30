@@ -42,12 +42,12 @@ const App: FC = () => {
 
   // other logic
   return (
-    <section className="mx-auto h-full min-w-popup min-h-popup bg-brand-blue700 md:max-w-2xl">
+    <section className="mx-auto h-full min-w-popup min-h-popup bg-brand-blue700 md:max-w-2xl transition-all duration-200 ease-in-out">
       <KeepAliveContainer />
       <Suspense fallback={<Loading />}>
         <Container>
           <HashRouter>
-            <div className="w-full min-w-popup h-full min-h-popup">
+            <div className="w-full min-w-popup h-full min-h-popup transition-all duration-200 ease-in-out">
               <Router />
             </div>
           </HashRouter>

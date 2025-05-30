@@ -48,13 +48,13 @@ export const Layout: FC<ILayout> = ({
 
   return (
     <div
-      className={`scrollbar-styled remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700  ${
+      className={`scrollbar-styled remove-scrollbar relative w-full min-w-popup max-h-popup min-h-popup text-brand-white bg-brand-blue700 transition-all duration-200 ease-in-out ${
         isSwitchChainPage ? '' : 'overflow-y-auto'
       }`}
     >
       {!titleOnly && canGoBack && !hideHeader && <Header />}
       <div
-        className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white ${bgHeader}`}
+        className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white animate-slideIn ${bgHeader}`}
       >
         <img
           src={dotsImage}
@@ -93,7 +93,7 @@ export const Layout: FC<ILayout> = ({
       </div>
 
       <div
-        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-[24px] w-full ${
+        className={`flex flex-col items-center justify-center md:mx-auto pt-8 px-[24px] w-full animate-fadeIn page-content ${
           isConnectPage ? '' : 'md:max-w-sm'
         } text-brand-white bg-brand-blue700 sm:max-w-full`}
       >
