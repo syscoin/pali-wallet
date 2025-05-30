@@ -128,7 +128,11 @@ const CustomRPCView = () => {
     });
   };
   return (
-    <Layout title={state?.isEditing ? 'EDIT RPC' : t('settings.customRpc')}>
+    <Layout
+      title={
+        state?.isEditing ? `${t('buttons.edit')} RPC` : t('settings.customRpc')
+      }
+    >
       <RPCSuccessfullyAdded
         show={addedRpc}
         title={t('titles.congratulations')}

@@ -52,7 +52,11 @@ export const SwitchNetwork = () => {
   return (
     <>
       <Header accountHeader={false} />
-      <Layout canGoBack={false} title="Switch Network">
+      <Layout
+        canGoBack={false}
+        title={t('switchNetwork')}
+        isSwitchChainPage={true}
+      >
         <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center scrollbar-styled h-full">
           {!state || !state?.switchingFromTimeError ? (
             <>

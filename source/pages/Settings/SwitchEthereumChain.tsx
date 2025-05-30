@@ -101,7 +101,11 @@ const SwitchChain: React.FC = () => {
     );
   };
   return (
-    <Layout canGoBack={false} title={'SWITCH CHAIN'}>
+    <Layout
+      canGoBack={false}
+      title={t('settings.switchChain')}
+      isSwitchChainPage={true}
+    >
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">

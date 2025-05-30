@@ -49,7 +49,7 @@ const ManageNetworkView = () => {
     selected: INetworkWithKind;
   }) => {
     navigate('/settings/networks/custom-rpc', {
-      state: { selected, chain, isDefault },
+      state: { selected, chain, isDefault, isEditing: true },
     });
   };
 

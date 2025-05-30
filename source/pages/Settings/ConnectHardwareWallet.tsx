@@ -18,10 +18,13 @@ const ConnectHardwareWalletView: FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState();
   const [isReconnect, setIsReconnect] = useState<boolean>(false);
+  const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
+    window.innerWidth <= 600
+  );
   const { activeNetwork, isBitcoinBased, accounts, advancedSettings } =
     useSelector((state: RootState) => state.vault);
   const { t } = useTranslation();
-  const { alert } = useUtils();
+  const { alert, navigate } = useUtils();
   const { controllerEmitter, web3Provider } = useController();
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
@@ -205,14 +208,144 @@ const ConnectHardwareWalletView: FC = () => {
     }
   }, []);
 
+  // Handle screen size changes for optimal hardware wallet experience
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSmallScreen(window.innerWidth <= 600);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  // Prevent navigation away from hardware wallet page - ALWAYS LOCKED
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue =
+        'Are you sure you want to leave? Your hardware wallet setup will be interrupted.';
+      return e.returnValue;
+    };
+
+    const handlePopState = (e: PopStateEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Immediately push state back to prevent navigation
+      window.history.pushState(null, '', window.location.href);
+      return false;
+    };
+
+    // Prevent navigation through browser controls
+    const preventNavigation = (e: Event) => {
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+
+    // Add event listeners to prevent navigation
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState, true);
+    window.addEventListener('hashchange', preventNavigation, true);
+
+    // Block browser navigation buttons by manipulating history aggressively
+    const pushStateInterval = setInterval(() => {
+      if (window.location.pathname === '/settings/account/hardware') {
+        window.history.pushState(null, '', window.location.href);
+      }
+    }, 100);
+
+    // Prevent browser back/forward navigation by manipulating history
+    window.history.pushState(null, '', window.location.href);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState, true);
+      window.removeEventListener('hashchange', preventNavigation, true);
+      clearInterval(pushStateInterval);
+    };
+  }, [navigate]);
+
   return (
-    <Layout title={t('settings.hardwareWallet')} id="hardware-wallet-title">
+    <Layout
+      title={t('settings.hardwareWallet')}
+      id="hardware-wallet-title"
+      hideHeader={true}
+    >
+      {/* Instructions for after setup */}
+      {!isLoading && isModalOpen && (
+        <div className="mx-4 mb-4 p-3 bg-green-500/20 border border-green-500/40 rounded-lg">
+          <div className="flex items-start gap-2">
+            <svg
+              className="w-5 h-5 text-green-400 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <div>
+              <p className="text-sm text-green-200 font-medium mb-1">
+                {t(
+                  'settings.hardwareWalletSuccess',
+                  'Hardware wallet connected successfully!'
+                )}
+              </p>
+              <p className="text-xs text-green-300">
+                {t(
+                  'settings.hardwareWalletInstructions',
+                  'Close this window and reopen Pali to use your hardware wallet for transactions. Your account is now saved and persistent.'
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSmallScreen && (
+        <div className="mx-4 mb-4 p-3 bg-yellow-500/20 border border-yellow-500/40 rounded-lg">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-5 h-5 text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+              />
+            </svg>
+            <p className="text-sm text-yellow-200 font-medium">
+              {t(
+                'settings.optimalExperience',
+                'For optimal hardware wallet experience, please use a larger screen or expand your browser window.'
+              )}
+            </p>
+          </div>
+        </div>
+      )}
       <DefaultModal
         show={isModalOpen}
         title={modalTitle}
         description={modalDescription}
         onClose={() => {
-          window.close();
+          // Give user clear instructions about next steps
+          const shouldClose = window.confirm(
+            'Hardware wallet setup complete! Close this window and reopen Pali to use your hardware wallet. Your account is saved and will be available when you restart Pali.\n\nClose now?'
+          );
+          if (shouldClose) {
+            // Close the entire browser window/tab
+            window.close();
+          }
         }}
       />
       <div className="flex flex-col  items-center justify-center w-full md:max-w-md">

@@ -330,7 +330,7 @@ export const ApproveTransactionComponent = () => {
   }, [fiatPrice, calculatedFeeValue]);
 
   return (
-    <Layout title={'send.approve'} canGoBack={canGoBack}>
+    <Layout title={t('send.approve')} canGoBack={canGoBack}>
       <DefaultModal
         show={confirmedDefaultModal}
         title={t('send.approveSuccessful')}

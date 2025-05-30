@@ -7,7 +7,10 @@ import { Header, Icon, IconButton } from 'components/index';
 interface ILayout {
   canGoBack?: boolean;
   children: React.ReactNode;
+  hideHeader?: boolean;
   id?: string;
+  isConnectPage?: boolean;
+  isSwitchChainPage?: boolean;
   title: string;
   titleOnly?: boolean;
 }
@@ -15,7 +18,10 @@ interface ILayout {
 export const Layout: FC<ILayout> = ({
   canGoBack = true,
   children,
+  hideHeader = false,
   id = '',
+  isConnectPage = false,
+  isSwitchChainPage = false,
   title,
   titleOnly,
 }) => {
@@ -25,17 +31,9 @@ export const Layout: FC<ILayout> = ({
   // Check if this page was accessed from a dropdown menu
   const cameFromMenu = location.state?.fromMenu === true;
 
-  const isSwitchChainPage =
-    title === 'Switch Chain' || title === 'Cambiar Cadena';
   const bgHeader = isSwitchChainPage
     ? 'bg-gradient'
     : 'bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]';
-
-  const isConnectPage =
-    title === 'CONNECT ACCOUNT' || title === 'CONECTAR CUENTA';
-
-  const isHardwareWalletPage =
-    title === 'HARDWARE WALLET' || title === 'MONEDERO HARDWARE';
 
   // Back navigation handler
   const handleBackNavigation = () => {
@@ -54,7 +52,7 @@ export const Layout: FC<ILayout> = ({
         isSwitchChainPage ? '' : 'overflow-y-auto'
       }`}
     >
-      {!titleOnly && canGoBack && !isHardwareWalletPage && <Header />}
+      {!titleOnly && canGoBack && !hideHeader && <Header />}
       <div
         className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white ${bgHeader}`}
       >
@@ -64,7 +62,7 @@ export const Layout: FC<ILayout> = ({
           className="absolute object-cover bg-repeat-x w-full h-full"
         />
 
-        {!titleOnly && canGoBack && !isHardwareWalletPage && (
+        {!titleOnly && canGoBack && !hideHeader && (
           <IconButton
             className="z-40 cursor-pointer"
             onClick={handleBackNavigation}
@@ -77,7 +75,7 @@ export const Layout: FC<ILayout> = ({
           {title}
         </p>
 
-        {!titleOnly && canGoBack && !isHardwareWalletPage && (
+        {!titleOnly && canGoBack && !hideHeader && (
           <IconButton
             className="z-40 cursor-pointer"
             onClick={() => navigate('/home')}

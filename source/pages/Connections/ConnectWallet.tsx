@@ -100,6 +100,7 @@ export const ConnectWallet = () => {
       canGoBack={false}
       title={t('connections.connectAccount')}
       titleOnly={true}
+      isConnectPage={true}
     >
       <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (

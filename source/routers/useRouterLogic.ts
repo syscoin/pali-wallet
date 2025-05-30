@@ -24,6 +24,7 @@ export const useRouterLogic = () => {
   const navigationLockRef = useRef(false);
   const lastNavigationRef = useRef<string>('');
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
@@ -77,16 +78,27 @@ export const useRouterLogic = () => {
   // Handle window resize events to properly track fullscreen state
   useEffect(() => {
     const handleResize = () => {
-      const newIsFullscreen = window.innerWidth > 600;
-      setIsFullscreen(newIsFullscreen);
+      // Clear existing resize timeout
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+
+      // Debounce the resize handling to prevent rapid state changes
+      resizeTimeoutRef.current = setTimeout(() => {
+        const newIsFullscreen = window.innerWidth > 600;
+        setIsFullscreen(newIsFullscreen);
+      }, 300); // Longer delay for resize to prevent aggressive navigation
     };
 
     window.addEventListener('resize', handleResize);
     return () => {
       window.removeEventListener('resize', handleResize);
-      // Clean up navigation timeout
+      // Clean up timeouts
       if (navigationTimeoutRef.current) {
         clearTimeout(navigationTimeoutRef.current);
+      }
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
       }
     };
   }, []);
@@ -130,6 +142,7 @@ export const useRouterLogic = () => {
     }
 
     const canProceed = isUnlocked && accounts;
+    const isOnHardwareWalletPage = pathname === '/settings/account/hardware';
 
     // Handle initial navigation after unlock
     if (canProceed && !initialCheckComplete) {
@@ -141,12 +154,21 @@ export const useRouterLogic = () => {
       return;
     }
 
+    // IMPORTANT: Don't auto-navigate away from hardware wallet page
+    // Hardware wallet operations should be focused and uninterrupted
+    if (isOnHardwareWalletPage) {
+      // If user is on hardware wallet page, let them stay there regardless of screen size
+      // They can manually navigate away using browser controls if needed
+      // Block ANY automatic navigation attempts including resize-based changes
+      return;
+    }
+
     // Handle navigation based on screen size changes (only after initial setup)
-    if (canProceed && initialCheckComplete) {
-      if (isFullscreen && pathname !== '/settings/account/hardware') {
+    // Only apply automatic navigation for non-hardware wallet pages
+    if (canProceed && initialCheckComplete && !isOnHardwareWalletPage) {
+      // Only navigate to hardware wallet if fullscreen AND not already there AND currently on home page
+      if (isFullscreen && pathname === '/home') {
         debouncedNavigate('/settings/account/hardware');
-      } else if (!isFullscreen && pathname === '/settings/account/hardware') {
-        debouncedNavigate('/home');
       }
       return;
     }
