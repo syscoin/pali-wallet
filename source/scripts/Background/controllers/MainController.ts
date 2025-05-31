@@ -106,6 +106,56 @@ import { validateAndManageUserTransactions } from './transactions/utils';
 const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
 const COINS_LIST_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
+// Add request deduplication cache
+interface RequestCache {
+  [key: string]: {
+    promise: Promise<any>;
+    timestamp: number;
+  };
+}
+
+const requestCache: RequestCache = {};
+const CACHE_TTL = 5000; // 5 seconds TTL for cache entries
+
+// Helper function to create cache key
+const createCacheKey = (method: string, ...args: any[]): string =>
+  `${method}:${args.join(':')}`;
+
+// Helper function to get or create cached request
+const getCachedRequest = async <T>(
+  key: string,
+  requestFn: () => Promise<T>
+): Promise<T> => {
+  const now = Date.now();
+
+  // Clean up expired cache entries
+  Object.keys(requestCache).forEach((cacheKey) => {
+    if (now - requestCache[cacheKey].timestamp > CACHE_TTL) {
+      delete requestCache[cacheKey];
+    }
+  });
+
+  // Check if we have a valid cached request
+  if (requestCache[key] && now - requestCache[key].timestamp < CACHE_TTL) {
+    console.log(`[MainController] Using cached request for ${key}`);
+    return requestCache[key].promise as Promise<T>;
+  }
+
+  // Create new request and cache it
+  console.log(`[MainController] Creating new request for ${key}`);
+  const promise = requestFn();
+  requestCache[key] = { promise, timestamp: now };
+
+  // Clean up cache entry after request completes
+  promise.finally(() => {
+    setTimeout(() => {
+      delete requestCache[key];
+    }, 100); // Small delay to handle rapid successive calls
+  });
+
+  return promise;
+};
+
 class MainController extends KeyringManager {
   public account: {
     eth: IEthAccountController;
@@ -123,6 +173,8 @@ class MainController extends KeyringManager {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
+  private lastUpdatePromise: Promise<void> | null = null;
+  private lastUpdateTimestamp = 0;
 
   constructor(walletState: any) {
     super(walletState);
@@ -1149,17 +1201,25 @@ class MainController extends KeyringManager {
   }
 
   public async getInitialSysTransactionsForAccount(xpub: string) {
-    store.dispatch(setIsLoadingTxs(true));
+    const cacheKey = createCacheKey(
+      'sysTransactions',
+      xpub,
+      initialState.activeNetwork.url
+    );
 
-    const initialTxsForAccount =
-      await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
-        xpub,
-        initialState.activeNetwork.url
-      );
+    return getCachedRequest(cacheKey, async () => {
+      store.dispatch(setIsLoadingTxs(true));
 
-    store.dispatch(setIsLoadingTxs(false));
+      const initialTxsForAccount =
+        await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
+          xpub,
+          initialState.activeNetwork.url
+        );
 
-    return initialTxsForAccount;
+      store.dispatch(setIsLoadingTxs(false));
+
+      return initialTxsForAccount;
+    });
   }
 
   public setEvmTransactionAsCanceled(txHash: string, chainID: number) {
@@ -1351,18 +1411,27 @@ class MainController extends KeyringManager {
   }
 
   public async getInitialSysTokenForAccount(xpub: string) {
-    store.dispatch(setIsLoadingAssets(true));
+    const cacheKey = createCacheKey(
+      'sysAssets',
+      xpub,
+      initialState.activeNetwork.url,
+      initialState.activeNetwork.chainId
+    );
 
-    const initialSysAssetsForAccount =
-      await this.assetsManager.sys.getSysAssetsByXpub(
-        xpub,
-        initialState.activeNetwork.url,
-        initialState.activeNetwork.chainId
-      );
+    return getCachedRequest(cacheKey, async () => {
+      store.dispatch(setIsLoadingAssets(true));
 
-    store.dispatch(setIsLoadingAssets(false));
+      const initialSysAssetsForAccount =
+        await this.assetsManager.sys.getSysAssetsByXpub(
+          xpub,
+          initialState.activeNetwork.url,
+          initialState.activeNetwork.chainId
+        );
 
-    return initialSysAssetsForAccount;
+      store.dispatch(setIsLoadingAssets(false));
+
+      return initialSysAssetsForAccount;
+    });
   }
 
   public updateAssetsFromCurrentAccount({
@@ -1543,6 +1612,20 @@ class MainController extends KeyringManager {
   }
 
   public getLatestUpdateForCurrentAccount(isPolling = false) {
+    const now = Date.now();
+    const UPDATE_DEBOUNCE_TIME = 500; // 500ms debounce
+
+    // If we have a recent update in progress, return the existing promise
+    if (
+      this.lastUpdatePromise &&
+      now - this.lastUpdateTimestamp < UPDATE_DEBOUNCE_TIME
+    ) {
+      console.log(
+        '[MainController] Debouncing getLatestUpdateForCurrentAccount call'
+      );
+      return this.lastUpdatePromise;
+    }
+
     const {
       accounts,
       activeAccount,
@@ -1557,7 +1640,8 @@ class MainController extends KeyringManager {
       throw new Error('Could not update account while changing network');
     }
 
-    Promise.all([
+    this.lastUpdateTimestamp = now;
+    this.lastUpdatePromise = Promise.all([
       this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
@@ -1575,7 +1659,12 @@ class MainController extends KeyringManager {
         activeAccount,
         isPolling,
       }),
-    ]);
+    ]).then(() => {
+      // Clear the promise after completion
+      this.lastUpdatePromise = null;
+    });
+
+    return this.lastUpdatePromise;
   }
 
   public async setFaucetModalState({

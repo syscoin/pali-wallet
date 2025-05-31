@@ -15,6 +15,14 @@ import { getNetworkChain, networkChain } from 'utils/network';
 
 import { popupPromise } from './popup-promise';
 
+// Add a simple cache for provider state
+const providerStateCache: {
+  providerState?: { timestamp: number; value: any };
+  sysProviderState?: { timestamp: number; value: any };
+} = {};
+
+const PROVIDER_CACHE_TTL = 1000; // 1 second TTL
+
 /**
  * Handles methods request.
  *
@@ -295,6 +303,17 @@ export const methodRequest = async (
           },
         });
       case 'getProviderState':
+        // Check cache first
+        const nowProvider = Date.now();
+        if (
+          providerStateCache.providerState &&
+          nowProvider - providerStateCache.providerState.timestamp <
+            PROVIDER_CACHE_TTL
+        ) {
+          console.log('[Requests] Returning cached getProviderState');
+          return providerStateCache.providerState.value;
+        }
+
         // For NEVM networks, return EVM provider state
         // For UTXO networks, redirect to getSysProviderState
         const { activeNetwork: currentActiveNetwork2 } = store.getState().vault;
@@ -309,7 +328,7 @@ export const methodRequest = async (
             )
           );
         }
-        return {
+        const providerStateValue = {
           accounts: dapp.getAccount(host)
             ? [dapp.getAccount(host).address]
             : [],
@@ -318,14 +337,41 @@ export const methodRequest = async (
           networkVersion: activeNetwork.chainId,
           isBitcoinBased: isBitcoinBased && !isNEVMNetwork,
         };
+
+        // Cache the result
+        providerStateCache.providerState = {
+          value: providerStateValue,
+          timestamp: nowProvider,
+        };
+
+        return providerStateValue;
       case 'getSysProviderState':
+        // Check cache first
+        const now = Date.now();
+        if (
+          providerStateCache.sysProviderState &&
+          now - providerStateCache.sysProviderState.timestamp <
+            PROVIDER_CACHE_TTL
+        ) {
+          console.log('[Requests] Returning cached getSysProviderState');
+          return providerStateCache.sysProviderState.value;
+        }
+
         const blockExplorerURL = isBitcoinBased ? activeNetwork.url : null;
-        return {
+        const sysProviderStateValue = {
           xpub: dapp.getAccount(host)?.xpub ? dapp.getAccount(host).xpub : null,
           blockExplorerURL: blockExplorerURL,
           isUnlocked: wallet.isUnlocked(),
           isBitcoinBased,
         };
+
+        // Cache the result
+        providerStateCache.sysProviderState = {
+          value: sysProviderStateValue,
+          timestamp: now,
+        };
+
+        return sysProviderStateValue;
       default:
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
