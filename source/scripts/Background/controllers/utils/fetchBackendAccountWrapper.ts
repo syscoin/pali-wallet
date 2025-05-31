@@ -1,12 +1,12 @@
 import sys from 'syscoinjs-lib';
 
 // Request cache for deduplication
-interface RequestCacheEntry {
+interface IRequestCacheEntry {
   promise: Promise<any>;
   timestamp: number;
 }
 
-const requestCache = new Map<string, RequestCacheEntry>();
+const requestCache = new Map<string, IRequestCacheEntry>();
 const CACHE_TTL = 2000; // 2 seconds TTL for pending requests
 
 // Clean up expired cache entries

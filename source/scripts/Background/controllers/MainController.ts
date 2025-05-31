@@ -109,14 +109,14 @@ const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
 const COINS_LIST_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Add request deduplication cache
-interface RequestCache {
+interface IRequestCache {
   [key: string]: {
     promise: Promise<any>;
     timestamp: number;
   };
 }
 
-const requestCache: RequestCache = {};
+const requestCache: IRequestCache = {};
 const CACHE_TTL = 5000; // 5 seconds TTL for cache entries
 
 // Helper function to create cache key
@@ -612,8 +612,7 @@ class MainController extends KeyringManager {
     host?: string,
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
-    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
-      store.getState().vault;
+    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
     if (this.cancellablePromises.transactionPromise) {
       this.cancellablePromises.transactionPromise.cancel();
     }

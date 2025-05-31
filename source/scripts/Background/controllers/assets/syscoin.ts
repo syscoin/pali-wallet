@@ -1,5 +1,4 @@
 import { isNil } from 'lodash';
-import sys from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
