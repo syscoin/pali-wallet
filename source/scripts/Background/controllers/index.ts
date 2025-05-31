@@ -302,6 +302,9 @@ const MasterController = (
     dapp = Object.freeze(DAppController());
     wallet = new MainController(walletState);
     wallet.setStorage(chrome.storage.local);
+
+    // Initialize startup state if wallet is already unlocked
+    wallet.initializeStartupState();
   };
 
   const callGetLatestUpdateForAccount = () =>

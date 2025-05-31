@@ -178,6 +178,8 @@ class MainController extends KeyringManager {
   private lastUpdatePromise: Promise<void> | null = null;
   private lastUpdateTimestamp = 0;
   private currentUpdateAccountId: string | null = null;
+  private justUnlocked = false;
+  private isStartingUp = false;
 
   constructor(walletState: any) {
     super(walletState);
@@ -396,6 +398,11 @@ class MainController extends KeyringManager {
     const controller = getController();
     const { canLogin, wallet } = await this.unlock(pwd);
     if (!canLogin) throw new Error('Invalid password');
+
+    // Set flags to indicate we just unlocked and are starting up
+    this.justUnlocked = true;
+    this.isStartingUp = true;
+
     if (!isEmpty(wallet)) {
       store.dispatch(
         setNetworkChange({
@@ -431,6 +438,12 @@ class MainController extends KeyringManager {
 
     store.dispatch(setAccounts(accounts));
     store.dispatch(setLastLogin());
+
+    // Clear the flags after a short delay to allow initialization to complete
+    setTimeout(() => {
+      this.justUnlocked = false;
+      this.isStartingUp = false;
+    }, 2000); // 2 seconds - enough time for all initialization
 
     return canLogin;
   }
@@ -666,6 +679,14 @@ class MainController extends KeyringManager {
         this.transactionsManager.utils.clearCache();
         clearProviderCache();
         clearFetchBackendAccountCache();
+
+        // Skip dapp notifications and updates during startup
+        if (this.isStartingUp) {
+          console.log(
+            '[MainController] Skipping dapp notifications and updates during startup'
+          );
+          return;
+        }
 
         // Notify all connected DApps about the account change
         const controller = getController();
@@ -1701,6 +1722,15 @@ class MainController extends KeyringManager {
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
     const isNetworkChanging = networkStatus === 'switching';
 
+    // Skip if we just unlocked and this is not a polling call
+    // This prevents duplicate calls on startup - let polling handle it
+    if (this.justUnlocked && !isPolling) {
+      console.log(
+        '[MainController] Skipping non-polling update right after unlock - polling will handle it'
+      );
+      return Promise.resolve();
+    }
+
     // Create a unique ID for the current account
     const accountId = `${activeAccount.type}:${activeAccount.id}`;
 
@@ -2151,6 +2181,16 @@ class MainController extends KeyringManager {
       isBitcoinBased,
       activeNetwork: network,
     });
+
+    // Skip dapp notifications during startup
+    if (this.isStartingUp) {
+      console.log(
+        '[MainController] Skipping network change dapp notifications during startup'
+      );
+      store.dispatch(switchNetworkSuccess(network));
+      return;
+    }
+
     this.handleStateChange([
       {
         method: PaliEvents.chainChanged,
@@ -2217,6 +2257,16 @@ class MainController extends KeyringManager {
   // Network status management
   public resetNetworkStatus(): void {
     store.dispatch(resetNetworkStatus());
+  }
+
+  // Initialize startup state when wallet is already unlocked
+  public initializeStartupState(): void {
+    if (this.isUnlocked()) {
+      this.isStartingUp = true;
+      setTimeout(() => {
+        this.isStartingUp = false;
+      }, 2000);
+    }
   }
 }
 

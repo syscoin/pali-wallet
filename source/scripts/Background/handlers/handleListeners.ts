@@ -22,9 +22,11 @@ export const handleListeners = (masterController: IMasterController) => {
       periodInMinutes: FIAT_UPDATE_INTERVAL,
     });
 
-    // Trigger initial updates immediately after installation/update
-    checkForUpdates();
-    masterController.wallet.setFiat(); // Initial fiat price fetch
+    // Delay initial updates to allow proper initialization
+    setTimeout(() => {
+      checkForUpdates();
+      masterController.wallet.setFiat(); // Initial fiat price fetch
+    }, 1000); // 1 second delay
   });
 
   // Called when the browser first starts
@@ -38,9 +40,11 @@ export const handleListeners = (masterController: IMasterController) => {
       periodInMinutes: FIAT_UPDATE_INTERVAL,
     });
 
-    // Trigger initial updates on startup
-    checkForUpdates();
-    masterController.wallet.setFiat();
+    // Delay initial updates to allow proper initialization
+    setTimeout(() => {
+      checkForUpdates();
+      masterController.wallet.setFiat();
+    }, 1000); // 1 second delay
   });
 
   // Listener for all alarms
