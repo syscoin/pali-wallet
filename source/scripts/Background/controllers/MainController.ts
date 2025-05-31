@@ -620,7 +620,45 @@ class MainController extends KeyringManager {
       }
     }
 
-    this.setActiveAccount(id, type)
+    // Custom implementation to avoid fetching all accounts
+    const setActiveAccountOptimized = async () => {
+      if (isBitcoinBased && (this as any).hd) {
+        // For Bitcoin-based networks with HD wallet
+        const targetAccounts = this.wallet.accounts[type];
+
+        // Validate account exists
+        if (!targetAccounts[id] || !targetAccounts[id].xpub) {
+          throw new Error('Account not set');
+        }
+
+        // Set the HD wallet account index
+        if (targetAccounts[id].address) {
+          (this as any).hd.setAccountIndex(id);
+        }
+
+        // Update wallet state
+        this.wallet = {
+          ...this.wallet,
+          activeAccountId: id,
+          activeAccountType: type,
+        };
+
+        // Update session mnemonic for the active account
+        const isHDAccount = type === KeyringAccountType.HDAccount;
+        (this as any).sessionMnemonic = isHDAccount
+          ? (this as any).sessionMainMnemonic
+          : targetAccounts[id].xprv;
+      } else {
+        // For non-Bitcoin networks, just update the wallet state
+        this.wallet = {
+          ...this.wallet,
+          activeAccountId: id,
+          activeAccountType: type,
+        };
+      }
+    };
+
+    setActiveAccountOptimized()
       .then(() => {
         store.dispatch(setActiveAccount({ id, type }));
 
@@ -657,6 +695,8 @@ class MainController extends KeyringManager {
             },
           ]);
         }
+        // Fetch data for the newly active account only
+        this.getLatestUpdateForCurrentAccount(false);
       })
       .finally(() => {
         // Always clear switching account loading state, even if there's an error
