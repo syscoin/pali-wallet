@@ -3,6 +3,7 @@ import sys from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
+import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import { ITokenSysProps } from 'types/tokens';
 
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
@@ -43,7 +44,7 @@ const SysAssetsControler = (): ISysAssetsController => {
     try {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
-      const { tokens, tokensAsset } = await sys.utils.fetchBackendAccount(
+      const { tokens, tokensAsset } = await fetchBackendAccountCached(
         ensureTrailingSlash(networkUrl),
         xpub,
         requestOptions,

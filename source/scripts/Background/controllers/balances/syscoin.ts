@@ -1,5 +1,4 @@
-import sys from 'syscoinjs-lib';
-
+import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import { IPaliAccount } from 'state/vault/types';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
@@ -13,7 +12,7 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     try {
       const requestDetails = 'details=basic&pageSize=0';
 
-      const { balance } = await sys.utils.fetchBackendAccount(
+      const { balance } = await fetchBackendAccountCached(
         networkUrl,
         currentAccount.xpub,
         requestDetails,

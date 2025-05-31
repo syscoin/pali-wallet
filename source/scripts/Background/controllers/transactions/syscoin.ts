@@ -1,6 +1,6 @@
 import clone from 'lodash/clone';
-import sys from 'syscoinjs-lib';
 
+import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
@@ -16,12 +16,7 @@ const SysTransactionController = (): ISysTransactionsController => {
       const requestOptions = 'details=txs&pageSize=30';
 
       const { transactions }: { transactions: ISysTransaction[] } =
-        await sys.utils.fetchBackendAccount(
-          networkUrl,
-          xpub,
-          requestOptions,
-          true
-        );
+        await fetchBackendAccountCached(networkUrl, xpub, requestOptions, true);
 
       return transactions;
     } catch (error) {

@@ -23,6 +23,13 @@ const providerStateCache: {
 
 const PROVIDER_CACHE_TTL = 1000; // 1 second TTL
 
+// Add function to clear provider cache
+export const clearProviderCache = () => {
+  delete providerStateCache.providerState;
+  delete providerStateCache.sysProviderState;
+  console.log('[Requests] Provider cache cleared');
+};
+
 /**
  * Handles methods request.
  *

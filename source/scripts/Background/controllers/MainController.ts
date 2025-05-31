@@ -84,6 +84,7 @@ import { IAssetsManager, INftController } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
+import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import NftsController from './nfts/nfts';
 import {
@@ -101,6 +102,7 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { validateAndManageUserTransactions } from './transactions/utils';
+import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
 // Constants for fiat price functionality
 const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
@@ -175,6 +177,7 @@ class MainController extends KeyringManager {
   } | null = null;
   private lastUpdatePromise: Promise<void> | null = null;
   private lastUpdateTimestamp = 0;
+  private currentUpdateAccountId: string | null = null;
 
   constructor(walletState: any) {
     super(walletState);
@@ -583,7 +586,8 @@ class MainController extends KeyringManager {
     host?: string,
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
-    const { accounts, activeAccount } = store.getState().vault;
+    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
+      store.getState().vault;
     if (this.cancellablePromises.transactionPromise) {
       this.cancellablePromises.transactionPromise.cancel();
     }
@@ -620,8 +624,39 @@ class MainController extends KeyringManager {
       .then(() => {
         store.dispatch(setActiveAccount({ id, type }));
 
-        // Clear transaction cache when switching accounts
+        // Clear caches when switching accounts
         this.transactionsManager.utils.clearCache();
+        clearProviderCache();
+        clearFetchBackendAccountCache();
+
+        // Notify all connected DApps about the account change
+        const controller = getController();
+        const { dapps } = store.getState().dapp;
+        const newAccount = accounts[type][id];
+
+        // Update each connected DApp with the new account
+        Object.keys(dapps).forEach((dappHost) => {
+          if (dapps[dappHost]) {
+            controller.dapp.changeAccount(dappHost, id, type);
+          }
+        });
+
+        // Emit global account change events
+        if (isBitcoinBased) {
+          this.handleStateChange([
+            {
+              method: PaliEvents.xpubChanged,
+              params: newAccount.xpub,
+            },
+          ]);
+        } else {
+          this.handleStateChange([
+            {
+              method: PaliEvents.accountsChanged,
+              params: [newAccount.address],
+            },
+          ]);
+        }
       })
       .finally(() => {
         // Always clear switching account loading state, even if there's an error
@@ -1615,17 +1650,6 @@ class MainController extends KeyringManager {
     const now = Date.now();
     const UPDATE_DEBOUNCE_TIME = 500; // 500ms debounce
 
-    // If we have a recent update in progress, return the existing promise
-    if (
-      this.lastUpdatePromise &&
-      now - this.lastUpdateTimestamp < UPDATE_DEBOUNCE_TIME
-    ) {
-      console.log(
-        '[MainController] Debouncing getLatestUpdateForCurrentAccount call'
-      );
-      return this.lastUpdatePromise;
-    }
-
     const {
       accounts,
       activeAccount,
@@ -1636,6 +1660,38 @@ class MainController extends KeyringManager {
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
     const isNetworkChanging = networkStatus === 'switching';
+
+    // Create a unique ID for the current account
+    const accountId = `${activeAccount.type}:${activeAccount.id}`;
+
+    // If this is a different account than the one we're currently updating, cancel the old update
+    if (
+      this.currentUpdateAccountId &&
+      this.currentUpdateAccountId !== accountId
+    ) {
+      console.log(
+        '[MainController] Cancelling update for previous account:',
+        this.currentUpdateAccountId
+      );
+      this.currentUpdateAccountId = accountId;
+      this.lastUpdatePromise = null;
+      this.lastUpdateTimestamp = 0;
+    } else {
+      this.currentUpdateAccountId = accountId;
+    }
+
+    // If we have a recent update in progress for the same account, return the existing promise
+    if (
+      this.lastUpdatePromise &&
+      now - this.lastUpdateTimestamp < UPDATE_DEBOUNCE_TIME
+    ) {
+      console.log(
+        '[MainController] Debouncing getLatestUpdateForCurrentAccount call for account:',
+        accountId
+      );
+      return this.lastUpdatePromise;
+    }
+
     if (isNetworkChanging || isNil(activeAccountValues.address)) {
       throw new Error('Could not update account while changing network');
     }
