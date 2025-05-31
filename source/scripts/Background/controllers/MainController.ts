@@ -396,56 +396,69 @@ class MainController extends KeyringManager {
     // Ensure clean network state during login
     store.dispatch(resetNetworkStatus());
     const controller = getController();
-    const { canLogin, wallet } = await this.unlock(pwd);
-    if (!canLogin) throw new Error('Invalid password');
 
-    // Set flags to indicate we just unlocked and are starting up
-    this.justUnlocked = true;
-    this.isStartingUp = true;
+    try {
+      console.log('[MainController] Attempting unlock...');
+      const { canLogin, wallet } = await this.unlock(pwd);
 
-    if (!isEmpty(wallet)) {
-      store.dispatch(
-        setNetworkChange({
-          activeChain: INetworkType.Syscoin,
-          wallet,
-        })
-      );
-    }
-
-    controller.dapp
-      .handleStateChange(PaliEvents.lockStateChanged, {
-        method: PaliEvents.lockStateChanged,
-        params: {
-          accounts: [],
-          isUnlocked: this.isUnlocked(),
-        },
-      })
-      .catch((error) => console.error('Unlock', error));
-
-    const accounts = JSON.parse(
-      JSON.stringify(store.getState().vault.accounts)
-    );
-
-    // update xprv every time the wallet is unlocked
-    for (const type in accounts) {
-      for (const id in accounts[type]) {
-        accounts[type][id] = {
-          ...accounts[type][id],
-          xprv: this.wallet.accounts[type][id].xprv,
-        };
+      if (!canLogin) {
+        console.error('[MainController] Unlock failed - invalid password');
+        throw new Error('Invalid password');
       }
+
+      console.log('[MainController] Unlock successful');
+
+      // Set flags to indicate we just unlocked and are starting up
+      this.justUnlocked = true;
+      this.isStartingUp = true;
+
+      if (!isEmpty(wallet)) {
+        store.dispatch(
+          setNetworkChange({
+            activeChain: INetworkType.Syscoin,
+            wallet,
+          })
+        );
+      }
+
+      controller.dapp
+        .handleStateChange(PaliEvents.lockStateChanged, {
+          method: PaliEvents.lockStateChanged,
+          params: {
+            accounts: [],
+            isUnlocked: this.isUnlocked(),
+          },
+        })
+        .catch((error) => console.error('Unlock', error));
+
+      const accounts = JSON.parse(
+        JSON.stringify(store.getState().vault.accounts)
+      );
+
+      // update xprv every time the wallet is unlocked
+      for (const type in accounts) {
+        for (const id in accounts[type]) {
+          accounts[type][id] = {
+            ...accounts[type][id],
+            xprv: this.wallet.accounts[type][id].xprv,
+          };
+        }
+      }
+
+      store.dispatch(setAccounts(accounts));
+      store.dispatch(setLastLogin());
+
+      // Clear the flags after a short delay to allow initialization to complete
+      setTimeout(() => {
+        this.justUnlocked = false;
+        this.isStartingUp = false;
+      }, 2000); // 2 seconds - enough time for all initialization
+
+      return canLogin;
+    } catch (error) {
+      console.error('[MainController] Unlock error:', error);
+      throw error;
     }
-
-    store.dispatch(setAccounts(accounts));
-    store.dispatch(setLastLogin());
-
-    // Clear the flags after a short delay to allow initialization to complete
-    setTimeout(() => {
-      this.justUnlocked = false;
-      this.isStartingUp = false;
-    }, 2000); // 2 seconds - enough time for all initialization
-
-    return canLogin;
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
@@ -633,46 +646,19 @@ class MainController extends KeyringManager {
       }
     }
 
-    // Custom implementation to avoid fetching all accounts
-    const setActiveAccountOptimized = async () => {
-      if (isBitcoinBased && (this as any).hd) {
-        // For Bitcoin-based networks with HD wallet
-        const targetAccounts = this.wallet.accounts[type];
-
-        // Validate account exists
-        if (!targetAccounts[id] || !targetAccounts[id].xpub) {
-          throw new Error('Account not set');
-        }
-
-        // Set the HD wallet account index
-        if (targetAccounts[id].address) {
-          (this as any).hd.setAccountIndex(id);
-        }
-
-        // Update wallet state
-        this.wallet = {
-          ...this.wallet,
-          activeAccountId: id,
-          activeAccountType: type,
-        };
-
-        // Update session mnemonic for the active account
-        const isHDAccount = type === KeyringAccountType.HDAccount;
-        (this as any).sessionMnemonic = isHDAccount
-          ? (this as any).sessionMainMnemonic
-          : targetAccounts[id].xprv;
-      } else {
-        // For non-Bitcoin networks, just update the wallet state
-        this.wallet = {
-          ...this.wallet,
-          activeAccountId: id,
-          activeAccountType: type,
-        };
-      }
-    };
-
-    setActiveAccountOptimized()
+    // Use the parent's setActiveAccount method to properly handle all setup
+    this.setActiveAccount(id, type)
       .then(() => {
+        // After parent's setActiveAccount, fix the HD signer to point to the correct account
+        // The parent's updateUTXOAccounts processes all accounts and leaves HD signer
+        // pointing to the last processed account, so we need to reset it
+        if (isBitcoinBased && (this as any).hd) {
+          (this as any).hd.setAccountIndex(id);
+          console.log(
+            `[MainController] Reset HD signer to account ${id} after setActiveAccount`
+          );
+        }
+
         store.dispatch(setActiveAccount({ id, type }));
 
         // Clear caches when switching accounts
@@ -718,6 +704,11 @@ class MainController extends KeyringManager {
         }
         // Fetch data for the newly active account only
         this.getLatestUpdateForCurrentAccount(false);
+      })
+      .catch((error) => {
+        console.error('Failed to set active account:', error);
+        // Re-throw to let the UI handle the error
+        throw error;
       })
       .finally(() => {
         // Always clear switching account loading state, even if there's an error
