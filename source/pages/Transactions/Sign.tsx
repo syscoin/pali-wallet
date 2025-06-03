@@ -10,10 +10,10 @@ import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 interface ISign {
-  send?: boolean;
+  signOnly?: boolean;
 }
 
-const Sign: React.FC<ISign> = ({ send = false }) => {
+const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { controllerEmitter } = useController();
   const { host, eventName, ...data } = useQueryData();
   const { t } = useTranslation();
@@ -34,7 +34,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
     try {
       const response = await controllerEmitter(
         ['wallet', 'syscoinTransaction', 'signTransaction'],
-        [data, send, data?.pathIn]
+        [data, signOnly, data?.pathIn]
       );
 
       setConfirmed(true);
@@ -66,7 +66,7 @@ const Sign: React.FC<ISign> = ({ send = false }) => {
         onClose={window.close}
         title={t('transactions.signatureRequestWasRequest')}
         phraseOne={
-          send
+          signOnly
             ? t('transactions.theDappHas')
             : t('transactions.youCanCheckYour')
         }
