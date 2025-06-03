@@ -1,25 +1,29 @@
 import { ethers } from 'ethers';
 
 import { getController } from 'scripts/Background';
+import { INetworkWithKind } from 'state/vault/types';
 
 export const validatePrivateKeyValue = (
   privKey: string,
-  isBitcoinBased: boolean
+  isBitcoinBased: boolean,
+  activeNetwork?: INetworkWithKind
 ) => {
   const mainController = getController();
-  const initialValue = privKey.match(/^(0x|zprv)/)?.[0];
 
-  if ([undefined, '0x'].includes(initialValue) && !isBitcoinBased) {
+  if (!isBitcoinBased) {
     try {
-      new ethers.Wallet(initialValue === undefined ? `0x${privKey}` : privKey);
+      new ethers.Wallet(privKey);
       return true;
     } catch (error) {
       return false;
     }
   }
 
-  if (initialValue === 'zprv' && isBitcoinBased) {
-    const { isValid } = mainController.wallet.validateZprv(privKey);
+  if (isBitcoinBased) {
+    const { isValid } = mainController.wallet.validateZprv(
+      privKey,
+      activeNetwork
+    );
     return isValid;
   }
 

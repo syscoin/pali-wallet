@@ -1034,7 +1034,11 @@ class MainController extends KeyringManager {
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
     const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
       store.getState().vault;
-    const importedAccount = await this.importAccount(privKey, label);
+    const importedAccount = await this.importAccount(
+      privKey,
+      label,
+      activeNetwork
+    );
 
     const paliImp: IPaliAccount = {
       ...importedAccount,

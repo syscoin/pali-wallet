@@ -25,6 +25,7 @@ const ImportAccountView = () => {
     accounts,
     activeAccount: activeAccountMeta,
     isBitcoinBased,
+    activeNetwork,
   } = useSelector((state: RootState) => state.vault);
 
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
@@ -102,7 +103,13 @@ const ImportAccountView = () => {
                 { required: true, message: '' },
                 () => ({
                   async validator(_, value) {
-                    if (validatePrivateKeyValue(value, isBitcoinBased)) {
+                    if (
+                      validatePrivateKeyValue(
+                        value,
+                        isBitcoinBased,
+                        activeNetwork
+                      )
+                    ) {
                       setValidPrivateKey(true);
                       return Promise.resolve();
                     }
