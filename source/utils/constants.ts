@@ -134,7 +134,7 @@ export const SYSCOIN_UTXO_MAINNET_NETWORK = {
 
 export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   chainId: CHAIN_IDS.SYSCOIN_TESTNET,
-  url: 'https://blockbook-dev.syscoin.org',
+  url: 'https://explorer-blockbook-dev.syscoin.org/',
   label: 'Syscoin Testnet',
   default: true,
   currency: 'tsys',
