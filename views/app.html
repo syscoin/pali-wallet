@@ -14,7 +14,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: #07152B;
+        background-color: #07152b;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -22,51 +22,52 @@
         z-index: 9999;
         transition: opacity 0.3s ease-out;
       }
-      
+
       #initial-loader .logo-container {
         display: flex;
         gap: 12px;
         animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
-      
+
       #initial-loader h1 {
-        color: #4DA2CF;
+        color: #4da2cf;
         font-family: 'Poppins', sans-serif;
         font-size: 37.87px;
         line-height: 37.87px;
         letter-spacing: 0.379px;
         margin: 0;
       }
-      
+
       #initial-loader .bold {
         font-weight: 700;
       }
-      
+
       #initial-loader .light {
         font-weight: 300;
       }
-      
+
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           opacity: 1;
         }
         50% {
           opacity: 0.5;
         }
       }
-      
+
       /* Hide loader when React app is ready */
       body.app-loaded #initial-loader {
         opacity: 0;
         pointer-events: none;
       }
-      
+
       /* Ensure the app root is hidden until ready */
       #app-root {
         opacity: 0;
         transition: opacity 0.3s ease-in;
       }
-      
+
       body.app-loaded #app-root {
         opacity: 1;
       }
@@ -80,7 +81,7 @@
         <h1 class="light">Wallet</h1>
       </div>
     </div>
-    
+
     <div id="app-root" class="w-full min-w-popup h-full min-h-popup" />
   </body>
 </html>

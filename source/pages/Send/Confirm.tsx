@@ -1291,9 +1291,9 @@ export const SendConfirm = () => {
                           .format({ symbol: '' })}`
                       : !isBitcoinBased && isEIP1559Compatible === false
                       ? `${removeScientificNotation(
-                          currency(basicTxValues.amount, { precision: 18 }).add(
-                            gasPrice / 10 ** 18
-                          ).value
+                          currency(basicTxValues.amount, {
+                            precision: 18,
+                          }).add(gasPrice / 10 ** 18).value
                         )}`
                       : `${currency(basicTxValues.amount, { precision: 18 })
                           .add(getCalculatedFee || 0)
