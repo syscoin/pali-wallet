@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { Button } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { migrateWalletState } from 'state/migrateWalletState';
 
 const Unlock: React.FC<{
   externalRoute: string;
@@ -22,7 +21,6 @@ const Unlock: React.FC<{
   const onSubmit = async ({ password }: { password: string }) => {
     try {
       setIsLoading(true);
-      await migrateWalletState('persist:root', 'state', true);
 
       const result = await controllerEmitter(
         ['wallet', 'unlockFromController'],

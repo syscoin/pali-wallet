@@ -95,6 +95,7 @@ import {
   patchFetchWithPaliHeaders,
   getPaliHeaders,
 } from './providers/patchFetchWithPaliHeaders';
+import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
 import {
   IEvmTransactionResponse,
@@ -399,6 +400,14 @@ class MainController extends KeyringManager {
 
     try {
       console.log('[MainController] Attempting unlock...');
+
+      // Ensure storage is initialized before attempting unlock
+      const storageManager = StorageManager.getInstance();
+      await storageManager.ensureInitialized();
+      console.log(
+        '[MainController] Storage initialized, proceeding with unlock...'
+      );
+
       const { canLogin, wallet } = await this.unlock(pwd);
 
       if (!canLogin) {
