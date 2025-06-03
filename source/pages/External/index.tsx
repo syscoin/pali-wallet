@@ -1,11 +1,11 @@
 /* eslint-disable import/no-extraneous-dependencies */
 
 import React from 'react';
-import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
-import { ToastAlert } from 'components/index';
 import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
@@ -26,11 +26,13 @@ import External from './External';
 
 const externalRootElement = document.getElementById('external-root');
 
-const options = {
-  position: positions.BOTTOM_CENTER,
-  timeout: 2 * 1000,
-  offset: '30px',
-  transition: transitions.FADE,
+const toastOptions = {
+  position: 'bottom-center' as const,
+  autoClose: 2 * 1000,
+  hideProgressBar: false,
+  closeOnClick: true,
+  pauseOnHover: true,
+  draggable: true,
 };
 
 if (externalRootElement) {
@@ -39,9 +41,8 @@ if (externalRootElement) {
     root.render(
       <React.StrictMode>
         <Provider store={store}>
-          <AlertProvider template={ToastAlert} {...options}>
-            <External />
-          </AlertProvider>
+          <External />
+          <ToastContainer {...toastOptions} />
         </Provider>
       </React.StrictMode>
     );

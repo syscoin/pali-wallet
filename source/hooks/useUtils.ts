@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useAlert } from 'react-alert';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 export const useUtils = () => {
-  const alert = useAlert();
   const navigate = useNavigate();
 
   const useCopyClipboard = (
@@ -33,7 +32,14 @@ export const useUtils = () => {
 
   return {
     useCopyClipboard,
-    alert,
+    alert: {
+      show: toast,
+      success: toast.success,
+      error: toast.error,
+      info: toast.info,
+      warning: toast.warn,
+      removeAll: toast.dismiss,
+    },
     navigate,
   };
 };

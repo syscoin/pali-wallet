@@ -7,7 +7,3 @@ declare module '*.svg' {
   const value: string;
   export default value;
 }
-
-declare module 'react-alert';
-
-declare module 'bip84';

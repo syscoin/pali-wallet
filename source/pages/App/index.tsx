@@ -13,11 +13,11 @@ import 'assets/styles/custom-send-utxo-input.css';
 import 'assets/fonts/index.css';
 
 import React from 'react';
-import { transitions, positions, Provider as AlertProvider } from 'react-alert';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
+import { ToastContainer } from 'react-toastify';
 
-import { ToastAlert } from 'components/index';
+import 'react-toastify/dist/ReactToastify.css';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
@@ -28,11 +28,13 @@ import App from './App';
 
 const appRootElement = document.getElementById('app-root');
 
-const options = {
-  position: positions.BOTTOM_CENTER,
-  timeout: 2 * 1000,
-  offset: '30px',
-  transition: transitions.FADE,
+const toastOptions = {
+  position: 'bottom-center' as const,
+  autoClose: 2 * 1000,
+  hideProgressBar: false,
+  closeOnClick: true,
+  pauseOnHover: true,
+  draggable: true,
 };
 
 if (appRootElement) {
@@ -49,9 +51,8 @@ if (appRootElement) {
         root.render(
           <React.StrictMode>
             <Provider store={store}>
-              <AlertProvider template={ToastAlert} {...options}>
-                <App />
-              </AlertProvider>
+              <App />
+              <ToastContainer {...toastOptions} />
             </Provider>
           </React.StrictMode>
         );
@@ -69,9 +70,8 @@ if (appRootElement) {
         root.render(
           <React.StrictMode>
             <Provider store={store}>
-              <AlertProvider template={ToastAlert} {...options}>
-                <App />
-              </AlertProvider>
+              <App />
+              <ToastContainer {...toastOptions} />
             </Provider>
           </React.StrictMode>
         );
