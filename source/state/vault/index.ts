@@ -194,6 +194,21 @@ const VaultState = createSlice({
             //This is for the default imported account, we don't want to add it yet to pali State
             continue;
           }
+
+          // Check if we're switching to UTXO and the xpub is actually an Ethereum public key
+          const isInvalidXpubForUTXO =
+            activeChain === INetworkType.Syscoin &&
+            account.xpub.startsWith('0x');
+
+          if (isInvalidXpubForUTXO) {
+            // Skip updating this account - it needs to be regenerated with proper Bitcoin xpub
+            // The updateUTXOAccounts method in KeyringManager will handle regenerating it
+            console.log(
+              `Skipping account ${accountId} update - invalid xpub for UTXO network`
+            );
+            continue;
+          }
+
           const mainAccount: IPaliAccount =
             state.accounts[accountType][account.id];
           // Update the account properties, leaving the assets and transactions fields unchanged

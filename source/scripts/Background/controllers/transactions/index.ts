@@ -77,6 +77,15 @@ const TransactionsManager = (
     try {
       let result;
       if (isBitcoinBased) {
+        // Check if the xpub is valid for UTXO (not an Ethereum public key)
+        if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
+          console.error(
+            'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
+          );
+          // Return empty array for invalid xpub
+          return [];
+        }
+
         result = await SysTransactionController().pollingSysTransactions(
           currentAccount.xpub,
           activeNetworkUrl

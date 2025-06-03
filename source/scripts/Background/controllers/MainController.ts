@@ -1368,6 +1368,15 @@ class MainController extends KeyringManager {
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     if (isBitcoinBased) {
+      // Check if the xpub is valid for UTXO (not an Ethereum public key)
+      if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
+        console.error(
+          'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
+        );
+        // Skip fetching transactions with invalid xpub
+        return;
+      }
+
       // UTXO: Use centralized caching and handle Redux dispatch
       this.transactions.sys
         .getInitialUserTransactionsByXpub(
@@ -2213,6 +2222,12 @@ class MainController extends KeyringManager {
     ]);
     if (isBitcoinBased) {
       const isTestnet = this.verifyIfIsTestnet();
+      const accountXpub =
+        wallet.accounts[wallet.activeAccountType][wallet.activeAccountId].xpub;
+
+      // Check if xpub is valid for UTXO network (not an Ethereum public key)
+      const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
+
       this.handleStateChange([
         {
           method: PaliEvents.isTestnet,
@@ -2220,9 +2235,7 @@ class MainController extends KeyringManager {
         },
         {
           method: PaliEvents.xpubChanged,
-          params:
-            wallet.accounts[wallet.activeAccountType][wallet.activeAccountId]
-              .xpub,
+          params: isValidXpub ? accountXpub : null,
         },
         {
           method: PaliEvents.accountsChanged,

@@ -17,6 +17,18 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
     switch (isBitcoinBased) {
       case true:
         try {
+          // Check if the xpub is valid for UTXO (not an Ethereum public key)
+          if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
+            console.error(
+              'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
+            );
+            // Return empty assets for invalid xpub
+            return {
+              ...currentAccount.assets,
+              syscoin: [],
+            };
+          }
+
           const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
             currentAccount.xpub,
             activeNetworkUrl,
