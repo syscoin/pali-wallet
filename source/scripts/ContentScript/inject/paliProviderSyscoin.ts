@@ -224,10 +224,10 @@ export class PaliInpageProviderSys extends BaseProvider {
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (args.method !== 'wallet_getSysProviderState') {
-      const isSyscoinChain = await this._isSyscoinChain;
-      if (!isSyscoinChain)
+      const isBlockbookChain = await this._isBlockbookChain();
+      if (!isBlockbookChain)
         throw new Error(
-          'UTXO Content only are valid for syscoin chain for now'
+          'UTXO operations require a blockbook-compatible endpoint'
         );
     }
     return super.request(args);
@@ -289,16 +289,15 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
     this._sysState.isTestnet = isTestnet;
   }
-  private async _isSyscoinChain(): Promise<boolean> {
+  private async _isBlockbookChain(): Promise<boolean> {
     let checkExplorer = false;
     try {
-      //Only trezor blockbooks are accepted as endpoint for UTXO chains for now
+      //Only blockbook endpoints are accepted for UTXO chains
       const rpcoutput = await (
         await fetch(this._sysState.blockExplorerURL + 'api/v2')
       ).json();
-      checkExplorer = rpcoutput.blockbook.coin
-        .toLowerCase()
-        .includes('syscoin');
+      // Check if it's a valid blockbook endpoint (supports any UTXO coin)
+      checkExplorer = Boolean(rpcoutput.blockbook && rpcoutput.blockbook.coin);
     } catch (e) {
       //Its not a blockbook, so it might be a ethereum RPC
       checkExplorer = false;
