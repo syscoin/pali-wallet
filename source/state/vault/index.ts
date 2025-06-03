@@ -20,7 +20,6 @@ import {
   ISysTransaction,
   TransactionValueType,
 } from 'scripts/Background/controllers/transactions/types';
-import { convertTransactionValueToCompare } from 'scripts/Background/controllers/transactions/utils';
 import { ITokenEthProps } from 'types/tokens';
 import {
   PALI_NETWORKS_STATE,
@@ -28,6 +27,7 @@ import {
 } from 'utils/constants';
 import { chromeStorage } from 'utils/storageAPI';
 import { isTokenTransfer } from 'utils/transactions';
+import { convertTransactionValueToCompare } from 'utils/transactionValue';
 
 import {
   IChangingConnectedAccount,
