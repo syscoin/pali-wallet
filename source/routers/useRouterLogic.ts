@@ -104,7 +104,7 @@ export const useRouterLogic = () => {
   }, []);
 
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'getCurrentState' }).then((message) => {
+    chrome.runtime.sendMessage({ type: 'getCurrentState' }, (message) => {
       rehydrateStore(store, message.data);
     });
 

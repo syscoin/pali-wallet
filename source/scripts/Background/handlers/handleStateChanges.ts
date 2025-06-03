@@ -6,14 +6,18 @@ let currentIsBitcoinBased = currentState.vault.isBitcoinBased;
 
 export function handleObserveStateChanges() {
   // send initial state to popup
-  chrome.runtime
-    .sendMessage({
+  chrome.runtime.sendMessage(
+    {
       type: 'CONTROLLER_STATE_CHANGE',
       data: currentState,
-    })
-    .catch(() => {
-      // no-op
-    });
+    },
+    () => {
+      // ignore errors when sending message and the extension is closed
+      if (chrome.runtime.lastError) {
+        // no-op
+      }
+    }
+  );
 
   store.subscribe(() => {
     const nextState = store.getState();
@@ -29,14 +33,18 @@ export function handleObserveStateChanges() {
       currentState = nextState;
 
       // send state changes to popup
-      chrome.runtime
-        .sendMessage({
+      chrome.runtime.sendMessage(
+        {
           type: 'CONTROLLER_STATE_CHANGE',
           data: nextState,
-        })
-        .catch(() => {
-          //no-op
-        }); // ignore errors when sending message and the extension is closed
+        },
+        () => {
+          // ignore errors when sending message and the extension is closed
+          if (chrome.runtime.lastError) {
+            // no-op
+          }
+        }
+      );
     }
   });
 }

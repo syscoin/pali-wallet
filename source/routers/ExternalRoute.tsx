@@ -44,7 +44,7 @@ export const ExternalRoute = () => {
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'getCurrentState' }).then((message) => {
+    chrome.runtime.sendMessage({ type: 'getCurrentState' }, (message) => {
       rehydrateStore(store, message.data);
     });
 

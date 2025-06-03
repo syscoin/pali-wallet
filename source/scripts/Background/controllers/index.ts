@@ -332,22 +332,43 @@ const MasterController = (
    * Creates a popup for external routes. Mostly for DApps
    * @returns the window object from the popup
    */
-  const createPopup = async (popUpRoute = '', data = {}) => {
-    const window = await chrome.windows.getCurrent();
+  const createPopup = async (
+    popUpRoute = '',
+    data = {}
+  ): Promise<chrome.windows.Window> =>
+    new Promise((resolve, reject) => {
+      chrome.windows.getCurrent((window) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+          return;
+        }
 
-    if (!window || !window.width) return;
+        if (!window || !window.width) {
+          reject(new Error('No window available'));
+          return;
+        }
 
-    const params = new URLSearchParams();
-    if (popUpRoute) params.append('route', popUpRoute);
-    if (data) params.append('data', JSON.stringify(data));
+        const params = new URLSearchParams();
+        if (popUpRoute) params.append('route', popUpRoute);
+        if (data) params.append('data', JSON.stringify(data));
 
-    return await chrome.windows.create({
-      url: '/external.html?' + params.toString(),
-      width: 400,
-      height: 620,
-      type: 'popup',
+        chrome.windows.create(
+          {
+            url: '/external.html?' + params.toString(),
+            width: 400,
+            height: 620,
+            type: 'popup',
+          },
+          (newWindow) => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve(newWindow!);
+            }
+          }
+        );
+      });
     });
-  };
 
   const rehydrate = async () => {
     await rehydrateStore(store);

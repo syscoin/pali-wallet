@@ -175,7 +175,7 @@ export const methodRequest = async (
         if (!isBitcoinBased)
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
-              'Method only available for syscoin UTXO chains'
+              'Method only available for UTXO chains'
             )
           );
         return controller.wallet.getChangeAddress(dapp.getAccount(host).id);
@@ -183,7 +183,7 @@ export const methodRequest = async (
         if (!isBitcoinBased)
           throw cleanErrorStack(
             ethErrors.provider.unauthorized(
-              'Method only available for syscoin UTXO chains'
+              'Method only available for UTXO chains'
             )
           );
         return account;
@@ -509,7 +509,10 @@ export const enable = async (
   const { dapp, wallet } = getController();
   const isConnected = dapp.isConnected(host);
   const isUnlocked = wallet.isUnlocked();
-  const { isPopupOpen } = await chrome.storage.local.get('isPopupOpen');
+  const storage = await new Promise<{ isPopupOpen?: boolean }>((resolve) => {
+    chrome.storage.local.get('isPopupOpen', resolve);
+  });
+  const { isPopupOpen } = storage;
 
   if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({

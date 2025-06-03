@@ -236,21 +236,25 @@ const DAppController = (): IDAppController => {
     data?: { method: string; params: any },
     id = 'notification'
   ) => {
-    const tabs = await chrome.tabs.query({ url: `*://${host}/*` });
+    const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+      chrome.tabs.query({ url: `*://${host}/*` }, resolve);
+    });
 
-    if (tabs.length) {
+    if (tabs && tabs.length) {
       tabs.forEach((tab) => {
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          world: 'MAIN',
-          func: (eventData) => {
-            const event = new CustomEvent('paliNotification', {
-              detail: JSON.stringify(eventData),
-            });
-            window.dispatchEvent(event);
-          },
-          args: [{ id, data }],
-        });
+        if (tab.id) {
+          chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            world: 'MAIN',
+            func: (eventData) => {
+              const event = new CustomEvent('paliNotification', {
+                detail: JSON.stringify(eventData),
+              });
+              window.dispatchEvent(event);
+            },
+            args: [{ id, data }],
+          });
+        }
       });
     }
   };

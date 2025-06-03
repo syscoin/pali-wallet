@@ -11,15 +11,22 @@ export async function migrateWalletState(
     const vaultKeys = JSON.parse(localStorage.getItem('sysweb3-vault-keys'));
 
     if (vault && vaultKeys && !hasAccount) {
-      const oldState = await chrome.storage.local.get(oldStateName);
+      const oldState = await new Promise<{ [key: string]: any }>((resolve) => {
+        chrome.storage.local.get(oldStateName, resolve);
+      });
       const newState = parseJsonRecursively(oldState[oldStateName] || '{}');
 
-      await chrome.storage.local.set({
-        'sysweb3-vault': vault,
-        'sysweb3-vault-keys': vaultKeys,
-        ...(Object.keys(newState).length && {
-          [newStateName]: JSON.stringify(newState),
-        }),
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.set(
+          {
+            'sysweb3-vault': vault,
+            'sysweb3-vault-keys': vaultKeys,
+            ...(Object.keys(newState).length && {
+              [newStateName]: JSON.stringify(newState),
+            }),
+          },
+          resolve
+        );
       });
 
       await controllerEmitter(['rehydrate'], []);
