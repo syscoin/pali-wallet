@@ -3,14 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import loadImg from 'assets/icons/loading.svg';
-import ethChainImg from 'assets/images/ethChain.svg';
-import rolluxChainImg from 'assets/images/rolluxChain.png';
-import sysChainImg from 'assets/images/sysChain.svg';
+import arrowRight from 'assets/images/arrowRight.svg';
 import { Button } from 'components/Button';
+import { ChainIcon } from 'components/ChainIcon';
 import { Header } from 'components/Header';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import store from 'state/store';
+import { resetNetworkStatus } from 'state/vault';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -33,28 +34,37 @@ export const ChainErrorPage = () => {
 
   // Auto-navigate back to home if network switch succeeds
   useEffect(() => {
-    if (networkStatus === 'idle' && !networkTarget) {
+    if (networkStatus === 'idle' && !networkTarget && !isRetrying) {
       // Network switch completed successfully, go back to home
       console.log(
         'ChainErrorPage: Network switch completed, navigating to home'
       );
       navigate('/home');
     }
-  }, [networkStatus, networkTarget, navigate]);
+  }, [networkStatus, networkTarget, navigate, isRetrying]);
 
   const handleRetryToConnect = async () => {
     setIsRetrying(true);
     try {
-      await controllerEmitter(
-        ['wallet', 'setActiveNetwork'],
-        [displayNetwork]
-      ).then(() => {
-        navigate('/home');
-      });
+      // First, reset the network status to clear any stuck states
+      store.dispatch(resetNetworkStatus());
+
+      // Small delay to ensure state is cleared
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Now attempt to switch networks again
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [displayNetwork]);
+
+      // If successful, navigation will happen via the useEffect above
     } catch (error) {
+      console.error('Network retry failed:', error);
+
       // Show the actual error message instead of generic one
       const errorMessage = error?.message || t('chainError.connectionTooLong');
       alert.error(errorMessage);
+
+      // Reset network status on error to allow future retries
+      store.dispatch(resetNetworkStatus());
     } finally {
       setIsRetrying(false);
     }
@@ -62,49 +72,44 @@ export const ChainErrorPage = () => {
 
   const handleCancelSwitch = async () => {
     try {
-      // Reset network status and navigate back to home
-      await controllerEmitter(['wallet', 'resetNetworkStatus'], []);
+      // Reset network status to clear switching state
+      store.dispatch(resetNetworkStatus());
+
+      // Small delay to ensure state is cleared
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       navigate('/home');
     } catch (error) {
-      console.error('Failed to reset network status:', error);
+      console.error('Failed to cancel network switch:', error);
       navigate('/home'); // Navigate anyway
     }
   };
 
-  const handleConnectToAnotherRpc = () =>
+  const handleConnectToAnotherRpc = () => {
+    // Reset network status before navigating
+    store.dispatch(resetNetworkStatus());
+
     navigate('/switch-network', {
       state: { switchingFromTimeError: true },
     });
+  };
 
   const CurrentChains = () => {
-    let toChain: React.ReactNode;
-
-    switch (displayNetwork.chainId) {
-      case 1:
-        toChain = <img src={ethChainImg} alt="eth" width="39px" />;
-        break;
-      case 57:
-        toChain = <img src={sysChainImg} alt="sys" width="39px" />;
-        break;
-      case 570:
-        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
-        break;
-      case 5700:
-        toChain = <img src={rolluxChainImg} alt="sys" width="39px" />;
-        break;
-      default:
-        toChain = (
-          <div
-            className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            style={{ width: '39px', height: '39px' }}
-          >
-            {displayNetwork.currency}
-          </div>
-        );
-    }
+    const toChain = (
+      <ChainIcon
+        chainId={Number(displayNetwork.chainId)}
+        size={39}
+        className=""
+        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+      />
+    );
 
     return (
-      <div className="gap-4 flex items-center align-center flex-row">
+      <div className="flex text-center gap-2 items-center justify-center w-full">
+        <p className="text-ellipsis w-32 overflow-hidden">
+          {displayNetwork.label}
+        </p>
+        <img src={arrowRight} alt="arrow" width="20px" />
         {toChain}
       </div>
     );

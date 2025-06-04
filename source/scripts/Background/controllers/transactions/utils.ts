@@ -1,4 +1,3 @@
-import BigNumber from 'bignumber.js';
 import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
@@ -14,11 +13,7 @@ import store from 'state/store';
 import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
-import {
-  ISysTransaction,
-  IEvmTransactionResponse,
-  TransactionValueType,
-} from './types';
+import { ISysTransaction, IEvmTransactionResponse } from './types';
 
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
@@ -51,6 +46,16 @@ export const findUserTxsInProviderByBlocksRange = async (
   startBlock: number,
   endBlock: number
 ): Promise<IEvmTransactionResponse[] | any> => {
+  const { isBitcoinBased } = store.getState().vault;
+
+  // This function is EVM-specific, shouldn't be called for UTXO networks
+  if (isBitcoinBased) {
+    console.warn(
+      'findUserTxsInProviderByBlocksRange called on UTXO network - returning empty array'
+    );
+    return [];
+  }
+
   const rangeBlocksToRun = range(startBlock, endBlock);
   const BATCH_SIZE = 10; // Maximum blocks per batch to avoid "Batch size too large" errors
   const allResponses = [];

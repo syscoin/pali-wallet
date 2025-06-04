@@ -48,8 +48,8 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('home.hashCopied'));
-  }, [copied]);
+    alert.info(t('home.hashCopied'));
+  }, [copied, alert, t]);
 
   const formattedTransaction = [];
 

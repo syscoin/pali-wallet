@@ -62,7 +62,7 @@ const cancelTransaction = async (
 
     if (!isCanceled && error) {
       alert.removeAll();
-      alert.error(
+      alert.warning(
         'Transaction not found or already confirmed, verify the transaction in the explorer!'
       );
 
@@ -108,7 +108,7 @@ const speedUpTransaction = async (
 
       if (!isSpeedUp && error) {
         alert.removeAll();
-        alert.error(
+        alert.warning(
           'Transaction not found or already confirmed, verify the transaction in the explorer!'
         );
 

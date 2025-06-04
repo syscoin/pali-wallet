@@ -172,6 +172,11 @@
     "goToAnotherNetwork": "Перейти на другую сеть",
     "editCurrentRpc": "Редактировать RPC текущей сети"
   },
+  "networkConnection": {
+    "connecting": "Подключение к",
+    "slowConnection": "Подключение занимает больше времени, чем ожидалось",
+    "mayBeRateLimited": "Сеть может быть медленной или ограничивать запросы"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "Импортированные аккаунты не будут связаны с вашей исходной секретной фразой восстановления аккаунта Pali",
     "stillHaveFunds": "У вас все еще есть средства в кошельке!",
@@ -180,5 +185,23 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Держите вашу сид-фразу в секрете!",
     "anyoneWithThisInfo": "Любой, у кого есть эта информация, может украсть ваши средства."
+  },
+  "faucet": {
+    "grabTextOne": "Получите ${{token}} с помощью нашего крана!",
+    "grabTextTwo": "Получите ${{token}} с помощью нашего крана в {{rpcName}}!",
+    "pleaseWait": "Пожалуйста, подождите, пока мы творим магию...",
+    "doNotClose": "Не закрывайте кошелек.",
+    "ERROR": "ОШИБКА!",
+    "CONGRATULATIONS": "ПОЗДРАВЛЯЕМ!",
+    "someHasJust": "Некоторое количество {{tokenSymbol}} было отправлено в ваш кошелек {{networkName}}.",
+    "transactionHash": "Хеш транзакции",
+    "requestNow": "Запросить сейчас",
+    "Close": "Закрыть",
+    "tryAgain": "Попробуйте снова",
+    "withOurFaucet": "Получите {{token}} с помощью нашего крана, чтобы начать использовать сеть {{networkName}}!",
+    "youCanGet": "Вы можете получать {{quantity}} {{token}} на адрес кошелька каждые 24 часа.",
+    "firstAccessTitle": "Получите ${{token}} с помощью нашего крана, чтобы начать использовать сеть {{network}}!",
+    "firstAccessDescription": "Вы можете получать {{token}} на адрес кошелька каждые 24 часа.",
+    "grabTokens": "Перейти к крану"
   }
 }

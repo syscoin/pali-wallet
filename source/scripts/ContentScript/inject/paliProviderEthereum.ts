@@ -88,49 +88,14 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private async _checkNetworkTypeAndInitialize(): Promise<void> {
-    try {
-      // Enhanced network type detection before making any calls
-      const currentUrl = window.location.href;
-      const isLocalhost =
-        currentUrl.includes('localhost') || currentUrl.includes('127.0.0.1');
-      const isBitcoinNetwork =
-        currentUrl.includes('blockbook') ||
-        currentUrl.includes('trezor.io') ||
-        currentUrl.includes('explorer-blockbook');
+    if (this._isInitializing) {
+      // If already initializing, wait for the existing promise
+      return this._initializationPromise!;
+    }
 
-      // Skip initialization on obvious Bitcoin networks
-      if (isBitcoinNetwork) {
-        console.log(
-          'Detected Bitcoin network, skipping Ethereum provider initialization'
-        );
-        return;
-      }
+    this._isInitializing = true;
 
-      // For localhost, be more conservative and check network type first
-      if (isLocalhost) {
-        console.log('Localhost detected, checking network type cautiously...');
-
-        // Make a single lightweight call to determine network type
-        try {
-          const providerState = await this.request({
-            method: 'getProviderState',
-          });
-
-          if (providerState && (providerState as any).isBitcoinBased) {
-            console.log(
-              'Localhost is Bitcoin-based, skipping EVM initialization'
-            );
-            return;
-          }
-        } catch (providerError) {
-          console.log(
-            'Provider state check failed, this might not be an EVM network'
-          );
-          return;
-        }
-      }
-
-      // Try syscoin provider state first (for Syscoin networks)
+    this._initializationPromise = (async () => {
       try {
         const syscoinState = await this.request({
           method: 'wallet_getSysProviderState',
@@ -138,38 +103,55 @@ export class PaliInpageProviderEth extends BaseProvider {
 
         if (syscoinState) {
           console.log('Syscoin provider state obtained, initializing...');
+
+          // Check if this is a UTXO network
+          const { isBitcoinBased } = syscoinState as any;
+          if (isBitcoinBased) {
+            console.log(
+              'UTXO network detected, not initializing Ethereum provider'
+            );
+            // Don't initialize Ethereum provider for pure UTXO networks
+            return;
+          }
+
           return this._initializeEthereumProvider();
         }
       } catch (sysError) {
         console.log(
-          'Syscoin provider state call failed, checking if this is an EVM network:',
+          'Syscoin provider state call failed, this might be an EVM network:',
           sysError.message
         );
 
         // Only proceed with EVM calls if we're confident this is an EVM network
+        // First check if we can get provider state without making actual RPC calls
         try {
-          // Try a lightweight check first - just get network version without full provider state
-          const networkVersionResult = (await this.request({
-            method: 'net_version',
-          })) as string;
+          const providerState = await this.request({
+            method: 'wallet_getProviderState',
+          });
 
-          if (networkVersionResult) {
-            console.log(
-              'Successfully got net_version, this appears to be an EVM network'
-            );
-            return this._initializeEthereumProvider();
+          if (providerState) {
+            const { isBitcoinBased } = providerState as any;
+            if (!isBitcoinBased) {
+              console.log('EVM network confirmed via provider state');
+              return this._initializeEthereumProvider();
+            }
           }
-        } catch (netError) {
+        } catch (providerError) {
           console.log(
-            'net_version call failed, this is likely not an EVM network:',
-            netError.message
+            'Provider state call failed, network type unclear:',
+            providerError.message
           );
-          // If both syscoin and basic EVM calls fail, don't initialize
+          // Don't make actual RPC calls that would fail on UTXO networks
+          // Just don't initialize if we can't determine the network type
           return;
         }
       }
-    } catch (error) {
-      console.error('Provider initialization failed:', error);
+    })();
+
+    try {
+      await this._initializationPromise;
+    } finally {
+      this._isInitializing = false;
     }
   }
 

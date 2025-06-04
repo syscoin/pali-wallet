@@ -56,8 +56,8 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('home.hashCopied'));
-  }, [copied]);
+    alert.info(t('home.hashCopied'));
+  }, [copied, alert, t]);
 
   // Fetch enhanced transaction details from API with caching
   useEffect(() => {

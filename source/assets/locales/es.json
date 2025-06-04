@@ -362,11 +362,9 @@
     "label": "Etiqueta",
     "trezorSiteWarning": "trezor.io tiene un límite de tasa para solicitudes simultáneas, por lo que no podemos usarlo por ahora",
     "symbol": "Símbolo",
-    "youCanEdit": "Puedes editar esto más tarde si es necesario en el menú de configuración de la red.",
     "accountLabelEditedSuccessfully": "¡La etiqueta de la cuenta se editó con éxito!",
     "editAccount": "EDITAR CUENTA",
     "accountLabel": "Etiqueta de la cuenta",
-    "youCanEditAccount": "Puedes editar esto más tarde si es necesario en el menú de configuración de cuentas.",
     "toAddNetwork": "para agregar una red",
     "thisWillAllow": "Esto permitirá que esta red se use dentro de Pali.",
     "paliDoesNotVerify": "Pali no verifica redes personalizadas.",
@@ -519,6 +517,11 @@
     "goToAnotherNetwork": "Ir a otra red",
     "editCurrentRpc": "Editar RPC de la red actual"
   },
+  "networkConnection": {
+    "connecting": "Conectando a",
+    "slowConnection": "La conexión está tardando más de lo esperado",
+    "mayBeRateLimited": "La red puede estar lenta o limitando las solicitudes"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
     "stillHaveFunds": "¡Todavía tienes fondos en tu billetera!",
@@ -541,6 +544,9 @@
     "Close": "Cerrar",
     "tryAgain": "Intentar de nuevo",
     "withOurFaucet": "¡Obtén {{token}} con nuestra llave para comenzar a experimentar la red {{networkName}}!",
-    "youCanGet": "Puedes obtener {{quantity}} {{token}} por dirección de billetera cada 24 horas."
+    "youCanGet": "Puedes obtener {{quantity}} {{token}} por dirección de billetera cada 24 horas.",
+    "firstAccessTitle": "¡Obtén ${{token}} con nuestro faucet para comenzar a experimentar la red {{network}}!",
+    "firstAccessDescription": "Puedes obtener {{token}} por dirección de billetera cada 24h.",
+    "grabTokens": "Ir al Faucet"
   }
 }

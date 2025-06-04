@@ -185,7 +185,7 @@ export const SendConfirm = () => {
 
                 if (isDeviceLocked) {
                   alert.removeAll();
-                  alert.error(t('settings.lockedDevice'));
+                  alert.warning(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
                 }
@@ -301,7 +301,7 @@ export const SendConfirm = () => {
                       isNecessaryBlindSigning
                     ) {
                       alert.removeAll();
-                      alert.error(t('settings.ledgerBlindSigning'));
+                      alert.warning(t('settings.ledgerBlindSigning'));
                       setLoading(false);
                       return;
                     }
@@ -315,7 +315,7 @@ export const SendConfirm = () => {
 
                     if (isDeviceLocked) {
                       alert.removeAll();
-                      alert.error(t('settings.lockedDevice'));
+                      alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
@@ -415,7 +415,7 @@ export const SendConfirm = () => {
                 );
                 if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
                   alert.removeAll();
-                  alert.error(t('settings.ledgerBlindSigning'));
+                  alert.warning(t('settings.ledgerBlindSigning'));
                   setLoading(false);
                   return;
                 }
@@ -428,7 +428,7 @@ export const SendConfirm = () => {
 
                 if (isDeviceLocked) {
                   alert.removeAll();
-                  alert.error(t('settings.lockedDevice'));
+                  alert.warning(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
                 }
@@ -542,7 +542,7 @@ export const SendConfirm = () => {
                         isNecessaryBlindSigning
                       ) {
                         alert.removeAll();
-                        alert.error(t('settings.ledgerBlindSigning'));
+                        alert.warning(t('settings.ledgerBlindSigning'));
                         setLoading(false);
                         return;
                       }
@@ -559,7 +559,7 @@ export const SendConfirm = () => {
 
                       if (isDeviceLocked) {
                         alert.removeAll();
-                        alert.error(t('settings.lockedDevice'));
+                        alert.warning(t('settings.lockedDevice'));
                         setLoading(false);
                         return;
                       }
@@ -678,7 +678,7 @@ export const SendConfirm = () => {
                       isNecessaryBlindSigning
                     ) {
                       alert.removeAll();
-                      alert.error(t('settings.ledgerBlindSigning'));
+                      alert.warning(t('settings.ledgerBlindSigning'));
                       setLoading(false);
                       return;
                     }
@@ -693,7 +693,7 @@ export const SendConfirm = () => {
 
                     if (isDeviceLocked) {
                       alert.removeAll();
-                      alert.error(t('settings.lockedDevice'));
+                      alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
@@ -800,7 +800,7 @@ export const SendConfirm = () => {
                           isNecessaryBlindSigning
                         ) {
                           alert.removeAll();
-                          alert.error(t('settings.ledgerBlindSigning'));
+                          alert.warning(t('settings.ledgerBlindSigning'));
                           setLoading(false);
                           return;
                         }
@@ -818,7 +818,7 @@ export const SendConfirm = () => {
 
                         if (isDeviceLocked) {
                           alert.removeAll();
-                          alert.error(t('settings.lockedDevice'));
+                          alert.warning(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
@@ -929,7 +929,7 @@ export const SendConfirm = () => {
                           isNecessaryBlindSigning
                         ) {
                           alert.removeAll();
-                          alert.error(t('settings.ledgerBlindSigning'));
+                          alert.warning(t('settings.ledgerBlindSigning'));
                           setLoading(false);
                           return;
                         }
@@ -946,7 +946,7 @@ export const SendConfirm = () => {
 
                         if (isDeviceLocked) {
                           alert.removeAll();
-                          alert.error(t('settings.lockedDevice'));
+                          alert.warning(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
@@ -1070,7 +1070,17 @@ export const SendConfirm = () => {
     return () => {
       abortController.abort();
     };
-  }, [basicTxValues, isBitcoinBased, isEIP1559Compatible]);
+  }, [
+    basicTxValues,
+    isBitcoinBased,
+    isEIP1559Compatible,
+    activeNetwork,
+    controllerEmitter,
+    navigate,
+    alert,
+    t,
+    getLegacyGasPrice,
+  ]);
 
   const getCalculatedFee = useMemo(() => {
     const arrayValidation = [
@@ -1091,8 +1101,8 @@ export const SendConfirm = () => {
   useEffect(() => {
     if (!copied) return;
     alert.removeAll();
-    alert.success(t('home.addressCopied'));
-  }, [copied]);
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>

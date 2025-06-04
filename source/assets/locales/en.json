@@ -358,11 +358,9 @@
     "label": "Label",
     "trezorSiteWarning": "trezor.io has a rate limit for simultaneous requests, so we can't use it for now",
     "symbol": "Symbol",
-    "youCanEdit": "You can edit this later if you need on network settings menu.",
     "accountLabelEditedSuccessfully": "Account label edited successfully!'",
     "editAccount": "EDIT ACCOUNT",
     "accountLabel": "Account Label",
-    "youCanEditAccount": "You can edit this later if you need on accounts settings menu.",
     "rpcSuccessfullyAdded": "RPC successfully added.",
     "toAddNetwork": "to add a network",
     "thisWillAllow": "This will allow this network to be used within Pali.",
@@ -519,6 +517,11 @@
     "goToAnotherNetwork": "Go to another network",
     "editCurrentRpc": "Edit RPC of current network"
   },
+  "networkConnection": {
+    "connecting": "Connecting to",
+    "slowConnection": "Connection is taking longer than expected",
+    "mayBeRateLimited": "The network may be slow or rate-limiting requests"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in you wallet!",
@@ -541,6 +544,9 @@
     "Close": "Close",
     "tryAgain": "Try again",
     "withOurFaucet": "Grab {{token}} with our faucet to begin experiencing the {{networkName}} network!",
-    "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h."
+    "youCanGet": "You can get {{quantity}} {{token}} per wallet address every 24h.",
+    "firstAccessTitle": "Grab ${{token}} with our faucet to begin experiencing the {{network}} network!",
+    "firstAccessDescription": "You can get {{token}} per wallet address every 24h.",
+    "grabTokens": "Go to Faucet"
   }
 }

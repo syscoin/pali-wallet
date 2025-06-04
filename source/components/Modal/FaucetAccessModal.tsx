@@ -2,8 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import rolluxLogo from 'assets/images/rolluxChain.png';
-import sysLogo from 'assets/images/sysChain.svg';
+import { ChainIcon } from 'components/ChainIcon';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { faucetNetworkData } from 'utils/constants';
@@ -21,18 +20,17 @@ export const FaucetAccessModal = () => {
   return (
     <div
       onClick={() => navigate('/faucet')}
-      className="cursor-pointer z-[49] py-2 justify-center absolute left-[4.3%] top-[8rem] w-[364px] flex items-center rounded-b-[8px] bg-brand-blue400 opacity-100 hover:opacity-55"
+      className="cursor-pointer z-[49] px-4 py-3 absolute left-[4.3%] top-[8rem] w-[364px] flex items-center rounded-[8px] bg-brand-blue400 hover:bg-brand-blue500 transition-all duration-200 shadow-md hover:shadow-lg"
     >
-      <div className="relative flex items-center">
-        <img className="relative z-20 w-4" src={rolluxLogo} />
-        <img className="relative left-[-6px] z-10 w-4" src={sysLogo} />
+      <div className="flex items-center gap-3 w-full">
+        <ChainIcon chainId={chainId} size={20} className="flex-shrink-0" />
+        <p className="text-sm text-white flex-1">
+          {t('faucet.grabTextTwo', {
+            token: currentNetworkData?.token,
+            rpcName: currentNetworkData?.network,
+          })}
+        </p>
       </div>
-      <h1 className="text-xs text-white max-w-[80%]">
-        {t('faucet.grabTextTwo', {
-          token: currentNetworkData?.token,
-          rpcName: currentNetworkData?.network,
-        })}
-      </h1>
     </div>
   );
 };

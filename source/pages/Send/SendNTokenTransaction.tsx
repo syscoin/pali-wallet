@@ -173,7 +173,7 @@ export const SendNTokenTransaction = () => {
           );
           if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
             alert.removeAll();
-            alert.error(t('settings.ledgerBlindSigning'));
+            alert.warning(t('settings.ledgerBlindSigning'));
             setLoading(false);
             return;
           }
@@ -247,7 +247,7 @@ export const SendNTokenTransaction = () => {
           );
           if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
             alert.removeAll();
-            alert.error(t('settings.ledgerBlindSigning'));
+            alert.warning(t('settings.ledgerBlindSigning'));
             setLoading(false);
             return;
           }
@@ -432,8 +432,8 @@ export const SendNTokenTransaction = () => {
   useEffect(() => {
     if (!copied) return;
     alert.removeAll();
-    alert.success(t('home.addressCopied'));
-  }, [copied]);
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   useEffect(() => {
     const validateEIP1559Compatibility = async () => {

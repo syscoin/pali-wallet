@@ -4,12 +4,11 @@ import { useSelector } from 'react-redux';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import dafaultImage from 'assets/images/pali-blank.png';
+import { ChainIcon } from 'components/ChainIcon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { nftsVideoFormats } from 'utils/index';
-
-import { getChainImage } from './GetChainImage';
 
 export const EvmNftsList = () => {
   const { controllerEmitter } = useController();
@@ -90,10 +89,13 @@ export const EvmNftsList = () => {
                     className="w-[35px] h-[35px] rounded-[100px]"
                     src={nfts[0]?.collection?.image_url || dafaultImage}
                   />
-                  <img
-                    className="absolute top-[18px] left-[24px] w-[17.246px] h-[17.246px] rounded-[100px]"
-                    src={getChainImage(nfts[0]?.chainId)}
-                  />
+                  <div className="absolute top-[18px] left-[24px]">
+                    <ChainIcon
+                      chainId={nfts[0]?.chainId}
+                      size={17}
+                      className=""
+                    />
+                  </div>
                 </div>
               )}
               <div className="text-sm font-medium text-white">
@@ -136,6 +138,11 @@ export const EvmNftsList = () => {
               <p className="text-brand-gray200 text-xs overflow-hidden whitespace-nowrap">
                 Post by @{nfts[0]?.creator?.user?.username}
               </p>
+            </div>
+            <div className="flex items-center justify-between w-full gap-x-2 text-xs font-poppins">
+              <p className="text-brand-gray200 font-normal">{collections}</p>
+
+              <ChainIcon chainId={nfts[0]?.chainId} size={20} className="" />
             </div>
           </div>
         ))}

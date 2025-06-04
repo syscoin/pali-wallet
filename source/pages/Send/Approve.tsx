@@ -288,7 +288,7 @@ export const ApproveTransactionComponent = () => {
 
     alert.removeAll();
     alert.success(t('home.addressCopied'));
-  }, [copied]);
+  }, [copied, alert, t]);
 
   useMemo(() => {
     if (!decodedTx || !approvedTokenInfos?.tokenDecimals) return;

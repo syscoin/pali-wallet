@@ -234,11 +234,9 @@
     "label": "Label",
     "trezorSiteWarning": "trezor.io has a rate limit for simultaneous requests, so we can't use it for now",
     "symbol": "Symbol",
-    "youCanEdit": "You can edit this later if you need on network settings menu.",
     "accountLabelEditedSuccessfully": "Account label edited successfully!'",
     "editAccount": "EDIT ACCOUNT",
     "accountLabel": "Account Label",
-    "youCanEditAccount": "You can edit this later if you need on accounts settings menu.",
     "toAddNetwork": "to add a network",
     "thisWillAllow": "This will allow this network to be used within Pali.",
     "paliDoesNotVerify": "Pali does not verify custom networks.",
@@ -400,6 +398,11 @@
     "goToAnotherNetwork": "Ir para outra rede",
     "editCurrentRpc": "Editar RPC da rede atual"
   },
+  "networkConnection": {
+    "connecting": "Conectando a",
+    "slowConnection": "A conexão está demorando mais do que o esperado",
+    "mayBeRateLimited": "A rede pode estar lenta ou limitando as solicitações"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",
     "stillHaveFunds": "Você ainda tem fundos em sua carteira!",
@@ -414,5 +417,23 @@
     "transactionDetails": "Detalhes da transação",
     "importWallet": "Importar carteira",
     "congratulations": "Parabéns!"
+  },
+  "faucet": {
+    "grabTextOne": "Pegue ${{token}} com nossa torneira!",
+    "grabTextTwo": "Pegue ${{token}} com nossa torneira no {{rpcName}}!",
+    "pleaseWait": "Por favor aguarde enquanto fazemos nossa mágica...",
+    "doNotClose": "Não feche a carteira.",
+    "ERROR": "ERRO!",
+    "CONGRATULATIONS": "PARABÉNS!",
+    "someHasJust": "Alguns {{tokenSymbol}} foram enviados para sua carteira {{networkName}}.",
+    "transactionHash": "Hash da transação",
+    "requestNow": "Solicitar agora",
+    "Close": "Fechar",
+    "tryAgain": "Tente novamente",
+    "withOurFaucet": "Pegue {{token}} com nossa torneira para começar a experienciar a rede {{networkName}}!",
+    "youCanGet": "Você pode obter {{quantity}} {{token}} por endereço de carteira a cada 24 horas.",
+    "firstAccessTitle": "Pegue ${{token}} com nossa torneira para começar a experienciar a rede {{network}}!",
+    "firstAccessDescription": "Você pode obter {{token}} por endereço de carteira a cada 24 horas.",
+    "grabTokens": "Ir para a torneira"
   }
 }

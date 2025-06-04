@@ -172,6 +172,11 @@
     "goToAnotherNetwork": "別のネットワークに切り替える",
     "editCurrentRpc": "現在のネットワークのRPCを編集"
   },
+  "networkConnection": {
+    "connecting": "接続中：",
+    "slowConnection": "接続が予想より時間がかかっています",
+    "mayBeRateLimited": "ネットワークが遅いかリクエストを制限している可能性があります"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",
     "stillHaveFunds": "ウォレットにまだ資金があります！",
@@ -180,5 +185,23 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "シードフレーズは秘密にしてください！",
     "anyoneWithThisInfo": "この情報を持っている人は誰でもあなたの資金を盗むことができます。"
+  },
+  "faucet": {
+    "grabTextOne": "フォーセットで ${{token}} を取得しましょう！",
+    "grabTextTwo": "{{rpcName}} でフォーセットを使って ${{token}} を取得しましょう！",
+    "pleaseWait": "魔法をかけている間、お待ちください...",
+    "doNotClose": "ウォレットを閉じないでください。",
+    "ERROR": "エラー！",
+    "CONGRATULATIONS": "おめでとうございます！",
+    "someHasJust": "{{tokenSymbol}} が {{networkName}} ウォレットに送信されました。",
+    "transactionHash": "トランザクションハッシュ",
+    "requestNow": "今すぐリクエスト",
+    "Close": "閉じる",
+    "tryAgain": "再試行",
+    "withOurFaucet": "フォーセットで {{token}} を取得して {{networkName}} ネットワークの体験を始めましょう！",
+    "youCanGet": "24時間ごとにウォレットアドレスあたり {{quantity}} {{token}} を取得できます。",
+    "firstAccessTitle": "フォーセットで ${{token}} を取得して {{network}} ネットワークの体験を始めましょう！",
+    "firstAccessDescription": "24時間ごとにウォレットアドレスあたり {{token}} を取得できます。",
+    "grabTokens": "フォーセットに移動"
   }
 }

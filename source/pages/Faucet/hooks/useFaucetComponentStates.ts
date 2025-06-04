@@ -46,7 +46,6 @@ export const useFaucetComponentStates = () => {
 
   const faucetRequestDetails = useMemo(
     () => ({
-      icon: faucetTxDetailsInfo?.icon,
       tokenSymbol: faucetTxDetailsInfo?.token,
       networkName: faucetTxDetailsInfo?.networkName,
       grabText: t('faucet.withOurFaucet', {
@@ -58,6 +57,7 @@ export const useFaucetComponentStates = () => {
         token: faucetTxDetailsInfo?.token,
       }),
       smartContract: faucetTxDetailsInfo?.smartContract,
+      chainId: faucetTxDetailsInfo?.chainId,
     }),
     [faucetTxDetailsInfo]
   );

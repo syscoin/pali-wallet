@@ -107,5 +107,34 @@
     "importUsing": "使用钱包助记词导入",
     "wrongPassword": "密码错误",
     "welcomeTo": "欢迎来到"
+  },
+  "chainError": {
+    "connectionTooLong": "连接时间过长",
+    "tryingToConnectOn": "尝试连接到：",
+    "goToAnotherNetwork": "转到其他网络",
+    "editCurrentRpc": "编辑当前网络RPC"
+  },
+  "networkConnection": {
+    "connecting": "连接到",
+    "slowConnection": "连接比预期时间更长",
+    "mayBeRateLimited": "网络可能较慢或正在限制请求"
+  },
+  "faucet": {
+    "grabTextOne": "使用我们的水龙头获取 ${{token}}！",
+    "grabTextTwo": "在 {{rpcName}} 上使用我们的水龙头获取 ${{token}}！",
+    "pleaseWait": "请稍等，我们正在施展魔法...",
+    "doNotClose": "请不要关闭钱包。",
+    "ERROR": "错误！",
+    "CONGRATULATIONS": "恭喜！",
+    "someHasJust": "一些 {{tokenSymbol}} 已发送到您的 {{networkName}} 钱包。",
+    "transactionHash": "交易哈希",
+    "requestNow": "立即申请",
+    "Close": "关闭",
+    "tryAgain": "重试",
+    "withOurFaucet": "使用我们的水龙头获取 {{token}} 开始体验 {{networkName}} 网络！",
+    "youCanGet": "您每24小时可以获得 {{quantity}} {{token}} 每钱包地址。",
+    "firstAccessTitle": "使用我们的水龙头获取 ${{token}} 开始体验 {{network}} 网络！",
+    "firstAccessDescription": "您每24小时可以获得 {{token}} 每钱包地址。",
+    "grabTokens": "前往水龙头"
   }
 }

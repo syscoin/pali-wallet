@@ -4,8 +4,86 @@
 
 /** ALERTS/TOASTS **/
 
-div[role='alert'] {
-  @apply absolute left-1/4 right-1/4 text-center text-brand-white text-base font-light;
+/* Pali Toast Styles */
+.pali-toast {
+  font-family: 'Poppins', sans-serif !important;
+  bottom: 1rem !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+}
+
+/* Override the default toast content wrapper */
+.Toastify__toast.pali-toast-content {
+  background-color: #111E33 !important;
+  color: #FFFFFF !important;
+  border-radius: 12px !important;
+  border: 1px solid #4D76B8 !important;
+  box-shadow: 0 10px 25px rgba(7, 21, 42, 0.4) !important;
+  font-family: 'Poppins', sans-serif !important;
+  padding: 16px 20px !important;
+  min-height: 64px !important;
+  max-width: 420px !important;
+  width: auto !important;
+}
+
+/* Ensure toast body text is visible */
+.Toastify__toast.pali-toast-content .Toastify__toast-body {
+  color: #FFFFFF !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  opacity: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: visible !important;
+  text-overflow: initial !important;
+  white-space: normal !important;
+}
+
+/* Ensure the text div is visible */
+.Toastify__toast.pali-toast-content .Toastify__toast-body > div:last-child {
+  color: #FFFFFF !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: block !important;
+  overflow: visible !important;
+  text-overflow: initial !important;
+  white-space: normal !important;
+}
+
+/* Style the icon */
+.Toastify__toast.pali-toast-content .Toastify__toast-icon {
+  width: 20px !important;
+  height: 20px !important;
+  margin-inline-end: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Default progress bar style */
+.pali-toast-progress {
+  background-color: #4D76B8 !important;
+  height: 3px !important;
+}
+
+/* Success toast progress bar - green */
+.Toastify__toast--success .pali-toast-progress {
+  background-color: #10B981 !important; /* Green color for success */
+}
+
+/* Error toast progress bar - red */
+.Toastify__toast--error .pali-toast-progress {
+  background-color: #EF4444 !important; /* Red color for error */
+}
+
+/* Warning toast progress bar - yellow */
+.Toastify__toast--warning .pali-toast-progress {
+  background-color: #F59E0B !important; /* Yellow color for warning */
+}
+
+/* Info toast progress bar - blue */
+.Toastify__toast--info .pali-toast-progress {
+  background-color: #3B82F6 !important; /* Blue color for info */
 }
 
 /** IDENTICONS **/

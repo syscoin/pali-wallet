@@ -21,7 +21,12 @@ const CustomRPCExternal = () => {
     setLoading(true);
 
     try {
-      await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]).then(
+      const normalizedRpc = {
+        ...customRpc,
+        symbol: customRpc.symbol?.toUpperCase(),
+      };
+
+      await controllerEmitter(['wallet', 'addCustomRpc'], [normalizedRpc]).then(
         async (network) => {
           setConfirmed(true);
           setLoading(false);
@@ -63,33 +68,35 @@ const CustomRPCExternal = () => {
             <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.networkName')}
-                <span className="text-brand-royalblue text-xs">
+                <span className="text-brand-royalblue text-xs font-medium">
                   {data.label}
                 </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.networkUrl')}
-                <span className="text-brand-royalblue text-xs">{data.url}</span>
+                <span className="text-brand-royalblue text-xs font-mono break-all">
+                  {data.url}
+                </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 Chain ID
-                <span className="text-brand-royalblue text-xs">
+                <span className="text-brand-royalblue text-xs font-mono font-medium">
                   {data.chainId}
                 </span>
               </p>
 
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.currencySymbol')}
-                <span className="text-brand-royalblue text-xs">
-                  {data.symbol}
+                <span className="text-brand-royalblue text-xs font-medium uppercase">
+                  {data.symbol?.toUpperCase()}
                 </span>
               </p>
               <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                 {t('settings.explorerUrl')}
-                <span className="text-brand-royalblue text-xs">
-                  {data.apiUrl ?? '-'}
+                <span className="text-brand-royalblue text-xs font-mono break-all">
+                  {data.explorer || data.apiUrl || '-'}
                 </span>
               </p>
             </div>

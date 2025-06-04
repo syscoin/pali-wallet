@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { FaucetStatusResponse } from '../../types/faucet';
+// Import faucet status icons - make sure these paths are correct
 import errorIcon from 'assets/images/faucet-error.svg';
 import loadingIcon from 'assets/images/faucet-loading.svg';
 import successIcon from 'assets/images/faucet-success.svg';
@@ -46,7 +47,8 @@ export const Faucet: React.FC = () => {
           !isLoading && (
             <>
               <FaucetFeedback
-                icon={faucetRequestDetails.icon}
+                chainId={chainId}
+                networkKind="evm"
                 textFeedbackTitle={faucetRequestDetails.grabText}
                 textFeedbackDesc={faucetRequestDetails.tokenQuantity}
               />

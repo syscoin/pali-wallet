@@ -4,10 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import arrowRight from 'assets/images/arrowRight.svg';
-import ethChainImg from 'assets/images/ethChain.svg';
-import rolluxChainImg from 'assets/images/rolluxChain.png';
-import sysChainImg from 'assets/images/sysChain.svg';
 import { SecondButton } from 'components/Button/Button';
+import { ChainIcon } from 'components/ChainIcon';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -44,55 +42,23 @@ const SwitchChain: React.FC = () => {
   };
 
   const CurrentChains = () => {
-    let fromChain: React.ReactNode;
-    let toChain: React.ReactNode;
-    switch (activeNetwork.chainId) {
-      case 1:
-        fromChain = <img src={ethChainImg} alt="eth" width="100px" />;
-        break;
-      case 57:
-        fromChain = <img src={sysChainImg} alt="sys" width="100px" />;
-        break;
-      case 570:
-        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
-        break;
-      case 5700:
-        fromChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
-        break;
-      default:
-        fromChain = (
-          <div
-            className="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
-            style={{ width: '100px', height: '100px' }}
-          >
-            {activeNetwork.label}
-          </div>
-        );
-    }
+    const fromChain = (
+      <ChainIcon
+        chainId={activeNetwork.chainId}
+        size={100}
+        className=""
+        fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
+      />
+    );
 
-    switch (network.chainId) {
-      case 1:
-        toChain = <img src={ethChainImg} alt="eth" width="100px" />;
-        break;
-      case 57:
-        toChain = <img src={sysChainImg} alt="sys" width="100px" />;
-        break;
-      case 570:
-        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
-        break;
-      case 5700:
-        toChain = <img src={rolluxChainImg} alt="sys" width="100px" />;
-        break;
-      default:
-        toChain = (
-          <div
-            className="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
-            style={{ width: '100px', height: '100px' }}
-          >
-            {network.label}
-          </div>
-        );
-    }
+    const toChain = (
+      <ChainIcon
+        chainId={network.chainId}
+        size={100}
+        className=""
+        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+      />
+    );
 
     return (
       <div className="w-4/5 gap-4 flex items-center align-center flex-row">

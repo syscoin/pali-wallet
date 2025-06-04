@@ -144,7 +144,8 @@ const ConnectHardwareWalletView: FC = () => {
       }
       if (isDeviceLocked) {
         alert.removeAll();
-        alert.error(t('settings.lockedDevice'));
+        alert.warning(t('settings.lockedDevice'));
+        setIsLoading(false);
         return;
       }
       alert.removeAll();

@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
@@ -14,12 +14,12 @@ const AboutView: FC = () => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
 
-  const showSuccessAlert = () => {
+  useEffect(() => {
     if (copied) {
       alert.removeAll();
-      alert.success(t('settings.linkCopied'));
+      alert.info(t('settings.linkCopied'));
     }
-  };
+  }, [copied, alert, t]);
 
   return (
     <Layout
@@ -72,7 +72,6 @@ const AboutView: FC = () => {
               className="align-center pl-2"
             >
               <Icon isSvg={true} name="Copy" id="copy-address-btn" />
-              <>{copied ? showSuccessAlert() : null}</>
             </IconButton>
           </div>
         </SimpleCard>

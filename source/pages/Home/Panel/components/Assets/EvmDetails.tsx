@@ -20,14 +20,14 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
 
-  const [copied, copy] = useCopyClipboard();
+  const [isCopied, copy] = useCopyClipboard();
 
   useEffect(() => {
-    if (!copied) return;
+    if (!isCopied) return;
 
     alert.removeAll();
-    alert.success(t('home.contractCopied'));
-  }, [copied]);
+    alert.info(t('home.contractCopied'));
+  }, [isCopied, alert, t]);
 
   const currentAsset = assets.ethereum.find((asset) => asset.id === id);
 

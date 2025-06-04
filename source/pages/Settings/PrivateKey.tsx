@@ -49,8 +49,8 @@ const PrivateKeyView = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('settings.successfullyCopied'));
-  }, [copied]);
+    alert.info(t('settings.successfullyCopied'));
+  }, [copied, alert, t]);
 
   useEffect(() => {
     (async () => {

@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
+import { ChainIcon } from 'components/ChainIcon';
 import {
   IconButton,
   Layout,
@@ -68,8 +69,23 @@ const ManageNetworkView = () => {
             }
             className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-alpha-whiteAlpha300 cursor-default`}
           >
-            <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-              <span>{truncate(network.label, 25)}</span>
+            <div className="flex gap-x-3 items-center justify-start text-xs">
+              <ChainIcon
+                chainId={network.chainId}
+                size={24}
+                networkKind="utxo"
+                className="flex-shrink-0"
+              />
+              <div className="flex flex-col items-start">
+                <span>{truncate(network.label, 25)}</span>
+                {network.chainId === activeNetwork.chainId &&
+                  network.url === activeNetwork.url && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-xs text-green-400">Active</span>
+                    </div>
+                  )}
+              </div>
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">
@@ -147,8 +163,23 @@ const ManageNetworkView = () => {
             }
             className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-alpha-whiteAlpha300 cursor-default`}
           >
-            <div className="flex flex-col gap-x-3 items-start justify-start text-xs">
-              <span>{truncate(network.label, 25)}</span>
+            <div className="flex gap-x-3 items-center justify-start text-xs">
+              <ChainIcon
+                chainId={network.chainId}
+                size={24}
+                networkKind="evm"
+                className="flex-shrink-0"
+              />
+              <div className="flex flex-col items-start">
+                <span>{truncate(network.label, 25)}</span>
+                {network.chainId === activeNetwork.chainId &&
+                  network.url === activeNetwork.url && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      <span className="text-xs text-green-400">Active</span>
+                    </div>
+                  )}
+              </div>
             </div>
 
             <div className="flex gap-x-3 items-center justify-between">

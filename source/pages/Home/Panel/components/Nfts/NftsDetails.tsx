@@ -6,12 +6,11 @@ import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import PaliLogo from 'assets/images/pali-blank.png';
+import { ChainIcon } from 'components/ChainIcon';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
-
-import { getChainImage } from './GetChainImage';
 
 export const NftsDetails = ({
   nftId,
@@ -60,8 +59,8 @@ export const NftsDetails = ({
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('home.contractCopied'));
-  }, [copied]);
+    alert.info(t('home.contractCopied'));
+  }, [copied, alert, t]);
 
   return (
     <>
@@ -92,13 +91,11 @@ export const NftsDetails = ({
                 </span>
               </p>
               <p className="flex flex-col items-center justify-evenly h-full font-medium text-base text-brand-white">
-                {
-                  <img
-                    className="rounded-full w-7 h-7"
-                    src={getChainImage(Number(currentNft.chainId))}
-                    alt={currentNft.name}
-                  />
-                }
+                <ChainIcon
+                  chainId={Number(currentNft.chainId)}
+                  size={28}
+                  className=""
+                />
                 <span className="text-sm font-normal text-brand-gray200">
                   Network
                 </span>

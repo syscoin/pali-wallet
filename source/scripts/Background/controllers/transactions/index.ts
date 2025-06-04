@@ -113,7 +113,14 @@ const TransactionsManager = (
   const checkPendingTransactions = async (
     pendingTransactions: IEvmTransactionResponse[]
   ): Promise<IEvmTransactionResponse[]> => {
-    const { currentBlock: stateBlock } = store.getState().vault;
+    const { currentBlock: stateBlock, isBitcoinBased } = store.getState().vault;
+
+    // Don't check pending transactions for UTXO networks
+    if (isBitcoinBased) {
+      console.log('Skipping pending transaction check for UTXO network');
+      return [];
+    }
+
     const latestBlockNumber = stateBlock
       ? parseInt(String(stateBlock.number), 16)
       : await web3Provider.getBlockNumber();

@@ -6,8 +6,6 @@ import {
   FaucetChainNames,
   FaucetChainSymbols,
 } from '../types/faucet';
-import rolluxChain from 'assets/images/rolluxChain.png';
-import sysChain from 'assets/images/sysChain.svg';
 
 // Chain ID Constants
 export const CHAIN_IDS = {
@@ -183,7 +181,7 @@ export const faucetNetworkData: IFaucetNetworkData = {
 };
 
 export const faucetTxRolluxInfo = {
-  icon: rolluxChain,
+  chainId: CHAIN_IDS.ROLLUX_MAINNET,
   token: '$SYS',
   networkName: 'Rollux',
   quantity: 0.001,
@@ -191,7 +189,7 @@ export const faucetTxRolluxInfo = {
 };
 
 export const faucetTxRolluxTestnetInfo = {
-  icon: rolluxChain,
+  chainId: CHAIN_IDS.ROLLUX_TESTNET,
   token: '$TSYS',
   networkName: 'Rollux Testnet',
   quantity: 1,
@@ -199,7 +197,7 @@ export const faucetTxRolluxTestnetInfo = {
 };
 
 export const faucetTxSyscoinNEVMInfo = {
-  icon: sysChain,
+  chainId: CHAIN_IDS.SYSCOIN_MAINNET,
   token: '$SYS',
   networkName: 'Syscoin NEVM',
   quantity: 0.01,
@@ -207,7 +205,7 @@ export const faucetTxSyscoinNEVMInfo = {
 };
 
 export const faucetTxSyscoinNEVMTestnetInfo = {
-  icon: sysChain,
+  chainId: CHAIN_IDS.SYSCOIN_NEVM_TESTNET,
   token: '$TSYS',
   networkName: 'Syscoin NEVM Testnet',
   quantity: 1,

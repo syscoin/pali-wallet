@@ -212,6 +212,11 @@
     "goToAnotherNetwork": "Aller sur un autre réseau",
     "editCurrentRpc": "Modifier le RPC du réseau actuel"
   },
+  "networkConnection": {
+    "connecting": "Connexion à",
+    "slowConnection": "La connexion prend plus de temps que prévu",
+    "mayBeRateLimited": "Le réseau peut être lent ou limiter les requêtes"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",
     "stillHaveFunds": "Vous avez encore des fonds dans votre portefeuille !",
@@ -220,5 +225,23 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Gardez votre phrase de récupération secrète !",
     "anyoneWithThisInfo": "Quiconque possède cette information peut voler vos fonds."
+  },
+  "faucet": {
+    "grabTextOne": "Obtenez des ${{token}} avec notre robinet !",
+    "grabTextTwo": "Obtenez des ${{token}} avec notre robinet sur {{rpcName}} !",
+    "pleaseWait": "Veuillez patienter pendant que nous opérons notre magie...",
+    "doNotClose": "Ne fermez pas le portefeuille.",
+    "ERROR": "ERREUR !",
+    "CONGRATULATIONS": "FÉLICITATIONS !",
+    "someHasJust": "Quelques {{tokenSymbol}} viennent d'être envoyés à votre portefeuille {{networkName}}.",
+    "transactionHash": "Hash de transaction",
+    "requestNow": "Demander maintenant",
+    "Close": "Fermer",
+    "tryAgain": "Réessayer",
+    "withOurFaucet": "Obtenez des {{token}} avec notre robinet pour commencer à découvrir le réseau {{networkName}} !",
+    "youCanGet": "Vous pouvez obtenir {{quantity}} {{token}} par adresse de portefeuille toutes les 24 heures.",
+    "firstAccessTitle": "Obtenez des ${{token}} avec notre robinet pour commencer à découvrir le réseau {{network}} !",
+    "firstAccessDescription": "Vous pouvez obtenir {{token}} par adresse de portefeuille toutes les 24 heures.",
+    "grabTokens": "Aller au robinet"
   }
 }

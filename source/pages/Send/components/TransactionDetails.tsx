@@ -53,8 +53,8 @@ export const TransactionDetailsComponent = (
   useEffect(() => {
     if (!copied) return;
     alert.removeAll();
-    alert.success('Address successfully copied');
-  }, [copied]);
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   const finalFee =
     +removeScientificNotation(

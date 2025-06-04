@@ -20,8 +20,8 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('send.hexDataCopied'));
-  }, [copied]);
+    alert.info(t('send.hexDataCopied'));
+  }, [copied, alert, t]);
 
   return (
     <div className="bg-brand-blue600 w-[400px] relative left-[-1%] flex flex-col items-center justify-center p-6 rounded-[20px]">

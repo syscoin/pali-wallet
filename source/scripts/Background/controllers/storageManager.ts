@@ -5,17 +5,23 @@ export class StorageManager {
   private initPromise: Promise<void> | null = null;
   private static MIGRATION_FLAG_KEY = 'pali_localStorage_migration_completed';
 
-  private constructor() {}
+  private constructor() {
+    // Private constructor for singleton pattern
+  }
 
   public static getInstance(): StorageManager {
+    console.log('[StorageManager] getInstance() called');
     if (!StorageManager.instance) {
+      console.log('[StorageManager] Creating new instance');
       StorageManager.instance = new StorageManager();
     }
     return StorageManager.instance;
   }
 
   public async ensureInitialized(): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized) {
+      return;
+    }
 
     if (!this.initPromise) {
       this.initPromise = this.initialize();
@@ -36,7 +42,7 @@ export class StorageManager {
         }
       });
 
-      // Check if migration has already been completed
+      // First check if migration is already completed - if so, skip vault checks
       const migrationCompleted = await new Promise<boolean>((resolve) => {
         chrome.storage.local.get(
           StorageManager.MIGRATION_FLAG_KEY,
@@ -46,90 +52,85 @@ export class StorageManager {
         );
       });
 
-      if (!migrationCompleted) {
-        console.log('[StorageManager] Checking for localStorage migration...');
+      if (migrationCompleted) {
+        this.isInitialized = true;
+        return;
+      }
 
-        // Check if vault keys exist in chrome storage
-        const vaultKeys = await new Promise<any>((resolve) => {
+      // If migration not completed, check vault data
+      const [vaultKeys, vault] = await Promise.all([
+        new Promise<any>((resolve) => {
           chrome.storage.local.get('sysweb3-vault-keys', (result) => {
             resolve(result['sysweb3-vault-keys']);
           });
-        });
-
-        const vault = await new Promise<any>((resolve) => {
+        }),
+        new Promise<any>((resolve) => {
           chrome.storage.local.get('sysweb3-vault', (result) => {
             resolve(result['sysweb3-vault']);
           });
-        });
+        }),
+      ]);
 
-        // Only check localStorage if data doesn't exist in chrome storage
-        if ((!vaultKeys || !vault) && typeof localStorage !== 'undefined') {
-          try {
-            const itemsToMigrate: Record<string, any> = {};
+      // Only check localStorage if data doesn't exist in chrome storage
+      if ((!vaultKeys || !vault) && typeof localStorage !== 'undefined') {
+        try {
+          const itemsToMigrate: Record<string, any> = {};
 
-            // Check for vault-keys in localStorage
-            if (!vaultKeys) {
-              const localStorageKeys =
-                localStorage.getItem('sysweb3-vault-keys');
-              if (localStorageKeys) {
-                itemsToMigrate['sysweb3-vault-keys'] =
-                  JSON.parse(localStorageKeys);
-                console.log(
-                  '[StorageManager] Found vault-keys in localStorage'
-                );
-              }
+          // Check for vault-keys in localStorage
+          if (!vaultKeys) {
+            const localStorageKeys = localStorage.getItem('sysweb3-vault-keys');
+            if (localStorageKeys) {
+              itemsToMigrate['sysweb3-vault-keys'] =
+                JSON.parse(localStorageKeys);
+              console.log('[StorageManager] Found vault-keys in localStorage');
             }
-
-            // Check for vault in localStorage
-            if (!vault) {
-              const localStorageVault = localStorage.getItem('sysweb3-vault');
-              if (localStorageVault) {
-                itemsToMigrate['sysweb3-vault'] = JSON.parse(localStorageVault);
-                console.log('[StorageManager] Found vault in localStorage');
-              }
-            }
-
-            // Migrate all found items at once
-            if (Object.keys(itemsToMigrate).length > 0) {
-              console.log(
-                '[StorageManager] Migrating data from localStorage to chrome.storage'
-              );
-              await new Promise<void>((resolve) => {
-                chrome.storage.local.set(itemsToMigrate, resolve);
-              });
-
-              // Clean up localStorage after successful migration
-              if (itemsToMigrate['sysweb3-vault-keys']) {
-                localStorage.removeItem('sysweb3-vault-keys');
-              }
-              if (itemsToMigrate['sysweb3-vault']) {
-                localStorage.removeItem('sysweb3-vault');
-              }
-              console.log(
-                '[StorageManager] Migration complete, cleaned up localStorage'
-              );
-            }
-          } catch (error) {
-            console.error('[StorageManager] Migration error:', error);
-            // Don't throw, just log - migration failure shouldn't break initialization
           }
-        }
 
-        // Mark migration as completed
-        await new Promise<void>((resolve) => {
-          chrome.storage.local.set(
-            {
-              [StorageManager.MIGRATION_FLAG_KEY]: true,
-            },
-            resolve
-          );
-        });
-        console.log('[StorageManager] Migration check completed and marked');
-      } else {
-        console.log(
-          '[StorageManager] Migration already completed, skipping check'
-        );
+          // Check for vault in localStorage
+          if (!vault) {
+            const localStorageVault = localStorage.getItem('sysweb3-vault');
+            if (localStorageVault) {
+              itemsToMigrate['sysweb3-vault'] = JSON.parse(localStorageVault);
+              console.log('[StorageManager] Found vault in localStorage');
+            }
+          }
+
+          // Migrate all found items at once
+          if (Object.keys(itemsToMigrate).length > 0) {
+            console.log(
+              '[StorageManager] Migrating data from localStorage to chrome.storage'
+            );
+            await new Promise<void>((resolve) => {
+              chrome.storage.local.set(itemsToMigrate, resolve);
+            });
+
+            // Clean up localStorage after successful migration
+            if (itemsToMigrate['sysweb3-vault-keys']) {
+              localStorage.removeItem('sysweb3-vault-keys');
+            }
+            if (itemsToMigrate['sysweb3-vault']) {
+              localStorage.removeItem('sysweb3-vault');
+            }
+            console.log(
+              '[StorageManager] Migration complete, cleaned up localStorage'
+            );
+          }
+        } catch (error) {
+          console.error('[StorageManager] Migration error:', error);
+          // Don't throw, just log - migration failure shouldn't break initialization
+        }
       }
+
+      // Mark migration as completed
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.set(
+          {
+            [StorageManager.MIGRATION_FLAG_KEY]: true,
+          },
+          resolve
+        );
+      });
+      console.log('[StorageManager] Migration check completed and marked');
 
       this.isInitialized = true;
     } catch (error) {

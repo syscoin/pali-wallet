@@ -34,12 +34,12 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const [rawTransaction, setRawTransaction] = useState<any>({});
   const [copied, copy] = useCopyClipboard();
 
-  const showSuccessAlert = () => {
-    if (copied) {
-      alert.removeAll();
-      alert.success(t('home.addressCopied'));
-    }
-  };
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   const recipients: any = {};
   const senders: any = {};
@@ -117,10 +117,6 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
       }
     }
   }, [rawTransaction]);
-
-  useEffect(() => {
-    showSuccessAlert();
-  }, [copied]);
 
   const formattedTransaction = [];
 

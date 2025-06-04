@@ -25,8 +25,8 @@ export const Receive = () => {
     if (!isCopied) return;
 
     alert.removeAll();
-    alert.success(t('home.addressCopied'));
-  }, [isCopied]);
+    alert.info(t('home.addressCopied'));
+  }, [isCopied, alert, t]);
 
   return (
     <Layout

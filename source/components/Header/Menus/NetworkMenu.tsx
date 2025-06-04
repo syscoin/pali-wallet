@@ -9,6 +9,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import arrow from 'assets/images/arrow.png';
 import btcIcon from 'assets/images/btcIcon.svg';
 import ethIcon from 'assets/images/ethIcon.svg';
+import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/index';
 import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
@@ -145,6 +146,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       {(menuprops) => (
         <>
           <Menu.Button className="inline-flex gap-x-2 items-center justify-start ml-2 w-max text-white text-sm font-medium hover:bg-opacity-30 rounded-full focus:outline-none cursor-pointer">
+            <ChainIcon
+              chainId={activeNetwork.chainId}
+              size={20}
+              networkKind={isBitcoinBased ? 'utxo' : 'evm'}
+              className="flex-shrink-0"
+            />
             <span className="font-light">{activeNetwork.label}</span>
             <span
               className={`px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor}`}
@@ -279,9 +286,17 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       menuprops.close();
                                     }}
                                   >
-                                    <span className="ml-8 text-left">
-                                      {currentNetwork.label}
-                                    </span>
+                                    <div className="flex items-center gap-2 ml-4">
+                                      <ChainIcon
+                                        chainId={currentNetwork.chainId}
+                                        size={18}
+                                        networkKind="utxo"
+                                        className="flex-shrink-0"
+                                      />
+                                      <span className="text-left">
+                                        {currentNetwork.label}
+                                      </span>
+                                    </div>
 
                                     {isBitcoinBased &&
                                       activeNetworkValidator(
@@ -354,9 +369,17 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       menuprops.close();
                                     }}
                                   >
-                                    <span className="ml-8 text-left">
-                                      {currentNetwork.label}
-                                    </span>
+                                    <div className="flex items-center gap-2 ml-4">
+                                      <ChainIcon
+                                        chainId={currentNetwork.chainId}
+                                        size={18}
+                                        networkKind="evm"
+                                        className="flex-shrink-0"
+                                      />
+                                      <span className="text-left">
+                                        {currentNetwork.label}
+                                      </span>
+                                    </div>
                                     <div className="flex items-center">
                                       {!isBitcoinBased &&
                                         activeNetworkValidator(

@@ -84,6 +84,7 @@ import { IAssetsManager, INftController } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
+import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import NftsController from './nfts/nfts';
@@ -187,6 +188,16 @@ class MainController extends KeyringManager {
 
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
+
+    // Initialize ChainList service in background
+    ChainListService.getInstance()
+      .initialize()
+      .catch((error) => {
+        console.error(
+          '[MainController] Failed to initialize ChainList service:',
+          error
+        );
+      });
 
     this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
     this.nftsController = NftsController();
@@ -422,9 +433,18 @@ class MainController extends KeyringManager {
       this.isStartingUp = true;
 
       if (!isEmpty(wallet)) {
+        // Determine the actual chain type based on the active network
+        const activeNetwork = wallet.activeNetwork;
+        const isSyscoinNetwork =
+          wallet.networks.syscoin &&
+          wallet.networks.syscoin[activeNetwork.chainId] !== undefined;
+        const activeChain = isSyscoinNetwork
+          ? INetworkType.Syscoin
+          : INetworkType.Ethereum;
+
         store.dispatch(
           setNetworkChange({
-            activeChain: INetworkType.Syscoin,
+            activeChain,
             wallet,
           })
         );
@@ -1743,6 +1763,18 @@ class MainController extends KeyringManager {
       return Promise.resolve();
     }
 
+    // Check if account has invalid xpub for UTXO network
+    const hasInvalidXpubForUTXO =
+      isBitcoinBased &&
+      activeAccountValues.xpub &&
+      activeAccountValues.xpub.startsWith('0x');
+    if (hasInvalidXpubForUTXO) {
+      console.warn(
+        '[MainController] Skipping account update - invalid xpub for UTXO network'
+      );
+      return Promise.resolve();
+    }
+
     // Create a unique ID for the current account
     const accountId = `${activeAccount.type}:${activeAccount.id}`;
 
@@ -1953,6 +1985,120 @@ class MainController extends KeyringManager {
     wallet: IWalletState;
   }> {
     let networkCallError: any = null;
+    const MAX_RETRIES = 3;
+    const INITIAL_RETRY_DELAY = 1000; // 1 second
+
+    // Helper function to test network connectivity with retries
+    const testNetworkConnectivity = async (
+      url: string,
+      retryCount = 0
+    ): Promise<any> => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        // Determine the appropriate endpoint and method based on network type
+        const isUtxo = chain === INetworkType.Syscoin;
+
+        let testUrl: string;
+        let requestConfig: RequestInit;
+
+        if (isUtxo) {
+          // For UTXO networks, use blockbook status endpoint
+          testUrl = `${url}/api/v2`;
+          requestConfig = {
+            method: 'GET',
+            headers: {
+              // Add Pali headers for this test request
+              ...getPaliHeaders(),
+            },
+            // Prevent browser authentication dialogs
+            credentials: 'omit',
+            // Add timeout using AbortController for compatibility
+            signal: controller.signal,
+          };
+        } else {
+          // For EVM networks, use RPC method
+          testUrl = url;
+          requestConfig = {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Add Pali headers for this test request
+              ...getPaliHeaders(),
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'eth_chainId',
+              params: [],
+              id: 1,
+            }),
+            // Prevent browser authentication dialogs
+            credentials: 'omit',
+            // Add timeout using AbortController for compatibility
+            signal: controller.signal,
+          };
+        }
+
+        const response = await fetch(testUrl, requestConfig);
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const responseText = await response.text();
+          console.error(
+            `Network test response (attempt ${retryCount + 1}):`,
+            response.status,
+            responseText
+          );
+
+          // Check for rate limiting
+          if (response.status === 429 || response.status === 503) {
+            const retryAfter = response.headers.get('Retry-After');
+            const delay = retryAfter
+              ? parseInt(retryAfter) * 1000
+              : INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+
+            if (retryCount < MAX_RETRIES) {
+              console.log(`Rate limited, retrying after ${delay}ms...`);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+              return testNetworkConnectivity(url, retryCount + 1);
+            }
+          }
+
+          // Try to parse the error message
+          if (responseText) {
+            throw new Error(responseText);
+          } else {
+            throw new Error(
+              `Network returned ${response.status} ${response.statusText}`
+            );
+          }
+        }
+
+        return response;
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          throw new Error(
+            'Network request timed out - the network may be slow or unresponsive'
+          );
+        }
+
+        // For connection errors, retry with backoff
+        if (
+          retryCount < MAX_RETRIES &&
+          (error.message?.includes('Failed to fetch') ||
+            error.message?.includes('NetworkError'))
+        ) {
+          const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+          console.log(`Connection error, retrying after ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          return testNetworkConnectivity(url, retryCount + 1);
+        }
+
+        throw error;
+      }
+    };
 
     try {
       const {
@@ -1978,47 +2124,12 @@ class MainController extends KeyringManager {
         // setSignerNetwork failed but didn't throw an error
         // Try to get the actual error by making a test call
 
-        if (chain === INetworkType.Ethereum) {
-          try {
-            // Create a simple fetch request to test the network
-            const response = await fetch(network.url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                // Add Pali headers for this test request
-                ...getPaliHeaders(),
-              },
-              body: JSON.stringify({
-                jsonrpc: '2.0',
-                method: 'eth_chainId',
-                params: [],
-                id: 1,
-              }),
-              // Prevent browser authentication dialogs
-              credentials: 'omit',
-            });
-
-            if (!response.ok) {
-              const responseText = await response.text();
-              console.error(
-                'Network test response:',
-                response.status,
-                responseText
-              );
-
-              // Try to parse the error message
-              if (responseText) {
-                networkCallError = new Error(responseText);
-              } else {
-                networkCallError = new Error(
-                  `Network returned ${response.status} ${response.statusText}`
-                );
-              }
-            }
-          } catch (testError) {
-            console.error('Network test error:', testError);
-            networkCallError = testError;
-          }
+        // Test network connectivity for both EVM and UTXO networks
+        try {
+          await testNetworkConnectivity(network.url);
+        } catch (testError) {
+          console.error('Network test error:', testError);
+          networkCallError = testError;
         }
 
         return {
@@ -2180,19 +2291,36 @@ class MainController extends KeyringManager {
     store.dispatch(setIsBitcoinBased(isBitcoinBased));
     store.dispatch(setIsLoadingBalances(false));
     await this.setFiat();
-    this.updateAssetsFromCurrentAccount({
-      isBitcoinBased,
-      activeNetwork: network,
-      activeAccount: {
-        id: wallet.activeAccountId,
-        type: wallet.activeAccountType,
-      },
-    });
-    this.updateUserTransactionsState({
-      isPolling: false,
-      isBitcoinBased,
-      activeNetwork: network,
-    });
+
+    // Check if we need to skip updates for invalid xpub on UTXO networks
+    const currentAccount =
+      wallet.accounts[wallet.activeAccountType][wallet.activeAccountId];
+    const hasInvalidXpubForUTXO =
+      isBitcoinBased &&
+      currentAccount.xpub &&
+      currentAccount.xpub.startsWith('0x');
+
+    if (hasInvalidXpubForUTXO) {
+      console.warn(
+        'Skipping asset and transaction updates - account has invalid xpub for UTXO network'
+      );
+      // Don't update assets or transactions with invalid xpub
+      // The updateUTXOAccounts in setSignerNetwork should have already handled regenerating accounts
+    } else {
+      this.updateAssetsFromCurrentAccount({
+        isBitcoinBased,
+        activeNetwork: network,
+        activeAccount: {
+          id: wallet.activeAccountId,
+          type: wallet.activeAccountType,
+        },
+      });
+      this.updateUserTransactionsState({
+        isPolling: false,
+        isBitcoinBased,
+        activeNetwork: network,
+      });
+    }
 
     // Skip dapp notifications during startup
     if (this.isStartingUp) {

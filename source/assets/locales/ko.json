@@ -172,6 +172,11 @@
     "goToAnotherNetwork": "다른 네트워크로 전환",
     "editCurrentRpc": "현재 네트워크 RPC 편집"
   },
+  "networkConnection": {
+    "connecting": "연결 중:",
+    "slowConnection": "연결이 예상보다 오래 걸리고 있습니다",
+    "mayBeRateLimited": "네트워크가 느리거나 요청을 제한하고 있을 수 있습니다"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "가져온 계정은 초기 Pali 계정 비밀 복구 구문에 연결되지 않습니다",
     "stillHaveFunds": "지갑에 아직 자금이 있습니다!",
@@ -180,5 +185,23 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "시드 구문을 비밀로 유지하세요!",
     "anyoneWithThisInfo": "이 정보를 가진 사람은 누구나 귀하의 자금을 훔칠 수 있습니다."
+  },
+  "faucet": {
+    "grabTextOne": "수도꼭지로 ${{token}}을 받으세요!",
+    "grabTextTwo": "{{rpcName}}에서 수도꼭지로 ${{token}}을 받으세요!",
+    "pleaseWait": "마법을 부리는 동안 잠시 기다려 주세요...",
+    "doNotClose": "지갑을 닫지 마세요.",
+    "ERROR": "오류!",
+    "CONGRATULATIONS": "축하합니다!",
+    "someHasJust": "일부 {{tokenSymbol}}이 {{networkName}} 지갑으로 전송되었습니다.",
+    "transactionHash": "거래 해시",
+    "requestNow": "지금 요청",
+    "Close": "닫기",
+    "tryAgain": "다시 시도",
+    "withOurFaucet": "수도꼭지로 {{token}}을 받아 {{networkName}} 네트워크를 경험해 보세요!",
+    "youCanGet": "24시간마다 지갑 주소당 {{quantity}} {{token}}을 받을 수 있습니다.",
+    "firstAccessTitle": "수도꼭지로 ${{token}}을 받아 {{network}} 네트워크를 경험해 보세요!",
+    "firstAccessDescription": "24시간마다 지갑 주소당 {{token}}을 받을 수 있습니다.",
+    "grabTokens": "수도꼭지로 이동"
   }
 }

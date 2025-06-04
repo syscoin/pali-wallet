@@ -16,6 +16,9 @@ export const Loading = ({
   const networkStatus = useSelector(
     (state: RootState) => state.vault.networkStatus
   );
+  const networkTarget = useSelector(
+    (state: RootState) => state.vault.networkTarget
+  );
 
   const isNetworkChanging = networkStatus === 'switching';
 
@@ -62,32 +65,38 @@ export const Loading = ({
 
   useEffect(() => {
     if (timeoutError) {
+      // Clear the timeout immediately to prevent duplicate redirects
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       window.location.hash = '/chain-fail-to-connect';
     }
   }, [timeoutError]);
 
+  // If we've already redirected to error page, don't show spinner
+  if (timeoutError) {
+    return null;
+  }
+
   return (
-    <>
-      <div>
-        <div>
-          <div
-            className={`${
-              usePopupSize && 'min-w-popup min-h-popup'
-            } relative z-20 flex flex-col items-center justify-center w-full bg-transparent`}
-          >
-            <div
-              className={`flex items-center justify-center opacity-${opacity} ${
-                timeoutError && 'mt-32'
-              } `}
-            >
-              <Icon
-                name="loading"
-                className="text-brand-white animate-spin-slow"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+    <div
+      className={`bg-bkg-1 z-50 h-screen ${
+        usePopupSize ? 'min-w-popup' : 'w-full'
+      } top-0 left-0 absolute flex flex-col items-center justify-center bg-opacity-${opacity}`}
+      key={networkTarget?.chainId || 'loading'}
+    >
+      <Icon
+        name="Loader"
+        size={40}
+        wrapperClassname="animate-spin"
+        color="#0B1426"
+      />
+      {isNetworkChanging && networkTarget && (
+        <p className="text-sm text-white mt-2">
+          Switching to {networkTarget.label}...
+        </p>
+      )}
+    </div>
   );
 };

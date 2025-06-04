@@ -187,7 +187,7 @@ export const SendTransaction = () => {
         );
         if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
           alert.removeAll();
-          alert.error(t('settings.ledgerBlindSigning'));
+          alert.warning(t('settings.ledgerBlindSigning'));
           setLoading(false);
           return;
         }
@@ -239,7 +239,7 @@ export const SendTransaction = () => {
     return () => {
       abortController.abort();
     };
-  }, []); // TODO: add timer
+  }, [validatedDataTxWithoutType, activeNetwork, alert, t]); // TODO: add timeout to abort controller
 
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);

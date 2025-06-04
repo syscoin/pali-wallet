@@ -31,8 +31,14 @@ const toastOptions = {
   autoClose: 2 * 1000,
   hideProgressBar: false,
   closeOnClick: true,
-  pauseOnHover: true,
-  draggable: true,
+  pauseOnHover: false,
+  draggable: false,
+  newestOnTop: false,
+  limit: 3,
+  closeButton: false,
+  className: 'pali-toast',
+  toastClassName: 'pali-toast-content',
+  progressClassName: 'pali-toast-progress',
 };
 
 if (externalRootElement) {

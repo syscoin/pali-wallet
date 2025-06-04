@@ -172,6 +172,11 @@
     "goToAnotherNetwork": "Zu einem anderen Netzwerk wechseln",
     "editCurrentRpc": "RPC des aktuellen Netzwerks bearbeiten"
   },
+  "networkConnection": {
+    "connecting": "Verbinden mit",
+    "slowConnection": "Die Verbindung dauert länger als erwartet",
+    "mayBeRateLimited": "Das Netzwerk ist möglicherweise langsam oder begrenzt Anfragen"
+  },
   "forgetWalletPage": {
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
@@ -180,5 +185,23 @@
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",
     "anyoneWithThisInfo": "Jeder mit dieser Information kann Ihre Gelder stehlen."
+  },
+  "faucet": {
+    "grabTextOne": "Holen Sie sich ${{token}} mit unserem Faucet!",
+    "grabTextTwo": "Holen Sie sich ${{token}} mit unserem Faucet auf {{rpcName}}!",
+    "pleaseWait": "Bitte warten Sie, während wir unsere Magie wirken...",
+    "doNotClose": "Schließen Sie die Wallet nicht.",
+    "ERROR": "FEHLER!",
+    "CONGRATULATIONS": "GLÜCKWUNSCH!",
+    "someHasJust": "Einige {{tokenSymbol}} wurden gerade an Ihre {{networkName}} Wallet gesendet.",
+    "transactionHash": "Transaktions-Hash",
+    "requestNow": "Jetzt anfordern",
+    "Close": "Schließen",
+    "tryAgain": "Erneut versuchen",
+    "withOurFaucet": "Holen Sie sich {{token}} mit unserem Faucet, um das {{networkName}} Netzwerk zu erleben!",
+    "youCanGet": "Sie können {{quantity}} {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
+    "firstAccessTitle": "Holen Sie sich ${{token}} mit unserem Faucet, um das {{network}} Netzwerk zu erleben!",
+    "firstAccessDescription": "Sie können {{token}} pro Wallet-Adresse alle 24 Stunden erhalten.",
+    "grabTokens": "Zum Faucet gehen"
   }
 }

@@ -68,8 +68,8 @@ export const AccountHeader: React.FC = () => {
     if (!copied) return;
 
     alert.removeAll();
-    alert.success(t('home.addressCopied'));
-  }, [copied]);
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   const handleVerifyAddress = async () => {
     try {

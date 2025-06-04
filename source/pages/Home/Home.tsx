@@ -19,7 +19,6 @@ import { WalletProviderDefaultModal } from 'components/Modal/WalletProviderDafau
 import { ConnectHardwareWallet } from 'components/Modal/WarningBaseModal';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { useNetworkChangeHandler } from 'hooks/useNetworkChangeHandler';
 import { RootState } from 'state/store';
 import {
   formatBalanceDecimals,
@@ -99,7 +98,6 @@ export const Home = () => {
   const { t } = useTranslation();
   const { state } = useLocation();
   const { controllerEmitter, isUnlocked } = useController();
-  useNetworkChangeHandler();
 
   const { asset: fiatAsset } = useSelector(
     (priceState: RootState) => priceState.price.fiat
@@ -274,12 +272,10 @@ export const Home = () => {
           <Header accountHeader />
           <WalletProviderDefaultModal />
 
-          {isFaucetAvailable && (
+          {isFaucetAvailable && actualBalance === 0 && (
             <>
               {shouldShowFaucetFirstModal ? (
-                <FaucetFirstAccessModal
-                  handleOnClose={handleOnCloseFaucetModal}
-                />
+                <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
               ) : (
                 <FaucetAccessModal />
               )}
