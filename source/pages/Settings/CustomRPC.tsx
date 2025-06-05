@@ -25,7 +25,9 @@ import { ICustomRpcParams } from 'types/transactions';
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
   const { t } = useTranslation();
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const networks = useSelector(
+    (reduxState: RootState) => reduxState.vault.networks
+  );
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   // When editing, determine network type from the selected network
   const [loading, setLoading] = useState(false);

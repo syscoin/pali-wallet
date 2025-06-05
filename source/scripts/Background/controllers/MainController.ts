@@ -1761,13 +1761,8 @@ class MainController extends KeyringManager {
   }
 
   public getLatestUpdateForCurrentAccount(isPolling = false) {
-    const {
-      accounts,
-      activeAccount,
-      isBitcoinBased,
-      activeNetwork,
-      networkStatus,
-    } = store.getState().vault;
+    const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
+      store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
 
