@@ -1,11 +1,7 @@
 import { FIAT_UPDATE_INTERVAL } from '../constants';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
-import { checkForUpdates } from 'scripts/Background/handlers/handlePaliUpdates';
-import {
-  startPolling,
-  getPollingInterval,
-} from 'scripts/Background/utils/startPolling';
+import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import { setIsPolling } from 'state/vault';
 
@@ -14,18 +10,15 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.runtime.onInstalled.addListener(() => {
     console.emoji('🤩', 'Pali extension enabled');
     // Setup recurring alarms upon installation/update
-    chrome.alarms.create('check_for_updates', {
-      periodInMinutes: getPollingInterval(),
-    });
-    // Note: Removed separate pending transaction check - main update handles it now
     chrome.alarms.create('update_fiat_price', {
       periodInMinutes: FIAT_UPDATE_INTERVAL,
     });
 
     // Delay initial updates to allow proper initialization
     setTimeout(() => {
-      checkForUpdates();
       masterController.wallet.setFiat(); // Initial fiat price fetch
+      // Set up polling - this will call checkForUpdates() internally
+      startPolling();
     }, 1000); // 1 second delay
   });
 
@@ -33,17 +26,15 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.runtime.onStartup.addListener(() => {
     console.emoji('🚀', 'Pali extension started');
     // Ensure alarms are set on browser startup as well
-    chrome.alarms.create('check_for_updates', {
-      periodInMinutes: getPollingInterval(),
-    });
     chrome.alarms.create('update_fiat_price', {
       periodInMinutes: FIAT_UPDATE_INTERVAL,
     });
 
     // Delay initial updates to allow proper initialization
     setTimeout(() => {
-      checkForUpdates();
       masterController.wallet.setFiat();
+      // Set up polling - this will call checkForUpdates() internally
+      startPolling();
     }, 1000); // 1 second delay
   });
 
@@ -51,8 +42,7 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.alarms.onAlarm.addListener((alarm) => {
     console.log('Alarm triggered:', alarm.name);
     if (alarm.name === 'check_for_updates') {
-      checkForUpdates();
-      // Dynamically adjust polling interval based on current state
+      // Just restart polling - this will call checkForUpdates() internally and adjust interval
       startPolling();
     }
 
@@ -114,7 +104,7 @@ export const handleListeners = (masterController: IMasterController) => {
         case 'startPendingTransactionsPolling':
           // Just trigger a regular update and restart polling with dynamic interval
           store.dispatch(setIsPolling(true));
-          checkForUpdates();
+          // startPolling() will call checkForUpdates() internally
           startPolling();
           break;
         case 'getCurrentState':

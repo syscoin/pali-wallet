@@ -841,7 +841,10 @@ class MainController extends KeyringManager {
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
         : await getEthRpc(data, false);
-      return formattedNetwork;
+      return {
+        ...formattedNetwork,
+        kind: data.isSyscoinRpc ? 'utxo' : 'evm',
+      } as INetworkWithKind;
     } catch (error) {
       if (!data.isSyscoinRpc) {
         throw cleanErrorStack(ethErrors.rpc.internal());

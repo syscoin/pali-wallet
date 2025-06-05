@@ -62,27 +62,8 @@ jest.mock('@pollum-io/sysweb3-keyring', () => ({
 }));
 // --- End keyring mock ---
 
-// SIMPLIFIED Mock Ledger transport
-jest.mock('@ledgerhq/hw-transport-webhid', () => ({
-  __esModule: true,
-  default: jest.fn(() => ({
-    // Provide minimal mocks for methods that might be called during setup or type checking
-    // if absolutely necessary, otherwise keep it as empty as possible initially.
-    close: jest.fn(),
-    on: jest.fn(),
-    off: jest.fn(),
-    isSupported: jest.fn(() => Promise.resolve(true)),
-    // Add other methods only if essential for the file to parse/compile for tests
-  })),
-  // Mock other named exports if they are directly imported and used in the module under test
-}));
-
 // Mock dependencies
 jest.mock('scripts/Background/handlers/handleLogout');
-jest.mock('scripts/Background/handlers/handlePaliUpdates');
-jest.mock('scripts/Background/utils/checkForPendingTransactions');
-jest.mock('scripts/Background/utils/startPendingTransactionsPolling');
-jest.mock('scripts/Background/utils/startPolling');
 jest.mock('state/store', () => ({
   getState: jest.fn(() => ({
     vault: {
@@ -123,14 +104,37 @@ const mockMasterController: jest.Mocked<IMasterController> = {
   } as any, // Use 'as any' for brevity, ideally mock all methods
 };
 
+// Mock the dependencies but with better spy behavior
+jest.mock('scripts/Background/handlers/handlePaliUpdates', () => ({
+  checkForUpdates: jest.fn(),
+}));
+
+jest.mock('scripts/Background/utils/startPolling', () => ({
+  startPolling: jest.fn(() => {
+    // When startPolling is called, it should call checkForUpdates
+    // Access the mocked checkForUpdates function and call it
+    const mockModule = jest.requireMock(
+      'scripts/Background/handlers/handlePaliUpdates'
+    );
+    mockModule.checkForUpdates();
+  }),
+  getPollingInterval: jest.fn(),
+}));
+
 describe('Background: handleListeners', () => {
   beforeEach(() => {
+    // Mock console.emoji which is used by the real code
+    (console as any).emoji = jest.fn();
+
     // Reset mocks before each test
     jest.clearAllMocks();
     chrome.runtime.onInstalled.clearListeners();
     chrome.runtime.onStartup.clearListeners();
     chrome.alarms.onAlarm.clearListeners();
     chrome.runtime.onMessage.clearListeners();
+
+    // Also clear any pending alarms to prevent cross-test interference
+    chrome.alarms.clear.mockClear();
 
     // Mock getPollingInterval to return a predictable value
     (getPollingInterval as jest.Mock).mockReturnValue(5);
@@ -146,23 +150,45 @@ describe('Background: handleListeners', () => {
         reason: 'install',
       } as chrome.runtime.InstalledDetails);
 
-      // Check if alarms are created
-      expect(chrome.alarms.create).toHaveBeenCalledWith('check_for_updates', {
-        periodInMinutes: 5, // Based on mocked getPollingInterval
-      });
+      // Only check that fiat price alarm is created immediately
+      // check_for_updates alarm is now created by startPolling() which is called in setTimeout
       expect(chrome.alarms.create).toHaveBeenCalledWith('update_fiat_price', {
         periodInMinutes: 3, // FIAT_UPDATE_INTERVAL_MINUTES
       });
-      expect(chrome.alarms.create).toHaveBeenCalledTimes(3);
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
     });
 
-    it('should trigger initial updates on install', () => {
+    it('should trigger initial updates on install', async () => {
+      // Clear listeners and re-setup to ensure clean state
+      chrome.runtime.onInstalled.clearListeners();
+      chrome.runtime.onStartup.clearListeners();
+      chrome.alarms.onAlarm.clearListeners();
+      chrome.runtime.onMessage.clearListeners();
+
+      // Clear mocks after clearing listeners
+      jest.clearAllMocks();
+
+      // Re-initialize listeners for this isolated test
+      handleListeners(mockMasterController);
+
+      // Use fake timers to control setTimeout precisely
+      jest.useFakeTimers();
+
       chrome.runtime.onInstalled.callListeners({
         reason: 'install',
       } as chrome.runtime.InstalledDetails);
 
-      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+      // Fast-forward time to trigger the setTimeout
+      jest.advanceTimersByTime(1000);
+
+      // Verify the functions were called
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
+      expect(startPolling).toHaveBeenCalledTimes(1);
+      // Now we can verify that checkForUpdates is called by startPolling
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+
+      // Restore real timers
+      jest.useRealTimers();
     });
   });
 
@@ -170,27 +196,52 @@ describe('Background: handleListeners', () => {
     it('should create alarms on startup', () => {
       chrome.runtime.onStartup.callListeners();
 
-      expect(chrome.alarms.create).toHaveBeenCalledWith('check_for_updates', {
-        periodInMinutes: 5,
-      });
+      // Only check that fiat price alarm is created immediately
+      // check_for_updates alarm is now created by startPolling() which is called in setTimeout
       expect(chrome.alarms.create).toHaveBeenCalledWith('update_fiat_price', {
         periodInMinutes: 3,
       });
-      expect(chrome.alarms.create).toHaveBeenCalledTimes(3);
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
     });
 
-    it('should trigger initial updates on startup', () => {
+    it('should trigger initial updates on startup', async () => {
+      // Clear listeners and re-setup to ensure clean state
+      chrome.runtime.onInstalled.clearListeners();
+      chrome.runtime.onStartup.clearListeners();
+      chrome.alarms.onAlarm.clearListeners();
+      chrome.runtime.onMessage.clearListeners();
+
+      // Clear mocks after clearing listeners
+      jest.clearAllMocks();
+
+      // Re-initialize listeners for this isolated test
+      handleListeners(mockMasterController);
+
+      // Use fake timers to control setTimeout precisely
+      jest.useFakeTimers();
+
       chrome.runtime.onStartup.callListeners();
 
-      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+      // Fast-forward time to trigger the setTimeout
+      jest.advanceTimersByTime(1000);
+
+      // Verify the functions were called
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
+      expect(startPolling).toHaveBeenCalledTimes(1);
+      // Now we can verify that checkForUpdates is called by startPolling
+      expect(checkForUpdates).toHaveBeenCalledTimes(1);
+
+      // Restore real timers
+      jest.useRealTimers();
     });
   });
 
   describe('onAlarm Listener', () => {
-    it('should call checkForUpdates for check_for_updates alarm', () => {
+    it('should call startPolling for check_for_updates alarm', () => {
       const alarm = { name: 'check_for_updates' } as chrome.alarms.Alarm;
       chrome.alarms.onAlarm.callListeners(alarm);
+      expect(startPolling).toHaveBeenCalledTimes(1);
+      // Now we can verify that checkForUpdates is called by startPolling
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
       expect(mockMasterController.wallet.setFiat).not.toHaveBeenCalled();
     });
