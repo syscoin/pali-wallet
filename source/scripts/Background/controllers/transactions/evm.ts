@@ -165,7 +165,27 @@ const EvmTransactionsController = (
         url.searchParams.set('apikey', existingApiKey);
       }
 
-      const response = await fetch(url.toString());
+      // Prepare fetch promises for parallel execution
+      const fetchPromises = [fetch(url.toString())];
+
+      // Add pending transactions fetch if requested
+      let pendingUrl: URL | null = null;
+      if (includePending) {
+        pendingUrl = new URL(apiUrl);
+        pendingUrl.searchParams.set('module', 'account');
+        pendingUrl.searchParams.set('action', 'pendingtxlist');
+        pendingUrl.searchParams.set('address', address);
+
+        if (existingApiKey) {
+          pendingUrl.searchParams.set('apikey', existingApiKey);
+        }
+
+        fetchPromises.push(fetch(pendingUrl.toString()));
+      }
+
+      // Execute both fetches in parallel
+      const responses = await Promise.all(fetchPromises);
+      const [response, pendingResponse] = responses;
 
       if (!response.ok) {
         const errorMsg = `Explorer API request failed with status ${response.status}`;
@@ -173,7 +193,13 @@ const EvmTransactionsController = (
         return { transactions: null, error: errorMsg };
       }
 
-      const data = await response.json();
+      // Parse both responses in parallel
+      const parsePromises = [response.json()];
+      if (pendingResponse) {
+        parsePromises.push(pendingResponse.json());
+      }
+
+      const [data, pendingData] = await Promise.all(parsePromises);
 
       // Handle API error responses
       // Status "0" with "No transactions found" is not an error, it's a valid empty result
@@ -227,48 +253,34 @@ const EvmTransactionsController = (
         allTransactions = transactions;
       }
 
-      // Also fetch pending transactions if requested
-      if (includePending) {
+      // Process pending transactions if they were fetched
+      if (
+        includePending &&
+        pendingResponse &&
+        pendingResponse.ok &&
+        pendingData
+      ) {
         try {
-          // Try to get pending transactions (not all APIs support this)
-          const pendingUrl = new URL(apiUrl);
-          pendingUrl.searchParams.set('module', 'account');
-          pendingUrl.searchParams.set('action', 'pendingtxlist');
-          pendingUrl.searchParams.set('address', address);
+          // Check for pending API errors too
+          if (pendingData.status !== '0' && Array.isArray(pendingData.result)) {
+            const pendingTxs = pendingData.result.map((tx: any) => ({
+              hash: tx.hash,
+              from: tx.from,
+              to: tx.to,
+              value: tx.value,
+              blockNumber: 0, // Pending transactions don't have a block number
+              blockHash: null,
+              timestamp: parseInt(tx.timeStamp) || Date.now() / 1000,
+              confirmations: 0,
+              chainId: chainId,
+              input: tx.input,
+              gasPrice: tx.gasPrice,
+              gas: tx.gas || tx.gasLimit,
+              nonce: parseInt(tx.nonce),
+            }));
 
-          if (existingApiKey) {
-            pendingUrl.searchParams.set('apikey', existingApiKey);
-          }
-
-          const pendingResponse = await fetch(pendingUrl.toString());
-
-          if (pendingResponse.ok) {
-            const pendingData = await pendingResponse.json();
-
-            // Check for pending API errors too
-            if (
-              pendingData.status !== '0' &&
-              Array.isArray(pendingData.result)
-            ) {
-              const pendingTxs = pendingData.result.map((tx: any) => ({
-                hash: tx.hash,
-                from: tx.from,
-                to: tx.to,
-                value: tx.value,
-                blockNumber: 0, // Pending transactions don't have a block number
-                blockHash: null,
-                timestamp: parseInt(tx.timeStamp) || Date.now() / 1000,
-                confirmations: 0,
-                chainId: chainId,
-                input: tx.input,
-                gasPrice: tx.gasPrice,
-                gas: tx.gas || tx.gasLimit,
-                nonce: parseInt(tx.nonce),
-              }));
-
-              // Combine pending with confirmed transactions
-              allTransactions = [...pendingTxs, ...allTransactions];
-            }
+            // Combine pending with confirmed transactions
+            allTransactions = [...pendingTxs, ...allTransactions];
           }
         } catch (pendingError) {
           // Not all APIs support pending transactions, so this is not a critical error

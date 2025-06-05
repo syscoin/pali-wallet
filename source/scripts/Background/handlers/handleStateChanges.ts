@@ -1,4 +1,3 @@
-import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 
 let currentState = store.getState();
@@ -24,9 +23,6 @@ export function handleObserveStateChanges() {
 
     if (nextState.vault.isBitcoinBased !== currentIsBitcoinBased) {
       currentIsBitcoinBased = nextState.vault.isBitcoinBased;
-      if (nextState.vault.isPolling) {
-        startPolling();
-      }
     }
 
     if (JSON.stringify(currentState) !== JSON.stringify(nextState)) {

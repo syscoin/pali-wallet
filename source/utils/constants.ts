@@ -16,7 +16,15 @@ export const CHAIN_IDS = {
   ROLLUX_MAINNET: 570,
   ROLLUX_TESTNET: 57000,
   ETHEREUM_MAINNET: 1,
+  ZKSYNC_ERA_MAINNET: 324,
+  ZKSYNC_ERA_TESTNET: 300,
 } as const;
+
+// zkSync Era networks that require CustomL2JsonRpcProvider (zksync-ethers.Provider)
+export const L2_NETWORK_CHAIN_IDS: number[] = [
+  CHAIN_IDS.ZKSYNC_ERA_MAINNET, // 324 - zkSync Era Mainnet
+  CHAIN_IDS.ZKSYNC_ERA_TESTNET, // 300 - zkSync Era Sepolia Testnet
+];
 
 export const INITIAL_FEE = {
   baseFee: 0,
@@ -103,8 +111,8 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   currency: 'tsys',
   isTestnet: true,
   kind: 'evm',
-  apiUrl: 'https://tanenbaum.io/api',
-  explorer: 'https://tanenbaum.io/',
+  apiUrl: 'https://explorer.tanenbaum.io/api',
+  explorer: 'https://explorer.tanenbaum.io/',
 } as INetworkWithKind;
 
 export const SYSCOIN_MAINNET_NETWORK = {

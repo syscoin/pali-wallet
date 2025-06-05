@@ -81,7 +81,6 @@ export const initialState: IVaultState = {
   },
   networks: PALI_NETWORKS_STATE,
   error: null,
-  isPolling: false,
   currentBlock: undefined,
   coinsList: [],
   shouldShowFaucetModal: {
@@ -559,9 +558,6 @@ const VaultState = createSlice({
 
       state.accounts[type][id].assets.ethereum = updatedTokens;
     },
-    setIsPolling(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isPolling = action.payload;
-    },
     setCurrentBlock(
       state: IVaultState,
       action: PayloadAction<ethers.providers.Block>
@@ -966,7 +962,6 @@ export const {
   setUpdatedAllErcTokensBalance,
   setUpdatedNftsToState,
   setAdvancedSettings,
-  setIsPolling,
   setCurrentBlock,
   setSingleTransactionToState,
   setMultipleTransactionToState,

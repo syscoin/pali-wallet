@@ -74,7 +74,7 @@ import {
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { logError } from 'utils/index';
+import { L2_NETWORK_CHAIN_IDS, logError } from 'utils/index';
 import { getNetworkChain } from 'utils/network';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
@@ -177,9 +177,6 @@ class MainController extends KeyringManager {
     cancel: () => void;
     promise: Promise<{ chainId: string; networkVersion: number }>;
   } | null = null;
-  private lastUpdatePromise: Promise<void> | null = null;
-  private lastUpdateTimestamp = 0;
-  private currentUpdateAccountId: string | null = null;
   private justUnlocked = false;
   private isStartingUp = false;
 
@@ -477,6 +474,14 @@ class MainController extends KeyringManager {
       store.dispatch(setAccounts(accounts));
       store.dispatch(setLastLogin());
 
+      // Fetch fresh fiat prices immediately after successful unlock
+      this.setFiat().catch((error) =>
+        console.warn(
+          '[MainController] Failed to fetch fiat prices after unlock:',
+          error
+        )
+      );
+
       // Clear the flags after a short delay to allow initialization to complete
       setTimeout(() => {
         this.justUnlocked = false;
@@ -557,6 +562,14 @@ class MainController extends KeyringManager {
       })
     );
     store.dispatch(setLastLogin());
+
+    // Fetch fresh fiat prices immediately after wallet creation
+    this.setFiat().catch((error) =>
+      console.warn(
+        '[MainController] Failed to fetch fiat prices after wallet creation:',
+        error
+      )
+    );
   }
 
   public lock() {
@@ -1689,8 +1702,7 @@ class MainController extends KeyringManager {
     isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
-    const L2Networks = [324, 300];
-    const isL2Network = L2Networks.includes(activeNetwork.chainId);
+    const isL2Network = L2_NETWORK_CHAIN_IDS.includes(activeNetwork.chainId);
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 

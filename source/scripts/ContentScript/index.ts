@@ -176,7 +176,7 @@ export const injectScriptFile = (file: string, id: string) => {
 };
 
 // listen for messages from background
-chrome.runtime.onMessage.addListener((message) => {
+const backgroundMessageListener = (message) => {
   const { id, data } = message;
 
   if (data?.params?.type) {
@@ -196,6 +196,13 @@ chrome.runtime.onMessage.addListener((message) => {
   if (id) {
     emitter.emit(id, data);
   }
+};
+
+chrome.runtime.onMessage.addListener(backgroundMessageListener);
+
+// Cleanup on page unload (content script lifecycle)
+window.addEventListener('beforeunload', () => {
+  chrome.runtime.onMessage.removeListener(backgroundMessageListener);
 });
 
 // Initial setup

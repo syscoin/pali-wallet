@@ -10,6 +10,7 @@ import {
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import {
   faucetTxRolluxInfo,
   faucetTxRolluxTestnetInfo,
@@ -82,28 +83,15 @@ export const useFaucetComponentStates = () => {
 
         // Schedule a single delayed update to catch the balance change once transaction is processed
         // Faucet transactions are often internal and may not appear in transaction lists
-        const alarmName = `faucet-balance-update-${Date.now()}`;
-        chrome.alarms.create(alarmName, {
-          delayInMinutes: 10 / 60, // 10 seconds delay for balance to be updated
+        createTemporaryAlarm({
+          delayInSeconds: 10,
+          callback: () => controllerEmitter(['callGetLatestUpdateForAccount']),
+          onError: (error) =>
+            console.warn(
+              'Failed to update balance after faucet transaction:',
+              error
+            ),
         });
-
-        const handleFaucetBalanceUpdateAlarm = (alarm: chrome.alarms.Alarm) => {
-          if (alarm.name === alarmName) {
-            try {
-              controllerEmitter(['callGetLatestUpdateForAccount']);
-            } catch (error) {
-              console.warn(
-                'Failed to update balance after faucet transaction:',
-                error
-              );
-            }
-            chrome.alarms.onAlarm.removeListener(
-              handleFaucetBalanceUpdateAlarm
-            );
-          }
-        };
-
-        chrome.alarms.onAlarm.addListener(handleFaucetBalanceUpdateAlarm);
       } else {
         throw new Error(
           data?.data?.message || data?.message || 'Unknown error'

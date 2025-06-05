@@ -43,7 +43,6 @@ export interface IVaultState {
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
-  isPolling: boolean;
   isSwitchingAccount: boolean;
   lastLogin: number;
   networkStatus: 'idle' | 'switching' | 'error';
