@@ -76,7 +76,10 @@
     "chinese": "Китайский (упрощенный)",
     "japanese": "Японский",
     "korean": "Корейский",
-    "russian": "Русский"
+    "russian": "Русский",
+    "missingApiKey": "Отсутствует/Недействительный API-ключ - Пожалуйста, добавьте ваш API-ключ к URL (например, ?apikey=ВАШ_КЛЮЧ)",
+    "apiFormatError": "API не отвечает корректно. Пожалуйста, проверьте URL и убедитесь, что он поддерживает формат API Etherscan/Blockscout.",
+    "apiConnectionError": "Не удается проверить API. Пожалуйста, проверьте соединение и попробуйте снова."
   },
   "components": {
     "newPassword": "Новый пароль (мин. 8 символов)",
@@ -100,6 +103,15 @@
     "evmNetworks": "Сети EVM",
     "networkSettings": "НАСТРОЙКИ СЕТИ",
     "customRpc": "Пользовательский RPC",
+    "rpcUrlRequired": "Требуется URL RPC",
+    "validUrlRequired": "Пожалуйста, введите действительный URL",
+    "invalidUtxoRpcUrl": "Недействительный URL RPC UTXO - невозможно подключиться",
+    "invalidEthRpcUrl": "Недействительный URL RPC - невозможно подключиться",
+    "networkMismatch": "Несоответствие сети - chainId не совпадает",
+    "failedValidateRpc": "Не удалось проверить URL RPC",
+    "fixValidationErrors": "Пожалуйста, исправьте ошибки валидации перед сохранением",
+    "chainIdRequired": "Требуется Chain ID",
+    "symbolRequired": "Требуется символ",
     "manageNetworks": "Управление сетями"
   },
   "accountMenu": {
@@ -161,7 +173,7 @@
     "sys": "SYS",
     "transaction": "ТРАНЗАКЦИЯ"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "Вы подключены к",
     "toUse": "чтобы использовать эту dApp, вам нужно переключиться на",
     "learnAbout": "Узнать о UTXO и EVM"

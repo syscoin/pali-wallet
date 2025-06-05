@@ -76,7 +76,10 @@
     "chinese": "Chinesisch (Vereinfacht)",
     "japanese": "Japanisch",
     "korean": "Koreanisch",
-    "russian": "Russisch"
+    "russian": "Russisch",
+    "missingApiKey": "Fehlender/Ungültiger API-Schlüssel - Bitte fügen Sie Ihren API-Schlüssel zur URL hinzu (z.B., ?apikey=IHR_SCHLÜSSEL)",
+    "apiFormatError": "Die API antwortet nicht korrekt. Bitte überprüfen Sie die URL und stellen Sie sicher, dass sie das Etherscan/Blockscout-API-Format unterstützt.",
+    "apiConnectionError": "API kann nicht validiert werden. Bitte überprüfen Sie Ihre Verbindung und versuchen Sie es erneut."
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",
@@ -100,6 +103,15 @@
     "evmNetworks": "EVM-Netzwerke",
     "networkSettings": "NETZWERKEINSTELLUNGEN",
     "customRpc": "Benutzerdefiniertes RPC",
+    "rpcUrlRequired": "RPC-URL ist erforderlich",
+    "validUrlRequired": "Bitte geben Sie eine gültige URL ein",
+    "invalidUtxoRpcUrl": "Ungültige UTXO-RPC-URL - Verbindung nicht möglich",
+    "invalidEthRpcUrl": "Ungültige RPC-URL - Verbindung nicht möglich",
+    "networkMismatch": "Netzwerk-Unstimmigkeit - chainId stimmt nicht überein",
+    "failedValidateRpc": "Validierung der RPC-URL fehlgeschlagen",
+    "fixValidationErrors": "Bitte beheben Sie die Validierungsfehler vor dem Speichern",
+    "chainIdRequired": "Chain ID ist erforderlich",
+    "symbolRequired": "Symbol ist erforderlich",
     "manageNetworks": "Netzwerke verwalten"
   },
   "accountMenu": {
@@ -161,7 +173,7 @@
     "sys": "SYS",
     "transaction": "TRANSAKTION"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "Sie sind verbunden mit",
     "toUse": "um diese dApp zu nutzen, müssen Sie wechseln zu",
     "learnAbout": "Mehr über UTXO und EVM erfahren"

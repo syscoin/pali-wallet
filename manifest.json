@@ -16,7 +16,8 @@
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
-    "scripting"
+    "scripting",
+    "webRequest"
   ],
   "host_permissions": [
     "http://*/*",

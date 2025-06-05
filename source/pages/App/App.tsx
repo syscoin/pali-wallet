@@ -20,10 +20,9 @@ const App: FC = () => {
       }
     }, 3000);
 
-    const messageListener = ({ action }) => {
-      if (action === 'logoutFS') {
-        // Navigate to the home page
-        // replace this with your React routing logic
+    const messageListener = ({ type }) => {
+      if (type === 'logout') {
+        // Navigate to the home page after logout
         window.location.hash = '';
         window.location.replace('/app.html#');
       }

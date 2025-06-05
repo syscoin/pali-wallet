@@ -3,6 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { Button } from 'components/Button';
+import { ChainIcon } from 'components/ChainIcon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
@@ -165,7 +166,21 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              {currentNetworks.label}
+              <div className="flex items-center gap-2">
+                <ChainIcon
+                  chainId={currentNetworks.chainId}
+                  size={20}
+                  networkKind={selectedNetwork === 'UTXO' ? 'utxo' : 'evm'}
+                  className="flex-shrink-0"
+                />
+                <span>
+                  {currentNetworks.label || `Chain ${currentNetworks.chainId}`}
+                </span>
+              </div>
+              {selectCurrentNetwork?.current?.label ===
+                currentNetworks?.label && (
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              )}
             </div>
           ))}
         </div>
@@ -188,7 +203,21 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 })
               }
             >
-              {currentNetworks?.label}
+              <div className="flex items-center gap-2">
+                <ChainIcon
+                  chainId={currentNetworks.chainId}
+                  size={20}
+                  networkKind={selectedNetwork === 'UTXO' ? 'utxo' : 'evm'}
+                  className="flex-shrink-0"
+                />
+                <span>
+                  {currentNetworks?.label || `Chain ${currentNetworks.chainId}`}
+                </span>
+              </div>
+              {selectCurrentNetwork?.current?.label ===
+                currentNetworks?.label && (
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              )}
             </div>
           ))}
         </div>

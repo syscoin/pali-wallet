@@ -747,11 +747,22 @@ class MainController extends KeyringManager {
   public async setActiveNetwork(
     network: INetworkWithKind
   ): Promise<{ chainId: string; networkVersion: number }> {
-    let cancelled = false;
+    // Cancel the current promise if it exists
     if (this.currentPromise) {
       this.currentPromise.cancel();
-      cancelled = true;
+      this.currentPromise = null;
     }
+
+    // Ensure the network object has all required properties
+    const completeNetwork: INetworkWithKind = {
+      ...network,
+      label: network.label || `Chain ${network.chainId}`,
+      kind: network.kind || (network.slip44 ? 'utxo' : 'evm'),
+      // Ensure currency property is preserved - use appropriate fallback
+      currency:
+        network.currency ||
+        (network.kind === 'utxo' || network.slip44 ? 'sys' : 'eth'),
+    };
 
     const promiseWrapper = this.createCancellablePromise<{
       activeChain: INetworkType;
@@ -762,17 +773,27 @@ class MainController extends KeyringManager {
       wallet: IWalletState;
     }>((resolve, reject) => {
       const chain =
-        network.kind === 'utxo' ? INetworkType.Syscoin : INetworkType.Ethereum;
-      this.setActiveNetworkLogic(network, chain, cancelled, resolve, reject);
+        completeNetwork.kind === 'utxo'
+          ? INetworkType.Syscoin
+          : INetworkType.Ethereum;
+      this.setActiveNetworkLogic(
+        completeNetwork,
+        chain,
+        false,
+        resolve,
+        reject
+      );
     });
+
     this.currentPromise = promiseWrapper;
+
     promiseWrapper.promise
       .then(async ({ wallet, activeChain, isBitcoinBased }) => {
         await this.handleNetworkChangeSuccess(
           wallet,
           activeChain,
           isBitcoinBased,
-          network
+          completeNetwork
         );
       })
       .catch(this.handleNetworkChangeError);
@@ -981,7 +1002,7 @@ class MainController extends KeyringManager {
     if (network.chainId === oldRpc.chainId) {
       const newNetwork = {
         ...network,
-        label: newRpc.label,
+        label: newRpc.label || oldRpc.label || network.label, // Preserve existing label if newRpc.label is undefined
         currency:
           newRpc.symbol === oldRpc.currency ? oldRpc.currency : newRpc.symbol,
         apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
@@ -1740,9 +1761,6 @@ class MainController extends KeyringManager {
   }
 
   public getLatestUpdateForCurrentAccount(isPolling = false) {
-    const now = Date.now();
-    const UPDATE_DEBOUNCE_TIME = 500; // 500ms debounce
-
     const {
       accounts,
       activeAccount,
@@ -1752,7 +1770,6 @@ class MainController extends KeyringManager {
     } = store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
-    const isNetworkChanging = networkStatus === 'switching';
 
     // Skip if we just unlocked and this is not a polling call
     // This prevents duplicate calls on startup - let polling handle it
@@ -1772,69 +1789,90 @@ class MainController extends KeyringManager {
       console.warn(
         '[MainController] Skipping account update - invalid xpub for UTXO network'
       );
-      return Promise.resolve();
-    }
-
-    // Create a unique ID for the current account
-    const accountId = `${activeAccount.type}:${activeAccount.id}`;
-
-    // If this is a different account than the one we're currently updating, cancel the old update
-    if (
-      this.currentUpdateAccountId &&
-      this.currentUpdateAccountId !== accountId
-    ) {
-      console.log(
-        '[MainController] Cancelling update for previous account:',
-        this.currentUpdateAccountId
-      );
-      this.currentUpdateAccountId = accountId;
-      this.lastUpdatePromise = null;
-      this.lastUpdateTimestamp = 0;
+      // Don't update assets or transactions with invalid xpub
+      // The updateUTXOAccounts in setSignerNetwork should have already handled regenerating accounts
     } else {
-      this.currentUpdateAccountId = accountId;
-    }
-
-    // If we have a recent update in progress for the same account, return the existing promise
-    if (
-      this.lastUpdatePromise &&
-      now - this.lastUpdateTimestamp < UPDATE_DEBOUNCE_TIME
-    ) {
-      console.log(
-        '[MainController] Debouncing getLatestUpdateForCurrentAccount call for account:',
-        accountId
-      );
-      return this.lastUpdatePromise;
-    }
-
-    if (isNetworkChanging || isNil(activeAccountValues.address)) {
-      throw new Error('Could not update account while changing network');
-    }
-
-    this.lastUpdateTimestamp = now;
-    this.lastUpdatePromise = Promise.all([
-      this.updateUserNativeBalance({
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-        isPolling,
-      }),
-      this.updateUserTransactionsState({
-        isPolling,
-        isBitcoinBased,
-        activeNetwork,
-      }),
       this.updateAssetsFromCurrentAccount({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
         isPolling,
-      }),
-    ]).then(() => {
-      // Clear the promise after completion
-      this.lastUpdatePromise = null;
-    });
+      });
+      this.updateUserTransactionsState({
+        isPolling,
+        isBitcoinBased,
+        activeNetwork,
+      });
+      this.updateUserNativeBalance({
+        isBitcoinBased,
+        activeNetwork,
+        activeAccount,
+        isPolling,
+      });
+    }
 
-    return this.lastUpdatePromise;
+    // Skip dapp notifications during startup
+    if (this.isStartingUp) {
+      console.log(
+        '[MainController] Skipping network change dapp notifications during startup'
+      );
+      return;
+    }
+
+    this.handleStateChange([
+      {
+        method: PaliEvents.chainChanged,
+        params: {
+          chainId: `0x${activeNetwork.chainId.toString(16)}`,
+          networkVersion: activeNetwork.chainId,
+        },
+      },
+      {
+        method: PaliEvents.isBitcoinBased,
+        params: { isBitcoinBased },
+      },
+      {
+        method: PaliSyscoinEvents.blockExplorerChanged,
+        params: isBitcoinBased ? activeNetwork.url : null,
+      },
+    ]);
+    if (isBitcoinBased) {
+      const isTestnet = this.verifyIfIsTestnet();
+      const accountXpub = accounts[activeAccount.type][activeAccount.id].xpub;
+
+      // Check if xpub is valid for UTXO network (not an Ethereum public key)
+      const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
+
+      this.handleStateChange([
+        {
+          method: PaliEvents.isTestnet,
+          params: { isTestnet },
+        },
+        {
+          method: PaliEvents.xpubChanged,
+          params: isValidXpub ? accountXpub : null,
+        },
+        {
+          method: PaliEvents.accountsChanged,
+          params: null,
+        },
+      ]);
+    } else {
+      this.handleStateChange([
+        {
+          method: PaliEvents.isTestnet,
+          params: { isTestnet: undefined },
+        },
+        {
+          method: PaliEvents.xpubChanged,
+          params: null,
+        },
+        {
+          method: PaliEvents.accountsChanged,
+          params: [accounts[activeAccount.type][activeAccount.id].address],
+        },
+      ]);
+    }
   }
 
   public async setFaucetModalState({
@@ -2282,10 +2320,29 @@ class MainController extends KeyringManager {
     isBitcoinBased: boolean,
     network: INetworkWithKind
   ) {
+    // Ensure the wallet's activeNetwork has the enhanced properties
+    const enhancedWallet = {
+      ...wallet,
+      activeNetwork: {
+        ...wallet.activeNetwork,
+        label:
+          network.label ||
+          wallet.activeNetwork.label ||
+          `Chain ${wallet.activeNetwork.chainId}`,
+        currency:
+          network.currency ||
+          wallet.activeNetwork.currency ||
+          (activeChain === INetworkType.Syscoin ? 'sys' : 'eth'),
+        kind:
+          network.kind ||
+          (activeChain === INetworkType.Syscoin ? 'utxo' : 'evm'),
+      },
+    };
+
     store.dispatch(
       setNetworkChange({
         activeChain,
-        wallet,
+        wallet: enhancedWallet,
       })
     );
     store.dispatch(setIsBitcoinBased(isBitcoinBased));

@@ -65,7 +65,7 @@ const ManageNetworkView = () => {
             key={
               network.key
                 ? network.key
-                : `${network.label.trim()}-${network.chainId}`
+                : `${(network.label || 'unknown').trim()}-${network.chainId}`
             }
             className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-alpha-whiteAlpha300 cursor-default`}
           >
@@ -77,7 +77,7 @@ const ManageNetworkView = () => {
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">
-                <span>{truncate(network.label, 25)}</span>
+                <span>{truncate(network.label || 'Unknown Network', 25)}</span>
                 {network.chainId === activeNetwork.chainId &&
                   network.url === activeNetwork.url && (
                     <div className="flex items-center gap-1 mt-1">
@@ -159,7 +159,7 @@ const ManageNetworkView = () => {
             key={
               network.key
                 ? network.key
-                : `${network.label.trim()}-${network.chainId}`
+                : `${(network.label || 'unknown').trim()}-${network.chainId}`
             }
             className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-alpha-whiteAlpha300 cursor-default`}
           >
@@ -171,7 +171,7 @@ const ManageNetworkView = () => {
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">
-                <span>{truncate(network.label, 25)}</span>
+                <span>{truncate(network.label || 'Unknown Network', 25)}</span>
                 {network.chainId === activeNetwork.chainId &&
                   network.url === activeNetwork.url && (
                     <div className="flex items-center gap-1 mt-1">

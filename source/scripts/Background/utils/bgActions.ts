@@ -1,30 +1,9 @@
 import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
-export const verifyPaliRequests = () => {
-  chrome.runtime.sendMessage({
-    type: 'verifyPaliRequests',
-    target: 'background',
-  });
-};
-
-export const removeVerifyPaliRequestListener = () => {
-  chrome.runtime.sendMessage({
-    type: 'removeVerifyPaliRequestListener',
-    target: 'background',
-  });
-};
-
 export const keepSWAlive = () => {
   chrome.runtime.sendMessage({
     type: 'ping',
-    target: 'background',
-  });
-};
-
-export const resetPaliRequestsCount = () => {
-  chrome.runtime.sendMessage({
-    type: 'resetPaliRequestsCount',
     target: 'background',
   });
 };

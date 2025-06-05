@@ -87,6 +87,9 @@
     "russian": "Russe",
     "bgError": "Erreur en arrière-plan",
     "bgErrorMessage": "Nous allons verrouiller votre portefeuille pour résoudre ce problème. Ne vous inquiétez pas, toutes vos données resteront en sécurité.",
+    "missingApiKey": "Clé API Manquante/Invalide - Veuillez ajouter votre clé API à l'URL (ex., ?apikey=VOTRE_CLE)",
+    "apiFormatError": "L'API ne répond pas correctement. Veuillez vérifier l'URL et vous assurer qu'elle prend en charge le format d'API Etherscan/Blockscout.",
+    "apiConnectionError": "Impossible de valider l'API. Veuillez vérifier votre connexion et réessayer.",
     "ledgerConnectedMessage": "Ledger connecté avec succès",
     "ledgerConnected": "Ledger connecté",
     "ledgerReconnection": "Reconnexion Ledger nécessaire",
@@ -114,6 +117,15 @@
     "evmNetworks": "Réseaux EVM",
     "networkSettings": "PARAMÈTRES RÉSEAU",
     "customRpc": "RPC personnalisé",
+    "rpcUrlRequired": "URL RPC requise",
+    "validUrlRequired": "Veuillez saisir une URL valide",
+    "invalidUtxoRpcUrl": "URL RPC UTXO invalide - impossible de se connecter",
+    "invalidEthRpcUrl": "URL RPC invalide - impossible de se connecter",
+    "networkMismatch": "Incompatibilité de réseau - chainId ne correspond pas",
+    "failedValidateRpc": "Échec de la validation de l'URL RPC",
+    "fixValidationErrors": "Veuillez corriger les erreurs de validation avant de sauvegarder",
+    "chainIdRequired": "Chain ID est requis",
+    "symbolRequired": "Symbole est requis",
     "manageNetworks": "Gérer les réseaux"
   },
   "accountMenu": {
@@ -201,7 +213,7 @@
     "sys": "SYS",
     "transaction": "TRANSACTION"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",
     "toUse": "pour utiliser cette dApp, vous devez passer à",
     "learnAbout": "En savoir plus sur UTXO et EVM"

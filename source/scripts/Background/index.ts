@@ -6,6 +6,7 @@ import { handleMasterControllerResponses } from 'scripts/Background/handlers/han
 import { handlePendingTransactionsPolling } from 'scripts/Background/handlers/handlePendingTransactionsPolling';
 import { handleStartPolling } from 'scripts/Background/handlers/handleStartPolling';
 import { handleObserveStateChanges } from 'scripts/Background/handlers/handleStateChanges';
+// Removed handleRehydrateStore - rehydrate messages are for frontend only
 
 import { IMasterController } from './controllers';
 
@@ -26,6 +27,7 @@ handleMasterControllerInstance().then((controller) => {
   handleStartPolling();
   handlePendingTransactionsPolling();
   handleFiatPrice();
+  // Removed handleRehydrateStore - rehydrate messages are handled by frontend components
 });
 
 export const getController = () => MasterControllerInstance;

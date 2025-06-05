@@ -353,7 +353,15 @@
     "setYourPreferred": "Set your preferred currency for displaying the value of your assets.",
     "checkYourBalance": "Check your balance in different currencies",
     "rpcSuccessfullyEdited": "RPC successfully edited.",
-    "invalidRpcUrl": "Invalid RPC URL. Try again.",
+    "rpcUrlRequired": "RPC URL is required",
+    "validUrlRequired": "Please enter a valid URL",
+    "invalidUtxoRpcUrl": "Invalid UTXO RPC URL - cannot connect",
+    "invalidEthRpcUrl": "Invalid RPC URL - cannot connect",
+    "networkMismatch": "Network mismatch - chainId does not match",
+    "failedValidateRpc": "Failed to validate RPC URL",
+    "fixValidationErrors": "Please fix the validation errors before saving",
+    "chainIdRequired": "Chain ID is required",
+    "symbolRequired": "Symbol is required",
     "customRpc": "CUSTOM RPC",
     "label": "Label",
     "trezorSiteWarning": "trezor.io has a rate limit for simultaneous requests, so we can't use it for now",
@@ -413,6 +421,9 @@
     "toUseAnother": "To use another ETH wallet, you can disable window.ethereum injected by Pali.",
     "windowObjectWasSet": "Window object set successfully",
     "enableWindowEthereum": "Enable window.ethereum",
+    "missingApiKey": "Missing/Invalid API Key - Please add your API key to the URL (e.g., ?apikey=YOUR_KEY)",
+    "apiFormatError": "API does not respond correctly. Please check the URL and ensure it supports Etherscan/Blockscout API format.",
+    "apiConnectionError": "Unable to validate API. Please check your connection and try again.",
     "switchChain": "Switch Chain",
     "toSwitchNetwork": "to switch the network",
     "thisWillSwitch": "This will switch the selected network within Pali to a previously added network",
@@ -506,7 +517,7 @@
     "requestSuccessfullySubmitted": "request successfully submitted",
     "confirmToProceed": "Confirm to proceed the transaction!"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "You are connected on",
     "toUse": "to use this dApp you must change to",
     "learnAbout": "Learn about UTXO and EVM"

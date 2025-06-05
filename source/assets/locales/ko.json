@@ -76,7 +76,10 @@
     "chinese": "중국어 (간체)",
     "japanese": "일본어",
     "korean": "한국어",
-    "russian": "러시아어"
+    "russian": "러시아어",
+    "missingApiKey": "API 키 누락/무효 - URL에 API 키를 추가해주세요 (예: ?apikey=귀하의_키)",
+    "apiFormatError": "API가 올바르게 응답하지 않습니다. URL을 확인하고 Etherscan/Blockscout API 형식을 지원하는지 확인해주세요.",
+    "apiConnectionError": "API를 검증할 수 없습니다. 연결을 확인하고 다시 시도해주세요."
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 8자)",
@@ -100,6 +103,15 @@
     "evmNetworks": "EVM 네트워크",
     "networkSettings": "네트워크 설정",
     "customRpc": "사용자 정의 RPC",
+    "rpcUrlRequired": "RPC URL이 필요합니다",
+    "validUrlRequired": "유효한 URL을 입력하세요",
+    "invalidUtxoRpcUrl": "유효하지 않은 UTXO RPC URL - 연결할 수 없습니다",
+    "invalidEthRpcUrl": "유효하지 않은 RPC URL - 연결할 수 없습니다",
+    "networkMismatch": "네트워크 불일치 - chainId가 일치하지 않습니다",
+    "failedValidateRpc": "RPC URL 검증에 실패했습니다",
+    "fixValidationErrors": "저장하기 전에 검증 오류를 수정하세요",
+    "chainIdRequired": "Chain ID가 필요합니다",
+    "symbolRequired": "심볼이 필요합니다",
     "manageNetworks": "네트워크 관리"
   },
   "accountMenu": {
@@ -161,7 +173,7 @@
     "sys": "SYS",
     "transaction": "거래"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "연결됨:",
     "toUse": "이 dApp을 사용하려면 다음으로 전환해야 합니다:",
     "learnAbout": "UTXO와 EVM에 대해 알아보기"

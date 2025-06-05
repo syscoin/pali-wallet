@@ -174,12 +174,20 @@ const VaultState = createSlice({
           network.url === wallet.activeNetwork.url
       );
 
-      // Use the network with proper kind property, falling back to wallet network with inferred kind
+      // Use the network with proper kind property, falling back to wallet network with all properties
       state.activeNetwork =
         networkWithKind ||
         ({
           ...wallet.activeNetwork,
           kind: activeChain === INetworkType.Syscoin ? 'utxo' : 'evm',
+          // Ensure label is preserved from wallet's activeNetwork
+          label:
+            wallet.activeNetwork.label ||
+            `Chain ${wallet.activeNetwork.chainId}`,
+          // Ensure currency property is preserved - use appropriate fallback
+          currency:
+            wallet.activeNetwork.currency ||
+            (activeChain === INetworkType.Syscoin ? 'sys' : 'eth'),
         } as INetworkWithKind);
 
       state.activeAccount = {

@@ -84,11 +84,11 @@ export const ExternalRoute = () => {
 
   useEffect(() => {
     const messageListener = (
-      message: { [key: string]: any; action: string },
+      message: { [key: string]: any; type: string },
       sender: chrome.runtime.MessageSender,
       sendResponse: (response?: any) => void
     ) => {
-      if (message.action === 'isPopupOpen') {
+      if (message.type === 'isPopupOpen') {
         sendResponse(true);
         return true;
       }

@@ -357,7 +357,15 @@
     "checkYourBalance": "Verifica tu saldo en diferentes monedas",
     "rpcSuccessfullyAdded": "RPC añadido correctamente.",
     "rpcSuccessfullyEdited": "RPC editado correctamente.",
-    "invalidRpcUrl": "URL de RPC no válida. Inténtalo de nuevo.",
+    "rpcUrlRequired": "Se requiere URL de RPC",
+    "validUrlRequired": "Por favor ingresa una URL válida",
+    "invalidUtxoRpcUrl": "URL de RPC UTXO no válida - no se puede conectar",
+    "invalidEthRpcUrl": "URL de RPC no válida - no se puede conectar",
+    "networkMismatch": "Error de red - el chainId no coincide",
+    "failedValidateRpc": "Error al validar URL de RPC",
+    "fixValidationErrors": "Por favor corrige los errores de validación antes de guardar",
+    "chainIdRequired": "Se requiere Chain ID",
+    "symbolRequired": "Se requiere símbolo",
     "customRpc": "RPC PERSONALIZADO",
     "label": "Etiqueta",
     "trezorSiteWarning": "trezor.io tiene un límite de tasa para solicitudes simultáneas, por lo que no podemos usarlo por ahora",
@@ -413,6 +421,9 @@
     "toUseAnother": "Para usar otro monedero ETH, puedes desactivar window.ethereum inyectado por Pali.",
     "windowObjectWasSet": "Objeto window configurado con éxito",
     "enableWindowEthereum": "Habilitar window.ethereum",
+    "missingApiKey": "Clave API Faltante/Inválida - Por favor agrega tu clave API a la URL (ej., ?apikey=TU_CLAVE)",
+    "apiFormatError": "La API no responde correctamente. Por favor verifica la URL y asegúrate de que soporte el formato de API Etherscan/Blockscout.",
+    "apiConnectionError": "No se puede validar la API. Por favor verifica tu conexión e inténtalo de nuevo.",
     "switchChain": "Cambiar Cadena",
     "toSwitchNetwork": "para cambiar la red",
     "thisWillSwitch": "Esto cambiará la red seleccionada dentro de Pali a una red previamente agregada",
@@ -506,7 +517,7 @@
     "requestSuccessfullySubmitted": "solicitud enviada con éxito",
     "confirmToProceed": "¡Confirma para continuar con la transacción!"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "Estás conectado en",
     "toUse": "para usar esta dApp, debes cambiar a",
     "learnAbout": "Aprende sobre UTXO y EVM"

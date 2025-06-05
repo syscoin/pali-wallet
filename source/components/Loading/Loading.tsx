@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from '..';
 import { RootState } from 'state/store';
 
 const TEN_SECONDS = 10000;
+const FIVE_SECONDS = 5000;
 
 export const Loading = ({
   opacity = 60,
@@ -13,6 +15,7 @@ export const Loading = ({
   opacity?: number;
   usePopupSize?: boolean;
 }) => {
+  const { t } = useTranslation();
   const networkStatus = useSelector(
     (state: RootState) => state.vault.networkStatus
   );
@@ -23,16 +26,28 @@ export const Loading = ({
   const isNetworkChanging = networkStatus === 'switching';
 
   const [timeoutError, setTimeoutError] = useState(false);
+  const [showSlowWarning, setShowSlowWarning] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const warningTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const validateTimeoutError = () => {
-    // Clear any existing timeout
+    // Clear any existing timeouts
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    if (warningTimeoutRef.current) {
+      clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = null;
+    }
 
     if (isNetworkChanging) {
+      // Show slow connection warning after 5 seconds
+      warningTimeoutRef.current = setTimeout(() => {
+        setShowSlowWarning(true);
+      }, FIVE_SECONDS);
+
+      // Show error page after 10 seconds
       timeoutRef.current = setTimeout(() => {
         setTimeoutError(true);
       }, TEN_SECONDS);
@@ -43,23 +58,33 @@ export const Loading = ({
     validateTimeoutError();
 
     return () => {
-      // Cleanup timeout on unmount
+      // Cleanup timeouts on unmount
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
+        warningTimeoutRef.current = null;
+      }
       setTimeoutError(false);
+      setShowSlowWarning(false);
     };
   }, [isNetworkChanging]); // Add isNetworkChanging as dependency
 
   useEffect(() => {
-    // If network status changed to idle/error, clear timeout and reset error
+    // If network status changed to idle/error, clear timeouts and reset states
     if (!isNetworkChanging) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      if (warningTimeoutRef.current) {
+        clearTimeout(warningTimeoutRef.current);
+        warningTimeoutRef.current = null;
+      }
       setTimeoutError(false);
+      setShowSlowWarning(false);
     }
   }, [isNetworkChanging]);
 
@@ -93,9 +118,16 @@ export const Loading = ({
         color="#0B1426"
       />
       {isNetworkChanging && networkTarget && (
-        <p className="text-sm text-white mt-2">
-          Switching to {networkTarget.label}...
-        </p>
+        <div className="text-center mt-2">
+          <p className="text-sm text-white">
+            {t('networkConnection.connecting')} {networkTarget.label}...
+          </p>
+          {showSlowWarning && (
+            <p className="text-xs text-yellow-400 mt-1">
+              {t('networkConnection.slowConnection')}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

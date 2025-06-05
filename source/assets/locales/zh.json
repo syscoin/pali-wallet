@@ -76,7 +76,10 @@
     "chinese": "中文（简体）",
     "japanese": "日语",
     "korean": "韩语",
-    "russian": "俄语"
+    "russian": "俄语",
+    "missingApiKey": "缺少/无效的API密钥 - 请在URL中添加您的API密钥（例如：?apikey=您的密钥）",
+    "apiFormatError": "API响应不正确。请检查URL并确保它支持Etherscan/Blockscout API格式。",
+    "apiConnectionError": "无法验证API。请检查您的连接并再试一次。"
   },
   "components": {
     "newPassword": "新密码（最少8个字符）",
@@ -100,6 +103,15 @@
     "evmNetworks": "EVM网络",
     "networkSettings": "网络设置",
     "customRpc": "自定义RPC",
+    "rpcUrlRequired": "需要RPC URL",
+    "validUrlRequired": "请输入有效的URL",
+    "invalidUtxoRpcUrl": "无效的UTXO RPC URL - 无法连接",
+    "invalidEthRpcUrl": "无效的RPC URL - 无法连接",
+    "networkMismatch": "网络不匹配 - chainId不匹配",
+    "failedValidateRpc": "验证RPC URL失败",
+    "fixValidationErrors": "请在保存前修复验证错误",
+    "chainIdRequired": "需要Chain ID",
+    "symbolRequired": "需要符号",
     "manageNetworks": "管理网络"
   },
   "start": {

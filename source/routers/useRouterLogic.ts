@@ -6,11 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import {
-  removeVerifyPaliRequestListener,
-  resetPaliRequestsCount,
-  verifyPaliRequests,
-} from 'scripts/Background/utils/bgActions';
+// Removed unused development-only imports
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
@@ -193,13 +189,7 @@ export const useRouterLogic = () => {
     debouncedNavigate,
   ]);
 
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      if (isNetworkChanging) resetPaliRequestsCount();
-      if (!isBitcoinBased) verifyPaliRequests();
-      if (isBitcoinBased) removeVerifyPaliRequestListener();
-    }
-  }, [isBitcoinBased, isNetworkChanging]);
+  // Removed unused development-only useEffect that was calling non-existent functions
 
   useEffect(() => {
     alert.removeAll();

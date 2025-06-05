@@ -54,7 +54,7 @@ export const SwitchNetwork = () => {
       <Header accountHeader={false} />
       <Layout
         canGoBack={false}
-        title={t('switchNetwork')}
+        title={t('buttons.switchNetwork')}
         isSwitchChainPage={true}
       >
         <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center scrollbar-styled h-full">
@@ -64,14 +64,14 @@ export const SwitchNetwork = () => {
                 <img src={warningImg} />
               </div>
               <span className="text-xs font-medium text-white text-center">
-                {t('switchNetwork.connectedOn')}
+                {t('switchNetworkPage.connectedOn')}
                 <div className="inline-block ml-1 align-middle">
                   {networkLabel}
                 </div>
                 <div className="inline-block ml-1 align-middle">
                   {networkSymbol}
                 </div>
-                , {t('switchNetwork.toUse')}
+                , {t('switchNetworkPage.toUse')}
                 <div className="inline-block ml-1 align-middle">
                   {networkSymbolChange}
                 </div>

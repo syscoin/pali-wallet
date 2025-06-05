@@ -110,6 +110,9 @@ export interface IEvmTransactionsController {
     endBlock: number
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: () => Promise<IEvmTransactionResponse[]>;
+  testExplorerApi: (
+    apiUrl: string
+  ) => Promise<{ error?: string; success: boolean }>;
 }
 
 //------------------------- END EVM TYPES / INTERFACES -------------------------//

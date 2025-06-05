@@ -229,7 +229,15 @@
     "checkYourBalance": "Check your balance in different currencies",
     "rpcSuccessfullyAdded": "RPC successfully added.",
     "rpcSuccessfullyEdited": "RPC successfully edited.",
-    "invalidRpcUrl": "Invalid RPC URL. Try again.",
+    "rpcUrlRequired": "URL do RPC é obrigatória",
+    "validUrlRequired": "Por favor, insira uma URL válida",
+    "invalidUtxoRpcUrl": "URL do RPC UTXO inválida - não é possível conectar",
+    "invalidEthRpcUrl": "URL do RPC inválida - não é possível conectar",
+    "networkMismatch": "Incompatibilidade de rede - chainId não coincide",
+    "failedValidateRpc": "Falha ao validar URL do RPC",
+    "fixValidationErrors": "Por favor, corrija os erros de validação antes de salvar",
+    "chainIdRequired": "Chain ID é obrigatório",
+    "symbolRequired": "Símbolo é obrigatório",
     "customRpc": "CUSTOM RPC",
     "label": "Label",
     "trezorSiteWarning": "trezor.io has a rate limit for simultaneous requests, so we can't use it for now",
@@ -285,6 +293,9 @@
     "toUseAnother": "To use another ETH wallet, you can disable window.ethereum injected by Pali.",
     "windowObjectWasSet": "Window object set successfully",
     "enableWindowEthereum": "Enable window.ethereum",
+    "missingApiKey": "Chave API Ausente/Inválida - Por favor adicione sua chave API à URL (ex., ?apikey=SUA_CHAVE)",
+    "apiFormatError": "A API não responde corretamente. Por favor verifique a URL e certifique-se de que suporte o formato de API Etherscan/Blockscout.",
+    "apiConnectionError": "Não é possível validar a API. Por favor verifique sua conexão e tente novamente.",
     "switchChain": "Switch Chain",
     "toSwitchNetwork": "to switch the network",
     "thisWillSwitch": "This will switch the selected network within Pali to a previously added network",
@@ -387,7 +398,7 @@
     "requestSuccessfullySubmitted": "request successfully submitted",
     "confirmToProceed": "Confirme para continuar a transacao"
   },
-  "switchNetwork": {
+  "switchNetworkPage": {
     "connectedOn": "Você está conectado em",
     "toUse": "para usar este dApp, você deve mudar para",
     "learnAbout": "Saiba mais sobre UTXO e EVM"

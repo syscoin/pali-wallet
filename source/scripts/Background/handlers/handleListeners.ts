@@ -68,6 +68,26 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.runtime.onMessage.addListener(
     ({ type, data, action }, sender, sendResponse) => {
       const { hasEthProperty } = store.getState().vault;
+
+      // Let specialized handlers handle their message types
+      if (
+        type === 'CONTROLLER_ACTION' ||
+        type === 'CONTROLLER_STATE_CHANGE' ||
+        type === 'logout' ||
+        type === 'isPopupOpen'
+      ) {
+        return false; // Let other listeners handle these
+      }
+
+      // Handle malformed messages
+      if (!type) {
+        console.warn('[Background] Received message with undefined type:', {
+          data,
+          action,
+        });
+        return false;
+      }
+
       switch (type) {
         case 'ping':
           // Health check ping - respond immediately to confirm the background script is alive
@@ -102,6 +122,7 @@ export const handleListeners = (masterController: IMasterController) => {
           break;
         default:
           console.log('[Background] Unhandled message type:', type);
+          return false; // Let other listeners handle this message
       }
     }
   );

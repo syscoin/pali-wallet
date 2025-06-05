@@ -32,16 +32,22 @@ export const ChainErrorPage = () => {
 
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Auto-navigate back to home if network switch succeeds
+  // Auto-navigate back to home if we successfully switched to the target network
   useEffect(() => {
-    if (networkStatus === 'idle' && !networkTarget && !isRetrying) {
-      // Network switch completed successfully, go back to home
+    if (
+      networkStatus === 'idle' &&
+      !networkTarget &&
+      displayNetwork &&
+      activeNetwork.chainId === displayNetwork.chainId &&
+      activeNetwork.url === displayNetwork.url
+    ) {
+      // Network switch completed successfully to our target, go back to home
       console.log(
-        'ChainErrorPage: Network switch completed, navigating to home'
+        'ChainErrorPage: Network switch to target completed, navigating to home'
       );
       navigate('/home');
     }
-  }, [networkStatus, networkTarget, navigate, isRetrying]);
+  }, [networkStatus, networkTarget, activeNetwork, displayNetwork, navigate]);
 
   const handleRetryToConnect = async () => {
     setIsRetrying(true);
@@ -55,7 +61,8 @@ export const ChainErrorPage = () => {
       // Now attempt to switch networks again
       await controllerEmitter(['wallet', 'setActiveNetwork'], [displayNetwork]);
 
-      // If successful, navigation will happen via the useEffect above
+      // Success! Navigation will happen automatically via useEffect
+      // when the activeNetwork matches our displayNetwork target
     } catch (error) {
       console.error('Network retry failed:', error);
 
@@ -95,22 +102,45 @@ export const ChainErrorPage = () => {
   };
 
   const CurrentChains = () => {
+    // Show current network on the left and target network on the right
+    const fromChain = (
+      <ChainIcon
+        chainId={Number(activeNetwork.chainId)}
+        size={45}
+        className=""
+        fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+      />
+    );
+
     const toChain = (
       <ChainIcon
         chainId={Number(displayNetwork.chainId)}
-        size={39}
+        size={45}
         className=""
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
     );
 
     return (
-      <div className="flex text-center gap-2 items-center justify-center w-full">
-        <p className="text-ellipsis w-32 overflow-hidden">
-          {displayNetwork.label}
-        </p>
-        <img src={arrowRight} alt="arrow" width="20px" />
-        {toChain}
+      <div className="flex text-center gap-3 items-center justify-center w-full">
+        {/* Current network */}
+        <div className="flex flex-col items-center gap-1">
+          {fromChain}
+          <span className="text-xs text-gray-300 truncate max-w-[80px]">
+            {activeNetwork.label}
+          </span>
+        </div>
+
+        {/* Arrow */}
+        <img src={arrowRight} alt="arrow" width="20px" className="mx-2" />
+
+        {/* Target network */}
+        <div className="flex flex-col items-center gap-1">
+          {toChain}
+          <span className="text-xs text-gray-300 truncate max-w-[80px]">
+            {displayNetwork.label}
+          </span>
+        </div>
       </div>
     );
   };
@@ -128,18 +158,11 @@ export const ChainErrorPage = () => {
         <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
           <div className="relative flex mb-4">
             <CurrentChains />
-            <div className="flex flex-col ml-3">
-              <h1 className="text-xs font-light text-white">
-                {t('chainError.tryingToConnectOn')}
-              </h1>
-              <h1 className="text-lg font-bold text-white">
-                {displayNetwork.label}
-              </h1>
-            </div>
           </div>
+
           <div className="flex flex-col mb-2">
             <div
-              className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800`}
+              className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center`}
               onClick={() =>
                 navigate('/settings/networks/custom-rpc', {
                   state: {
@@ -153,6 +176,9 @@ export const ChainErrorPage = () => {
             >
               {t('chainError.editCurrentRpc')}
             </div>
+          </div>
+          <div className="text-xs text-gray-300 text-center">
+            {t('networkConnection.mayBeRateLimited')}
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-6">

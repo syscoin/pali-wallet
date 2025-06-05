@@ -5,6 +5,7 @@ import { useForm } from 'antd/lib/form/Form';
 import { debounce } from 'lodash';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
@@ -18,18 +19,26 @@ import { useController } from 'hooks/useController';
 import ChainListService, {
   type ChainInfo,
 } from 'scripts/Background/controllers/chainlist';
+import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
 
 const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
   const { t } = useTranslation();
+  const networks = useSelector((state: RootState) => state.vault.networks);
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
+  // When editing, determine network type from the selected network
   const [loading, setLoading] = useState(false);
-  const [isUrlValid, setIsUrlValid] = useState(false);
+
   const [addedRpc, setAddedRpc] = useState<boolean>(false);
   const [showModal, setShowModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState<string>('');
-  const [isSyscoinRpc, setIsSyscoinRpc] = useState(Boolean(isSyscoinSelected));
+  const [isSyscoinRpc, setIsSyscoinRpc] = useState(() => {
+    if (state?.isEditing && state?.selected) {
+      return state.selected.kind === 'utxo';
+    }
+    return Boolean(isSyscoinSelected);
+  });
   const [networkSuggestions, setNetworkSuggestions] = useState<ChainInfo[]>([]);
   const [networkLoading, setNetworkLoading] = useState(false);
   const [testingRpcs, setTestingRpcs] = useState(false);
@@ -57,53 +66,80 @@ const CustomRPCView = () => {
     ? t('settings.rpcSuccessfullyEdited')
     : t('settings.rpcSuccessfullyAdded');
 
-  const populateForm = (field: string, value: number | string) => {
-    if (!form.getFieldValue(field)) form.setFieldsValue({ [field]: value });
-  };
-
   const validateUrl = (url: string): boolean => {
     try {
-      new URL(url);
+      const urlObj = new URL(url);
+
+      // Must be http or https
+      if (!['http:', 'https:'].includes(urlObj.protocol)) {
+        return false;
+      }
+
+      // Must have a hostname
+      if (!urlObj.hostname) {
+        return false;
+      }
+
+      // For localhost/IP addresses, skip domain validation
+      if (
+        urlObj.hostname === 'localhost' ||
+        /^\d+\.\d+\.\d+\.\d+$/.test(urlObj.hostname)
+      ) {
+        return true;
+      }
+
+      // For regular domains, must have at least one dot and valid TLD
+      const parts = urlObj.hostname.split('.');
+      if (parts.length < 2) {
+        return false;
+      }
+
+      // Last part (TLD) must be at least 2 characters
+      const tld = parts[parts.length - 1];
+      if (tld.length < 2) {
+        return false;
+      }
+
       return true;
     } catch {
       return false;
     }
   };
 
-  const testBlockExplorerApi = async (apiUrl: string): Promise<boolean> => {
+  const testBlockExplorerApi = async (
+    apiUrl: string
+  ): Promise<{ error?: string; success: boolean }> => {
     try {
-      // Test with a simple eth_blockNumber request
-      const testUrl = new URL(apiUrl);
-      testUrl.searchParams.set('module', 'proxy');
-      testUrl.searchParams.set('action', 'eth_blockNumber');
+      console.log('testBlockExplorerApi called with:', apiUrl);
+      console.log('About to call controllerEmitter with path:', [
+        'wallet',
+        'transactions',
+        'evm',
+        'testExplorerApi',
+      ]);
 
-      const response = await fetch(testUrl.toString(), {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      });
+      // Use the controller's testExplorerApi method
+      const result = await controllerEmitter(
+        ['wallet', 'transactions', 'evm', 'testExplorerApi'],
+        [apiUrl]
+      );
 
-      if (!response.ok) {
-        return false;
+      console.log('controllerEmitter result:', result);
+
+      // The controller returns { success: boolean; error?: string }
+      // Make sure we properly handle the response
+      if (result && typeof result === 'object' && 'success' in result) {
+        return result as { error?: string; success: boolean };
       }
 
-      const data = await response.json();
-
-      // Check for Etherscan-style response
-      if (data.status === '1' && data.result) {
-        return true;
-      }
-
-      // Check for Blockscout-style response (sometimes different format)
-      if (data.result || data.jsonrpc) {
-        return true;
-      }
-
-      return false;
+      // Fallback for unexpected response format
+      return { success: Boolean(result), error: 'Unexpected response format' };
     } catch (error) {
       console.log('API test failed:', error);
-      return false;
+      return {
+        success: false,
+        error: error?.message || 'Unable to test API',
+      };
     }
   };
 
@@ -111,8 +147,213 @@ const CustomRPCView = () => {
     setShowModal(false);
   };
 
+  const validateApiUrlAndShowError = async (apiUrl?: string) => {
+    if (!apiUrl || !apiUrl.trim()) {
+      // Clear any existing API URL field errors
+      form.setFields([
+        {
+          name: 'apiUrl',
+          errors: [],
+        },
+      ]);
+      return true; // Optional field
+    }
+
+    try {
+      const result = await testBlockExplorerApi(apiUrl.trim());
+      if (!result.success) {
+        // Improve error message handling
+        let errorMessage = result.error || t('settings.apiFormatError');
+
+        // Check if error is a translation key (starts with 'settings.')
+        if (result.error?.startsWith('settings.')) {
+          errorMessage = t(result.error);
+        } else if (result.error) {
+          // Handle specific error types
+          if (
+            result.error.includes('SyntaxError') ||
+            result.error.includes('Unexpected token')
+          ) {
+            errorMessage =
+              'API returned HTML instead of JSON - likely a 404 or server error';
+          } else if (result.error.includes('404')) {
+            errorMessage = 'API endpoint not found (404)';
+          } else if (result.error.includes('403')) {
+            errorMessage = 'Access forbidden (403) - check API key';
+          } else if (result.error.includes('500')) {
+            errorMessage = 'Server error (500)';
+          } else if (result.error.includes('timeout')) {
+            errorMessage = 'Request timeout - API may be slow or unreachable';
+          }
+        }
+
+        // Set the form field to error state
+        form.setFields([
+          {
+            name: 'apiUrl',
+            errors: [errorMessage],
+          },
+        ]);
+
+        alert.removeAll();
+        alert.error(errorMessage);
+        return false;
+      }
+
+      // Clear any existing errors and set to success state
+      form.setFields([
+        {
+          name: 'apiUrl',
+          errors: [],
+        },
+      ]);
+
+      return true;
+    } catch (error) {
+      // Handle different types of errors
+      let errorMessage = t('settings.apiConnectionError');
+
+      if (error && typeof error === 'object' && 'message' in error) {
+        const msg = (error as Error).message;
+        if (msg.includes('SyntaxError') || msg.includes('Unexpected token')) {
+          errorMessage =
+            'API returned HTML instead of JSON - likely a 404 or server error';
+        } else if (msg.includes('NetworkError') || msg.includes('fetch')) {
+          errorMessage = 'Network error - unable to reach API';
+        } else if (msg.includes('timeout')) {
+          errorMessage = 'Request timeout - API may be slow or unreachable';
+        } else {
+          errorMessage = `API error: ${msg}`;
+        }
+      }
+
+      // Set the form field to error state
+      form.setFields([
+        {
+          name: 'apiUrl',
+          errors: [errorMessage],
+        },
+      ]);
+
+      alert.removeAll();
+      alert.error(errorMessage);
+      return false;
+    }
+  };
+
+  const validateRpcUrlAndShowError = async (rpcUrl?: string) => {
+    if (!rpcUrl || !rpcUrl.trim()) {
+      // Clear any existing RPC URL field errors
+      form.setFields([
+        {
+          name: 'url',
+          errors: [],
+        },
+      ]);
+      return true; // Required field validation will handle empty case
+    }
+
+    try {
+      if (isSyscoinRpc) {
+        const trezorIoRegExp = /trezor\.io/;
+        if (trezorIoRegExp.test(rpcUrl)) {
+          throw new Error(t('settings.trezorSiteWarning'));
+        }
+
+        // UTXO RPC validation - this will throw an error with specific message if validation fails
+        const { valid } = await validateSysRpc(rpcUrl);
+
+        if (!valid) {
+          throw new Error(t('settings.invalidUtxoRpcUrl'));
+        }
+
+        // If we get here, validation passed
+        return true;
+      } else {
+        // EVM RPC validation - this will throw an error with specific message if validation fails
+        const { valid, details, hexChainId } = await validateEthRpc(
+          rpcUrl,
+          false
+        );
+
+        if (!valid) {
+          throw new Error(t('settings.invalidEthRpcUrl'));
+        }
+
+        // In edit mode, verify chainId matches
+        if (state?.selected) {
+          const stateChainId = state.selected.chainId;
+          const rpcChainId =
+            details?.chainId || Number(String(parseInt(hexChainId, 16)));
+
+          if (stateChainId !== rpcChainId) {
+            throw new Error(t('settings.networkMismatch'));
+          }
+        }
+
+        // If we get here, validation passed
+        return true;
+      }
+    } catch (error) {
+      // Extract the actual error message from the thrown error
+      let errorMessage = t('settings.failedValidateRpc');
+      if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = (error as Error).message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+
+      form.setFields([
+        {
+          name: 'url',
+          errors: [errorMessage],
+        },
+      ]);
+
+      alert.removeAll();
+      alert.error(errorMessage);
+      return false;
+    }
+  };
+
   const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
+
+    // Validate form fields before proceeding
+    try {
+      await form.validateFields();
+    } catch (error) {
+      console.log('Form validation failed:', error);
+      setLoading(false);
+
+      // Get specific field errors to show user
+      const fieldErrors = form.getFieldsError();
+      const errorFields = fieldErrors.filter(
+        (field) => field.errors.length > 0
+      );
+
+      let errorMessage = t('settings.fixValidationErrors');
+      if (errorFields.length > 0) {
+        const firstError = errorFields[0];
+        errorMessage = `${firstError.name[0]}: ${firstError.errors[0]}`;
+      }
+
+      alert.removeAll();
+      alert.error(errorMessage);
+      return;
+    }
+
+    // Validate RPC URL and show toast error if invalid
+    if (!(await validateRpcUrlAndShowError(data.url))) {
+      setLoading(false);
+      return;
+    }
+
+    // Validate API URL and show toast error if invalid
+    if (data.apiUrl && !(await validateApiUrlAndShowError(data.apiUrl))) {
+      setLoading(false);
+      return;
+    }
 
     const customRpc = {
       ...data,
@@ -121,18 +362,26 @@ const CustomRPCView = () => {
 
     try {
       if (!state) {
+        // Adding new network - save and show success modal
         await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]);
         setLoading(false);
         setAddedRpc(true);
         return;
       }
 
+      // Editing existing network - save and show success feedback
       await controllerEmitter(
         ['wallet', 'editCustomRpc'],
         [customRpc, state.selected]
       );
       setLoading(false);
-      setAddedRpc(true);
+
+      // Show success notification
+      alert.removeAll();
+      alert.success(modalMessageOnSuccessful);
+
+      // Navigate back after a brief delay to let user see the success message
+      setTimeout(() => navigate(-1), 1500);
     } catch (error: any) {
       alert.removeAll();
       setAddedRpc(false);
@@ -142,25 +391,29 @@ const CustomRPCView = () => {
     }
   };
 
+  // Get fresh network data from Redux store instead of stale route state
+  const getCurrentNetworkData = () => {
+    if (!state?.selected || !state?.isEditing) return null;
+
+    const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
+    const networkKey = state.selected.key || state.selected.chainId;
+
+    // Use fresh data from Redux store
+    return networks[chain][networkKey] || state.selected;
+  };
+
+  const currentNetwork = getCurrentNetworkData();
+
   const initialValues = {
-    label: (state && state.selected && state.selected.label) ?? '',
-    url: (state && state.selected && state.selected.url) ?? '',
-    chainId: (state && state.selected && state.selected.chainId) ?? '',
-    symbol:
-      (state && state.selected && state.selected.currency
-        ? state.selected.currency.toUpperCase()
-        : '') ?? '',
-    explorer: (state && state.selected && state.selected.explorer) ?? '',
-    apiUrl: (state && state.selected && state.selected.apiUrl) ?? '',
+    label: currentNetwork?.label ?? '',
+    url: currentNetwork?.url ?? '',
+    chainId: currentNetwork?.chainId ?? '',
+    symbol: currentNetwork?.currency?.toUpperCase() ?? '',
+    explorer: currentNetwork?.explorer ?? '',
+    apiUrl: currentNetwork?.apiUrl ?? '',
   };
 
   const isInputDisableByEditMode = state ? state.isDefault : false;
-
-  const isInputDisabled = Boolean(
-    !form.getFieldValue('url') ||
-      isUrlValid ||
-      (state && state.selected && state.selected.chainId)
-  );
 
   // Load and cache chain data once on component mount
   useEffect(() => {
@@ -191,6 +444,20 @@ const CustomRPCView = () => {
     loadChainData();
   }, []);
 
+  // Update form when Redux state changes (after editing)
+  useEffect(() => {
+    if (currentNetwork && state?.isEditing) {
+      form.setFieldsValue({
+        label: currentNetwork.label,
+        url: currentNetwork.url,
+        chainId: currentNetwork.chainId,
+        symbol: currentNetwork.currency?.toUpperCase(),
+        explorer: currentNetwork.explorer,
+        apiUrl: currentNetwork.apiUrl,
+      });
+    }
+  }, [currentNetwork, form, state?.isEditing]);
+
   // Handle clicks outside dropdown to close it
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -207,12 +474,6 @@ const CustomRPCView = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
-
-  const handleConnect = async (data: ICustomRpcParams) => {
-    controllerEmitter(['wallet', 'setActiveNetwork'], [data]).then(() => {
-      navigate('/home');
-    });
-  };
 
   // Smart network search with auto-completion - now uses cached data
   const searchNetworks = debounce(async (query: string) => {
@@ -504,16 +765,16 @@ const CustomRPCView = () => {
         </div>
       )}
 
-      {state?.isEditing && (
+      {state?.isEditing && currentNetwork && (
         <div className="mb-6">
-          {/* Beautiful display for edit mode with animations */}
+          {/* Beautiful display for edit mode with animations - using fresh Redux data */}
           <div className="group custom-input-normal relative flex items-center gap-3 py-3 px-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 hover:border-blue-300">
             <div className="relative">
               <ChainIcon
-                chainId={state?.selected?.chainId || 0}
+                chainId={currentNetwork.chainId || 0}
                 size={32}
                 networkKind={
-                  state?.selected?.kind || (isSyscoinRpc ? 'utxo' : 'evm')
+                  currentNetwork.kind || (isSyscoinRpc ? 'utxo' : 'evm')
                 }
                 className="flex-shrink-0 ring-2 ring-white shadow-md rounded-full transform group-hover:scale-110 transition-transform duration-300"
               />
@@ -522,21 +783,21 @@ const CustomRPCView = () => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-gray-900 truncate text-xl group-hover:text-blue-600 transition-colors duration-200">
-                  {state?.selected?.label || 'Unknown Network'}
+                  {currentNetwork.label || 'Unknown Network'}
                 </span>
                 <span className="text-sm bg-blue-500 text-white px-3 py-1 rounded-full font-mono font-semibold shadow-sm transform group-hover:scale-105 group-hover:bg-blue-600 transition-all duration-200">
-                  {state?.selected?.kind === 'utxo' || isSyscoinRpc
-                    ? state?.selected?.slip44 || state?.selected?.chainId
-                    : state?.selected?.chainId}
+                  {currentNetwork.kind === 'utxo' || isSyscoinRpc
+                    ? currentNetwork.slip44 || currentNetwork.chainId
+                    : currentNetwork.chainId}
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
                 $
                 {(
-                  state?.selected?.currency || (isSyscoinRpc ? 'SYS' : 'ETH')
+                  currentNetwork.currency || (isSyscoinRpc ? 'SYS' : 'ETH')
                 ).toUpperCase()}{' '}
                 •{' '}
-                {state?.selected?.kind === 'utxo' || isSyscoinRpc
+                {currentNetwork.kind === 'utxo' || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}
               </div>
@@ -548,13 +809,12 @@ const CustomRPCView = () => {
       <Form
         form={form}
         key="custom-rpc-form"
-        validateMessages={{ default: '' }}
         id="rpc"
         name="rpc"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
         initialValues={initialValues}
-        onFinish={state?.isEditing ? handleConnect : onSubmit}
+        onFinish={onSubmit}
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center"
       >
@@ -574,8 +834,8 @@ const CustomRPCView = () => {
                 <p className="text-brand-blue200 text-xs">EVM</p>
                 <Tooltip
                   content={
-                    state?.selected
-                      ? 'Cant change type of network while editing'
+                    state?.isEditing
+                      ? 'Cannot change network type while editing'
                       : ''
                   }
                 >
@@ -583,7 +843,7 @@ const CustomRPCView = () => {
                     checked={isSyscoinRpc}
                     onChange={(checked) => setIsSyscoinRpc(checked)}
                     className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
-                    disabled={!!state?.selected}
+                    disabled={state?.isEditing}
                   >
                     <span className="sr-only">Syscoin Network</span>
                     <span
@@ -608,6 +868,7 @@ const CustomRPCView = () => {
             >
               {/* Always render both inputs, hide with CSS to prevent hook order changes */}
               <div className={!isSyscoinRpc ? 'block' : 'hidden'}>
+                {/* Autocomplete input for adding mode */}
                 <div className="relative w-full" ref={dropdownRef}>
                   <Input
                     type="text"
@@ -661,130 +922,34 @@ const CustomRPCView = () => {
             </Form.Item>
           </>
         )}
+
+        {/* Hidden label field for editing mode - needed for form data but not displayed */}
+        {state?.isEditing && (
+          <Form.Item name="label" style={{ display: 'none' }}>
+            <Input type="hidden" />
+          </Form.Item>
+        )}
         <Form.Item
           name="url"
           className="md:w-full"
           hasFeedback
-          validateTrigger="onBlur"
           rules={[
             {
               required: true,
-              message: '',
+              message: t('settings.rpcUrlRequired'),
             },
             () => ({
-              async validator(_, value) {
-                // Don't validate empty values - let required rule handle that
-                if (!value) {
+              validator(_, value) {
+                if (!value || value.trim() === '') {
                   return Promise.resolve();
                 }
-
-                // If we're editing and the value hasn't changed from the initial value, skip validation
-                if (state?.selected && value === state?.selected?.url) {
+                // Basic URL format validation only
+                if (validateUrl(value.trim())) {
                   return Promise.resolve();
                 }
-
-                if (isSyscoinRpc) {
-                  const trezorIoRegExp = /trezor\.io/;
-                  if (trezorIoRegExp.test(value)) {
-                    alert.warning(t('settings.trezorSiteWarning'));
-                    return Promise.reject();
-                  }
-                  const { valid, coin } = await validateSysRpc(value);
-
-                  if (valid) {
-                    populateForm('label', String(coin));
-                    return Promise.resolve();
-                  }
-
-                  console.log('UTXO validation failed');
-                  return Promise.reject();
-                }
-
-                try {
-                  const { valid, details, hexChainId } = await validateEthRpc(
-                    value,
-                    false
-                  );
-
-                  setIsUrlValid(valid);
-
-                  // If validation failed, reject
-                  if (!valid) {
-                    return Promise.reject(
-                      new Error('Invalid RPC URL - cannot connect')
-                    );
-                  }
-
-                  // Additional check: try to make a test request to ensure RPC is actually working
-                  try {
-                    const testResponse = await fetch(value, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        method: 'eth_blockNumber',
-                        params: [],
-                        id: 1,
-                      }),
-                      signal: AbortSignal.timeout(5000), // 5 second timeout
-                    });
-
-                    if (!testResponse.ok) {
-                      throw new Error(`HTTP ${testResponse.status}`);
-                    }
-
-                    const testData = await testResponse.json();
-                    if (testData.error) {
-                      throw new Error(`RPC Error: ${testData.error.message}`);
-                    }
-
-                    // If we get here, RPC is working
-                  } catch (rpcTestError) {
-                    console.warn(
-                      'RPC functionality test failed:',
-                      rpcTestError
-                    );
-                    return Promise.reject(
-                      new Error(
-                        'RPC URL responds but may not be fully functional'
-                      )
-                    );
-                  }
-
-                  // In edit mode, verify the chainId matches
-                  if (state?.selected) {
-                    const stateChainId = state.selected.chainId;
-                    const rpcChainId =
-                      details?.chainId ||
-                      Number(String(parseInt(hexChainId, 16)));
-
-                    if (stateChainId === rpcChainId) {
-                      return Promise.resolve();
-                    } else {
-                      return Promise.reject(
-                        new Error('Network mismatch - chainId does not match')
-                      );
-                    }
-                  }
-
-                  // In add mode, populate fields if we got details
-                  if (details) {
-                    populateForm('label', String(details.name));
-                    populateForm('chainId', String(details.chainId));
-                  } else if (hexChainId) {
-                    const chainIdConverted = String(parseInt(hexChainId, 16));
-                    populateForm('chainId', chainIdConverted);
-                  }
-
-                  return Promise.resolve();
-                } catch (error) {
-                  setIsUrlValid(false);
-                  return Promise.reject(
-                    new Error(error?.message || 'Failed to validate RPC URL')
-                  );
-                }
+                return Promise.reject(
+                  new Error(t('settings.validUrlRequired'))
+                );
               },
             }),
           ]}
@@ -803,15 +968,15 @@ const CustomRPCView = () => {
           className="md:w-full"
           rules={[
             {
-              required: !isSyscoinRpc,
-              message: '',
+              required: false,
+              message: t('settings.chainIdRequired'),
             },
           ]}
         >
           <Input
             type="text"
-            disabled={isInputDisabled}
-            placeholder="Chain ID"
+            disabled={true}
+            placeholder="Chain ID (auto-filled from RPC)"
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
@@ -822,7 +987,7 @@ const CustomRPCView = () => {
           rules={[
             {
               required: !isSyscoinRpc,
-              message: '',
+              message: t('settings.symbolRequired'),
             },
           ]}
         >
@@ -830,6 +995,10 @@ const CustomRPCView = () => {
             type="text"
             placeholder={t('settings.symbol')}
             className={`${inputHiddenOrNotStyle} custom-input-normal relative uppercase`}
+            onChange={(e) => {
+              const upperValue = e.target.value.toUpperCase();
+              form.setFieldsValue({ symbol: upperValue });
+            }}
           />
         </Form.Item>
         <Form.Item
@@ -839,7 +1008,7 @@ const CustomRPCView = () => {
           rules={[
             {
               required: false,
-              message: '',
+              message: 'Explorer URL is required',
             },
             () => ({
               validator(_, value) {
@@ -849,7 +1018,9 @@ const CustomRPCView = () => {
                 if (validateUrl(value.trim())) {
                   return Promise.resolve();
                 }
-                return Promise.reject(new Error('Please enter a valid URL'));
+                return Promise.reject(
+                  new Error(t('settings.validUrlRequired'))
+                );
               },
             }),
           ]}
@@ -887,38 +1058,17 @@ const CustomRPCView = () => {
                 message: '',
               },
               () => ({
-                async validator(_, value) {
+                validator(_, value) {
                   if (!value || value.trim() === '') {
                     return Promise.resolve();
                   }
-
-                  const trimmedValue = value.trim();
-
-                  // First check if it's a valid URL
-                  if (!validateUrl(trimmedValue)) {
-                    return Promise.reject(
-                      new Error('Please enter a valid URL')
-                    );
-                  }
-
-                  // Then test if it's a working Etherscan/Blockscout API
-                  try {
-                    const isValidApi = await testBlockExplorerApi(trimmedValue);
-                    if (!isValidApi) {
-                      return Promise.reject(
-                        new Error(
-                          'API does not respond correctly. Please check the URL and ensure it supports Etherscan/Blockscout API format.'
-                        )
-                      );
-                    }
+                  // Only validate URL format, not API functionality
+                  if (validateUrl(value.trim())) {
                     return Promise.resolve();
-                  } catch (error) {
-                    return Promise.reject(
-                      new Error(
-                        'Unable to validate API. Please check your connection and try again.'
-                      )
-                    );
                   }
+                  return Promise.reject(
+                    new Error(t('settings.validUrlRequired'))
+                  );
                 },
               }),
             ]}
@@ -936,15 +1086,16 @@ const CustomRPCView = () => {
               <Button
                 type="button"
                 className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
-                onClick={() => navigate('/chain-fail-to-connect')}
+                onClick={() => navigate(-1)}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
+                loading={loading}
                 className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
               >
-                Connect
+                Save
               </Button>
             </div>
           ) : (
