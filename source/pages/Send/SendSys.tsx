@@ -60,13 +60,30 @@ export const SendSys = () => {
 
   const [form] = Form.useForm();
 
-  // Define our desired fee rate and the estimation fee rate
-  const ESTIMATION_FEE_RATE = MINIMUM_FEE; // 1000 sat/byte - what the library uses for estimation
-  const DESIRED_FEE_RATE = 0.0000001; // 10 sat/byte - what we actually want to pay
-  const FEE_SCALING_FACTOR = DESIRED_FEE_RATE / ESTIMATION_FEE_RATE; // 0.001
+  // Fetch recommended fee rate from blockbook
+  const [recommendedFeeRate, setRecommendedFeeRate] = useState<number | null>(
+    null
+  );
+  // Fetch recommended fee on component mount and when network changes
+  useEffect(() => {
+    const fetchRecommendedFee = async () => {
+      try {
+        const fee = (await controllerEmitter(
+          ['wallet', 'getRecommendedFee'],
+          []
+        )) as number;
+        setRecommendedFeeRate(fee);
+      } catch (error) {
+        console.error('Failed to fetch recommended fee:', error);
+        // Fallback to 10 sat/byte if fetch fails
+        setRecommendedFeeRate(0.0000001);
+      }
+    };
+    fetchRecommendedFee();
+  }, [activeNetwork.chainId]);
 
-  // Use our desired lower fee rate
-  const feeRate = DESIRED_FEE_RATE;
+  // Use recommended fee rate or fallback
+  const feeRate = recommendedFeeRate || 0.0000001; // 10 sat/byte fallback
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
@@ -131,18 +148,21 @@ export const SendSys = () => {
               0.98 // More conservative for multi-UTXO
             ).value;
 
-            const estimatedFee = (await controllerEmitter(
+            const { fee: estimatedFee } = (await controllerEmitter(
               ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
               [
                 {
                   amount: testAmount,
                   receivingAddress: addressForFeeCalc,
+                  feeRate, // Pass the actual fee rate
+                  txOptions: { rbf: !ZDAG },
+                  token: null, // Native transaction for fee calculation
                 },
               ]
-            )) as number;
+            )) as { fee: number; psbt: string };
 
-            // Scale the estimated fee to our desired fee rate
-            const scaledEstimatedFee = estimatedFee * FEE_SCALING_FACTOR;
+            // No scaling needed - fee is already calculated with actual rate
+            const scaledEstimatedFee = estimatedFee;
 
             // For transactions with multiple UTXOs, add extra buffer
             // This accounts for the fact that using all UTXOs increases transaction size
@@ -156,7 +176,7 @@ export const SendSys = () => {
             // Double-check with the actual max amount
             if (potentialMax > 0) {
               try {
-                const refinedFee = (await controllerEmitter(
+                const { fee: refinedFee } = (await controllerEmitter(
                   [
                     'wallet',
                     'syscoinTransaction',
@@ -166,12 +186,15 @@ export const SendSys = () => {
                     {
                       amount: potentialMax,
                       receivingAddress: addressForFeeCalc,
+                      feeRate, // Pass the actual fee rate
+                      txOptions: { rbf: !ZDAG },
+                      token: null, // Native transaction for fee calculation
                     },
                   ]
-                )) as number;
+                )) as { fee: number; psbt: string };
 
-                // Scale the refined fee to our desired rate
-                const scaledRefinedFee = refinedFee * FEE_SCALING_FACTOR;
+                // No scaling needed - fee is already calculated with actual rate
+                const scaledRefinedFee = refinedFee;
 
                 // If refined fee is significantly higher, use it with buffer
                 if (scaledRefinedFee > feeWithBuffer) {
@@ -193,9 +216,12 @@ export const SendSys = () => {
             // Use a more conservative fee if estimation fails
             // Based on actual transaction data at 1000 sat/byte: 3 UTXOs = 0.00283801 SYS fee
             // Scale it down to our desired rate
-            const fallbackFeeAt1000SatByte = 0.006; // Conservative estimate for 7 UTXO transaction at 1000 sat/byte
-            fee = fallbackFeeAt1000SatByte * FEE_SCALING_FACTOR; // Scale to 1 sat/byte
-            console.log('Using scaled fallback fee:', fee);
+            // Use a conservative fallback fee based on the current rate
+            const avgBytesPerUtxo = 150; // Conservative estimate
+            const estimatedUtxos = 7; // Conservative for large wallets
+            const estimatedBytes = avgBytesPerUtxo * estimatedUtxos;
+            fee = feeRate * estimatedBytes; // Direct calculation with actual rate
+            console.log('Using fallback fee:', fee);
           }
         }
 
@@ -219,7 +245,7 @@ export const SendSys = () => {
         };
       }
     },
-    [balanceStr, selectedAsset, controllerEmitter, cachedFeeEstimate]
+    [balanceStr, selectedAsset, controllerEmitter, cachedFeeEstimate, feeRate]
   );
 
   const handleMaxButton = useCallback(async () => {
@@ -319,14 +345,24 @@ export const SendSys = () => {
 
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
+        let psbt = null;
         try {
-          const estimatedFeeAt1000 = (await controllerEmitter(
-            ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-            [{ amount: Number(amount), receivingAddress: receiver }]
-          )) as number;
+          const { fee: estimatedFee, psbt: estimatedPsbt } =
+            (await controllerEmitter(
+              ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
+              [
+                {
+                  amount: Number(amount),
+                  receivingAddress: receiver,
+                  feeRate,
+                  txOptions: { rbf: !ZDAG },
+                  token: null, // Explicitly pass null for native transactions
+                },
+              ]
+            )) as { fee: number; psbt: string };
 
-          // Scale the fee to our desired rate
-          estimatedTotalFee = estimatedFeeAt1000 * FEE_SCALING_FACTOR;
+          estimatedTotalFee = estimatedFee;
+          psbt = estimatedPsbt;
         } catch (error) {
           // Use conservative estimate if fee estimation fails
           estimatedTotalFee = 0.00001;
@@ -353,7 +389,7 @@ export const SendSys = () => {
           estimatedFee: estimatedTotalFee, // Pass the actual estimated fee for display
           token: null,
           isToken: false,
-          rbf: !ZDAG,
+          psbt: psbt,
         };
 
         // Final safety check - ensure amount + estimated fee doesn't exceed balance
@@ -378,14 +414,26 @@ export const SendSys = () => {
       } else {
         // For tokens, we need to estimate the fee for display
         let tokenFeeEstimate = MINIMUM_FEE; // Default
+        let tokenPsbt = null;
         try {
-          const estimatedFeeAt1000 = (await controllerEmitter(
+          const { fee: estimatedFee, psbt } = (await controllerEmitter(
             ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-            [{ amount: Number(amount), receivingAddress: receiver }]
-          )) as number;
+            [
+              {
+                amount: Number(amount),
+                receivingAddress: receiver,
+                feeRate,
+                txOptions: { rbf: !ZDAG },
+                token: {
+                  symbol: selectedAsset.symbol,
+                  guid: selectedAsset.assetGuid,
+                },
+              },
+            ]
+          )) as { fee: number; psbt: string };
 
-          // Scale the fee to our desired rate
-          tokenFeeEstimate = estimatedFeeAt1000 * FEE_SCALING_FACTOR;
+          tokenFeeEstimate = estimatedFee;
+          tokenPsbt = psbt;
         } catch (error) {
           console.error('Error estimating token fee:', error);
         }
@@ -404,7 +452,7 @@ export const SendSys = () => {
                 guid: selectedAsset.assetGuid,
               },
               isToken: true,
-              rbf: !ZDAG,
+              psbt: tokenPsbt,
             },
           },
         });
@@ -590,8 +638,7 @@ export const SendSys = () => {
                                             <button
                                               onClick={() => {
                                                 if (
-                                                  activeAccount.isTrezorWallet ||
-                                                  activeAccount.isLedgerWallet
+                                                  activeAccount.isTrezorWallet
                                                 ) {
                                                   alert.removeAll();
                                                   alert.error(

@@ -30,12 +30,46 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
   const onSubmit = async () => {
     setLoading(true);
-
     try {
-      const response = await controllerEmitter(
-        ['wallet', 'syscoinTransaction', 'signTransaction'],
-        [data, signOnly, data?.pathIn]
+      let response = null;
+
+      // Handle both formats:
+      // 1. Legacy: data is just the PSBT string
+      // 2. New: data is an object with { psbt: string, pathIn?: string }
+      let psbtString: string;
+      let pathIn: string | undefined;
+
+      if (typeof data === 'string') {
+        // Legacy format - data is the PSBT string directly
+        psbtString = data;
+        pathIn = undefined;
+      } else if (data && typeof data === 'object') {
+        // Object format - extract psbt and optional pathIn
+        psbtString = data.psbt || data;
+        pathIn = data.pathIn;
+      } else {
+        throw new Error('Invalid data format');
+      }
+
+      response = await controllerEmitter(
+        ['wallet', 'syscoinTransaction', 'signPSBT'],
+        [
+          {
+            psbt: psbtString,
+            isTrezor: activeAccount.isTrezorWallet,
+            isLedger: activeAccount.isLedgerWallet,
+            pathIn: pathIn, // Only pass pathIn if it exists
+          },
+        ]
       );
+      if (!signOnly) {
+        response = await controllerEmitter(
+          ['wallet', 'syscoinTransaction', 'sendTransaction'],
+          [
+            response, // Pass the signed PSBT
+          ]
+        );
+      }
 
       setConfirmed(true);
 

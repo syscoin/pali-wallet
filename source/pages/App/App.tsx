@@ -3,22 +3,12 @@ import { HashRouter } from 'react-router-dom';
 
 import { Container, Loading, KeepAliveContainer } from 'components/index';
 import { Router } from 'routers/index';
+import { preloadCriticalRoutes } from 'utils/routePreloader';
 
 const App: FC = () => {
   useEffect(() => {
-    // Signal that the React app is ready after mounting
-    const timer = setTimeout(() => {
-      document.body.classList.add('app-loaded');
-      console.log('[App] Added app-loaded class to body');
-    }, 100);
-
-    // Fallback timer
-    const fallbackTimer = setTimeout(() => {
-      if (!document.body.classList.contains('app-loaded')) {
-        document.body.classList.add('app-loaded');
-        console.log('[App] Fallback: Added app-loaded class after 3 seconds');
-      }
-    }, 3000);
+    // Preload critical routes after initial render
+    preloadCriticalRoutes();
 
     const messageListener = ({ type }) => {
       if (type === 'logout') {
@@ -33,8 +23,6 @@ const App: FC = () => {
 
     // Cleanup: remove the listener when the component unmounts
     return () => {
-      clearTimeout(timer);
-      clearTimeout(fallbackTimer);
       chrome.runtime.onMessage.removeListener(messageListener);
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount

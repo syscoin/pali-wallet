@@ -11,12 +11,7 @@ import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
-import {
-  getSysRpc,
-  getEthRpc,
-  INetworkType,
-  validateEthRpc,
-} from '@pollum-io/sysweb3-network';
+import { getSysRpc, getEthRpc, INetworkType } from '@pollum-io/sysweb3-network';
 import {
   getSearch,
   getTokenStandardMetadata,
@@ -221,7 +216,6 @@ class MainController extends KeyringManager {
       currency = storeCurrency || 'usd';
     }
 
-    const { isInCooldown }: CustomJsonRpcProvider = this.web3Provider;
     const { activeNetwork, isBitcoinBased } = store.getState().vault;
     const id = getNetworkChain(isBitcoinBased);
 
@@ -310,19 +304,13 @@ class MainController extends KeyringManager {
 
       case INetworkType.Ethereum:
         try {
-          const { chain, chainId } = await validateEthRpc(
-            activeNetwork.url,
-            isInCooldown
-          );
-
+          // Use existing network info instead of making redundant RPC call
           const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69];
 
           if (
-            Boolean(
-              chain === 'testnet' ||
-                ethTestnetsChainsIds.some(
-                  (validationChain) => validationChain === chainId
-                )
+            activeNetwork.isTestnet ||
+            ethTestnetsChainsIds.some(
+              (validationChain) => validationChain === activeNetwork.chainId
             )
           ) {
             store.dispatch(setPrices({ asset: currency, price: 0 }));
@@ -690,22 +678,7 @@ class MainController extends KeyringManager {
     // Use the parent's setActiveAccount method to properly handle all setup
     this.setActiveAccount(id, type)
       .then(() => {
-        // After parent's setActiveAccount, fix the HD signer to point to the correct account
-        // The parent's updateUTXOAccounts processes all accounts and leaves HD signer
-        // pointing to the last processed account, so we need to reset it
-        if (isBitcoinBased && (this as any).hd) {
-          (this as any).hd.setAccountIndex(id);
-          console.log(
-            `[MainController] Reset HD signer to account ${id} after setActiveAccount`
-          );
-        }
-
         store.dispatch(setActiveAccount({ id, type }));
-
-        // Clear caches when switching accounts
-        this.transactionsManager.utils.clearCache();
-        clearProviderCache();
-        clearFetchBackendAccountCache();
 
         // Skip dapp notifications and updates during startup
         if (this.isStartingUp) {
@@ -1775,7 +1748,7 @@ class MainController extends KeyringManager {
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
   }
 
-  public getLatestUpdateForCurrentAccount(isPolling = false) {
+  public async getLatestUpdateForCurrentAccount(isPolling = false) {
     const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
       store.getState().vault;
 
@@ -1802,22 +1775,46 @@ class MainController extends KeyringManager {
       // Don't update assets or transactions with invalid xpub
       // The updateUTXOAccounts in setSignerNetwork should have already handled regenerating accounts
     } else {
-      this.updateAssetsFromCurrentAccount({
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-        isPolling,
-      });
-      this.updateUserTransactionsState({
-        isPolling,
-        isBitcoinBased,
-        activeNetwork,
-      });
-      this.updateUserNativeBalance({
-        isBitcoinBased,
-        activeNetwork,
-        activeAccount,
-        isPolling,
+      // Clear caches if this is a manual refresh (not polling)
+      if (!isPolling) {
+        this.transactionsManager.utils.clearCache();
+        clearProviderCache();
+        clearFetchBackendAccountCache();
+      }
+
+      // Use Promise.allSettled for coordinated updates
+      // This ensures all updates complete even if some fail
+      const updatePromises = [
+        this.updateAssetsFromCurrentAccount({
+          isBitcoinBased,
+          activeNetwork,
+          activeAccount,
+          isPolling,
+        }),
+        this.updateUserTransactionsState({
+          isPolling,
+          isBitcoinBased,
+          activeNetwork,
+        }),
+        this.updateUserNativeBalance({
+          isBitcoinBased,
+          activeNetwork,
+          activeAccount,
+          isPolling,
+        }),
+      ];
+
+      const results = await Promise.allSettled(updatePromises);
+
+      // Log any failures for debugging
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const updateNames = ['assets', 'transactions', 'balance'];
+          console.error(
+            `[MainController] Failed to update ${updateNames[index]}:`,
+            result.reason
+          );
+        }
       });
     }
 

@@ -136,15 +136,23 @@ export const SendConfirm = () => {
         // SYSCOIN TRANSACTIONS
         case isBitcoinBased === true:
           try {
-            if (activeAccount.isTrezorWallet) {
-              await controllerEmitter(['wallet', 'trezorSigner', 'init'], []);
-            }
+            // Step 1: Sign the unsigned PSBT
+            const signedPsbt = await controllerEmitter(
+              ['wallet', 'syscoinTransaction', 'signPSBT'],
+              [
+                {
+                  psbt: basicTxValues.psbt, // Pass the unsigned PSBT
+                  isTrezor: activeAccount.isTrezorWallet,
+                  isLedger: activeAccount.isLedgerWallet,
+                },
+              ]
+            );
+
+            // Step 2: Send the signed PSBT
             controllerEmitter(
               ['wallet', 'syscoinTransaction', 'sendTransaction'],
               [
-                basicTxValues, // Use the actual calculated fee from SendSys
-                activeAccount.isTrezorWallet,
-                activeAccount.isLedgerWallet,
+                signedPsbt, // Pass the signed PSBT
               ]
             )
               .then((response) => {

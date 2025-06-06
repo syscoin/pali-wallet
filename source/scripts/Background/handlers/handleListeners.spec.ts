@@ -8,7 +8,6 @@ import {
   startPolling,
   getPollingInterval,
 } from 'scripts/Background/utils/startPolling';
-import store from 'state/store';
 
 import { handleListeners, resetListenersFlag } from './handleListeners';
 

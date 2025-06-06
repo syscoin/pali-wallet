@@ -40,11 +40,6 @@ export const Start = (props: any) => {
     checkVaultAndAccounts();
   }, []);
 
-  // Don't render anything while loading - the HTML loader is showing
-  if (isInitialLoading) {
-    return null;
-  }
-
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/images/GET_STARTED2.png')] justify-center min-w-full h-screen">
       <ImportWalletWarning
@@ -67,7 +62,14 @@ export const Start = (props: any) => {
           Wallet
         </h1>
       </div>
-      {isFirstStep ? (
+      {isInitialLoading ? (
+        // Show unlock by default while checking - most common case
+        <Unlock
+          setIsOpenValidation={setIsOpenValidation}
+          isExternal={isExternal}
+          externalRoute={externalRoute}
+        />
+      ) : isFirstStep ? (
         <GetStarted />
       ) : (
         <Unlock

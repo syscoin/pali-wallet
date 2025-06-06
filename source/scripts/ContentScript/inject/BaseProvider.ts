@@ -132,7 +132,7 @@ export class BaseProvider extends EventEmitter {
         // Check current URL to determine if we're likely on a Bitcoin network
         const currentUrl = window.location.href;
         const isBlockbookUrl =
-          currentUrl.includes('blockbook') || currentUrl.includes('trezor.io');
+          currentUrl.includes('blockbook') || currentUrl.includes('trezor');
 
         if (isBlockbookUrl) {
           console.log(`Blocking EVM method ${method} on Bitcoin-based network`);

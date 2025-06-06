@@ -45,11 +45,15 @@ const toastOptions = {
 
 if (appRootElement) {
   console.log('[App] Starting app initialization...');
-  MigrationController().then(async () => {
-    console.log('[App] MigrationController completed, getting state...');
+
+  const initializeApp = async () => {
     try {
       const state = await controllerEmitter(['wallet', 'getState']);
       console.log('[App] Successfully got state from background script');
+
+      // Run migrations with the fetched state
+      await MigrationController(state);
+      console.log('[App] MigrationController completed');
 
       rehydrateStore(store, state).then(() => {
         console.log('[App] Store rehydrated, rendering React app...');
@@ -84,7 +88,9 @@ if (appRootElement) {
         handleStoreSubscribe(store);
       });
     }
-  });
+  };
+
+  initializeApp();
 } else {
   console.error("Failed to find the root element with ID 'app-root'.");
 }

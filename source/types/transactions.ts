@@ -33,16 +33,6 @@ export interface IAccountInfo {
   transactions: ITransaction[];
 }
 
-export interface ITransactionInfo {
-  amount: number;
-  fee: number;
-  fromAddress: string;
-  isToken: boolean;
-  rbf: boolean;
-  toAddress: string;
-  token: IAssets | null;
-}
-
 export interface IPendingTx {
   blockTime: number;
   confirmations: number;
@@ -134,18 +124,6 @@ export interface ISendAsset {
   rbf?: boolean;
   toAddress: string;
   token: IAssets | null;
-}
-
-export interface ITemporaryTransaction {
-  mintAsset: IMintAsset | null;
-  mintNFT: IMintAsset | null;
-  newAsset: INewAsset | null;
-  newNFT: INewNFT | null;
-  sendAsset: ISendAsset | null;
-  signAndSendPSBT: any | null;
-  signPSBT: any | null;
-  transferAsset: ITransferAsset | null;
-  updateAsset: IUpdateAsset | null;
 }
 
 export interface ICustomRpcParams {
