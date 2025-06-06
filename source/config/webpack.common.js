@@ -150,7 +150,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'app.html'),
       inject: 'body',
-      chunks: ['vendor', 'app'],
+      chunks: ['vendor', 'sysweb3', 'pali', 'app'],
       hash: true,
       filename: 'app.html',
       minify: {
@@ -162,7 +162,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
       inject: 'body',
-      chunks: ['vendor', 'external'],
+      chunks: ['vendor', 'sysweb3', 'pali', 'external'],
       hash: true,
       filename: 'external.html',
       minify: {
@@ -220,9 +220,9 @@ module.exports = {
             warnings: false,
             comparisons: false,
             inline: 2,
-            drop_console: true,
-            drop_debugger: true,
-            pure_funcs: ['console.log', 'console.info', 'console.debug'],
+            //drop_console: true,
+            //drop_debugger: true,
+            //pure_funcs: ['console.log', 'console.info', 'console.debug'],
           },
           mangle: {
             safari10: true,
@@ -240,14 +240,13 @@ module.exports = {
     splitChunks: {
       chunks(chunk) {
         // Only split chunks for app and external, NOT background
-        return chunk.name === 'app' || chunk.name === 'external';
-      },
-      cacheGroups: {
-        vendor: {
-          test: /[\\/]node_modules[\\/]/,
-          name: 'vendor',
-          priority: 10,
-        },
+        return (
+          chunk.name === 'app' ||
+          chunk.name === 'pali' ||
+          chunk.name === 'vendor' ||
+          chunk.name === 'sysweb3' ||
+          chunk.name === 'external'
+        );
       },
     },
   },

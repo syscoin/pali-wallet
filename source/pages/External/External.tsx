@@ -8,19 +8,19 @@ const External: FC = () => {
   useEffect(() => {
     // Signal that the React app is ready after mounting
     const timer = setTimeout(() => {
-      document.body.classList.add('app-loaded');
-      console.log('[External] Added app-loaded class to body');
+      console.log('[External] Dispatching pali-app-ready event');
+      window.dispatchEvent(new CustomEvent('pali-app-ready'));
     }, 100);
 
-    // Fallback timer
+    // Fallback timer - only runs if app wasn't already loaded
     const fallbackTimer = setTimeout(() => {
       if (!document.body.classList.contains('app-loaded')) {
-        document.body.classList.add('app-loaded');
         console.log(
-          '[External] Fallback: Added app-loaded class after 3 seconds'
+          '[External] Fallback: Dispatching pali-app-ready event after 3 seconds'
         );
+        window.dispatchEvent(new CustomEvent('pali-app-ready'));
       }
-    }, 3000);
+    }, 1000);
 
     return () => {
       clearTimeout(timer);

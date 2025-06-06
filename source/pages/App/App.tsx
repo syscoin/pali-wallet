@@ -3,12 +3,24 @@ import { HashRouter } from 'react-router-dom';
 
 import { Container, Loading, KeepAliveContainer } from 'components/index';
 import { Router } from 'routers/index';
-import { preloadCriticalRoutes } from 'utils/routePreloader';
 
 const App: FC = () => {
   useEffect(() => {
-    // Preload critical routes after initial render
-    preloadCriticalRoutes();
+    // Signal that the React app is ready after mounting
+    const timer = setTimeout(() => {
+      console.log('[App] Dispatching pali-app-ready event');
+      window.dispatchEvent(new CustomEvent('pali-app-ready'));
+    }, 100);
+
+    // Fallback timer - only runs if app wasn't already loaded
+    const fallbackTimer = setTimeout(() => {
+      if (!document.body.classList.contains('app-loaded')) {
+        console.log(
+          '[App] Fallback: Dispatching pali-app-ready event after 3 seconds'
+        );
+        window.dispatchEvent(new CustomEvent('pali-app-ready'));
+      }
+    }, 1000);
 
     const messageListener = ({ type }) => {
       if (type === 'logout') {
@@ -24,6 +36,8 @@ const App: FC = () => {
     // Cleanup: remove the listener when the component unmounts
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
+      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
 
