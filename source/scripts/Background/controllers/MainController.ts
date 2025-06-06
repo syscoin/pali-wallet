@@ -69,7 +69,8 @@ import {
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { L2_NETWORK_CHAIN_IDS, logError } from 'utils/index';
+import { L2_NETWORK_CHAIN_IDS } from 'utils/constants';
+import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 
 import EthAccountController, { IEthAccountController } from './account/evm';

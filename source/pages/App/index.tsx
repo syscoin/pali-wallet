@@ -1,16 +1,18 @@
 /* eslint-disable import/no-extraneous-dependencies */
+// Critical styles only - load first
 import 'assets/styles/index.css';
-import 'assets/styles/custom-input-password.css';
-import 'assets/styles/custom-input-normal.css';
-import 'assets/styles/custom-input-search.css';
-import 'assets/styles/custom-input-normal.css';
-import 'assets/styles/custom-checkbox.css';
-import 'assets/styles/custom-form-inputs-styles.css';
-import 'assets/styles/custom-autolock-input.css';
-import 'assets/styles/custom-receive-input.css';
-import 'assets/styles/custom-import-token-input.css';
-import 'assets/styles/custom-send-utxo-input.css';
 import 'assets/fonts/index.css';
+
+// Non-critical styles - will load after app starts
+// import 'assets/styles/custom-input-password.css';
+// import 'assets/styles/custom-input-normal.css';
+// import 'assets/styles/custom-input-search.css';
+// import 'assets/styles/custom-checkbox.css';
+// import 'assets/styles/custom-form-inputs-styles.css';
+// import 'assets/styles/custom-autolock-input.css';
+// import 'assets/styles/custom-receive-input.css';
+// import 'assets/styles/custom-import-token-input.css';
+// import 'assets/styles/custom-send-utxo-input.css';
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
@@ -20,7 +22,6 @@ import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
-import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -52,6 +53,9 @@ if (appRootElement) {
       console.log('[App] Successfully got state from background script');
 
       // Run migrations with the fetched state
+      const { default: MigrationController } = await import(
+        'scripts/Background/controllers/MigrationController'
+      );
       await MigrationController(state);
       console.log('[App] MigrationController completed');
 
@@ -70,6 +74,28 @@ if (appRootElement) {
         // Subscribe store to updates
         handleStoreSubscribe(store);
         console.log('[App] App rendered and store subscribed');
+
+        // Load non-critical CSS after app is visible
+        setTimeout(() => {
+          // @ts-ignore
+          require('assets/styles/custom-input-password.css');
+          // @ts-ignore
+          require('assets/styles/custom-input-normal.css');
+          // @ts-ignore
+          require('assets/styles/custom-input-search.css');
+          // @ts-ignore
+          require('assets/styles/custom-checkbox.css');
+          // @ts-ignore
+          require('assets/styles/custom-form-inputs-styles.css');
+          // @ts-ignore
+          require('assets/styles/custom-autolock-input.css');
+          // @ts-ignore
+          require('assets/styles/custom-receive-input.css');
+          // @ts-ignore
+          require('assets/styles/custom-import-token-input.css');
+          // @ts-ignore
+          require('assets/styles/custom-send-utxo-input.css');
+        }, 50);
       });
     } catch (error) {
       console.error('[App] Failed to get state from background script:', error);

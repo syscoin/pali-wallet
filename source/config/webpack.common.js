@@ -28,11 +28,6 @@ module.exports = {
     contentScript: join(sourcePath, 'scripts/ContentScript', 'index.ts'),
     app: join(sourcePath, 'pages/App', 'index.tsx'),
     external: join(sourcePath, 'pages/External', 'index.tsx'),
-    offscreenScript: join(
-      sourcePath,
-      'scripts/ContentScript/offscreen',
-      'index.ts'
-    ),
   },
   output: {
     path: join(destPath, targetBrowser),
@@ -171,17 +166,7 @@ module.exports = {
         removeAttributeQuotes: true,
       },
     }),
-    new HtmlWebpackPlugin({
-      template: join(viewsPath, 'offscreen.html'),
-      filename: 'offscreen.html',
-      inject: 'body',
-      chunks: ['offscreenScript'],
-      minify: {
-        removeComments: true,
-        collapseWhitespace: true,
-        removeAttributeQuotes: true,
-      },
-    }),
+
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
     new CopyWebpackPlugin({
       patterns: [{ from: 'source/assets', to: 'assets' }],
