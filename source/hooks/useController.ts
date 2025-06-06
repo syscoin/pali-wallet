@@ -8,6 +8,15 @@ import { INetworkWithKind } from 'state/vault/types';
 // Cache providers to avoid creating multiple instances for the same network
 const providerCache = new Map<string, CustomJsonRpcProvider>();
 
+// Singleton initialization state to prevent redundant work
+let initializationPromise: Promise<{
+  isUnlocked: boolean;
+  network: INetworkWithKind;
+  provider: CustomJsonRpcProvider | null;
+}> | null = null;
+let lastInitTime = 0;
+const INIT_CACHE_DURATION = 500; // Cache initialization for 500ms
+
 // Connection health check utility
 const isConnectionError = (error: any): boolean => {
   const errorMessage = error?.message || String(error);
@@ -118,109 +127,146 @@ export function useController() {
       if (shouldSetIsLoading) setIsLoading(true);
 
       try {
-        // First, ensure the background script is responsive
-        console.log('[useController] Checking background script connection...');
-        const isConnected = await checkBackgroundConnection();
-        if (!isConnected) {
-          console.error('[useController] Background script is not responsive!');
-          throw new Error('Background script not responsive');
+        // Check if we have a recent initialization in progress or cached
+        const now = Date.now();
+        if (initializationPromise && now - lastInitTime < INIT_CACHE_DURATION) {
+          console.log('[useController] Using cached initialization result');
+          const result = await initializationPromise;
+          setActiveNetwork(result.network);
+          setWeb3Provider(
+            result.provider ||
+              ({
+                serverHasAnError: false,
+                errorMessage: '',
+              } as CustomJsonRpcProvider)
+          );
+          setIsUnlocked(result.isUnlocked);
+          setIsLoading(false);
+          return;
         }
-        console.log(
-          '[useController] Background script is responsive, proceeding...'
-        );
 
-        const network = (await retryWithBackoff(() =>
-          controllerEmitter(['wallet', 'getNetwork'])
-        )) as INetworkWithKind;
-
-        // Check network status - don't create providers during switching
-        const vaultState = (await retryWithBackoff(() =>
-          controllerEmitter(['wallet', 'getState'])
-        )) as any;
-
-        // Add timeout - if stuck in switching for too long, reset and continue
-        const networkStatus = vaultState.vault.networkStatus;
-        if (networkStatus !== 'idle') {
+        // Create a new initialization promise that all simultaneous callers will share
+        console.log('[useController] Starting new initialization...');
+        lastInitTime = now;
+        initializationPromise = (async () => {
+          // First, ensure the background script is responsive
           console.log(
-            `useController: Network status is '${networkStatus}', checking if we can proceed...`
+            '[useController] Checking background script connection...'
+          );
+          const isConnected = await checkBackgroundConnection();
+          if (!isConnected) {
+            console.error(
+              '[useController] Background script is not responsive!'
+            );
+            throw new Error('Background script not responsive');
+          }
+          console.log(
+            '[useController] Background script is responsive, proceeding...'
           );
 
-          // For switching state, don't create new providers - let MainController handle it
-          if (networkStatus === 'switching') {
+          const network = (await retryWithBackoff(() =>
+            controllerEmitter(['wallet', 'getNetwork'])
+          )) as INetworkWithKind;
+
+          // Check network status - don't create providers during switching
+          const vaultState = (await retryWithBackoff(() =>
+            controllerEmitter(['wallet', 'getState'])
+          )) as any;
+
+          // Add timeout - if stuck in switching for too long, reset and continue
+          const networkStatus = vaultState.vault.networkStatus;
+          if (networkStatus !== 'idle') {
             console.log(
-              'useController: Network is switching, using existing provider and waiting...'
+              `useController: Network status is '${networkStatus}', checking if we can proceed...`
             );
-            setActiveNetwork(network);
-            setIsUnlocked(
-              !!(await retryWithBackoff(() =>
+
+            // For switching state, don't create new providers - let MainController handle it
+            if (networkStatus === 'switching') {
+              console.log(
+                'useController: Network is switching, using existing provider and waiting...'
+              );
+              const isWalletUnlocked = await retryWithBackoff(() =>
                 controllerEmitter(['wallet', 'isUnlocked'], [])
-              ))
-            );
-            setIsLoading(false);
-            return; // Exit early, don't create providers during switch
-          } else if (networkStatus === 'error') {
+              );
+              return {
+                network,
+                provider: null,
+                isUnlocked: !!isWalletUnlocked,
+              };
+            } else if (networkStatus === 'error') {
+              console.log(
+                'useController: Resetting network status from error state'
+              );
+              await retryWithBackoff(() =>
+                controllerEmitter(['wallet', 'resetNetworkStatus'], [])
+              );
+            }
+          }
+
+          // Clear provider cache on network change to prevent stale providers
+          const previousNetwork = previousNetworkRef.current;
+          if (
+            previousNetwork &&
+            (previousNetwork.url !== network.url ||
+              previousNetwork.chainId !== network.chainId)
+          ) {
+            console.log('Network changed, clearing provider cache');
+            providerCache.clear();
+          }
+
+          // Update the ref for next comparison
+          previousNetworkRef.current = network;
+
+          // Check network kind for provider creation
+          const networkKind = network.kind;
+          const isUtxoNetwork = networkKind === 'utxo';
+
+          // Use cached provider if available for this network URL
+          const cacheKey = network.url;
+          let walletWeb3Provider = providerCache.get(cacheKey);
+
+          // Only create web3 provider for EVM-compatible networks
+          if (!walletWeb3Provider && !isUtxoNetwork) {
             console.log(
-              'useController: Resetting network status from error state'
+              `Creating new web3 provider for EVM network: ${network.url}`
             );
-            await retryWithBackoff(() =>
-              controllerEmitter(['wallet', 'resetNetworkStatus'], [])
+            walletWeb3Provider = new CustomJsonRpcProvider(
+              abortController.signal,
+              network.url
+            );
+            providerCache.set(cacheKey, walletWeb3Provider);
+          } else if (isUtxoNetwork) {
+            console.log(
+              `Skipping web3 provider creation for UTXO network: ${network.url}`
             );
           }
-        }
 
-        // Clear provider cache on network change to prevent stale providers
-        const previousNetwork = previousNetworkRef.current;
-        if (
-          previousNetwork &&
-          (previousNetwork.url !== network.url ||
-            previousNetwork.chainId !== network.chainId)
-        ) {
-          console.log('Network changed, clearing provider cache');
-          providerCache.clear();
-        }
-
-        // Update the ref for next comparison
-        previousNetworkRef.current = network;
-
-        // Check network kind for provider creation
-        const networkKind = network.kind;
-        const isUtxoNetwork = networkKind === 'utxo';
-
-        // Use cached provider if available for this network URL
-        const cacheKey = network.url;
-        let walletWeb3Provider = providerCache.get(cacheKey);
-
-        // Only create web3 provider for EVM-compatible networks
-        if (!walletWeb3Provider && !isUtxoNetwork) {
-          console.log(
-            `Creating new web3 provider for EVM network: ${network.url}`
+          const isWalletUnlocked = await retryWithBackoff(() =>
+            controllerEmitter(['wallet', 'isUnlocked'], [])
           );
-          walletWeb3Provider = new CustomJsonRpcProvider(
-            abortController.signal,
-            network.url
-          );
-          providerCache.set(cacheKey, walletWeb3Provider);
-        } else if (isUtxoNetwork) {
-          console.log(
-            `Skipping web3 provider creation for UTXO network: ${network.url}`
-          );
-        }
 
-        const isWalletUnlocked = await retryWithBackoff(() =>
-          controllerEmitter(['wallet', 'isUnlocked'], [])
-        );
+          return {
+            network,
+            provider: walletWeb3Provider || null,
+            isUnlocked: !!isWalletUnlocked,
+          };
+        })();
 
-        setActiveNetwork(network);
+        // Wait for the shared initialization to complete
+        const result = await initializationPromise;
+        setActiveNetwork(result.network);
         setWeb3Provider(
-          walletWeb3Provider ||
+          result.provider ||
             ({
               serverHasAnError: false,
               errorMessage: '',
             } as CustomJsonRpcProvider)
         );
-        setIsUnlocked(!!isWalletUnlocked);
+        setIsUnlocked(result.isUnlocked);
       } catch (error) {
         console.error('Error fetching controller data:', error);
+        // Clear the initialization promise on error
+        initializationPromise = null;
 
         // If it's a connection error, schedule a retry
         if (

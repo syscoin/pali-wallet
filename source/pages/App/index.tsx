@@ -17,7 +17,10 @@ import 'assets/fonts/index.css';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
-import { ToastContainer } from 'react-toastify';
+// Lazy load ToastContainer to reduce initial bundle
+const ToastContainer = React.lazy(() =>
+  import('react-toastify').then((m) => ({ default: m.ToastContainer }))
+);
 
 import 'react-toastify/dist/ReactToastify.css';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
