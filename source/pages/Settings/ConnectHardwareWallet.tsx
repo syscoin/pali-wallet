@@ -1,19 +1,15 @@
 // @ts-nocheck
-import React, { FC, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { FC, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-
-import { Layout, Tooltip, DefaultModal, Button } from 'components/index';
+import { Layout, DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { RootState } from 'state/store';
-import { verifyIfIsTestnet } from 'utils/network';
 
 const ConnectHardwareWalletView: FC = () => {
-  const [isTestnet, setIsTestnet] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedHardwareWallet, setSelectedHardwareWallet] = useState();
@@ -21,17 +17,14 @@ const ConnectHardwareWalletView: FC = () => {
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
   );
-  const { activeNetwork, isBitcoinBased, accounts, advancedSettings } =
-    useSelector((state: RootState) => state.vault);
+  const { activeNetwork, accounts, advancedSettings } = useSelector(
+    (state: RootState) => state.vault
+  );
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
-  const { controllerEmitter, web3Provider } = useController();
+  const { controllerEmitter } = useController();
   const trezorAccounts = Object.values(accounts.Trezor);
   const ledgerAccounts = Object.values(accounts.Ledger);
-
-  const { slip44 } = activeNetwork;
-
-  const isSysUTXOMainnet = isBitcoinBased && activeNetwork.chainId === 57;
 
   const modalTitle = isReconnect
     ? t('settings.ledgerConnected')
@@ -54,12 +47,11 @@ const ConnectHardwareWalletView: FC = () => {
   }`;
 
   const confirmButtonDisbledStyle = `${
-    isTestnet || selectedHardwareWallet === undefined
+    selectedHardwareWallet === undefined // Removed testnet restriction - hardware wallets now support testnet
       ? 'opacity-60'
       : 'opacity-100'
   }`;
 
-  const { isInCooldown }: CustomJsonRpcProvider = web3Provider;
   const isLedger = selectedHardwareWallet === 'ledger';
 
   const handleCreateHardwareWallet = async () => {
@@ -76,8 +68,8 @@ const ConnectHardwareWalletView: FC = () => {
           await controllerEmitter(
             ['wallet', 'importTrezorAccountFromController'],
             [
-              isBitcoinBased ? activeNetwork.currency : 'eth',
-              `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+              activeNetwork.currency,
+              `${activeNetwork.slip44}`,
               `${trezorAccounts.length}`,
             ]
           );
@@ -112,8 +104,8 @@ const ConnectHardwareWalletView: FC = () => {
             await controllerEmitter(
               ['wallet', 'importLedgerAccountFromController'],
               [
-                isBitcoinBased ? activeNetwork.currency : 'eth',
-                `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+                activeNetwork.currency,
+                `${activeNetwork.slip44}`,
                 `${ledgerAccounts.length}`,
                 false,
               ]
@@ -133,8 +125,8 @@ const ConnectHardwareWalletView: FC = () => {
         await controllerEmitter(
           ['wallet', 'importLedgerAccountFromController'],
           [
-            isBitcoinBased ? activeNetwork.currency : 'eth',
-            `${activeNetwork.currency === 'sys' ? '57' : slip44}`,
+            activeNetwork.currency,
+            `${activeNetwork.slip44}`,
             `${ledgerAccounts.length}`,
             true,
           ]
@@ -172,35 +164,9 @@ const ConnectHardwareWalletView: FC = () => {
     }
   };
 
-  const ledgerTooltipContent = useMemo(
-    () =>
-      isSysUTXOMainnet || !isBitcoinBased
-        ? ''
-        : t('settings.ledgerOnlyAvailable'),
-    [isSysUTXOMainnet, isBitcoinBased]
-  );
-
-  const supportTooltipContent = useMemo(
-    () =>
-      isTestnet &&
-      (isLedger
-        ? t('settings.ledgerDoesntSupport')
-        : t('settings.trezorDoesntSupport')),
-    [isTestnet, isLedger]
-  );
-
   const handleHardwalletBuyNow = useCallback(() => {
     window.open(isLedger ? 'https://www.ledger.com/' : 'https://trezor.io/');
   }, [isLedger]);
-
-  useEffect(() => {
-    verifyIfIsTestnet(
-      activeNetwork.url,
-      isBitcoinBased,
-      isInCooldown,
-      activeNetwork
-    ).then((isTestnetResponse) => setIsTestnet(isTestnetResponse));
-  }, [activeNetwork, activeNetwork.chainId, isBitcoinBased, isInCooldown]);
 
   useEffect(() => {
     const urlSearch = window.location.search;
@@ -392,20 +358,13 @@ const ConnectHardwareWalletView: FC = () => {
                 Trezor
               </button>
               {advancedSettings?.ledger && (
-                <Tooltip content={ledgerTooltipContent}>
-                  <button
-                    className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
-                    onClick={() => {
-                      if (isSysUTXOMainnet || !isBitcoinBased) {
-                        setSelectedHardwareWallet('ledger');
-                      }
-                      return;
-                    }}
-                    id="trezor-btn"
-                  >
-                    Ledger
-                  </button>
-                </Tooltip>
+                <button
+                  className={`${ledgerSelectedButtonStyle} rounded-full py-2 w-80 mx-auto text-center text-base font-medium hover:bg-brand-blue400 hover:border-brand-blue400 hover:cursor-pointer`}
+                  onClick={() => setSelectedHardwareWallet('ledger')}
+                  id="ledger-btn"
+                >
+                  Ledger
+                </button>
               )}
             </div>
           )}
@@ -432,14 +391,12 @@ const ConnectHardwareWalletView: FC = () => {
           <Button
             type="button"
             onClick={handleCreateHardwareWallet}
-            disabled={isTestnet || selectedHardwareWallet === undefined}
+            disabled={selectedHardwareWallet === undefined}
             loading={isLoading}
             id="connect-btn"
             className={`${confirmButtonDisbledStyle} cursor-pointer bg-white w-[22rem] mt-3 h-10 text-brand-blue200 text-base font-base font-medium rounded-2xl`}
           >
-            <Tooltip content={supportTooltipContent}>
-              <ButtonLabel />
-            </Tooltip>
+            <ButtonLabel />
           </Button>
         </div>
       </div>

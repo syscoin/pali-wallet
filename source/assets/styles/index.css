@@ -14,10 +14,10 @@
 
 /* Override the default toast content wrapper */
 .Toastify__toast.pali-toast-content {
-  background-color: #111E33 !important;
-  color: #FFFFFF !important;
+  background-color: #111e33 !important;
+  color: #ffffff !important;
   border-radius: 12px !important;
-  border: 1px solid #4D76B8 !important;
+  border: 1px solid #4d76b8 !important;
   box-shadow: 0 10px 25px rgba(7, 21, 42, 0.4) !important;
   font-family: 'Poppins', sans-serif !important;
   padding: 16px 20px !important;
@@ -28,7 +28,7 @@
 
 /* Ensure toast body text is visible */
 .Toastify__toast.pali-toast-content .Toastify__toast-body {
-  color: #FFFFFF !important;
+  color: #ffffff !important;
   font-size: 14px !important;
   font-weight: 500 !important;
   padding: 0 !important;
@@ -43,7 +43,7 @@
 
 /* Ensure the text div is visible */
 .Toastify__toast.pali-toast-content .Toastify__toast-body > div:last-child {
-  color: #FFFFFF !important;
+  color: #ffffff !important;
   opacity: 1 !important;
   visibility: visible !important;
   display: block !important;
@@ -62,28 +62,28 @@
 
 /* Default progress bar style */
 .pali-toast-progress {
-  background-color: #4D76B8 !important;
+  background-color: #4d76b8 !important;
   height: 3px !important;
 }
 
 /* Success toast progress bar - green */
 .Toastify__toast--success .pali-toast-progress {
-  background-color: #10B981 !important; /* Green color for success */
+  background-color: #10b981 !important; /* Green color for success */
 }
 
 /* Error toast progress bar - red */
 .Toastify__toast--error .pali-toast-progress {
-  background-color: #EF4444 !important; /* Red color for error */
+  background-color: #ef4444 !important; /* Red color for error */
 }
 
 /* Warning toast progress bar - yellow */
 .Toastify__toast--warning .pali-toast-progress {
-  background-color: #F59E0B !important; /* Yellow color for warning */
+  background-color: #f59e0b !important; /* Yellow color for warning */
 }
 
 /* Info toast progress bar - blue */
 .Toastify__toast--info .pali-toast-progress {
-  background-color: #3B82F6 !important; /* Blue color for info */
+  background-color: #3b82f6 !important; /* Blue color for info */
 }
 
 /** IDENTICONS **/

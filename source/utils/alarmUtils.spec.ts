@@ -34,7 +34,7 @@ describe('alarmUtils', () => {
     consoleLogSpy.mockClear();
     // Reset setTimeout mock
     mockSetTimeout = jest.fn().mockImplementation(
-      (_callback: () => void, _delay: number) =>
+      () =>
         // Return a fake timer ID
         123 as any
     );

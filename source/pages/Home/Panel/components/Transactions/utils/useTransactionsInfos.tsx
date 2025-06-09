@@ -175,7 +175,7 @@ export const useTransactionsListConfig = (
     isErc20Tx: boolean,
     coinsList: any[],
     tx: any,
-    currency?: string
+    currency: string
   ) => {
     if (isErc20Tx) {
       const token = coinsList.find((coin) =>
@@ -188,10 +188,10 @@ export const useTransactionsListConfig = (
         return `${token?.symbol}`.toUpperCase();
       }
 
-      return `${currency || 'SYS'}`.toUpperCase();
+      return `${currency}`.toUpperCase();
     }
 
-    return `${currency || 'SYS'}`.toUpperCase();
+    return `${currency}`.toUpperCase();
   };
 
   return useMemo(

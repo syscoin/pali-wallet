@@ -284,11 +284,11 @@ class MainController extends KeyringManager {
             ).json();
             if (currencies && currencies.rates) {
               store.dispatch(setCoins(currencies.rates));
-              if (currencies.rates[currency.toLowerCase()]) {
+              if (currencies.rates[currency]) {
                 store.dispatch(
                   setPrices({
                     asset: currency,
-                    price: currencies.rates[currency.toLowerCase()],
+                    price: currencies.rates[currency],
                   })
                 );
                 return;
@@ -744,11 +744,6 @@ class MainController extends KeyringManager {
     const completeNetwork: INetworkWithKind = {
       ...network,
       label: network.label || `Chain ${network.chainId}`,
-      kind: network.kind || (network.slip44 ? 'utxo' : 'evm'),
-      // Ensure currency property is preserved - use appropriate fallback
-      currency:
-        network.currency ||
-        (network.kind === 'utxo' || network.slip44 ? 'sys' : 'eth'),
     };
 
     const promiseWrapper = this.createCancellablePromise<{
@@ -1124,7 +1119,7 @@ class MainController extends KeyringManager {
 
   public async importTrezorAccountFromController(
     coin: string,
-    slip44: string,
+    slip44: number,
     index: string
   ) {
     const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
@@ -1179,7 +1174,7 @@ class MainController extends KeyringManager {
 
   public async importLedgerAccountFromController(
     coin: string,
-    slip44: string,
+    slip44: number,
     index: string,
     isAlreadyConnected: boolean
   ) {
@@ -1818,12 +1813,12 @@ class MainController extends KeyringManager {
         }
       });
     }
-
     // Skip dapp notifications during startup
     if (this.isStartingUp) {
       console.log(
         '[MainController] Skipping network change dapp notifications during startup'
       );
+      store.dispatch(switchNetworkSuccess(activeNetwork));
       return;
     }
 
@@ -1881,6 +1876,7 @@ class MainController extends KeyringManager {
         },
       ]);
     }
+    store.dispatch(switchNetworkSuccess(activeNetwork));
   }
 
   public async setFaucetModalState({
@@ -2042,7 +2038,6 @@ class MainController extends KeyringManager {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
         // Determine the appropriate endpoint and method based on network type
         const isUtxo = chain === INetworkType.Syscoin;
 
@@ -2147,11 +2142,10 @@ class MainController extends KeyringManager {
     };
 
     try {
-      const {
-        sucess: success,
-        wallet,
-        activeChain,
-      } = await this.setSignerNetwork(network, chain);
+      const { success, wallet, activeChain } = await this.setSignerNetwork(
+        network,
+        chain
+      );
 
       if (success) {
         this.web3Provider = this.ethereumTransaction.web3Provider;
@@ -2332,18 +2326,11 @@ class MainController extends KeyringManager {
     const enhancedWallet = {
       ...wallet,
       activeNetwork: {
-        ...wallet.activeNetwork,
+        ...network, // Use the new network as the base
         label:
           network.label ||
           wallet.activeNetwork.label ||
-          `Chain ${wallet.activeNetwork.chainId}`,
-        currency:
-          network.currency ||
-          wallet.activeNetwork.currency ||
-          (activeChain === INetworkType.Syscoin ? 'sys' : 'eth'),
-        kind:
-          network.kind ||
-          (activeChain === INetworkType.Syscoin ? 'utxo' : 'evm'),
+          `Chain ${network.chainId}`,
       },
     };
 
@@ -2461,7 +2448,16 @@ class MainController extends KeyringManager {
 
   // Expose txUtils methods individually for better type safety
   public getRawTransaction = this.txUtils.getRawTransaction;
-  // Add other txUtils methods as needed
+
+  // Add decodeRawTransaction method for PSBT/transaction details display
+  public decodeRawTransaction = (psbt: any) => {
+    try {
+      return this.syscoinTransaction.decodeRawTransaction(psbt);
+    } catch (error) {
+      console.error('Error decoding raw transaction:', error);
+      throw new Error(`Failed to decode raw transaction: ${error.message}`);
+    }
+  };
 
   // Network status management
   public resetNetworkStatus(): void {

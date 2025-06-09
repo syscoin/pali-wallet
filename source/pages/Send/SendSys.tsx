@@ -29,7 +29,6 @@ import {
 } from 'utils/index';
 
 export const SendSys = () => {
-  const { getFiatAmount } = usePrice();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
@@ -40,9 +39,8 @@ export const SendSys = () => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
-  const { fiat }: IPriceState = useSelector((state: RootState) => state.price);
-  const [verifyAddress, setVerifyAddress] = useState<boolean>(true);
-  const [ZDAG, setZDAG] = useState<boolean>(false);
+
+  const [RBF, setRBF] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     null
   );
@@ -60,41 +58,53 @@ export const SendSys = () => {
 
   const [form] = Form.useForm();
 
-  // Fetch recommended fee rate from blockbook
-  const [recommendedFeeRate, setRecommendedFeeRate] = useState<number | null>(
-    null
-  );
-  // Fetch recommended fee on component mount and when network changes
+  // Fee rate will be managed by the Fee component
+  const [feeRate, setFeeRate] = useState<number | null>(null);
+
+  // Watch for fee changes from the Fee component
   useEffect(() => {
-    const fetchRecommendedFee = async () => {
+    const interval = setInterval(() => {
+      const currentFormFee = form.getFieldValue('fee');
+      if (currentFormFee && Number(currentFormFee) !== Number(feeRate)) {
+        setFeeRate(Number(currentFormFee));
+        // Clear cached estimates when fee rate changes - they'll be recalculated when needed
+        setCachedFeeEstimate(null);
+
+        // Clear max amount if currently displayed, since fee rate change affects max calculation
+        const currentAmount = form.getFieldValue('amount');
+        if (calculatedMaxAmount && currentAmount === calculatedMaxAmount) {
+          form.setFieldValue('amount', '');
+          setFieldsValues((prev) => ({ ...prev, amount: '' }));
+        }
+        setCalculatedMaxAmount(null);
+      }
+    }, 500); // Check every 500ms for form changes
+
+    return () => clearInterval(interval);
+  }, [form, feeRate, calculatedMaxAmount]);
+
+  // Set a default fee rate on mount
+  useEffect(() => {
+    const fetchInitialFee = async () => {
       try {
         const fee = (await controllerEmitter(
           ['wallet', 'getRecommendedFee'],
           []
         )) as number;
-        setRecommendedFeeRate(fee);
+        setFeeRate(fee);
+        form.setFieldsValue({ fee });
       } catch (error) {
-        console.error('Failed to fetch recommended fee:', error);
-        // Fallback to 10 sat/byte if fetch fails
-        setRecommendedFeeRate(0.0000001);
+        console.error('Failed to fetch initial fee:', error);
+        const fallbackFee = 0.0000001;
+        setFeeRate(fallbackFee);
+        form.setFieldsValue({ fee: fallbackFee });
       }
     };
-    fetchRecommendedFee();
-  }, [activeNetwork.chainId]);
-
-  // Use recommended fee rate or fallback
-  const feeRate = recommendedFeeRate || 0.0000001; // 10 sat/byte fallback
+    fetchInitialFee();
+  }, [activeNetwork.chainId, form]);
 
   const isAccountImported =
     accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
-
-  useEffect(() => {
-    form.setFieldsValue({
-      verify: true,
-      ZDAG: false,
-      fee: feeRate,
-    });
-  }, [form, feeRate]);
 
   const assets = activeAccount.assets.syscoin
     ? Object.values(activeAccount.assets.syscoin)
@@ -154,8 +164,8 @@ export const SendSys = () => {
                 {
                   amount: testAmount,
                   receivingAddress: addressForFeeCalc,
-                  feeRate, // Pass the actual fee rate
-                  txOptions: { rbf: !ZDAG },
+                  feeRate, // Pass the actual fee rate or undefined
+                  txOptions: { rbf: RBF },
                   token: null, // Native transaction for fee calculation
                 },
               ]
@@ -186,8 +196,8 @@ export const SendSys = () => {
                     {
                       amount: potentialMax,
                       receivingAddress: addressForFeeCalc,
-                      feeRate, // Pass the actual fee rate
-                      txOptions: { rbf: !ZDAG },
+                      feeRate, // Pass the actual fee rate or undefined
+                      txOptions: { rbf: RBF },
                       token: null, // Native transaction for fee calculation
                     },
                   ]
@@ -213,14 +223,8 @@ export const SendSys = () => {
             setCachedFeeEstimate(fee);
           } catch (error) {
             console.error('Error estimating fee for MAX:', error);
-            // Use a more conservative fee if estimation fails
-            // Based on actual transaction data at 1000 sat/byte: 3 UTXOs = 0.00283801 SYS fee
-            // Scale it down to our desired rate
-            // Use a conservative fallback fee based on the current rate
-            const avgBytesPerUtxo = 150; // Conservative estimate
-            const estimatedUtxos = 7; // Conservative for large wallets
-            const estimatedBytes = avgBytesPerUtxo * estimatedUtxos;
-            fee = feeRate * estimatedBytes; // Direct calculation with actual rate
+            // Use a conservative fee if estimation fails
+            fee = 0.001; // Conservative fallback fee (1000 satoshis)
             console.log('Using fallback fee:', fee);
           }
         }
@@ -320,16 +324,13 @@ export const SendSys = () => {
     }
   };
 
-  const verifyOnChange = (value: any) => {
-    setVerifyAddress(value);
+  const RBFOnChange = (value: any) => {
+    // For SPTs, the switch shows ZDAG, so we need to invert the value
+    // When ZDAG is enabled (value=true), RBF should be disabled (false)
+    const rbfValue = selectedAsset ? !value : value;
+    setRBF(rbfValue);
 
-    form.setFieldsValue({ verify: value });
-  };
-
-  const ZDAGOnChange = (value: any) => {
-    setZDAG(value);
-
-    form.setFieldsValue({ ZDAG: value });
+    form.setFieldsValue({ RBF: rbfValue });
   };
 
   const nextStep = async ({ receiver, amount }: any) => {
@@ -355,7 +356,7 @@ export const SendSys = () => {
                   amount: Number(amount),
                   receivingAddress: receiver,
                   feeRate,
-                  txOptions: { rbf: !ZDAG },
+                  txOptions: { rbf: RBF },
                   token: null, // Explicitly pass null for native transactions
                 },
               ]
@@ -363,9 +364,19 @@ export const SendSys = () => {
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
+
+          // Critical validation: If PSBT creation failed, we cannot proceed
+          if (!psbt || !estimatedPsbt) {
+            throw new Error('Failed to create transaction PSBT');
+          }
         } catch (error) {
-          // Use conservative estimate if fee estimation fails
-          estimatedTotalFee = 0.00001;
+          setIsLoading(false);
+          alert.removeAll();
+          alert.error(
+            t('send.transactionCreationFailed', { error: error.message }) ||
+              `Failed to create transaction: ${error.message}. Please try again.`
+          );
+          return;
         }
 
         const totalNeeded = amountCurrency.add(estimatedTotalFee);
@@ -385,10 +396,10 @@ export const SendSys = () => {
           sender: activeAccount.address,
           receivingAddress: receiver,
           amount: Number(amount),
-          fee: feeRate, // Fixed fee rate
-          estimatedFee: estimatedTotalFee, // Pass the actual estimated fee for display
+          fee: estimatedTotalFee, // Actual fee amount (compliant with SysProvider API)
+          feeRate: feeRate, // Add fee rate for transaction details display
+          rbf: RBF, // RBF state for transaction details display
           token: null,
-          isToken: false,
           psbt: psbt,
         };
 
@@ -423,7 +434,7 @@ export const SendSys = () => {
                 amount: Number(amount),
                 receivingAddress: receiver,
                 feeRate,
-                txOptions: { rbf: !ZDAG },
+                txOptions: { rbf: RBF },
                 token: {
                   symbol: selectedAsset.symbol,
                   guid: selectedAsset.assetGuid,
@@ -434,8 +445,19 @@ export const SendSys = () => {
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
+
+          // Critical validation: If PSBT creation failed, we cannot proceed
+          if (!psbt || !tokenPsbt) {
+            throw new Error('Failed to create token transaction PSBT');
+          }
         } catch (error) {
-          console.error('Error estimating token fee:', error);
+          setIsLoading(false);
+          alert.removeAll();
+          alert.error(
+            t('send.transactionCreationFailed', { error: error.message }) ||
+              `Failed to create token transaction: ${error.message}. Please try again.`
+          );
+          return;
         }
 
         setIsLoading(false);
@@ -445,14 +467,14 @@ export const SendSys = () => {
               sender: activeAccount.address,
               receivingAddress: receiver,
               amount: Number(amount),
-              fee: feeRate, // Fixed fee rate
-              estimatedFee: tokenFeeEstimate, // Pass the actual estimated fee for display
+              fee: tokenFeeEstimate, // Actual fee amount (compliant with SysProvider API)
+              feeRate: feeRate, // Add fee rate for transaction details display
+              rbf: RBF, // RBF state for transaction details display
+              psbt: tokenPsbt,
               token: {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
               },
-              isToken: true,
-              psbt: tokenPsbt,
             },
           },
         });
@@ -463,16 +485,6 @@ export const SendSys = () => {
       alert.error(t('send.internalError'));
     }
   };
-
-  const fiatValueToShow = useMemo(() => {
-    const getAmount = getFiatAmount(
-      Number(feeRate),
-      6,
-      String(fiat.asset).toUpperCase()
-    );
-
-    return getAmount;
-  }, [feeRate]);
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -492,9 +504,7 @@ export const SendSys = () => {
   // The MAX button already handles the calculation properly
 
   return (
-    <Layout
-      title={`${t('send.send')} ${activeNetwork.currency?.toUpperCase()}`}
-    >
+    <Layout title={`${t('send.send')} ${activeNetwork.currency.toUpperCase()}`}>
       <div>
         <div className="flex flex-col items-center justify-center">
           <div className="add-identicon ml-1 mr-2 my-2" />
@@ -523,7 +533,12 @@ export const SendSys = () => {
             <p className="text-brand-gray200 text-xs">Your balance:</p>
             <p className="text-white text-xs font-semibold">
               {selectedAsset
-                ? getAssetBalance(selectedAsset, activeAccount, true)
+                ? getAssetBalance(
+                    selectedAsset,
+                    activeAccount,
+                    true,
+                    activeNetwork
+                  )
                 : `${activeAccount.balances.syscoin} ${activeNetwork.currency}`}
             </p>
           </div>
@@ -536,9 +551,7 @@ export const SendSys = () => {
           labelCol={{ span: 8 }}
           wrapperCol={{ span: 8 }}
           initialValues={{
-            verify: true,
-            ZDAG: false,
-            fee: feeRate,
+            RBF: true,
           }}
           onFinish={nextStep}
           autoComplete="off"
@@ -557,11 +570,7 @@ export const SendSys = () => {
                 validator(_, value) {
                   if (
                     !value ||
-                    isValidSYSAddress(
-                      value,
-                      activeNetwork.chainId,
-                      verifyAddress
-                    )
+                    isValidSYSAddress(value, activeNetwork.chainId, true)
                   ) {
                     return Promise.resolve();
                   }
@@ -791,28 +800,30 @@ export const SendSys = () => {
             </div>
           </div>
 
-          <Fee
-            disabled={true}
-            recommend={feeRate}
-            form={form}
-            fiatValue={fiatValueToShow}
-          />
+          <Fee disabled={false} recommend={feeRate} form={form} />
 
           <div className="flex justify-between w-full">
             <div className="flex items-center gap-2">
               <span className="text-sm font-normal text-white">
-                {t('send.verifyAddress')}
+                {selectedAsset ? 'Z-DAG' : 'RBF'}
               </span>
               <Tooltip
                 childrenClassName="text-brand-white h-4"
-                content={t('send.paliVerifies')}
+                content={
+                  selectedAsset
+                    ? t('send.zdagOption', {
+                        currency: activeNetwork.currency.toUpperCase(),
+                      })
+                    : t('send.rbfOption', {
+                        currency: activeNetwork.currency.toUpperCase(),
+                      })
+                }
               >
                 <Icon isSvg name="Info" />
               </Tooltip>
             </div>
             <Form.Item
-              id="verify-address-switch"
-              name="verify"
+              name="RBF"
               rules={[
                 {
                   required: false,
@@ -821,51 +832,17 @@ export const SendSys = () => {
               ]}
             >
               <Switch
-                checked={verifyAddress}
-                onChange={verifyOnChange}
+                checked={selectedAsset ? !RBF : RBF}
+                onChange={RBFOnChange}
                 className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
               >
                 <span
                   className={`${
-                    verifyAddress
+                    (selectedAsset ? !RBF : RBF)
                       ? 'bg-brand-green translate-x-6'
                       : 'bg-brand-redDark translate-x-1'
                   } inline-block w-2 h-2 transform rounded-full`}
-                />
-              </Switch>
-            </Form.Item>
-          </div>
-          <div className="flex justify-between w-full">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-normal text-white">Z-DAG</span>
-              <Tooltip
-                childrenClassName="text-brand-white h-4"
-                content={t('send.disableThisOption')}
-              >
-                <Icon isSvg name="Info" />
-              </Tooltip>
-            </div>
-            <Form.Item
-              name="ZDAG"
-              rules={[
-                {
-                  required: false,
-                  message: '',
-                },
-              ]}
-            >
-              <Switch
-                checked={ZDAG}
-                onChange={ZDAGOnChange}
-                className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
-              >
-                <span
-                  className={`${
-                    ZDAG
-                      ? 'bg-brand-green translate-x-6'
-                      : 'bg-brand-redDark translate-x-1'
-                  } inline-block w-2 h-2 transform rounded-full`}
-                  id="z-dag-switch"
+                  id="rbf-switch"
                 />
               </Switch>
             </Form.Item>

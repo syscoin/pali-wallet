@@ -1,3 +1,4 @@
+import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -18,7 +19,8 @@ import {
   IconButton,
 } from 'components/index';
 import { TxSuccessful } from 'components/Modal/WarningBaseModal';
-import { useUtils } from 'hooks/index';
+import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
+import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import {
   ISysTransaction,
@@ -43,6 +45,7 @@ export const SendConfirm = () => {
   const { controllerEmitter, web3Provider, isLoading } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
+  const { getFiatAmount } = usePrice();
   const url = chrome.runtime.getURL('app.html');
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -55,6 +58,7 @@ export const SendConfirm = () => {
     activeAccount: activeAccountMeta,
     currentBlock,
   } = useSelector((state: RootState) => state.vault);
+  const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
@@ -78,8 +82,13 @@ export const SendConfirm = () => {
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   const basicTxValues = state.tx;
+
+  // The confirmation screen displays the fee and total as calculated by SendSys.
+  // When the user changes fee rate in SendSys and clicks "Next", SendSys recalculates
+  // the transaction with the new fee rate and passes the correct values here.
 
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit > 0
@@ -88,9 +97,33 @@ export const SendConfirm = () => {
   const getFormattedFee = (currentFee: number | string) =>
     `${removeScientificNotation(currentFee)} ${
       activeNetwork.currency
-        ? activeNetwork.currency?.toUpperCase()
+        ? activeNetwork.currency.toUpperCase()
         : activeNetwork.label
     }`;
+
+  const getFeeFiatAmount = (currentFee: number | string) => {
+    try {
+      const feeAmount =
+        typeof currentFee === 'string' ? parseFloat(currentFee) : currentFee;
+      if (isNaN(feeAmount) || feeAmount <= 0) return null;
+
+      return getFiatAmount(feeAmount, 6, String(fiat.asset).toUpperCase());
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const getTotalFiatAmount = (totalAmount: number | string) => {
+    try {
+      const total =
+        typeof totalAmount === 'string' ? parseFloat(totalAmount) : totalAmount;
+      if (isNaN(total) || total <= 0) return null;
+
+      return getFiatAmount(total, 6, String(fiat.asset).toUpperCase());
+    } catch (error) {
+      return null;
+    }
+  };
 
   const getLegacyGasPrice = async () => {
     const correctGasPrice = Boolean(
@@ -1058,7 +1091,7 @@ export const SendConfirm = () => {
                     {`${basicTxValues.amount} ${' '} ${
                       basicTxValues.token
                         ? basicTxValues.token.symbol
-                        : activeNetwork.currency?.toUpperCase()
+                        : activeNetwork.currency.toUpperCase()
                     }`}
                   </>
                 ) : (
@@ -1082,12 +1115,12 @@ export const SendConfirm = () => {
                 {basicTxValues.amount}{' '}
                 {basicTxValues.token
                   ? basicTxValues.token.symbol
-                  : activeNetwork.currency?.toUpperCase()}
+                  : activeNetwork.currency.toUpperCase()}
               </p>
             </div>
           )}
 
-          <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-[400px] relative left-[-1%] text-left text-sm">
+          <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-full max-w-[380px] mx-auto text-left text-sm">
             <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.from')}
               <span className="text-white text-xs">
@@ -1136,74 +1169,123 @@ export const SendConfirm = () => {
               </span>
             </p>
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
-            <div className="flex flex-row items-end w-full">
-              <p className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
-                {t('send.estimatedGasFee')}
-                <span className="text-white text-xs">
-                  {basicTxValues.fee !== undefined
-                    ? getFormattedFee(
-                        basicTxValues.estimatedFee || basicTxValues.fee
-                      )
-                    : isBitcoinBased
-                    ? getFormattedFee(
-                        basicTxValues.estimatedFee || basicTxValues.fee
-                      )
-                    : !isBitcoinBased && isEIP1559Compatible === false
-                    ? getFormattedFee(gasPrice / 10 ** 18)
-                    : getFormattedFee(getCalculatedFee)}
-                </span>
-              </p>
-              {!isBitcoinBased && !basicTxValues.token?.isNft
-                ? !isBitcoinBased &&
-                  isEIP1559Compatible && (
-                    <span
-                      className="hover:text-fields-input-borderfocus pb-[3px]"
-                      onClick={() => setIsOpenEditFeeModal(true)}
-                    >
-                      <Icon
-                        name="EditTx"
-                        isSvg
-                        className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
-                      />{' '}
-                    </span>
-                  )
-                : null}
-            </div>
+            {/* Only show fee section if we have meaningful fee information */}
+            {!(isBitcoinBased && basicTxValues.fee === 0) && (
+              <div className="flex flex-row items-end w-full">
+                <p className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
+                  {t('send.estimatedGasFee')}
+                  <span className="text-white text-xs">
+                    {(() => {
+                      let feeAmount;
+                      if (
+                        basicTxValues.fee !== undefined &&
+                        basicTxValues.fee > 0
+                      ) {
+                        feeAmount = basicTxValues.fee;
+                      } else if (isBitcoinBased) {
+                        feeAmount = basicTxValues.fee;
+                      } else if (
+                        !isBitcoinBased &&
+                        isEIP1559Compatible === false
+                      ) {
+                        feeAmount = gasPrice / 10 ** 18;
+                      } else {
+                        feeAmount = getCalculatedFee;
+                      }
+
+                      const formattedFee = getFormattedFee(feeAmount);
+                      const fiatAmount = getFeeFiatAmount(feeAmount);
+
+                      return (
+                        <div className="flex flex-col">
+                          <span>{formattedFee}</span>
+                          {fiatAmount && (
+                            <span className="text-brand-gray200 text-xs">
+                              ≈ {fiatAmount}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </span>
+                </p>
+                {!isBitcoinBased && !basicTxValues.token?.isNft
+                  ? !isBitcoinBased &&
+                    isEIP1559Compatible && (
+                      <span
+                        className="hover:text-fields-input-borderfocus pb-[3px]"
+                        onClick={() => setIsOpenEditFeeModal(true)}
+                      >
+                        <Icon
+                          name="EditTx"
+                          isSvg
+                          className="px-2 cursor-pointer text-brand-white hover:text-fields-input-borderfocus"
+                        />{' '}
+                      </span>
+                    )
+                  : null}
+              </div>
+            )}
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
             <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
                   Total ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
-                    {basicTxValues.fee !== undefined
-                      ? `${currency(
-                          basicTxValues.estimatedFee || basicTxValues.fee,
-                          { precision: 8 }
-                        )
-                          .add(basicTxValues.amount)
-                          .format({ symbol: '' })}`
-                      : isBitcoinBased
-                      ? `${currency(
-                          basicTxValues.estimatedFee || basicTxValues.fee,
-                          { precision: 8 }
-                        )
-                          .add(basicTxValues.amount)
-                          .format({ symbol: '' })}`
-                      : !isBitcoinBased && isEIP1559Compatible === false
-                      ? `${removeScientificNotation(
-                          currency(basicTxValues.amount, {
-                            precision: 18,
-                          }).add(gasPrice / 10 ** 18).value
-                        )}`
-                      : `${currency(basicTxValues.amount, { precision: 18 })
-                          .add(getCalculatedFee || 0)
-                          .format({ symbol: '' })}`}
-                    &nbsp;
-                    {`${
-                      activeNetwork.currency
-                        ? activeNetwork.currency.toUpperCase()
-                        : activeNetwork.label
-                    }`}
+                    {(() => {
+                      let totalAmount;
+                      let totalCrypto;
+
+                      if (basicTxValues.fee !== undefined) {
+                        const total = currency(basicTxValues.fee, {
+                          precision: 8,
+                        }).add(basicTxValues.amount);
+                        totalAmount = total.value;
+                        totalCrypto = total.format({ symbol: '' });
+                      } else if (isBitcoinBased) {
+                        const total = currency(basicTxValues.fee, {
+                          precision: 8,
+                        }).add(basicTxValues.amount);
+                        totalAmount = total.value;
+                        totalCrypto = total.format({ symbol: '' });
+                      } else if (
+                        !isBitcoinBased &&
+                        isEIP1559Compatible === false
+                      ) {
+                        const total = currency(basicTxValues.amount, {
+                          precision: 18,
+                        }).add(gasPrice / 10 ** 18);
+                        totalAmount = total.value;
+                        totalCrypto = removeScientificNotation(total.value);
+                      } else {
+                        const total = currency(basicTxValues.amount, {
+                          precision: 18,
+                        }).add(getCalculatedFee || 0);
+                        totalAmount = total.value;
+                        totalCrypto = total.format({ symbol: '' });
+                      }
+
+                      const totalFiatAmount = getTotalFiatAmount(totalAmount);
+
+                      return (
+                        <div className="flex flex-col">
+                          <span>
+                            {totalCrypto}
+                            &nbsp;
+                            {`${
+                              activeNetwork.currency
+                                ? activeNetwork.currency.toUpperCase()
+                                : activeNetwork.label
+                            }`}
+                          </span>
+                          {totalFiatAmount && (
+                            <span className="text-brand-gray200 text-xs">
+                              ≈ {totalFiatAmount}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </span>
                 </>
               ) : (
@@ -1217,7 +1299,42 @@ export const SendConfirm = () => {
             </p>
           </div>
 
-          <div className="flex items-center justify-around py-8 w-full">
+          {isBitcoinBased && (
+            <div className="w-full mt-4">
+              <button
+                onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
+                className="flex items-center justify-between w-full p-3 bg-brand-blue600 border border-alpha-whiteAlpha300 rounded-lg hover:bg-brand-blue500 transition-colors duration-200"
+              >
+                <span className="text-white text-sm font-medium">
+                  {t('send.advancedDetails')}
+                </span>
+                <ChevronDoubleDownIcon
+                  className={`text-white w-5 h-5 transition-transform duration-200 ${
+                    showAdvancedDetails ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {showAdvancedDetails && (
+                <div className="mt-2 -mx-6 border-y border-alpha-whiteAlpha300 bg-brand-blue700 overflow-hidden">
+                  <div
+                    className="max-h-[500px] overflow-y-auto"
+                    style={{ overflowX: 'hidden' }}
+                  >
+                    {/* Component only mounts when expanded - prevents remote asset fetching until needed.
+                        The component has its own internal loading state while fetching asset data. */}
+                    <SyscoinTransactionDetailsFromPSBT
+                      psbt={basicTxValues.psbt}
+                      transaction={basicTxValues}
+                      showTechnicalDetails={true}
+                      showTransactionOptions={true}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"

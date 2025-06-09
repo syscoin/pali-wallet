@@ -453,7 +453,7 @@ const CustomRPCView = () => {
         label: currentNetwork.label,
         url: currentNetwork.url,
         chainId: currentNetwork.chainId,
-        symbol: currentNetwork.currency?.toUpperCase(),
+        symbol: currentNetwork.currency.toUpperCase(),
         explorer: currentNetwork.explorer,
         apiUrl: currentNetwork.apiUrl,
       });
@@ -794,11 +794,7 @@ const CustomRPCView = () => {
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
-                $
-                {(
-                  currentNetwork.currency || (isSyscoinRpc ? 'SYS' : 'ETH')
-                ).toUpperCase()}{' '}
-                •{' '}
+                ${currentNetwork.currency.toUpperCase()} •{' '}
                 {currentNetwork.kind === 'utxo' || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}

@@ -12,11 +12,13 @@ import { formatCurrency, truncate } from './format';
 export const getAssetBalance = (
   asset: any,
   activeAccount: IKeyringAccountState,
-  isBitcoinBased: boolean
+  isBitcoinBased: boolean,
+  activeNetwork: { currency: string }
 ) => {
   if (!isBitcoinBased) {
+    const networkCurrency = activeNetwork.currency.toLowerCase();
     const value = Number(
-      asset.tokenSymbol === 'ETH'
+      asset.tokenSymbol?.toLowerCase() === networkCurrency
         ? activeAccount.balances.ethereum
         : asset.balance
     );

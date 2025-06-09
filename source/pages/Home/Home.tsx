@@ -289,7 +289,7 @@ export const Home = () => {
                 moreThanMillion={moreThanMillion}
                 isNetworkChanging={isNetworkChanging}
                 isSwitchingAccount={isSwitchingAccount}
-                currency={activeNetwork?.currency || 'SYS'}
+                currency={activeNetwork.currency}
               />
               <FiatDisplay
                 isNetworkChanging={isNetworkChanging}

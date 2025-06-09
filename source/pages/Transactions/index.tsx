@@ -19,5 +19,3 @@ export const EncryptPubKey = () => <EncryptPubKey_ />;
 
 //* Decrypt
 export const Decrypt = () => <Decrypt_ />;
-
-export const SendToken = () => <Transaction type="Send" />;

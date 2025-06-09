@@ -17,7 +17,6 @@ import {
   SeedConfirm,
   SendConfirm,
   SendNTokenTransaction,
-  SendToken,
   SendTransaction,
   Sign,
   SignAndSend,
@@ -164,10 +163,6 @@ export const ExternalRoute = () => {
           />
           {/* /tx/ */}
           <Route path="tx">
-            <Route
-              path="send"
-              element={<ProtectedRoute element={<SendToken />} />}
-            />
             <Route
               path="send/confirm"
               element={<ProtectedRoute element={<SendConfirm />} />}

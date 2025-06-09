@@ -67,7 +67,7 @@ export const ROLLUX_DEFAULT_NETWORK = {
     label: 'Rollux',
     url: 'https://rpc.rollux.com',
     apiUrl: 'https://explorer.rollux.com/api',
-    explorer: 'https://explorer.rollux.com/',
+    explorer: 'https://explorer.rollux.com',
     isTestnet: false,
     kind: 'evm',
   } as INetworkWithKind,
@@ -124,7 +124,7 @@ export const SYSCOIN_MAINNET_NETWORK = {
   isTestnet: false,
   kind: 'evm',
   apiUrl: 'https://explorer.syscoin.org/api',
-  explorer: 'https://explorer.syscoin.org/',
+  explorer: 'https://explorer.syscoin.org',
 } as INetworkWithKind;
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = {
@@ -140,7 +140,7 @@ export const SYSCOIN_UTXO_MAINNET_NETWORK = {
 
 export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   chainId: CHAIN_IDS.SYSCOIN_TESTNET,
-  url: 'https://explorer-blockbook-dev.syscoin.org/',
+  url: 'https://explorer-blockbook-dev.syscoin.org',
   label: 'Syscoin Testnet',
   default: true,
   currency: 'tsys',
@@ -244,7 +244,7 @@ export const PALI_NETWORKS_STATE = {
       label: 'Polygon Mainnet',
       url: 'https://polygon-rpc.com/',
       apiUrl: 'https://api.polygonscan.com/api',
-      explorer: 'https://polygonscan.com/',
+      explorer: 'https://polygonscan.com',
       isTestnet: false,
       kind: 'evm',
     } as INetworkWithKind,

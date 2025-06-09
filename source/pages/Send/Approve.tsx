@@ -469,9 +469,7 @@ export const ApproveTransactionComponent = () => {
                       <span className="text-gray-500 text-base font-medium">
                         {verifyZerosInBalanceAndFormat(calculatedFeeValue, 2)}
                         &nbsp;
-                        <strong>
-                          {activeNetwork?.currency.toUpperCase() || 'SYS'}
-                        </strong>
+                        <strong>{activeNetwork.currency.toUpperCase()}</strong>
                       </span>
                     </p>
                   </div>

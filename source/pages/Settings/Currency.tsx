@@ -88,9 +88,9 @@ const CurrencyView = () => {
         show={confirmed}
         onClose={() => navigate('/home')}
         title={t('settings.fiatCurrencySetSuccessfully')}
-        description={`${t('settings.nowYouWill')} ${
-          selectedCoin.toUpperCase() || 'USD'
-        }`}
+        description={`${t('settings.nowYouWill', {
+          currency: activeNetwork.currency.toUpperCase(),
+        })} ${selectedCoin.toUpperCase() || 'USD'}`}
       />
 
       <p className="mb-2 text-left text-white text-sm md:max-w-full">

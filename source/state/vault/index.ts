@@ -179,14 +179,6 @@ const VaultState = createSlice({
         ({
           ...wallet.activeNetwork,
           kind: activeChain === INetworkType.Syscoin ? 'utxo' : 'evm',
-          // Ensure label is preserved from wallet's activeNetwork
-          label:
-            wallet.activeNetwork.label ||
-            `Chain ${wallet.activeNetwork.chainId}`,
-          // Ensure currency property is preserved - use appropriate fallback
-          currency:
-            wallet.activeNetwork.currency ||
-            (activeChain === INetworkType.Syscoin ? 'sys' : 'eth'),
         } as INetworkWithKind);
 
       state.activeAccount = {

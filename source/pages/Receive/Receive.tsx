@@ -32,7 +32,7 @@ export const Receive = () => {
     <Layout
       title={`${t(
         'receive.receiveTitle'
-      )} ${activeNetwork.currency?.toUpperCase()}`}
+      )} ${activeNetwork.currency.toUpperCase()}`}
       id="receiveSYS-title"
     >
       {activeAccount.address ? (

@@ -79,7 +79,7 @@ export interface ITransactionsListConfig {
     isErc20Tx: boolean,
     coinsList: any[],
     tx: any,
-    currency?: string
+    currency: string
   ) => string;
   getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
   getTxStatusIcons: (txLabel: string, isDetail: boolean) => JSX.Element;

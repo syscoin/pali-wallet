@@ -62,7 +62,7 @@ export const methodRequest = async (
 
   if (prefix === 'wallet' && methodName === 'isConnected')
     return dapp.isConnected(host);
-  if (data.method && !isBitcoinBased && prefix !== 'sys') {
+  if (data.method && !isBitcoinBased && prefix?.toLowerCase() !== 'sys') {
     const provider = EthProvider(host);
     const resp = await provider.unrestrictedRPCMethods(
       data.method,
@@ -100,7 +100,7 @@ export const methodRequest = async (
       },
     });
   }
-  if (prefix === 'eth' && methodName === 'chainId') {
+  if (prefix?.toLowerCase() === 'eth' && methodName === 'chainId') {
     // For NEVM networks (Syscoin EVM-compatible), return chainId
     // For UTXO networks, eth_chainId is not available
     const { activeNetwork: currentActiveNetwork } = store.getState().vault;
@@ -118,7 +118,7 @@ export const methodRequest = async (
     return `0x${chainId.toString(16)}`;
   }
 
-  if (prefix === 'eth' && methodName === 'requestAccounts') {
+  if (prefix?.toLowerCase() === 'eth' && methodName === 'requestAccounts') {
     try {
       return await enable(host, activeChain, chainId, false, isHybridDapp);
     } catch (error) {
@@ -154,7 +154,7 @@ export const methodRequest = async (
     }
   }
 
-  if (prefix === 'eth' && methodName === 'accounts') {
+  if (prefix?.toLowerCase() === 'eth' && methodName === 'accounts') {
     return isBitcoinBased
       ? cleanErrorStack(ethErrors.rpc.internal())
       : wallet.isUnlocked()
@@ -387,8 +387,8 @@ export const methodRequest = async (
   //* Change between networks methods
 
   const validatePrefixAndCurrentChain =
-    (prefix === 'sys' && !isBitcoinBased) ||
-    (prefix === 'eth' && isBitcoinBased);
+    (prefix?.toLowerCase() === 'sys' && !isBitcoinBased) ||
+    (prefix?.toLowerCase() === 'eth' && isBitcoinBased);
 
   const validateChangeUtxoEvmMethodName = methodName === 'changeUTXOEVM';
 
@@ -397,7 +397,7 @@ export const methodRequest = async (
 
     const networks = store.getState().vault.networks;
 
-    const newChainValue = getNetworkChain(prefix === 'sys');
+    const newChainValue = getNetworkChain(prefix?.toLowerCase() === 'sys');
     const findCorrectNetwork: INetworkWithKind =
       networks[newChainValue.toLowerCase()][chain];
     if (!findCorrectNetwork) {
@@ -447,7 +447,7 @@ export const methodRequest = async (
 
   if (
     dapp.getAccount(host)?.address &&
-    prefix !== 'sys' &&
+    prefix?.toLowerCase() !== 'sys' &&
     !isBitcoinBased &&
     EthProvider(host).checkIsBlocking(data.method) &&
     accounts[activeAccount.type][activeAccount.id].address !==
@@ -473,15 +473,19 @@ export const methodRequest = async (
   }
 
   //* Providers methods
-  if (prefix !== 'sys' && !isBitcoinBased) {
+  if (prefix?.toLowerCase() !== 'sys' && !isBitcoinBased) {
     const provider = EthProvider(host);
     const resp = await provider.restrictedRPCMethods(data.method, data.params);
     if (!resp) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
     return resp;
-  } else if (prefix === 'sys' && !isBitcoinBased) {
+  } else if (prefix?.toLowerCase() === 'sys' && !isBitcoinBased) {
     throw cleanErrorStack(ethErrors.rpc.internal());
-  } else if (prefix === 'eth' && isBitcoinBased && !isHybridDapp) {
+  } else if (
+    prefix?.toLowerCase() === 'eth' &&
+    isBitcoinBased &&
+    !isHybridDapp
+  ) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Method only available when connected on EVM chains'

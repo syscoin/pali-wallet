@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
+import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -28,37 +29,20 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
     (state: RootState) => state.vault
   );
   const activeAccount = accounts[activeAccountData.type][activeAccountData.id];
+
   const onSubmit = async () => {
     setLoading(true);
     try {
       let response = null;
 
-      // Handle both formats:
-      // 1. Legacy: data is just the PSBT string
-      // 2. New: data is an object with { psbt: string, pathIn?: string }
-      let psbtString: string;
-      let pathIn: string | undefined;
-
-      if (typeof data === 'string') {
-        // Legacy format - data is the PSBT string directly
-        psbtString = data;
-        pathIn = undefined;
-      } else if (data && typeof data === 'object') {
-        // Object format - extract psbt and optional pathIn
-        psbtString = data.psbt || data;
-        pathIn = data.pathIn;
-      } else {
-        throw new Error('Invalid data format');
-      }
-
       response = await controllerEmitter(
         ['wallet', 'syscoinTransaction', 'signPSBT'],
         [
           {
-            psbt: psbtString,
+            psbt: data,
             isTrezor: activeAccount.isTrezorWallet,
             isLedger: activeAccount.isLedgerWallet,
-            pathIn: pathIn, // Only pass pathIn if it exists
+            pathIn: data?.pathIn,
           },
         ]
       );
@@ -72,9 +56,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       }
 
       setConfirmed(true);
-
       setLoading(false);
-
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
     } catch (error: any) {
       const isNecessaryReconnect = error.message.includes(
@@ -88,7 +70,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       }
 
       setErrorMsg(error.message);
-
       setTimeout(window.close, 4000);
     }
   };
@@ -141,33 +122,33 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
               {t('transactions.confirmToProceed')}
             </p>
           </div>
-          <div className="bg-brand-blue600 rounded-t-[20px] ml-[15px] py-[8px] px-[16px] h-[40px] w-[92px] text-base font-normal cursor-pointer hover:opacity-60 text-center ">
-            Data
+
+          <div className="w-full px-6">
+            <SyscoinTransactionDetailsFromPSBT
+              psbt={data}
+              showTechnicalDetails={false}
+              showTransactionOptions={false}
+            />
           </div>
-          <div className="bg-brand-blue600 w-[396px] relative left-[0%] flex flex-col items-center justify-center p-6 rounded-[20px]">
-            <ul className="scrollbar-styled px-4 w-full text-xs overflow-auto">
-              <pre>{`${JSON.stringify(data, null, 2)}`}</pre>
-            </ul>
 
-            <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
-              <Button
-                type="button"
-                onClick={window.close}
-                className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
-              >
-                {t('buttons.cancel')}
-              </Button>
+          <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
+            <Button
+              type="button"
+              onClick={window.close}
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
+            >
+              {t('buttons.cancel')}
+            </Button>
 
-              <Button
-                type="submit"
-                disabled={confirmed}
-                loading={loading}
-                onClick={onSubmit}
-                className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
-              >
-                {t('buttons.confirm')}
-              </Button>
-            </div>
+            <Button
+              type="submit"
+              disabled={confirmed}
+              loading={loading}
+              onClick={onSubmit}
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+            >
+              {t('buttons.confirm')}
+            </Button>
           </div>
         </div>
       )}

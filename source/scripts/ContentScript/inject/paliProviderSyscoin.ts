@@ -294,7 +294,7 @@ export class PaliInpageProviderSys extends BaseProvider {
     try {
       //Only blockbook endpoints are accepted for UTXO chains
       const rpcoutput = await (
-        await fetch(this._sysState.blockExplorerURL + 'api/v2')
+        await fetch(this._sysState.blockExplorerURL + '/api/v2')
       ).json();
       // Check if it's a valid blockbook endpoint (supports any UTXO coin)
       checkExplorer = Boolean(rpcoutput.blockbook && rpcoutput.blockbook.coin);

@@ -2089,7 +2089,7 @@
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^6.1.5"
     bs58check "^3.0.1"
-    coinselectsyscoin "^1.0.77"
+    coinselectsyscoin "^1.0.83"
     crypto-js "^4.2.0"
     dotenv "^16.3.1"
     eth-sig-util "^3.0.1"
@@ -2099,8 +2099,8 @@
     ledger-bitcoin "^0.2.3"
     lodash "^4.17.21"
     satoshi-bitcoin "^1.0.5"
-    syscoinjs-lib "^1.0.231"
-    syscointx-js "^1.0.110"
+    syscoinjs-lib "^1.0.233"
+    syscointx-js "^1.0.111"
     web3 "^1.7.1"
     zksync-ethers "5"
 
@@ -2122,11 +2122,11 @@
     bip44-constants "^114.0.0"
     bip84 "^0.2.7"
     camelcase-keys "^7.0.2"
-    coinselectsyscoin "^1.0.77"
+    coinselectsyscoin "^1.0.83"
     crypto-js "^4.1.1"
     ethers "^5.6.4"
-    syscoinjs-lib "^1.0.230"
-    syscointx-js "^1.0.110"
+    syscoinjs-lib "^1.0.233"
+    syscointx-js "^1.0.111"
 
 "@popperjs/core@^2.9.0":
   version "2.11.8"
@@ -2467,9 +2467,9 @@
     "@types/node" "*"
 
 "@types/body-parser@*":
-  version "1.19.5"
-  resolved "https://registry.npmjs.org/@types/body-parser/-/body-parser-1.19.5.tgz"
-  integrity sha512-fB3Zu92ucau0iQ0JMCFQE7b/dv8Ot07NI3KaZIkIUNXq82k4eBAqUaneXfleGY9JWskeS9y+u0nXMyspcuQrCg==
+  version "1.19.6"
+  resolved "https://registry.npmjs.org/@types/body-parser/-/body-parser-1.19.6.tgz"
+  integrity sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==
   dependencies:
     "@types/connect" "*"
     "@types/node" "*"
@@ -2564,18 +2564,18 @@
     "@types/send" "*"
 
 "@types/express@*":
-  version "5.0.2"
-  resolved "https://registry.npmjs.org/@types/express/-/express-5.0.2.tgz"
-  integrity sha512-BtjL3ZwbCQriyb0DGw+Rt12qAXPiBTPs815lsUvtt1Grk0vLRMZNMUZ741d5rjk+UQOxfDiBZ3dxpX00vSkK3g==
+  version "5.0.3"
+  resolved "https://registry.npmjs.org/@types/express/-/express-5.0.3.tgz"
+  integrity sha512-wGA0NX93b19/dZC1J18tKWVIYWyyF2ZjT9vin/NRu0qzzvfVzWjs04iq2rQ3H65vCTQYlRqs3YHfY7zjdV+9Kw==
   dependencies:
     "@types/body-parser" "*"
     "@types/express-serve-static-core" "^5.0.0"
     "@types/serve-static" "*"
 
 "@types/express@^4.17.13":
-  version "4.17.22"
-  resolved "https://registry.npmjs.org/@types/express/-/express-4.17.22.tgz"
-  integrity sha512-eZUmSnhRX9YRSkplpz0N+k6NljUUn5l3EWZIKZvYzhvMphEuNiyyy1viH/ejgt66JWgALwC/gtSUAeQKtSwW/w==
+  version "4.17.23"
+  resolved "https://registry.npmjs.org/@types/express/-/express-4.17.23.tgz"
+  integrity sha512-Crp6WY9aTYP3qPi2wGDo9iUe/rceX01UMhnF1jmwDcKCFM6cx7YhGP/Mpr3y9AASpfHixIG0E6azCcL5OcDHsQ==
   dependencies:
     "@types/body-parser" "*"
     "@types/express-serve-static-core" "^4.17.33"
@@ -2625,9 +2625,9 @@
   integrity sha512-1m0bIFVc7eJWyve9S0RnuRgcQqF/Xd5QsUZAZeQFr1Q3/p9JWoQQEqmVy+DPTNpGXwhgIetAoYF8JSc33q29QA==
 
 "@types/http-errors@*":
-  version "2.0.4"
-  resolved "https://registry.npmjs.org/@types/http-errors/-/http-errors-2.0.4.tgz"
-  integrity sha512-D0CFMMtydbJAegzOyHjtiKPLlvnm3iTZyZRSZoLq2mRhDdmLfIWOCYPfQJ4cu2erKghU++QvjcUjp/5h7hESpA==
+  version "2.0.5"
+  resolved "https://registry.npmjs.org/@types/http-errors/-/http-errors-2.0.5.tgz"
+  integrity sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==
 
 "@types/http-proxy@^1.17.8":
   version "1.17.16"
@@ -2828,9 +2828,9 @@
   integrity sha512-k107IF4+Xr7UHjwDc7Cfd6PRQfbdkiRabXGRjo07b4WyPahFBZCZ1sE+BNxYIJPPg73UkfOsVOLwqVc/6ETrIA==
 
 "@types/send@*":
-  version "0.17.4"
-  resolved "https://registry.npmjs.org/@types/send/-/send-0.17.4.tgz"
-  integrity sha512-x2EM6TJOybec7c52BX0ZspPodMsQUd5L6PRwOunVyVUhXiBSKf3AezDL8Dgvgt5o0UfKNfuA0eMLr2wLT4AiBA==
+  version "0.17.5"
+  resolved "https://registry.npmjs.org/@types/send/-/send-0.17.5.tgz"
+  integrity sha512-z6F2D3cOStZvuk2SaP6YrwkNO65iTZcwA2ZkSABegdkAh/lf+Aa/YQndZVfmEXT5vgAp6zv06VQ3ejSVjAny4w==
   dependencies:
     "@types/mime" "^1"
     "@types/node" "*"
@@ -2843,9 +2843,9 @@
     "@types/express" "*"
 
 "@types/serve-static@*", "@types/serve-static@^1.13.10":
-  version "1.15.7"
-  resolved "https://registry.npmjs.org/@types/serve-static/-/serve-static-1.15.7.tgz"
-  integrity sha512-W8Ym+h8nhuRwaKPaDw34QUkwsGi6Rc4yYqvKFo5rm2FUEhCFbzVWrxXUxuKK8TASjWsysJY0nsmNCGhCOIsrOw==
+  version "1.15.8"
+  resolved "https://registry.npmjs.org/@types/serve-static/-/serve-static-1.15.8.tgz"
+  integrity sha512-roei0UY3LhpOJvjbIP6ZZFngyLKl5dskOtDhxY5THRSpO+ZI+nzJ+m5yUMzGrp89YRa7lvknKkMYjqQFGwA7Sg==
   dependencies:
     "@types/http-errors" "*"
     "@types/node" "*"
@@ -3213,9 +3213,9 @@ acorn-walk@^8.0.0:
     acorn "^8.11.0"
 
 "acorn@^6.0.0 || ^7.0.0 || ^8.0.0", acorn@^8.0.4, acorn@^8.11.0, acorn@^8.14.0, acorn@^8.2.4, acorn@^8.9.0:
-  version "8.14.1"
-  resolved "https://registry.npmjs.org/acorn/-/acorn-8.14.1.tgz"
-  integrity sha512-OvQ/2pUDKmgfCg++xsTX1wGxfTaszcHVcTctW4UJB4hibJx2HXxxO5UmVgyjMa+ZDsiaf5wWLXYpRWMmBI0QHg==
+  version "8.15.0"
+  resolved "https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz"
+  integrity sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg==
 
 acorn@^7.1.1:
   version "7.4.1"
@@ -6085,7 +6085,7 @@ eth-lib@0.2.8:
 
 eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   version "1.0.3"
-  resolved "git+ssh://git@github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
+  resolved "git+ssh://git@github.com/syscoin/eth-object.git"
   dependencies:
     eth-util-lite "^1.0.1"
 
@@ -12293,10 +12293,10 @@ symbol-tree@^3.2.4:
   resolved "https://registry.npmjs.org/symbol-tree/-/symbol-tree-3.2.4.tgz"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@1.0.231:
-  version "1.0.231"
-  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.231.tgz"
-  integrity sha512-F4wlA9czu2T2aCfKvYjTdjimKEzLN4TEfM/0P/q3aQ/76Zt8IB/cOcCE1wmFnq3AtvhVdt6Pl1wwjYw4kFw5xA==
+syscoinjs-lib@1.0.233:
+  version "1.0.233"
+  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.233.tgz"
+  integrity sha512-D/Ru4byvkcduCkpTcbhe2fXP9iOLCQ/6W3hEo6DLOlQw3H/ryMa/dvWtbiHOQuSp/SsfUNU1N3qfvXph/UFJkA==
   dependencies:
     "@trezor/utxo-lib" "^1.0.7"
     axios "^0.21.1"
@@ -12308,15 +12308,15 @@ syscoinjs-lib@1.0.231:
     eth-object "https://github.com/syscoin/eth-object.git"
     eth-proof "^2.1.6"
     node-localstorage "^2.1.6"
-    syscointx-js "^1.0.110"
+    syscointx-js "^1.0.111"
     trezor-connect "^8.1.29"
     varuint-bitcoin "^1.1.2"
     web3 "^1.4.0"
 
-syscointx-js@^1.0.110:
-  version "1.0.110"
-  resolved "https://registry.npmjs.org/syscointx-js/-/syscointx-js-1.0.110.tgz"
-  integrity sha512-Q5N90NuLd3SYBgmud/9IuoMb6AYCvFwmoEoeAMhtz4gF4X2iC1XTYrNaDAOAvrn/Vcps19lGGw/naBIqjbB1uw==
+syscointx-js@^1.0.111:
+  version "1.0.111"
+  resolved "https://registry.npmjs.org/syscointx-js/-/syscointx-js-1.0.111.tgz"
+  integrity sha512-RyjFgtLTSO8dygvCUslg3040A9Qrx0F53PnhhxT1CfK7lX4yByZzX06n3PSOnMZWjOUKdLMKHKHdz3Jd/UMDww==
   dependencies:
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^5.2.0"

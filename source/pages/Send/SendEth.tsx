@@ -144,10 +144,10 @@ export const SendEth = () => {
   const finalBalance = () => {
     if (selectedAsset?.is1155 === undefined) {
       const balance = selectedAsset
-        ? getAssetBalance(selectedAsset, activeAccount, false)
+        ? getAssetBalance(selectedAsset, activeAccount, false, activeNetwork)
         : `${
             activeAccount.balances.ethereum
-          } ${activeNetwork.currency?.toUpperCase()}`;
+          } ${activeNetwork.currency.toUpperCase()}`;
       return balance;
     }
 
@@ -174,7 +174,7 @@ export const SendEth = () => {
       return `${t('send.send')} ${
         selectedAsset && selectedAsset.tokenSymbol
           ? selectedAsset.tokenSymbol
-          : activeNetwork.currency?.toUpperCase()
+          : activeNetwork.currency.toUpperCase()
       }`;
     }
     return `${t('send.send')} NFT`;

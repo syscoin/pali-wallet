@@ -501,11 +501,11 @@ export const SendNTokenTransaction = () => {
               <span>
                 {`${
                   Number(tx.value ? tx.value : 0) / 10 ** 18
-                } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+                } ${' '} ${activeNetwork.currency.toUpperCase()}`}
               </span>
             ) : (
               <span>
-                {`${0} ${' '} ${activeNetwork.currency?.toUpperCase()}`}
+                {`${0} ${' '} ${activeNetwork.currency.toUpperCase()}`}
               </span>
             )}
           </p>
@@ -566,7 +566,7 @@ export const SendNTokenTransaction = () => {
                 {t('send.estimatedGasFee')}
                 <span className="text-brand-royalblue text-xs">
                   {removeScientificNotation(getCalculatedFee)}{' '}
-                  {activeNetwork.currency?.toUpperCase()}
+                  {activeNetwork.currency.toUpperCase()}
                 </span>
               </p>
               <span
@@ -584,11 +584,11 @@ export const SendNTokenTransaction = () => {
                   {`${
                     Number(tx.value ? tx.value : 0) / 10 ** 18 +
                     getCalculatedFee
-                  } ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                  } ${activeNetwork.currency.toLocaleUpperCase()}`}
                 </span>
               ) : (
                 <span className="text-brand-royalblue text-xs">
-                  {`${getCalculatedFee} ${activeNetwork.currency?.toLocaleUpperCase()}`}
+                  {`${getCalculatedFee} ${activeNetwork.currency.toLocaleUpperCase()}`}
                 </span>
               )}
             </p>

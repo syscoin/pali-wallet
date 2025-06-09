@@ -77,7 +77,7 @@ export const AccountHeader: React.FC = () => {
 
       await controllerEmitter(
         ['wallet', 'ledgerSigner', 'utxo', 'verifyUtxoAddress'],
-        [activeAccount.id]
+        [activeAccount.id, activeNetwork.currency, activeNetwork.slip44]
       );
 
       setIsLoading(false);
@@ -110,8 +110,12 @@ export const AccountHeader: React.FC = () => {
   return (
     <div className="flex items-center justify-between p-1 bg-bkg-3">
       <ConfirmationModal
-        title={t('home.verifySysAddress')}
-        description={t('home.verifySysAddressDescription')}
+        title={t('home.verifySysAddress', {
+          currency: activeNetwork.currency.toUpperCase(),
+        })}
+        description={t('home.verifySysAddressDescription', {
+          currency: activeNetwork.currency.toUpperCase(),
+        })}
         buttonText={t('buttons.verify')}
         onClick={handleVerifyAddress}
         onClose={() => setIsOpenModal(false)}
@@ -161,7 +165,9 @@ export const AccountHeader: React.FC = () => {
               <Tooltip
                 content={
                   isLedger && isBitcoinBased && activeNetwork.chainId === 57
-                    ? t('home.clickToVerify')
+                    ? t('home.clickToVerify', {
+                        currency: activeNetwork.currency.toUpperCase(),
+                      })
                     : ''
                 }
               >
