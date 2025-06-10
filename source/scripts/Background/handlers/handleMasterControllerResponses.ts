@@ -39,7 +39,22 @@ export const handleMasterControllerResponses = (
           .then(sendResponse)
           .catch((error) => {
             console.error('Error executing method:', error);
-            sendResponse({ error: error.message, success: false });
+            // Preserve structured errors from syscoinjs-lib
+            if (
+              error &&
+              typeof error === 'object' &&
+              error.code &&
+              error.error === true
+            ) {
+              // Pass through structured errors as-is
+              sendResponse(error);
+            } else {
+              // For regular errors, wrap in error object
+              sendResponse({
+                error: error.message || 'Unknown error',
+                success: false,
+              });
+            }
             return false;
           });
 
@@ -49,7 +64,22 @@ export const handleMasterControllerResponses = (
       }
     } catch (error) {
       console.error('Error in message handler:', error);
-      sendResponse({ error: error.message, success: false });
+      // Preserve structured errors from syscoinjs-lib
+      if (
+        error &&
+        typeof error === 'object' &&
+        error.code &&
+        error.error === true
+      ) {
+        // Pass through structured errors as-is
+        sendResponse(error);
+      } else {
+        // For regular errors, wrap in error object
+        sendResponse({
+          error: error.message || 'Unknown error',
+          success: false,
+        });
+      }
       return false;
     }
   });
