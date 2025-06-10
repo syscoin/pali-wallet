@@ -1,7 +1,7 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -87,6 +87,12 @@ export const SendConfirm = () => {
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
+  // Add fee calculation cache and debouncing
+  const [feeCalculationCache, setFeeCalculationCache] = useState<
+    Map<string, any>
+  >(new Map());
+  const [isCalculatingFees, setIsCalculatingFees] = useState(false);
+
   const basicTxValues = state.tx;
 
   // The confirmation screen displays the fee and total as calculated by SendSys.
@@ -154,6 +160,22 @@ export const SendConfirm = () => {
 
     return { gasLimit, gasPrice: correctGasPrice };
   };
+
+  // Stabilize functions to prevent useEffect re-runs
+  const stableControllerEmitter = useRef(controllerEmitter);
+  const stableNavigate = useRef(navigate);
+  const stableAlert = useRef(alert);
+  const stableT = useRef(t);
+  const stableGetLegacyGasPrice = useRef(getLegacyGasPrice);
+
+  // Update refs when values change
+  useEffect(() => {
+    stableControllerEmitter.current = controllerEmitter;
+    stableNavigate.current = navigate;
+    stableAlert.current = alert;
+    stableT.current = t;
+    stableGetLegacyGasPrice.current = getLegacyGasPrice;
+  }, [controllerEmitter, navigate, alert, t, getLegacyGasPrice]);
 
   const handleConfirm = async () => {
     const balance = isBitcoinBased
@@ -973,32 +995,63 @@ export const SendConfirm = () => {
     if (isEIP1559Compatible === undefined) {
       return; // Not calculate fees before being aware of EIP1559 compatibility
     }
+
+    // Create cache key for this fee calculation
+    const cacheKey = JSON.stringify({
+      sender: basicTxValues.sender,
+      receivingAddress: basicTxValues.receivingAddress,
+      chainId: activeNetwork.chainId,
+      isEIP1559Compatible,
+      amount: basicTxValues.amount,
+    });
+
+    // Check if we already have cached result
+    if (feeCalculationCache.has(cacheKey) && !customFee.isCustom) {
+      const cachedFee = feeCalculationCache.get(cacheKey);
+      setFee(cachedFee);
+      return;
+    }
+
+    // Prevent concurrent fee calculations
+    if (isCalculatingFees) {
+      return;
+    }
+
     if (isEIP1559Compatible === false) {
       const getLegacyFeeRecomendation = async () => {
-        const { gasLimit, gasPrice: _gasPrice } = await getLegacyGasPrice();
-        const formattedTxObject = {
-          from: basicTxValues.sender,
-          to: basicTxValues.receivingAddress,
-          chainId: activeNetwork.chainId,
-          gasLimit,
-          gasPrice: _gasPrice,
-        };
-        setTxObjectState(formattedTxObject);
+        setIsCalculatingFees(true);
+        try {
+          const { gasLimit, gasPrice: _gasPrice } =
+            await stableGetLegacyGasPrice.current();
+          const formattedTxObject = {
+            from: basicTxValues.sender,
+            to: basicTxValues.receivingAddress,
+            chainId: activeNetwork.chainId,
+            gasLimit,
+            gasPrice: _gasPrice,
+          };
+          setTxObjectState(formattedTxObject);
+        } catch (error) {
+          console.error('Legacy fee calculation error:', error);
+        } finally {
+          setIsCalculatingFees(false);
+        }
       };
       getLegacyFeeRecomendation();
       return;
     }
-    const abortController = new AbortController();
 
-    const getFeeRecomendation = async () => {
+    // Debounce fee calculation to prevent rapid successive calls
+    const timeoutId = setTimeout(async () => {
+      setIsCalculatingFees(true);
+
       try {
-        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
-          [
+        const { maxFeePerGas, maxPriorityFeePerGas } =
+          (await stableControllerEmitter.current([
             'wallet',
             'ethereumTransaction',
             'getFeeDataWithDynamicMaxPriorityFeePerGas',
-          ]
-        )) as any;
+          ])) as any;
 
         const initialFeeDetails = {
           maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
@@ -1021,10 +1074,12 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        const getGasLimit = await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-          [formattedTxObject]
-        ).then((gas) => BigNumber.from(gas).toNumber());
+        const getGasLimit = await stableControllerEmitter
+          .current(
+            ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+            [formattedTxObject]
+          )
+          .then((gas) => BigNumber.from(gas).toNumber());
 
         const finalFeeDetails = {
           ...initialFeeDetails,
@@ -1032,28 +1087,54 @@ export const SendConfirm = () => {
         };
 
         setFee(finalFeeDetails as any);
-      } catch (error) {
-        logError('error getting fees', 'Transaction', error);
-        alert.error(t('send.feeError')); //TODO: Fix this alert, as for now this alert is basically useless because we navigate to the previous screen right after and its not being displayed
-        navigate(-1);
-      }
-    };
 
-    getFeeRecomendation();
+        // Cache the successful result
+        setFeeCalculationCache(
+          (prev) => new Map(prev.set(cacheKey, finalFeeDetails))
+        );
+      } catch (error: any) {
+        logError('error getting fees', 'Transaction', error);
+
+        // Check if this is a rate limiting error
+        const isRateLimited =
+          error.message?.includes('rate limit') ||
+          error.message?.includes('Rate limit') ||
+          error.message?.includes('<!DOCTYPE html>') ||
+          error.message?.includes('cloudflare') ||
+          error.message?.includes('Error 1015') ||
+          error.message?.includes('429');
+
+        if (isRateLimited) {
+          // For rate limiting, show a more specific error and don't navigate away immediately
+          stableAlert.current.error(
+            'Network is temporarily busy. Please wait a moment and try again.'
+          );
+          console.warn(
+            'Rate limiting detected, not navigating away to allow retry'
+          );
+        } else {
+          // For other errors, show the generic fee error and navigate away
+          stableAlert.current.error(stableT.current('send.feeError'));
+          stableNavigate.current(-1);
+        }
+      } finally {
+        setIsCalculatingFees(false);
+      }
+    }, 500); // 500ms debounce
 
     return () => {
-      abortController.abort();
+      clearTimeout(timeoutId);
     };
   }, [
-    basicTxValues,
+    basicTxValues.sender,
+    basicTxValues.receivingAddress,
+    basicTxValues.amount,
     isBitcoinBased,
     isEIP1559Compatible,
-    activeNetwork,
-    controllerEmitter,
-    navigate,
-    alert,
-    t,
-    getLegacyGasPrice,
+    activeNetwork.chainId,
+    customFee.isCustom,
+    isCalculatingFees,
+    // Removed unstable dependencies: controllerEmitter, navigate, alert, t, getLegacyGasPrice
   ]);
 
   const getCalculatedFee = useMemo(() => {
