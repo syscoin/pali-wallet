@@ -167,8 +167,8 @@ export const SendSys = () => {
     try {
       setIsLoading(true);
 
-      // For native SYS, validate that amount + fee doesn't exceed balance
-      if (!selectedAsset && !isMaxSend) {
+      // For native SYS transactions
+      if (!selectedAsset) {
         const amountCurrency = currency(amount, { precision: 8 });
         const balanceCurrency = currency(activeAccount.balances.syscoin, {
           precision: 8,
@@ -254,13 +254,16 @@ export const SendSys = () => {
           return;
         }
 
-        const totalNeeded = amountCurrency.add(estimatedTotalFee);
+        // For non-max sends, validate amount + fee doesn't exceed balance
+        if (!isMaxSend) {
+          const totalNeeded = amountCurrency.add(estimatedTotalFee);
 
-        if (totalNeeded.value > balanceCurrency.value) {
-          setIsLoading(false);
-          alert.removeAll();
-          alert.error(t('send.insufficientFunds'));
-          return;
+          if (totalNeeded.value > balanceCurrency.value) {
+            setIsLoading(false);
+            alert.removeAll();
+            alert.error(t('send.insufficientFunds'));
+            return;
+          }
         }
 
         setIsLoading(false);
@@ -276,21 +279,8 @@ export const SendSys = () => {
           rbf: RBF, // RBF state for transaction details display
           token: null,
           psbt: psbt,
+          isMax: isMaxSend, // Pass isMax flag for correct total calculation
         };
-
-        // Final safety check - ensure amount + estimated fee doesn't exceed balance
-        const finalCheck = amountCurrency.add(estimatedTotalFee);
-        if (finalCheck.value > balanceCurrency.value) {
-          console.error('Final safety check failed:', {
-            amount: amountCurrency.value,
-            estimatedFee: estimatedTotalFee,
-            total: finalCheck.value,
-            balance: balanceCurrency.value,
-          });
-          alert.removeAll();
-          alert.error(t('send.insufficientFunds'));
-          return;
-        }
 
         navigate('/send/confirm', {
           state: {
@@ -402,6 +392,7 @@ export const SendSys = () => {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
               },
+              isMax: isMaxSend, // Pass isMax flag for correct total calculation
             },
           },
         });
@@ -665,30 +656,8 @@ export const SendSys = () => {
                           return Promise.reject('');
                         }
 
-                        // For tokens, just check against balance
-                        if (selectedAsset) {
-                          if (inputCurrency.value > balanceCurrency.value) {
-                            return Promise.reject(t('send.insufficientFunds'));
-                          }
-                        } else {
-                          // For native SYS, if sending max, just check balance
-                          if (isMaxSend) {
-                            if (inputCurrency.value > balanceCurrency.value) {
-                              return Promise.reject(
-                                t('send.insufficientFunds')
-                              );
-                            }
-                          } else {
-                            // Otherwise use conservative fee estimate for validation
-                            const feeToUse = 0.001;
-                            const totalNeeded = inputCurrency.add(feeToUse);
-
-                            if (totalNeeded.value > balanceCurrency.value) {
-                              return Promise.reject(
-                                t('send.insufficientFunds')
-                              );
-                            }
-                          }
+                        if (inputCurrency.value > balanceCurrency.value) {
+                          return Promise.reject(t('send.insufficientFunds'));
                         }
 
                         return Promise.resolve();

@@ -1329,17 +1329,33 @@ export const SendConfirm = () => {
                       let totalCrypto;
 
                       if (basicTxValues.fee !== undefined) {
-                        const total = currency(basicTxValues.fee, {
-                          precision: 8,
-                        }).add(basicTxValues.amount);
-                        totalAmount = total.value;
-                        totalCrypto = total.format({ symbol: '' });
+                        // For MAX sends, don't add fee to amount since amount is already (balance - fee)
+                        if (basicTxValues.isMax) {
+                          totalAmount = basicTxValues.amount;
+                          totalCrypto = currency(basicTxValues.amount, {
+                            precision: 8,
+                          }).format({ symbol: '' });
+                        } else {
+                          const total = currency(basicTxValues.fee, {
+                            precision: 8,
+                          }).add(basicTxValues.amount);
+                          totalAmount = total.value;
+                          totalCrypto = total.format({ symbol: '' });
+                        }
                       } else if (isBitcoinBased) {
-                        const total = currency(basicTxValues.fee, {
-                          precision: 8,
-                        }).add(basicTxValues.amount);
-                        totalAmount = total.value;
-                        totalCrypto = total.format({ symbol: '' });
+                        // For MAX sends, don't add fee to amount since amount is already (balance - fee)
+                        if (basicTxValues.isMax) {
+                          totalAmount = basicTxValues.amount;
+                          totalCrypto = currency(basicTxValues.amount, {
+                            precision: 8,
+                          }).format({ symbol: '' });
+                        } else {
+                          const total = currency(basicTxValues.fee, {
+                            precision: 8,
+                          }).add(basicTxValues.amount);
+                          totalAmount = total.value;
+                          totalCrypto = total.format({ symbol: '' });
+                        }
                       } else if (
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
