@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { Layout, Button, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -25,8 +27,8 @@ const ForgetWalletView = () => {
 
   const hasAccountFunds =
     (isBitcoinBased
-      ? activeAccount.balances.syscoin
-      : activeAccount.balances.ethereum) > 0;
+      ? activeAccount.balances[INetworkType.Syscoin]
+      : activeAccount.balances[INetworkType.Ethereum]) > 0;
 
   // if account has no funds, no need to input the seed
   const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);

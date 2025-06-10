@@ -28,7 +28,7 @@ const TransactionsManager = (
   const getCacheKey = (account: string, networkUrl: string) =>
     `${account}:${networkUrl}`;
 
-  // Helper function to check if account has pending transactions
+  // Helper function to check if account has pending transactions based on local data
   const hasPendingTransactions = (
     account: IPaliAccount,
     isBitcoinBased: boolean,
@@ -118,6 +118,25 @@ const TransactionsManager = (
     // Don't check pending transactions for UTXO networks
     if (isBitcoinBased) {
       console.log('Skipping pending transaction check for UTXO network');
+      return [];
+    }
+
+    // Additional safety check: ensure web3Provider is valid and not pointing to a blockbook URL
+    if (
+      !web3Provider ||
+      !web3Provider.connection ||
+      !web3Provider.connection.url
+    ) {
+      console.warn('Invalid web3Provider for pending transaction check');
+      return [];
+    }
+
+    // Check if the provider URL looks like a blockbook URL (shouldn't happen for EVM networks)
+    const providerUrl = web3Provider.connection.url;
+    if (providerUrl.includes('blockbook') || providerUrl.includes('/api/v2')) {
+      console.error(
+        'Web3Provider pointing to blockbook URL - this should not happen for EVM networks'
+      );
       return [];
     }
 

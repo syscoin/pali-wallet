@@ -1705,8 +1705,8 @@ class MainController extends KeyringManager {
               );
 
             const actualUserBalance = isBitcoinBased
-              ? currentAccount.balances.syscoin
-              : currentAccount.balances.ethereum;
+              ? currentAccount.balances[INetworkType.Syscoin]
+              : currentAccount.balances[INetworkType.Ethereum];
             const validateIfCanDispatch = Boolean(
               Number(actualUserBalance) !== parseFloat(updatedBalance)
             );
@@ -2148,17 +2148,29 @@ class MainController extends KeyringManager {
       );
 
       if (success) {
-        this.web3Provider = this.ethereumTransaction.web3Provider;
-        this.assetsManager = AssetsManager(
-          this.ethereumTransaction.web3Provider
-        );
+        // Only update web3Provider and EVM-specific managers for EVM networks
+        const isBitcoinBased = activeChain === INetworkType.Syscoin;
+
+        if (!isBitcoinBased) {
+          this.web3Provider = this.ethereumTransaction.web3Provider;
+          this.assetsManager = AssetsManager(
+            this.ethereumTransaction.web3Provider
+          );
+          this.transactionsManager = TransactionsManager(
+            this.ethereumTransaction.web3Provider
+          );
+          this.balancesManager = BalancesManager(
+            this.ethereumTransaction.web3Provider
+          );
+        } else {
+          // For UTXO networks, use null/dummy providers to prevent web3 calls
+          // The managers handle isBitcoinBased checks internally
+          console.log(
+            '[MainController] Skipping web3Provider setup for UTXO network'
+          );
+        }
+
         this.assets = this.assetsManager;
-        this.transactionsManager = TransactionsManager(
-          this.ethereumTransaction.web3Provider
-        );
-        this.balancesManager = BalancesManager(
-          this.ethereumTransaction.web3Provider
-        );
         return { success, wallet, activeChain };
       } else {
         // setSignerNetwork failed but didn't throw an error
