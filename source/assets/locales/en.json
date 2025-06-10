@@ -255,6 +255,7 @@
     "receiver": "Receiver",
     "native": "Native",
     "amount": "Amount",
+    "amountRequired": "Amount is required",
     "contractEstimateError": "We were not able to estimate gas. There might be an error in the contract and this transaction may fail.",
     "rpcEstimateError": "The current RPC provider couldn't estimate the gas for this transaction. Therefore, we'll estimate the gas using the existing block data for your transaction.",
     "from": "From",

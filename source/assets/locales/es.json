@@ -254,6 +254,7 @@
     "receiver": "Destinatario",
     "native": "Nativo",
     "amount": "Cantidad",
+    "amountRequired": "La cantidad es requerida",
     "contractEstimateError": "No pudimos estimar el gas. Puede haber un error en el contrato y esta transacción puede fallar.",
     "rpcEstimateError": "El proveedor de RPC actual no pudo estimar el gas para esta transacción. Por lo tanto, estimaremos el gas utilizando los datos de bloque existentes para tu transacción.",
     "from": "De",

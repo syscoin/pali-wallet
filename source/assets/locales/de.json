@@ -417,6 +417,7 @@
     "receiver": "Empfänger",
     "native": "Nativ",
     "amount": "Betrag",
+    "amountRequired": "Betrag ist erforderlich",
     "contractEstimateError": "Wir konnten das Gas nicht schätzen. Möglicherweise liegt ein Fehler im Vertrag vor und diese Transaktion könnte fehlschlagen.",
     "rpcEstimateError": "Der aktuelle RPC-Anbieter konnte das Gas für diese Transaktion nicht schätzen. Daher schätzen wir das Gas anhand der vorhandenen Blockdaten für Ihre Transaktion.",
     "from": "Von",
