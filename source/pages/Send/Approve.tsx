@@ -27,9 +27,11 @@ import {
   ITransactionParams,
   ITxState,
 } from 'types/transactions';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
-import { verifyZerosInBalanceAndFormat, ellipsis, logError } from 'utils/index';
+import { logError } from 'utils/index';
+import { verifyZerosInBalanceAndFormat, ellipsis } from 'utils/index';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
@@ -224,7 +226,11 @@ export const ApproveTransactionComponent = () => {
         alert.removeAll();
         alert.error(t('send.cantCompleteApprove'));
 
-        if (isExternal) setTimeout(window.close, 4000);
+        if (isExternal)
+          createTemporaryAlarm({
+            delayInSeconds: 4,
+            callback: () => window.close(),
+          });
         setLoading(false);
         return error;
       }

@@ -8,6 +8,7 @@ import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 interface ISign {
@@ -82,7 +83,10 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         setErrorMsg(error.message);
       }
 
-      setTimeout(window.close, 4000);
+      createTemporaryAlarm({
+        delayInSeconds: 4,
+        callback: () => window.close(),
+      });
     }
   };
 
