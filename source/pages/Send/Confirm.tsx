@@ -10,6 +10,7 @@ import {
   KeyringAccountType,
   ISyscoinTransactionError,
 } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { getContractType } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -156,11 +157,9 @@ export const SendConfirm = () => {
   };
 
   const handleConfirm = async () => {
-    const {
-      balances: { syscoin, ethereum },
-    } = activeAccount;
-
-    const balance = isBitcoinBased ? syscoin : ethereum;
+    const balance = isBitcoinBased
+      ? activeAccount.balances[INetworkType.Syscoin]
+      : activeAccount.balances[INetworkType.Ethereum];
 
     if (activeAccount && balance >= 0) {
       setLoading(true);

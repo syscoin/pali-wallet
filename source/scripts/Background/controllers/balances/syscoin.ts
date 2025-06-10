@@ -1,3 +1,5 @@
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import { IPaliAccount } from 'state/vault/types';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
@@ -12,21 +14,26 @@ const SyscoinBalanceController = (): ISysBalanceController => {
     try {
       const requestDetails = 'details=basic&pageSize=0';
 
-      const { balance } = await fetchBackendAccountCached(
+      const { balance, unconfirmedBalance } = await fetchBackendAccountCached(
         networkUrl,
         currentAccount.xpub,
         requestDetails,
         true
       );
 
-      const formattedBalance = balance / 1e8;
+      // Calculate total spendable balance by adding confirmed + unconfirmed
+      // unconfirmedBalance can be negative (pending outgoing) or positive (pending incoming)
+      const totalBalance = (balance + unconfirmedBalance) / 1e8;
+
+      // Ensure balance is not negative (can happen with large pending outgoing transactions)
+      const formattedBalance = Math.max(0, totalBalance);
 
       //Prevent to send undefined from verifyZeros when formattedBalance is 0
       return formattedBalance > 0
         ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
         : '0';
     } catch (error) {
-      return String(currentAccount.balances.syscoin);
+      return String(currentAccount.balances[INetworkType.Syscoin]);
     }
   };
 

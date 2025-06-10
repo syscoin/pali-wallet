@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux';
 
 //todo: update with the new function
 import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
@@ -110,7 +111,7 @@ export const SendSys = () => {
   // Keep balance as string to preserve precision
   const balanceStr = selectedAsset
     ? formattedAssetBalance || '0'
-    : activeAccount?.balances.syscoin || '0';
+    : activeAccount?.balances[INetworkType.Syscoin] || '0';
 
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
@@ -170,9 +171,12 @@ export const SendSys = () => {
       // For native SYS transactions
       if (!selectedAsset) {
         const amountCurrency = currency(amount, { precision: 8 });
-        const balanceCurrency = currency(activeAccount.balances.syscoin, {
-          precision: 8,
-        });
+        const balanceCurrency = currency(
+          activeAccount.balances[INetworkType.Syscoin],
+          {
+            precision: 8,
+          }
+        );
 
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
@@ -457,7 +461,9 @@ export const SendSys = () => {
                     true,
                     activeNetwork
                   )
-                : `${activeAccount.balances.syscoin} ${activeNetwork.currency}`}
+                : `${activeAccount.balances[INetworkType.Syscoin]} ${
+                    activeNetwork.currency
+                  }`}
             </p>
           </div>
         </div>
@@ -638,8 +644,10 @@ export const SendSys = () => {
                           : '0';
                       } else {
                         // For native SYS, balance is already in decimal format
-                        validationBalanceStr = activeAccount?.balances.syscoin
-                          ? String(activeAccount.balances.syscoin)
+                        validationBalanceStr = activeAccount?.balances[
+                          INetworkType.Syscoin
+                        ]
+                          ? String(activeAccount.balances[INetworkType.Syscoin])
                           : '0';
                       }
 
