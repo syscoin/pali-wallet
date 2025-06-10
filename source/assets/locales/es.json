@@ -269,7 +269,13 @@
     "hexData": "Datos HEX",
     "details": "Detalles",
     "advancedDetails": "Detalles Avanzados",
-    "tx": "Transacción"
+    "tx": "Transacción",
+    "insufficientFundsDetails": "Fondos insuficientes. Necesitas {{shortfall}} {{currency}} más para completar esta transacción.",
+    "subtractFeeFailedDetails": "No se puede enviar la cantidad máxima. La tarifa de transacción es {{fee}} {{currency}}, pero solo {{remainingFee}} {{currency}} está disponible después de restar la cantidad.",
+    "invalidFeeRate": "Tarifa de transacción inválida. Por favor ingresa una tarifa válida.",
+    "invalidAmount": "Cantidad inválida. Por favor ingresa una cantidad válida.",
+    "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
+    "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}"
   },
   "settings": {
     "bgError": "Error de Fondo",

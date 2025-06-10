@@ -59,7 +59,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setLoading(false);
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
     } catch (error: any) {
-      const isNecessaryReconnect = error.message.includes(
+      const isNecessaryReconnect = error.message?.includes(
         'read properties of undefined'
       );
 
@@ -69,7 +69,19 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
         return;
       }
 
-      setErrorMsg(error.message);
+      // Handle structured errors from syscoinjs-lib
+      if (error.error && error.code) {
+        switch (error.code) {
+          case 'TRANSACTION_SEND_FAILED':
+            setErrorMsg(`Transaction failed to send: ${error.message}`);
+            break;
+          default:
+            setErrorMsg(`Transaction error (${error.code}): ${error.message}`);
+        }
+      } else {
+        setErrorMsg(error.message);
+      }
+
       setTimeout(window.close, 4000);
     }
   };

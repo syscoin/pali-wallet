@@ -123,7 +123,6 @@ const CopyableField: React.FC<{
 }) => {
   const { useCopyClipboard, alert } = useUtils();
   const [copied, copy] = useCopyClipboard();
-  const { t } = useTranslation();
 
   useEffect(() => {
     if (copied) {

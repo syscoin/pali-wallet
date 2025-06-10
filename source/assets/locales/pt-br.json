@@ -494,7 +494,14 @@
     "warningSignMessage": "Assinar esta mensagem pode ser perigoso. Esta assinatura pode potencialmente executar qualquer operação em nome de sua conta, incluindo conceder controle completo de sua conta e todos os seus ativos ao site solicitante. Assine esta mensagem apenas se souber o que está fazendo ou confiar completamente no site solicitante.",
     "origin": "Origem",
     "transaction": "TRANSAÇÃO",
-    "confirmToProceed": "Confirme para continuar a transação!"
+    "confirmToProceed": "Confirme para continuar a transação!",
+    "insufficientFundsDetails": "Fundos insuficientes. Você precisa de mais {{shortfall}} {{currency}} para completar esta transação.",
+    "subtractFeeFailedDetails": "Não é possível enviar o valor máximo. A taxa de transação é {{fee}} {{currency}}, mas apenas {{remainingFee}} {{currency}} está disponível após subtrair o valor.",
+    "invalidFeeRate": "Taxa de comissão inválida. Por favor, insira uma taxa válida.",
+    "invalidAmount": "Valor inválido. Por favor, insira um valor válido.",
+    "invalidAssetAllocation": "Alocação de ativo inválida. Token GUID {{guid}} não encontrado ou inválido.",
+    "transactionCreationFailedWithCode": "Falha na criação da transação ({{code}}): {{message}}",
+    "transactionSendFailed": "Falha no envio da transação: {{message}}"
   },
   "switchNetworkPage": {
     "connectedOn": "Você está conectado em",

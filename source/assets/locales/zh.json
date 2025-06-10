@@ -542,6 +542,13 @@
     "hexDataCopied": "十六进制数据复制成功！",
     "hexData": "十六进制数据",
     "details": "详情",
-    "advancedDetails": "高级详情"
+    "advancedDetails": "高级详情",
+    "insufficientFundsDetails": "余额不足。您需要额外的 {{shortfall}} {{currency}} 来完成此交易。",
+    "subtractFeeFailedDetails": "无法发送最大金额。交易费用为 {{fee}} {{currency}}，但扣除金额后只有 {{remainingFee}} {{currency}} 可用。",
+    "invalidFeeRate": "无效的费率。请输入有效的费率。",
+    "invalidAmount": "无效的金额。请输入有效的金额。",
+    "invalidAssetAllocation": "无效的资产分配。代币 GUID {{guid}} 未找到或无效。",
+    "transactionCreationFailedWithCode": "交易创建失败 ({{code}}): {{message}}",
+    "transactionSendFailed": "交易发送失败: {{message}}"
   }
 }

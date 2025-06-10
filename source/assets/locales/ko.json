@@ -431,7 +431,14 @@
     "hexDataCopied": "HEX 데이터가 성공적으로 복사되었습니다!",
     "hexData": "HEX 데이터",
     "details": "세부정보",
-    "advancedDetails": "고급 세부정보"
+    "advancedDetails": "고급 세부정보",
+    "insufficientFundsDetails": "자금이 부족합니다. 이 거래를 완료하려면 {{shortfall}} {{currency}}가 더 필요합니다.",
+    "subtractFeeFailedDetails": "최대 금액을 보낼 수 없습니다. 거래 수수료는 {{fee}} {{currency}}이지만, 금액을 차감한 후 {{remainingFee}} {{currency}}만 사용 가능합니다.",
+    "invalidFeeRate": "잘못된 수수료율입니다. 유효한 수수료율을 입력하세요.",
+    "invalidAmount": "잘못된 금액입니다. 유효한 금액을 입력하세요.",
+    "invalidAssetAllocation": "잘못된 자산 할당입니다. 토큰 GUID {{guid}}를 찾을 수 없거나 유효하지 않습니다.",
+    "transactionCreationFailedWithCode": "거래 생성 실패 ({{code}}): {{message}}",
+    "transactionSendFailed": "거래 전송 실패: {{message}}"
   },
   "start": {
     "paliDoesnt": "Pali는 비밀번호를 저장하지 않습니다. 액세스를 복구하려면 비밀 복구 구문으로 지갑을 재설정해야 합니다.",

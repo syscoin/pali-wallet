@@ -431,7 +431,14 @@
     "hexDataCopied": "HEXデータが正常にコピーされました！",
     "hexData": "HEXデータ",
     "details": "詳細",
-    "advancedDetails": "詳細設定"
+    "advancedDetails": "詳細設定",
+    "insufficientFundsDetails": "残高が不足しています。この取引を完了するには{{shortfall}} {{currency}}が追加で必要です。",
+    "subtractFeeFailedDetails": "最大金額を送信できません。取引手数料は{{fee}} {{currency}}ですが、金額を差し引いた後は{{remainingFee}} {{currency}}しか利用できません。",
+    "invalidFeeRate": "無効な手数料レートです。有効な手数料レートを入力してください。",
+    "invalidAmount": "無効な金額です。有効な金額を入力してください。",
+    "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
+    "transactionCreationFailedWithCode": "取引の作成に失敗しました ({{code}}): {{message}}",
+    "transactionSendFailed": "取引の送信に失敗しました: {{message}}"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",

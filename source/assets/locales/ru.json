@@ -432,7 +432,14 @@
     "hexDataCopied": "HEX данные успешно скопированы!",
     "hexData": "HEX данные",
     "details": "Детали",
-    "advancedDetails": "Расширенные Детали"
+    "advancedDetails": "Расширенные Детали",
+    "insufficientFundsDetails": "Недостаточно средств. Вам нужно еще {{shortfall}} {{currency}} для завершения этой транзакции.",
+    "subtractFeeFailedDetails": "Невозможно отправить максимальную сумму. Комиссия за транзакцию составляет {{fee}} {{currency}}, но доступно только {{remainingFee}} {{currency}} после вычета суммы.",
+    "invalidFeeRate": "Неверная ставка комиссии. Пожалуйста, введите правильную ставку комиссии.",
+    "invalidAmount": "Неверная сумма. Пожалуйста, введите правильную сумму.",
+    "invalidAssetAllocation": "Неверное распределение активов. Токен GUID {{guid}} не найден или недействителен.",
+    "transactionCreationFailedWithCode": "Не удалось создать транзакцию ({{code}}): {{message}}",
+    "transactionSendFailed": "Не удалось отправить транзакцию: {{message}}"
   },
   "start": {
     "paliDoesnt": "Pali не хранит ваш пароль. Восстановление доступа требует сброса кошелька с помощью секретной фразы восстановления.",

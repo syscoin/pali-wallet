@@ -431,7 +431,14 @@
     "hexDataCopied": "HEX-Daten erfolgreich kopiert!",
     "hexData": "HEX-Daten",
     "details": "Details",
-    "advancedDetails": "Erweiterte Details"
+    "advancedDetails": "Erweiterte Details",
+    "insufficientFundsDetails": "Unzureichende Mittel. Sie benötigen {{shortfall}} {{currency}} mehr, um diese Transaktion abzuschließen.",
+    "subtractFeeFailedDetails": "Maximaler Betrag kann nicht gesendet werden. Die Transaktionsgebühr beträgt {{fee}} {{currency}}, aber nur {{remainingFee}} {{currency}} ist nach Abzug des Betrags verfügbar.",
+    "invalidFeeRate": "Ungültige Gebührenrate. Bitte geben Sie eine gültige Gebührenrate ein.",
+    "invalidAmount": "Ungültiger Betrag. Bitte geben Sie einen gültigen Betrag ein.",
+    "invalidAssetAllocation": "Ungültige Asset-Zuteilung. Token GUID {{guid}} wurde nicht gefunden oder ist ungültig.",
+    "transactionCreationFailedWithCode": "Transaktionserstellung fehlgeschlagen ({{code}}): {{message}}",
+    "transactionSendFailed": "Transaktionsversendung fehlgeschlagen: {{message}}"
   },
   "start": {
     "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",

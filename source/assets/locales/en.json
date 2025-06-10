@@ -269,7 +269,14 @@
     "hexDataCopied": "HEX data successfully copied!",
     "hexData": "HEX Data",
     "details": "Details",
-    "advancedDetails": "Advanced Details"
+    "advancedDetails": "Advanced Details",
+    "insufficientFundsDetails": "Insufficient funds. You need {{shortfall}} more {{currency}} to complete this transaction.",
+    "subtractFeeFailedDetails": "Unable to send max amount. Transaction fee is {{fee}} {{currency}}, but only {{remainingFee}} {{currency}} is available after subtracting the amount.",
+    "invalidFeeRate": "Invalid fee rate. Please enter a valid fee rate.",
+    "invalidAmount": "Invalid amount. Please enter a valid amount.",
+    "invalidAssetAllocation": "Invalid asset allocation. Token GUID {{guid}} not found or invalid.",
+    "transactionCreationFailedWithCode": "Transaction creation failed ({{code}}): {{message}}",
+    "transactionSendFailed": "Transaction failed to send: {{message}}"
   },
   "settings": {
     "bgError": "Background Error",

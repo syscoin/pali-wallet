@@ -4,17 +4,17 @@ import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment, useCallback, useMemo } from 'react';
+import { useState, useEffect, Fragment, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 //todo: update with the new function
+import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
-import { usePrice, useUtils } from 'hooks/index';
+import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { IPriceState } from 'state/price/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
 import {
@@ -45,16 +45,10 @@ export const SendSys = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [cachedFeeEstimate, setCachedFeeEstimate] = useState<number | null>(
-    null
-  );
-  const [isCalculatingMax, setIsCalculatingMax] = useState(false);
-  const [calculatedMaxAmount, setCalculatedMaxAmount] = useState<string | null>(
-    null
-  );
   const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
     FIELD_VALUES_INITIAL_STATE
   );
+  const [isMaxSend, setIsMaxSend] = useState(false);
 
   const [form] = Form.useForm();
 
@@ -67,21 +61,11 @@ export const SendSys = () => {
       const currentFormFee = form.getFieldValue('fee');
       if (currentFormFee && Number(currentFormFee) !== Number(feeRate)) {
         setFeeRate(Number(currentFormFee));
-        // Clear cached estimates when fee rate changes - they'll be recalculated when needed
-        setCachedFeeEstimate(null);
-
-        // Clear max amount if currently displayed, since fee rate change affects max calculation
-        const currentAmount = form.getFieldValue('amount');
-        if (calculatedMaxAmount && currentAmount === calculatedMaxAmount) {
-          form.setFieldValue('amount', '');
-          setFieldsValues((prev) => ({ ...prev, amount: '' }));
-        }
-        setCalculatedMaxAmount(null);
       }
     }, 500); // Check every 500ms for form changes
 
     return () => clearInterval(interval);
-  }, [form, feeRate, calculatedMaxAmount]);
+  }, [form, feeRate]);
 
   // Set a default fee rate on mount
   useEffect(() => {
@@ -128,181 +112,29 @@ export const SendSys = () => {
     ? formattedAssetBalance || '0'
     : activeAccount?.balances.syscoin || '0';
 
-  // Reusable function to calculate max sendable amount
-  const calculateMaxSendableAmount = useCallback(
-    async (receiver?: string) => {
-      if (selectedAsset) {
-        // For tokens, use full balance as fees are paid in SYS
-        return {
-          maxAmount: balanceStr,
-          fee: 0,
-        };
-      } else {
-        // For native SYS, we need to calculate the fee more accurately
-        let fee = MINIMUM_FEE;
-
-        // If we have a cached fee estimate, use it immediately
-        if (cachedFeeEstimate !== null) {
-          fee = cachedFeeEstimate;
-        } else {
-          // Otherwise, get actual fee estimate
-          try {
-            // Create a dummy receiver if none provided (for fee estimation)
-            const addressForFeeCalc =
-              receiver || 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kg3g4ty';
-
-            // For MAX calculation, we need to estimate the fee for sending nearly all balance
-            // The fee depends on the number of UTXOs that will be used
-            // Start with a more conservative estimate for multi-UTXO transactions
-            const testAmount = currency(balanceStr, { precision: 8 }).multiply(
-              0.98 // More conservative for multi-UTXO
-            ).value;
-
-            const { fee: estimatedFee } = (await controllerEmitter(
-              ['wallet', 'syscoinTransaction', 'getEstimateSysTransactionFee'],
-              [
-                {
-                  amount: testAmount,
-                  receivingAddress: addressForFeeCalc,
-                  feeRate, // Pass the actual fee rate or undefined
-                  txOptions: { rbf: RBF },
-                  token: null, // Native transaction for fee calculation
-                },
-              ]
-            )) as { fee: number; psbt: string };
-
-            // No scaling needed - fee is already calculated with actual rate
-            const scaledEstimatedFee = estimatedFee;
-
-            // For transactions with multiple UTXOs, add extra buffer
-            // This accounts for the fact that using all UTXOs increases transaction size
-            const feeWithBuffer = scaledEstimatedFee;
-
-            // Now calculate what the actual max would be with this fee
-            const potentialMax = currency(balanceStr, {
-              precision: 8,
-            }).subtract(feeWithBuffer).value;
-
-            // Double-check with the actual max amount
-            if (potentialMax > 0) {
-              try {
-                const { fee: refinedFee } = (await controllerEmitter(
-                  [
-                    'wallet',
-                    'syscoinTransaction',
-                    'getEstimateSysTransactionFee',
-                  ],
-                  [
-                    {
-                      amount: potentialMax,
-                      receivingAddress: addressForFeeCalc,
-                      feeRate, // Pass the actual fee rate or undefined
-                      txOptions: { rbf: RBF },
-                      token: null, // Native transaction for fee calculation
-                    },
-                  ]
-                )) as { fee: number; psbt: string };
-
-                // No scaling needed - fee is already calculated with actual rate
-                const scaledRefinedFee = refinedFee;
-
-                // If refined fee is significantly higher, use it with buffer
-                if (scaledRefinedFee > feeWithBuffer) {
-                  fee = scaledRefinedFee * 1.1; // 10% buffer on refined estimate
-                } else {
-                  fee = feeWithBuffer;
-                }
-              } catch (error) {
-                // If refinement fails, stick with buffered estimate
-                fee = feeWithBuffer;
-              }
-            } else {
-              fee = feeWithBuffer;
-            }
-
-            setCachedFeeEstimate(fee);
-          } catch (error) {
-            console.error('Error estimating fee for MAX:', error);
-            // Use a conservative fee if estimation fails
-            fee = 0.001; // Conservative fallback fee (1000 satoshis)
-            console.log('Using fallback fee:', fee);
-          }
-        }
-
-        // Calculate max amount with proper precision
-        const maxAmountCurrency = currency(balanceStr, {
-          precision: 8,
-        }).subtract(fee);
-
-        // Ensure we don't go negative and apply final safety margin
-        let maxAmount = '0';
-        if (maxAmountCurrency.value > 0) {
-          // Apply a tiny final safety margin (0.00001 SYS) to avoid edge cases
-          const finalMax = maxAmountCurrency.subtract(0.00001);
-          maxAmount =
-            finalMax.value > 0 ? finalMax.format({ symbol: '' }) : '0';
-        }
-
-        return {
-          maxAmount,
-          fee,
-        };
-      }
-    },
-    [balanceStr, selectedAsset, controllerEmitter, cachedFeeEstimate, feeRate]
-  );
-
-  const handleMaxButton = useCallback(async () => {
-    // Only show loading if we don't have a cached fee
-    if (!selectedAsset && cachedFeeEstimate === null) {
-      setIsCalculatingMax(true);
-    }
-
-    try {
-      const { maxAmount } = await calculateMaxSendableAmount(
-        fieldsValues.receiver
-      );
-
-      form.setFieldValue('amount', maxAmount);
-      setFieldsValues({
-        ...fieldsValues,
-        amount: String(maxAmount),
-      });
-      setCalculatedMaxAmount(String(maxAmount)); // Store the exact max amount
-
-      // Clear any validation errors and re-validate
-      form.setFields([
-        {
-          name: 'amount',
-          errors: [],
-        },
-      ]);
-
-      // Validate the form field after setting the value
-      setTimeout(() => {
-        form.validateFields(['amount']);
-      }, 0);
-    } finally {
-      setIsCalculatingMax(false);
-    }
-  }, [
-    calculateMaxSendableAmount,
-    fieldsValues,
-    form,
-    selectedAsset,
-    cachedFeeEstimate,
-  ]);
+  const handleMaxButton = useCallback(() => {
+    // Simply fill in the full balance
+    form.setFieldValue('amount', balanceStr);
+    setFieldsValues({
+      ...fieldsValues,
+      amount: String(balanceStr),
+    });
+    setIsMaxSend(true); // Set the flag when max is clicked
+  }, [balanceStr, fieldsValues, form]);
 
   const handleInputChange = useCallback(
     (type: 'receiver' | 'amount', e: any) => {
-      // Don't clear calculatedMaxAmount on input change
-      // Let the validation handle all cases properly
       setFieldsValues({
         ...fieldsValues,
         [type]: e.target.value,
       });
+
+      // Clear isMaxSend flag if amount is manually changed
+      if (type === 'amount' && e.target.value !== balanceStr) {
+        setIsMaxSend(false);
+      }
     },
-    [fieldsValues]
+    [fieldsValues, balanceStr]
   );
 
   const handleSelectedAsset = (item: number) => {
@@ -312,15 +144,13 @@ export const SendSys = () => {
       if (getAsset) {
         setSelectedAsset(getAsset);
         // Clear cached fee when switching assets
-        setCachedFeeEstimate(null);
-        setCalculatedMaxAmount(null);
+        setIsMaxSend(false);
         return;
       }
 
       setSelectedAsset(null);
       // Clear cached fee when switching to native
-      setCachedFeeEstimate(null);
-      setCalculatedMaxAmount(null);
+      setIsMaxSend(false);
     }
   };
 
@@ -338,7 +168,7 @@ export const SendSys = () => {
       setIsLoading(true);
 
       // For native SYS, validate that amount + fee doesn't exceed balance
-      if (!selectedAsset) {
+      if (!selectedAsset && !isMaxSend) {
         const amountCurrency = currency(amount, { precision: 8 });
         const balanceCurrency = currency(activeAccount.balances.syscoin, {
           precision: 8,
@@ -357,10 +187,11 @@ export const SendSys = () => {
                   receivingAddress: receiver,
                   feeRate,
                   txOptions: { rbf: RBF },
+                  isMax: isMaxSend,
                   token: null, // Explicitly pass null for native transactions
                 },
               ]
-            )) as { fee: number; psbt: string };
+            )) as { fee: number; psbt: any };
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
@@ -369,13 +200,57 @@ export const SendSys = () => {
           if (!psbt || !estimatedPsbt) {
             throw new Error('Failed to create transaction PSBT');
           }
-        } catch (error) {
+        } catch (error: any) {
           setIsLoading(false);
           alert.removeAll();
-          alert.error(
-            t('send.transactionCreationFailed', { error: error.message }) ||
-              `Failed to create transaction: ${error.message}. Please try again.`
-          );
+
+          // Handle structured errors from syscoinjs-lib
+          if (error.error && error.code) {
+            const sysError = error as ISyscoinTransactionError;
+
+            switch (sysError.code) {
+              case 'INSUFFICIENT_FUNDS':
+                alert.error(
+                  t('send.insufficientFundsDetails', {
+                    shortfall: sysError.shortfall?.toFixed(8) || '0',
+                    currency: activeNetwork.currency.toUpperCase(),
+                  })
+                );
+                break;
+
+              case 'SUBTRACT_FEE_FAILED':
+                alert.error(
+                  t('send.subtractFeeFailedDetails', {
+                    fee: sysError.fee?.toFixed(8) || '0',
+                    remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                    currency: activeNetwork.currency.toUpperCase(),
+                  })
+                );
+                break;
+
+              case 'INVALID_FEE_RATE':
+                alert.error(t('send.invalidFeeRate'));
+                break;
+
+              case 'INVALID_AMOUNT':
+                alert.error(t('send.invalidAmount'));
+                break;
+
+              default:
+                alert.error(
+                  t('send.transactionCreationFailedWithCode', {
+                    code: sysError.code,
+                    message: sysError.message,
+                  })
+                );
+            }
+          } else {
+            // Fallback for non-structured errors
+            alert.error(
+              t('send.transactionCreationFailed', { error: error.message }) ||
+                `Failed to create transaction: ${error.message}. Please try again.`
+            );
+          }
           return;
         }
 
@@ -441,7 +316,7 @@ export const SendSys = () => {
                 },
               },
             ]
-          )) as { fee: number; psbt: string };
+          )) as { fee: number; psbt: any };
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
@@ -450,13 +325,65 @@ export const SendSys = () => {
           if (!psbt || !tokenPsbt) {
             throw new Error('Failed to create token transaction PSBT');
           }
-        } catch (error) {
+        } catch (error: any) {
           setIsLoading(false);
           alert.removeAll();
-          alert.error(
-            t('send.transactionCreationFailed', { error: error.message }) ||
-              `Failed to create token transaction: ${error.message}. Please try again.`
-          );
+
+          // Handle structured errors from syscoinjs-lib
+          if (error.error && error.code) {
+            const sysError = error as ISyscoinTransactionError;
+
+            switch (sysError.code) {
+              case 'INSUFFICIENT_FUNDS':
+                alert.error(
+                  t('send.insufficientFundsDetails', {
+                    shortfall: sysError.shortfall?.toFixed(8) || '0',
+                    currency: activeNetwork.currency.toUpperCase(),
+                  })
+                );
+                break;
+
+              case 'SUBTRACT_FEE_FAILED':
+                alert.error(
+                  t('send.subtractFeeFailedDetails', {
+                    fee: sysError.fee?.toFixed(8) || '0',
+                    remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                    currency: activeNetwork.currency.toUpperCase(),
+                  })
+                );
+                break;
+
+              case 'INVALID_FEE_RATE':
+                alert.error(t('send.invalidFeeRate'));
+                break;
+
+              case 'INVALID_AMOUNT':
+                alert.error(t('send.invalidAmount'));
+                break;
+
+              case 'INVALID_ASSET_ALLOCATION':
+                alert.error(
+                  t('send.invalidAssetAllocation', {
+                    guid: error.details?.guid || 'Unknown',
+                  })
+                );
+                break;
+
+              default:
+                alert.error(
+                  t('send.transactionCreationFailedWithCode', {
+                    code: sysError.code,
+                    message: sysError.message,
+                  })
+                );
+            }
+          } else {
+            // Fallback for non-structured errors
+            alert.error(
+              t('send.transactionCreationFailed', { error: error.message }) ||
+                `Failed to create token transaction: ${error.message}. Please try again.`
+            );
+          }
           return;
         }
 
@@ -744,20 +671,15 @@ export const SendSys = () => {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
                         } else {
-                          // For native SYS, check against calculated max if available, otherwise use conservative fee
-                          if (calculatedMaxAmount) {
-                            // If we have a calculated max amount, validate against it strictly
-                            const maxCurrency = currency(calculatedMaxAmount, {
-                              precision: 8,
-                            });
-                            // Allow a tiny tolerance for floating point precision (0.00000001 SYS)
-                            if (inputCurrency.value > maxCurrency.value) {
+                          // For native SYS, if sending max, just check balance
+                          if (isMaxSend) {
+                            if (inputCurrency.value > balanceCurrency.value) {
                               return Promise.reject(
                                 t('send.insufficientFunds')
                               );
                             }
                           } else {
-                            // No calculated max, use conservative fee estimate for validation
+                            // Otherwise use conservative fee estimate for validation
                             const feeToUse = 0.001;
                             const totalNeeded = inputCurrency.add(feeToUse);
 
@@ -791,11 +713,7 @@ export const SendSys = () => {
                 className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
                 onClick={handleMaxButton}
               >
-                {isCalculatingMax ? (
-                  <span className="animate-pulse">...</span>
-                ) : (
-                  'MAX'
-                )}
+                MAX
               </span>
             </div>
           </div>

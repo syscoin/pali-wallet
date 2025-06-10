@@ -425,7 +425,14 @@
     "hexDataCopied": "Données HEX copiées avec succès !",
     "hexData": "Données HEX",
     "details": "Détails",
-    "advancedDetails": "Détails Avancés"
+    "advancedDetails": "Détails Avancés",
+    "insufficientFundsDetails": "Fonds insuffisants. Vous avez besoin de {{shortfall}} {{currency}} de plus pour terminer cette transaction.",
+    "subtractFeeFailedDetails": "Impossible d'envoyer le montant maximum. Les frais de transaction sont {{fee}} {{currency}}, mais seulement {{remainingFee}} {{currency}} est disponible après soustraction du montant.",
+    "invalidFeeRate": "Taux de frais invalide. Veuillez entrer un taux de frais valide.",
+    "invalidAmount": "Montant invalide. Veuillez entrer un montant valide.",
+    "invalidAssetAllocation": "Allocation d'actifs invalide. Token GUID {{guid}} introuvable ou invalide.",
+    "transactionCreationFailedWithCode": "Échec de la création de la transaction ({{code}}): {{message}}",
+    "transactionSendFailed": "Échec de l'envoi de la transaction: {{message}}"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",

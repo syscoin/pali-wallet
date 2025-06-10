@@ -6,7 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import {
+  KeyringAccountType,
+  ISyscoinTransactionError,
+} from '@pollum-io/sysweb3-keyring';
 import { getContractType } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -201,8 +204,8 @@ export const SendConfirm = () => {
                     controllerEmitter(['callGetLatestUpdateForAccount']),
                 });
               })
-              .catch((error) => {
-                const isNecessaryReconnect = error.message.includes(
+              .catch((error: any) => {
+                const isNecessaryReconnect = error.message?.includes(
                   'read properties of undefined'
                 );
                 if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
@@ -210,7 +213,8 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return;
                 }
-                const isDeviceLocked = error?.message.includes('Locked device');
+                const isDeviceLocked =
+                  error?.message?.includes('Locked device');
 
                 if (isDeviceLocked) {
                   alert.removeAll();
@@ -219,23 +223,111 @@ export const SendConfirm = () => {
                   return;
                 }
 
-                alert.error(t('send.cantCompleteTxs'));
+                // Handle structured errors from syscoinjs-lib sendTransaction
+                if (error.error && error.code) {
+                  const sysError = error as ISyscoinTransactionError;
+                  alert.removeAll();
+
+                  switch (sysError.code) {
+                    case 'TRANSACTION_SEND_FAILED':
+                      alert.error(
+                        t('send.transactionSendFailed', {
+                          message: sysError.message,
+                        })
+                      );
+                      break;
+
+                    default:
+                      alert.error(
+                        t('send.transactionCreationFailedWithCode', {
+                          code: sysError.code,
+                          message: sysError.message,
+                        })
+                      );
+                  }
+                } else {
+                  alert.error(t('send.cantCompleteTxs'));
+                }
+
                 setLoading(false);
                 throw error;
               });
 
             return;
-          } catch (error) {
+          } catch (error: any) {
             logError('error SYS', 'Transaction', error);
-            if (error && basicTxValues.fee > 0.00001) {
-              alert.removeAll();
-              alert.error(
-                `${truncate(String(error.message), 166)} ${t('send.reduceFee')}`
-              );
-            }
 
-            alert.removeAll();
-            alert.error(t('send.cantCompleteTxs'));
+            // Handle structured errors from syscoinjs-lib
+            if (error.error && error.code) {
+              const sysError = error as ISyscoinTransactionError;
+              alert.removeAll();
+
+              switch (sysError.code) {
+                case 'INSUFFICIENT_FUNDS':
+                  alert.error(
+                    t('send.insufficientFundsDetails', {
+                      shortfall: sysError.shortfall?.toFixed(8) || '0',
+                      currency: activeNetwork.currency.toUpperCase(),
+                    })
+                  );
+                  break;
+
+                case 'SUBTRACT_FEE_FAILED':
+                  alert.error(
+                    t('send.subtractFeeFailedDetails', {
+                      fee: sysError.fee?.toFixed(8) || '0',
+                      remainingFee: sysError.remainingFee?.toFixed(8) || '0',
+                      currency: activeNetwork.currency.toUpperCase(),
+                    })
+                  );
+                  break;
+
+                case 'INVALID_FEE_RATE':
+                  alert.error(t('send.invalidFeeRate'));
+                  break;
+
+                case 'INVALID_AMOUNT':
+                  alert.error(t('send.invalidAmount'));
+                  break;
+
+                case 'TRANSACTION_SEND_FAILED':
+                  alert.error(
+                    t('send.transactionSendFailed', {
+                      message: sysError.message,
+                    })
+                  );
+                  break;
+
+                default:
+                  if (basicTxValues.fee > 0.00001) {
+                    alert.error(
+                      `${truncate(String(sysError.message), 166)} ${t(
+                        'send.reduceFee'
+                      )}`
+                    );
+                  } else {
+                    alert.error(
+                      t('send.transactionCreationFailedWithCode', {
+                        code: sysError.code,
+                        message: sysError.message,
+                      })
+                    );
+                  }
+              }
+            } else {
+              // Fallback for non-structured errors
+              if (error && basicTxValues.fee > 0.00001) {
+                alert.removeAll();
+                alert.error(
+                  `${truncate(String(error.message), 166)} ${t(
+                    'send.reduceFee'
+                  )}`
+                );
+              } else {
+                alert.removeAll();
+                alert.error(t('send.cantCompleteTxs'));
+              }
+            }
 
             setLoading(false);
           }
