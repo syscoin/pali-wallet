@@ -67,6 +67,10 @@ const MIN_CHECK_INTERVAL = 1000; // 1 second minimum between checks
 
 // Helper to acquire lock across all contexts (background script instances)
 const acquireUpdateLock = async (): Promise<boolean> => {
+  // Add random delay to prevent race conditions between multiple instances
+  const randomDelay = Math.floor(Math.random() * 100) + 50; // 50-150ms
+  await new Promise((resolve) => setTimeout(resolve, randomDelay));
+
   const now = Date.now();
   const instanceId = Math.random().toString(36).substr(2, 9);
 

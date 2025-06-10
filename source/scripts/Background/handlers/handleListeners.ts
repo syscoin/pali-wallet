@@ -54,7 +54,9 @@ export const handleListeners = (masterController: IMasterController) => {
       console.log('🎯 handleListeners: Processing check_for_updates alarm');
       checkForUpdates();
       // Just restart polling to adjust the alarm interval based on current state
-      startPolling();
+      startPolling().catch((error) =>
+        console.error('Error in startPolling:', error)
+      );
     }
 
     // Handle fiat price updates - only the initial update since unlock/create wallet handle immediate updates
@@ -110,7 +112,9 @@ export const handleListeners = (masterController: IMasterController) => {
         }
         break;
       case 'startPolling':
-        startPolling();
+        startPolling().catch((error) =>
+          console.error('Error in startPolling:', error)
+        );
         break;
       case 'getCurrentState':
         sendResponse({ data: store.getState() });
