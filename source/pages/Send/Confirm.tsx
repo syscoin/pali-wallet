@@ -32,7 +32,6 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
-import { createTemporaryAlarm } from 'utils/alarmUtils';
 import {
   truncate,
   logError,
@@ -195,13 +194,8 @@ export const SendConfirm = () => {
                 setConfirmed(true);
                 setLoading(false);
 
-                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                // Use proper alarm utility with automatic cleanup
-                createTemporaryAlarm({
-                  delayInSeconds: 4,
-                  callback: () =>
-                    controllerEmitter(['callGetLatestUpdateForAccount']),
-                });
+                // Balance will be updated when user navigates back to Home
+                // This prevents redundant API calls and timing issues
               })
               .catch((error: any) => {
                 const isNecessaryReconnect = error.message?.includes(
@@ -384,13 +378,8 @@ export const SendConfirm = () => {
 
                     setLoading(false);
 
-                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                    // Use proper alarm utility with automatic cleanup
-                    createTemporaryAlarm({
-                      delayInSeconds: 4,
-                      callback: () =>
-                        controllerEmitter(['callGetLatestUpdateForAccount']),
-                    });
+                    // Balance will be updated when user navigates back to Home
+                    // This prevents redundant API calls and timing issues
                   })
                   .catch((error) => {
                     const isNecessaryReconnect = error.message.includes(
@@ -488,13 +477,8 @@ export const SendConfirm = () => {
 
                 setLoading(false);
 
-                //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                // Use proper alarm utility with automatic cleanup
-                createTemporaryAlarm({
-                  delayInSeconds: 4,
-                  callback: () =>
-                    controllerEmitter(['callGetLatestUpdateForAccount']),
-                });
+                // Balance will be updated when user navigates back to Home
+                // This prevents redundant API calls and timing issues
               })
               .catch((error: any) => {
                 const isNecessaryReconnect = error.message.includes(
@@ -591,13 +575,8 @@ export const SendConfirm = () => {
 
                       setConfirmedTx(response);
 
-                      //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                      // Use proper alarm utility with automatic cleanup
-                      createTemporaryAlarm({
-                        delayInSeconds: 4,
-                        callback: () =>
-                          controllerEmitter(['callGetLatestUpdateForAccount']),
-                      });
+                      // Balance will be updated when user navigates back to Home
+                      // This prevents redundant API calls and timing issues
                     })
                     .catch((error) => {
                       const isNecessaryReconnect = error.message.includes(
@@ -710,13 +689,8 @@ export const SendConfirm = () => {
 
                     setConfirmedTx(response);
 
-                    //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                    // Use proper alarm utility with automatic cleanup
-                    createTemporaryAlarm({
-                      delayInSeconds: 4,
-                      callback: () =>
-                        controllerEmitter(['callGetLatestUpdateForAccount']),
-                    });
+                    // Balance will be updated when user navigates back to Home
+                    // This prevents redundant API calls and timing issues
                   })
                   .catch((error) => {
                     const isNecessaryReconnect = error.message.includes(
@@ -811,15 +785,8 @@ export const SendConfirm = () => {
                         setLoading(false);
                         setConfirmedTx(response);
 
-                        //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                        // Use proper alarm utility with automatic cleanup
-                        createTemporaryAlarm({
-                          delayInSeconds: 4,
-                          callback: () =>
-                            controllerEmitter([
-                              'callGetLatestUpdateForAccount',
-                            ]),
-                        });
+                        // Balance will be updated when user navigates back to Home
+                        // This prevents redundant API calls and timing issues
                       })
                       .catch((error) => {
                         const isNecessaryReconnect = error.message.includes(
@@ -921,15 +888,8 @@ export const SendConfirm = () => {
                         setLoading(false);
                         setConfirmedTx(response);
 
-                        //CALL UPDATE TO USER CAN SEE UPDATED BALANCES / TXS AFTER SEND SOME TX
-                        // Use proper alarm utility with automatic cleanup
-                        createTemporaryAlarm({
-                          delayInSeconds: 4,
-                          callback: () =>
-                            controllerEmitter([
-                              'callGetLatestUpdateForAccount',
-                            ]),
-                        });
+                        // Balance will be updated when user navigates back to Home
+                        // This prevents redundant API calls and timing issues
                       })
                       .catch((error) => {
                         const isNecessaryReconnect = error.message.includes(
@@ -1135,7 +1095,9 @@ export const SendConfirm = () => {
             [activeNetwork.chainId, false]
           );
 
-          navigate('/home');
+          navigate('/home', {
+            state: { fromTransaction: true },
+          });
         }}
       />
 
