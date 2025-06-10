@@ -20,8 +20,12 @@ function shouldUpdate() {
   const chainId = activeNetwork.chainId;
 
   const currentBalance = isBitcoinBased
-    ? accounts[activeAccount.type][activeAccount.id].balances.syscoin
-    : accounts[activeAccount.type][activeAccount.id].balances.ethereum;
+    ? accounts[activeAccount.type][activeAccount.id].balances[
+        INetworkType.Syscoin
+      ]
+    : accounts[activeAccount.type][activeAccount.id].balances[
+        INetworkType.Ethereum
+      ];
 
   const previousBalance = prevBalances[activeAccount.id]?.[chain]?.[chainId];
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -64,6 +68,7 @@ const MIN_CHECK_INTERVAL = 1000; // 1 second minimum between checks
 // Helper to acquire lock across all contexts (background script instances)
 const acquireUpdateLock = async (): Promise<boolean> => {
   const now = Date.now();
+  const instanceId = Math.random().toString(36).substr(2, 9);
 
   return new Promise((resolve) => {
     chrome.storage.local.get([UPDATE_LOCK_KEY], (result) => {
@@ -72,23 +77,36 @@ const acquireUpdateLock = async (): Promise<boolean> => {
       // Check if lock exists and is still valid
       if (lockData && now - lockData.timestamp < MIN_CHECK_INTERVAL) {
         console.log(
-          '⏸️ checkForUpdates: Another instance is checking or checked recently, skipping'
+          `⏸️ checkForUpdates: Another instance (${lockData.instanceId}) is checking or checked recently, skipping`
         );
         resolve(false);
         return;
       }
 
-      // Acquire lock
+      // Acquire lock with instance tracking
       chrome.storage.local.set(
         {
           [UPDATE_LOCK_KEY]: {
             timestamp: now,
-            instanceId: Math.random().toString(36).substr(2, 9),
+            instanceId: instanceId,
           },
         },
         () => {
-          console.log('🔒 checkForUpdates: Acquired lock, proceeding');
-          resolve(true);
+          // Double-check we still have the lock after setting it
+          chrome.storage.local.get([UPDATE_LOCK_KEY], (doubleCheckResult) => {
+            const currentLock = doubleCheckResult[UPDATE_LOCK_KEY];
+            if (currentLock && currentLock.instanceId === instanceId) {
+              console.log(
+                `🔒 checkForUpdates: Acquired lock, proceeding (instance: ${instanceId})`
+              );
+              resolve(true);
+            } else {
+              console.log(
+                `⏸️ checkForUpdates: Lost lock race condition, another instance acquired it`
+              );
+              resolve(false);
+            }
+          });
         }
       );
     });
