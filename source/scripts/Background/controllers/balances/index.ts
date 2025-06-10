@@ -12,12 +12,20 @@ import { IBalancesManager } from './types';
 const BalancesManager = (
   web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
 ): IBalancesManager => {
-  const evmBalanceController = EvmBalanceController(web3Provider);
+  // Defer creation of EVM controller until needed
+  let evmBalanceController: any = null;
+
+  const getEvmController = () => {
+    if (!evmBalanceController && web3Provider) {
+      evmBalanceController = EvmBalanceController(web3Provider);
+    }
+    return evmBalanceController;
+  };
+
   const getBalanceUpdatedForAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
-    networkUrl: string,
-    provider?: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+    networkUrl: string
   ) => {
     switch (isBitcoinBased) {
       case true:
@@ -34,9 +42,8 @@ const BalancesManager = (
         }
       case false:
         try {
-          const getEvmBalance = await EvmBalanceController(
-            provider || web3Provider
-          ).getEvmBalanceForAccount(currentAccount);
+          const getEvmBalance =
+            await getEvmController().getEvmBalanceForAccount(currentAccount);
 
           return getEvmBalance;
         } catch (evmBalanceError) {
@@ -46,7 +53,7 @@ const BalancesManager = (
   };
 
   return {
-    evm: evmBalanceController,
+    evm: getEvmController(), // Return the controller (may be null for UTXO networks)
     sys: SyscoinBalanceController(),
     utils: {
       getBalanceUpdatedForAccount,

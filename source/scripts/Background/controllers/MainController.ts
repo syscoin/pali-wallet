@@ -192,13 +192,68 @@ class MainController extends KeyringManager {
         );
       });
 
-    this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
+    // Determine if we're on a Bitcoin-based network to avoid web3 calls to blockbook
+    // Check from walletState or store state to determine initial network type
+    let isBitcoinBased = false;
+
+    try {
+      // First try to get from store state if available
+      const storeState = store.getState().vault;
+      if (storeState && typeof storeState.isBitcoinBased === 'boolean') {
+        isBitcoinBased = storeState.isBitcoinBased;
+      } else if (walletState && walletState.activeChain) {
+        // Fallback to checking walletState
+        isBitcoinBased = walletState.activeChain === INetworkType.Syscoin;
+      } else {
+        // Last fallback - check if activeNetwork looks like a UTXO network
+        const activeNetwork =
+          walletState?.activeNetwork || storeState?.activeNetwork;
+        if (activeNetwork) {
+          // Generic UTXO network detection patterns:
+          // 1. URL contains blockbook or trezor (most reliable)
+          // 2. Network kind is explicitly set to 'utxo'
+          const hasBlockbookUrl =
+            activeNetwork.url?.includes('blockbook') ||
+            activeNetwork.url?.includes('trezor');
+          const hasUtxoKind = activeNetwork.kind === 'utxo';
+
+          isBitcoinBased = hasBlockbookUrl || hasUtxoKind;
+        }
+      }
+
+      console.log(
+        `[MainController] Constructor detected isBitcoinBased: ${isBitcoinBased}`
+      );
+    } catch (error) {
+      console.warn(
+        '[MainController] Could not determine network type in constructor, defaulting to EVM'
+      );
+      isBitcoinBased = false;
+    }
+
+    // Initialize managers based on network type
+    if (isBitcoinBased) {
+      // For UTXO networks, initialize with null providers to prevent web3 calls to blockbook
+      console.log(
+        '[MainController] Constructor: Initializing managers with null providers for UTXO network'
+      );
+      this.assetsManager = AssetsManager(null as any);
+      this.transactionsManager = TransactionsManager(null as any);
+      this.balancesManager = BalancesManager(null as any);
+      this.web3Provider = null as any; // Will be set properly if we switch to EVM network
+    } else {
+      // For EVM networks, use the web3Provider as before
+      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
+      this.transactionsManager = TransactionsManager(
+        this.ethereumTransaction.web3Provider
+      );
+      this.balancesManager = BalancesManager(
+        this.ethereumTransaction.web3Provider
+      );
+      this.web3Provider = this.ethereumTransaction.web3Provider;
+    }
+
     this.nftsController = NftsController();
-
-    this.web3Provider = this.ethereumTransaction.web3Provider;
-
-    this.transactionsManager = TransactionsManager(this.web3Provider);
-    this.balancesManager = BalancesManager(this.web3Provider);
     this.cancellablePromises = new CancellablePromises();
     this.account = {
       eth: EthAccountController(),
@@ -212,166 +267,264 @@ class MainController extends KeyringManager {
 
   // Fiat price fetching functionality moved from ControllerUtils
   public async setFiat(currency?: string): Promise<void> {
-    if (!currency) {
-      const storeCurrency = store.getState().price.fiat.asset;
-      currency = storeCurrency || 'usd';
-    }
+    // Use Chrome storage as a global lock across all background script instances
+    const FIAT_LOCK_KEY = 'pali_setfiat_lock';
+    const LOCK_TIMEOUT = 30000; // 30 seconds timeout
+    const MAX_RETRIES = 3;
 
-    const { activeNetwork, isBitcoinBased } = store.getState().vault;
-    const id = getNetworkChain(isBitcoinBased);
+    // Add random delay to prevent race conditions between multiple instances
+    const randomDelay = Math.floor(Math.random() * 100) + 50; // 50-150ms
+    await new Promise((resolve) => setTimeout(resolve, randomDelay));
 
-    let coinsList = null;
     try {
-      const cachedData = await new Promise((resolve) => {
-        chrome.storage.local.get(COINS_LIST_CACHE_KEY, (result) =>
-          resolve(result[COINS_LIST_CACHE_KEY])
-        );
+      // Check and set global lock with retry mechanism
+      const result = await new Promise<boolean>((resolve) => {
+        let retryCount = 0;
+
+        const attemptLock = () => {
+          chrome.storage.local.get([FIAT_LOCK_KEY], (result) => {
+            const existing = result[FIAT_LOCK_KEY];
+            const now = Date.now();
+
+            // If no lock exists or lock is expired, acquire it
+            if (!existing || now - existing.timestamp > LOCK_TIMEOUT) {
+              // Use a unique identifier to detect race conditions
+              const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
+              chrome.storage.local.set(
+                {
+                  [FIAT_LOCK_KEY]: {
+                    timestamp: now,
+                    instance: chrome.runtime.id,
+                    lockId,
+                  },
+                },
+                () => {
+                  // Double-check that we actually got the lock (detect race conditions)
+                  setTimeout(() => {
+                    chrome.storage.local.get([FIAT_LOCK_KEY], (doubleCheck) => {
+                      const currentLock = doubleCheck[FIAT_LOCK_KEY];
+                      if (currentLock && currentLock.lockId === lockId) {
+                        console.log(
+                          `🔓 setFiat: Acquired global lock (attempt ${
+                            retryCount + 1
+                          }), proceeding`
+                        );
+                        resolve(true);
+                      } else {
+                        console.log(
+                          `🔒 setFiat: Lost race condition (attempt ${
+                            retryCount + 1
+                          }), retrying...`
+                        );
+                        retryCount++;
+                        if (retryCount < MAX_RETRIES) {
+                          setTimeout(
+                            attemptLock,
+                            Math.floor(Math.random() * 200) + 100
+                          ); // 100-300ms delay
+                        } else {
+                          console.log(
+                            '🔒 setFiat: Max retries reached, skipping'
+                          );
+                          resolve(false);
+                        }
+                      }
+                    });
+                  }, 10); // Small delay for double-check
+                }
+              );
+            } else {
+              console.log(
+                `🔒 setFiat: Global lock held by another instance (attempt ${
+                  retryCount + 1
+                }), skipping`
+              );
+              resolve(false);
+            }
+          });
+        };
+
+        attemptLock();
       });
 
-      if (
-        cachedData &&
-        (cachedData as any).timestamp &&
-        Date.now() - (cachedData as any).timestamp < COINS_LIST_CACHE_DURATION
-      ) {
-        coinsList = (cachedData as any).list;
-        console.log('Using cached coinsList');
-      } else {
-        console.log('Fetching new coinsList from CoinGecko');
-        const response = await fetch(
-          'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
-        );
-        if (!response.ok) {
-          throw new Error(
-            `CoinGecko API request failed with status ${response.status}`
+      if (!result) {
+        return; // Another instance is handling it
+      }
+
+      if (!currency) {
+        const storeCurrency = store.getState().price.fiat.asset;
+        currency = storeCurrency || 'usd';
+      }
+
+      const { activeNetwork, isBitcoinBased } = store.getState().vault;
+      const id = getNetworkChain(isBitcoinBased);
+
+      let coinsList = null;
+      try {
+        const cachedData = await new Promise((resolve) => {
+          chrome.storage.local.get(COINS_LIST_CACHE_KEY, (result) =>
+            resolve(result[COINS_LIST_CACHE_KEY])
+          );
+        });
+
+        if (
+          cachedData &&
+          (cachedData as any).timestamp &&
+          Date.now() - (cachedData as any).timestamp < COINS_LIST_CACHE_DURATION
+        ) {
+          coinsList = (cachedData as any).list;
+          console.log('Using cached coinsList');
+        } else {
+          console.log('Fetching new coinsList from CoinGecko');
+          const response = await fetch(
+            'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
+          );
+          if (!response.ok) {
+            throw new Error(
+              `CoinGecko API request failed with status ${response.status}`
+            );
+          }
+          coinsList = await response.json();
+          if (coinsList && Array.isArray(coinsList)) {
+            chrome.storage.local.set({
+              [COINS_LIST_CACHE_KEY]: {
+                list: coinsList,
+                timestamp: Date.now(),
+              },
+            });
+            store.dispatch(setCoinsList(coinsList));
+          } else {
+            coinsList = null;
+            console.error('Fetched coinsList is not in expected format');
+          }
+        }
+      } catch (fetchError) {
+        console.error('Failed to fetch or cache coinsList:', fetchError);
+        const coinsListState = store.getState().vault.coinsList;
+        if (coinsListState?.length > 0) {
+          coinsList = coinsListState;
+          console.log(
+            'Using potentially stale coinsList from Redux store after fetch failure'
           );
         }
-        coinsList = await response.json();
-        if (coinsList && Array.isArray(coinsList)) {
-          chrome.storage.local.set({
-            [COINS_LIST_CACHE_KEY]: { list: coinsList, timestamp: Date.now() },
-          });
-          store.dispatch(setCoinsList(coinsList));
-        } else {
-          coinsList = null;
-          console.error('Fetched coinsList is not in expected format');
+      }
+
+      if (!coinsList) {
+        coinsList = store.getState().vault.coinsList;
+        if (!coinsList || coinsList.length === 0) {
+          logError('setFiat: coinsList is empty and could not be fetched.', '');
         }
       }
-    } catch (fetchError) {
-      console.error('Failed to fetch or cache coinsList:', fetchError);
-      const coinsListState = store.getState().vault.coinsList;
-      if (coinsListState?.length > 0) {
-        coinsList = coinsListState;
-        console.log(
-          'Using potentially stale coinsList from Redux store after fetch failure'
-        );
-      }
-    }
 
-    if (!coinsList) {
-      coinsList = store.getState().vault.coinsList;
-      if (!coinsList || coinsList.length === 0) {
-        logError('setFiat: coinsList is empty and could not be fetched.', '');
-      }
-    }
+      switch (id) {
+        case INetworkType.Syscoin:
+          try {
+            const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
+            if (!activeNetwork.isTestnet) {
+              const currencies = await (
+                await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
+              ).json();
+              if (currencies && currencies.rates) {
+                store.dispatch(setCoins(currencies.rates));
+                if (currencies.rates[currency]) {
+                  store.dispatch(
+                    setPrices({
+                      asset: currency,
+                      price: currencies.rates[currency],
+                    })
+                  );
+                  return;
+                }
+              }
+            }
 
-    switch (id) {
-      case INetworkType.Syscoin:
-        try {
-          const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
-          if (!activeNetwork.isTestnet) {
-            const currencies = await (
-              await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
-            ).json();
-            if (currencies && currencies.rates) {
-              store.dispatch(setCoins(currencies.rates));
-              if (currencies.rates[currency]) {
+            store.dispatch(setPrices({ asset: currency, price: 0 }));
+          } catch (error) {
+            logError(
+              'Failed to retrieve asset price - SYSCOIN UTXO',
+              '',
+              error
+            );
+            store.dispatch(setPrices({ asset: currency, price: 0 }));
+          }
+          break;
+
+        case INetworkType.Ethereum:
+          try {
+            // Use existing network info instead of making redundant RPC call
+            const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69];
+
+            if (
+              activeNetwork.isTestnet ||
+              ethTestnetsChainsIds.some(
+                (validationChain) => validationChain === activeNetwork.chainId
+              )
+            ) {
+              store.dispatch(setPrices({ asset: currency, price: 0 }));
+              return;
+            }
+
+            if (coinsList && Array.isArray(coinsList) && coinsList.length > 0) {
+              const findCoinSymbolByNetwork = coinsList.find(
+                (coin: any) => coin.symbol === activeNetwork.currency
+              )?.id;
+
+              if (findCoinSymbolByNetwork) {
+                const coinPriceResponse = await fetch(
+                  `https://api.coingecko.com/api/v3/simple/price?ids=${findCoinSymbolByNetwork}&vs_currencies=${currency}`
+                );
+                const coinPriceData = await coinPriceResponse.json();
+                const currentNetworkCoinMarket =
+                  coinPriceData[findCoinSymbolByNetwork]?.[
+                    currency.toLowerCase()
+                  ];
+
                 store.dispatch(
                   setPrices({
                     asset: currency,
-                    price: currencies.rates[currency],
+                    price: currentNetworkCoinMarket
+                      ? currentNetworkCoinMarket
+                      : 0,
                   })
                 );
-                return;
+              } else {
+                logError(
+                  `Could not find ID for currency symbol: ${activeNetwork.currency} in CoinGecko list`,
+                  ''
+                );
+                store.dispatch(setPrices({ asset: currency, price: 0 }));
               }
-            }
-          }
-
-          store.dispatch(setPrices({ asset: currency, price: 0 }));
-        } catch (error) {
-          logError('Failed to retrieve asset price - SYSCOIN UTXO', '', error);
-          store.dispatch(setPrices({ asset: currency, price: 0 }));
-        }
-        break;
-
-      case INetworkType.Ethereum:
-        try {
-          // Use existing network info instead of making redundant RPC call
-          const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69];
-
-          if (
-            activeNetwork.isTestnet ||
-            ethTestnetsChainsIds.some(
-              (validationChain) => validationChain === activeNetwork.chainId
-            )
-          ) {
-            store.dispatch(setPrices({ asset: currency, price: 0 }));
-            return;
-          }
-
-          if (coinsList && Array.isArray(coinsList) && coinsList.length > 0) {
-            const findCoinSymbolByNetwork = coinsList.find(
-              (coin: any) => coin.symbol === activeNetwork.currency
-            )?.id;
-
-            if (findCoinSymbolByNetwork) {
-              const coinPriceResponse = await fetch(
-                `https://api.coingecko.com/api/v3/simple/price?ids=${findCoinSymbolByNetwork}&vs_currencies=${currency}`
+            } else {
+              logError(
+                'setFiat EVM: coinsList not available, attempting to use stale price or default to 0.',
+                ''
               );
-              const coinPriceData = await coinPriceResponse.json();
-              const currentNetworkCoinMarket =
-                coinPriceData[findCoinSymbolByNetwork]?.[
-                  currency.toLowerCase()
-                ];
-
+              const lastCoinsPrices = store.getState().price.coins;
+              const findLastCurrencyValue =
+                lastCoinsPrices[currency.toLowerCase()];
               store.dispatch(
                 setPrices({
                   asset: currency,
-                  price: currentNetworkCoinMarket
-                    ? currentNetworkCoinMarket
-                    : 0,
+                  price:
+                    findLastCurrencyValue !== undefined
+                      ? findLastCurrencyValue
+                      : 0,
                 })
               );
-            } else {
-              logError(
-                `Could not find ID for currency symbol: ${activeNetwork.currency} in CoinGecko list`,
-                ''
-              );
-              store.dispatch(setPrices({ asset: currency, price: 0 }));
             }
-          } else {
-            logError(
-              'setFiat EVM: coinsList not available, attempting to use stale price or default to 0.',
-              ''
-            );
-            const lastCoinsPrices = store.getState().price.coins;
-            const findLastCurrencyValue =
-              lastCoinsPrices[currency.toLowerCase()];
-            store.dispatch(
-              setPrices({
-                asset: currency,
-                price:
-                  findLastCurrencyValue !== undefined
-                    ? findLastCurrencyValue
-                    : 0,
-              })
-            );
+            return;
+          } catch (error) {
+            logError('Failed to retrieve asset price - EVM', '', error);
+            store.dispatch(setPrices({ asset: currency, price: 0 }));
           }
-          return;
-        } catch (error) {
-          logError('Failed to retrieve asset price - EVM', '', error);
-          store.dispatch(setPrices({ asset: currency, price: 0 }));
-        }
-        break;
+          break;
+      }
+    } finally {
+      // Release global lock
+      const FIAT_LOCK_KEY = 'pali_setfiat_lock';
+      chrome.storage.local.remove([FIAT_LOCK_KEY], () => {
+        console.log('🔓 setFiat: Released global lock');
+      });
     }
   }
 
@@ -1671,26 +1824,10 @@ class MainController extends KeyringManager {
     isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
-    const isL2Network = L2_NETWORK_CHAIN_IDS.includes(activeNetwork.chainId);
-
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    let internalProvider:
-      | CustomJsonRpcProvider
-      | CustomL2JsonRpcProvider
-      | undefined;
-
-    if (isPolling) {
-      const CurrentProvider = isL2Network
-        ? CustomL2JsonRpcProvider
-        : CustomJsonRpcProvider;
-
-      const abortController = new AbortController();
-      internalProvider = new CurrentProvider(
-        abortController.signal,
-        activeNetwork.url
-      );
-    }
+    // No need to create a new provider - let the BalancesManager use its own provider
+    // The BalancesManager already handles EVM vs UTXO networks correctly
 
     const { currentPromise: balancePromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -1700,8 +1837,8 @@ class MainController extends KeyringManager {
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url,
-                internalProvider
+                activeNetwork.url
+                // No need to pass a provider - let the manager use its own
               );
 
             const actualUserBalance = isBitcoinBased
@@ -1744,7 +1881,9 @@ class MainController extends KeyringManager {
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
   }
 
-  public async getLatestUpdateForCurrentAccount(isPolling = false) {
+  public async getLatestUpdateForCurrentAccount(
+    isPolling = false
+  ): Promise<boolean> {
     const { accounts, activeAccount, isBitcoinBased, activeNetwork } =
       store.getState().vault;
 
@@ -1756,8 +1895,14 @@ class MainController extends KeyringManager {
       console.log(
         '[MainController] Skipping non-polling update right after unlock - polling will handle it'
       );
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
+
+    // Store initial state for change detection (serialize to avoid reference issues)
+    const initialStateSnapshot = JSON.stringify({
+      balances: activeAccountValues.balances,
+      transactions: activeAccountValues.transactions,
+    });
 
     // Check if account has invalid xpub for UTXO network
     const hasInvalidXpubForUTXO =
@@ -1773,7 +1918,10 @@ class MainController extends KeyringManager {
     } else {
       // Clear caches if this is a manual refresh (not polling)
       if (!isPolling) {
-        this.transactionsManager.utils.clearCache();
+        // Clear transactionsManager cache for all networks since it's now always initialized
+        if (this.transactionsManager) {
+          this.transactionsManager.utils.clearCache();
+        }
         clearProviderCache();
         clearFetchBackendAccountCache();
       }
@@ -1877,6 +2025,23 @@ class MainController extends KeyringManager {
       ]);
     }
     store.dispatch(switchNetworkSuccess(activeNetwork));
+
+    // Check if anything changed by comparing initial and final state
+    const { accounts: finalAccounts } = store.getState().vault;
+    const finalStateSnapshot = JSON.stringify({
+      balances: finalAccounts[activeAccount.type][activeAccount.id].balances,
+      transactions:
+        finalAccounts[activeAccount.type][activeAccount.id].transactions,
+    });
+
+    const hasChanges = initialStateSnapshot !== finalStateSnapshot;
+    console.log(
+      `[MainController] Update detection: ${
+        hasChanges ? 'CHANGES FOUND' : 'No changes'
+      }`
+    );
+
+    return hasChanges;
   }
 
   public async setFaucetModalState({
@@ -2148,6 +2313,20 @@ class MainController extends KeyringManager {
       );
 
       if (success) {
+        // Cancel any pending async operations before switching managers
+        if (this.cancellablePromises.transactionPromise) {
+          this.cancellablePromises.transactionPromise.cancel();
+        }
+        if (this.cancellablePromises.assetsPromise) {
+          this.cancellablePromises.assetsPromise.cancel();
+        }
+        if (this.cancellablePromises.balancePromise) {
+          this.cancellablePromises.balancePromise.cancel();
+        }
+        if (this.cancellablePromises.nftsPromise) {
+          this.cancellablePromises.nftsPromise.cancel();
+        }
+
         // Only update web3Provider and EVM-specific managers for EVM networks
         const isBitcoinBased = activeChain === INetworkType.Syscoin;
 
@@ -2168,6 +2347,13 @@ class MainController extends KeyringManager {
           console.log(
             '[MainController] Skipping web3Provider setup for UTXO network'
           );
+
+          // Still initialize managers with null provider - they handle UTXO logic internally
+          // AssetsManager and BalancesManager use separate controllers for UTXO that don't need web3Provider
+          this.assetsManager = AssetsManager(null as any);
+          this.balancesManager = BalancesManager(null as any);
+          // TransactionsManager also handles UTXO networks through SysTransactionController
+          this.transactionsManager = TransactionsManager(null as any);
         }
 
         this.assets = this.assetsManager;

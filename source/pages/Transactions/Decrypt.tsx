@@ -14,6 +14,7 @@ import {
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
 
@@ -52,6 +53,17 @@ const Decrypt: React.FC<ISign> = () => {
   const onSubmit = async () => {
     setLoading(true);
     const type = data.eventName;
+
+    // Safety check: decryption is only for EVM networks
+    if (isBitcoinBased) {
+      setErrorMsg('Message decryption is not available on UTXO networks');
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
+      return;
+    }
+
     if (data[1] !== address) {
       const response = {
         code: 4001,
@@ -76,7 +88,10 @@ const Decrypt: React.FC<ISign> = () => {
     } catch (error) {
       setErrorMsg(error.message);
 
-      setTimeout(window.close, 40000);
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
     }
   };
 
@@ -111,12 +126,20 @@ const Decrypt: React.FC<ISign> = () => {
             {!decryptedMessage && (
               <div
                 className="h-fit align-center justify-center mt-1 px-4 w-full text-xs cursor-pointer"
-                onClick={() =>
+                onClick={() => {
+                  // Safety check: decryption is only for EVM networks
+                  if (isBitcoinBased) {
+                    setErrorMsg(
+                      'Message decryption is not available on UTXO networks'
+                    );
+                    return;
+                  }
+
                   controllerEmitter(
                     ['wallet', 'ethereumTransaction', 'decryptMessage'],
                     [data]
-                  ).then(setDecryptedMessage)
-                }
+                  ).then(setDecryptedMessage);
+                }}
               >
                 <span className="w-full break-words opacity-20">{data[0]}</span>
                 <div className="align-center w-fit absolute right-36 top-72 flex flex-col justify-center text-center">

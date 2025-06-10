@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
 
@@ -41,6 +42,16 @@ const EthSign: React.FC<ISign> = () => {
 
   const onSubmit = async () => {
     setLoading(true);
+
+    // Safety check: signing is only for EVM networks
+    if (isBitcoinBased) {
+      setErrorMsg('Message signing is not available on UTXO networks');
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
+      return;
+    }
 
     try {
       let response = '';
@@ -117,6 +128,12 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
   useEffect(() => {
+    // Safety check: ETH signing is only for EVM networks
+    if (isBitcoinBased) {
+      setErrorMsg('ETH signing is not available on UTXO networks');
+      return;
+    }
+
     if (data.eventName === 'personal_sign') {
       const msg = data[0] === activeAccount.address ? data[1] : data[0];
 

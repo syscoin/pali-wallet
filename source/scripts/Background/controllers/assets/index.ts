@@ -7,7 +7,16 @@ import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
 const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
-  const evmAssetsController = EvmAssetsController(w3Provider);
+  // Defer creation of EVM controller until needed
+  let evmAssetsController: any = null;
+
+  const getEvmController = () => {
+    if (!evmAssetsController && w3Provider) {
+      evmAssetsController = EvmAssetsController(w3Provider);
+    }
+    return evmAssetsController;
+  };
+
   const updateAssetsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
@@ -45,7 +54,16 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
 
       case false:
         try {
-          const getEvmAssets = await evmAssetsController.updateAllEvmTokens(
+          const assetsController = getEvmController();
+          if (!assetsController) {
+            console.error('No valid web3Provider for EVM assets fetching');
+            return {
+              ...currentAccount.assets,
+              ethereum: [],
+            };
+          }
+
+          const getEvmAssets = await assetsController.updateAllEvmTokens(
             currentAccount,
             networkChainId
           );
@@ -61,7 +79,7 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
   };
 
   return {
-    evm: evmAssetsController,
+    evm: getEvmController(), // Return the controller (may be null for UTXO networks)
     sys: SysAssetsController(),
     utils: {
       updateAssetsFromCurrentAccount,

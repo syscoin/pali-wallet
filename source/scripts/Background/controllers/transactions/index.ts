@@ -14,7 +14,15 @@ const CACHE_TTL = 60000; // 1 minute TTL
 const TransactionsManager = (
   web3Provider: CustomJsonRpcProvider
 ): ITransactionsManager => {
-  const evmTransactionsController = EvmTransactionsController(web3Provider);
+  // Defer creation of EVM controller until needed
+  let evmTransactionsController: any = null;
+
+  const getEvmController = () => {
+    if (!evmTransactionsController && web3Provider) {
+      evmTransactionsController = EvmTransactionsController(web3Provider);
+    }
+    return evmTransactionsController;
+  };
 
   const clearExpiredCache = () => {
     const now = Date.now();
@@ -91,7 +99,12 @@ const TransactionsManager = (
           activeNetworkUrl
         );
       } else {
-        result = await evmTransactionsController.pollingEvmTransactions();
+        const evmController = getEvmController();
+        if (!evmController) {
+          console.error('No valid web3Provider for EVM transaction polling');
+          return [];
+        }
+        result = await evmController.pollingEvmTransactions();
       }
 
       // Cache the result only if no pending transactions
@@ -168,7 +181,7 @@ const TransactionsManager = (
   };
 
   return {
-    evm: evmTransactionsController,
+    evm: getEvmController(), // Return the controller (may be null for UTXO networks)
     sys: SysTransactionController(),
     utils: {
       updateTransactionsFromCurrentAccount,

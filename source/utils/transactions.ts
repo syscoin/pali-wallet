@@ -5,6 +5,7 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
+import store from 'state/store';
 import { ITransactionParams, ITxState } from 'types/transactions';
 
 import { formatCurrency, truncate } from './format';
@@ -56,6 +57,14 @@ const cancelTransaction = async (
   chainId: number,
   alert: any
 ) => {
+  // Safety check: this function is only for EVM networks
+  const { isBitcoinBased } = store.getState().vault;
+  if (isBitcoinBased) {
+    alert.removeAll();
+    alert.error('Transaction cancellation is not available on UTXO networks');
+    return;
+  }
+
   await controllerEmitter(
     ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
     [txHash, isLegacy]
@@ -96,6 +105,14 @@ const speedUpTransaction = async (
   chainId: number,
   alert: any
 ) => {
+  // Safety check: this function is only for EVM networks
+  const { isBitcoinBased } = store.getState().vault;
+  if (isBitcoinBased) {
+    alert.removeAll();
+    alert.error('Transaction speed up is not available on UTXO networks');
+    return;
+  }
+
   // ethers.providers.TransactionResponse
   await controllerEmitter(
     ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],

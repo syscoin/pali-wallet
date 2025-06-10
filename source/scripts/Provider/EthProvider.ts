@@ -19,6 +19,16 @@ export const EthProvider = (host: string) => {
     const {
       ethereumTransaction: { web3Provider },
     } = getController().wallet;
+
+    // Safety check: ensure web3Provider exists for EVM networks
+    if (!web3Provider) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'EthProvider methods are not available on UTXO networks'
+        )
+      );
+    }
+
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
     const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
@@ -157,12 +167,30 @@ export const EthProvider = (host: string) => {
   const send = async (args: any[]) => {
     const { ethereumTransaction } = getController().wallet;
 
+    // Safety check: ensure web3Provider exists for EVM networks
+    if (!ethereumTransaction?.web3Provider) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'EthProvider methods are not available on UTXO networks'
+        )
+      );
+    }
+
     return ethereumTransaction.web3Provider.send(args[0], args);
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     if (!unrestrictedMethods.find((el) => el === method)) return false;
     const { ethereumTransaction } = getController().wallet;
+
+    // Safety check: ensure web3Provider exists for EVM networks
+    if (!ethereumTransaction?.web3Provider) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'EthProvider methods are not available on UTXO networks'
+        )
+      );
+    }
 
     try {
       const resp = await ethereumTransaction.web3Provider.send(method, params);
@@ -178,6 +206,16 @@ export const EthProvider = (host: string) => {
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
     const { ethereumTransaction } = getController().wallet;
+
+    // Safety check: ensure web3Provider exists for EVM networks
+    if (!ethereumTransaction?.web3Provider) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'EthProvider methods are not available on UTXO networks'
+        )
+      );
+    }
+
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
@@ -192,6 +230,14 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
+        // Additional safety check for contentScriptWeb3Provider
+        if (!ethereumTransaction?.contentScriptWeb3Provider) {
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'EthProvider methods are not available on UTXO networks'
+            )
+          );
+        }
         return await ethereumTransaction.contentScriptWeb3Provider._getAddress(
           ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );

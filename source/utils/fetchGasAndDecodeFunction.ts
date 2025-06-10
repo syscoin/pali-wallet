@@ -1,6 +1,7 @@
 import { BigNumber } from 'ethers';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import store from 'state/store';
 import { INetworkWithKind } from 'state/vault/types';
 import { ITransactionParams } from 'types/transactions';
 
@@ -8,6 +9,14 @@ export const fetchGasAndDecodeFunction = async (
   dataTx: ITransactionParams,
   activeNetwork: INetworkWithKind
 ) => {
+  // Safety check: this function is only for EVM networks
+  const { isBitcoinBased } = store.getState().vault;
+  if (isBitcoinBased) {
+    throw new Error(
+      'fetchGasAndDecodeFunction is not available on UTXO networks'
+    );
+  }
+
   const currentBlock = (await controllerEmitter(
     ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],
     ['eth_getBlockByNumber', ['latest', false]]
