@@ -575,8 +575,9 @@ class MainController extends KeyringManager {
         // Determine the actual chain type based on the active network
         const activeNetwork = wallet.activeNetwork;
         const isSyscoinNetwork =
-          wallet.networks.syscoin &&
-          wallet.networks.syscoin[activeNetwork.chainId] !== undefined;
+          wallet.networks[TransactionsType.Syscoin] &&
+          wallet.networks[TransactionsType.Syscoin][activeNetwork.chainId] !==
+            undefined;
         const activeChain = isSyscoinNetwork
           ? INetworkType.Syscoin
           : INetworkType.Ethereum;
@@ -1645,6 +1646,9 @@ class MainController extends KeyringManager {
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
+
+    // Return the promise so callers can wait for it to complete
+    return transactionPromise;
   }
 
   public async validatePendingEvmTransactions({
@@ -1807,6 +1811,9 @@ class MainController extends KeyringManager {
       cancel,
     });
     this.cancellablePromises.runPromise(PromiseTargets.ASSETS);
+
+    // Return the promise so callers can wait for it to complete
+    return assetsPromise;
   }
 
   public updateUserNativeBalance({
@@ -1879,6 +1886,9 @@ class MainController extends KeyringManager {
       cancel,
     });
     this.cancellablePromises.runPromise(PromiseTargets.BALANCE);
+
+    // Return the promise so callers can wait for it to complete
+    return balancePromise;
   }
 
   public async getLatestUpdateForCurrentAccount(
@@ -1895,7 +1905,7 @@ class MainController extends KeyringManager {
       console.log(
         '[MainController] Skipping non-polling update right after unlock - polling will handle it'
       );
-      return Promise.resolve(false);
+      return false;
     }
 
     // Store initial state for change detection (serialize to avoid reference issues)
@@ -1915,6 +1925,7 @@ class MainController extends KeyringManager {
       );
       // Don't update assets or transactions with invalid xpub
       // The updateUTXOAccounts in setSignerNetwork should have already handled regenerating accounts
+      return false;
     } else {
       // Clear caches if this is a manual refresh (not polling)
       if (!isPolling) {
@@ -1961,69 +1972,72 @@ class MainController extends KeyringManager {
         }
       });
     }
+
     // Skip dapp notifications during startup
     if (this.isStartingUp) {
       console.log(
-        '[MainController] Skipping network change dapp notifications during startup'
+        '[MainController] Skipping dapp notifications during startup'
       );
-      store.dispatch(switchNetworkSuccess(activeNetwork));
-      return;
-    }
-
-    this.handleStateChange([
-      {
-        method: PaliEvents.chainChanged,
-        params: {
-          chainId: `0x${activeNetwork.chainId.toString(16)}`,
-          networkVersion: activeNetwork.chainId,
-        },
-      },
-      {
-        method: PaliEvents.isBitcoinBased,
-        params: { isBitcoinBased },
-      },
-      {
-        method: PaliSyscoinEvents.blockExplorerChanged,
-        params: isBitcoinBased ? activeNetwork.url : null,
-      },
-    ]);
-    if (isBitcoinBased) {
-      const isTestnet = this.verifyIfIsTestnet();
-      const accountXpub = accounts[activeAccount.type][activeAccount.id].xpub;
-
-      // Check if xpub is valid for UTXO network (not an Ethereum public key)
-      const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
-
-      this.handleStateChange([
-        {
-          method: PaliEvents.isTestnet,
-          params: { isTestnet },
-        },
-        {
-          method: PaliEvents.xpubChanged,
-          params: isValidXpub ? accountXpub : null,
-        },
-        {
-          method: PaliEvents.accountsChanged,
-          params: null,
-        },
-      ]);
+      // Still need to check for changes and return the result
     } else {
+      // Handle state changes for dapps
       this.handleStateChange([
         {
-          method: PaliEvents.isTestnet,
-          params: { isTestnet: undefined },
+          method: PaliEvents.chainChanged,
+          params: {
+            chainId: `0x${activeNetwork.chainId.toString(16)}`,
+            networkVersion: activeNetwork.chainId,
+          },
         },
         {
-          method: PaliEvents.xpubChanged,
-          params: null,
+          method: PaliEvents.isBitcoinBased,
+          params: { isBitcoinBased },
         },
         {
-          method: PaliEvents.accountsChanged,
-          params: [accounts[activeAccount.type][activeAccount.id].address],
+          method: PaliSyscoinEvents.blockExplorerChanged,
+          params: isBitcoinBased ? activeNetwork.url : null,
         },
       ]);
+
+      if (isBitcoinBased) {
+        const isTestnet = this.verifyIfIsTestnet();
+        const accountXpub = accounts[activeAccount.type][activeAccount.id].xpub;
+
+        // Check if xpub is valid for UTXO network (not an Ethereum public key)
+        const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
+
+        this.handleStateChange([
+          {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet },
+          },
+          {
+            method: PaliEvents.xpubChanged,
+            params: isValidXpub ? accountXpub : null,
+          },
+          {
+            method: PaliEvents.accountsChanged,
+            params: null,
+          },
+        ]);
+      } else {
+        this.handleStateChange([
+          {
+            method: PaliEvents.isTestnet,
+            params: { isTestnet: undefined },
+          },
+          {
+            method: PaliEvents.xpubChanged,
+            params: null,
+          },
+          {
+            method: PaliEvents.accountsChanged,
+            params: [accounts[activeAccount.type][activeAccount.id].address],
+          },
+        ]);
+      }
     }
+
     store.dispatch(switchNetworkSuccess(activeNetwork));
 
     // Check if anything changed by comparing initial and final state

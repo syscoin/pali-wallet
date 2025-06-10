@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { FaucetChainIds } from '../../types/faucet';
 import {
@@ -125,6 +126,12 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked) return;
 
+    // Only check cooldown for EVM networks since UTXO networks don't have web3Provider
+    if (isBitcoinBased) {
+      setIsInCooldown(false);
+      return;
+    }
+
     controllerEmitter(
       ['wallet', 'ethereumTransaction', 'web3Provider'],
       [],
@@ -137,7 +144,7 @@ export const Home = () => {
         console.warn('Failed to get web3Provider cooldown status:', error);
         setIsInCooldown(false);
       });
-  }, [isUnlocked, controllerEmitter]);
+  }, [isUnlocked, isBitcoinBased, controllerEmitter]);
 
   useEffect(() => {
     if (!isUnlocked || !activeNetwork) return;
@@ -153,10 +160,68 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked || !lastLogin) return;
 
-    controllerEmitter(['callGetLatestUpdateForAccount']).catch((error) => {
-      console.warn('Failed to fetch initial account data:', error);
-    });
-  }, [isUnlocked, lastLogin, controllerEmitter]);
+    // Check if coming from transaction confirmation (via navigation state)
+    const isFromTransaction = state?.fromTransaction;
+
+    if (isFromTransaction) {
+      // Post-transaction polling: keep refreshing cache every 4 seconds for adaptive timing
+      let pollCount = 0;
+      const maxPolls = 4; // Poll 4 times (16 seconds total) to adapt to explorer speed
+
+      const pollForTransaction = async () => {
+        try {
+          // Wait 4 seconds before each poll (including poll 1)
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+
+          pollCount++;
+          console.log(
+            `[Post-TX Poll ${pollCount}/${maxPolls}] Checking for transaction changes...`
+          );
+
+          // Clear cache and get fresh data - check if changes were detected
+          const hasChanges = await controllerEmitter([
+            'callGetLatestUpdateForAccount',
+          ]);
+
+          console.log(`[Post-TX Poll] Changes detected: ${hasChanges}`);
+
+          if (hasChanges) {
+            console.log(
+              '[Post-TX Poll] Changes detected! Transaction found, stopping poll.'
+            );
+            return; // Stop polling early - transaction was detected!
+          } else {
+            console.log(
+              '[Post-TX Poll] No changes detected, continuing polling...'
+            );
+          }
+
+          if (pollCount < maxPolls) {
+            // Continue polling
+            pollForTransaction();
+          } else {
+            console.log(
+              '[Post-TX Poll] Completed all polls. Transaction should be visible.'
+            );
+          }
+        } catch (error) {
+          console.warn('Failed to poll for post-transaction data:', error);
+          if (pollCount < maxPolls) {
+            // Continue even on error
+            pollForTransaction();
+          }
+        }
+      };
+
+      // Start polling
+      pollForTransaction();
+    } else {
+      // Normal navigation - update immediately with cache
+      controllerEmitter(['callGetLatestUpdateForAccount']).catch((error) => {
+        console.warn('Failed to fetch initial account data:', error);
+      });
+    }
+  }, [isUnlocked, lastLogin, controllerEmitter, state]);
 
   // ALL useCallback hooks
   const closeModal = useCallback(() => {
@@ -199,9 +264,9 @@ export const Home = () => {
 
   const actualBalance = useMemo(() => {
     if (!currentAccount?.balances) return 0;
-    const { syscoin: syscoinBalance, ethereum: ethereumBalance } =
-      currentAccount.balances;
-    return isBitcoinBased ? syscoinBalance || 0 : ethereumBalance || 0;
+    return isBitcoinBased
+      ? currentAccount.balances[INetworkType.Syscoin] || 0
+      : currentAccount.balances[INetworkType.Ethereum] || 0;
   }, [currentAccount?.balances, isBitcoinBased]);
 
   const moreThanMillion = useMemo(

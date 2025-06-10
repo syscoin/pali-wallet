@@ -37,7 +37,7 @@ import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
-  callGetLatestUpdateForAccount: () => void;
+  callGetLatestUpdateForAccount: () => Promise<boolean>;
   createPopup: (
     route?: string,
     data?: object
