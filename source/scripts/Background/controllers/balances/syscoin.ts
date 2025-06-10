@@ -23,7 +23,7 @@ const SyscoinBalanceController = (): ISysBalanceController => {
 
       // Calculate total spendable balance by adding confirmed + unconfirmed
       // unconfirmedBalance can be negative (pending outgoing) or positive (pending incoming)
-      const totalBalance = (balance + unconfirmedBalance) / 1e8;
+      const totalBalance = (Number(balance) + Number(unconfirmedBalance)) / 1e8;
 
       // Ensure balance is not negative (can happen with large pending outgoing transactions)
       const formattedBalance = Math.max(0, totalBalance);
