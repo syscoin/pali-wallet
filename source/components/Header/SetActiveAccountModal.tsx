@@ -8,7 +8,7 @@ import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
-import { setActiveAccount, setIsSwitchingAccount } from 'state/vault';
+import { setIsSwitchingAccount } from 'state/vault';
 import { INetworkWithKind } from 'state/vault/types';
 
 interface ISetActiveAccountModalProps {
