@@ -150,9 +150,6 @@ export interface ISysTransactionsController {
 //------------------------- MANAGER TYPES / INTERFACES -------------------------//
 
 export interface ITransactionsManagerUtils {
-  checkPendingTransactions: (
-    pendingTransactions: IEvmTransactionResponse[]
-  ) => Promise<IEvmTransactionResponse[]>;
   clearCache: () => void;
   updateTransactionsFromCurrentAccount: (
     currentAccount: IPaliAccount,

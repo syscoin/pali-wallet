@@ -123,59 +123,6 @@ const TransactionsManager = (
     }
   };
 
-  const checkPendingTransactions = async (
-    pendingTransactions: IEvmTransactionResponse[]
-  ): Promise<IEvmTransactionResponse[]> => {
-    const { currentBlock: stateBlock, isBitcoinBased } = store.getState().vault;
-
-    // Don't check pending transactions for UTXO networks
-    if (isBitcoinBased) {
-      console.log('Skipping pending transaction check for UTXO network');
-      return [];
-    }
-
-    // Additional safety check: ensure web3Provider is valid and not pointing to a blockbook URL
-    if (
-      !web3Provider ||
-      !web3Provider.connection ||
-      !web3Provider.connection.url
-    ) {
-      console.warn('Invalid web3Provider for pending transaction check');
-      return [];
-    }
-
-    // Check if the provider URL looks like a blockbook URL (shouldn't happen for EVM networks)
-    const providerUrl = web3Provider.connection.url;
-    if (providerUrl.includes('blockbook') || providerUrl.includes('/api/v2')) {
-      console.error(
-        'Web3Provider pointing to blockbook URL - this should not happen for EVM networks'
-      );
-      return [];
-    }
-
-    const latestBlockNumber = stateBlock
-      ? parseInt(String(stateBlock.number), 16)
-      : await web3Provider.getBlockNumber();
-
-    //todo: we'll need to take care if promise.all will not break anything
-    const confirmedTransactions = await Promise.all(
-      pendingTransactions.map(async (transaction) => {
-        const tx = await web3Provider.getTransaction(transaction.hash);
-        return {
-          ...transaction,
-          confirmations:
-            tx.blockNumber <= latestBlockNumber
-              ? latestBlockNumber - tx.blockNumber
-              : 0,
-          blockNumber: tx.blockNumber ?? null,
-          blockHash: tx.blockHash ?? null,
-        };
-      })
-    );
-
-    return confirmedTransactions.filter((tx) => tx.confirmations > 0);
-  };
-
   const clearCache = () => {
     transactionCache.clear();
   };
@@ -185,7 +132,6 @@ const TransactionsManager = (
     sys: SysTransactionController(),
     utils: {
       updateTransactionsFromCurrentAccount,
-      checkPendingTransactions,
       clearCache,
     },
   };

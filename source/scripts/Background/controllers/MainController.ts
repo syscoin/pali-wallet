@@ -1651,26 +1651,6 @@ class MainController extends KeyringManager {
     return transactionPromise;
   }
 
-  public async validatePendingEvmTransactions({
-    pendingTransactions,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetworkWithKind;
-    pendingTransactions: IEvmTransactionResponse[];
-  }) {
-    const confirmedTx =
-      await this.transactionsManager.utils.checkPendingTransactions(
-        pendingTransactions
-      );
-
-    if (!!confirmedTx.length) {
-      validateAndManageUserTransactions(confirmedTx);
-    }
-  }
-
   public sendAndSaveTransaction(tx: IEvmTransactionResponse | ISysTransaction) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
