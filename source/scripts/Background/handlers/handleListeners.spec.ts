@@ -108,7 +108,7 @@ jest.mock('scripts/Background/handlers/handlePaliUpdates', () => ({
 }));
 
 jest.mock('scripts/Background/utils/startPolling', () => ({
-  startPolling: jest.fn(),
+  startPolling: jest.fn().mockResolvedValue(undefined),
   getPollingInterval: jest.fn(),
 }));
 

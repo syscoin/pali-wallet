@@ -44,24 +44,23 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
       return;
     }
 
-    // Optimistic update: immediately update the UI
-    store.dispatch(setActiveAccount({ id: accountId, type: accountType }));
+    // Set loading state immediately
     store.dispatch(setIsSwitchingAccount(true));
 
     // Close modal immediately for better UX
     setIsOpen(false);
 
-    // Then perform the actual account switch in the background
+    // Let MainController handle the proper sequencing:
+    // 1. this.setActiveAccount(id, type) - updates keyring
+    // 2. store.dispatch(setActiveAccount({ id, type })) - updates Redux
     controllerEmitter(['wallet', 'setAccount'], [accountId, accountType])
       .then(() => {
-        // Success - the controller will handle updating the full state
+        // Success - MainController already updated Redux state in correct order
         store.dispatch(setIsSwitchingAccount(false));
       })
-      .catch(() => {
-        // On error, revert to the previous account
-        store.dispatch(
-          setActiveAccount({ id: activeAccount.id, type: activeAccount.type })
-        );
+      .catch((error) => {
+        console.error('Account switch failed:', error);
+        // On error, clear loading and show error (no need to revert Redux since it wasn't optimistically updated)
         store.dispatch(setIsSwitchingAccount(false));
         alert.error(t('header.errorSwitchingAccount'));
       });

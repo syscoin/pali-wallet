@@ -172,6 +172,8 @@ class MainController extends KeyringManager {
   } | null = null;
   private justUnlocked = false;
   private isStartingUp = false;
+  // Add a property to track account switching state
+  private isAccountSwitching = false;
 
   constructor(walletState: any) {
     super(walletState);
@@ -794,91 +796,105 @@ class MainController extends KeyringManager {
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
     const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
-    if (this.cancellablePromises.transactionPromise) {
-      this.cancellablePromises.transactionPromise.cancel();
-    }
-    if (this.cancellablePromises.assetsPromise) {
-      this.cancellablePromises.assetsPromise.cancel();
-    }
-    if (this.cancellablePromises.balancePromise) {
-      this.cancellablePromises.balancePromise.cancel();
-    }
-    if (this.cancellablePromises.nftsPromise) {
-      this.cancellablePromises.nftsPromise.cancel();
-    }
-    // Set switching account loading state
-    store.dispatch(setIsSwitchingAccount(true));
 
-    if (
-      connectedAccount &&
-      connectedAccount.address ===
-        accounts[activeAccount.type][activeAccount.id].address
-    ) {
-      if (connectedAccount.address !== accounts[type][id].address) {
-        store.dispatch(
-          setChangingConnectedAccount({
-            isChangingConnectedAccount: true,
-            newConnectedAccount: accounts[type][id],
-            connectedAccountType: type,
-            host: host || undefined,
-          })
-        );
+    // Prevent concurrent account switches
+    if (this.isAccountSwitching) {
+      console.warn(
+        '[MainController] Account switch already in progress, ignoring request'
+      );
+      return;
+    }
+
+    // Lock account switching
+    this.isAccountSwitching = true;
+
+    try {
+      if (this.cancellablePromises.transactionPromise) {
+        this.cancellablePromises.transactionPromise.cancel();
       }
-    }
+      if (this.cancellablePromises.assetsPromise) {
+        this.cancellablePromises.assetsPromise.cancel();
+      }
+      if (this.cancellablePromises.balancePromise) {
+        this.cancellablePromises.balancePromise.cancel();
+      }
+      if (this.cancellablePromises.nftsPromise) {
+        this.cancellablePromises.nftsPromise.cancel();
+      }
+      // Set switching account loading state
+      store.dispatch(setIsSwitchingAccount(true));
 
-    // Use the parent's setActiveAccount method to properly handle all setup
-    this.setActiveAccount(id, type)
-      .then(() => {
+      if (
+        connectedAccount &&
+        connectedAccount.address ===
+          accounts[activeAccount.type][activeAccount.id].address
+      ) {
+        if (connectedAccount.address !== accounts[type][id].address) {
+          store.dispatch(
+            setChangingConnectedAccount({
+              isChangingConnectedAccount: true,
+              newConnectedAccount: accounts[type][id],
+              connectedAccountType: type,
+              host: host || undefined,
+            })
+          );
+        }
+      }
+
+      // Use the parent's setActiveAccount method to properly handle all setup
+      this.setActiveAccount(id, type).then(() => {
+        // Only update Redux state after keyring state is fully synchronized
         store.dispatch(setActiveAccount({ id, type }));
 
-        // Skip dapp notifications and updates during startup
-        if (this.isStartingUp) {
-          console.log(
-            '[MainController] Skipping dapp notifications and updates during startup'
-          );
-          return;
-        }
-
-        // Notify all connected DApps about the account change
-        const controller = getController();
-        const { dapps } = store.getState().dapp;
-        const newAccount = accounts[type][id];
-
-        // Update each connected DApp with the new account
-        Object.keys(dapps).forEach((dappHost) => {
-          if (dapps[dappHost]) {
-            controller.dapp.changeAccount(dappHost, id, type);
-          }
-        });
-
-        // Emit global account change events
-        if (isBitcoinBased) {
-          this.handleStateChange([
-            {
-              method: PaliEvents.xpubChanged,
-              params: newAccount.xpub,
-            },
-          ]);
-        } else {
-          this.handleStateChange([
-            {
-              method: PaliEvents.accountsChanged,
-              params: [newAccount.address],
-            },
-          ]);
-        }
-        // Fetch data for the newly active account only
+        // Fetch data for the newly active account only - after keyring state is updated
         this.getLatestUpdateForCurrentAccount(false);
-      })
-      .catch((error) => {
-        console.error('Failed to set active account:', error);
-        // Re-throw to let the UI handle the error
-        throw error;
-      })
-      .finally(() => {
-        // Always clear switching account loading state, even if there's an error
-        store.dispatch(setIsSwitchingAccount(false));
       });
+
+      // Skip dapp notifications and updates during startup
+      if (this.isStartingUp) {
+        console.log(
+          '[MainController] Skipping dapp notifications and updates during startup'
+        );
+        return;
+      }
+
+      // Notify all connected DApps about the account change
+      const controller = getController();
+      const { dapps } = store.getState().dapp;
+      const newAccount = accounts[type][id];
+
+      // Update each connected DApp with the new account
+      Object.keys(dapps).forEach((dappHost) => {
+        if (dapps[dappHost]) {
+          controller.dapp.changeAccount(dappHost, id, type);
+        }
+      });
+
+      // Emit global account change events
+      if (isBitcoinBased) {
+        this.handleStateChange([
+          {
+            method: PaliEvents.xpubChanged,
+            params: newAccount.xpub,
+          },
+        ]);
+      } else {
+        this.handleStateChange([
+          {
+            method: PaliEvents.accountsChanged,
+            params: [newAccount.address],
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to set active account:', error);
+      // Re-throw to let the UI handle the error
+      throw error;
+    } finally {
+      // Always clear switching account loading state and unlock, even if there's an error
+      store.dispatch(setIsSwitchingAccount(false));
+      this.isAccountSwitching = false;
+    }
   }
 
   public async setActiveNetwork(
