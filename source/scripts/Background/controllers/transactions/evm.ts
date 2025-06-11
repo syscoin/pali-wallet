@@ -335,6 +335,13 @@ const EvmTransactionsController = (
   };
 
   const pollingEvmTransactions = async () => {
+    // Guard: ensure web3Provider is valid before polling
+    if (!web3Provider) {
+      console.warn(
+        '[pollingEvmTransactions] No valid web3Provider, skipping polling'
+      );
+      return [];
+    }
     try {
       const { activeAccount, accounts, activeNetwork, currentBlock } =
         store.getState().vault;
