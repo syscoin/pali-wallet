@@ -5,7 +5,7 @@ import { IPaliAccount } from 'state/vault/types';
 
 import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
-import { IEvmTransactionResponse, ITransactionsManager } from './types';
+import { ITransactionsManager } from './types';
 
 // Cache for transaction results
 const transactionCache = new Map();

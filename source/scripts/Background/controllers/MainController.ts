@@ -9,7 +9,6 @@ import {
   KeyringAccountType,
   IWalletState,
   CustomJsonRpcProvider,
-  CustomL2JsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import { getSysRpc, getEthRpc, INetworkType } from '@pollum-io/sysweb3-network';
 import {
@@ -69,7 +68,6 @@ import {
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { L2_NETWORK_CHAIN_IDS } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 
@@ -99,7 +97,6 @@ import {
   ISysTransaction,
   ITransactionsManager,
 } from './transactions/types';
-import { validateAndManageUserTransactions } from './transactions/utils';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
 // Constants for fiat price functionality
@@ -278,12 +275,12 @@ class MainController extends KeyringManager {
 
     try {
       // Check and set global lock with retry mechanism
-      const result = await new Promise<boolean>((resolve) => {
+      const lockResult = await new Promise<boolean>((resolve) => {
         let retryCount = 0;
 
         const attemptLock = () => {
-          chrome.storage.local.get([FIAT_LOCK_KEY], (result) => {
-            const existing = result[FIAT_LOCK_KEY];
+          chrome.storage.local.get([FIAT_LOCK_KEY], (storageResult) => {
+            const existing = storageResult[FIAT_LOCK_KEY];
             const now = Date.now();
 
             // If no lock exists or lock is expired, acquire it
@@ -347,7 +344,7 @@ class MainController extends KeyringManager {
         attemptLock();
       });
 
-      if (!result) {
+      if (!lockResult) {
         return; // Another instance is handling it
       }
 
@@ -521,7 +518,6 @@ class MainController extends KeyringManager {
       }
     } finally {
       // Release global lock
-      const FIAT_LOCK_KEY = 'pali_setfiat_lock';
       chrome.storage.local.remove([FIAT_LOCK_KEY], () => {
         console.log('🔓 setFiat: Released global lock');
       });
@@ -1800,7 +1796,6 @@ class MainController extends KeyringManager {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
-    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -1808,7 +1803,6 @@ class MainController extends KeyringManager {
     };
     activeNetwork: INetworkWithKind;
     isBitcoinBased: boolean;
-    isPolling?: boolean;
   }) {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -1942,7 +1936,6 @@ class MainController extends KeyringManager {
           isBitcoinBased,
           activeNetwork,
           activeAccount,
-          isPolling,
         }),
       ];
 

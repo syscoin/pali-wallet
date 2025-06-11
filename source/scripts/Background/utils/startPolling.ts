@@ -38,12 +38,12 @@ export async function startPolling() {
 
   try {
     // Check and set global lock with retry mechanism
-    const result = await new Promise<boolean>((resolve) => {
+    const lockResult = await new Promise<boolean>((resolve) => {
       let retryCount = 0;
 
       const attemptLock = () => {
-        chrome.storage.local.get([POLLING_LOCK_KEY], (result) => {
-          const existing = result[POLLING_LOCK_KEY];
+        chrome.storage.local.get([POLLING_LOCK_KEY], (storageResult) => {
+          const existing = storageResult[POLLING_LOCK_KEY];
           const now = Date.now();
 
           // If no lock exists or lock is expired, acquire it
@@ -110,7 +110,7 @@ export async function startPolling() {
       attemptLock();
     });
 
-    if (!result) {
+    if (!lockResult) {
       return; // Another instance is handling polling
     }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { FC, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -12,7 +11,9 @@ import { RootState } from 'state/store';
 const ConnectHardwareWalletView: FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedHardwareWallet, setSelectedHardwareWallet] = useState();
+  const [selectedHardwareWallet, setSelectedHardwareWallet] = useState<
+    string | undefined
+  >();
   const [isReconnect, setIsReconnect] = useState<boolean>(false);
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
@@ -81,7 +82,9 @@ const ConnectHardwareWalletView: FC = () => {
           // it only works in fullscreen mode.
           const LEDGER_USB_VENDOR_ID = '0x2c97';
 
-          const connectedDevices = await window.navigator.hid.requestDevice({
+          const connectedDevices = await (
+            window.navigator as any
+          ).hid.requestDevice({
             filters: [{ vendorId: LEDGER_USB_VENDOR_ID }],
           });
           const webHidIsConnected = connectedDevices.some(

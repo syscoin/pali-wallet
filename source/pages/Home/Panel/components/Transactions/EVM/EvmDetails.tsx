@@ -39,8 +39,6 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
   let isTxSent: boolean;
-  let isTxReceived: boolean;
-  let isTxSelf: boolean;
   let transactionTx: any;
   let txValue: number;
   let txSymbol: string;
@@ -75,12 +73,6 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     isTxSent = tx.direction
       ? tx.direction === 'sent'
       : tx.from.toLowerCase() === currentAccount.address;
-    isTxReceived = tx.direction
-      ? tx.direction === 'received'
-      : tx.to.toLowerCase() === currentAccount.address;
-    isTxSelf = tx.direction
-      ? tx.direction === 'self'
-      : tx.from.toLowerCase() === tx.to.toLowerCase();
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);

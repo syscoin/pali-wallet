@@ -2,7 +2,6 @@ import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
-import isNil from 'lodash/isNil';
 import last from 'lodash/last';
 import omit from 'lodash/omit';
 import range from 'lodash/range';

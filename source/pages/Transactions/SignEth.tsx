@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
@@ -124,7 +124,10 @@ const EthSign: React.FC<ISign> = () => {
       console.log(error);
       setErrorMsg(error.message);
 
-      setTimeout(window.close, 40000);
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
     }
   };
   useEffect(() => {

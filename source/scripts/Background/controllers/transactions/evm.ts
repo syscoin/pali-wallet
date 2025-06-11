@@ -284,6 +284,7 @@ const EvmTransactionsController = (
               cumulativeGasUsed: tx.cumulativeGasUsed || null,
               gasUsed: tx.gasUsed || null,
               isError: tx.isError || null,
+              // eslint-disable-next-line camelcase
               txreceipt_status: tx.txreceipt_status || null,
               transactionIndex:
                 tx.transactionIndex !== undefined ? tx.transactionIndex : null,
