@@ -29,7 +29,6 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const {
     accounts,
     activeAccount,
-    isBitcoinBased,
     activeNetwork: { chainId, currency, apiUrl },
     coinsList,
   } = useSelector((state: RootState) => state.vault);
@@ -141,9 +140,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     txSymbol = getTokenSymbol(isErc20Tx, coinsList, tx, currency);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
-    isTxSent = isBitcoinBased
-      ? false
-      : tx.from.toLowerCase() === currentAccount.address.toLowerCase();
+    isTxSent = tx.from.toLowerCase() === currentAccount.address.toLowerCase();
 
     // Merge with enhanced details if available
     const mergedTx = enhancedDetails ? { ...tx, ...enhancedDetails } : tx;

@@ -268,15 +268,25 @@ const EvmTransactionsController = (
               from: tx.from,
               to: tx.to,
               value: tx.value,
-              blockNumber: 0, // Pending transactions don't have a block number
+              blockNumber: null, // Pending transactions don't have a block number
               blockHash: null,
-              timestamp: parseInt(tx.timeStamp) || Date.now() / 1000,
+              timestamp: tx.timeStamp
+                ? parseInt(tx.timeStamp)
+                : Math.floor(Date.now() / 1000),
               confirmations: 0,
               chainId: chainId,
               input: tx.input,
               gasPrice: tx.gasPrice,
               gas: tx.gas || tx.gasLimit,
-              nonce: parseInt(tx.nonce),
+              nonce: tx.nonce !== undefined ? parseInt(tx.nonce) : null,
+              // Add any other fields your UI expects as null/default
+              contractAddress: tx.contractAddress || null,
+              cumulativeGasUsed: tx.cumulativeGasUsed || null,
+              gasUsed: tx.gasUsed || null,
+              isError: tx.isError || null,
+              txreceipt_status: tx.txreceipt_status || null,
+              transactionIndex:
+                tx.transactionIndex !== undefined ? tx.transactionIndex : null,
             }));
 
             // Combine pending with confirmed transactions

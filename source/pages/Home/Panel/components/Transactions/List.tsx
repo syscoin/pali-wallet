@@ -20,8 +20,6 @@ export const TransactionsList = ({
   const {
     activeNetwork: { chainId },
     isBitcoinBased,
-    activeAccount,
-    accounts,
   } = useSelector((state: RootState) => state.vault);
 
   const [modalData, setModalData] = useState<{
@@ -32,8 +30,6 @@ export const TransactionsList = ({
     title: string;
   }>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
   const { navigate, alert } = useUtils();
 
@@ -147,9 +143,8 @@ export const TransactionsList = ({
         }
       );
 
-    const isTxSent = isBitcoinBased
-      ? false
-      : tx.from.toLowerCase() === currentAccount.address;
+    // Use the direction field if available, otherwise fall back to the old logic
+    const isTxSent = tx.direction ? tx.direction === 'sent' : false;
 
     return (
       tx[blocktime] && (

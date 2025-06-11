@@ -15,6 +15,9 @@ import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
+// Add this type at the top of the file (or near the imports)
+type UnifiedTransaction = IEvmTransactionResponse | ISysTransaction;
+
 export const getEvmTransactionTimestamp = async (
   provider: CustomJsonRpcProvider,
   transaction: IEvmTransactionResponse
@@ -111,9 +114,7 @@ export const findUserTxsInProviderByBlocksRange = async (
   );
 };
 
-export const treatDuplicatedTxs = (
-  transactions: IEvmTransactionResponse[] | ISysTransaction[]
-) => {
+export const treatDuplicatedTxs = (transactions: UnifiedTransaction[]) => {
   // Group transactions by their ID (hash or txid)
   const txGroups = new Map<
     string,
@@ -181,7 +182,7 @@ export const treatDuplicatedTxs = (
 //todo: there's a potential issue here when we call this function and the active account has changed
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
-): IEvmTransactionResponse[] => {
+): UnifiedTransaction[] => {
   // If providerTxs is empty, return an empty array
   if (isEmpty(providerTxs)) return [];
 
@@ -196,20 +197,42 @@ export const validateAndManageUserTransactions = (
     return [];
   }
 
-  let userTx;
+  let userTx: UnifiedTransaction[] = [];
 
   for (const accountType in accounts) {
     for (const accountId in accounts[accountType]) {
       const account = accounts[accountType][accountId];
       const userAddress = account.address.toLowerCase();
 
-      const filteredTxs = providerTxs.filter(
-        (tx) =>
-          (tx.from?.toLowerCase() === userAddress ||
-            tx.to?.toLowerCase() === userAddress) &&
-          !isNil(tx.blockHash) &&
-          !isNil(tx.blockNumber)
-      );
+      const filteredTxs = providerTxs
+        .filter(
+          (tx) =>
+            (tx.from?.toLowerCase() === userAddress ||
+              tx.to?.toLowerCase() === userAddress) &&
+            // For pending transactions (confirmations === 0), don't require blockHash/blockNumber
+            // For confirmed transactions, require both blockHash and blockNumber
+            (tx.confirmations === 0 || (tx.blockHash && tx.blockNumber))
+        )
+        .map((tx) => {
+          // Add direction field to transaction
+          const fromAddress = tx.from?.toLowerCase();
+          const toAddress = tx.to?.toLowerCase();
+
+          // Determine transaction direction
+          let direction = 'unknown';
+          if (fromAddress === userAddress && toAddress !== userAddress) {
+            direction = 'sent';
+          } else if (fromAddress !== userAddress && toAddress === userAddress) {
+            direction = 'received';
+          } else if (fromAddress === userAddress && toAddress === userAddress) {
+            direction = 'self';
+          }
+
+          return {
+            ...tx,
+            direction,
+          };
+        });
 
       const transactionType = isBitcoinBased
         ? TransactionsType.Syscoin
@@ -219,23 +242,34 @@ export const validateAndManageUserTransactions = (
         account.transactions?.[transactionType]?.[activeNetwork.chainId];
 
       const updatedTxs = accountTransactions
-        ? (compact(clone(accountTransactions)) as IEvmTransactionResponse[] &
-            ISysTransaction[])
+        ? (compact(clone(accountTransactions)) as UnifiedTransaction[])
         : [];
 
-      const mergedTxs = [
-        ...updatedTxs,
-        ...(filteredTxs as IEvmTransactionResponse[] & ISysTransaction[]),
-      ];
+      // When merging transactions, use the union type
+      const mergedTxs: UnifiedTransaction[] = [...updatedTxs, ...filteredTxs];
 
+      // After deduplication, sort by confirmations ascending (pending first), then by timestamp descending
       const deduplicatedTxs = treatDuplicatedTxs(mergedTxs);
+      const sortedTxs = deduplicatedTxs.sort((a, b) => {
+        if (a.confirmations !== b.confirmations) {
+          return a.confirmations - b.confirmations; // pending (0) first
+        }
+        // If confirmations are equal, sort by timestamp descending
+        return (b.timestamp || 0) - (a.timestamp || 0);
+      });
+
+      console.log(
+        '[validateAndManageUserTransactions] deduplicatedTxs for account',
+        userAddress,
+        sortedTxs
+      );
 
       if (filteredTxs.length > 0) {
         store.dispatch(
           setMultipleTransactionToState({
             chainId: activeNetwork.chainId,
             networkType: TransactionsType.Ethereum,
-            transactions: deduplicatedTxs,
+            transactions: sortedTxs,
             accountId: Number(accountId),
             accountType: accountType as any,
           })
@@ -246,10 +280,10 @@ export const validateAndManageUserTransactions = (
         accountType === activeAccount.type &&
         Number(accountId) === activeAccount.id
       ) {
-        userTx = deduplicatedTxs;
+        userTx = sortedTxs;
       }
     }
   }
 
-  return userTx || [];
+  return userTx;
 };

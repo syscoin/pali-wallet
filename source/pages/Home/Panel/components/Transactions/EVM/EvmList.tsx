@@ -23,7 +23,6 @@ export const EvmTransactionsList = ({
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const {
-    isBitcoinBased,
     activeAccount,
     accounts,
     coinsList,
@@ -80,9 +79,8 @@ export const EvmTransactionsList = ({
       const isTxCanceled = tx?.isCanceled === true;
       const isConfirmed = tx?.confirmations > 0;
       const isErc20Tx = isERC20Transfer(tx as any);
-      const isTxSent = isBitcoinBased
-        ? false
-        : tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
+      const isTxSent =
+        tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
       const tokenValue = (() => {
         if (typeof tx?.value === 'string') {
           // Check if it's hex (starts with 0x)
@@ -150,7 +148,6 @@ export const EvmTransactionsList = ({
     },
     [
       currentAccount,
-      isBitcoinBased,
       getTxStatusIcons,
       getTxType,
       getTxStatus,
