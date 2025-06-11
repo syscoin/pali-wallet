@@ -227,11 +227,6 @@ export const validateAndManageUserTransactions = (
         direction,
       };
     });
-  console.log(
-    '[validateAndManageUserTransactions] filteredTxs for account',
-    userAddress,
-    filteredTxs
-  );
 
   // Always use Ethereum for EVM
   const transactionType = TransactionsType.Ethereum;
@@ -255,12 +250,6 @@ export const validateAndManageUserTransactions = (
     // If confirmations are equal, sort by timestamp descending
     return (b.timestamp || 0) - (a.timestamp || 0);
   });
-
-  console.log(
-    '[validateAndManageUserTransactions] deduplicatedTxs for account',
-    userAddress,
-    sortedTxs
-  );
 
   if (filteredTxs.length > 0) {
     store.dispatch(
