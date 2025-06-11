@@ -1,4 +1,5 @@
 export const UtxoTxDetailsLabelsToKeep = [
+  'Txid',
   'From',
   'To',
   'Block Hash',
@@ -8,6 +9,7 @@ export const UtxoTxDetailsLabelsToKeep = [
 ];
 
 export const EvmTxDetailsLabelsToKeep = [
+  'Hash',
   'From',
   'To',
   'Block Hash',
@@ -23,6 +25,7 @@ export const EvmTxDetailsLabelsToKeep = [
 ];
 
 export const EnhancedEvmTxDetailsLabelsToKeep = [
+  'Hash',
   'From',
   'To',
   'Value',
