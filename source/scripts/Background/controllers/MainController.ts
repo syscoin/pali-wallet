@@ -1898,6 +1898,13 @@ class MainController extends KeyringManager {
       store.getState().vault;
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
+    if (!activeAccountValues) {
+      console.warn(
+        '[getLatestUpdateForCurrentAccount] Active account not found in accounts map',
+        activeAccount
+      );
+      return false;
+    }
 
     // Skip if we just unlocked and this is not a polling call
     // This prevents duplicate calls on startup - let polling handle it
