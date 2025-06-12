@@ -168,8 +168,23 @@ module.exports = {
     }),
 
     new MiniCssExtractPlugin({ filename: 'css/[name].css' }),
+    // Copy assets, excluding only imported image files to prevent duplication
     new CopyWebpackPlugin({
-      patterns: [{ from: 'source/assets', to: 'assets' }],
+      patterns: [
+        {
+          from: 'source/assets',
+          to: 'assets',
+          globOptions: {
+            ignore: [
+              '**/images/*.png', // PNG files in images dir are imported, handled by webpack
+              '**/images/*.jpg', // JPG files in images dir are imported, handled by webpack
+              '**/images/*.jpeg', // JPEG files in images dir are imported, handled by webpack
+              '**/images/logo-s.svg', // This specific SVG is imported, handled by webpack
+              '**/icons/*.svg', // SVG files in icons dir are imported, handled by webpack
+            ],
+          },
+        },
+      ],
     }),
     new CopyWebpackPlugin({
       patterns: [
