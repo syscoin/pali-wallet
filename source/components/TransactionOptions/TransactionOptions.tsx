@@ -2,9 +2,11 @@ import { Menu, Transition } from '@headlessui/react';
 import React, { useCallback } from 'react';
 import { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
 import { Icon, IconButton } from '..';
 import { useUtils } from 'hooks/useUtils';
+import { RootState } from 'state/store';
 import { UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
 
@@ -21,10 +23,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 
   const { t } = useTranslation();
   const { navigate } = useUtils();
-
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
-
     switch (actionType) {
       case UpdateTxAction.Cancel:
         setModalData({
@@ -78,6 +79,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
     });
   }, [transaction.hash]);
 
+  const openTransactionOnExplorer = useCallback(() => {
+    const url = `${activeNetwork.explorer}/tx/${transaction.hash}`;
+    window.open(url, '_blank');
+  }, [activeNetwork.explorer, transaction.hash]);
   return (
     <>
       <Menu
@@ -121,6 +126,28 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   flex items-center justify-start text-brand-white mb-4 w-full
                   `}
                     onClick={handleGoTxDetails}
+                  >
+                    <IconButton className="w-5 mr-3">
+                      <Icon
+                        name="externalLink"
+                        isSvg
+                        className="text-base text-brand-white"
+                      />
+                    </IconButton>
+                    <span className="text-sm text-brand-white">
+                      See details
+                    </span>
+                  </li>
+                )}
+              </Menu.Item>
+              <Menu.Item>
+                {({ active }) => (
+                  <li
+                    className={`
+                ${active ? 'font-semibold' : 'font-normal'}
+                flex items-center justify-start text-brand-white mb-4 w-full
+                `}
+                    onClick={openTransactionOnExplorer}
                   >
                     <IconButton className="w-5 mr-3">
                       <Icon
