@@ -2,7 +2,6 @@ import { Switch, Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
-import { uniqueId } from 'lodash';
 import * as React from 'react';
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -26,8 +25,6 @@ import {
   formatCurrency,
   ellipsis,
   MINIMUM_FEE,
-  FIELD_VALUES_INITIAL_STATE,
-  FieldValuesType,
 } from 'utils/index';
 
 export const SendSys = () => {
@@ -47,9 +44,7 @@ export const SendSys = () => {
     null
   );
   const [isLoading, setIsLoading] = useState(false);
-  const [fieldsValues, setFieldsValues] = useState<FieldValuesType>(
-    FIELD_VALUES_INITIAL_STATE
-  );
+
   const [isMaxSend, setIsMaxSend] = useState(false);
 
   const [form] = Form.useForm();
@@ -110,20 +105,11 @@ export const SendSys = () => {
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
     form.setFieldValue('amount', balanceStr);
-    setFieldsValues((prev) => ({
-      ...prev,
-      amount: String(balanceStr),
-    }));
     setIsMaxSend(true); // Set the flag when max is clicked
   }, [balanceStr, form]);
 
   const handleInputChange = useCallback(
     (type: 'receiver' | 'amount', e: any) => {
-      setFieldsValues((prev) => ({
-        ...prev,
-        [type]: e.target.value,
-      }));
-
       // Clear isMaxSend flag if amount is manually changed
       if (type === 'amount' && e.target.value !== balanceStr) {
         setIsMaxSend(false);
@@ -561,13 +547,6 @@ export const SendSys = () => {
                                   >
                                     <button
                                       onClick={() => {
-                                        if (activeAccount.isTrezorWallet) {
-                                          alert.removeAll();
-                                          alert.error(
-                                            'Cannot send custom token with Trezor Account.'
-                                          );
-                                          return;
-                                        }
                                         handleSelectedAsset(item.assetGuid);
                                       }}
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"

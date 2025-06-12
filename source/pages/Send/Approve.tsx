@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -198,8 +197,7 @@ export const ApproveTransactionComponent = () => {
           [newTxValue]
         )) as { hash: string };
 
-        if (activeAccountMeta.type === KeyringAccountType.Trezor)
-          controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
+        controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
 
         setConfirmedDefaultModal(true);
         setLoading(false);

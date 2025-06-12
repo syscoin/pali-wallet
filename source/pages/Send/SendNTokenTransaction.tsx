@@ -4,8 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-
 import { LoadingSvg } from 'components/Icon/Icon';
 import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
@@ -146,13 +144,11 @@ export const SendNTokenTransaction = () => {
             ]
           )
             .then((response) => {
-              if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                controllerEmitter(
-                  ['wallet', 'sendAndSaveTransaction'],
-                  [response]
-                );
+              controllerEmitter(
+                ['wallet', 'sendAndSaveTransaction'],
+                [response]
+              );
 
-              setConfirmedTx(response);
               setConfirmed(true);
               setLoading(false);
               if (isExternal)

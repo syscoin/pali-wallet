@@ -128,7 +128,11 @@ export const Home = () => {
   // ALL useState hooks
   const [isTestnet, setIsTestnet] = useState(false);
   const [showModalCongrats, setShowModalCongrats] = useState(false);
-  const [showModalHardWallet, setShowModalHardWallet] = useState(true);
+  const [showModalHardWallet, setShowModalHardWallet] = useState(() => {
+    // Check if user has previously dismissed this modal
+    const dismissed = localStorage.getItem('hardwareWalletModalDismissed');
+    return dismissed !== 'true';
+  });
   const [isInCooldown, setIsInCooldown] = useState(false);
 
   // ALL useEffect hooks
@@ -234,12 +238,21 @@ export const Home = () => {
 
   // ALL useCallback hooks
   const closeModal = useCallback(() => {
+    // Remember that user dismissed the congratulations modal
+    localStorage.setItem('congratsModalDismissed', 'true');
     setShowModalCongrats(false);
   }, []);
 
   const handleCloseModal = useCallback(() => {
+    // Remember that user dismissed this modal
+    localStorage.setItem('hardwareWalletModalDismissed', 'true');
     setShowModalHardWallet(false);
-    setShowModalCongrats(true);
+
+    // Only show congratulations modal if user hasn't dismissed it before
+    const congratsDismissed = localStorage.getItem('congratsModalDismissed');
+    if (congratsDismissed !== 'true') {
+      setShowModalCongrats(true);
+    }
   }, []);
 
   const handleOnCloseFaucetModal = useCallback(() => {

@@ -41,7 +41,6 @@ export type FieldValuesType = {
   amount: string;
   receiver: string;
 };
-export const FIELD_VALUES_INITIAL_STATE = { amount: '', receiver: '' };
 
 export const MINIMUM_FEE = 0.00001;
 

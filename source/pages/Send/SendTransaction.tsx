@@ -68,7 +68,6 @@ export const SendTransaction = () => {
     : state.decodedTx;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [confirmedTx, setConfirmedTx] = useState<any>();
   const [loading, setLoading] = useState<boolean>(false);
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
@@ -171,9 +170,11 @@ export const SendTransaction = () => {
             },
           ]
         )) as any;
+
+        controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
+
         setConfirmed(true);
         setLoading(false);
-        setConfirmedTx(response);
 
         if (isExternal)
           dispatchBackgroundEvent(`${eventName}.${host}`, response);
@@ -252,10 +253,6 @@ export const SendTransaction = () => {
         title={t('send.txSuccessfull')}
         description={t('send.txSuccessfullMessage')}
         onClose={() => {
-          controllerEmitter(
-            ['wallet', 'sendAndSaveTransaction'],
-            [confirmedTx]
-          );
           if (isExternal) {
             window.close();
           } else {

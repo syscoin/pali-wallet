@@ -6,14 +6,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import {
-  KeyringAccountType,
-  ISyscoinTransactionError,
-} from '@pollum-io/sysweb3-keyring';
+import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { getContractType } from '@pollum-io/sysweb3-utils';
 
-import { LoadingSvg } from 'components/Icon/Icon';
 import {
   Layout,
   DefaultModal,
@@ -62,9 +58,6 @@ export const SendConfirm = () => {
     activeAccount: activeAccountMeta,
     currentBlock,
     networkStatus,
-    isLoadingBalances,
-    isLoadingAssets,
-    isLoadingTxs,
     isSwitchingAccount,
   } = useSelector((state: RootState) => state.vault);
   const { fiat } = useSelector((state: RootState) => state.price);
@@ -87,7 +80,7 @@ export const SendConfirm = () => {
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
-  const [confirmedTx, setConfirmedTx] = useState<any>();
+
   const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
   const [copied, copy] = useCopyClipboard();
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
@@ -231,7 +224,6 @@ export const SendConfirm = () => {
                   [activeNetwork.chainId, false]
                 );
 
-                setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
 
@@ -413,8 +405,6 @@ export const SendConfirm = () => {
                       [response]
                     );
 
-                    setConfirmedTx(response);
-
                     setConfirmed(true);
 
                     setLoading(false);
@@ -511,8 +501,6 @@ export const SendConfirm = () => {
                   ['wallet', 'sendAndSaveTransaction'],
                   [response]
                 );
-
-                setConfirmedTx(response);
 
                 setConfirmed(true);
 
@@ -613,8 +601,6 @@ export const SendConfirm = () => {
                       setConfirmed(true);
 
                       setLoading(false);
-
-                      setConfirmedTx(response);
 
                       // Balance will be updated when user navigates back to Home
                       // This prevents redundant API calls and timing issues
@@ -728,8 +714,6 @@ export const SendConfirm = () => {
 
                     setLoading(false);
 
-                    setConfirmedTx(response);
-
                     // Balance will be updated when user navigates back to Home
                     // This prevents redundant API calls and timing issues
                   })
@@ -830,7 +814,6 @@ export const SendConfirm = () => {
 
                         setConfirmed(true);
                         setLoading(false);
-                        setConfirmedTx(response);
 
                         // Balance will be updated when user navigates back to Home
                         // This prevents redundant API calls and timing issues
@@ -939,7 +922,6 @@ export const SendConfirm = () => {
 
                         setConfirmed(true);
                         setLoading(false);
-                        setConfirmedTx(response);
 
                         // Balance will be updated when user navigates back to Home
                         // This prevents redundant API calls and timing issues
@@ -1569,7 +1551,7 @@ export const SendConfirm = () => {
             </div>
           )}
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
+          <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
               onClick={() => navigate(-1)}
