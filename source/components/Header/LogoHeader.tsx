@@ -1,6 +1,6 @@
 import React from 'react';
 
-import favicon128 from 'assets/icons/favicon-128.png';
+import favicon128 from 'assets/all_assets/favicon-128.png';
 import { IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 

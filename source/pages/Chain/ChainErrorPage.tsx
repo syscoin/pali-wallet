@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import arrowRight from 'assets/images/arrowRight.svg';
 import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Header } from 'components/Header';
+import { Icon } from 'components/Icon';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
@@ -132,7 +132,7 @@ export const ChainErrorPage = () => {
         </div>
 
         {/* Arrow */}
-        <img src={arrowRight} alt="arrow" width="20px" className="mx-2" />
+        <Icon name="arrowright" size={20} className="mx-2" />
 
         {/* Target network */}
         <div className="flex flex-col items-center gap-1">

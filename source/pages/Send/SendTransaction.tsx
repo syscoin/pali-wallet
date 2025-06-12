@@ -298,7 +298,7 @@ export const SendTransaction = () => {
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
                 <img
                   className="relative w-[30px] h-[30px]"
-                  src={'/assets/icons/ArrowUp.svg'}
+                  src={'/assets/all_assets/ArrowUp.svg'}
                   alt="Icon"
                 />
               </div>

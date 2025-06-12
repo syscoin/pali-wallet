@@ -1,5 +1,4 @@
-import { Dialog, Transition } from '@headlessui/react';
-import React, { Fragment, ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -23,45 +22,23 @@ interface IDefaultModal {
   title: string;
 }
 
-export const ModalBase = ({ children, onClose, show }: IModal) => (
-  <Transition appear show={show} as={Fragment}>
-    <Dialog
-      as="div"
-      className={`fixed z-30 inset-0 overflow-y-auto rounded-t-[50px]`}
-      onClose={() => {
-        if (onClose) onClose();
-      }}
-    >
-      <div className="fixed z-0 -inset-0 w-full bg-brand-black bg-opacity-50 transition-all duration-300 ease-in-out" />
+export const ModalBase = ({ children, onClose, show }: IModal) => {
+  if (!show) return null;
 
+  return (
+    <div className="fixed z-30 inset-0 overflow-y-auto animate-fadeIn">
+      <div
+        className="fixed inset-0 bg-brand-black bg-opacity-50 transition-opacity duration-300"
+        onClick={() => {
+          if (onClose) onClose();
+        }}
+      />
       <div className="fixed z-1 min-h-screen text-center flex flex-col align-bottom justify-end items-center rounded-t-[50px]">
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0"
-          enterTo="opacity-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100"
-          leaveTo="opacity-0"
-        >
-          <Dialog.Overlay className="fixed z-[-1] inset-0" />
-        </Transition.Child>
-
-        <Transition.Child
-          as={Fragment}
-          enter="ease-out duration-300"
-          enterFrom="opacity-0 scale-95"
-          enterTo="opacity-100 scale-100"
-          leave="ease-in duration-200"
-          leaveFrom="opacity-100 scale-100"
-          leaveTo="opacity-0 scale-95"
-        >
-          {children}
-        </Transition.Child>
+        <div className="animate-slideIn">{children}</div>
       </div>
-    </Dialog>
-  </Transition>
-);
+    </div>
+  );
+};
 
 export const WalletReadyModal = ({
   phraseOne,

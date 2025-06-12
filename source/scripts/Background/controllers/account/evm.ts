@@ -2,7 +2,7 @@ import cloneDeep from 'lodash/cloneDeep';
 
 import { getTokenInfoBasedOnNetwork } from '@pollum-io/sysweb3-utils';
 
-import PaliLogo from 'assets/icons/favicon-32.png';
+import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
 import { setAccountPropertyByIdAndType, setEditedEvmToken } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';

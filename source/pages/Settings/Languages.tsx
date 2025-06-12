@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import checked from 'assets/icons/greenChecked.svg';
+import checked from 'assets/all_assets/greenChecked.svg';
 import { DefaultModal, Layout, NeutralButton } from 'components/index';
 import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
 import { i18next } from 'utils/i18n';

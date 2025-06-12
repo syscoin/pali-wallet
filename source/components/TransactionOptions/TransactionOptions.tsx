@@ -1,5 +1,5 @@
-import { Menu, Transition } from '@headlessui/react';
-import React, { Fragment, useCallback } from 'react';
+import { Menu } from '@headlessui/react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -116,108 +116,108 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
         as="div"
         className="relative inline-block text-left"
       >
-        <Menu.Button
-          className="inline-flex justify-center w-full 
-      hover:text-button-primaryhover text-white text-sm font-medium 
-      hover:bg-opacity-30 rounded-full"
-        >
-          <IconButton className="w-5">
-            <EditTxIcon />
-          </IconButton>
-        </Menu.Button>
-
-        <Transition
-          as={Fragment}
-          enter="transition ease-out duration-100"
-          enterFrom="transform opacity-0 scale-95"
-          enterTo="transform opacity-100 scale-100"
-          leave="transition ease-in duration-75"
-          leaveFrom="transform opacity-100 scale-100"
-          leaveTo="transform opacity-0 scale-95"
-        >
-          <div className="absolute right-0 z-10 h-[15rem]">
-            <Menu.Items
-              as="div"
-              className="p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
-            font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-300 ease-in-out cursor-pointer"
+        {({ open }) => (
+          <>
+            <Menu.Button
+              className="inline-flex justify-center w-full 
+          hover:text-button-primaryhover text-white text-sm font-medium 
+          hover:bg-opacity-30 rounded-full"
             >
-              <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
-                PENDING TRANSACTION
-              </h1>
-              <Menu.Item>
-                {({ active }) => (
-                  <li
-                    className={`
-                  ${active ? 'font-semibold' : 'font-normal'}
-                  flex items-center justify-start text-brand-white mb-4 w-full
-                  `}
-                    onClick={handleGoTxDetails}
-                  >
-                    <IconButton className="w-5 mr-3">
-                      <ExternalLinkIcon />
-                    </IconButton>
-                    <span className="text-sm text-brand-white">
-                      See details
-                    </span>
-                  </li>
-                )}
-              </Menu.Item>
-              <Menu.Item>
-                {({ active }) => (
-                  <li
-                    className={`
-                  ${active ? 'font-semibold' : 'font-normal'}
-                  flex items-center justify-start text-brand-white mb-4 w-full
-                  `}
-                    onClick={openTransactionOnExplorer}
-                  >
-                    <IconButton className="w-5 mr-3">
-                      <ExternalLinkIcon />
-                    </IconButton>
-                    <span className="text-sm text-brand-white">
-                      See on the block explorer
-                    </span>
-                  </li>
-                )}
-              </Menu.Item>
-              <Menu.Item>
-                {({ active }) => (
-                  <li
-                    className={`
-                  ${active ? 'font-semibold' : 'font-normal'}
-                  flex items-center justify-start text-brand-white mb-4 w-full
-                  `}
-                    onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
-                  >
-                    <IconButton className="w-5 mr-3">
-                      <SpeedUpIcon />
-                    </IconButton>
-                    <span className="text-sm text-brand-white">
-                      {t('header.speedUp')}
-                    </span>
-                  </li>
-                )}
-              </Menu.Item>
-              <Menu.Item>
-                {({ active }) => (
-                  <li
-                    className={`
-                ${active ? 'font-semibold ' : 'font-normal'}
-                flex items-center justify-start w-full `}
-                    onClick={() => handleOnClick(UpdateTxAction.Cancel)}
-                  >
-                    <IconButton className="w-5 mr-3">
-                      <CancelIcon />
-                    </IconButton>
-                    <span className="text-sm text-brand-white">
-                      {t('buttons.cancel')}
-                    </span>
-                  </li>
-                )}
-              </Menu.Item>
-            </Menu.Items>
-          </div>
-        </Transition>
+              <IconButton className="w-5">
+                <EditTxIcon />
+              </IconButton>
+            </Menu.Button>
+
+            <div className="absolute right-0 z-10 h-[15rem]">
+              <Menu.Items
+                as="div"
+                className={`p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
+                font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out cursor-pointer
+                transform ${
+                  open
+                    ? 'opacity-100 scale-100 pointer-events-auto'
+                    : 'opacity-0 scale-95 pointer-events-none'
+                }`}
+                static
+              >
+                <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
+                  PENDING TRANSACTION
+                </h1>
+                <Menu.Item>
+                  {({ active }) => (
+                    <li
+                      className={`
+                    ${active ? 'font-semibold' : 'font-normal'}
+                    flex items-center justify-start text-brand-white mb-4 w-full
+                    `}
+                      onClick={handleGoTxDetails}
+                    >
+                      <IconButton className="w-5 mr-3">
+                        <ExternalLinkIcon />
+                      </IconButton>
+                      <span className="text-sm text-brand-white">
+                        See details
+                      </span>
+                    </li>
+                  )}
+                </Menu.Item>
+                <Menu.Item>
+                  {({ active }) => (
+                    <li
+                      className={`
+                    ${active ? 'font-semibold' : 'font-normal'}
+                    flex items-center justify-start text-brand-white mb-4 w-full
+                    `}
+                      onClick={openTransactionOnExplorer}
+                    >
+                      <IconButton className="w-5 mr-3">
+                        <ExternalLinkIcon />
+                      </IconButton>
+                      <span className="text-sm text-brand-white">
+                        See on the block explorer
+                      </span>
+                    </li>
+                  )}
+                </Menu.Item>
+                <Menu.Item>
+                  {({ active }) => (
+                    <li
+                      className={`
+                    ${active ? 'font-semibold' : 'font-normal'}
+                    flex items-center justify-start text-brand-white mb-4 w-full
+                    `}
+                      onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
+                    >
+                      <IconButton className="w-5 mr-3">
+                        <SpeedUpIcon />
+                      </IconButton>
+                      <span className="text-sm text-brand-white">
+                        {t('header.speedUp')}
+                      </span>
+                    </li>
+                  )}
+                </Menu.Item>
+                <Menu.Item>
+                  {({ active }) => (
+                    <li
+                      className={`
+                  ${active ? 'font-semibold ' : 'font-normal'}
+                  flex items-center justify-start w-full `}
+                      onClick={() => handleOnClick(UpdateTxAction.Cancel)}
+                    >
+                      <IconButton className="w-5 mr-3">
+                        <CancelIcon />
+                      </IconButton>
+                      <span className="text-sm text-brand-white">
+                        {t('buttons.cancel')}
+                      </span>
+                    </li>
+                  )}
+                </Menu.Item>
+              </Menu.Items>
+            </div>
+          </>
+        )}
       </Menu>
     </>
   );

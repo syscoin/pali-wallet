@@ -1,10 +1,10 @@
-import { Menu, Transition } from '@headlessui/react';
+import { Menu } from '@headlessui/react';
 import { Badge } from 'antd';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import slider from 'assets/images/sliderIcon.png';
+import slider from 'assets/all_assets/sliderIcon.png';
 import {
   KeySvg,
   PaliWhiteSmallIconSvg,

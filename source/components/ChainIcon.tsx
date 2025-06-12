@@ -1,10 +1,12 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from 'react';
 
-import ethChainImg from 'assets/images/ethChain.svg';
-import PaliLogo from 'assets/images/pali-blank.png';
-import rolluxChainImg from 'assets/images/rolluxChain.png';
-import sysChainImg from 'assets/images/sysChain.svg';
+import {
+  ChainFallbackSvg,
+  EthChainSvg,
+  RolluxChainSvg,
+  SysChainSvg,
+} from 'components/Icon/Icon';
 import { getChainIconUrl } from 'utils/chainIcons';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
@@ -30,14 +32,18 @@ interface IChainIconProps {
 }
 
 // Known chain icons that we have locally
-const KNOWN_CHAIN_ICONS: { [chainId: number]: string } = {
-  1: ethChainImg, // Ethereum Mainnet
-  5: ethChainImg, // Ethereum Goerli (testnet)
-  11155111: ethChainImg, // Ethereum Sepolia (testnet)
-  57: sysChainImg, // Syscoin UTXO
-  570: rolluxChainImg, // Rollux Mainnet
-  5700: sysChainImg, // Syscoin NEVM Testnet
-  57000: rolluxChainImg, // Rollux Testnet
+const KNOWN_CHAIN_ICONS: {
+  [chainId: number]:
+    | React.ComponentType<{ className?: string; style?: React.CSSProperties }>
+    | string;
+} = {
+  1: EthChainSvg, // Ethereum Mainnet
+  5: EthChainSvg, // Ethereum Goerli (testnet)
+  11155111: EthChainSvg, // Ethereum Sepolia (testnet)
+  57: SysChainSvg, // Syscoin UTXO
+  570: RolluxChainSvg, // Rollux Mainnet
+  5700: SysChainSvg, // Syscoin NEVM Testnet
+  57000: RolluxChainSvg, // Rollux Testnet
 };
 
 /**
@@ -57,8 +63,10 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     const getInitialState = () => {
       // Check known local icons first
       if (KNOWN_CHAIN_ICONS[chainId]) {
+        const icon = KNOWN_CHAIN_ICONS[chainId];
         return {
-          url: KNOWN_CHAIN_ICONS[chainId],
+          url: typeof icon === 'string' ? icon : null,
+          component: typeof icon !== 'string' ? icon : null,
           error: false,
           loading: false,
         };
@@ -69,6 +77,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
         const cached = imageDataCache.get(chainId);
         return {
           url: cached,
+          component: null,
           error: cached === null,
           loading: false, // Never show loading for cached items
         };
@@ -78,6 +87,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       if (networkKind === 'utxo') {
         return {
           url: null,
+          component: null,
           error: true,
           loading: false,
         };
@@ -86,6 +96,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       // Only show loading for truly new icons
       return {
         url: null,
+        component: null,
         error: false,
         loading: true,
       };
@@ -93,16 +104,23 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
 
     const initial = getInitialState();
     const [iconUrl, setIconUrl] = useState<string | null>(initial.url);
+    const [iconComponent, setIconComponent] = useState<React.ComponentType<{
+      className?: string;
+      style?: React.CSSProperties;
+    }> | null>(initial.component || null);
     const [error, setError] = useState(initial.error);
     const [isLoading, setIsLoading] = useState(initial.loading);
 
     useEffect(() => {
       // Skip if we already have the right icon from initial state
-      if (
-        KNOWN_CHAIN_ICONS[chainId] &&
-        iconUrl === KNOWN_CHAIN_ICONS[chainId]
-      ) {
-        return;
+      if (KNOWN_CHAIN_ICONS[chainId]) {
+        const icon = KNOWN_CHAIN_ICONS[chainId];
+        if (typeof icon === 'string' && iconUrl === icon) {
+          return;
+        }
+        if (typeof icon !== 'string' && iconComponent === icon) {
+          return;
+        }
       }
 
       // Skip if we already have a cached icon
@@ -115,7 +133,14 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
 
       // Check if we have a known local icon first
       if (KNOWN_CHAIN_ICONS[chainId]) {
-        setIconUrl(KNOWN_CHAIN_ICONS[chainId]);
+        const icon = KNOWN_CHAIN_ICONS[chainId];
+        if (typeof icon === 'string') {
+          setIconUrl(icon);
+          setIconComponent(null);
+        } else {
+          setIconUrl(null);
+          setIconComponent(icon);
+        }
         setError(false);
         setIsLoading(false);
         return;
@@ -229,28 +254,19 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       };
     }, [chainId, networkKind, iconName]);
 
-    // Use Pali logo as fallback
-    if (error || (!iconUrl && !isLoading)) {
+    // Use fallback SVG for unknown chains
+    if (error || (!iconUrl && !iconComponent && !isLoading)) {
       return (
-        <div
-          className={`relative flex items-center justify-center ${fallbackClassName} ${className}`}
+        <ChainFallbackSvg
+          className={`${fallbackClassName} ${className}`}
           style={{ width: size, height: size }}
-        >
-          <img
-            src={PaliLogo}
-            alt={`Chain ${chainId}`}
-            className="rounded-full opacity-30 grayscale"
-            style={{ width: size, height: size }}
-          />
-          <span className="absolute text-[10px] font-bold text-white/80">
-            {chainId}
-          </span>
-        </div>
+          chainId={chainId}
+        />
       );
     }
 
     // Show loading state
-    if (isLoading && !iconUrl) {
+    if (isLoading && !iconUrl && !iconComponent) {
       return (
         <div
           className={`animate-pulse bg-gray-600 ${fallbackClassName} ${className}`}
@@ -259,6 +275,20 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       );
     }
 
+    // Render SVG component if available
+    if (iconComponent) {
+      const IconComponent = iconComponent;
+      return (
+        <div style={{ width: size, height: size }} className={className}>
+          <IconComponent
+            className="w-full h-full rounded-full"
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
+      );
+    }
+
+    // Render image URL
     return (
       <img
         src={iconUrl}

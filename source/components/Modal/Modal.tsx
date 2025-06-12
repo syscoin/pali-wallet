@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { ImWarning } from 'react-icons/im';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
-import CheckIcon from 'assets/icons/check_icon.png';
-import ErrorIcon from 'assets/icons/error_icon.png';
+import CheckIcon from 'assets/all_assets/check_icon.svg';
+import CloseIcon from 'assets/all_assets/close.svg';
 
 interface IModal {
   children: ReactNode;
@@ -288,7 +288,7 @@ export const ErrorModal = ({
               )
             }
           >
-            <img src={ErrorIcon} alt="Error icon" />
+            <img src={CloseIcon} alt="Error icon" />
             Report
           </SecondaryButton>
 

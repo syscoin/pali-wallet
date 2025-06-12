@@ -1,6 +1,6 @@
 import React from 'react';
 
-import placeholder from 'assets/images/placeholder.png';
+import placeholder from 'assets/all_assets/placeholder.png';
 import { Tooltip } from 'components/index';
 
 export const NftImage = ({ imageLink }: { imageLink: string }) => (

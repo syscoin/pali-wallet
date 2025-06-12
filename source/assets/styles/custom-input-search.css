@@ -51,7 +51,7 @@
   display: inline-block;
   position: relative;
   bottom: -3px;
-  content: url('../icons/errorIconWhite.svg');
+  content: url('../all_assets/errorIconWhite.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-style: normal;
@@ -91,7 +91,7 @@
   display: inline-block;
   position: relative;
   bottom: -3px;
-  content: url('../icons/successIconWhite.svg');
+  content: url('../all_assets/successIconWhite.svg');
   font-family: 'Poppins', sans-serif;
   font-size: 12px;
   font-style: normal;

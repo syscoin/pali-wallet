@@ -18,7 +18,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { getController } from '..';
-import PaliLogo from 'assets/icons/favicon-32.png';
+import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';

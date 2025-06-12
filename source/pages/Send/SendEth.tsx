@@ -1,18 +1,17 @@
-import { Menu, Transition } from '@headlessui/react';
+import { Menu } from '@headlessui/react';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import { Form } from 'antd';
 import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
-import React, { useEffect } from 'react';
-import { useState, Fragment } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import errorIcon from 'assets/icons/errorIcon.svg';
-import successIcon from 'assets/icons/successIcon.svg';
+import errorIcon from 'assets/all_assets/errorIcon.svg';
+import successIcon from 'assets/all_assets/successIcon.svg';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -377,32 +376,30 @@ export const SendEth = () => {
                   ]}
                 >
                   <Menu>
-                    <div className="relative inline-block text-left">
-                      <Menu.Button
-                        disabled={!hasAccountAssets}
-                        className="inline-flex justify-center items-center py-3 w-full text-white text-xs font-normal"
-                      >
-                        {String(getLabel())}
+                    {({ open }) => (
+                      <div className="relative inline-block text-left">
+                        <Menu.Button
+                          disabled={!hasAccountAssets}
+                          className="inline-flex justify-center items-center py-3 w-full text-white text-xs font-normal"
+                        >
+                          {String(getLabel())}
 
-                        <ChevronDoubleDownIcon
-                          className="text-white hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                          aria-hidden="true"
-                        />
-                      </Menu.Button>
+                          <ChevronDoubleDownIcon
+                            className="text-white hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
+                            aria-hidden="true"
+                          />
+                        </Menu.Button>
 
-                      <Transition
-                        as={Fragment}
-                        enter="transition ease-out duration-100"
-                        enterFrom="transform opacity-0 scale-95"
-                        enterTo="transform opacity-100 scale-100"
-                        leave="transition ease-in duration-75"
-                        leaveFrom="transform opacity-100 scale-100"
-                        leaveTo="transform opacity-0 scale-95"
-                      >
                         {hasAccountAssets ? (
                           <Menu.Items
                             as="div"
-                            className="scrollbar-styled absolute z-10 left-[-103px] mt-[1px] py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-2xl shadow-2xl overflow-auto origin-top-right"
+                            className={`scrollbar-styled absolute z-10 left-[-103px] mt-[1px] py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-2xl shadow-2xl overflow-auto origin-top-right
+                            transform transition-all duration-100 ease-out ${
+                              open
+                                ? 'opacity-100 scale-100 pointer-events-auto'
+                                : 'opacity-0 scale-95 pointer-events-none'
+                            }`}
+                            static
                           >
                             <Menu.Item>
                               <button
@@ -449,8 +446,8 @@ export const SendEth = () => {
                               )}
                           </Menu.Items>
                         ) : null}
-                      </Transition>
-                    </div>
+                      </div>
+                    )}
                   </Menu>
                 </Form.Item>
               ) : null}
@@ -582,8 +579,8 @@ export const SendEth = () => {
                     <img
                       src={
                         isValidAmount === true
-                          ? '/assets/icons/successIcon.svg'
-                          : '/assets/icons/errorIcon.svg'
+                          ? '/assets/all_assets/successIcon.svg'
+                          : '/assets/all_assets/errorIcon.svg'
                       }
                       alt={isValidAmount === true ? 'Success' : 'Error'}
                       className={`absolute`}

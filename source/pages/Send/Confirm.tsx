@@ -61,6 +61,11 @@ export const SendConfirm = () => {
     accounts,
     activeAccount: activeAccountMeta,
     currentBlock,
+    networkStatus,
+    isLoadingBalances,
+    isLoadingAssets,
+    isLoadingTxs,
+    isSwitchingAccount,
   } = useSelector((state: RootState) => state.vault);
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
@@ -213,6 +218,19 @@ export const SendConfirm = () => {
               ]
             )
               .then((response) => {
+                // Save transaction to local state for immediate visibility
+                controllerEmitter(
+                  ['wallet', 'sendAndSaveTransaction'],
+                  [response]
+                );
+
+                // Set initial confirmation state for UTXO transactions
+                // (EVM transactions have automatic tracking in EvmList.tsx)
+                controllerEmitter(
+                  ['wallet', 'setIsLastTxConfirmed'],
+                  [activeNetwork.chainId, false]
+                );
+
                 setConfirmedTx(response);
                 setConfirmed(true);
                 setLoading(false);
@@ -389,11 +407,11 @@ export const SendConfirm = () => {
                   ]
                 )
                   .then((response) => {
-                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                      controllerEmitter(
-                        ['wallet', 'sendAndSaveTransaction'],
-                        [response]
-                      );
+                    // Save transaction to local state for immediate visibility
+                    controllerEmitter(
+                      ['wallet', 'sendAndSaveTransaction'],
+                      [response]
+                    );
 
                     setConfirmedTx(response);
 
@@ -488,11 +506,11 @@ export const SendConfirm = () => {
               ) as Promise<ISysTransaction | IEvmTransactionResponse>
             )
               .then((response) => {
-                if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                  controllerEmitter(
-                    ['wallet', 'sendAndSaveTransaction'],
-                    [response]
-                  );
+                // Save transaction to local state for immediate visibility
+                controllerEmitter(
+                  ['wallet', 'sendAndSaveTransaction'],
+                  [response]
+                );
 
                 setConfirmedTx(response);
 
@@ -586,11 +604,11 @@ export const SendConfirm = () => {
                     ) as Promise<IEvmTransactionResponse | ISysTransaction>
                   )
                     .then(async (response) => {
-                      if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                        controllerEmitter(
-                          ['wallet', 'sendAndSaveTransaction'],
-                          [response]
-                        );
+                      // Save transaction to local state for immediate visibility
+                      controllerEmitter(
+                        ['wallet', 'sendAndSaveTransaction'],
+                        [response]
+                      );
 
                       setConfirmed(true);
 
@@ -700,11 +718,11 @@ export const SendConfirm = () => {
                 )
 
                   .then(async (response) => {
-                    if (activeAccountMeta.type === KeyringAccountType.Trezor)
-                      controllerEmitter(
-                        ['wallet', 'sendAndSaveTransaction'],
-                        [response]
-                      );
+                    // Save transaction to local state for immediate visibility
+                    controllerEmitter(
+                      ['wallet', 'sendAndSaveTransaction'],
+                      [response]
+                    );
 
                     setConfirmed(true);
 
@@ -804,6 +822,12 @@ export const SendConfirm = () => {
                       ]
                     )
                       .then(async (response) => {
+                        // Save transaction to local state for immediate visibility
+                        controllerEmitter(
+                          ['wallet', 'sendAndSaveTransaction'],
+                          [response]
+                        );
+
                         setConfirmed(true);
                         setLoading(false);
                         setConfirmedTx(response);
@@ -907,6 +931,12 @@ export const SendConfirm = () => {
                       ]
                     )
                       .then(async (response) => {
+                        // Save transaction to local state for immediate visibility
+                        controllerEmitter(
+                          ['wallet', 'sendAndSaveTransaction'],
+                          [response]
+                        );
+
                         setConfirmed(true);
                         setLoading(false);
                         setConfirmedTx(response);
@@ -976,6 +1006,21 @@ export const SendConfirm = () => {
       }
     }
   };
+
+  // Initialize fee for UTXO transactions
+  useEffect(() => {
+    if (isBitcoinBased && basicTxValues?.fee) {
+      // For UTXO transactions, use the fee calculated in SendSys
+      setFee({
+        baseFee: 0,
+        gasLimit: 0,
+        maxFeePerGas: 0,
+        maxPriorityFeePerGas: 0,
+        // Store the UTXO fee for display purposes
+        utxoFee: basicTxValues.fee,
+      } as any);
+    }
+  }, [isBitcoinBased, basicTxValues?.fee]);
 
   useEffect(() => {
     if (isLoading || isBitcoinBased) return;
@@ -1160,6 +1205,23 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
+  // Show loading component only for essential states that should block the UI
+  // Don't use useController's isLoading as it can become true during background operations
+  const shouldShowLoading =
+    loading || // Transaction is being processed
+    networkStatus === 'switching' || // Network switching
+    isSwitchingAccount || // Account switching
+    !basicTxValues || // Missing transaction data
+    (!fee && !isBitcoinBased); // Missing fee data for EVM transactions
+
+  // Don't render main content if transaction is confirmed (success modal will show)
+  // This prevents blank screen between loading completion and success modal
+  const shouldShowMainContent = !confirmed && !shouldShowLoading;
+
+  if (shouldShowLoading) {
+    return <LoadingComponent />;
+  }
+
   return (
     <Layout title={t('send.confirm')} canGoBack={true}>
       <TxSuccessful
@@ -1167,16 +1229,8 @@ export const SendConfirm = () => {
         title={t('send.txSuccessfull')}
         phraseOne={t('send.txSuccessfullMessage')}
         onClose={() => {
-          controllerEmitter(
-            ['wallet', 'sendAndSaveTransaction'],
-            [confirmedTx]
-          );
-
-          controllerEmitter(
-            ['wallet', 'setIsLastTxConfirmed'],
-            [activeNetwork.chainId, false]
-          );
-
+          // Transaction is already saved during confirmation, no need to save again
+          // Just navigate back to home with fromTransaction flag for adaptive polling
           navigate('/home', {
             state: { fromTransaction: true },
           });
@@ -1209,13 +1263,8 @@ export const SendConfirm = () => {
         description={t('send.changeFields')}
         onClose={() => setHaveError(false)}
       />
-      {Boolean(
-        !isBitcoinBased && basicTxValues && fee && isEIP1559Compatible
-      ) ||
-      Boolean(
-        !isBitcoinBased && basicTxValues && isEIP1559Compatible === false
-      ) ||
-      Boolean(isBitcoinBased && basicTxValues) ? (
+      {/* Render main content only when appropriate - prevents blank screen during transaction completion */}
+      {shouldShowMainContent && basicTxValues ? (
         <div className="flex flex-col items-center justify-center w-full">
           {basicTxValues.token?.isNft ? (
             <p className="flex flex-col items-center justify-center text-center font-rubik">
@@ -1239,7 +1288,7 @@ export const SendConfirm = () => {
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
                 <img
                   className="relative w-[30px] h-[30px]"
-                  src={'/assets/icons/ArrowUp.svg'}
+                  src={'/assets/all_assets/ArrowUp.svg'}
                   alt="Icon"
                 />
               </div>
@@ -1403,17 +1452,27 @@ export const SendConfirm = () => {
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
                       ) {
-                        const total = currency(basicTxValues.amount, {
-                          precision: 18,
-                        }).add(gasPrice / 10 ** 18);
-                        totalAmount = total.value;
-                        totalCrypto = removeScientificNotation(total.value);
-                      } else {
-                        const total = currency(basicTxValues.amount, {
-                          precision: 18,
-                        }).add(getCalculatedFee || 0);
+                        const gasPriceEther = gasPrice / 10 ** 18;
+                        const total = currency(gasPriceEther, {
+                          precision: 8,
+                        }).add(basicTxValues.amount);
                         totalAmount = total.value;
                         totalCrypto = total.format({ symbol: '' });
+                      } else {
+                        const calculatedFeeEther = getCalculatedFee;
+                        if (calculatedFeeEther !== undefined) {
+                          const total = currency(calculatedFeeEther, {
+                            precision: 8,
+                          }).add(basicTxValues.amount);
+                          totalAmount = total.value;
+                          totalCrypto = total.format({ symbol: '' });
+                        } else {
+                          // If fee calculation is pending, just show the amount
+                          totalAmount = basicTxValues.amount;
+                          totalCrypto = currency(basicTxValues.amount, {
+                            precision: 8,
+                          }).format({ symbol: '' });
+                        }
                       }
 
                       const totalFiatAmount = getTotalFiatAmount(totalAmount);
@@ -1421,13 +1480,10 @@ export const SendConfirm = () => {
                       return (
                         <div className="flex flex-col">
                           <span>
-                            {totalCrypto}
-                            &nbsp;
-                            {`${
-                              activeNetwork.currency
-                                ? activeNetwork.currency.toUpperCase()
-                                : activeNetwork.label
-                            }`}
+                            {removeScientificNotation(totalCrypto)}{' '}
+                            {basicTxValues.token
+                              ? basicTxValues.token.symbol
+                              : activeNetwork.currency.toUpperCase()}
                           </span>
                           {totalFiatAmount && (
                             <span className="text-brand-gray200 text-xs">
@@ -1441,9 +1497,36 @@ export const SendConfirm = () => {
                 </>
               ) : (
                 <>
-                  Token ID
+                  {t('send.fee')}
                   <span className="text-white text-xs">
-                    {basicTxValues.amount}
+                    {(() => {
+                      let feeAmount;
+
+                      if (isBitcoinBased) {
+                        feeAmount = basicTxValues.fee;
+                      } else if (
+                        !isBitcoinBased &&
+                        isEIP1559Compatible === false
+                      ) {
+                        feeAmount = gasPrice / 10 ** 18;
+                      } else {
+                        feeAmount = getCalculatedFee;
+                      }
+
+                      const formattedFee = getFormattedFee(feeAmount);
+                      const fiatAmount = getFeeFiatAmount(feeAmount);
+
+                      return (
+                        <div className="flex flex-col">
+                          <span>{formattedFee}</span>
+                          {fiatAmount && (
+                            <span className="text-brand-gray200 text-xs">
+                              ≈ {fiatAmount}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </span>
                 </>
               )}
@@ -1485,44 +1568,28 @@ export const SendConfirm = () => {
               )}
             </div>
           )}
-          <div className="flex items-center justify-around py-6 w-full mt-4">
+
+          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
             <Button
               type="button"
+              onClick={() => navigate(-1)}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
-              id="send-btn"
-              onClick={() => {
-                navigate('/home');
-              }}
             >
               {t('buttons.cancel')}
             </Button>
 
             <Button
-              type="button"
-              className={`${
-                loading
-                  ? 'opacity-60 cursor-not-allowed'
-                  : 'opacity-100 hover:opacity-90'
-              } xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
-              id="receive-btn"
+              type="submit"
+              disabled={confirmed}
               loading={loading}
               onClick={handleConfirm}
+              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
             >
-              {loading && (
-                <div className="mr-2 flex items-center">
-                  <LoadingSvg
-                    className="w-5 animate-spin-slow"
-                    style={{ color: '#4d76b8' }}
-                  />
-                </div>
-              )}
               {t('buttons.confirm')}
             </Button>
           </div>
         </div>
-      ) : (
-        <LoadingComponent />
-      )}
+      ) : null}
     </Layout>
   );
 };

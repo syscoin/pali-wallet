@@ -22,9 +22,9 @@ export const FaucetAccessModal = () => {
       onClick={() => navigate('/faucet')}
       className="cursor-pointer z-[49] mx-4 px-4 py-3 absolute left-0 right-0 top-[7.2rem] max-w-[calc(100%-2rem)] flex items-center rounded-[12px] bg-brand-blue400 hover:bg-brand-blue500 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02]"
     >
-      <div className="flex items-center gap-3 w-full">
+      <div className="flex items-center justify-center gap-3 w-full">
         <ChainIcon chainId={chainId} size={20} className="flex-shrink-0" />
-        <p className="text-sm text-white flex-1 font-medium">
+        <p className="text-sm text-white font-medium">
           {t('faucet.grabTextTwo', {
             token: currentNetworkData?.token,
           })}

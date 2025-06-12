@@ -135,13 +135,13 @@ const ImportPhrase: React.FC = () => {
                 <img
                   className={eyeStyle}
                   onClick={() => setVisible(false)}
-                  src="/assets/icons/visibleEye.svg"
+                  src="/assets/all_assets/visibleEye.svg"
                 />
               ) : (
                 <img
                   className={eyeStyle}
                   onClick={() => setVisible(true)}
-                  src="/assets/icons/notVisibleEye.svg"
+                  src="/assets/all_assets/notVisibleEye.svg"
                 />
               )}
             </div>

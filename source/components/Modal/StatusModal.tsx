@@ -89,7 +89,7 @@ export const StatusModal = ({
                 <div className="flex flex-row w-full justify-between">
                   <p className="text-white text-base font-medium ">{title}</p>
                   <img
-                    src="../../assets/icons/close.svg"
+                    src="../../assets/all_assets/close.svg"
                     className="w-[15px] h-[15px] hover:cursor-pointer"
                     onClick={handleOnClose}
                   />

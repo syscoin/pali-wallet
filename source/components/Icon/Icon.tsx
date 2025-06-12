@@ -2,19 +2,20 @@ import * as AntIcons from '@ant-design/icons';
 import React, { FC, memo } from 'react';
 
 // Import SVGs as URLs (following existing codebase pattern)
-import AddUser from '../../assets/icons/add-user.svg';
-import ArrowLeft from '../../assets/icons/ArrowLeft.svg';
-import ArrowUpBoldIcon from '../../assets/icons/ArrowUp.svg';
-import AttentionIcon from '../../assets/icons/Attention.svg';
-import Close from '../../assets/icons/closeBigger.svg';
-import Copy from '../../assets/icons/copy.svg';
-import EditTx from '../../assets/icons/editTx.svg';
-import WhiteErrorIcon from '../../assets/icons/errorIconWhite.svg';
-import GreenCheck from '../../assets/icons/greencheck.svg';
-import Info from '../../assets/icons/info.svg';
-import Metamask from '../../assets/icons/metamask.svg';
-import SpeedUp from '../../assets/icons/speedUp.svg';
-import Wallet from '../../assets/icons/wallet.svg';
+import AddUser from '../../assets/all_assets/add-user.svg';
+import ArrowLeft from '../../assets/all_assets/ArrowLeft.svg';
+import ArrowRight from '../../assets/all_assets/ArrowRight.svg';
+import ArrowUpBoldIcon from '../../assets/all_assets/ArrowUp.svg';
+import AttentionIcon from '../../assets/all_assets/Attention.svg';
+import Close from '../../assets/all_assets/closeBigger.svg';
+import Copy from '../../assets/all_assets/copy.svg';
+import EditTx from '../../assets/all_assets/editTx.svg';
+import WhiteErrorIcon from '../../assets/all_assets/errorIconWhite.svg';
+import GreenCheck from '../../assets/all_assets/greencheck.svg';
+import Info from '../../assets/all_assets/info.svg';
+import Metamask from '../../assets/all_assets/metamask.svg';
+import SpeedUp from '../../assets/all_assets/speedUp.svg';
+import Wallet from '../../assets/all_assets/wallet.svg';
 
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
@@ -58,6 +59,7 @@ const icons = {
   tag: AntIcons.TagFilled,
   import: AntIcons.ImportOutlined,
   'hamburger-menu': AntIcons.MenuOutlined,
+  arrowright: ArrowRight,
 };
 
 // SVG icons mapping will be defined after inline components
@@ -806,6 +808,391 @@ export const LoadingSvg = memo(
 );
 LoadingSvg.displayName = 'LoadingSvg';
 
+export const EthChainSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      width="100"
+      height="100"
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M49.9999 99.9999C77.6141 99.9999 99.9999 77.6141 99.9999 49.9999C99.9999 22.3857 77.6141 0 49.9999 0C22.3857 0 0 22.3857 0 49.9999C0 77.6141 22.3857 99.9999 49.9999 99.9999Z"
+        fill="#627EEA"
+      />
+      <path
+        d="M49.9959 24.1152L49.6494 25.2949V59.5275L49.9959 59.874L65.8878 50.4798L49.9959 24.1152Z"
+        fill="#C0CCF7"
+      />
+      <path
+        d="M49.9964 24.1152L34.1045 50.4798L49.9964 59.874V43.2579V24.1152Z"
+        fill="white"
+      />
+      <path
+        d="M49.9959 62.8825L49.8013 63.12V75.3173L49.9959 75.8896L65.8995 53.4961L49.9959 62.8825Z"
+        fill="#C0CCF7"
+      />
+      <path
+        d="M49.9964 75.8896V62.8825L34.1045 53.4922L49.9964 75.8896Z"
+        fill="white"
+      />
+      <path
+        d="M49.9961 59.8738L65.888 50.4796L49.9961 43.2578V59.8738Z"
+        fill="#8198EE"
+      />
+      <path
+        d="M34.1045 50.4796L49.9964 59.8738V43.2578L34.1045 50.4796Z"
+        fill="#C0CCF7"
+      />
+    </svg>
+  )
+);
+EthChainSvg.displayName = 'EthChainSvg';
+
+export const SysChainSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      width="100"
+      height="100"
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M49.9999 99.9999C77.6141 99.9999 99.9999 77.6141 99.9999 49.9999C99.9999 22.3857 77.6141 0 49.9999 0C22.3857 0 0 22.3857 0 49.9999C0 77.6141 22.3857 99.9999 49.9999 99.9999Z"
+        fill="white"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M73.9615 43.0734C71.0475 40.3162 66.9324 38.0195 61.593 36.5612H61.5621C48.8567 33.1045 44.33 41.2807 54.6179 46.4349C66.2971 52.2784 67.92 61.8486 61.3281 67.8336C59.6486 69.3562 54.1909 72.2059 49.1705 72.89C41.1974 73.996 32.3499 72.3011 25.1587 70.0172C29.0699 73.0553 33.5397 75.2958 38.3142 76.6117C49.5254 79.698 63.0667 77.4244 72.0403 69.6237C81.0781 61.7561 81.9423 50.6041 73.9615 43.0734Z"
+        fill="#008DD0"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M37.1694 24.6265C43.3573 22.1043 50.0985 21.2494 56.7201 22.1471C63.3417 23.0447 69.612 25.6635 74.9051 29.7421C61.4795 25.4727 51.0631 25.843 44.2294 28.5925L44.1291 28.6336C35.6905 32.0852 32.7662 39.1503 36.4389 45.5391C38.4168 48.9829 41.9043 51.5574 45.4408 53.3244C54.7924 58.0079 51.917 65.1811 41.7912 63.8694C40.6674 63.7195 39.5553 63.4918 38.4631 63.1878C18.5793 57.7584 15.6704 40.8735 28.0209 30.1356C30.7473 27.8095 33.8381 25.9482 37.1694 24.6265Z"
+        fill="#008DD0"
+      />
+    </svg>
+  )
+);
+SysChainSvg.displayName = 'SysChainSvg';
+
+export const SysChainWhiteSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.95431 0 0 8.9543 0 20C0 31.0457 8.95431 40 20 40Z"
+        fill="white"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M29.5846 17.2295C28.419 16.1267 26.773 15.208 24.6372 14.6247H24.6249C19.5427 13.242 17.732 16.5125 21.8472 18.5742C26.5189 20.9116 27.168 24.7397 24.5313 27.1336C23.8595 27.7427 21.6764 28.8826 19.6682 29.1562C16.479 29.5986 12.94 28.9206 10.0635 28.0071C11.628 29.2223 13.4159 30.1185 15.3257 30.6449C19.8102 31.8794 25.2267 30.97 28.8161 27.8497C32.4313 24.7026 32.777 20.2418 29.5846 17.2295Z"
+        fill="black"
+      />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M14.8678 9.85099C17.3429 8.84212 20.0394 8.50015 22.6881 8.85921C25.3367 9.21827 27.8449 10.2658 29.9621 11.8972C24.5918 10.1895 20.4253 10.3376 17.6918 11.4374L17.6517 11.4538C14.2762 12.8345 13.1065 15.6605 14.5756 18.216C15.3667 19.5936 16.7618 20.6234 18.1764 21.3302C21.917 23.2036 20.7668 26.0728 16.7165 25.5482C16.267 25.4882 15.8222 25.3971 15.3853 25.2755C7.43174 23.1038 6.26818 16.3498 11.2084 12.0546C12.299 11.1242 13.5353 10.3797 14.8678 9.85099Z"
+        fill="black"
+      />
+    </svg>
+  )
+);
+SysChainWhiteSvg.displayName = 'SysChainWhiteSvg';
+
+export const EthChainDarkBlueSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40Z"
+        fill="#4D76B8"
+      />
+      <path
+        d="M19.998 9.64648L19.8594 10.1183V23.8114L19.998 23.95L26.3547 20.1923L19.998 9.64648Z"
+        fill="#C9DEFF"
+      />
+      <path
+        d="M19.9984 9.64648L13.6416 20.1923L19.9984 23.95V17.3036V9.64648Z"
+        fill="white"
+      />
+      <path
+        d="M19.9988 25.153L19.9209 25.248V30.1269L19.9988 30.3558L26.3602 21.3984L19.9988 25.153Z"
+        fill="#C9DEFF"
+      />
+      <path
+        d="M19.9984 30.3574V25.1546L13.6416 21.3984L19.9984 30.3574Z"
+        fill="white"
+      />
+      <path
+        d="M19.998 23.9492L26.3548 20.1915L19.998 17.3027V23.9492Z"
+        fill="#4D76B8"
+      />
+      <path
+        d="M13.6416 20.1915L19.9984 23.9492V17.3027L13.6416 20.1915Z"
+        fill="#C9DEFF"
+      />
+    </svg>
+  )
+);
+EthChainDarkBlueSvg.displayName = 'EthChainDarkBlueSvg';
+
+export const RolluxChainWhiteSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40Z"
+        fill="white"
+      />
+      <path
+        d="M10.5898 10.5898H11.3378L29.277 27.0345V29.2771H10.5898V10.5898Z"
+        fill="#061120"
+      />
+      <path
+        d="M24.7361 21.4394C25.2499 20.426 25.5394 19.2791 25.5394 18.0642C25.5394 13.9353 22.1926 10.5898 18.0651 10.5898C16.6188 10.5898 15.269 11.0015 14.125 11.7126L24.7361 21.4394Z"
+        fill="#061120"
+      />
+    </svg>
+  )
+);
+RolluxChainWhiteSvg.displayName = 'RolluxChainWhiteSvg';
+
+export const PinkBitcoinSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      fill="none"
+      className={className}
+      style={style}
+    >
+      <path
+        d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.95431 0 0 8.9543 0 20C0 31.0457 8.95431 40 20 40Z"
+        fill="#CB2C70"
+      />
+      <path
+        d="M28.0691 15.4034C27.7771 12.8876 25.5879 12.07 22.8203 11.8797L22.7647 8.3687L20.6382 8.40485L20.6995 11.8224C20.1387 11.8356 19.563 11.8529 18.9908 11.8837L18.9259 8.45254L16.7994 8.48869L16.8646 11.981C16.3973 11.9998 15.9431 12.0135 15.5028 12.0251L15.4992 12.0115L12.5545 12.0686L12.6003 14.3456C12.6003 14.3456 14.1429 14.2902 14.1489 14.3128C15.0148 14.2952 15.3009 14.7973 15.3868 15.2322L15.4503 19.2296C15.511 19.2278 15.5858 19.2239 15.6828 19.243C15.6085 19.2484 15.5322 19.2527 15.4539 19.2431L15.5479 24.8348C15.5136 25.1036 15.3555 25.5425 14.7621 25.5484C14.7833 25.5733 13.2136 25.5812 13.2136 25.5812L12.8305 28.1409L15.6111 28.0971C16.1298 28.0952 16.6297 28.0837 17.1348 28.0855L17.1981 31.625L19.3246 31.5889L19.2689 28.0779C19.8487 28.0757 20.4266 28.0724 20.9742 28.0643L21.0394 31.5566L23.1659 31.5205L23.1025 27.9809C26.6918 27.706 29.1864 26.7635 29.4262 23.3861C29.6303 20.6762 28.3349 19.482 26.2885 19.0227C27.532 18.3687 28.2832 17.2371 28.0657 15.4027L28.0691 15.4034ZM25.2148 23.0362C25.2664 25.6776 20.7215 25.4606 19.2777 25.4815L19.1954 20.7879C20.6392 20.767 25.1762 20.2687 25.2163 23.0358L25.2148 23.0362ZM24.1138 16.4181C24.1503 18.8347 20.3679 18.6116 19.1666 18.6288L19.0954 14.3739C20.2967 14.3567 24.0694 13.9117 24.1153 16.4177L24.1138 16.4181Z"
+        fill="white"
+      />
+    </svg>
+  )
+);
+PinkBitcoinSvg.displayName = 'PinkBitcoinSvg';
+
+export const RolluxChainSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      id="rollux_B1_black_yellow"
+      xmlns="http://www.w3.org/2000/svg"
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      className={className}
+      style={style}
+    >
+      <circle cx="20" cy="20" r="17.71" fill="#000000" />
+      <g>
+        <polygon
+          points="12.18 10.86 12.91 10.86 30.47 26.95 30.47 29.14 12.18 29.14 12.18 10.86"
+          fill="#dbef88"
+        />
+        <path
+          d="m26.02,21.47c0.5-0.99,0.79-2.11,0.79-3.3,0-4.04-3.28-7.32-7.32-7.32-1.42,0-2.74,0.4-3.86,1.1l10.39,9.52Z"
+          fill="#dbef88"
+        />
+      </g>
+    </svg>
+  )
+);
+RolluxChainSvg.displayName = 'RolluxChainSvg';
+
+export const ChainFallbackSvg = memo(
+  ({
+    className = '',
+    style,
+    chainId,
+  }: {
+    chainId?: number;
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 40 40"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={style}
+    >
+      <defs>
+        <linearGradient id="chainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#4D76B8" />
+          <stop offset="100%" stopColor="#CB2C70" />
+        </linearGradient>
+      </defs>
+      <circle cx="20" cy="20" r="20" fill="url(#chainGradient)" />
+      <path
+        d="M20 10C20 10 15 15 15 20C15 25 20 30 20 30C20 30 25 25 25 20C25 15 20 10 20 10Z"
+        fill="white"
+        opacity="0.9"
+      />
+      <circle cx="20" cy="20" r="3" fill="white" />
+      {chainId && (
+        <>
+          <rect
+            x="10"
+            y="28"
+            width="20"
+            height="10"
+            rx="5"
+            fill="rgba(0, 0, 0, 0.7)"
+          />
+          <text
+            x="20"
+            y="35"
+            textAnchor="middle"
+            fill="white"
+            fontSize="7"
+            fontWeight="bold"
+            fontFamily="system-ui, -apple-system, sans-serif"
+          >
+            {chainId}
+          </text>
+        </>
+      )}
+    </svg>
+  )
+);
+ChainFallbackSvg.displayName = 'ChainFallbackSvg';
+
+export const NftFallbackSvg = memo(
+  ({
+    className = '',
+    style,
+  }: {
+    className?: string;
+    style?: React.CSSProperties;
+  }) => (
+    <svg
+      width="100"
+      height="100"
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      style={style}
+    >
+      <rect width="100" height="100" rx="10" fill="#1E1E1E" />
+      <rect
+        x="20"
+        y="20"
+        width="60"
+        height="60"
+        rx="8"
+        fill="#2D2D2D"
+        stroke="#3D3D3D"
+        strokeWidth="2"
+      />
+      <path
+        d="M35 65L45 45L55 55L65 35"
+        stroke="#4D76B8"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="65" cy="35" r="5" fill="#CB2C70" />
+      <text
+        x="50"
+        y="85"
+        textAnchor="middle"
+        fill="#666666"
+        fontSize="10"
+        fontWeight="500"
+        fontFamily="system-ui, -apple-system, sans-serif"
+      >
+        NFT
+      </text>
+    </svg>
+  )
+);
+NftFallbackSvg.displayName = 'NftFallbackSvg';
+
 // SVG URLs from imports (processed by build system for better caching)
 const svgIcons = {
   ArrowUpBoldIcon,
@@ -839,4 +1226,5 @@ const svgIcons = {
   PaliDefault: PaliDefaultSvg,
   loading: LoadingSvg,
   Loader: LoadingSvg,
+  arrowright: ArrowRight,
 };

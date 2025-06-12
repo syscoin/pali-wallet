@@ -1,7 +1,7 @@
 import React, { FC, memo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import dotsImage from 'assets/images/dotsHeader.svg';
+import dotsImage from 'assets/all_assets/dotsHeader.png';
 import { Header, Icon, IconButton } from 'components/index';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders

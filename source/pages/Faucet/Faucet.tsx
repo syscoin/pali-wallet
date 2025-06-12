@@ -4,9 +4,9 @@ import { useSelector } from 'react-redux';
 
 import { FaucetStatusResponse } from '../../types/faucet';
 // Import faucet status icons - make sure these paths are correct
-import errorIcon from 'assets/images/faucet-error.svg';
-import loadingIcon from 'assets/images/faucet-loading.svg';
-import successIcon from 'assets/images/faucet-success.svg';
+import errorIcon from 'assets/all_assets/faucet-error.svg';
+import loadingIcon from 'assets/all_assets/faucet-loading.svg';
+import successIcon from 'assets/all_assets/faucet-success.svg';
 import { NeutralButton } from 'components/Button';
 import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';

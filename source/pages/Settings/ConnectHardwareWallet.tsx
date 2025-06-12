@@ -322,7 +322,7 @@ const ConnectHardwareWalletView: FC = () => {
         <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
           <img
             className="absolute left-[30%]"
-            src="/assets/icons/hardwallet.svg"
+            src="/assets/all_assets/hardwallet.svg"
           />
         </div>
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">

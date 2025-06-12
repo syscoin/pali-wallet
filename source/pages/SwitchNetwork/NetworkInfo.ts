@@ -1,17 +1,27 @@
-import leftLogoEthChain from 'assets/images/ethChainDarkBlue.svg';
-import leftLogoPinkBitcoin from 'assets/images/pinkBitcoin.svg';
-import rightLogoRolluxChain from 'assets/images/rolluxChainWhite.svg';
-import rightLogoSysWhite from 'assets/images/sysChainWhite.svg';
+import React from 'react';
+
+import {
+  EthChainDarkBlueSvg,
+  PinkBitcoinSvg,
+  RolluxChainWhiteSvg,
+  SysChainWhiteSvg,
+} from 'components/Icon/Icon';
 import { NetworkType } from 'utils/types';
 
 interface INetworkInfo {
   connectedColor: string;
   connectedNetwork: NetworkType;
-  leftLogo: string;
+  leftLogo: React.ComponentType<{
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   networkDescription: string;
   networkNeedsChangingColor: string;
   networkThatNeedsChanging: NetworkType;
-  rightLogo: string;
+  rightLogo: React.ComponentType<{
+    className?: string;
+    style?: React.CSSProperties;
+  }>;
   selectedNetworkText: string;
 }
 
@@ -34,8 +44,8 @@ export const useNetworkInfo = ({
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',
     selectedNetworkText: 'Select an EVM network:',
-    leftLogo: leftLogoEthChain,
-    rightLogo: rightLogoRolluxChain,
+    leftLogo: EthChainDarkBlueSvg,
+    rightLogo: RolluxChainWhiteSvg,
   };
 
   const evmNetworkInfo: INetworkInfo = {
@@ -45,8 +55,8 @@ export const useNetworkInfo = ({
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
     selectedNetworkText: 'Select a UTXO network:',
-    leftLogo: leftLogoPinkBitcoin,
-    rightLogo: rightLogoSysWhite,
+    leftLogo: PinkBitcoinSvg,
+    rightLogo: SysChainWhiteSvg,
   };
 
   let value: any;

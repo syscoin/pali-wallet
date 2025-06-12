@@ -108,13 +108,13 @@ const PhraseView = () => {
               <img
                 className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                 onClick={() => setVisible(false)}
-                src="/assets/icons/visibleEye.svg"
+                src="/assets/all_assets/visibleEye.svg"
               />
             ) : (
               <img
                 className="w-[18px] max-w-none cursor-pointer hover:cursor-pointer z-20"
                 onClick={() => setVisible(true)}
-                src="/assets/icons/notVisibleEye.svg"
+                src="/assets/all_assets/notVisibleEye.svg"
               />
             )}
           </div>
@@ -125,7 +125,7 @@ const PhraseView = () => {
             <div className="flex w-full gap-1 items-center cursor-pointer hover:cursor-pointer">
               <img
                 className="w-[16px] max-w-none"
-                src="/assets/icons/successIcon.svg"
+                src="/assets/all_assets/successIcon.svg"
               />
               <p className="text-sm text-white">Copied!</p>
             </div>
@@ -138,7 +138,10 @@ const PhraseView = () => {
                 phrase && handleCopyToClipboard();
               }}
             >
-              <img className="max-w-none z-20 " src="/assets/icons/copy.svg" />
+              <img
+                className="max-w-none z-20 "
+                src="/assets/all_assets/copy.svg"
+              />
               <p className="text-sm text-white">Copy</p>
             </div>
           )}

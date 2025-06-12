@@ -3,12 +3,12 @@ import { useSelector } from 'react-redux';
 
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import dafaultImage from 'assets/images/pali-blank.png';
 import { ChainIcon } from 'components/ChainIcon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { nftsVideoFormats } from 'utils/index';
+import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
 export const EvmNftsList = () => {
   const { controllerEmitter } = useController();
@@ -87,7 +87,7 @@ export const EvmNftsList = () => {
                 <div className="relative">
                   <img
                     className="w-[35px] h-[35px] rounded-[100px]"
-                    src={nfts[0]?.collection?.image_url || dafaultImage}
+                    src={nfts[0]?.collection?.image_url || NFT_FALLBACK_IMAGE}
                   />
                   <div className="absolute top-[18px] left-[24px]">
                     <ChainIcon

@@ -1,10 +1,10 @@
-import { Switch, Menu, Transition } from '@headlessui/react';
+import { Switch, Menu } from '@headlessui/react';
 import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
 import * as React from 'react';
-import { useState, useEffect, Fragment, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -57,17 +57,10 @@ export const SendSys = () => {
   // Fee rate will be managed by the Fee component
   const [feeRate, setFeeRate] = useState<number | null>(null);
 
-  // Watch for fee changes from the Fee component
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const currentFormFee = form.getFieldValue('fee');
-      if (currentFormFee && Number(currentFormFee) !== Number(feeRate)) {
-        setFeeRate(Number(currentFormFee));
-      }
-    }, 500); // Check every 500ms for form changes
-
-    return () => clearInterval(interval);
-  }, [form, feeRate]);
+  // Update feeRate when form fee changes (no polling needed)
+  const handleFeeChange = useCallback((newFee: number) => {
+    setFeeRate(newFee);
+  }, []);
 
   // Set a default fee rate on mount
   useEffect(() => {
@@ -117,26 +110,26 @@ export const SendSys = () => {
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
     form.setFieldValue('amount', balanceStr);
-    setFieldsValues({
-      ...fieldsValues,
+    setFieldsValues((prev) => ({
+      ...prev,
       amount: String(balanceStr),
-    });
+    }));
     setIsMaxSend(true); // Set the flag when max is clicked
-  }, [balanceStr, fieldsValues, form]);
+  }, [balanceStr, form]);
 
   const handleInputChange = useCallback(
     (type: 'receiver' | 'amount', e: any) => {
-      setFieldsValues({
-        ...fieldsValues,
+      setFieldsValues((prev) => ({
+        ...prev,
         [type]: e.target.value,
-      });
+      }));
 
       // Clear isMaxSend flag if amount is manually changed
       if (type === 'amount' && e.target.value !== balanceStr) {
         setIsMaxSend(false);
       }
     },
-    [fieldsValues, balanceStr]
+    [balanceStr]
   );
 
   const handleSelectedAsset = (item: number) => {
@@ -526,85 +519,72 @@ export const SendSys = () => {
                   ]}
                 >
                   <Menu>
-                    <div className="relative inline-block text-left">
-                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-                        <p className="w-full uppercase text-white text-xs font-normal">
-                          {String(
-                            selectedAsset?.symbol
-                              ? selectedAsset?.symbol
-                              : activeNetwork.currency
-                          )}
-                        </p>
-                        <ArrowDownSvg />
-                      </Menu.Button>
+                    {({ open }) => (
+                      <div className="relative inline-block text-left">
+                        <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                          <p className="w-full uppercase text-white text-xs font-normal">
+                            {String(
+                              selectedAsset?.symbol
+                                ? selectedAsset?.symbol
+                                : activeNetwork.currency
+                            )}
+                          </p>
+                          <ArrowDownSvg />
+                        </Menu.Button>
 
-                      <Transition
-                        as={Fragment}
-                        enter="transition ease-out duration-100"
-                        enterFrom="transform opacity-0 scale-95"
-                        enterTo="transform opacity-100 scale-100"
-                        leave="transition ease-in duration-75"
-                        leaveFrom="transform opacity-100 scale-100"
-                        leaveTo="transform opacity-0 scale-95"
-                      >
-                        {
-                          <Menu.Items
-                            as="div"
-                            className="scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right"
-                          >
-                            <Menu.Item as="div" key={uniqueId()}>
-                              <button
-                                onClick={() => handleSelectedAsset(-1)}
-                                className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                              >
-                                <p>SYS</p>
-                                <small>{t('send.native')}</small>
-                              </button>
-                            </Menu.Item>
+                        <Menu.Items
+                          as="div"
+                          className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                          transform transition-all duration-100 ease-out ${
+                            open
+                              ? 'opacity-100 scale-100 pointer-events-auto'
+                              : 'opacity-0 scale-95 pointer-events-none'
+                          }`}
+                          static
+                        >
+                          <Menu.Item as="div" key="native-sys">
+                            <button
+                              onClick={() => handleSelectedAsset(-1)}
+                              className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                            >
+                              <p>SYS</p>
+                              <small>{t('send.native')}</small>
+                            </button>
+                          </Menu.Item>
 
-                            {activeAccount.assets.syscoin.length > 0
-                              ? activeAccount.assets.syscoin.map(
-                                  (item: any) => (
-                                    <>
-                                      {item?.assetGuid ? (
-                                        <Menu.Item as="div" key={uniqueId()}>
-                                          <Menu.Item>
-                                            <button
-                                              onClick={() => {
-                                                if (
-                                                  activeAccount.isTrezorWallet
-                                                ) {
-                                                  alert.removeAll();
-                                                  alert.error(
-                                                    'Cannot send custom token with Trezor Account.'
-                                                  );
-                                                  return;
-                                                }
-                                                handleSelectedAsset(
-                                                  item.assetGuid
-                                                );
-                                              }}
-                                              className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                            >
-                                              <p>{item?.symbol}</p>
+                          {activeAccount.assets.syscoin.length > 0
+                            ? activeAccount.assets.syscoin.map((item: any) =>
+                                item?.assetGuid ? (
+                                  <Menu.Item
+                                    as="div"
+                                    key={`asset-${item.assetGuid}`}
+                                  >
+                                    <button
+                                      onClick={() => {
+                                        if (activeAccount.isTrezorWallet) {
+                                          alert.removeAll();
+                                          alert.error(
+                                            'Cannot send custom token with Trezor Account.'
+                                          );
+                                          return;
+                                        }
+                                        handleSelectedAsset(item.assetGuid);
+                                      }}
+                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                    >
+                                      <p>{item?.symbol}</p>
 
-                                              <small>
-                                                {isNFT(item.assetGuid)
-                                                  ? 'NFT'
-                                                  : 'SPT'}
-                                              </small>
-                                            </button>
-                                          </Menu.Item>
-                                        </Menu.Item>
-                                      ) : null}
-                                    </>
-                                  )
-                                )
-                              : null}
-                          </Menu.Items>
-                        }
-                      </Transition>
-                    </div>
+                                      <small>
+                                        {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                                      </small>
+                                    </button>
+                                  </Menu.Item>
+                                ) : null
+                              )
+                            : null}
+                        </Menu.Items>
+                      </div>
+                    )}
                   </Menu>
                 </Form.Item>
               }
@@ -696,7 +676,12 @@ export const SendSys = () => {
             </div>
           </div>
 
-          <Fee disabled={false} recommend={feeRate} form={form} />
+          <Fee
+            disabled={false}
+            recommend={feeRate}
+            form={form}
+            onFeeChange={handleFeeChange}
+          />
 
           <div className="flex justify-between w-full">
             <div className="flex items-center gap-2">

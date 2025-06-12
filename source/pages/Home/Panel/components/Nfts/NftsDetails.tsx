@@ -5,12 +5,12 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import PaliLogo from 'assets/images/pali-blank.png';
 import { ChainIcon } from 'components/ChainIcon';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
+import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
 export const NftsDetails = ({
   nftId,
@@ -71,7 +71,7 @@ export const NftsDetails = ({
               <img
                 id={`${currentNft.name}`}
                 className="rounded-[10px] w-[153px] h-[153px]"
-                src={currentNft?.image_preview_url || PaliLogo}
+                src={currentNft?.image_preview_url || NFT_FALLBACK_IMAGE}
               />
             </div>
 
@@ -117,7 +117,9 @@ export const NftsDetails = ({
 
                 <img
                   className="w-6 h-6 rounded-full"
-                  src={currentNft.creator?.profile_img_url || PaliLogo}
+                  src={
+                    currentNft.creator?.profile_img_url || NFT_FALLBACK_IMAGE
+                  }
                   alt={currentNft.creator?.user?.username}
                 />
 
@@ -141,7 +143,7 @@ export const NftsDetails = ({
               <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
                 <img
                   className="w-6 h-6 rounded-full"
-                  src={currentNft.collection?.image_url || PaliLogo}
+                  src={currentNft.collection?.image_url || NFT_FALLBACK_IMAGE}
                   alt={currentNft.collection?.name}
                 />
 

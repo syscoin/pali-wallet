@@ -4,9 +4,9 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import importIcon from 'assets/images/import.png';
-import ledgerLogo from 'assets/images/ledgerLogo.png';
-import trezorLogo from 'assets/images/trezorLogo.png';
+import importIcon from 'assets/all_assets/import.png';
+import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
+import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { PaliWhiteSmallIconSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { RootState } from 'state/store';

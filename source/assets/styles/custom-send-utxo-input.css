@@ -23,7 +23,7 @@
 }
 
 .sender-custom-input .ant-input-suffix .anticon-close-circle {
-  content: url('../icons/errorIcon.svg');
+  content: url('../all_assets/errorIcon.svg');
   position: absolute;
   top: 18.5rem;
   right: 45px;
@@ -34,7 +34,7 @@
 }
 
 .sender-custom-input .ant-input-suffix .anticon-check-circle {
-  content: url('../icons/successIcon.svg');
+  content: url('../all_assets/successIcon.svg');
   position: absolute;
   top: 18.5rem;
   right: 45px;
@@ -56,7 +56,7 @@
 }
 
 .value-custom-input .ant-input-suffix .anticon-close-circle {
-  content: url('../icons/errorIcon.svg');
+  content: url('../all_assets/errorIcon.svg');
   position: absolute;
   top: 1.3rem;
   right: 23px;
@@ -67,7 +67,7 @@
 }
 
 .value-custom-input .ant-input-suffix .anticon-check-circle {
-  content: url('../icons/successIcon.svg');
+  content: url('../all_assets/successIcon.svg');
   position: absolute;
   top: 1.3rem;
   right: 23px;

@@ -63,20 +63,28 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.(jpg|png|xlsx|xls|csv)$/i,
+        test: /\.(jpg|png|svg|xlsx|xls|csv)$/i,
         type: 'asset/resource',
         generator: {
-          filename: 'assets/[name][ext]',
+          filename: 'assets/all_assets/[name][ext]',
         },
         exclude: /node_modules/,
       },
       {
-        test: /\.(svg)$/i,
+        test: /\.(ttf)$/,
         type: 'asset/resource',
         generator: {
-          filename: 'assets/icons/[name][ext]',
+          filename: 'assets/fonts/[name][ext]',
         },
-        exclude: /node_modules/,
+      },
+      {
+        test: /\.(sa|sc|c)ss$/,
+        use: [
+          MiniCssExtractPlugin.loader,
+          'css-loader',
+          'postcss-loader',
+          'sass-loader',
+        ],
       },
       {
         test: /\.(js|ts)x?$/,
@@ -105,22 +113,6 @@ module.exports = {
               },
             },
           },
-        ],
-      },
-      {
-        test: /\.(ttf)$/,
-        type: 'asset/resource',
-        generator: {
-          filename: 'assets/fonts/[name][ext]',
-        },
-      },
-      {
-        test: /\.(sa|sc|c)ss$/,
-        use: [
-          MiniCssExtractPlugin.loader,
-          'css-loader',
-          'postcss-loader',
-          'sass-loader',
         ],
       },
     ],
@@ -172,15 +164,28 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         {
-          from: 'source/assets',
-          to: 'assets',
+          from: 'source/assets/all_assets',
+          to: 'assets/all_assets',
           globOptions: {
-            ignore: [
-              '**/images/*.png', // PNG files in images dir are imported, handled by webpack
-              '**/images/*.jpg', // JPG files in images dir are imported, handled by webpack
-              '**/images/*.jpeg', // JPEG files in images dir are imported, handled by webpack
-              '**/icons/*.svg', // SVG files in icons dir are imported, handled by webpack
-            ],
+            ignore: [],
+          },
+        },
+        {
+          from: 'source/assets/locales',
+          to: 'assets/locales',
+          globOptions: {
+            ignore: [],
+          },
+        },
+        {
+          from: 'source/assets/fonts/index.css',
+          to: 'assets/fonts/index.css',
+        },
+        {
+          from: 'source/assets/js',
+          to: 'assets/js',
+          globOptions: {
+            ignore: [],
           },
         },
       ],

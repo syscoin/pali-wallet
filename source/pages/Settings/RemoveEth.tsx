@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
-import metamaskIcon from 'assets/icons/metamask.svg';
+import metamaskIcon from 'assets/all_assets/metamask.svg';
 import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';

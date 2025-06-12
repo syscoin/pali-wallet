@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import closeIcon from 'assets/icons/close.svg';
+import closeIcon from 'assets/all_assets/close.svg';
 import { ChainIcon } from 'components/ChainIcon';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';

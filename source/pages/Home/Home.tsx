@@ -346,7 +346,7 @@ export const Home = () => {
           <Header accountHeader />
           <WalletProviderDefaultModal />
 
-          {isFaucetAvailable && actualBalance === 0 && (
+          {isFaucetAvailable && actualBalance === 0 && !isLoadingBalances && (
             <>
               {shouldShowFaucetFirstModal ? (
                 <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />

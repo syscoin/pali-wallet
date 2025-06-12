@@ -227,7 +227,10 @@ const EthSign: React.FC<ISign> = () => {
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-col w-full items-center justify-center mb-8">
             <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
-              <img className="absolute" src="/assets/images/signature.svg" />
+              <img
+                className="absolute"
+                src="/assets/all_assets/signature.svg"
+              />
             </div>
             <p className="text-sm text-white">
               {t('transactions.signatureRequest')}

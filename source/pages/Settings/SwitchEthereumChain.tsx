@@ -3,9 +3,9 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import arrowRight from 'assets/images/arrowRight.svg';
 import { SecondButton } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
+import { Icon } from 'components/Icon';
 import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -62,7 +62,7 @@ const SwitchChain: React.FC = () => {
 
     return (
       <div className="w-4/5 gap-4 flex items-center align-center flex-row">
-        {fromChain} <img src={arrowRight} alt="arrow" width="50px" /> {toChain}
+        {fromChain} <Icon name="arrowright" size={50} /> {toChain}
       </div>
     );
   };

@@ -62,7 +62,7 @@ export const PALI_UTXO_METHODS = [
 
 export const announceProvider = (provider: any, uuid: string) => {
   const providerInfo: IEIP6963ProviderInfo = {
-    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/icons/favicon-48.png',
+    icon: 'https://raw.githubusercontent.com/syscoin/pali-wallet/master/source/assets/all_assets/favicon-48.png',
     name: 'Pali Wallet',
     rdns: 'com.paliwallet',
     uuid,

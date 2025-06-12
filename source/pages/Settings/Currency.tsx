@@ -1,6 +1,6 @@
-import { Menu, Transition } from '@headlessui/react';
+import { Menu } from '@headlessui/react';
 import getSymbolFromCurrency from 'currency-symbol-map';
-import React, { useEffect, Fragment, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -100,58 +100,58 @@ const CurrencyView = () => {
 
       <div className="flex flex-col gap-y-12">
         <Menu as="div" className="relative inline-block text-left">
-          <Menu.Button
-            disabled={!fiat || !coins}
-            className="inline-flex justify-between p-[10px] w-[352px] h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]"
-          >
-            <p className="ml-2">
-              {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
-            </p>
-
-            <ArrowDownSvg />
-          </Menu.Button>
-
-          <Transition
-            as={Fragment}
-            enter="transition ease-out duration-100"
-            enterFrom="transform opacity-0 scale-95"
-            enterTo="transform opacity-100 scale-100"
-            leave="transition ease-in duration-75"
-            leaveFrom="transform opacity-100 scale-100"
-            leaveTo="transform opacity-0 scale-95"
-          >
-            {fiat && coins && (
-              <Menu.Items
-                as="div"
-                className="scrollbar-styled absolute z-10 px-4 py-5 w-full h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right"
+          {({ open }) => (
+            <>
+              <Menu.Button
+                disabled={!fiat || !coins}
+                className="inline-flex justify-between p-[10px] w-[352px] h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]"
               >
-                <div className="flex justify-center items-center mb-[1px]">
-                  <input
-                    className="text-xs text-brand-gray200 w-[304px] h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
-                    placeholder="Search"
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                  />
-                </div>
-                {filteredCoins.map((coin, index) => (
-                  <Menu.Item as="div" key={index}>
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setSelectedCoin(coin);
-                        setInputValue(''); // Clear search when currency is selected
-                      }}
-                      className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300"
-                    >
-                      {getSymbolFromCurrency(coin.toUpperCase())}
+                <p className="ml-2">
+                  {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
+                </p>
 
-                      <p>{coin.toUpperCase()}</p>
-                    </button>
-                  </Menu.Item>
-                ))}
-              </Menu.Items>
-            )}
-          </Transition>
+                <ArrowDownSvg />
+              </Menu.Button>
+
+              {fiat && coins && (
+                <Menu.Items
+                  as="div"
+                  className={`scrollbar-styled absolute z-10 px-4 py-5 w-full h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
+                  transform transition-all duration-100 ease-out ${
+                    open
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
+                  }`}
+                  static
+                >
+                  <div className="flex justify-center items-center mb-[1px]">
+                    <input
+                      className="text-xs text-brand-gray200 w-[304px] h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
+                      placeholder="Search"
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                    />
+                  </div>
+                  {filteredCoins.map((coin, index) => (
+                    <Menu.Item as="div" key={index}>
+                      <button
+                        key={index}
+                        onClick={() => {
+                          setSelectedCoin(coin);
+                          setInputValue(''); // Clear search when currency is selected
+                        }}
+                        className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300"
+                      >
+                        {getSymbolFromCurrency(coin.toUpperCase())}
+
+                        <p>{coin.toUpperCase()}</p>
+                      </button>
+                    </Menu.Item>
+                  ))}
+                </Menu.Items>
+              )}
+            </>
+          )}
         </Menu>
 
         <div className="flex flex-col items-center justify-center text-center">

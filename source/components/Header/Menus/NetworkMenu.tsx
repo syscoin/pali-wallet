@@ -1,4 +1,4 @@
-import { Disclosure, Menu, Transition } from '@headlessui/react';
+import { Disclosure, Menu } from '@headlessui/react';
 import { uniqueId } from 'lodash';
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -97,7 +97,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   const handleChangeNetwork = async (
     network: INetworkWithKind,
-    chain: string
+    chain: string,
+    closeMenu?: () => void
   ) => {
     setSelectedNetwork({ network, chain });
 
@@ -131,6 +132,11 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
       // Optimistic update: dispatch the network switch action immediately
       store.dispatch(startSwitchNetwork(network));
 
+      // Close menu immediately after starting the switch
+      if (closeMenu) {
+        closeMenu();
+      }
+
       // Then perform the actual network switch in the background
       controllerEmitter(['wallet', 'setActiveNetwork'], [network])
         .then(() => {
@@ -139,11 +145,8 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
         .catch(() => {
           // On error, revert the optimistic update
           store.dispatch(switchNetworkError());
-          navigate('/home');
         });
-    } catch (networkError) {
-      navigate('/home');
-    }
+    } catch (networkError) {}
   };
 
   const hasConnectedDapps = Object.values(dapps).length > 0;
@@ -282,11 +285,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                           {Object.values(networks.syscoin).map(
-                            (
-                              currentNetwork: INetworkWithKind,
-                              index: number,
-                              arr
-                            ) => (
+                            (currentNetwork: INetworkWithKind) => (
                               <li
                                 key={uniqueId()}
                                 className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
@@ -295,9 +294,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 onClick={() => {
                                   handleChangeNetwork(
                                     currentNetwork,
-                                    'syscoin'
+                                    'syscoin',
+                                    menuprops.close
                                   );
-                                  menuprops.close();
                                 }}
                               >
                                 {/* Background glow effect on hover */}
@@ -364,16 +363,18 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                       <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
                         {Object.values(networks.ethereum)
                           .sort(customSort)
-
-                          .map((currentNetwork: any, index: number, arr) => (
+                          .map((currentNetwork: any) => (
                             <li
                               key={uniqueId()}
                               className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                                 font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
                                  transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
                               onClick={() => {
-                                handleChangeNetwork(currentNetwork, 'ethereum');
-                                menuprops.close();
+                                handleChangeNetwork(
+                                  currentNetwork,
+                                  'ethereum',
+                                  menuprops.close
+                                );
                               }}
                             >
                               {/* Background glow effect on hover */}

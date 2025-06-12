@@ -11,9 +11,11 @@ export const Fee = ({
   recommend,
   disabled,
   form,
+  onFeeChange,
 }: {
   disabled: boolean;
   form: any;
+  onFeeChange?: (newFee: number) => void;
   recommend?: number;
 }) => {
   const { t } = useTranslation();
@@ -33,14 +35,22 @@ export const Fee = ({
     if (recommend !== null && recommend !== undefined && !currentFormValue) {
       form.setFieldsValue({ fee: recommend });
       setCurrentFee(String(recommend));
+      // Notify parent component of initial fee
+      if (onFeeChange) {
+        onFeeChange(recommend);
+      }
     } else if (currentFormValue) {
       // Use existing form value if user has already entered something
       setCurrentFee(String(currentFormValue));
+      // Notify parent component of existing fee
+      if (onFeeChange && !isNaN(Number(currentFormValue))) {
+        onFeeChange(Number(currentFormValue));
+      }
     } else {
       // Default case
       setCurrentFee(String(recommend || ''));
     }
-  }, [form, recommend]);
+  }, [form, recommend, onFeeChange]);
 
   // Fee rate validation thresholds for UTXO networks (coin/byte)
   const getFeeRateThresholds = () => {
@@ -186,6 +196,10 @@ export const Fee = ({
                 form.setFieldsValue({ fee: newValue });
                 // Trigger form validation to update the visual feedback
                 form.validateFields(['fee']);
+                // Notify parent component of fee change
+                if (onFeeChange && newValue && !isNaN(Number(newValue))) {
+                  onFeeChange(Number(newValue));
+                }
               }}
             />
             {disabled && (

@@ -136,8 +136,10 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       )}
       <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">
         <div className="relative flex mb-4">
-          <img src={leftLogo} className="relative z-[0px]" />
-          <img src={rightLogo} className="absolute top-[2px] left-8 z-[1px]" />
+          {React.createElement(leftLogo, { className: 'relative z-[0px]' })}
+          {React.createElement(rightLogo, {
+            className: 'absolute top-[2px] left-8 z-[1px]',
+          })}
           <div className="flex flex-col ml-11">
             <h1 className="text-lg font-bold text-white">
               {networkThatNeedsChanging}
