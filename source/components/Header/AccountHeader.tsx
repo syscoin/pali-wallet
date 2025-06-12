@@ -17,9 +17,10 @@ import {
 } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useUtils } from 'hooks/index';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { ellipsis } from 'utils/index';
+import { ellipsis, adjustUrl } from 'utils/index';
 
 export const AccountHeader: React.FC = () => {
   const activeAccount = useSelector(
@@ -43,6 +44,7 @@ export const AccountHeader: React.FC = () => {
   const url = chrome.runtime.getURL('app.html');
 
   const isNetworkChanging = networkStatus === 'switching';
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -62,6 +64,23 @@ export const AccountHeader: React.FC = () => {
     navigate('/settings/edit-account', {
       state: account,
     });
+  };
+
+  const openAccountInExplorer = () => {
+    const accountAddress =
+      accounts[activeAccount.type][activeAccount.id]?.address;
+    if (!accountAddress) return;
+
+    let explorerUrl;
+    if (isBitcoinBased) {
+      // For UTXO networks, use the network URL pattern
+      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
+    } else {
+      // For EVM networks, use the explorer pattern
+      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
+    }
+
+    window.open(explorerUrl, '_blank');
   };
 
   useEffect(() => {
@@ -133,7 +152,13 @@ export const AccountHeader: React.FC = () => {
         }}
       />
       <div className="flex ml-[15px] items-center w-full text-brand-white">
-        <div className="add-identicon ml-1 mr-2 my-2" />
+        <Tooltip content="View on Explorer">
+          <div
+            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
+            onClick={openAccountInExplorer}
+            title="View account on explorer"
+          />
+        </Tooltip>
 
         <div className="items-center justify-center px-1 text-brand-white">
           {isNetworkChanging || isSwitchingAccount ? (

@@ -536,7 +536,7 @@
     "anyoneWithThisInfo": "Quiconque possède cette information peut voler vos fonds."
   },
   "faucet": {
-    "grabTextTwo": "Obtenez des ${{token}} avec notre robinet sur {{rpcName}} !",
+    "grabTextTwo": "Obtenez des ${{token}} avec notre robinet",
     "pleaseWait": "Veuillez patienter pendant que nous opérons notre magie...",
     "doNotClose": "Ne fermez pas le portefeuille.",
     "ERROR": "ERREUR !",

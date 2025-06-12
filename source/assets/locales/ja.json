@@ -439,7 +439,8 @@
     "invalidAmount": "無効な金額です。有効な金額を入力してください。",
     "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
     "transactionCreationFailedWithCode": "取引の作成に失敗しました ({{code}}): {{message}}",
-    "transactionSendFailed": "取引の送信に失敗しました: {{message}}"
+    "transactionSendFailed": "取引の送信に失敗しました: {{message}}",
+    "grabTextTwo": "フォーセットで ${{token}} を取得"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",
@@ -536,7 +537,7 @@
     "anyoneWithThisInfo": "この情報を持っている人は誰でもあなたの資金を盗むことができます。"
   },
   "faucet": {
-    "grabTextTwo": "{{rpcName}} でフォーセットを使って ${{token}} を取得しましょう！",
+    "grabTextTwo": "フォーセットで ${{token}} を取得",
     "pleaseWait": "魔法をかけている間、お待ちください...",
     "doNotClose": "ウォレットを閉じないでください。",
     "ERROR": "エラー！",

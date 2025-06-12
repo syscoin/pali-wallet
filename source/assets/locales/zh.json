@@ -417,7 +417,7 @@
     "anyoneWithThisInfo": "任何拥有此信息的人都能够盗取您的资金。"
   },
   "faucet": {
-    "grabTextTwo": "在 {{rpcName}} 上使用我们的水龙头获取 ${{token}}！",
+    "grabTextTwo": "在我们的水龙头获取 ${{token}}",
     "pleaseWait": "请稍等，我们正在施展魔法...",
     "doNotClose": "请不要关闭钱包。",
     "ERROR": "错误！",

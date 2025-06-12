@@ -536,7 +536,7 @@
     "congratulations": "Parabéns!"
   },
   "faucet": {
-    "grabTextTwo": "Pegue ${{token}} com nossa torneira no {{rpcName}}!",
+    "grabTextTwo": "Pegue ${{token}} com nossa torneira",
     "pleaseWait": "Por favor aguarde enquanto fazemos nossa mágica...",
     "doNotClose": "Não feche a carteira.",
     "ERROR": "ERRO!",

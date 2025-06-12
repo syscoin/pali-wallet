@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
@@ -45,6 +46,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
@@ -103,9 +105,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   }, [transaction.hash]);
 
   const openTransactionOnExplorer = useCallback(() => {
-    const url = `${activeNetwork.explorer}/tx/${transaction.hash}`;
+    const url = `${adjustedExplorer}tx/${transaction.hash}`;
     window.open(url, '_blank');
-  }, [activeNetwork.explorer, transaction.hash]);
+  }, [adjustedExplorer, transaction.hash]);
 
   return (
     <>

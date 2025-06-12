@@ -533,7 +533,7 @@
     "anyoneWithThisInfo": "Anyone with this information is able to steal your funds."
   },
   "faucet": {
-    "grabTextTwo": "Grab ${{token}} with our faucet on the {{rpcName}}!",
+    "grabTextTwo": "Grab ${{token}} on our faucet",
     "pleaseWait": "Please wait while we work our magic...",
     "doNotClose": "Do not close the wallet.",
     "ERROR": "ERROR!",

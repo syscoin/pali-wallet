@@ -536,7 +536,7 @@
     "anyoneWithThisInfo": "Jeder mit dieser Information kann Ihre Gelder stehlen."
   },
   "faucet": {
-    "grabTextTwo": "Holen Sie sich ${{token}} mit unserem Faucet auf {{rpcName}}!",
+    "grabTextTwo": "Holen Sie sich ${{token}} mit unserem Faucet",
     "pleaseWait": "Bitte warten Sie, während wir unsere Magie wirken...",
     "doNotClose": "Schließen Sie die Wallet nicht.",
     "ERROR": "FEHLER!",

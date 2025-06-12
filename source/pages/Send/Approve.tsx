@@ -16,6 +16,7 @@ import {
   IconButton,
 } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { useQueryData } from 'hooks/useQuery';
 import { RootState } from 'state/store';
@@ -117,8 +118,10 @@ export const ApproveTransactionComponent = () => {
 
   const [formControl] = Form.useForm();
 
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
+
   const openEthExplorer = () => {
-    window.open(`${activeNetwork.explorer}/address/${dataTx.to}`, '_blank');
+    window.open(`${adjustedExplorer}address/${dataTx.to}`, '_blank');
   };
 
   const setFiatPrice = () => {
