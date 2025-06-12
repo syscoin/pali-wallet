@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { Icon } from '..';
+import { LoadingSvg } from '../Icon/Icon';
 
 export const LoadingComponent = ({ opacity = 60 }: { opacity?: number }) => (
   <>
@@ -9,7 +9,7 @@ export const LoadingComponent = ({ opacity = 60 }: { opacity?: number }) => (
       style={{ zIndex: '9' }}
     >
       <div className={`flex items-center justify-center opacity-${opacity}`}>
-        <Icon name="loading" className="text-brand-white animate-spin-slow" />
+        <LoadingSvg className="text-brand-white animate-spin-slow" />
       </div>
     </div>
   </>

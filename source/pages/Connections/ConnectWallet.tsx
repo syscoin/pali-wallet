@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
+import { LoadingSvg } from 'components/Icon/Icon';
 import {
   Layout,
   PrimaryButton,
@@ -188,7 +189,7 @@ export const ConnectWallet = () => {
           </>
         ) : (
           <div>
-            <Icon name="loading" className="w-4 text-brand-graylight" />
+            <LoadingSvg className="w-4 text-brand-graylight animate-spin" />
           </div>
         )}
 

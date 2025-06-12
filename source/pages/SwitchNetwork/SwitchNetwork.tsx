@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import warningImg from 'assets/icons/warn.svg';
 import { Header } from 'components/Header';
+import { WarnIconSvg } from 'components/Icon/Icon';
 import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';
 
@@ -61,7 +61,7 @@ export const SwitchNetwork = () => {
           {!state || !state?.switchingFromTimeError ? (
             <>
               <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]'">
-                <img src={warningImg} />
+                <WarnIconSvg />
               </div>
               <span className="text-xs font-medium text-white text-center">
                 {t('switchNetworkPage.connectedOn')}

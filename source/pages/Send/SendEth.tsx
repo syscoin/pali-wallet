@@ -13,6 +13,7 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
 import errorIcon from 'assets/icons/errorIcon.svg';
 import successIcon from 'assets/icons/successIcon.svg';
+import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -283,7 +284,7 @@ export const SendEth = () => {
         <div className="flex flex-col items-center justify-center">
           <div className="add-identicon ml-1 mr-2 my-2" />
           <div className="flex gap-1 justify-center items-center">
-            <img src={'/assets/images/paliLogoWhiteSmall.svg'} />
+            <PaliWhiteSmallIconSvg />
             <div className="flex text-white gap-1 text-xs font-normal w-max">
               <p>
                 {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}

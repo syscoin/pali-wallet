@@ -9,7 +9,7 @@ import {
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 
-import logo from 'assets/images/whiteLogo.png';
+import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -50,7 +50,7 @@ const ManageAccountsView = () => {
                   style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
                   className="w-max  flex items-center justify-start whitespace-nowrap overflow-hidden"
                 >
-                  <img src={logo} className="mr-1 w-7"></img>
+                  <PaliWhiteSmallIconSvg className="mr-1 w-7 text-brand-gray300 opacity-80" />
                   {account.label} ({ellipsis(account.address, 4, 4)})
                 </span>
                 <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">

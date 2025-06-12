@@ -5,7 +5,8 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import { Layout, SecondaryButton, PrimaryButton, Icon } from 'components/index';
+import { LoadingSvg } from 'components/Icon/Icon';
+import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -166,7 +167,7 @@ export const ChangeAccount = () => {
           </>
         ) : (
           <div>
-            <Icon name="loading" className="w-4 text-brand-graylight" />
+            <LoadingSvg className="w-4 text-brand-graylight animate-spin" />
           </div>
         )}
 

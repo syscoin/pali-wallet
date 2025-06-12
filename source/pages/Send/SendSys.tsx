@@ -13,6 +13,7 @@ import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
+import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -431,7 +432,7 @@ export const SendSys = () => {
         <div className="flex flex-col items-center justify-center">
           <div className="add-identicon ml-1 mr-2 my-2" />
           <div className="flex gap-1 justify-center items-center">
-            <img src={'/assets/images/paliLogoWhiteSmall.svg'} />
+            <PaliWhiteSmallIconSvg />
             <div className="flex text-white gap-1 text-xs font-normal w-max">
               <p>
                 {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}
@@ -534,7 +535,7 @@ export const SendSys = () => {
                               : activeNetwork.currency
                           )}
                         </p>
-                        <Icon isSvg name="ArrowDown" />
+                        <ArrowDownSvg />
                       </Menu.Button>
 
                       <Transition

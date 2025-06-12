@@ -1,22 +1,10 @@
-import React, { memo } from 'react';
+import React from 'react';
 
-// Import detail arrow SVG for better performance
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
-import DetailArrowIcon from 'assets/icons/detailArrow.svg';
+import { DetailArrowSvg } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/useUtils';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';
-
-// Memoize detail arrow icon
-const DetailArrow = memo(({ onClick }: { onClick: () => void }) => (
-  <img
-    className="cursor-pointer transition-all hover:opacity-60"
-    src={DetailArrowIcon}
-    alt="View details"
-    onClick={onClick}
-  />
-));
-DetailArrow.displayName = 'DetailArrow';
 
 export const UtxoTransactionsListComponent = ({
   userTransactions,
@@ -52,7 +40,10 @@ export const UtxoTransactionsListComponent = ({
         <p className="text-xs">Transaction</p>
       </div>
       <div>
-        <DetailArrow onClick={handleGoTxDetails} />
+        <DetailArrowSvg
+          className="cursor-pointer transition-all hover:opacity-60"
+          onClick={handleGoTxDetails}
+        />
       </div>
     </div>
   );

@@ -5,6 +5,15 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import slider from 'assets/images/sliderIcon.png';
+import {
+  KeySvg,
+  PaliWhiteSmallIconSvg,
+  TrashIconSvg,
+  LanguageIconSvg,
+  DollarSignIconSvg,
+  HelpIconSvg,
+  LockIconSvg,
+} from 'components/Icon/Icon';
 import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -123,13 +132,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/remove-eth')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon
-                  name="PaliWhiteSmall"
-                  isSvg
-                  className="text-brand-white"
-                />
+                <PaliWhiteSmallIconSvg className="text-brand-white" />
 
                 <span>{t('generalMenu.manageEth')}</span>
               </li>
@@ -138,9 +143,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/seed')}
-                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon name="Key" isSvg className="mb-1 text-brand-white" />
+                <KeySvg className="mb-1 text-brand-white" />
 
                 <span id="wallet-seed-phrase-btn">
                   {t('generalMenu.walletSeedPhrase')}
@@ -151,14 +156,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/forget-wallet')}
-                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon
-                  name="Trash"
-                  isSvg
-                  className="mb-1 text-brand-white"
-                  id="forget-wallet-btn"
-                />
+                <TrashIconSvg className="mb-1 text-brand-white" />
 
                 <span>{t('generalMenu.forget')}</span>
               </li>
@@ -172,15 +172,14 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/languages')}
-                className="py-1.5 gap-2 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="py-1.5 gap-2 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon
-                  name="Language"
-                  isSvg
-                  className="mb-1 text-brand-white"
-                  id="forget-wallet-btn"
-                  wrapperClassname={`max-w-10`}
-                />
+                <div className="max-w-10">
+                  <LanguageIconSvg
+                    id="language-btn"
+                    className="mb-1 text-brand-white"
+                  />
+                </div>
 
                 <span>{t('generalMenu.languages')}</span>
               </li>
@@ -189,14 +188,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/currency')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon
-                  name="DollarSign"
-                  isSvg
-                  className="text-brand-white"
-                  wrapperClassname={`max-w-10`}
-                />
+                <DollarSignIconSvg className="text-brand-white" />
 
                 <span>{t('generalMenu.currency')}</span>
               </li>
@@ -205,14 +199,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/about')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon
-                  name="Help"
-                  isSvg
-                  className="text-brand-white"
-                  id="info-help-btn"
-                />
+                <HelpIconSvg id="info-help-btn" className="text-brand-white" />
 
                 <span>{t('generalMenu.infoHelp')}</span>
               </li>
@@ -221,9 +210,9 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={handleLogout}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
-                <Icon name="Lock" isSvg className="mb-2 text-brand-white" />
+                <LockIconSvg className="mb-2 text-brand-white" />
 
                 <span>{t('generalMenu.lock')}</span>
               </li>
@@ -232,7 +221,7 @@ export const GeneralMenu: React.FC = () => {
             <Menu.Item>
               <li
                 onClick={() => navigate('/settings/advanced')}
-                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+                className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
               >
                 <img src={slider} width="20px" className="text-brand-white" />
 

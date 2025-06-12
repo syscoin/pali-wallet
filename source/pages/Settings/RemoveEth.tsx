@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import metamaskIcon from 'assets/icons/metamask.svg';
-import paliIcon from 'assets/icons/pali.svg';
 import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -62,7 +61,11 @@ const RemoveEthView = () => {
       isEnabled ? (
         <img className="pr-2" src={metamaskIcon} />
       ) : (
-        <img className="pr-2" src={paliIcon} />
+        <Icon
+          name="PaliWhiteSmall"
+          isSvg
+          className="pr-2 text-brand-gray300 opacity-80"
+        />
       ),
     [isEnabled]
   );

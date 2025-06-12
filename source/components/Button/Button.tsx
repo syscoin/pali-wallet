@@ -1,6 +1,18 @@
-import React from 'react';
+import React, { memo } from 'react';
 
-import { Icon } from '..';
+import { LoadingSvg } from 'components/Icon/Icon';
+import { Icon } from 'components/index';
+
+// Memoize loading icons to prevent unnecessary re-renders
+const LoadingIconPrimary = memo(() => (
+  <LoadingSvg className="w-6 animate-spin" style={{ color: '#4d76b8' }} />
+));
+LoadingIconPrimary.displayName = 'LoadingIconPrimary';
+
+const LoadingIconWhite = memo(() => (
+  <LoadingSvg className="w-5 animate-spin" style={{ color: '#ffffff' }} />
+));
+LoadingIconWhite.displayName = 'LoadingIconWhite';
 
 interface IPrimaryButton {
   action?: boolean;
@@ -49,11 +61,7 @@ export const Button: React.FC<IButton> = ({
     type={type}
     id={id}
   >
-    {loading ? (
-      <Icon name="loading" color="#4d76b8" className="w-6 animate-spin" />
-    ) : (
-      children
-    )}
+    {loading ? <LoadingIconPrimary /> : children}
   </button>
 );
 
@@ -89,7 +97,7 @@ export const PrimaryButton: React.FC<IPrimaryButton> = ({
       id={id}
     >
       {loading ? (
-        <Icon name="loading" color="#ffffff" className="w-5 animate-spin" />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && checkIcon}
@@ -132,7 +140,7 @@ export const SecondButton: React.FC<IPrimaryButton> = ({
       id={id}
     >
       {loading ? (
-        <Icon name="loading" color="#ffffff" className="w-5 animate-spin" />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && closeIcon}
@@ -175,7 +183,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
       id={id}
     >
       {loading ? (
-        <Icon name="loading" color="#ffffff" className="w-5 animate-spin" />
+        <LoadingIconWhite />
       ) : (
         <>
           {action && closeIcon}
@@ -213,10 +221,6 @@ export const NeutralButton: React.FC<IPrimaryButton> = ({
     type={type}
     id={id}
   >
-    {loading ? (
-      <Icon name="loading" color="#4d76b8" className="w-5 animate-spin" />
-    ) : (
-      <>{children}</>
-    )}
+    {loading ? <LoadingIconPrimary /> : <>{children}</>}
   </button>
 );

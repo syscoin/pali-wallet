@@ -687,34 +687,75 @@ const CustomRPCView = () => {
     chain: ChainInfo;
     onSelect: () => void;
   }>(
-    ({ chain, onSelect }) => (
-      <div
-        className="flex items-center gap-3 py-3 px-4 hover:bg-gray-700 cursor-pointer transition-colors duration-150 border-b border-gray-700 last:border-b-0"
-        onMouseDown={(e) => {
-          e.preventDefault(); // Prevent blur from firing first
-          onSelect();
-        }}
-      >
-        <div className="flex-shrink-0">
-          <AutoCompleteIcon chain={chain} size={28} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="font-semibold text-white truncate text-sm">
-              {chain.name}
-            </span>
-            <span className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded-full font-mono font-medium">
-              {chain.chainId}
-            </span>
+    ({ chain, onSelect }) => {
+      // Check if network name is long and might be truncated - more aggressive threshold
+      const isLongName = chain.name.length > 18;
+
+      return (
+        <div
+          className="group relative flex items-center gap-2 py-2.5 px-4 hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 cursor-pointer transition-all duration-300 ease-in-out border-b border-dashed border-alpha-whiteAlpha300 last:border-b-0 hover:border-brand-royalblue hover:shadow-lg hover:shadow-brand-blue600/20 active:scale-[0.98] active:bg-brand-blue700"
+          onMouseDown={(e) => {
+            e.preventDefault(); // Prevent blur from firing first
+            onSelect();
+          }}
+        >
+          {/* Background glow effect on hover */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+
+          {/* Icon with enhanced hover styling */}
+          <div className="relative flex-shrink-0 transform group-hover:scale-110 transition-transform duration-300 ease-out group-hover:brightness-125">
+            <div className="relative group-hover:drop-shadow-lg">
+              <AutoCompleteIcon chain={chain} size={24} />
+              {/* More visible ring effect on hover */}
+              <div className="absolute inset-0 rounded-full ring-2 ring-transparent group-hover:ring-brand-white/40 group-hover:ring-4 transition-all duration-300"></div>
+            </div>
           </div>
-          <div className="text-xs text-gray-300">
-            ${chain.nativeCurrency.symbol.toUpperCase()} •{' '}
-            {chain.rpc?.length || 0} RPC
-            {(chain.rpc?.length || 0) !== 1 ? 's' : ''}
+
+          {/* Content with improved responsive layout */}
+          <div className="flex-1 min-w-0 relative z-10">
+            {/* Network name and chain ID - better spacing */}
+            <div className="flex items-center justify-between gap-2 mb-0.5">
+              {/* Network name with proper tooltip logic */}
+              <Tooltip
+                content={isLongName ? chain.name : null}
+                childrenClassName="flex-1 min-w-0"
+                placement="top"
+              >
+                <span className="font-medium text-brand-white group-hover:text-white group-hover:font-semibold truncate text-xs leading-tight text-left block w-full group-hover:drop-shadow-sm transition-all duration-300">
+                  {chain.name}
+                </span>
+              </Tooltip>
+
+              {/* Chain ID badge */}
+              <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
+                {chain.chainId}
+              </span>
+            </div>
+
+            {/* Currency and RPC info - more compact */}
+            <div className="flex items-center justify-start gap-1.5 text-xs text-brand-gray200 group-hover:text-brand-white/90 transition-colors duration-300">
+              <span className="inline-flex items-center gap-1 font-medium text-left">
+                <span className="text-brand-royalblue group-hover:text-white font-semibold text-xs">
+                  ${chain.nativeCurrency.symbol.toUpperCase()}
+                </span>
+                <span className="text-brand-gray200 group-hover:text-brand-white/50 text-xs">
+                  •
+                </span>
+                <span className="font-mono text-xs text-brand-gray300 group-hover:text-brand-white/80">
+                  {chain.rpc?.length || 0} RPC
+                  {(chain.rpc?.length || 0) !== 1 ? 's' : ''}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Enhanced arrow indicator */}
+          <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transform translate-x-1 group-hover:translate-x-0 transition-all duration-300 ease-out">
+            <div className="w-2 h-2 border-r-2 border-t-2 border-brand-white/80 group-hover:border-white rotate-45 group-hover:drop-shadow-sm"></div>
           </div>
         </div>
-      </div>
-    ),
+      );
+    },
     (prevProps, nextProps) =>
       prevProps.chain.chainId === nextProps.chain.chainId
   );
@@ -787,7 +828,7 @@ const CustomRPCView = () => {
                 <span className="font-bold text-gray-900 truncate text-xl group-hover:text-blue-600 transition-colors duration-200">
                   {currentNetwork.label || 'Unknown Network'}
                 </span>
-                <span className="text-sm bg-blue-500 text-white px-3 py-1 rounded-full font-mono font-semibold shadow-sm transform group-hover:scale-105 group-hover:bg-blue-600 transition-all duration-200">
+                <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
                   {currentNetwork.kind === 'utxo' || isSyscoinRpc
                     ? currentNetwork.slip44 || currentNetwork.chainId
                     : currentNetwork.chainId}
@@ -883,28 +924,47 @@ const CustomRPCView = () => {
                     value={form.getFieldValue('label')}
                   />
                   <div
-                    className={`absolute top-full left-0 right-0 z-50 mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl max-h-80 overflow-y-auto transition-all duration-200 ${
+                    className={`absolute top-full left-0 right-0 z-50 mt-2 bg-brand-blue600 border border-brand-royalblue/30 rounded-xl shadow-2xl shadow-brand-blue600/40 max-h-80 overflow-hidden transition-all duration-300 ease-out backdrop-blur-sm ${
                       networkSuggestions.length > 0 && !testingRpcs
-                        ? 'opacity-100 visible'
-                        : 'opacity-0 invisible pointer-events-none'
+                        ? 'opacity-100 visible transform scale-100'
+                        : 'opacity-0 invisible pointer-events-none transform scale-95'
                     }`}
+                    style={{
+                      background:
+                        'linear-gradient(145deg, #1E365C 0%, #162742 100%)',
+                      boxShadow:
+                        '0 20px 25px -5px rgba(30, 54, 92, 0.4), 0 10px 10px -5px rgba(30, 54, 92, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                    }}
                   >
-                    {networkLoading ? (
-                      <div className="p-4 text-center text-gray-400">
-                        Searching networks...
-                      </div>
-                    ) : (
-                      networkSuggestions.map((chain) => (
-                        <NetworkSuggestionItem
-                          key={`network-${chain.chainId}`}
-                          chain={chain}
-                          onSelect={() => {
-                            setNetworkSuggestions([]); // Close immediately
-                            handleNetworkSelect(chain.name, { chain });
-                          }}
-                        />
-                      ))
-                    )}
+                    {/* Subtle top border accent */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue to-transparent"></div>
+
+                    <div className="overflow-y-auto max-h-80 scrollbar-styled">
+                      {networkLoading ? (
+                        <div className="p-6 text-center">
+                          <div className="inline-flex items-center gap-3 text-brand-white/80">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-brand-royalblue border-t-transparent"></div>
+                            <span className="font-medium">
+                              Searching networks...
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        networkSuggestions.map((chain) => (
+                          <NetworkSuggestionItem
+                            key={`network-${chain.chainId}`}
+                            chain={chain}
+                            onSelect={() => {
+                              setNetworkSuggestions([]); // Close immediately
+                              handleNetworkSelect(chain.name, { chain });
+                            }}
+                          />
+                        ))
+                      )}
+                    </div>
+
+                    {/* Subtle bottom border accent */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue/50 to-transparent"></div>
                   </div>
                 </div>
               </div>

@@ -7,7 +7,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import importIcon from 'assets/images/import.png';
 import ledgerLogo from 'assets/images/ledgerLogo.png';
 import trezorLogo from 'assets/images/trezorLogo.png';
-import logo from 'assets/images/whiteLogo.png';
+import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
@@ -42,9 +42,9 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((acc) => acc.isImported === false)
                 .map((account, index) => (
                   <li
-                    className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center text-white text-sm 
-                  font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
-                   transition duration-300`}
+                    className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                  font-medium hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none cursor-pointer transform
+                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 border-b border-dashed border-alpha-whiteAlpha300/50 last:border-b-0 hover:border-brand-royalblue/30`}
                     onClick={async () => {
                       await setActiveAccount(
                         account.id,
@@ -55,24 +55,35 @@ const RenderAccountsListByBitcoinBased = (
                     id={`account-${index}`}
                     key={account.id}
                   >
-                    <span
-                      style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                      className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <img src={logo} className="mr-1 w-7" alt="" />
-                      {account.label} ({ellipsis(account.address, 4, 4)})
-                    </span>
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Pali
-                    </span>
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.HDAccount && (
-                        <Icon
-                          name="check"
-                          className="mb-1 ml-2 w-4"
-                          color="#8EC100"
-                        />
-                      )}
+                    {/* Background glow effect on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+
+                    {/* Left side: Icon + Account name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+                      <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                        <PaliWhiteSmallIconSvg className="w-7 h-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
+                      </div>
+                      <span className="group-hover:text-white transition-colors duration-300 truncate">
+                        {account.label} ({ellipsis(account.address, 4, 4)})
+                      </span>
+                    </div>
+
+                    {/* Right side: Badge + Checkmark */}
+                    <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+                      <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300">
+                        Pali
+                      </span>
+                      {activeAccount.id === account.id &&
+                        activeAccount.type === KeyringAccountType.HDAccount && (
+                          <div className="transform group-hover:scale-110 transition-transform duration-300">
+                            <Icon
+                              name="check"
+                              className="w-4 h-4"
+                              color="#8EC100"
+                            />
+                          </div>
+                        )}
+                    </div>
                   </li>
                 ))}
 
@@ -80,9 +91,9 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((acc) => !acc.address.startsWith('0x'))
                 .map((account, index) => (
                   <li
-                    className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center text-white text-sm 
-                  font-medium active:bg-opacity-40 focus:outline-none cursor-pointer transform
-                   transition duration-300`}
+                    className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                  font-medium hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none cursor-pointer transform
+                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 border-b border-dashed border-alpha-whiteAlpha300/50 last:border-b-0 hover:border-brand-royalblue/30`}
                     onClick={async () => {
                       await setActiveAccount(
                         account.id,
@@ -93,24 +104,35 @@ const RenderAccountsListByBitcoinBased = (
                     id={`account-${index}`}
                     key={account.id}
                   >
-                    <span
-                      style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                      className="w-max gap-[2px] flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <img src={logo} className="mr-1 w-7" alt="" />
-                      {account.label} ({ellipsis(account.address, 4, 4)})
-                    </span>
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Imported
-                    </span>
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Imported && (
-                        <Icon
-                          name="check"
-                          className="mb-1 ml-2 w-4"
-                          color="#8EC100"
-                        />
-                      )}
+                    {/* Background glow effect on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+
+                    {/* Left side: Icon + Account name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+                      <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                        <PaliWhiteSmallIconSvg className="w-7 h-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
+                      </div>
+                      <span className="group-hover:text-white transition-colors duration-300 truncate">
+                        {account.label} ({ellipsis(account.address, 4, 4)})
+                      </span>
+                    </div>
+
+                    {/* Right side: Badge + Checkmark */}
+                    <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+                      <span className="text-xs px-2 py-0.5 text-white bg-orange-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-orange-400 transform group-hover:scale-105 transition-all duration-300">
+                        Imported
+                      </span>
+                      {activeAccount.id === account.id &&
+                        activeAccount.type === KeyringAccountType.Imported && (
+                          <div className="transform group-hover:scale-110 transition-transform duration-300">
+                            <Icon
+                              name="check"
+                              className="w-4 h-4"
+                              color="#8EC100"
+                            />
+                          </div>
+                        )}
+                    </div>
                   </li>
                 ))}
 
@@ -118,13 +140,12 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((acc) => acc.isImported === false)
                 .map((account, index) => (
                   <li
-                    className={`py-1.5 px-5 w-max  backface-visibility-hidden flex items-center justify-start text-white text-sm 
-                  font-medium active:bg-opacity-40 focus:outline-none ${
+                    className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                  font-medium active:bg-brand-blue700 active:scale-[0.98] focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
-                      : 'cursor-pointer'
-                  } transform
-                   transition duration-300`}
+                      : 'cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 border-b border-dashed border-alpha-whiteAlpha300/50 last:border-b-0 hover:border-brand-royalblue/30'
+                  } transform`}
                     onClick={async () => {
                       if (account?.originNetwork.url !== activeNetwork.url) {
                         return;
@@ -138,39 +159,47 @@ const RenderAccountsListByBitcoinBased = (
                     id={`account-${index}`}
                     key={account.id}
                   >
-                    <span
-                      style={{
-                        maxWidth: '16.25rem',
-                        textOverflow: 'ellipsis',
-                      }}
-                      className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <img
-                        src={trezorLogo}
-                        alt=""
-                        style={{
-                          filter:
-                            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
-                        }}
-                        className="mr-1 w-7"
-                      />
-                      {account.label}{' '}
-                      {!(account?.originNetwork.url !== activeNetwork.url) &&
-                        `(${ellipsis(account.address, 4, 4)})`}
-                    </span>
+                    {/* Background glow effect on hover */}
+                    {account?.originNetwork.url === activeNetwork.url && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                    )}
 
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Trezor
-                    </span>
-
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Trezor && (
-                        <Icon
-                          name="check"
-                          className="mb-1 ml-2 w-4"
-                          color="#8EC100"
+                    {/* Left side: Icon + Account name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+                      <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                        <img
+                          src={trezorLogo}
+                          alt=""
+                          style={{
+                            filter:
+                              'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                          }}
+                          className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
                         />
-                      )}
+                      </div>
+                      <span className="group-hover:text-white transition-colors duration-300 truncate">
+                        {account.label}{' '}
+                        {!(account?.originNetwork.url !== activeNetwork.url) &&
+                          `(${ellipsis(account.address, 4, 4)})`}
+                      </span>
+                    </div>
+
+                    {/* Right side: Badge + Checkmark */}
+                    <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+                      <span className="text-xs px-2 py-0.5 text-white bg-green-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-green-400 transform group-hover:scale-105 transition-all duration-300">
+                        Trezor
+                      </span>
+                      {activeAccount.id === account.id &&
+                        activeAccount.type === KeyringAccountType.Trezor && (
+                          <div className="transform group-hover:scale-110 transition-transform duration-300">
+                            <Icon
+                              name="check"
+                              className="w-4 h-4"
+                              color="#8EC100"
+                            />
+                          </div>
+                        )}
+                    </div>
                   </li>
                 ))}
 
@@ -178,13 +207,12 @@ const RenderAccountsListByBitcoinBased = (
                 .filter((acc) => acc.isImported === false)
                 .map((account, index) => (
                   <li
-                    className={`py-1.5 px-5 w-max  backface-visibility-hidden flex items-center justify-start text-white text-sm 
-                  font-medium active:bg-opacity-40 focus:outline-none ${
+                    className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                  font-medium active:bg-brand-blue700 active:scale-[0.98] focus:outline-none ${
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
-                      : 'cursor-pointer'
-                  } transform
-                   transition duration-300`}
+                      : 'cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 border-b border-dashed border-alpha-whiteAlpha300/50 last:border-b-0 hover:border-brand-royalblue/30'
+                  } transform`}
                     onClick={async () => {
                       if (account?.originNetwork.url !== activeNetwork.url) {
                         return;
@@ -198,87 +226,103 @@ const RenderAccountsListByBitcoinBased = (
                     id={`account-${index}`}
                     key={account.id}
                   >
-                    <span
-                      style={{
-                        maxWidth: '16.25rem',
-                        textOverflow: 'ellipsis',
-                      }}
-                      className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <img
-                        src={ledgerLogo}
-                        alt=""
-                        style={{
-                          filter:
-                            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
-                        }}
-                        className="mr-2 w-7"
-                      />
-                      {account.label}{' '}
-                      {!(account?.originNetwork.url !== activeNetwork.url) &&
-                        `(${ellipsis(account.address, 4, 4)})`}
-                    </span>
+                    {/* Background glow effect on hover */}
+                    {account?.originNetwork.url === activeNetwork.url && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                    )}
 
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Ledger
-                    </span>
-
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Ledger && (
-                        <Icon
-                          name="check"
-                          className="mb-1 ml-2 w-4"
-                          color="#8EC100"
+                    {/* Left side: Icon + Account name */}
+                    <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+                      <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                        <img
+                          src={ledgerLogo}
+                          alt=""
+                          style={{
+                            filter:
+                              'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+                          }}
+                          className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
                         />
-                      )}
+                      </div>
+                      <span className="group-hover:text-white transition-colors duration-300 truncate">
+                        {account.label}{' '}
+                        {!(account?.originNetwork.url !== activeNetwork.url) &&
+                          `(${ellipsis(account.address, 4, 4)})`}
+                      </span>
+                    </div>
+
+                    {/* Right side: Badge + Checkmark */}
+                    <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+                      <span className="text-xs px-2 py-0.5 text-white bg-blue-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-blue-400 transform group-hover:scale-105 transition-all duration-300">
+                        Ledger
+                      </span>
+                      {activeAccount.id === account.id &&
+                        activeAccount.type === KeyringAccountType.Ledger && (
+                          <div className="transform group-hover:scale-110 transition-transform duration-300">
+                            <Icon
+                              name="check"
+                              className="w-4 h-4"
+                              color="#8EC100"
+                            />
+                          </div>
+                        )}
+                    </div>
                   </li>
                 ))}
             </>
           ) : (
             Object.entries(accounts).map(
-              ([keyringAccountType, accountTypeAccounts]) => (
-                <div key={keyringAccountType}>
-                  {Object.values(accountTypeAccounts)
-                    .filter((account) => account.address.startsWith('0x'))
-                    .map((account, index) => (
-                      <li
-                        className={`py-1.5 px-5 w-max backface-visibility-hidden flex items-center justify-start text-white text-sm 
-                  font-medium active:bg-opacity-40 focus:outline-none ${
-                    (account.isTrezorWallet &&
-                      account?.originNetwork?.isBitcoinBased) ||
-                    (account.isLedgerWallet &&
-                      account?.originNetwork?.isBitcoinBased)
-                      ? 'hidden'
-                      : 'cursor-pointer'
-                  } transform
-                   transition duration-300`}
-                        onClick={async () => {
-                          if (
-                            (account.isTrezorWallet &&
-                              account?.originNetwork?.isBitcoinBased) ||
-                            (account.isLedgerWallet &&
-                              account?.originNetwork?.isBitcoinBased)
-                          ) {
-                            return;
-                          }
-                          await setActiveAccount(
-                            account.id,
-                            keyringAccountType as KeyringAccountType
-                          );
-                          close();
-                        }}
-                        id={`account-${index}`}
-                        key={account.id}
-                      >
-                        <span
-                          style={{
-                            maxWidth: '16.25rem',
-                            textOverflow: 'ellipsis',
-                          }}
-                          className="w-full flex items-center justify-start whitespace-nowrap overflow-hidden"
-                        >
+              ([keyringAccountType, accountTypeAccounts]) =>
+                Object.values(accountTypeAccounts)
+                  .filter((account) => account.address.startsWith('0x'))
+                  .map((account, index) => (
+                    <li
+                      className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+              font-medium active:bg-brand-blue700 active:scale-[0.98] focus:outline-none ${
+                (account.isTrezorWallet &&
+                  account?.originNetwork?.isBitcoinBased) ||
+                (account.isLedgerWallet &&
+                  account?.originNetwork?.isBitcoinBased)
+                  ? 'hidden'
+                  : 'cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 border-b border-dashed border-alpha-whiteAlpha300/50 last:border-b-0 hover:border-brand-royalblue/30'
+              } transform`}
+                      onClick={async () => {
+                        if (
+                          (account.isTrezorWallet &&
+                            account?.originNetwork?.isBitcoinBased) ||
+                          (account.isLedgerWallet &&
+                            account?.originNetwork?.isBitcoinBased)
+                        ) {
+                          return;
+                        }
+                        await setActiveAccount(
+                          account.id,
+                          keyringAccountType as KeyringAccountType
+                        );
+                        close();
+                      }}
+                      id={`account-${index}`}
+                      key={`${keyringAccountType}-${account.id}`}
+                    >
+                      {/* Background glow effect on hover */}
+                      {!(
+                        (account.isTrezorWallet &&
+                          account?.originNetwork?.isBitcoinBased) ||
+                        (account.isLedgerWallet &&
+                          account?.originNetwork?.isBitcoinBased)
+                      ) && (
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                      )}
+
+                      {/* Left side: Icon + Account name */}
+                      <div className="flex items-center gap-2 flex-1 min-w-0 relative z-10">
+                        <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
                           {account.isImported ? (
-                            <img src={importIcon} className="mr-1 w-7" alt="" />
+                            <img
+                              src={importIcon}
+                              className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
+                              alt=""
+                            />
                           ) : account.isTrezorWallet ? (
                             <img
                               src={trezorLogo}
@@ -287,7 +331,7 @@ const RenderAccountsListByBitcoinBased = (
                                 filter:
                                   'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                               }}
-                              className="mr-1 w-7"
+                              className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
                             />
                           ) : account.isLedgerWallet ? (
                             <img
@@ -297,11 +341,13 @@ const RenderAccountsListByBitcoinBased = (
                                 filter:
                                   'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
                               }}
-                              className="mr-1 w-7"
+                              className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
                             />
                           ) : (
-                            <img src={logo} className="mr-1 w-7" alt="" />
-                          )}{' '}
+                            <PaliWhiteSmallIconSvg className="w-7 h-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300" />
+                          )}
+                        </div>
+                        <span className="group-hover:text-white transition-colors duration-300 truncate">
                           {account.label}{' '}
                           {!(
                             (account.isTrezorWallet &&
@@ -310,20 +356,40 @@ const RenderAccountsListByBitcoinBased = (
                               account?.originNetwork?.isBitcoinBased)
                           ) && `(${ellipsis(account.address, 4, 4)})`}
                         </span>
+                      </div>
 
+                      {/* Right side: Badge + Checkmark */}
+                      <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+                        {account.isImported ? (
+                          <span className="text-xs px-2 py-0.5 text-white bg-orange-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-orange-400 transform group-hover:scale-105 transition-all duration-300">
+                            Imported
+                          </span>
+                        ) : account.isTrezorWallet ? (
+                          <span className="text-xs px-2 py-0.5 text-white bg-green-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-green-400 transform group-hover:scale-105 transition-all duration-300">
+                            Trezor
+                          </span>
+                        ) : account.isLedgerWallet ? (
+                          <span className="text-xs px-2 py-0.5 text-white bg-blue-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-blue-400 transform group-hover:scale-105 transition-all duration-300">
+                            Ledger
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300">
+                            Pali
+                          </span>
+                        )}
                         {activeAccount.id === account.id &&
                           activeAccount.type === keyringAccountType && (
-                            <Icon
-                              name="check"
-                              className="mb-1 ml-2 w-4"
-                              wrapperClassname="relative right-0.5"
-                              color="#8EC100"
-                            />
+                            <div className="transform group-hover:scale-110 transition-transform duration-300">
+                              <Icon
+                                name="check"
+                                className="w-4 h-4"
+                                color="#8EC100"
+                              />
+                            </div>
                           )}
-                      </li>
-                    ))}
-                </div>
-              )
+                      </div>
+                    </li>
+                  ))
             )
           )}
         </>

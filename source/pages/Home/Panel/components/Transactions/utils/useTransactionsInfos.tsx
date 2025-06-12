@@ -2,26 +2,20 @@ import React, { useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-// Import SVG URLs for better performance (processed by build system)
-import ArrowUpIcon from 'assets/icons/ArrowUp.svg';
-import ReceivedArrowIcon from 'assets/icons/receivedArrow.svg';
+import { ArrowUpSvg, ReceivedArrowSvg } from 'components/Icon/Icon';
 import { RootState } from 'state/store';
 import { ITransactionsListConfig } from 'types/useTransactionsInfo';
 
-// Memoize transaction status icons to prevent unnecessary re-renders
+// Memoize transaction status icons using centralized SVG components
 const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
   <>
     {isDetail ? (
       <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-        <img
-          className="relative w-[30px] h-[30px]"
-          src={ArrowUpIcon}
-          alt="Sent"
-        />
+        <ArrowUpSvg className="relative w-[30px] h-[30px]" />
       </div>
     ) : (
       <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-        <img className="relative" src={ArrowUpIcon} alt="Sent" />
+        <ArrowUpSvg className="relative" />
       </div>
     )}
   </>
@@ -32,15 +26,11 @@ const ReceivedIcon = memo(({ isDetail }: { isDetail: boolean }) => (
   <>
     {isDetail ? (
       <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-        <img
-          className="relative w-[30px] h-[30px]"
-          src={ReceivedArrowIcon}
-          alt="Received"
-        />
+        <ReceivedArrowSvg className="relative w-[30px] h-[30px]" />
       </div>
     ) : (
       <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-        <img className="relative" src={ReceivedArrowIcon} alt="Received" />
+        <ReceivedArrowSvg className="relative" />
       </div>
     )}
   </>

@@ -7,12 +7,12 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { FaucetChainIds } from '../../types/faucet';
+import { ArrowUpSvg, ArrowDownLoadSvg } from 'components/Icon/Icon';
 import {
   Button,
   FaucetAccessModal,
   FaucetFirstAccessModal,
   Header,
-  Icon,
 } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { StatusModal } from 'components/Modal/StatusModal';
@@ -94,24 +94,11 @@ FiatDisplay.displayName = 'FiatDisplay';
 
 // Memoize Icon components to prevent unnecessary re-renders
 const SendIcon = memo(() => (
-  <Icon
-    name="ArrowUpBoldIcon"
-    className="w-5 h-5"
-    wrapperClassname="mr-2"
-    rotate={45}
-    isSvg={true}
-  />
+  <ArrowUpSvg className="w-5 h-5 mr-2 transform rotate-45" />
 ));
 SendIcon.displayName = 'SendIcon';
 
-const ReceiveIcon = memo(() => (
-  <Icon
-    name="ArrowDownLoad"
-    className="w-5 h-5"
-    wrapperClassname="mr-2"
-    isSvg={true}
-  />
-));
+const ReceiveIcon = memo(() => <ArrowDownLoadSvg className="w-5 h-5 mr-2" />);
 ReceiveIcon.displayName = 'ReceiveIcon';
 
 export const Home = () => {

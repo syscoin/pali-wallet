@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
+import { LoadingSvg } from 'components/Icon/Icon';
 import { IconButton } from 'components/IconButton';
 import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
@@ -646,12 +647,12 @@ export const SendNTokenTransaction = () => {
                   wrapperClassname="flex items-center mr-2"
                 />
               ) : (
-                <Icon
-                  name="loading"
-                  color="#fff"
-                  className="w-5 animate-spin-slow"
-                  wrapperClassname="mr-2 flex items-center"
-                />
+                <div className="mr-2 flex items-center">
+                  <LoadingSvg
+                    className="w-5 animate-spin-slow"
+                    style={{ color: '#fff' }}
+                  />
+                </div>
               )}
               {t('buttons.confirm')}
             </Button>

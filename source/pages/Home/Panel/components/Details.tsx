@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import explorerImg from 'assets/icons/externalExplorer.svg';
-import { Layout, Icon } from 'components/index';
+import { ExternalLinkSvg, LoadingSvg } from 'components/Icon/Icon';
+import { Layout } from 'components/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { adjustUrl } from 'utils/index';
@@ -63,7 +63,7 @@ export const DetailsView = () => {
       }`}
     >
       {isLoading && !isNft ? (
-        <Icon name="loading" className="absolute left-1/2 top-1/2 w-3" />
+        <LoadingSvg className="absolute left-1/2 top-1/2 w-3 animate-spin" />
       ) : (
         <>
           <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">
@@ -82,7 +82,7 @@ export const DetailsView = () => {
                   className="flex items-center justify-center gap-2 cursor-pointer transition-all duration-300 hover:opacity-60 py-3 px-4 rounded-lg border border-dashed border-[#FFFFFF29]"
                   onClick={isBitcoinBased ? openSysExplorer : openEthExplorer}
                 >
-                  <img className="w-4 h-4" src={explorerImg} />
+                  <ExternalLinkSvg className="w-4 h-4" />
                   <p className="text-sm text-white underline">
                     View on Explorer
                   </p>

@@ -2,7 +2,7 @@ import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
-import paliLogo from 'assets/images/paliLogoSmall.png';
+import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 
@@ -33,7 +33,7 @@ const AboutView: FC = () => {
       id="info-help-title"
     >
       <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
-        <img className="pb-6" src={paliLogo} />
+        <PaliWhiteSmallIconSvg className="pb-6 w-16" />
         <p className=" text-white">Pali Wallet Browser Extension</p>
         <p className="text-brand-gray200">
           {t('settings.version')}: {packageJson.version}

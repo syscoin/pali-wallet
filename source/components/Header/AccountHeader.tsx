@@ -204,7 +204,11 @@ export const AccountHeader: React.FC = () => {
                 shape="circle"
                 className="ml-2"
               >
-                <Icon name="copy" className="text-xs" id="copy-address-btn" />
+                <Icon
+                  name="copy"
+                  className="text-xs hover:text-brand-royalblue"
+                  id="copy-address-btn"
+                />
               </IconButton>
             </div>
           )}

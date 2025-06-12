@@ -1,6 +1,6 @@
 import { Input } from 'antd';
 import isNaN from 'lodash/isNaN';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -12,6 +12,17 @@ import { RootState } from 'state/store';
 import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
+
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon
+    wrapperClassname="flex items-center justify-center"
+    name="Copy"
+    isSvg
+    className="px-2 text-brand-white hover:text-fields-input-borderfocus"
+  />
+));
+CopyIcon.displayName = 'CopyIcon';
 
 interface ITransactionDetailsProps {
   customFee: {
@@ -79,12 +90,7 @@ export const TransactionDetailsComponent = (
             {ellipsis(tx.from, 7, 15)}
             {
               <IconButton onClick={() => copy(tx.from ?? '')}>
-                <Icon
-                  wrapperClassname="flex items-center justify-center"
-                  name="Copy"
-                  isSvg
-                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
-                />
+                <CopyIcon />
               </IconButton>
             }
           </Tooltip>
@@ -98,12 +104,7 @@ export const TransactionDetailsComponent = (
             {ellipsis(tx.to, 7, 15)}
             {
               <IconButton onClick={() => copy(tx.to ?? '')}>
-                <Icon
-                  wrapperClassname="flex items-center justify-center"
-                  name="Copy"
-                  isSvg
-                  className="px-2 text-brand-white hover:text-fields-input-borderfocus"
-                />
+                <CopyIcon />
               </IconButton>
             }
           </Tooltip>

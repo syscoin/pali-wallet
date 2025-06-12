@@ -3,6 +3,7 @@ import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { EditIconSvg } from 'components/Icon/Icon';
 import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -55,7 +56,7 @@ const ConnectedSites = () => {
               <p>{truncate(_dapp.host, 40)}</p>
 
               <IconButton onClick={() => setSelected(_dapp)}>
-                <Icon name="edit" wrapperClassname="w-4" />
+                <EditIconSvg className="w-4" />
               </IconButton>
             </li>
           ))}

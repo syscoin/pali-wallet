@@ -653,16 +653,16 @@ class MainController extends KeyringManager {
     }
     // --- END VALIDATION ---
 
-    const handleWalletInfo = () => {
+    const handleWalletInfo = async () => {
       this.setSeed(phrase);
-      this.setWalletPassword(password);
+      await this.setWalletPassword(password);
     };
 
-    handleWalletInfo();
+    await handleWalletInfo();
 
     if (activeAccount.address !== '') {
       this.forgetWallet(password);
-      handleWalletInfo();
+      await handleWalletInfo();
     }
 
     const account = (await this.createKeyringVault()) as IKeyringAccountState;

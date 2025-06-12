@@ -5,7 +5,13 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import { Icon } from 'components/index';
+import {
+  AddUserSvg,
+  ManageUserSvg,
+  KeySvg,
+  HardWalletIconSvg,
+  UserImportedIconSvg,
+} from 'components/Icon/Icon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -65,9 +71,9 @@ export const AccountMenu: React.FC = () => {
           onClick={() =>
             navigate('/settings/account/new', { state: { fromMenu: true } })
           }
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
-          <Icon name="AddUser" isSvg className="mb-1 text-brand-white" />
+          <AddUserSvg className="mb-1 text-brand-white" />
 
           <span>{t('accountMenu.createNewAccount')}</span>
         </li>
@@ -78,9 +84,9 @@ export const AccountMenu: React.FC = () => {
           onClick={() =>
             navigate('/settings/manage-accounts', { state: { fromMenu: true } })
           }
-          className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
-          <Icon name="ManageUser" isSvg className="mb-2 text-brand-white" />
+          <ManageUserSvg className="mb-2 text-brand-white" />
 
           <span>{t('accountMenu.manageAccounts')}</span>
         </li>
@@ -93,9 +99,9 @@ export const AccountMenu: React.FC = () => {
               state: { fromMenu: true },
             })
           }
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
-          <Icon name="key" className="mb-2 text-brand-white" />
+          <KeySvg className="mb-2 text-brand-white" />
 
           <span>{t('accountMenu.yourKeys')}</span>
         </li>
@@ -104,14 +110,9 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <li
           onClick={() => window.open(url)}
-          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium active:bg-opacity-40 focus:outline-none"
+          className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
-          <Icon
-            name="HardWallet"
-            isSvg
-            className="mb-2 text-brand-white"
-            id="hardware-wallet-btn"
-          />
+          <HardWalletIconSvg className="mb-2 text-brand-white" />
 
           <span>{t('accountMenu.connectTrezor')}</span>
         </li>
@@ -125,9 +126,9 @@ export const AccountMenu: React.FC = () => {
                 state: { fromMenu: true },
               })
             }
-            className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium active:bg-opacity-40 focus:outline-none`}
+            className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200`}
           >
-            <Icon name="ImportUser" isSvg className="mb-1 text-brand-white" />
+            <UserImportedIconSvg className="mb-1 text-brand-white" />
 
             <span>{t('accountMenu.importAccount')}</span>
           </li>

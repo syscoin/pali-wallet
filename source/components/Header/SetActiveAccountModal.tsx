@@ -4,7 +4,8 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import { Icon, Modal, PrimaryButton, SecondaryButton } from 'components/index';
+import { LoadingSvg } from 'components/Icon/Icon';
+import { Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
@@ -166,7 +167,7 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
               </>
             ) : (
               <div>
-                <Icon name="loading" className="w-4 text-brand-graylight" />
+                <LoadingSvg className="w-4 text-brand-graylight animate-spin" />
               </div>
             )}
 

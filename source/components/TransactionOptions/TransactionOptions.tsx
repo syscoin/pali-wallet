@@ -3,6 +3,7 @@ import React, { Fragment, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
 import { Icon, IconButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -16,7 +17,7 @@ const EditTxIcon = React.memo(() => (
 EditTxIcon.displayName = 'EditTxIcon';
 
 const ExternalLinkIcon = React.memo(() => (
-  <Icon name="externalLink" isSvg className="text-base text-brand-white" />
+  <ExternalLinkSvg className="text-base text-brand-white" />
 ));
 ExternalLinkIcon.displayName = 'ExternalLinkIcon';
 
@@ -26,7 +27,7 @@ const SpeedUpIcon = React.memo(() => (
 SpeedUpIcon.displayName = 'SpeedUpIcon';
 
 const CancelIcon = React.memo(() => (
-  <Icon name="Trash" isSvg className="text-base text-brand-white" />
+  <TrashIconSvg className="text-base text-brand-white" />
 ));
 CancelIcon.displayName = 'CancelIcon';
 

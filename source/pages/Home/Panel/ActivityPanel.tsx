@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import externalLink from 'assets/icons/externalLink.svg';
+import { ExternalLinkSvg } from 'components/Icon/Icon';
 import { LoadingComponent } from 'components/Loading';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
@@ -93,7 +93,7 @@ export const TransactionsPanel = () => {
 
     return (
       <div className="flex mt-5 items-center justify-center gap-2">
-        <img src={externalLink} />
+        <ExternalLinkSvg />
         <button
           type="button"
           className="w-max underline text-sm font-normal bg-transparent border-none cursor-pointer"

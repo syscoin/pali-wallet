@@ -13,6 +13,7 @@ import {
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { getContractType } from '@pollum-io/sysweb3-utils';
 
+import { LoadingSvg } from 'components/Icon/Icon';
 import {
   Layout,
   DefaultModal,
@@ -1508,12 +1509,12 @@ export const SendConfirm = () => {
               onClick={handleConfirm}
             >
               {loading && (
-                <Icon
-                  name="loading"
-                  color="#4d76b8"
-                  className="w-5 animate-spin-slow"
-                  wrapperClassname="mr-2 flex items-center"
-                />
+                <div className="mr-2 flex items-center">
+                  <LoadingSvg
+                    className="w-5 animate-spin-slow"
+                    style={{ color: '#4d76b8' }}
+                  />
+                </div>
               )}
               {t('buttons.confirm')}
             </Button>

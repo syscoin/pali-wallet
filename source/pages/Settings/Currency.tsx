@@ -4,7 +4,8 @@ import React, { useEffect, Fragment, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Layout, Icon, DefaultModal, NeutralButton } from 'components/index';
+import { ArrowDownSvg } from 'components/Icon/Icon';
+import { Layout, DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -107,7 +108,7 @@ const CurrencyView = () => {
               {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
             </p>
 
-            <Icon name="ArrowDown" isSvg />
+            <ArrowDownSvg />
           </Menu.Button>
 
           <Transition

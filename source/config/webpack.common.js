@@ -179,7 +179,6 @@ module.exports = {
               '**/images/*.png', // PNG files in images dir are imported, handled by webpack
               '**/images/*.jpg', // JPG files in images dir are imported, handled by webpack
               '**/images/*.jpeg', // JPEG files in images dir are imported, handled by webpack
-              '**/images/logo-s.svg', // This specific SVG is imported, handled by webpack
               '**/icons/*.svg', // SVG files in icons dir are imported, handled by webpack
             ],
           },
