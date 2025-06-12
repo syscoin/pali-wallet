@@ -86,7 +86,7 @@ module.exports = {
         'spin-slow': 'spin 3s linear infinite',
         'drop-up': 'dropFadeInUp 1.5s linear',
         'drop-down': 'dropFadeInDown 1.5s linear',
-        'fadeIn': 'fadeIn 0.3s ease-in-out',
+        fadeIn: 'fadeIn 0.3s ease-in-out',
       },
       keyframes: {
         dropFadeInDown: {
