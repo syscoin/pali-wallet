@@ -1,9 +1,51 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+// Import SVG URLs for better performance (processed by build system)
+import ArrowUpIcon from 'assets/icons/ArrowUp.svg';
+import ReceivedArrowIcon from 'assets/icons/receivedArrow.svg';
 import { RootState } from 'state/store';
 import { ITransactionsListConfig } from 'types/useTransactionsInfo';
+
+// Memoize transaction status icons to prevent unnecessary re-renders
+const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
+  <>
+    {isDetail ? (
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+        <img
+          className="relative w-[30px] h-[30px]"
+          src={ArrowUpIcon}
+          alt="Sent"
+        />
+      </div>
+    ) : (
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+        <img className="relative" src={ArrowUpIcon} alt="Sent" />
+      </div>
+    )}
+  </>
+));
+SentIcon.displayName = 'SentIcon';
+
+const ReceivedIcon = memo(({ isDetail }: { isDetail: boolean }) => (
+  <>
+    {isDetail ? (
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+        <img
+          className="relative w-[30px] h-[30px]"
+          src={ReceivedArrowIcon}
+          alt="Received"
+        />
+      </div>
+    ) : (
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+        <img className="relative" src={ReceivedArrowIcon} alt="Received" />
+      </div>
+    )}
+  </>
+));
+ReceivedIcon.displayName = 'ReceivedIcon';
 
 export const useTransactionsListConfig = (
   userTransactions?: any[]
@@ -40,32 +82,16 @@ export const useTransactionsListConfig = (
     return `${txLabel}`;
   };
 
-  const getTxStatusIcons = (txLabel: string, isDetail: boolean) => {
-    let icon = '';
-
+  const getTxStatusIcons = useCallback((txLabel: string, isDetail: boolean) => {
     switch (txLabel) {
       case 'Sent':
-        icon = '/assets/icons/ArrowUp.svg';
-        break;
+        return <SentIcon isDetail={isDetail} />;
       case 'Received':
-        icon = '/assets/icons/receivedArrow.svg';
-        break;
+        return <ReceivedIcon isDetail={isDetail} />;
+      default:
+        return null;
     }
-
-    return (
-      <>
-        {isDetail ? (
-          <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
-            <img className="relative w-[30px] h-[30px]" src={icon} alt="Icon" />
-          </div>
-        ) : (
-          <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
-            <img className="relative" src={icon} alt="Icon" />
-          </div>
-        )}
-      </>
-    );
-  };
+  }, []);
 
   const isShowedGroupBar = useCallback(
     (tx: any, idx: number) =>

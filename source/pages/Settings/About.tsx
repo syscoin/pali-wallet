@@ -1,10 +1,16 @@
-import React, { FC, useEffect } from 'react';
+import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
 import paliLogo from 'assets/images/paliLogoSmall.png';
 import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
+
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon isSvg={true} name="Copy" id="copy-address-btn" />
+));
+CopyIcon.displayName = 'CopyIcon';
 
 const AboutView: FC = () => {
   const handleRedirect = (url: string) => {
@@ -71,7 +77,7 @@ const AboutView: FC = () => {
               shape="circle"
               className="align-center pl-2"
             >
-              <Icon isSvg={true} name="Copy" id="copy-address-btn" />
+              <CopyIcon />
             </IconButton>
           </div>
         </SimpleCard>

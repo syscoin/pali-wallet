@@ -1,7 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
+import DetailArrowIcon from 'assets/icons/detailArrow.svg';
 import { ConfirmationModal } from 'components/Modal';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
@@ -16,6 +18,19 @@ import {
   handleUpdateTransaction,
   isERC20Transfer,
 } from 'utils/transactions';
+
+// Import detail arrow SVG for better performance
+
+// Memoize detail arrow icon
+const DetailArrow = memo(({ onClick }: { onClick: () => void }) => (
+  <img
+    className="cursor-pointer transition-all hover:opacity-60"
+    src={DetailArrowIcon}
+    alt="View details"
+    onClick={onClick}
+  />
+));
+DetailArrow.displayName = 'DetailArrow';
 
 export const EvmTransactionsList = ({
   userTransactions,
@@ -132,11 +147,7 @@ export const EvmTransactionsList = ({
               </div>
               <div className="m-auto">
                 {isConfirmed || isTxCanceled ? (
-                  <img
-                    className="cursor-pointer transition-all hover:opacity-60"
-                    src="/assets/icons/detailArrow.svg"
-                    onClick={handleGoTxDetails}
-                  />
+                  <DetailArrow onClick={handleGoTxDetails} />
                 ) : (
                   getTxOptions(isTxCanceled, isConfirmed, tx)
                 )}

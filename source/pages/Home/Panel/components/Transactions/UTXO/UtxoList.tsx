@@ -1,9 +1,22 @@
-import React from 'react';
+import React, { memo } from 'react';
 
+// Import detail arrow SVG for better performance
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
+import DetailArrowIcon from 'assets/icons/detailArrow.svg';
 import { useUtils } from 'hooks/useUtils';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';
+
+// Memoize detail arrow icon
+const DetailArrow = memo(({ onClick }: { onClick: () => void }) => (
+  <img
+    className="cursor-pointer transition-all hover:opacity-60"
+    src={DetailArrowIcon}
+    alt="View details"
+    onClick={onClick}
+  />
+));
+DetailArrow.displayName = 'DetailArrow';
 
 export const UtxoTransactionsListComponent = ({
   userTransactions,
@@ -19,6 +32,15 @@ export const UtxoTransactionsListComponent = ({
   const isTxCanceled = tx?.isCanceled === true;
   const isConfirmed = tx.confirmations > 0;
 
+  const handleGoTxDetails = () => {
+    navigate('/home/details', {
+      state: {
+        id: null,
+        hash: tx.txid,
+      },
+    });
+  };
+
   return (
     <div className="flex py-2 w-full border-b border-dashed border-bkg-deepBlue">
       <div className="flex flex-1 flex-col w-[]">
@@ -30,18 +52,7 @@ export const UtxoTransactionsListComponent = ({
         <p className="text-xs">Transaction</p>
       </div>
       <div>
-        <img
-          className="cursor-pointer transition-all hover:opacity-60"
-          src="/assets/icons/detailArrow.svg"
-          onClick={() =>
-            navigate('/home/details', {
-              state: {
-                id: null,
-                hash: tx.txid,
-              },
-            })
-          }
-        />
+        <DetailArrow onClick={handleGoTxDetails} />
       </div>
     </div>
   );

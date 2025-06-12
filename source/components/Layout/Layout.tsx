@@ -1,8 +1,25 @@
-import React, { FC } from 'react';
+import React, { FC, memo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import dotsImage from 'assets/images/dotsHeader.svg';
 import { Header, Icon, IconButton } from 'components/index';
+
+// Memoize frequently used navigation icons to prevent unnecessary re-renders
+const BackArrowIcon = memo(() => <Icon isSvg={true} name="ArrowLeft" />);
+BackArrowIcon.displayName = 'BackArrowIcon';
+
+const CloseIcon = memo(() => <Icon isSvg={true} name="Close" />);
+CloseIcon.displayName = 'CloseIcon';
+
+const HeaderSelectIcon = memo(() => (
+  <Icon
+    size={29}
+    name="select-up"
+    wrapperClassname="absolute -bottom-4 text-center text-bkg-2"
+    color="#111E33"
+  />
+));
+HeaderSelectIcon.displayName = 'HeaderSelectIcon';
 
 interface ILayout {
   canGoBack?: boolean;
@@ -67,7 +84,7 @@ export const Layout: FC<ILayout> = ({
             className="z-40 cursor-pointer"
             onClick={handleBackNavigation}
           >
-            <Icon isSvg={true} name="ArrowLeft" />
+            <BackArrowIcon />
           </IconButton>
         )}
 
@@ -80,16 +97,11 @@ export const Layout: FC<ILayout> = ({
             className="z-40 cursor-pointer"
             onClick={() => navigate('/home')}
           >
-            <Icon isSvg={true} name="Close" />
+            <CloseIcon />
           </IconButton>
         )}
 
-        <Icon
-          size={29}
-          name="select-up"
-          wrapperClassname="absolute -bottom-4 text-center text-bkg-2"
-          color="#111E33"
-        />
+        <HeaderSelectIcon />
       </div>
 
       <div

@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -13,6 +13,16 @@ import { ISysTransaction } from 'scripts/Background/controllers/transactions/typ
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, ellipsis } from 'utils/index';
+
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon
+    wrapperClassname="flex items-center justify-center"
+    name="copy"
+    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+  />
+));
+CopyIcon.displayName = 'CopyIcon';
 
 export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   const { controllerEmitter } = useController();
@@ -203,11 +213,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
                     </p>
                     {canCopy && (
                       <IconButton onClick={() => copy(value)}>
-                        <Icon
-                          wrapperClassname="flex items-center justify-center"
-                          name="copy"
-                          className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                        />
+                        <CopyIcon />
                       </IconButton>
                     )}
                   </Tooltip>

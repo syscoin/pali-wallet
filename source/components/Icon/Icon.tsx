@@ -1,9 +1,46 @@
 import * as AntIcons from '@ant-design/icons';
 import React, { FC } from 'react';
 
+// Import SVGs as URLs (following existing codebase pattern)
+import Copy from '../../assets/icons/copy.svg';
+import Info from '../../assets/icons/info.svg';
+import Wallet from '../../assets/icons/wallet.svg';
+import Metamask from '../../assets/icons/metamask.svg';
+import Pali from '../../assets/icons/pali.svg';
+import WhiteSuccess from '../../assets/icons/whiteSuccess.svg';
+import Edit from '../../assets/icons/edit.svg';
+import Network from '../../assets/icons/network.svg';
+import GreenCheck from '../../assets/icons/greencheck.svg';
+import WhiteErrorIcon from '../../assets/icons/errorIconWhite.svg';
+import AttentionIcon from '../../assets/icons/Attention.svg';
+import AddUser from '../../assets/icons/add-user.svg';
+import ArrowDown from '../../assets/icons/ArrowDown.svg';
+import ArrowDownLoad from '../../assets/icons/ArrowDownLoad.svg';
+import ArrowLeft from '../../assets/icons/ArrowLeft.svg';
+import ArrowUpBoldIcon from '../../assets/icons/ArrowUp.svg';
+import Clock from '../../assets/icons/clock.svg';
+import Close from '../../assets/icons/closeBigger.svg';
+import DollarSign from '../../assets/icons/dollar-sign.svg';
+import EditTx from '../../assets/icons/editTx.svg';
+import ExternalLink from '../../assets/icons/externalExplorer.svg';
+import HardWallet from '../../assets/icons/hardwalletd.svg';
+import Help from '../../assets/icons/helpsuqare.svg';
+import Key from '../../assets/icons/key.svg';
+import Language from '../../assets/icons/language.svg';
+import Lock from '../../assets/icons/lock.svg';
+import ManageUser from '../../assets/icons/manage-user.svg';
+import PaliDefault from '../../assets/icons/pali-default.svg';
+import PaliNotDefault from '../../assets/icons/pali-not-default.svg';
+import PaliWhiteSmall from '../../assets/icons/pali-white-small.svg';
+import SpeedUp from '../../assets/icons/speedUp.svg';
+import Trash from '../../assets/icons/trashIcon.svg';
+import ImportUser from '../../assets/icons/user-imported.svg';
+import Warning from '../../assets/icons/yellowWarn.svg';
+
 import { ExternalLinkIcon } from './ExternalLinkIcon';
 import { ForgetWalletIcon } from './ForgetWalletIcon';
 import { LoaderIcon } from './LoaderIcon';
+
 const icons = {
   appstoreadd: AntIcons.AppstoreAddOutlined,
   'arrow-down': AntIcons.ArrowDownOutlined,
@@ -53,41 +90,42 @@ const icons = {
   'hamburger-menu': AntIcons.MenuOutlined,
 };
 
+// SVG URLs from imports (processed by build system for better caching)
 const svgIcons = {
-  ArrowUpBoldIcon: '../../assets/icons/ArrowUp.svg',
-  ArrowDownLoad: '../../assets/icons/ArrowDownLoad.svg',
-  ArrowDown: '../../assets/icons/ArrowDown.svg',
-  ArrowLeft: '../../assets/icons/ArrowLeft.svg',
-  Close: '../../assets/icons/closeBigger.svg',
-  EditTx: '/assets/icons/editTx.svg',
-  externalLink: '../../assets/icons/externalExplorer.svg',
-  SpeedUp: '../../assets/icons/speedUp.svg',
-  Trash: '../../assets/icons/trashIcon.svg',
-  warning: '../../assets/icons/yellowWarn.svg',
-  Copy: '/assets/icons/copy.svg',
-  Info: '/assets/icons/info.svg',
-  Wallet: '/assets/icons/wallet.svg',
-  Metamask: '/assets/icons/metamask.svg',
-  Pali: '/assets/icons/pali.svg',
-  WhiteSuccess: '/assets/icons/whiteSuccess.svg',
-  Edit: '/assets/icons/edit.svg',
-  Network: '/assets/icons/network.svg',
-  greenCheck: '/assets/icons/greencheck.svg',
-  WhiteErrorIcon: '/assets/icons/errorIconWhite.svg',
-  AttentionIcon: '/assets/icons/Attention.svg',
-  AddUser: '/assets/icons/add-user.svg',
-  Clock: '/assets/icons/clock.svg',
-  DollarSign: '/assets/icons/dollar-sign.svg',
-  HardWallet: '/assets/icons/hardwalletd.svg',
-  Help: '/assets/icons/helpsuqare.svg',
-  Key: '/assets/icons/key.svg',
-  Language: '/assets/icons/language.svg',
-  Lock: '/assets/icons/lock.svg',
-  ManageUser: '/assets/icons/manage-user.svg',
-  ImportUser: '/assets/icons/user-imported.svg',
-  PaliWhiteSmall: '/assets/icons/pali-white-small.svg',
-  PaliNotDefault: '/assets/icons/pali-not-default.svg',
-  PaliDefault: '/assets/icons/pali-default.svg',
+  ArrowUpBoldIcon,
+  ArrowDownLoad,
+  ArrowDown,
+  ArrowLeft,
+  Close,
+  EditTx,
+  externalLink: ExternalLink,
+  SpeedUp,
+  Trash,
+  warning: Warning,
+  Copy,
+  Info,
+  Wallet,
+  Metamask,
+  Pali,
+  WhiteSuccess,
+  Edit,
+  Network,
+  greenCheck: GreenCheck,
+  WhiteErrorIcon,
+  AttentionIcon,
+  AddUser,
+  Clock,
+  DollarSign,
+  HardWallet,
+  Help,
+  Key,
+  Language,
+  Lock,
+  ManageUser,
+  ImportUser,
+  PaliWhiteSmall,
+  PaliNotDefault,
+  PaliDefault,
 };
 
 interface IIcon {
@@ -116,7 +154,7 @@ export const Icon: FC<IIcon> = ({
   isSvg,
 }) => {
   const Component = icons[name];
-  const svg = svgIcons[name];
+  const svgUrl = svgIcons[name];
 
   return (
     <div className={wrapperClassname} id={id}>
@@ -127,12 +165,27 @@ export const Icon: FC<IIcon> = ({
           rotate={rotate}
           disabled={disabled}
         />
-      ) : (
+      ) : svgUrl ? (
         <img
           className={className}
-          src={svg}
-          style={{ width: size, color, opacity }}
+          src={svgUrl}
+          alt={name}
+          style={{
+            width: size,
+            height: size,
+            color,
+            opacity,
+            transform: rotate ? `rotate(${rotate}deg)` : undefined,
+          }}
         />
+      ) : (
+        // Fallback for any remaining icons
+        <div
+          className={className}
+          style={{ width: size, height: size, opacity }}
+        >
+          {name}
+        </div>
       )}
     </div>
   );

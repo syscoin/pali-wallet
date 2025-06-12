@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect } from 'react';
+import React, { Fragment, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -17,6 +17,16 @@ import {
   removeScientificNotation,
 } from 'utils/index';
 import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
+
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon
+    wrapperClassname="flex items-center justify-center"
+    name="copy"
+    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+  />
+));
+CopyIcon.displayName = 'CopyIcon';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
@@ -127,11 +137,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
                     </p>
                     {canCopy && (
                       <IconButton onClick={() => copy(value ?? '')}>
-                        <Icon
-                          wrapperClassname="flex items-center justify-center"
-                          name="copy"
-                          className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                        />
+                        <CopyIcon />
                       </IconButton>
                     )}
                   </Tooltip>

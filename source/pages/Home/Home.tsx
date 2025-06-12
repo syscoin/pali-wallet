@@ -92,6 +92,28 @@ const FiatDisplay = memo(
 
 FiatDisplay.displayName = 'FiatDisplay';
 
+// Memoize Icon components to prevent unnecessary re-renders
+const SendIcon = memo(() => (
+  <Icon
+    name="ArrowUpBoldIcon"
+    className="w-5 h-5"
+    wrapperClassname="mr-2"
+    rotate={45}
+    isSvg={true}
+  />
+));
+SendIcon.displayName = 'SendIcon';
+
+const ReceiveIcon = memo(() => (
+  <Icon
+    name="ArrowDownLoad"
+    className="w-5 h-5"
+    wrapperClassname="mr-2"
+    isSvg={true}
+  />
+));
+ReceiveIcon.displayName = 'ReceiveIcon';
+
 export const Home = () => {
   // ALL hooks must be called first in consistent order
   const { getFiatAmount } = usePrice();
@@ -375,13 +397,7 @@ export const Home = () => {
                   isLoadingBalances || isNetworkChanging || isSwitchingAccount
                 }
               >
-                <Icon
-                  name="ArrowUpBoldIcon"
-                  className="w-5 h-5"
-                  wrapperClassname="mr-2"
-                  rotate={45}
-                  isSvg={true}
-                />
+                <SendIcon />
                 {t('buttons.send')}
               </Button>
 
@@ -394,12 +410,7 @@ export const Home = () => {
                   isLoadingBalances || isNetworkChanging || isSwitchingAccount
                 }
               >
-                <Icon
-                  name="ArrowDownLoad"
-                  className="w-5 h-5"
-                  wrapperClassname="mr-2"
-                  isSvg={true}
-                />
+                <ReceiveIcon />
                 {t('buttons.receive')}
               </Button>
             </div>

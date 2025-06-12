@@ -1,14 +1,34 @@
 import { Menu, Transition } from '@headlessui/react';
-import React, { useCallback } from 'react';
-import { Fragment } from 'react';
+import React, { Fragment, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Icon, IconButton } from '..';
-import { useUtils } from 'hooks/useUtils';
+import { Icon, IconButton } from 'components/index';
+import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { UpdateTxAction } from 'utils/transactions';
 import { ITransactionOptions } from 'utils/types';
+
+// Memoize frequently used transaction option icons
+const EditTxIcon = React.memo(() => (
+  <Icon isSvg name="EditTx" className="text-base" />
+));
+EditTxIcon.displayName = 'EditTxIcon';
+
+const ExternalLinkIcon = React.memo(() => (
+  <Icon name="externalLink" isSvg className="text-base text-brand-white" />
+));
+ExternalLinkIcon.displayName = 'ExternalLinkIcon';
+
+const SpeedUpIcon = React.memo(() => (
+  <Icon name="SpeedUp" isSvg className="text-base text-brand-white" />
+));
+SpeedUpIcon.displayName = 'SpeedUpIcon';
+
+const CancelIcon = React.memo(() => (
+  <Icon name="Trash" isSvg className="text-base text-brand-white" />
+));
+CancelIcon.displayName = 'CancelIcon';
 
 export const TransactionOptions: React.FC<ITransactionOptions> = ({
   handleUpdateTransaction,
@@ -24,8 +44,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
+
   const handleOnClick = (actionType: UpdateTxAction) => {
     setIsOpenModal(true);
+
     switch (actionType) {
       case UpdateTxAction.Cancel:
         setModalData({
@@ -83,6 +105,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
     const url = `${activeNetwork.explorer}/tx/${transaction.hash}`;
     window.open(url, '_blank');
   }, [activeNetwork.explorer, transaction.hash]);
+
   return (
     <>
       <Menu
@@ -96,7 +119,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
       hover:bg-opacity-30 rounded-full"
         >
           <IconButton className="w-5">
-            <Icon isSvg name="EditTx" className="text-base" />
+            <EditTxIcon />
           </IconButton>
         </Menu.Button>
 
@@ -128,11 +151,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     onClick={handleGoTxDetails}
                   >
                     <IconButton className="w-5 mr-3">
-                      <Icon
-                        name="externalLink"
-                        isSvg
-                        className="text-base text-brand-white"
-                      />
+                      <ExternalLinkIcon />
                     </IconButton>
                     <span className="text-sm text-brand-white">
                       See details
@@ -144,17 +163,13 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 {({ active }) => (
                   <li
                     className={`
-                ${active ? 'font-semibold' : 'font-normal'}
-                flex items-center justify-start text-brand-white mb-4 w-full
-                `}
+                  ${active ? 'font-semibold' : 'font-normal'}
+                  flex items-center justify-start text-brand-white mb-4 w-full
+                  `}
                     onClick={openTransactionOnExplorer}
                   >
                     <IconButton className="w-5 mr-3">
-                      <Icon
-                        name="externalLink"
-                        isSvg
-                        className="text-base text-brand-white"
-                      />
+                      <ExternalLinkIcon />
                     </IconButton>
                     <span className="text-sm text-brand-white">
                       See on the block explorer
@@ -172,11 +187,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                   >
                     <IconButton className="w-5 mr-3">
-                      <Icon
-                        name="SpeedUp"
-                        isSvg
-                        className="text-base text-brand-white"
-                      />
+                      <SpeedUpIcon />
                     </IconButton>
                     <span className="text-sm text-brand-white">
                       {t('header.speedUp')}
@@ -193,11 +204,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                   >
                     <IconButton className="w-5 mr-3">
-                      <Icon
-                        name="Trash"
-                        isSvg
-                        className="text-base text-brand-white"
-                      />
+                      <CancelIcon />
                     </IconButton>
                     <span className="text-sm text-brand-white">
                       {t('buttons.cancel')}
