@@ -118,7 +118,7 @@ export const ApproveTransactionComponent = () => {
   const [formControl] = Form.useForm();
 
   const openEthExplorer = () => {
-    window.open(`${activeNetwork.explorer}address/${dataTx.to}`, '_blank');
+    window.open(`${activeNetwork.explorer}/address/${dataTx.to}`, '_blank');
   };
 
   const setFiatPrice = () => {
