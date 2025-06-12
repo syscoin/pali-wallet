@@ -775,7 +775,7 @@ const CustomRPCView = () => {
       />
       <StatusModal
         status="error"
-        title="Erro"
+        title={t('buttons.error')}
         description={errorModalMessage}
         onClose={closeModal}
         show={showModal}
