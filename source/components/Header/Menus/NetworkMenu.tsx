@@ -278,7 +278,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                           <DropdownArrowSvg
                             isOpen={open}
-                            className="left-[12rem]"
+                            className="ml-auto"
                             id="network-settings-btn"
                           />
                         </Disclosure.Button>
@@ -355,7 +355,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                         <DropdownArrowSvg
                           isOpen={open}
-                          className="left-[12rem]"
+                          className="ml-auto"
                           id="network-settings-btn"
                         />
                       </Disclosure.Button>
