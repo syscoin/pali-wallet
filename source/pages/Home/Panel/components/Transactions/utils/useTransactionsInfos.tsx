@@ -52,16 +52,25 @@ export const useTransactionsListConfig = (
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
-      if (tx.tokenType === 'SPTAssetActivate') {
-        return 'SPT creation';
+      // Syscoin 5 transaction types
+      if (tx.tokenType === 'assetallocationsend') {
+        return 'SPT Transfer';
       }
 
-      if (tx.tokenType === 'SPTAssetSend') {
-        return 'SPT mint';
+      if (tx.tokenType === 'syscoinburntoallocation') {
+        return 'SYS → SYSX';
       }
 
-      if (tx.tokenType === 'SPTAssetUpdate') {
-        return 'SPT update';
+      if (tx.tokenType === 'assetallocationburntosyscoin') {
+        return 'SYSX → SYS';
+      }
+
+      if (tx.tokenType === 'assetallocationburntoethereum') {
+        return 'SPT → NEVM';
+      }
+
+      if (tx.tokenType === 'assetallocationmint') {
+        return 'SPT Mint';
       }
 
       return 'Transaction';

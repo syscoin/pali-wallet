@@ -362,8 +362,9 @@ export class PaliInpageProviderSys extends BaseProvider {
           if (account) {
             const { transactions } = account as any;
 
+            // Filter for asset allocation mint transactions (Syscoin 5)
             const filteredTxs = transactions?.filter(
-              (tx: any) => tx.tokenType === 'SPTAssetActivate'
+              (tx: any) => tx.tokenType === 'assetallocationmint'
             );
 
             const allTokens = [];
@@ -382,14 +383,15 @@ export class PaliInpageProviderSys extends BaseProvider {
                   this._sysState.blockExplorerURL,
                   t.token
                 );
-                const formattedAssetInfo = {
-                  ...assetInfo,
-                  symbol: Buffer.from(
-                    String(assetInfo.symbol),
-                    'base64'
-                  ).toString('utf-8'),
-                };
-                if (formattedAssetInfo.assetGuid) return formattedAssetInfo;
+
+                // Return the asset info with the symbol as-is (Syscoin 5 uses plain text)
+                if (assetInfo && assetInfo.assetGuid) {
+                  return {
+                    ...assetInfo,
+                    symbol: assetInfo.symbol, // Syscoin 5 uses plain text symbols
+                  };
+                }
+                return undefined;
               })
             );
 

@@ -1,42 +1,77 @@
-import { Form, Input } from 'antd';
-import * as React from 'react';
-import { useState } from 'react';
+import { Form, Input, Button, message } from 'antd';
+import { debounce } from 'lodash';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import { ErrorModal, NeutralButton } from 'components/index';
-import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
-import { useUtils } from 'hooks/index';
+import { Icon, LoadingComponent } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
-export const SyscoinImportToken = () => {
-  const { controllerEmitter } = useController();
+export const SyscoinImport = () => {
   const { t } = useTranslation();
+  const { controllerEmitter } = useController();
   const [form] = Form.useForm();
-  const { navigate } = useUtils();
 
-  const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
+  const { activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => state.vault
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [isLookingUp, setIsLookingUp] = useState(false);
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  // Debounced asset lookup function
+  const debouncedLookup = useCallback(
+    debounce(async (assetGuid: string) => {
+      if (!assetGuid || !/^\\d+$/.test(assetGuid)) return;
+
+      setIsLookingUp(true);
+
+      try {
+        const assetData = await getAsset(activeNetwork.url, assetGuid);
+
+        if (assetData) {
+          // Auto-fill the form with the found asset data
+          form.setFieldsValue({
+            assetSym: assetData.symbol,
+            assetDecimals: assetData.decimals,
+            assetContract: assetData.contract || '',
+          });
+
+          message.success(t('tokens.assetFoundAutoFilled'));
+        } else {
+          message.error(t('tokens.assetNotFound'));
+        }
+      } catch (error) {
+        console.error('Asset lookup error:', error);
+        message.error(t('tokens.assetNotFound'));
+      } finally {
+        setIsLookingUp(false);
+      }
+    }, 500), // 500ms debounce
+    [activeNetwork.url, form, t]
   );
 
-  const nextStep = async ({ assetGuid }: { assetGuid: string }) => {
+  // Handle asset GUID input change
+  const handleAssetGuidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.trim();
+    if (value) {
+      debouncedLookup(value);
+    }
+  };
+
+  const onFinish = async (values: any) => {
     if (!isBitcoinBased) {
-      setError(true);
+      message.error('SPT tokens can only be imported on UTXO networks');
       return;
     }
+
     setIsLoading(true);
+
     try {
+      const { assetGuid } = values;
+
       const addTokenMethodResponse = await controllerEmitter(
         ['wallet', 'assets', 'sys', 'addSysDefaultToken'],
         [assetGuid, activeNetwork.url]
@@ -46,8 +81,7 @@ export const SyscoinImportToken = () => {
         !addTokenMethodResponse ||
         !(addTokenMethodResponse as any).assetGuid
       ) {
-        setError(true);
-        setIsLoading(false);
+        message.error(t('tokens.tokenNotAdded'));
         return;
       }
 
@@ -56,121 +90,98 @@ export const SyscoinImportToken = () => {
         [addTokenMethodResponse]
       );
 
-      setAdded(true);
-    } catch (submitError) {
-      setError(true);
+      message.success(t('tokens.tokenSuccessfullyAdded'));
+      form.resetFields();
+    } catch (error) {
+      console.error('Failed to import token:', error);
+      message.error(t('tokens.tokenNotAdded'));
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (isLoading) {
+    return <LoadingComponent />;
+  }
+
   return (
-    <>
+    <div className="mx-auto max-w-2xl">
       <Form
-        validateMessages={{ default: '' }}
         form={form}
-        id="token-form"
-        labelCol={{ span: 8 }}
-        wrapperCol={{ span: 8 }}
-        onFinish={nextStep}
-        autoComplete="off"
-        className="flex w-full flex-col gap-3 items-center justify-center mt-4 text-center"
+        layout="vertical"
+        onFinish={onFinish}
+        className="space-y-4"
       >
         <Form.Item
           name="assetGuid"
+          label={t('tokens.tokenGuid')}
           className="w-full md:max-w-md"
           hasFeedback
+          validateStatus={isLookingUp ? 'validating' : ''}
+          help={isLookingUp ? t('tokens.lookingUpAsset') : ''}
           rules={[
             {
               required: true,
-              message: '',
+              message: t('tokens.assetGuidRequired'),
             },
-            () => ({
-              async validator(_, value) {
-                const data = await getAsset(activeNetwork.url, value);
-
-                if (!value || data) {
-                  if (data && data.symbol) {
-                    // Syscoin 5 uses plain text symbols
-                    form.setFieldValue('assetSymbol', data.symbol);
-                  }
-
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
-              },
-            }),
+            {
+              pattern: /^\\d+$/,
+              message: t('tokens.invalidAssetGuidFormat'),
+            },
           ]}
         >
           <Input
-            type="text"
-            className="input-small relative"
-            placeholder="Token GUID"
+            placeholder={`${t('tokens.tokenGuid')} (e.g., 123456789)`}
+            onChange={handleAssetGuidChange}
+            suffix={
+              isLookingUp ? (
+                <Icon name="loading" className="animate-spin" />
+              ) : null
+            }
           />
         </Form.Item>
 
         <Form.Item
-          name="assetSymbol"
+          name="assetSym"
+          label={t('tokens.tokenSymbol')}
           className="w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-          ]}
+        >
+          <Input placeholder={t('tokens.tokenSymbol')} disabled />
+        </Form.Item>
+
+        <Form.Item
+          name="assetDecimals"
+          label={t('tokens.tokenDecimals')}
+          className="w-full md:max-w-md"
         >
           <Input
-            type="text"
-            className="input-small relative"
-            placeholder={t('tokens.tokenSymbol')}
+            placeholder={t('tokens.tokenDecimals')}
+            type="number"
+            disabled
           />
         </Form.Item>
-        <div className="w-full flex items-center justify-center mt-4 text-brand-white hover:text-brand-deepPink100">
-          <a
-            href="https://docs.paliwallet.com/guide/v2/"
-            target="_blank"
-            className="flex items-center justify-center gap-x-2"
-            rel="noreferrer"
+
+        <Form.Item
+          name="assetContract"
+          label={t('tokens.contractAddress')}
+          className="w-full md:max-w-md"
+          help={t('tokens.contractAddressHelp')}
+        >
+          <Input placeholder={t('tokens.contractAddress')} disabled />
+        </Form.Item>
+
+        <Form.Item className="pt-4">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={isLoading}
+            className="w-full md:w-auto"
+            disabled={!form.getFieldValue('assetGuid')}
           >
-            <ExternalLinkIcon size={16} />
-            <span className="font-normal font-poppins underline text-sm">
-              Learn more on docs!
-            </span>
-          </a>
-        </div>
-
-        <div className="flex flex-col items-center justify-center w-full">
-          <div className="w-full px-4 absolute bottom-12 md:static">
-            <NeutralButton loading={isLoading} type="submit" fullWidth={true}>
-              {t('buttons.next')}
-            </NeutralButton>
-          </div>
-        </div>
+            {t('buttons.import')}
+          </Button>
+        </Form.Item>
       </Form>
-
-      {added && (
-        <TokenSuccessfullyAdded
-          title={t('tokens.tokenSuccessfullyAdded')}
-          phraseOne={`${form.getFieldValue('symbol')} ${t(
-            'tokens.wasSuccessfullyAdded'
-          )}`}
-          onClose={() => navigate('/home')}
-          show={added}
-          buttonText={t('settings.gotIt')}
-        />
-      )}
-
-      {error && (
-        <ErrorModal
-          show={Boolean(error)}
-          title={t('tokens.tokenNotAdded')}
-          description={t('tokens.couldNotAddTokenToYour')}
-          log={t('tokens.tokenNotFoundIn')}
-          onClose={() => setError(false)}
-        />
-      )}
-    </>
+    </div>
   );
 };

@@ -35,16 +35,25 @@ export const TransactionsList = ({
 
   const getTxType = (tx: any, isTxSent: boolean) => {
     if (isBitcoinBased) {
-      if (tx.tokenType === 'SPTAssetActivate') {
-        return 'SPT creation';
+      // Syscoin 5 transaction types
+      if (tx.tokenType === 'assetallocationsend') {
+        return 'SPT Transfer';
       }
 
-      if (tx.tokenType === 'SPTAssetSend') {
-        return 'SPT mint';
+      if (tx.tokenType === 'syscoinburntoallocation') {
+        return 'SYS → SYSX';
       }
 
-      if (tx.tokenType === 'SPTAssetUpdate') {
-        return 'SPT update';
+      if (tx.tokenType === 'assetallocationburntosyscoin') {
+        return 'SYSX → SYS';
+      }
+
+      if (tx.tokenType === 'assetallocationburntoethereum') {
+        return 'SPT → NEVM';
+      }
+
+      if (tx.tokenType === 'assetallocationmint') {
+        return 'SPT Mint';
       }
 
       return 'Transaction';
@@ -53,6 +62,54 @@ export const TransactionsList = ({
     const txLabel = isTxSent ? 'Sent' : 'Received';
 
     return `${txLabel}`;
+  };
+
+  // Helper function to get SPT-specific styling for Syscoin 5 transaction types
+  const getSPTTypeInfo = (tokenType: string) => {
+    switch (tokenType) {
+      case 'assetallocationsend':
+        return {
+          label: 'SPT Transfer',
+          bgColor: 'bg-blue-500/10',
+          textColor: 'text-blue-400',
+          icon: '↗️',
+        };
+      case 'syscoinburntoallocation':
+        return {
+          label: 'SYS → SYSX',
+          bgColor: 'bg-orange-500/10',
+          textColor: 'text-orange-400',
+          icon: '🔥',
+        };
+      case 'assetallocationburntosyscoin':
+        return {
+          label: 'SYSX → SYS',
+          bgColor: 'bg-green-500/10',
+          textColor: 'text-green-400',
+          icon: '💰',
+        };
+      case 'assetallocationburntoethereum':
+        return {
+          label: 'SPT → NEVM',
+          bgColor: 'bg-purple-500/10',
+          textColor: 'text-purple-400',
+          icon: '🌉',
+        };
+      case 'assetallocationmint':
+        return {
+          label: 'SPT Mint',
+          bgColor: 'bg-emerald-500/10',
+          textColor: 'text-emerald-400',
+          icon: '⚡',
+        };
+      default:
+        return {
+          label: 'Transaction',
+          bgColor: 'bg-gray-500/10',
+          textColor: 'text-gray-400',
+          icon: '💱',
+        };
+    }
   };
 
   const txid = isBitcoinBased ? 'txid' : 'hash';
@@ -145,6 +202,8 @@ export const TransactionsList = ({
 
     // Use the direction field if available, otherwise fall back to the old logic
     const isTxSent = tx.direction ? tx.direction === 'sent' : false;
+    const sptInfo =
+      isBitcoinBased && tx.tokenType ? getSPTTypeInfo(tx.tokenType) : null;
 
     return (
       tx[blocktime] && (
@@ -155,21 +214,40 @@ export const TransactionsList = ({
             </li>
           )}
 
-          <li className="py-2 border-b border-dashed border-dashed-dark">
+          <li className="py-3 border-b border-dashed border-dashed-dark hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg">
             <div className="relative flex items-center justify-between text-xs">
-              <div className="flex items-center">
+              <div className="flex items-center gap-3">
                 {!isBitcoinBased && (
                   <Icon
                     name={isTxSent ? 'arrow-up' : 'arrow-down'}
                     className="mx-2"
                   />
                 )}
-                <div className="flex flex-row">
-                  <div>
-                    <p>{ellipsis(tx[txid], 4, 14)}</p>
 
-                    {getTxStatus(isTxCanceled, isConfirmed)}
+                {/* SPT Type Badge */}
+                {sptInfo && (
+                  <div
+                    className={`flex items-center gap-2 px-2 py-1 rounded-full ${sptInfo.bgColor}`}
+                  >
+                    <span className="text-sm">{sptInfo.icon}</span>
+                    <span
+                      className={`text-xs font-medium ${sptInfo.textColor}`}
+                    >
+                      {sptInfo.label}
+                    </span>
                   </div>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-sm">
+                      {ellipsis(tx[txid], 4, 14)}
+                    </p>
+                    {sptInfo && (
+                      <span className="text-xs text-brand-gray400">SPT</span>
+                    )}
+                  </div>
+                  {getTxStatus(isTxCanceled, isConfirmed)}
                 </div>
               </div>
 
@@ -180,14 +258,15 @@ export const TransactionsList = ({
               >
                 <div className="max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis">
                   <p className="text-blue-300">{timestamp}</p>
-
-                  <p>{getTxType(tx, isTxSent)}</p>
+                  <p className={sptInfo ? sptInfo.textColor : ''}>
+                    {getTxType(tx, isTxSent)}
+                  </p>
                 </div>
               </div>
 
               <div className="flex justify-between items-center">
                 <IconButton
-                  className="w-5"
+                  className="w-5 p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
                   onClick={() =>
                     navigate('/home/details', {
                       state: {
@@ -196,8 +275,12 @@ export const TransactionsList = ({
                       },
                     })
                   }
+                  aria-label={`View transaction details for ${tx[txid]}`}
                 >
-                  <Icon name="select" className="text-base" />
+                  <Icon
+                    name="select"
+                    className="text-base hover:text-brand-royalbluemedium transition-colors"
+                  />
                 </IconButton>
 
                 {!isBitcoinBased && getTxOptions(isTxCanceled, isConfirmed, tx)}

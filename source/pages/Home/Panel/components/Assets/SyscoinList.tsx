@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment } from 'react';
+import React, { Fragment, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
@@ -24,82 +24,120 @@ export const SyscoinAssetsList = () => {
 
   const isNetworkChanging = networkStatus === 'switching';
 
-  const filteredAssets = assets.syscoin.filter(
-    (asset) => asset.chainId === chainId
+  // Memoize filtered assets for performance
+  const filteredAssets = useMemo(
+    () => assets.syscoin.filter((asset) => asset.chainId === chainId),
+    [assets.syscoin, chainId]
   );
+
+  // Memoize asset rendering for better performance
+  const renderAsset = useMemo(() => {
+    const AssetRenderer = (asset: any) => (
+      <li
+        key={uniqueId(String(asset.assetGuid))}
+        className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
+      >
+        <table className="table-auto w-full">
+          <tbody>
+            <tr className="flex items-center justify-between font-poppins font-normal">
+              <td className="flex items-center gap-x-2">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-x-2">
+                    <span className="text-brand-white font-semibold">
+                      {truncate(
+                        formatCurrency(
+                          String(asset.balance / 10 ** asset.decimals),
+                          Math.min(asset.decimals, 4) // Limit displayed decimals for UI
+                        ),
+                        8,
+                        false
+                      )}
+                    </span>
+
+                    <span className="text-brand-royalbluemedium font-medium">
+                      {`${truncate(asset.symbol, 12).toUpperCase()}`}
+                    </span>
+
+                    {asset.contract &&
+                      asset.contract !==
+                        '0x0000000000000000000000000000000000000000' && (
+                        <span
+                          className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
+                          title="Cross-chain SPT with NEVM contract"
+                        >
+                          NEVM
+                        </span>
+                      )}
+                  </div>
+
+                  <div className="flex items-center gap-x-1 mt-1">
+                    <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
+                      {t('send.assetGuid')}
+                    </span>
+                    <span className="text-brand-gray400 font-mono text-[10px]">
+                      {ellipsis(asset.assetGuid, 6)}
+                    </span>
+                  </div>
+                </div>
+              </td>
+
+              <td className="flex items-center max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis gap-x-2.5">
+                <IconButton
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: { id: asset.assetGuid, hash: null },
+                    })
+                  }
+                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                  aria-label={`View details for ${asset.symbol} token`}
+                >
+                  <ShareIcon
+                    size={16}
+                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
+                  />
+                </IconButton>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </li>
+    );
+
+    AssetRenderer.displayName = 'AssetRenderer';
+    return AssetRenderer;
+  }, [navigate, t]);
+
   return (
     <>
       {isLoadingAssets || isNetworkChanging ? (
-        <LoadingComponent />
+        <div className="flex flex-col items-center justify-center py-8">
+          <LoadingComponent />
+          <p className="text-brand-gray300 text-sm mt-2">
+            {isNetworkChanging
+              ? 'Switching network...'
+              : 'Loading SPT assets...'}
+          </p>
+        </div>
       ) : (
-        <>
-          {filteredAssets?.map(
-            ({ decimals, balance, symbol, assetGuid, contract }: any) => (
-              <Fragment key={uniqueId(String(assetGuid))}>
-                <li className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200">
-                  <table className="table-auto w-full">
-                    <tbody>
-                      <tr className="flex items-center justify-between font-poppins font-normal">
-                        <td className="flex items-center gap-x-2">
-                          <span className="text-brand-white">
-                            {truncate(
-                              formatCurrency(
-                                String(balance / 10 ** decimals),
-                                decimals
-                              ),
-                              5,
-                              false
-                            )}
-                          </span>
-
-                          <span className="text-brand-royalbluemedium">
-                            {`  ${truncate(symbol, 10).toUpperCase()}`}
-                          </span>
-
-                          {contract &&
-                            contract !==
-                              '0x0000000000000000000000000000000000000000' && (
-                              <span
-                                className="px-1.5 py-0.5 text-[10px] bg-brand-royalbluemedium/20 text-brand-royalbluemedium rounded"
-                                title="Cross-chain SPT with NEVM contract"
-                              >
-                                NEVM
-                              </span>
-                            )}
-
-                          <span
-                            className="w-full text-brand-gray300 font-poppins text-xs font-normal"
-                            style={{
-                              width: 'fit-content',
-                            }}
-                          >
-                            {t('send.assetGuid')}
-                          </span>
-                        </td>
-
-                        <td className="flex items-center max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis gap-x-2.5">
-                          <span className="w-full text-brand-white">
-                            {ellipsis(assetGuid, 4)}
-                          </span>
-
-                          <IconButton
-                            onClick={() =>
-                              navigate('/home/details', {
-                                state: { id: assetGuid, hash: null },
-                              })
-                            }
-                          >
-                            <ShareIcon size={16} color="text-brand-white" />
-                          </IconButton>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </li>
-              </Fragment>
-            )
+        <ul className="space-y-0">
+          {filteredAssets?.length > 0 ? (
+            filteredAssets.map(renderAsset)
+          ) : (
+            <li>
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="w-16 h-16 bg-brand-royalbluemedium/10 rounded-full flex items-center justify-center mb-4">
+                  <span className="text-brand-royalbluemedium text-2xl">₿</span>
+                </div>
+                <p className="text-brand-gray300 text-sm">
+                  No SPT assets found
+                </p>
+                <p className="text-brand-gray400 text-xs mt-1">
+                  Import tokens to get started
+                </p>
+              </div>
+            </li>
           )}
-        </>
+        </ul>
       )}
     </>
   );

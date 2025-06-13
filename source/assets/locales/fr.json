@@ -483,7 +483,14 @@
     "tokenNetworkProbably": "Le réseau du jeton est probablement différent du réseau actuel.",
     "couldNotAddTokenToYour": "Impossible d'ajouter le jeton à votre portefeuille. Vérifiez le réseau et l'identifiant de l'actif et réessayez plus tard.",
     "tokenNotFoundIn": "Jeton non trouvé dans votre XPUB ou le jeton est déjà importé.",
-    "tokenNotAdded": "Jeton non ajouté."
+    "tokenNotAdded": "Jeton non ajouté.",
+    "tokenGuid": "GUID de l'Actif",
+    "assetGuidRequired": "Le GUID de l'actif est requis",
+    "invalidAssetGuidFormat": "Le GUID de l'actif doit être numérique",
+    "assetNotFound": "Actif non trouvé. Vérifiez le GUID.",
+    "lookingUpAsset": "Recherche d'actif...",
+    "assetFoundAutoFilled": "Actif trouvé ! Détails remplis automatiquement.",
+    "contractAddressHelp": "Adresse du contrat NEVM pour ce token SPT"
   },
   "transactions": {
     "messageCopied": "Message copié avec succès",

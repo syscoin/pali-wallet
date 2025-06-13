@@ -484,7 +484,14 @@
     "tokenNetworkProbably": "Сеть токена, вероятно, отличается от текущей сети.",
     "couldNotAddTokenToYour": "Не удалось добавить токен в ваш кошелек. Проверьте сеть и guid актива и попробуйте позже.",
     "tokenNotFoundIn": "Токен не найден в вашем XPUB или токен уже импортирован.",
-    "tokenNotAdded": "Токен не добавлен."
+    "tokenNotAdded": "Токен не добавлен.",
+    "tokenGuid": "GUID актива",
+    "assetGuidRequired": "GUID актива обязателен",
+    "invalidAssetGuidFormat": "GUID актива должен быть числовым",
+    "assetNotFound": "Актив не найден. Пожалуйста, проверьте GUID.",
+    "lookingUpAsset": "Поиск актива...",
+    "assetFoundAutoFilled": "Актив найден! Детали заполнены автоматически.",
+    "contractAddressHelp": "Адрес контракта NEVM для этого SPT токена"
   },
   "transactions": {
     "messageCopied": "Сообщение успешно скопировано",

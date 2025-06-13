@@ -364,7 +364,14 @@
     "tokenNetworkProbably": "代币网络可能与当前网络不同。",
     "couldNotAddTokenToYour": "无法将代币添加到您的钱包。请检查网络和资产guid，稍后重试。",
     "tokenNotFoundIn": "在您的XPUB中未找到代币或代币已导入。",
-    "tokenNotAdded": "代币未添加。"
+    "tokenNotAdded": "代币未添加。",
+    "tokenGuid": "资产GUID",
+    "assetGuidRequired": "资产GUID是必需的",
+    "invalidAssetGuidFormat": "资产GUID必须是数字",
+    "assetNotFound": "未找到资产。请检查GUID。",
+    "lookingUpAsset": "正在查找资产...",
+    "assetFoundAutoFilled": "找到资产！详细信息已自动填充。",
+    "contractAddressHelp": "此SPT代币的NEVM合约地址"
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

@@ -470,7 +470,14 @@
     "tokenNetworkProbably": "A rede do token provavelmente é diferente da rede atual.",
     "couldNotAddTokenToYour": "Não foi possível adicionar o token à sua carteira. Verifique a rede e o identificador do ativo e tente novamente mais tarde.",
     "tokenNotFoundIn": "Token não encontrado em seu XPUB ou o token já está importado.",
-    "tokenNotAdded": "Token não adicionado."
+    "tokenNotAdded": "Token não adicionado.",
+    "tokenGuid": "GUID do Ativo",
+    "assetGuidRequired": "GUID do ativo é obrigatório",
+    "invalidAssetGuidFormat": "GUID do ativo deve ser numérico",
+    "assetNotFound": "Ativo não encontrado. Verifique o GUID.",
+    "lookingUpAsset": "Procurando ativo...",
+    "assetFoundAutoFilled": "Ativo encontrado! Detalhes preenchidos automaticamente.",
+    "contractAddressHelp": "Endereço do contrato NEVM para este token SPT"
   },
   "transactions": {
     "messageCopied": "Mensagem copiada com sucesso",

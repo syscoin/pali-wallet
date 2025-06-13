@@ -13,7 +13,7 @@ import { verifyIfIsTestnet } from 'utils/network';
 
 import { CustomToken } from './CustomToken';
 import { ImportToken } from './ImportToken';
-import { SyscoinImportToken } from './SyscoinImport';
+import { SyscoinImport } from './SyscoinImport';
 
 export const AddToken: FC = () => {
   const [form] = Form.useForm();
@@ -59,7 +59,7 @@ export const AddToken: FC = () => {
   return (
     <Layout title={validatedTitle}>
       {isBitcoinBased ? (
-        <SyscoinImportToken />
+        <SyscoinImport />
       ) : (
         <>
           {!isTestnet && searchTokenValidation ? (

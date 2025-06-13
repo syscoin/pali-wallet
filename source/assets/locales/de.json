@@ -483,7 +483,14 @@
     "tokenNetworkProbably": "Token-Netzwerk unterscheidet sich wahrscheinlich vom aktuellen Netzwerk.",
     "couldNotAddTokenToYour": "Token konnte nicht zu Ihrer Wallet hinzugefügt werden. Überprüfen Sie das Netzwerk und die Asset-GUID und versuchen Sie es später erneut.",
     "tokenNotFoundIn": "Token nicht in Ihrem XPUB gefunden oder Token ist bereits importiert.",
-    "tokenNotAdded": "Token nicht hinzugefügt."
+    "tokenNotAdded": "Token nicht hinzugefügt.",
+    "tokenGuid": "Asset GUID",
+    "assetGuidRequired": "Asset GUID ist erforderlich",
+    "invalidAssetGuidFormat": "Asset GUID muss numerisch sein",
+    "assetNotFound": "Asset nicht gefunden. Bitte überprüfen Sie die GUID.",
+    "lookingUpAsset": "Asset wird gesucht...",
+    "assetFoundAutoFilled": "Asset gefunden! Details automatisch ausgefüllt.",
+    "contractAddressHelp": "NEVM-Kontraktadresse für diesen SPT-Token"
   },
   "transactions": {
     "messageCopied": "Nachricht erfolgreich kopiert",

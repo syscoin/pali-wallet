@@ -41,10 +41,9 @@ export interface ITokenSysProps {
   description?: string;
   image?: string;
   maxSupply?: string;
-  metaData?: string; // New in Syscoin 5 - general metadata field
+  metaData?: string; // Syscoin 5 - general metadata field
   name?: string;
   path?: string;
-  pubData?: any; // @deprecated - No longer used in Syscoin 5
   symbol?: string;
   totalReceived?: string;
   totalSent?: string;

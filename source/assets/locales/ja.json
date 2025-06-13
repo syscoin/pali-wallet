@@ -484,7 +484,14 @@
     "tokenNetworkProbably": "トークンのネットワークは現在のネットワークとは異なる可能性があります。",
     "couldNotAddTokenToYour": "トークンをウォレットに追加できませんでした。ネットワークとアセットguidを確認して、後でもう一度お試しください。",
     "tokenNotFoundIn": "XPUBでトークンが見つからないか、トークンは既にインポートされています。",
-    "tokenNotAdded": "トークンが追加されませんでした。"
+    "tokenNotAdded": "トークンが追加されませんでした。",
+    "tokenGuid": "アセットGUID",
+    "assetGuidRequired": "アセットGUIDが必要です",
+    "invalidAssetGuidFormat": "アセットGUIDは数値である必要があります",
+    "assetNotFound": "アセットが見つかりません。GUIDを確認してください。",
+    "lookingUpAsset": "アセットを検索中...",
+    "assetFoundAutoFilled": "アセットが見つかりました！詳細が自動入力されました。",
+    "contractAddressHelp": "このSPTトークンのNEVMコントラクトアドレス"
   },
   "transactions": {
     "messageCopied": "メッセージが正常にコピーされました",
