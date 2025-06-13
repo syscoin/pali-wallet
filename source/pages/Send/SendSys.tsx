@@ -637,21 +637,23 @@ export const SendSys = () => {
                   }),
                 ]}
               >
-                <Input
-                  name="amount"
-                  id="with-max-button"
-                  className="value-custom-input"
-                  type="number"
-                  placeholder={t('send.amount')}
-                  onChange={(e) => handleInputChange('amount', e)}
-                />
+                <div className="relative">
+                  <Input
+                    name="amount"
+                    id="with-max-button"
+                    className="value-custom-input"
+                    type="number"
+                    placeholder={t('send.amount')}
+                    onChange={(e) => handleInputChange('amount', e)}
+                  />
+                  <span
+                    className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                    onClick={handleMaxButton}
+                  >
+                    MAX
+                  </span>
+                </div>
               </Form.Item>
-              <span
-                className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                onClick={handleMaxButton}
-              >
-                MAX
-              </span>
             </div>
           </div>
 
@@ -691,20 +693,22 @@ export const SendSys = () => {
                 },
               ]}
             >
-              <Switch
-                checked={selectedAsset ? !RBF : RBF}
-                onChange={RBFOnChange}
-                className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
-              >
-                <span
-                  className={`${
-                    (selectedAsset ? !RBF : RBF)
-                      ? 'bg-brand-green translate-x-6'
-                      : 'bg-brand-redDark translate-x-1'
-                  } inline-block w-2 h-2 transform rounded-full`}
-                  id="rbf-switch"
-                />
-              </Switch>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={selectedAsset ? !RBF : RBF}
+                  onChange={RBFOnChange}
+                  className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
+                >
+                  <span
+                    className={`${
+                      (selectedAsset ? !RBF : RBF)
+                        ? 'bg-brand-green translate-x-6'
+                        : 'bg-brand-redDark translate-x-1'
+                    } inline-block w-2 h-2 transform rounded-full`}
+                    id="rbf-switch"
+                  />
+                </Switch>
+              </div>
             </Form.Item>
           </div>
 
