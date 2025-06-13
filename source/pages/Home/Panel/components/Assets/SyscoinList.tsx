@@ -34,7 +34,7 @@ export const SyscoinAssetsList = () => {
       ) : (
         <>
           {filteredAssets?.map(
-            ({ decimals, balance, symbol, assetGuid }: any) => (
+            ({ decimals, balance, symbol, assetGuid, contract }: any) => (
               <Fragment key={uniqueId(String(assetGuid))}>
                 <li className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200">
                   <table className="table-auto w-full">
@@ -55,6 +55,17 @@ export const SyscoinAssetsList = () => {
                           <span className="text-brand-royalbluemedium">
                             {`  ${truncate(symbol, 10).toUpperCase()}`}
                           </span>
+
+                          {contract &&
+                            contract !==
+                              '0x0000000000000000000000000000000000000000' && (
+                              <span
+                                className="px-1.5 py-0.5 text-[10px] bg-brand-royalbluemedium/20 text-brand-royalbluemedium rounded"
+                                title="Cross-chain SPT with NEVM contract"
+                              >
+                                NEVM
+                              </span>
+                            )}
 
                           <span
                             className="w-full text-brand-gray300 font-poppins text-xs font-normal"

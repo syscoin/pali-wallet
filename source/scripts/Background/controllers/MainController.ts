@@ -8,7 +8,6 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
   IWalletState,
-  CustomJsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import { getSysRpc, getEthRpc, INetworkType } from '@pollum-io/sysweb3-network';
 import {
@@ -44,7 +43,6 @@ import {
   setAccountPropertyByIdAndType,
   setAccountsWithLabelEdited,
   setAdvancedSettings as setSettings,
-  setCurrentBlock,
   setMultipleTransactionToState,
   setSingleTransactionToState,
   setTransactionStatusToCanceled,
@@ -162,7 +160,6 @@ class MainController extends KeyringManager {
   public transactions: ITransactionsManager;
   private assetsManager: IAssetsManager;
   private nftsController: INftController;
-  private web3Provider: CustomJsonRpcProvider;
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private cancellablePromises: CancellablePromises;
@@ -239,7 +236,6 @@ class MainController extends KeyringManager {
       this.assetsManager = AssetsManager(null as any);
       this.transactionsManager = TransactionsManager(null as any);
       this.balancesManager = BalancesManager(null as any);
-      this.web3Provider = null as any; // Will be set properly if we switch to EVM network
     } else {
       // For EVM networks, use the web3Provider as before
       this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
@@ -249,7 +245,6 @@ class MainController extends KeyringManager {
       this.balancesManager = BalancesManager(
         this.ethereumTransaction.web3Provider
       );
-      this.web3Provider = this.ethereumTransaction.web3Provider;
     }
 
     this.nftsController = NftsController();
@@ -1007,8 +1002,16 @@ class MainController extends KeyringManager {
     type: string,
     asset: IWatchAssetTokenProps
   ): Promise<boolean> {
-    const { activeAccount: activeAccountInfo, accounts } =
-      store.getState().vault;
+    const {
+      activeAccount: activeAccountInfo,
+      accounts,
+      isBitcoinBased,
+    } = store.getState().vault;
+
+    if (isBitcoinBased) {
+      throw new Error('Watch asset is not supported on Bitcoin networks');
+    }
+
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
     if (type !== 'ERC20') {
@@ -1018,7 +1021,7 @@ class MainController extends KeyringManager {
     const metadata = await getTokenStandardMetadata(
       asset.address,
       activeAccount.address,
-      this.web3Provider
+      this.ethereumTransaction.web3Provider
     );
 
     const balance = `${metadata.balance / 10 ** metadata.decimals}`;
@@ -1047,7 +1050,13 @@ class MainController extends KeyringManager {
       activeAccount: activeAccountInfo,
       accounts,
       activeNetwork,
+      isBitcoinBased,
     } = store.getState().vault;
+
+    if (isBitcoinBased) {
+      throw new Error('Asset info is not available on Bitcoin networks');
+    }
+
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
     if (type !== 'ERC20') {
@@ -1057,7 +1066,7 @@ class MainController extends KeyringManager {
     const metadata = await getTokenStandardMetadata(
       asset.address,
       activeAccount.address,
-      this.web3Provider
+      this.ethereumTransaction.web3Provider
     );
 
     const balance = `${metadata.balance / 10 ** metadata.decimals}`;
@@ -1171,12 +1180,20 @@ class MainController extends KeyringManager {
 
       store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
       this.updateNetworkConfig(newNetwork, chain as INetworkType);
-      this.transactionsManager = TransactionsManager(
-        this.ethereumTransaction.web3Provider
-      );
-      this.balancesManager = BalancesManager(
-        this.ethereumTransaction.web3Provider
-      );
+
+      // Update web3Provider after network config change
+      const isBitcoinBased = chain === INetworkType.Syscoin;
+      if (!isBitcoinBased) {
+        this.transactionsManager = TransactionsManager(
+          this.ethereumTransaction.web3Provider
+        );
+        this.balancesManager = BalancesManager(
+          this.ethereumTransaction.web3Provider
+        );
+      } else {
+        this.transactionsManager = TransactionsManager(null as any);
+        this.balancesManager = BalancesManager(null as any);
+      }
 
       return newNetwork;
     }
@@ -2341,7 +2358,6 @@ class MainController extends KeyringManager {
         const isBitcoinBased = activeChain === INetworkType.Syscoin;
 
         if (!isBitcoinBased) {
-          this.web3Provider = this.ethereumTransaction.web3Provider;
           this.assetsManager = AssetsManager(
             this.ethereumTransaction.web3Provider
           );
@@ -2491,7 +2507,6 @@ class MainController extends KeyringManager {
     }
     store.dispatch(startSwitchNetwork(network));
     store.dispatch(setIsLoadingBalances(true));
-    store.dispatch(setCurrentBlock(undefined));
 
     const isBitcoinBased = chain === INetworkType.Syscoin;
     try {
@@ -2680,6 +2695,45 @@ class MainController extends KeyringManager {
         this.isStartingUp = false;
       }, 2000);
     }
+  }
+
+  // Wrapper methods for UI components to access provider functionality
+  public getProviderStatus(): {
+    errorMessage: string;
+    isInCooldown: boolean;
+    serverHasAnError: boolean;
+  } {
+    const provider = this.ethereumTransaction?.web3Provider;
+    if (!provider) {
+      return {
+        isInCooldown: false,
+        serverHasAnError: false,
+        errorMessage: '',
+      };
+    }
+    return {
+      isInCooldown: provider.isInCooldown || false,
+      serverHasAnError: provider.serverHasAnError || false,
+      errorMessage: provider.errorMessage || '',
+    };
+  }
+
+  // Get current block with latest data
+  public async getCurrentBlock(): Promise<any> {
+    const { isBitcoinBased } = store.getState().vault;
+
+    if (isBitcoinBased) {
+      throw new Error('getCurrentBlock is not available on Bitcoin networks');
+    }
+
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('Web3 provider not available');
+    }
+
+    return await this.ethereumTransaction.web3Provider.send(
+      'eth_getBlockByNumber',
+      ['latest', false]
+    );
   }
 }
 

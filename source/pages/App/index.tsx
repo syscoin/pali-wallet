@@ -52,10 +52,15 @@ if (appRootElement) {
 
   const initializeApp = async () => {
     try {
+      console.log('[App] Fetching state from background script...');
       const state = await controllerEmitter(['wallet', 'getState']);
-      console.log('[App] Successfully got state from background script');
+      console.log(
+        '[App] Successfully got state from background script:',
+        state
+      );
 
       // Run migrations with the fetched state
+      console.log('[App] Running MigrationController...');
       const { default: MigrationController } = await import(
         'scripts/Background/controllers/MigrationController'
       );

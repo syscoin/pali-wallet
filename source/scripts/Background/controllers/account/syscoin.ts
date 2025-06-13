@@ -55,9 +55,8 @@ const SysAccountController = (
 
       if (tokenExists) throw new Error('Token already exists');
 
-      const description =
-        token.pubData && token.pubData.desc ? atob(token.pubData.desc) : '';
-
+      // Syscoin 5 no longer uses pubData field
+      const description = token.description || '';
       const ipfsUrl = description.startsWith('https://ipfs.io/ipfs/')
         ? description
         : '';
@@ -66,7 +65,10 @@ const SysAccountController = (
         chainId: activeNetwork.chainId,
         description,
         image: '',
-        balance: Number(token.balance) / 10 ** Number(token.decimals) || 0,
+        balance:
+          token.balance !== undefined && token.decimals !== undefined
+            ? Number(token.balance) / Math.pow(10, Number(token.decimals))
+            : 0,
       };
       if (!isEmpty(ipfsUrl)) {
         const { data } = await axios.get(ipfsUrl, config);

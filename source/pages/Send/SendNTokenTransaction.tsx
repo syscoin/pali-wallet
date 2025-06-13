@@ -10,6 +10,7 @@ import { Layout, DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useEIP1559 } from 'hooks/useEIP1559';
 import { RootState } from 'state/store';
 import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -18,7 +19,6 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
-  verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriority';
@@ -28,7 +28,7 @@ export const SendNTokenTransaction = () => {
   //   wallet: { ethereumTransaction, sendAndSaveTransaction }, //TODO: validates this gets doesn't leads into bugs
   // }
 
-  const { controllerEmitter, web3Provider } = useController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const [copied, copy] = useCopyClipboard();
@@ -36,11 +36,9 @@ export const SendNTokenTransaction = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    currentBlock,
-  } = useSelector((state: RootState) => state.vault);
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
+  );
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
 
   // when using the default routing, state will have the tx data
@@ -60,8 +58,7 @@ export const SendNTokenTransaction = () => {
     gasPrice: 0,
   });
   const [confirmedTx, setConfirmedTx] = useState<any>();
-  const [isEIP1559Compatible, setIsEIP1559Compatible] =
-    useState<boolean>(false);
+  const { isEIP1559Compatible } = useEIP1559();
   const [errors, setErrors] = useState<{
     eip1559GasError: boolean;
     gasLimitError: boolean;
@@ -432,17 +429,6 @@ export const SendNTokenTransaction = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
-  useEffect(() => {
-    const validateEIP1559Compatibility = async () => {
-      const isCompatible = await verifyNetworkEIP1559Compatibility(
-        web3Provider,
-        currentBlock
-      );
-      setIsEIP1559Compatible(isCompatible);
-    };
-
-    validateEIP1559Compatibility();
-  }, []);
   return (
     <Layout title={t('send.send')} canGoBack={!isExternal}>
       <DefaultModal

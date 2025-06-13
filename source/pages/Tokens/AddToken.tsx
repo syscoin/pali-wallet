@@ -23,12 +23,23 @@ export const AddToken: FC = () => {
   const [importCustom, setImportCustom] = useState(false);
   const [isTestnet, setIsTestnet] = useState(false);
 
-  const { web3Provider } = useController();
-  const { isInCooldown } = web3Provider;
+  const { controllerEmitter } = useController();
+  const [isInCooldown, setIsInCooldown] = useState(false);
   const { isBitcoinBased, activeNetwork: network } = useSelector(
     (paliState: RootState) => paliState.vault
   );
   const { t } = useTranslation();
+
+  useEffect(() => {
+    // Get provider status including isInCooldown
+    controllerEmitter(['wallet', 'getProviderStatus'], [])
+      .then((status: any) => {
+        setIsInCooldown(status.isInCooldown || false);
+      })
+      .catch(() => {
+        setIsInCooldown(false);
+      });
+  }, [controllerEmitter]);
 
   useEffect(() => {
     // Use optimized verifyIfIsTestnet that checks network object properties first

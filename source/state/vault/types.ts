@@ -1,5 +1,3 @@
-import { ethers } from 'ethers';
-
 import {
   IKeyringAccountState,
   KeyringAccountType,
@@ -31,7 +29,6 @@ export interface IVaultState {
   };
   changingConnectedAccount: IChangingConnectedAccount;
   coinsList: any[];
-  currentBlock: ethers.providers.Block;
   error: string | null;
   hasEncryptedVault: boolean;
   hasErrorOndAppEVM: boolean;

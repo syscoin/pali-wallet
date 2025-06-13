@@ -2,6 +2,7 @@ import { uniqueId } from 'lodash';
 import React, { Fragment } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
+import { FiCopy as CopyIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
 import { NeutralButton } from 'components/index';
@@ -13,6 +14,7 @@ import {
   camelCaseToText,
   syscoinKeysOfInterest,
   adjustUrl,
+  copyText,
 } from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
@@ -26,36 +28,39 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
   const { assets } = accounts[activeAccount.type][activeAccount.id];
 
+  const asset = assets.syscoin?.find(
+    (sysAsset: any) => sysAsset.assetGuid === id
+  );
+
   const formattedAsset = [];
+  const hasContract =
+    asset?.contract &&
+    asset.contract !== '0x0000000000000000000000000000000000000000';
 
-  assets.syscoin?.find((asset: any) => {
-    if (asset.assetGuid !== id) return null;
-
+  if (asset) {
     for (const [key, value] of Object.entries(asset)) {
       // Check if the key is one of the keys of interest
       if (!syscoinKeysOfInterest.includes(key)) continue;
 
       const formattedKey = camelCaseToText(key);
-      const isValid = typeof value !== 'object';
+      const isValid =
+        typeof value !== 'object' && value !== null && value !== '';
 
       if (isValid) {
         // Create an object with the key and value and unshift it into the array
         const keyValueObject = {
           key: formattedKey,
           value: value,
+          originalKey: key,
         };
 
         formattedAsset.unshift(keyValueObject);
       }
     }
+  }
 
-    return formattedAsset;
-  });
-
-  const assetSymbol = formattedAsset.find((asset) => asset.key === 'Symbol');
-  const assetDecimals = formattedAsset.find(
-    (asset) => asset.key === 'Decimals'
-  );
+  const assetSymbol = formattedAsset.find((item) => item.key === 'Symbol');
+  const assetDecimals = formattedAsset.find((item) => item.key === 'Decimals');
 
   const RenderAsset = () => (
     <>
@@ -65,8 +70,8 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
 
       <div className="mt-4 mb-6">
         {formattedAsset
-          .filter((asset) => asset.key !== 'Symbol' && asset.key !== 'Decimals')
-          .map((asset, index, totalArray) => (
+          .filter((item) => item.key !== 'Symbol' && item.key !== 'Decimals')
+          .map((item, index, totalArray) => (
             <Fragment key={uniqueId(id)}>
               <li
                 className={`flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
@@ -74,40 +79,91 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
                 index + 1 === totalArray.length && 'border-none'
               } `}
               >
-                <p className="font-normal text-xs">{asset.key}</p>
-                <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                  <span className="text-brand-white">
-                    {truncate(
-                      formatCurrency(
-                        String(asset.value / 10 ** assetDecimals.value),
-                        assetDecimals.value
-                      ),
-                      5,
-                      false
-                    )}
-                  </span>
+                <p className="font-normal text-xs">{item.key}</p>
+                {item.originalKey === 'contract' ? (
+                  <div className="flex items-center gap-x-2">
+                    <span className="text-brand-white text-xs">
+                      {truncate(item.value, 10, true)}
+                    </span>
+                    <button
+                      onClick={() => copyText(item.value)}
+                      className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
+                      title="Copy contract address"
+                    >
+                      <CopyIcon size={14} />
+                    </button>
+                  </div>
+                ) : item.originalKey === 'metaData' ? (
+                  <p className="text-brand-white text-xs max-w-[200px] truncate">
+                    {item.value}
+                  </p>
+                ) : (
+                  <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                    <span className="text-brand-white">
+                      {truncate(
+                        formatCurrency(
+                          String(item.value / 10 ** assetDecimals.value),
+                          assetDecimals.value
+                        ),
+                        5,
+                        false
+                      )}
+                    </span>
 
-                  <span className="text-brand-royalbluemedium">
-                    {assetSymbol.value}
-                  </span>
-                </p>
+                    <span className="text-brand-royalbluemedium">
+                      {assetSymbol.value}
+                    </span>
+                  </p>
+                )}
               </li>
             </Fragment>
           ))}
       </div>
 
-      <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100">
-        <a
-          href={`${adjustUrl(activeNetwork.url)}asset/${id}`}
-          target="_blank"
-          className="flex items-center justify-center gap-x-2"
-          rel="noreferrer"
-        >
-          <ExternalLinkIcon size={16} />
-          <span className="font-normal font-poppins underline text-sm">
-            View on Explorer
-          </span>
-        </a>
+      <div className="w-full flex flex-col items-center justify-center gap-y-2">
+        <div className="text-brand-white hover:text-brand-deepPink100">
+          <a
+            href={`${adjustUrl(activeNetwork.url)}asset/${id}`}
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+            rel="noreferrer"
+          >
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              View on Syscoin Explorer
+            </span>
+          </a>
+        </div>
+        {hasContract && activeNetwork.url.includes('syscoin.org') && (
+          <div className="text-brand-white hover:text-brand-deepPink100">
+            <a
+              href={`https://explorer.syscoin.org/address/${asset.contract}`}
+              target="_blank"
+              className="flex items-center justify-center gap-x-2"
+              rel="noreferrer"
+            >
+              <ExternalLinkIcon size={16} />
+              <span className="font-normal font-poppins underline text-sm">
+                View on NEVM Explorer
+              </span>
+            </a>
+          </div>
+        )}
+        {hasContract && activeNetwork.url.includes('tanenbaum') && (
+          <div className="text-brand-white hover:text-brand-deepPink100">
+            <a
+              href={`https://explorer.tanenbaum.io/address/${asset.contract}`}
+              target="_blank"
+              className="flex items-center justify-center gap-x-2"
+              rel="noreferrer"
+            >
+              <ExternalLinkIcon size={16} />
+              <span className="font-normal font-poppins underline text-sm">
+                View on NEVM Explorer
+              </span>
+            </a>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col items-center justify-center w-full">

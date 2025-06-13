@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { isBoolean, isNil } from 'lodash';
 import * as React from 'react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,8 +26,15 @@ export const SyscoinImportToken = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
 
   const nextStep = async ({ assetGuid }: { assetGuid: string }) => {
+    if (!isBitcoinBased) {
+      setError(true);
+      return;
+    }
     setIsLoading(true);
     try {
       const addTokenMethodResponse = await controllerEmitter(
@@ -36,7 +42,10 @@ export const SyscoinImportToken = () => {
         [assetGuid, activeNetwork.url]
       );
 
-      if (isBoolean(addTokenMethodResponse) || isNil(addTokenMethodResponse)) {
+      if (
+        !addTokenMethodResponse ||
+        !(addTokenMethodResponse as any).assetGuid
+      ) {
         setError(true);
         setIsLoading(false);
         return;
@@ -82,7 +91,8 @@ export const SyscoinImportToken = () => {
 
                 if (!value || data) {
                   if (data && data.symbol) {
-                    form.setFieldValue('symbol', atob(String(data.symbol)));
+                    // Syscoin 5 uses plain text symbols
+                    form.setFieldValue('assetSymbol', data.symbol);
                   }
 
                   return Promise.resolve();

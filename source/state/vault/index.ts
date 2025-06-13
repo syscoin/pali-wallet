@@ -1,5 +1,4 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { ethers } from 'ethers';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
@@ -81,7 +80,6 @@ export const initialState: IVaultState = {
   },
   networks: PALI_NETWORKS_STATE,
   error: null,
-  currentBlock: undefined,
   coinsList: [],
   shouldShowFaucetModal: {
     57: true,
@@ -333,9 +331,6 @@ const VaultState = createSlice({
       }>
     ) {
       state.activeAccount = action.payload;
-
-      //reset current block number on changing accounts
-      state.currentBlock = undefined;
     },
     setActiveNetwork(
       state: IVaultState,
@@ -549,12 +544,6 @@ const VaultState = createSlice({
         return;
 
       state.accounts[type][id].assets.ethereum = updatedTokens;
-    },
-    setCurrentBlock(
-      state: IVaultState,
-      action: PayloadAction<ethers.providers.Block>
-    ) {
-      state.currentBlock = action.payload;
     },
 
     setUpdatedNftsToState: (
@@ -954,7 +943,6 @@ export const {
   setUpdatedAllErcTokensBalance,
   setUpdatedNftsToState,
   setAdvancedSettings,
-  setCurrentBlock,
   setSingleTransactionToState,
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,

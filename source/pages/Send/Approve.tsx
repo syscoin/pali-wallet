@@ -37,7 +37,7 @@ import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueMod
 import { EditPriorityModal } from './EditPriority';
 
 export const ApproveTransactionComponent = () => {
-  const { controllerEmitter, web3Provider } = useController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { getFiatAmount } = usePrice();
 
@@ -263,24 +263,24 @@ export const ApproveTransactionComponent = () => {
     const abortController = new AbortController();
 
     const getTokenName = async (contractAddress: string) => {
-      // const getProvider = wallet.ethereumTransaction.contentScriptWeb3Provider;
+      try {
+        const tokenInfo = (await controllerEmitter(
+          ['wallet', 'assets', 'evm', 'getERC20TokenInfo'],
+          [contractAddress, activeAccount.address]
+        )) as {
+          balance: string;
+          decimals: number;
+          name: string;
+          symbol: string;
+        };
 
-      const contractInstance = new ethers.Contract(
-        contractAddress,
-        getErc20Abi(),
-        web3Provider
-      );
-
-      const [tokenSymbolByContract, tokenDecimalsByContract] =
-        await Promise.all([
-          await contractInstance?.callStatic?.symbol(),
-          await contractInstance?.callStatic?.decimals(),
-        ]);
-
-      setApprovedTokenInfos({
-        tokenSymbol: tokenSymbolByContract,
-        tokenDecimals: tokenDecimalsByContract,
-      });
+        setApprovedTokenInfos({
+          tokenSymbol: tokenInfo.symbol,
+          tokenDecimals: tokenInfo.decimals,
+        });
+      } catch (error) {
+        console.error('Failed to get token info:', error);
+      }
     };
 
     getTokenName(dataTx.to);

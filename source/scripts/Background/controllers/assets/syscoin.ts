@@ -13,25 +13,24 @@ const SysAssetsControler = (): ISysAssetsController => {
     try {
       const metadata = await getAsset(networkUrl, assetGuid);
 
-      if (metadata && metadata.symbol) {
-        const sysAssetToAdd = {
-          ...metadata,
-          symbol: metadata.symbol
-            ? decodeURIComponent(
-                Array.prototype.map
-                  .call(
-                    atob(metadata.symbol),
-                    (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-                  )
-                  .join('')
-              )
-            : '',
-        } as ITokenSysProps;
-
-        return sysAssetToAdd;
+      if (!metadata) {
+        throw new Error('Asset not found');
       }
+
+      if (!metadata.symbol) {
+        throw new Error('Asset has no symbol');
+      }
+
+      const sysAssetToAdd = {
+        ...metadata,
+        symbol: metadata.symbol, // Syscoin 5 uses plain text symbols
+        balance: 0, // Initialize with 0, will be updated by asset refresh
+      } as ITokenSysProps;
+
+      return sysAssetToAdd;
     } catch (error) {
-      return Boolean(error);
+      console.error('addSysDefaultToken error:', error);
+      throw error; // Re-throw to let caller handle
     }
   };
 
@@ -81,20 +80,8 @@ const SysAssetsControler = (): ISysAssetsController => {
           false,
           assetsWithChain
         ) as ISysTokensAssetReponse[];
-        const decodedSysAssets = treatedAssets.map((asset) => ({
-          ...asset,
-          symbol: asset.symbol
-            ? decodeURIComponent(
-                Array.prototype.map
-                  .call(
-                    atob(asset.symbol),
-                    (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
-                  )
-                  .join('')
-              )
-            : '',
-        }));
-        return decodedSysAssets;
+        // Syscoin 5 uses plain text symbols, no decoding needed
+        return treatedAssets;
       }
 
       return [];

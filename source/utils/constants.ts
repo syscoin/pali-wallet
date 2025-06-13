@@ -51,6 +51,8 @@ export const syscoinKeysOfInterest = [
   'totalSent',
   'balance',
   'decimals',
+  'contract', // NEVM contract address for cross-chain assets
+  'metaData', // Syscoin 5 metadata field
 ];
 
 //Video formats for NFTs

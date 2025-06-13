@@ -1,6 +1,5 @@
 import { ethers } from 'ethers';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import {
   INetworkType,
   validateEthRpc,
@@ -72,24 +71,31 @@ export const verifyIfIsTestnet = async (
 };
 
 export const verifyNetworkEIP1559Compatibility = async (
-  web3Provider: CustomJsonRpcProvider,
   stateBlock?: ethers.providers.Block
 ) => {
   try {
-    const latestBlock = stateBlock
-      ? stateBlock
-      : await web3Provider.getBlock('latest');
-    const baseFeePerGasExistInBlock = latestBlock?.baseFeePerGas !== undefined;
+    // We should always have a block from state
+    // Components are updated to only call this when currentBlock is available
+    if (!stateBlock) {
+      console.warn(
+        'verifyNetworkEIP1559Compatibility called without stateBlock'
+      );
+      return false;
+    }
+
+    const baseFeePerGasExistInBlock = stateBlock.baseFeePerGas !== undefined;
     let isCompatible = false;
 
     if (baseFeePerGasExistInBlock) {
-      const isValidEIP1559Fee = Number(latestBlock.baseFeePerGas) !== 0;
+      const isValidEIP1559Fee = Number(stateBlock.baseFeePerGas) !== 0;
       isCompatible = isValidEIP1559Fee;
     }
 
     return isCompatible;
   } catch (error) {
-    throw new Error(error);
+    console.error('Failed to verify EIP1559 compatibility:', error);
+    // Return false if we can't determine compatibility
+    return false;
   }
 };
 

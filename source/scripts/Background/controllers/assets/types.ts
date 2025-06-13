@@ -81,6 +81,21 @@ export interface IEvmAssetsController {
     token: ITokenEthProps,
     accountAddress: string
   ) => Promise<ITokenEthProps | boolean>;
+  checkContractType: (contractAddress: string) => Promise<any>;
+  getERC20TokenInfo: (
+    contractAddress: string,
+    accountAddress: string
+  ) => Promise<{
+    balance: string;
+    decimals: number;
+    name: string;
+    symbol: string;
+  }>;
+  getNftMetadata: (contractAddress: string) => Promise<any>;
+  getTokenMetadata: (
+    contractAddress: string,
+    accountAddress: string
+  ) => Promise<any>;
   updateAllEvmTokens: (
     account: IPaliAccount,
 

@@ -12,16 +12,12 @@ import {
 const EvmTransactionsController = (
   web3Provider: CustomJsonRpcProvider
 ): IEvmTransactionsController => {
-  const getUserTransactionByDefaultProvider = async (
-    startBlock: number,
-    endBlock: number
-  ) => {
+  const getUserTransactionByDefaultProvider = async (numBlocks = 30) => {
     const provider = web3Provider;
 
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
       provider,
-      startBlock,
-      endBlock
+      numBlocks
     );
 
     const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
@@ -344,10 +340,8 @@ const EvmTransactionsController = (
       return [];
     }
     try {
-      const { activeAccount, accounts, activeNetwork, currentBlock } =
-        store.getState().vault;
+      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
       const currentAccount = accounts[activeAccount.type][activeAccount.id];
-      const currentBlockNumber = currentBlock?.number;
       const currentNetworkChainId = activeNetwork?.chainId;
       const rpcForbiddenList = [10];
 
@@ -393,20 +387,9 @@ const EvmTransactionsController = (
       }
 
       // Fallback to RPC scanning if API failed or no API configured
-      if (
-        currentBlockNumber &&
-        !rpcForbiddenList.includes(currentNetworkChainId!)
-      ) {
-        console.log(
-          `[pollingEvmTransactions] Scanning blocks ${Math.max(
-            currentBlockNumber - 30,
-            0
-          )} to ${currentBlockNumber}`
-        );
-        const providerTxs = await getUserTransactionByDefaultProvider(
-          Math.max(currentBlockNumber - 30, 0),
-          currentBlockNumber
-        );
+      if (!rpcForbiddenList.includes(currentNetworkChainId!)) {
+        console.log(`[pollingEvmTransactions] Scanning last 30 blocks`);
+        const providerTxs = await getUserTransactionByDefaultProvider(30);
 
         // Ensure providerTxs is an array
         allTransactions = Array.isArray(providerTxs) ? providerTxs : [];

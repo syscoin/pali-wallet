@@ -2,14 +2,12 @@ import clone from 'lodash/clone';
 import compact from 'lodash/compact';
 import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
-import last from 'lodash/last';
-import omit from 'lodash/omit';
 import range from 'lodash/range';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setCurrentBlock, setMultipleTransactionToState } from 'state/vault';
+import { setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
@@ -45,8 +43,7 @@ export const getFormattedEvmTransactionResponse = async (
 
 export const findUserTxsInProviderByBlocksRange = async (
   provider: CustomJsonRpcProvider,
-  startBlock: number,
-  endBlock: number
+  numBlocks: number
 ): Promise<IEvmTransactionResponse[] | any> => {
   const { isBitcoinBased } = store.getState().vault;
 
@@ -58,7 +55,14 @@ export const findUserTxsInProviderByBlocksRange = async (
     return [];
   }
 
-  const rangeBlocksToRun = range(startBlock, endBlock);
+  // Get the latest block number first
+  const latestBlockNumber = await provider.getBlockNumber();
+
+  // Calculate the range: from (latest - numBlocks) to latest
+  const startBlock = Math.max(0, latestBlockNumber - numBlocks);
+  const endBlock = latestBlockNumber;
+
+  const rangeBlocksToRun = range(startBlock, endBlock + 1); // +1 to include endBlock
   const BATCH_SIZE = 10; // Maximum blocks per batch to avoid "Batch size too large" errors
   const allResponses = [];
 
@@ -76,13 +80,6 @@ export const findUserTxsInProviderByBlocksRange = async (
     const responses = await Promise.all(batchRequest);
     allResponses.push(...responses);
   }
-
-  store.dispatch(
-    setCurrentBlock(omit(last(allResponses) as any, 'transactions') as any)
-  );
-
-  // Get the actual latest block number for accurate confirmation calculation
-  const latestBlockNumber = await provider.getBlockNumber();
 
   return flatMap(
     allResponses.map((response: any) => {

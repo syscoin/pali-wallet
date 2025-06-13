@@ -355,10 +355,83 @@ const EvmAssetsController = (
     }
   };
 
+  // Wrapper methods for UI components to use via controllerEmitter
+  const checkContractType = async (contractAddress: string) => {
+    try {
+      return await contractChecker(contractAddress, w3Provider);
+    } catch (error) {
+      console.error('Error checking contract type:', error);
+      throw error;
+    }
+  };
+
+  const getTokenMetadata = async (
+    contractAddress: string,
+    accountAddress: string
+  ) => {
+    try {
+      return await getTokenStandardMetadata(
+        contractAddress,
+        accountAddress,
+        w3Provider
+      );
+    } catch (error) {
+      console.error('Error getting token metadata:', error);
+      throw error;
+    }
+  };
+
+  const getNftMetadata = async (contractAddress: string) => {
+    try {
+      // getNftStandardMetadata only needs contractAddress and provider
+      return await getNftStandardMetadata(contractAddress, w3Provider);
+    } catch (error) {
+      console.error('Error getting NFT metadata:', error);
+      throw error;
+    }
+  };
+
+  const getERC20TokenInfo = async (
+    contractAddress: string,
+    accountAddress: string
+  ): Promise<{
+    balance: string;
+    decimals: number;
+    name: string;
+    symbol: string;
+  }> => {
+    const erc20Abi = [
+      'function name() view returns (string)',
+      'function symbol() view returns (string)',
+      'function decimals() view returns (uint8)',
+      'function balanceOf(address) view returns (uint256)',
+    ];
+
+    const contract = new ethers.Contract(contractAddress, erc20Abi, w3Provider);
+
+    const [name, symbol, decimals, balance] = await Promise.all([
+      contract.name(),
+      contract.symbol(),
+      contract.decimals(),
+      contract.balanceOf(accountAddress),
+    ]);
+
+    return {
+      name,
+      symbol,
+      decimals,
+      balance: balance.toString(),
+    };
+  };
+
   return {
     addEvmDefaultToken,
     addCustomTokenByType,
     updateAllEvmTokens,
+    checkContractType,
+    getTokenMetadata,
+    getNftMetadata,
+    getERC20TokenInfo,
   };
 };
 

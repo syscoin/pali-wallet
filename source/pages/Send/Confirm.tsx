@@ -8,7 +8,6 @@ import { useLocation } from 'react-router-dom';
 
 import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
-import { getContractType } from '@pollum-io/sysweb3-utils';
 
 import {
   Layout,
@@ -23,6 +22,7 @@ import { TxSuccessful } from 'components/Modal/WarningBaseModal';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
+import { useEIP1559 } from 'hooks/useEIP1559';
 import {
   ISysTransaction,
   IEvmTransactionResponse,
@@ -36,13 +36,12 @@ import {
   removeScientificNotation,
   omitTransactionObjectData,
   INITIAL_FEE,
-  verifyNetworkEIP1559Compatibility,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriority';
 
 export const SendConfirm = () => {
-  const { controllerEmitter, web3Provider, isLoading } = useController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate, useCopyClipboard } = useUtils();
   const { getFiatAmount } = usePrice();
@@ -56,7 +55,6 @@ export const SendConfirm = () => {
   const {
     accounts,
     activeAccount: activeAccountMeta,
-    currentBlock,
     networkStatus,
     isSwitchingAccount,
   } = useSelector((state: RootState) => state.vault);
@@ -81,7 +79,7 @@ export const SendConfirm = () => {
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
   const [haveError, setHaveError] = useState<boolean>(false);
 
-  const [isEIP1559Compatible, setIsEIP1559Compatible] = useState<boolean>();
+  const { isEIP1559Compatible } = useEIP1559();
   const [copied, copy] = useCopyClipboard();
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
@@ -767,10 +765,11 @@ export const SendConfirm = () => {
 
             //HANDLE ERC721/ERC1155 NFTS TRANSACTIONS
             case true:
-              const { type } = await getContractType(
-                basicTxValues.token.contractAddress,
-                web3Provider
-              );
+              const contractInfo = (await controllerEmitter(
+                ['wallet', 'assets', 'evm', 'checkContractType'],
+                [basicTxValues.token.contractAddress]
+              )) as { type: string };
+              const { type } = contractInfo;
 
               if (activeAccount.isTrezorWallet) {
                 await controllerEmitter(
@@ -1003,20 +1002,6 @@ export const SendConfirm = () => {
       } as any);
     }
   }, [isBitcoinBased, basicTxValues?.fee]);
-
-  useEffect(() => {
-    if (isLoading || isBitcoinBased) return;
-    const validateEIP1559Compatibility = async () => {
-      const isCompatible = await verifyNetworkEIP1559Compatibility(
-        web3Provider,
-        currentBlock
-      );
-
-      setIsEIP1559Compatible(isCompatible);
-    };
-
-    validateEIP1559Compatibility();
-  }, [isLoading, web3Provider, isBitcoinBased]);
 
   useEffect(() => {
     if (isBitcoinBased) return;

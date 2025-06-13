@@ -6,8 +6,6 @@ import { useSelector } from 'react-redux';
 
 import {
   isValidEthereumAddress,
-  getTokenStandardMetadata,
-  contractChecker,
   ISupportsInterfaceProps,
 } from '@pollum-io/sysweb3-utils';
 
@@ -38,7 +36,7 @@ const TOKEN_CONTRACT_TYPE_INITIAL_VALUE = {
 };
 
 export const CustomToken = (props: ICustomTokenComponentProps) => {
-  const { controllerEmitter, web3Provider } = useController();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { isEdit, tokenToEdit } = props;
 
@@ -241,9 +239,9 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     contractValue: string,
     isForEdit?: boolean
   ) => {
-    const contractResponse = (await contractChecker(
-      contractValue,
-      web3Provider
+    const contractResponse = (await controllerEmitter(
+      ['wallet', 'assets', 'evm', 'checkContractType'],
+      [contractValue]
     )) as ISupportsInterfaceProps;
 
     if (String(contractResponse).includes('Invalid contract address')) {
@@ -315,11 +313,11 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     tokenAddress: string,
     isForEdit?: boolean
   ) => {
-    const { decimals, tokenSymbol } = await getTokenStandardMetadata(
-      tokenAddress,
-      activeAccount.address,
-      web3Provider
-    );
+    const metadata = (await controllerEmitter(
+      ['wallet', 'assets', 'evm', 'getTokenMetadata'],
+      [tokenAddress, activeAccount.address]
+    )) as { decimals: number; symbol: string };
+    const { decimals, symbol: tokenSymbol } = metadata;
 
     if (decimals && tokenSymbol) {
       if (!isForEdit) {

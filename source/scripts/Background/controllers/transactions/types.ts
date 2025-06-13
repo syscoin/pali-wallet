@@ -106,8 +106,7 @@ export interface IEvmTransactionsController {
     apiUrl: string
   ) => Promise<any>;
   getUserTransactionByDefaultProvider: (
-    startBlock: number,
-    endBlock: number
+    numBlocks?: number
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: () => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (

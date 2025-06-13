@@ -5,7 +5,6 @@ import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 // Removed unused development-only imports
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
@@ -28,8 +27,31 @@ export const useRouterLogic = () => {
     (state: RootState) => state.vault
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { isUnlocked, web3Provider, isLoading } = useController();
-  const { serverHasAnError, errorMessage } = web3Provider;
+  const { isUnlocked, isLoading, controllerEmitter } = useController();
+  const [providerStatus, setProviderStatus] = useState<{
+    errorMessage: string | { code?: number; message?: string } | any;
+    serverHasAnError: boolean;
+  }>({
+    serverHasAnError: false,
+    errorMessage: '',
+  });
+
+  useEffect(() => {
+    if (!isBitcoinBased) {
+      controllerEmitter(['wallet', 'getProviderStatus'], [])
+        .then((status: any) => {
+          setProviderStatus({
+            serverHasAnError: status.serverHasAnError || false,
+            errorMessage: status.errorMessage || '',
+          });
+        })
+        .catch(() => {
+          setProviderStatus({ serverHasAnError: false, errorMessage: '' });
+        });
+    }
+  }, [controllerEmitter, isBitcoinBased]);
+
+  const { serverHasAnError, errorMessage } = providerStatus;
 
   const isNetworkChanging = networkStatus === 'switching';
 
@@ -202,7 +224,7 @@ export const useRouterLogic = () => {
       !isBitcoinBased &&
       !isNetworkChanging
     ) {
-      if (errorMessage !== 'string' && errorMessage?.code === -32016) {
+      if (typeof errorMessage !== 'string' && errorMessage?.code === -32016) {
         setmodalMessage(
           'The current RPC provider has a low rate-limit. We are applying a cooldown that will affect Pali performance. Modify the RPC URL in the network settings to resolve this issue.'
         );
@@ -229,9 +251,9 @@ export const useRouterLogic = () => {
   };
 
   const warningMessage = `Provider Error: ${
-    errorMessage === 'string' || typeof errorMessage === 'undefined'
+    typeof errorMessage === 'string' || typeof errorMessage === 'undefined'
       ? errorMessage
-      : errorMessage?.message
+      : errorMessage?.message || 'Unknown error'
   }`;
 
   return {
