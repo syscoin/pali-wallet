@@ -36,7 +36,8 @@
     "error": "Ошибка",
     "reconnect": "Переподключить",
     "verify": "Проверить",
-    "retryConnect": "Повторить подключение"
+    "retryConnect": "Повторить подключение",
+    "delete": "Удалить"
   },
   "header": {
     "accounts": "Аккаунты",
@@ -211,7 +212,6 @@
     "importedAccounts": "Импортированные аккаунты",
     "trezorAccounts": "Аккаунты Trezor",
     "manageNetworks": "УПРАВЛЕНИЕ СЕТЯМИ",
-
     "youCannotRemoveActiveNetwork": "Вы не можете удалить активную сеть",
     "seedPhraseCopied": "Сид-фраза успешно скопирована",
     "walletSeedPhrase": "СИД-ФРАЗА КОШЕЛЬКА",
@@ -490,8 +490,15 @@
     "invalidAssetGuidFormat": "GUID актива должен быть числовым",
     "assetNotFound": "Актив не найден. Пожалуйста, проверьте GUID.",
     "lookingUpAsset": "Поиск актива...",
-    "assetFoundAutoFilled": "Актив найден! Детали заполнены автоматически.",
-    "contractAddressHelp": "Адрес контракта NEVM для этого SPT токена"
+    "contractAddressHelp": "Адрес контракта NEVM для этого SPT токена",
+    "assetInvalidOrUnknown": "Актив недействителен или не существует в этой сети",
+    "assetTypeNotSupported": "Тип актива не поддерживается",
+    "tokenAlreadyImported": "Этот токен уже импортирован",
+    "deleteToken": "Удалить {{symbol}}",
+    "confirmDeleteTokenEvm": "Вы уверены, что хотите удалить {{symbol}} из вашего кошелька? Вы можете добавить его обратно в любое время, используя адрес контракта.",
+    "confirmDeleteTokenSpt": "Вы уверены, что хотите удалить {{symbol}} из вашего кошелька? Вы можете добавить его обратно в любое время, используя GUID актива.",
+    "noSptAssetsFound": "SPT активы не найдены",
+    "importTokensToGetStarted": "Импортируйте токены для начала работы"
   },
   "transactions": {
     "messageCopied": "Сообщение успешно скопировано",

@@ -36,7 +36,8 @@
     "error": "エラー",
     "reconnect": "再接続",
     "verify": "確認",
-    "retryConnect": "接続を再試行"
+    "retryConnect": "接続を再試行",
+    "delete": "削除"
   },
   "header": {
     "accounts": "アカウント",
@@ -252,10 +253,10 @@
     "confirmPassword": "パスワードを確認",
     "atLeast": "最低8文字、小文字1文字、数字1文字。",
     "doNotForget": "パスワードを保存することを忘れないでください。ウォレットのロックを解除するには、このパスワードが必要です。",
-    "feeRateLabel": "Fee Rate ({{currency}}/byte)",
-    "gasPriceLabel": "Gas Price (gwei)",
-    "feeRateTooltip": "Set the fee rate for your transaction in {{currency}} per byte",
-    "gasPriceTooltip": "Set the gas price for your transaction in gwei"
+    "feeRateLabel": "手数料レート ({{currency}}/byte)",
+    "gasPriceLabel": "ガス価格 (gwei)",
+    "feeRateTooltip": "取引の手数料レートを{{currency}}バイト単位で設定",
+    "gasPriceTooltip": "取引のガス価格をgwei単位で設定"
   },
   "generalMenu": {
     "wallet": "ウォレット",
@@ -439,8 +440,7 @@
     "invalidAmount": "無効な金額です。有効な金額を入力してください。",
     "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
     "transactionCreationFailedWithCode": "取引の作成に失敗しました ({{code}}): {{message}}",
-    "transactionSendFailed": "取引の送信に失敗しました: {{message}}",
-    "grabTextTwo": "フォーセットで ${{token}} を取得"
+    "transactionSendFailed": "取引の送信に失敗しました: {{message}}"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",
@@ -490,8 +490,15 @@
     "invalidAssetGuidFormat": "アセットGUIDは数値である必要があります",
     "assetNotFound": "アセットが見つかりません。GUIDを確認してください。",
     "lookingUpAsset": "アセットを検索中...",
-    "assetFoundAutoFilled": "アセットが見つかりました！詳細が自動入力されました。",
-    "contractAddressHelp": "このSPTトークンのNEVMコントラクトアドレス"
+    "contractAddressHelp": "このSPTトークンのNEVMコントラクトアドレス",
+    "assetInvalidOrUnknown": "アセットが無効であるか、このネットワークに存在しません",
+    "assetTypeNotSupported": "アセットタイプはサポートされていません",
+    "tokenAlreadyImported": "このトークンは既にインポートされています",
+    "deleteToken": "{{symbol}}を削除",
+    "confirmDeleteTokenEvm": "ウォレットから{{symbol}}を削除してもよろしいですか？コントラクトアドレスを使用していつでも再度追加できます。",
+    "confirmDeleteTokenSpt": "ウォレットから{{symbol}}を削除してもよろしいですか？アセットGUIDを使用していつでも再度追加できます。",
+    "noSptAssetsFound": "SPTアセットが見つかりません",
+    "importTokensToGetStarted": "開始するにはトークンをインポートしてください"
   },
   "transactions": {
     "messageCopied": "メッセージが正常にコピーされました",

@@ -36,7 +36,8 @@
     "error": "Erreur",
     "reconnect": "Reconnecter",
     "verify": "Vérifier",
-    "retryConnect": "Réessayer la connexion"
+    "retryConnect": "Réessayer la connexion",
+    "delete": "Supprimer"
   },
   "header": {
     "accounts": "COMPTES",
@@ -485,12 +486,19 @@
     "tokenNotFoundIn": "Jeton non trouvé dans votre XPUB ou le jeton est déjà importé.",
     "tokenNotAdded": "Jeton non ajouté.",
     "tokenGuid": "GUID de l'Actif",
-    "assetGuidRequired": "Le GUID de l'actif est requis",
+    "assetGuidRequired": "GUID de l'actif requis",
     "invalidAssetGuidFormat": "Le GUID de l'actif doit être numérique",
-    "assetNotFound": "Actif non trouvé. Vérifiez le GUID.",
-    "lookingUpAsset": "Recherche d'actif...",
-    "assetFoundAutoFilled": "Actif trouvé ! Détails remplis automatiquement.",
-    "contractAddressHelp": "Adresse du contrat NEVM pour ce token SPT"
+    "assetNotFound": "Actif non trouvé. Veuillez vérifier le GUID.",
+    "lookingUpAsset": "Recherche de l'actif...",
+    "contractAddressHelp": "Adresse du contrat NEVM pour ce token SPT",
+    "assetInvalidOrUnknown": "L'actif est invalide ou n'existe pas sur ce réseau",
+    "assetTypeNotSupported": "Le type d'actif n'est pas pris en charge",
+    "tokenAlreadyImported": "Ce token est déjà importé",
+    "deleteToken": "Supprimer {{symbol}}",
+    "confirmDeleteTokenEvm": "Êtes-vous sûr de vouloir supprimer {{symbol}} de votre portefeuille ? Vous pouvez le rajouter à tout moment en utilisant l'adresse du contrat.",
+    "confirmDeleteTokenSpt": "Êtes-vous sûr de vouloir supprimer {{symbol}} de votre portefeuille ? Vous pouvez le rajouter à tout moment en utilisant le GUID de l'actif.",
+    "noSptAssetsFound": "Aucun actif SPT trouvé",
+    "importTokensToGetStarted": "Importez des tokens pour commencer"
   },
   "transactions": {
     "messageCopied": "Message copié avec succès",

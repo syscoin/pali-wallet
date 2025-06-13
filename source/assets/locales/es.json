@@ -36,7 +36,8 @@
     "error": "Error",
     "reconnect": "Reconectar",
     "verify": "Verificar",
-    "retryConnect": "Reintentar conexión"
+    "retryConnect": "Reintentar conexión",
+    "delete": "Eliminar"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -276,7 +277,8 @@
     "invalidFeeRate": "Tarifa de transacción inválida. Por favor ingresa una tarifa válida.",
     "invalidAmount": "Cantidad inválida. Por favor ingresa una cantidad válida.",
     "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
-    "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}"
+    "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}",
+    "transactionSendFailed": "Error al enviar la transacción: {{message}}"
   },
   "settings": {
     "bgError": "Error de Fondo",
@@ -488,8 +490,15 @@
     "invalidAssetGuidFormat": "El GUID del activo debe ser numérico",
     "assetNotFound": "Activo no encontrado. Verifique el GUID.",
     "lookingUpAsset": "Buscando activo...",
-    "assetFoundAutoFilled": "¡Activo encontrado! Detalles completados automáticamente.",
-    "contractAddressHelp": "Dirección del contrato NEVM para este token SPT"
+    "contractAddressHelp": "Dirección del contrato NEVM para este token SPT",
+    "deleteToken": "Eliminar {{symbol}}",
+    "confirmDeleteTokenEvm": "¿Estás seguro de que deseas eliminar {{symbol}} de tu billetera? Puedes volver a agregarlo en cualquier momento usando la dirección del contrato.",
+    "confirmDeleteTokenSpt": "¿Estás seguro de que deseas eliminar {{symbol}} de tu billetera? Puedes volver a agregarlo en cualquier momento usando el GUID del activo.",
+    "noSptAssetsFound": "No se encontraron activos SPT",
+    "importTokensToGetStarted": "Importa tokens para comenzar",
+    "assetInvalidOrUnknown": "El activo es inválido o no existe en esta red",
+    "assetTypeNotSupported": "El tipo de activo no es compatible",
+    "tokenAlreadyImported": "Este token ya está importado"
   },
   "transactions": {
     "messageCopied": "Mensaje copiado con éxito",

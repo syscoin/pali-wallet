@@ -1272,7 +1272,7 @@ export const SendConfirm = () => {
           )}
 
           <div className="flex flex-col p-6 bg-brand-blue700 items-start justify-center w-full max-w-[380px] mx-auto text-left text-sm">
-            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
+            <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.from')}
               <span className="text-white text-xs">
                 <Tooltip
@@ -1294,9 +1294,9 @@ export const SendConfirm = () => {
                   }
                 </Tooltip>
               </span>
-            </p>
+            </div>
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
-            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
+            <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {t('send.to')}
               <span className="text-white text-xs">
                 <Tooltip
@@ -1318,12 +1318,12 @@ export const SendConfirm = () => {
                   }
                 </Tooltip>
               </span>
-            </p>
+            </div>
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
             {/* Only show fee section if we have meaningful fee information */}
             {!(isBitcoinBased && basicTxValues.fee === 0) && (
               <div className="flex flex-row items-end w-full">
-                <p className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
+                <div className="flex flex-col text-xs text-brand-gray200 font-poppins font-normal">
                   {t('send.estimatedGasFee')}
                   <span className="text-white text-xs">
                     {(() => {
@@ -1359,7 +1359,7 @@ export const SendConfirm = () => {
                       );
                     })()}
                   </span>
-                </p>
+                </div>
                 {!isBitcoinBased && !basicTxValues.token?.isNft
                   ? !isBitcoinBased &&
                     isEIP1559Compatible && (
@@ -1378,7 +1378,7 @@ export const SendConfirm = () => {
               </div>
             )}
             <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
-            <p className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
+            <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
                   Total ({t('send.amountAndFee')})
@@ -1497,7 +1497,7 @@ export const SendConfirm = () => {
                   </span>
                 </>
               )}
-            </p>
+            </div>
           </div>
 
           {isBitcoinBased && (
@@ -1546,7 +1546,7 @@ export const SendConfirm = () => {
             </Button>
 
             <Button
-              type="submit"
+              type="button"
               disabled={confirmed}
               loading={loading}
               onClick={handleConfirm}

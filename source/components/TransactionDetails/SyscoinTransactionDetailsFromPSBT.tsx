@@ -172,9 +172,9 @@ const ExpandableSection: React.FC<{
 
   return (
     <div className="mt-4">
-      <button
+      <div
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2"
+        className="flex items-center gap-2 text-white text-sm hover:text-fields-input-borderfocus transition-colors mb-2 cursor-pointer"
       >
         {expanded ? (
           <DownOutlined className="text-xs" />
@@ -184,7 +184,7 @@ const ExpandableSection: React.FC<{
         <span>
           {title} {count !== undefined && `(${count})`}
         </span>
-      </button>
+      </div>
       {expanded && <div className="ml-4">{children}</div>}
     </div>
   );

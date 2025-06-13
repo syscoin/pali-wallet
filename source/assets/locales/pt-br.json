@@ -36,7 +36,8 @@
     "error": "Erro",
     "reconnect": "Reconectar",
     "verify": "Verificar",
-    "retryConnect": "Tentar conectar novamente"
+    "retryConnect": "Tentar conectar novamente",
+    "delete": "Excluir"
   },
   "components": {
     "newPassword": "Nova senha (mín. 8 caracteres)",
@@ -476,8 +477,15 @@
     "invalidAssetGuidFormat": "GUID do ativo deve ser numérico",
     "assetNotFound": "Ativo não encontrado. Verifique o GUID.",
     "lookingUpAsset": "Procurando ativo...",
-    "assetFoundAutoFilled": "Ativo encontrado! Detalhes preenchidos automaticamente.",
-    "contractAddressHelp": "Endereço do contrato NEVM para este token SPT"
+    "contractAddressHelp": "Endereço do contrato NEVM para este token SPT",
+    "assetInvalidOrUnknown": "O ativo é inválido ou não existe nesta rede",
+    "assetTypeNotSupported": "O tipo de ativo não é suportado",
+    "tokenAlreadyImported": "Este token já está importado",
+    "deleteToken": "Excluir {{symbol}}",
+    "confirmDeleteTokenEvm": "Tem certeza de que deseja remover {{symbol}} da sua carteira? Você pode adicioná-lo novamente a qualquer momento usando o endereço do contrato.",
+    "confirmDeleteTokenSpt": "Tem certeza de que deseja remover {{symbol}} da sua carteira? Você pode adicioná-lo novamente a qualquer momento usando o GUID do ativo.",
+    "noSptAssetsFound": "Nenhum ativo SPT encontrado",
+    "importTokensToGetStarted": "Importe tokens para começar"
   },
   "transactions": {
     "messageCopied": "Mensagem copiada com sucesso",

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import cloneDeep from 'lodash/cloneDeep';
 import isEmpty from 'lodash/isEmpty';
 
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
@@ -17,6 +18,7 @@ const config = {
 };
 
 export interface ISysAccountController {
+  deleteTokenInfo: (assetGuid: string) => void;
   saveTokenInfo: (token: ITokenSysProps) => Promise<void>;
   setAddress: () => Promise<string>;
   trezor: ISysTrezorController;
@@ -47,13 +49,16 @@ const SysAccountController = (
     try {
       const { activeAccount, accounts, activeNetwork } = store.getState().vault;
 
+      // Check for duplicate considering both assetGuid AND chainId (network-specific)
       const tokenExists = accounts[activeAccount.type][
         activeAccount.id
       ].assets.syscoin.find(
-        (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
+        (asset: ITokenSysProps) =>
+          asset.assetGuid === token.assetGuid &&
+          asset.chainId === activeNetwork.chainId
       );
 
-      if (tokenExists) throw new Error('Token already exists');
+      if (tokenExists) throw new Error('Token already exists on this network');
 
       // Syscoin 5 no longer uses pubData field
       const description = token.description || '';
@@ -95,6 +100,50 @@ const SysAccountController = (
     }
   };
 
+  const deleteTokenInfo = (assetGuid: string) => {
+    try {
+      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
+
+      // Find token considering both assetGuid AND chainId (network-specific)
+      const tokenExists = accounts[activeAccount.type][
+        activeAccount.id
+      ].assets.syscoin?.find(
+        (asset: ITokenSysProps) =>
+          asset.assetGuid === assetGuid &&
+          asset.chainId === activeNetwork.chainId
+      );
+
+      if (!tokenExists) throw new Error("Token doesn't exist on this network!");
+
+      const cloneAssets = cloneDeep(
+        accounts[activeAccount.type][activeAccount.id].assets
+      );
+
+      // Filter out the token by both assetGuid AND chainId
+      const newAssetsValue = {
+        ...cloneAssets,
+        syscoin: cloneAssets.syscoin.filter(
+          (currentToken) =>
+            !(
+              currentToken.assetGuid === assetGuid &&
+              currentToken.chainId === activeNetwork.chainId
+            )
+        ),
+      };
+
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: activeAccount.id,
+          type: activeAccount.type,
+          property: 'assets',
+          value: newAssetsValue,
+        })
+      );
+    } catch (error) {
+      throw new Error(`Could not delete SPT token. Error: ${error}`);
+    }
+  };
+
   //todo we cannot call those fn directly we should call over keyring manager class
   const trezor = SysTrezorController();
 
@@ -102,6 +151,7 @@ const SysAccountController = (
     trezor,
     setAddress,
     saveTokenInfo,
+    deleteTokenInfo,
   };
 };
 

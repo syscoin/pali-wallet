@@ -36,7 +36,8 @@
     "error": "错误",
     "reconnect": "重新连接",
     "verify": "验证",
-    "retryConnect": "重试连接"
+    "retryConnect": "重试连接",
+    "delete": "删除"
   },
   "header": {
     "accounts": "账户",
@@ -370,8 +371,15 @@
     "invalidAssetGuidFormat": "资产GUID必须是数字",
     "assetNotFound": "未找到资产。请检查GUID。",
     "lookingUpAsset": "正在查找资产...",
-    "assetFoundAutoFilled": "找到资产！详细信息已自动填充。",
-    "contractAddressHelp": "此SPT代币的NEVM合约地址"
+    "contractAddressHelp": "此SPT代币的NEVM合约地址",
+    "assetInvalidOrUnknown": "资产无效或在此网络中不存在",
+    "assetTypeNotSupported": "不支持此资产类型",
+    "tokenAlreadyImported": "此代币已导入",
+    "deleteToken": "删除{{symbol}}",
+    "confirmDeleteTokenEvm": "确定要从钱包中移除{{symbol}}吗？您可以随时使用合约地址重新添加。",
+    "confirmDeleteTokenSpt": "确定要从钱包中移除{{symbol}}吗？您可以随时使用资产GUID重新添加。",
+    "noSptAssetsFound": "未找到SPT资产",
+    "importTokensToGetStarted": "导入代币以开始"
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

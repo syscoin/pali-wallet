@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment } from 'react';
+import React, { Fragment, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
@@ -14,11 +14,11 @@ import {
   camelCaseToText,
   syscoinKeysOfInterest,
   adjustUrl,
-  copyText,
 } from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
-  const { navigate } = useUtils();
+  const { navigate, useCopyClipboard, alert } = useUtils();
+  const [isCopied, copy] = useCopyClipboard();
 
   const { accounts, activeAccount, activeNetwork } = useSelector(
     (state: RootState) => state.vault
@@ -62,6 +62,13 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const assetSymbol = formattedAsset.find((item) => item.key === 'Symbol');
   const assetDecimals = formattedAsset.find((item) => item.key === 'Decimals');
 
+  useEffect(() => {
+    if (!isCopied) return;
+
+    alert.removeAll();
+    alert.info(t('home.contractCopied'));
+  }, [isCopied, alert, t]);
+
   const RenderAsset = () => (
     <>
       <div className="w-full flex items-center justify-center mt-1">
@@ -86,7 +93,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
                       {truncate(item.value, 10, true)}
                     </span>
                     <button
-                      onClick={() => copyText(item.value)}
+                      onClick={() => copy(item.value)}
                       className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
                       title="Copy contract address"
                     >

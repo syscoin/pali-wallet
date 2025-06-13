@@ -36,7 +36,8 @@
     "error": "Fehler",
     "reconnect": "Neu verbinden",
     "verify": "Überprüfen",
-    "retryConnect": "Verbindung erneut versuchen"
+    "retryConnect": "Verbindung erneut versuchen",
+    "delete": "Löschen"
   },
   "header": {
     "accounts": "Konten",
@@ -489,8 +490,15 @@
     "invalidAssetGuidFormat": "Asset GUID muss numerisch sein",
     "assetNotFound": "Asset nicht gefunden. Bitte überprüfen Sie die GUID.",
     "lookingUpAsset": "Asset wird gesucht...",
-    "assetFoundAutoFilled": "Asset gefunden! Details automatisch ausgefüllt.",
-    "contractAddressHelp": "NEVM-Kontraktadresse für diesen SPT-Token"
+    "contractAddressHelp": "NEVM-Kontraktadresse für diesen SPT-Token",
+    "assetInvalidOrUnknown": "Asset ist ungültig oder existiert nicht in diesem Netzwerk",
+    "assetTypeNotSupported": "Asset-Typ wird nicht unterstützt",
+    "tokenAlreadyImported": "Dieser Token ist bereits importiert",
+    "deleteToken": "{{symbol}} löschen",
+    "confirmDeleteTokenEvm": "Sind Sie sicher, dass Sie {{symbol}} aus Ihrer Wallet entfernen möchten? Sie können es jederzeit mit der Kontraktadresse wieder hinzufügen.",
+    "confirmDeleteTokenSpt": "Sind Sie sicher, dass Sie {{symbol}} aus Ihrer Wallet entfernen möchten? Sie können es jederzeit mit der Asset-GUID wieder hinzufügen.",
+    "noSptAssetsFound": "Keine SPT-Assets gefunden",
+    "importTokensToGetStarted": "Importieren Sie Token, um zu beginnen"
   },
   "transactions": {
     "messageCopied": "Nachricht erfolgreich kopiert",

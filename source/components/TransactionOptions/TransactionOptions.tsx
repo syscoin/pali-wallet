@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg, TrashIconSvg } from 'components/Icon/Icon';
-import { Icon, IconButton } from 'components/index';
+import { Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
@@ -121,11 +121,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
             <Menu.Button
               className="inline-flex justify-center w-full 
           hover:text-button-primaryhover text-white text-sm font-medium 
-          hover:bg-opacity-30 rounded-full"
+          hover:bg-opacity-30 rounded-full w-5"
             >
-              <IconButton className="w-5">
-                <EditTxIcon />
-              </IconButton>
+              <EditTxIcon />
             </Menu.Button>
 
             <div className="absolute right-0 z-10 h-[15rem]">
@@ -152,9 +150,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     `}
                       onClick={handleGoTxDetails}
                     >
-                      <IconButton className="w-5 mr-3">
+                      <div className="w-5 mr-3">
                         <ExternalLinkIcon />
-                      </IconButton>
+                      </div>
                       <span className="text-sm text-brand-white">
                         See details
                       </span>
@@ -170,9 +168,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     `}
                       onClick={openTransactionOnExplorer}
                     >
-                      <IconButton className="w-5 mr-3">
+                      <div className="w-5 mr-3">
                         <ExternalLinkIcon />
-                      </IconButton>
+                      </div>
                       <span className="text-sm text-brand-white">
                         See on the block explorer
                       </span>
@@ -188,9 +186,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                     `}
                       onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                     >
-                      <IconButton className="w-5 mr-3">
+                      <div className="w-5 mr-3">
                         <SpeedUpIcon />
-                      </IconButton>
+                      </div>
                       <span className="text-sm text-brand-white">
                         {t('header.speedUp')}
                       </span>
@@ -205,9 +203,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   flex items-center justify-start w-full `}
                       onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                     >
-                      <IconButton className="w-5 mr-3">
+                      <div className="w-5 mr-3">
                         <CancelIcon />
-                      </IconButton>
+                      </div>
                       <span className="text-sm text-brand-white">
                         {t('buttons.cancel')}
                       </span>

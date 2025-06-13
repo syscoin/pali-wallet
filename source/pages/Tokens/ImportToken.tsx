@@ -144,7 +144,9 @@ export const ImportToken: FC = () => {
           type="button"
           loading={isLoading}
           onClick={
-            selected ? () => addToken(selected) : () => navigate('/home')
+            selected
+              ? () => addToken(selected)
+              : () => navigate('/home?tab=assets')
           }
         >
           {selected ? `Import ${selected.tokenSymbol}` : 'Done'}
@@ -158,7 +160,7 @@ export const ImportToken: FC = () => {
           description={`${selected.tokenSymbol} ${t(
             'tokens.wasSuccessfullyAdded'
           )}`}
-          onClose={() => navigate('/home')}
+          onClose={() => navigate('/home?tab=assets')}
         />
       )}
 

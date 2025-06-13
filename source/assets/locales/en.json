@@ -36,7 +36,8 @@
     "error": "Error",
     "reconnect": "Reconnect",
     "verify": "Verify",
-    "retryConnect": "Retry connect"
+    "retryConnect": "Retry connect",
+    "delete": "Delete"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -489,8 +490,15 @@
     "invalidAssetGuidFormat": "Asset GUID must be numeric",
     "assetNotFound": "Asset not found. Please check the GUID.",
     "lookingUpAsset": "Looking up asset...",
-    "assetFoundAutoFilled": "Asset found! Details auto-filled.",
-    "contractAddressHelp": "NEVM contract address for this SPT token"
+    "contractAddressHelp": "NEVM contract address for this SPT token",
+    "assetInvalidOrUnknown": "Asset is invalid or does not exist on this network",
+    "assetTypeNotSupported": "Asset type is not supported",
+    "tokenAlreadyImported": "This token is already imported",
+    "deleteToken": "Delete {{symbol}}",
+    "confirmDeleteTokenEvm": "Are you sure you want to remove {{symbol}} from your wallet? You can re-add it anytime using the contract address.",
+    "confirmDeleteTokenSpt": "Are you sure you want to remove {{symbol}} from your wallet? You can re-add it anytime using the Asset GUID.",
+    "noSptAssetsFound": "No SPT assets found",
+    "importTokensToGetStarted": "Import tokens to get started"
   },
   "transactions": {
     "messageCopied": "Message successfully copied",
@@ -505,6 +513,8 @@
     "wouldLikeYourPubEncryption": "would like your public encryption key. By consenting, this site will be able to compose encrypted messages to you.",
     "fee": "FEE",
     "withCurrentNetwork": "With current network conditions, we recommend a fee rate ({{currency}} per byte) of",
+    "withCurrentNetworkFeeRate": "With current network: {{fee}} {{currency}}/byte.",
+    "withCurrentNetworkGasPrice": "With current network: {{fee}} gwei.",
     "signatureRequest": "SIGNATURE REQUEST",
     "signatureRequestWasRequest": "SIGNATURE SUCCESSFULLY SUBMITTED!",
     "theDappHas": "The Dapp has your signed psbt",

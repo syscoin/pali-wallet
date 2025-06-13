@@ -667,7 +667,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
           phraseOne={`${form.getFieldValue('assetSymbol')} ${t(
             'tokens.wasSuccessfullyAdded'
           )}`}
-          onClose={() => navigate('/home')}
+          onClose={() => navigate('/home?tab=assets')}
           buttonText={t('settings.gotIt')}
         />
       )}

@@ -10,6 +10,7 @@ import { useSelector } from 'react-redux';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
 import { LoadingComponent } from 'components/Loading';
+import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -28,6 +29,12 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
+  // Confirmation modal state
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [tokenToDelete, setTokenToDelete] = useState<ITokenEthProps | null>(
+    null
+  );
 
   const {
     accounts,
@@ -93,6 +100,28 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   } else if (sortByValue?.length > 0) {
     filteredAssets = assetsSortedBy;
   }
+
+  // Delete confirmation handlers
+  const handleDeleteClick = (token: ITokenEthProps) => {
+    setTokenToDelete(token);
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (tokenToDelete) {
+      controllerEmitter(
+        ['wallet', 'account', 'eth', 'deleteTokenInfo'],
+        [tokenToDelete.contractAddress]
+      );
+    }
+    setShowDeleteConfirmation(false);
+    setTokenToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setTokenToDelete(null);
+  };
 
   return (
     <>
@@ -162,12 +191,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
                     className="cursor-pointer hover:text-fields-input-borderfocus"
                     color="text-brand-white"
                     size={16}
-                    onClick={() => {
-                      controllerEmitter(
-                        ['wallet', 'account', 'eth', 'deleteTokenInfo'],
-                        [token.contractAddress]
-                      );
-                    }}
+                    onClick={() => handleDeleteClick(token)}
                   />
                 </Tooltip>
               </div>
@@ -175,6 +199,19 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
           </Fragment>
         );
       })}
+
+      <ConfirmationModal
+        show={showDeleteConfirmation}
+        onClick={handleConfirmDelete}
+        onClose={handleCancelDelete}
+        title={t('tokens.deleteToken', {
+          symbol: tokenToDelete?.tokenSymbol || 'Token',
+        })}
+        description={t('tokens.confirmDeleteTokenEvm', {
+          symbol: tokenToDelete?.tokenSymbol || 'this token',
+        })}
+        buttonText={t('buttons.delete')}
+      />
     </>
   );
 };

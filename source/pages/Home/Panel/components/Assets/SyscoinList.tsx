@@ -1,13 +1,17 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useMemo, useCallback } from 'react';
+import React, { Fragment, useMemo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { IconButton, LoadingComponent } from 'components/index';
+import { ConfirmationModal } from 'components/Modal';
+import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { ellipsis, formatCurrency, truncate } from 'utils/index';
+import { formatCurrency, truncate } from 'utils/index';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
@@ -20,7 +24,12 @@ export const SyscoinAssetsList = () => {
   } = useSelector((state: RootState) => state.vault);
   const { assets } = accounts[activeAccount.type][activeAccount.id];
   const { navigate } = useUtils();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
+  // Confirmation modal state
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [assetToDelete, setAssetToDelete] = useState<any>(null);
 
   const isNetworkChanging = networkStatus === 'switching';
 
@@ -29,6 +38,29 @@ export const SyscoinAssetsList = () => {
     () => assets.syscoin.filter((asset) => asset.chainId === chainId),
     [assets.syscoin, chainId]
   );
+
+  // Memoize delete handlers
+  const handleDeleteClickMemo = useCallback((asset: any) => {
+    setAssetToDelete(asset);
+    setShowDeleteConfirmation(true);
+  }, []);
+
+  // Delete confirmation handlers
+  const handleConfirmDelete = () => {
+    if (assetToDelete) {
+      controllerEmitter(
+        ['wallet', 'account', 'sys', 'deleteTokenInfo'],
+        [assetToDelete.assetGuid]
+      );
+    }
+    setShowDeleteConfirmation(false);
+    setAssetToDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setAssetToDelete(null);
+  };
 
   // Memoize asset rendering for better performance
   const renderAsset = useMemo(() => {
@@ -74,28 +106,43 @@ export const SyscoinAssetsList = () => {
                     <span className="text-brand-gray300 font-poppins text-[10px] font-normal">
                       {t('send.assetGuid')}
                     </span>
-                    <span className="text-brand-gray400 font-mono text-[10px]">
-                      {ellipsis(asset.assetGuid, 6)}
+                    <span className="text-brand-gray400 font-mono text-[10px] break-all">
+                      {asset.assetGuid}
                     </span>
                   </div>
                 </div>
               </td>
 
               <td className="flex items-center max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis gap-x-2.5">
-                <IconButton
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: { id: asset.assetGuid, hash: null },
-                    })
-                  }
-                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                  aria-label={`View details for ${asset.symbol} token`}
-                >
-                  <ShareIcon
-                    size={16}
-                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
-                  />
-                </IconButton>
+                <Tooltip content={t('tooltip.assetDetails')}>
+                  <IconButton
+                    onClick={() =>
+                      navigate('/home/details', {
+                        state: { id: asset.assetGuid, hash: null },
+                      })
+                    }
+                    className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                    aria-label={`View details for ${asset.symbol} token`}
+                  >
+                    <ShareIcon
+                      size={16}
+                      className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
+                    />
+                  </IconButton>
+                </Tooltip>
+
+                <Tooltip content={t('tooltip.deleteAsset')}>
+                  <IconButton
+                    onClick={() => handleDeleteClickMemo(asset)}
+                    className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                    aria-label={`Delete ${asset.symbol} token`}
+                  >
+                    <DeleteIcon
+                      size={16}
+                      className="text-brand-white hover:text-red-500 transition-colors"
+                    />
+                  </IconButton>
+                </Tooltip>
               </td>
             </tr>
           </tbody>
@@ -105,7 +152,7 @@ export const SyscoinAssetsList = () => {
 
     AssetRenderer.displayName = 'AssetRenderer';
     return AssetRenderer;
-  }, [navigate, t]);
+  }, [navigate, t, handleDeleteClickMemo]);
 
   return (
     <>
@@ -129,16 +176,29 @@ export const SyscoinAssetsList = () => {
                   <span className="text-brand-royalbluemedium text-2xl">₿</span>
                 </div>
                 <p className="text-brand-gray300 text-sm">
-                  No SPT assets found
+                  {t('tokens.noSptAssetsFound')}
                 </p>
                 <p className="text-brand-gray400 text-xs mt-1">
-                  Import tokens to get started
+                  {t('tokens.importTokensToGetStarted')}
                 </p>
               </div>
             </li>
           )}
         </ul>
       )}
+
+      <ConfirmationModal
+        show={showDeleteConfirmation}
+        onClick={handleConfirmDelete}
+        onClose={handleCancelDelete}
+        title={t('tokens.deleteToken', {
+          symbol: assetToDelete?.symbol || 'SPT Asset',
+        })}
+        description={t('tokens.confirmDeleteTokenSpt', {
+          symbol: assetToDelete?.symbol || 'this SPT asset',
+        })}
+        buttonText={t('buttons.delete')}
+      />
     </>
   );
 };

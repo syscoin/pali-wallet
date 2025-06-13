@@ -1,14 +1,42 @@
 import * as React from 'react';
-import { FC, useState } from 'react';
+import { FC, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { Button } from 'components/index';
 
 import { AssetsPanel, TransactionsPanel } from './Panel/index';
 
 export const TxsPanel: FC = () => {
-  const [isActivity, setActivity] = useState<boolean>(true);
   const { t } = useTranslation();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  // Check for initial tab from URL params or location state
+  const getInitialTab = () => {
+    // First check URL search params (?tab=assets)
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'assets') return false; // false = assets tab
+    if (tabParam === 'activity') return true; // true = activity tab
+
+    // Then check location state (from navigate with state)
+    if (location.state?.showAssetsTab) return false;
+
+    // Default to activity tab
+    return true;
+  };
+
+  const [isActivity, setActivity] = useState<boolean>(getInitialTab);
+
+  // Update tab when URL parameters change
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'assets') {
+      setActivity(false);
+    } else if (tabParam === 'activity') {
+      setActivity(true);
+    }
+  }, [searchParams]);
 
   return (
     <div className="h-max relative bottom-[19px]  flex flex-col items-center w-full">
