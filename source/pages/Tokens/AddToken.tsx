@@ -9,7 +9,6 @@ import { useLocation } from 'react-router-dom';
 import { Layout } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { verifyIfIsTestnet } from 'utils/network';
 
 import { CustomToken } from './CustomToken';
 import { ImportToken } from './ImportToken';
@@ -42,10 +41,7 @@ export const AddToken: FC = () => {
   }, [controllerEmitter]);
 
   useEffect(() => {
-    // Use optimized verifyIfIsTestnet that checks network object properties first
-    verifyIfIsTestnet(network.url, isBitcoinBased, isInCooldown, network).then(
-      (_isTestnet) => setIsTestnet(_isTestnet)
-    );
+    setIsTestnet(network.isTestnet);
   }, [network, network.chainId, isBitcoinBased, isInCooldown]);
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID

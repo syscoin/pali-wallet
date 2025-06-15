@@ -25,7 +25,6 @@ import {
   formatBalanceDecimals,
   formatMillionNumber,
   ONE_MILLION,
-  verifyIfIsTestnet,
 } from 'utils/index';
 
 import { TxsPanel } from './TxsPanel';
@@ -162,12 +161,7 @@ export const Home = () => {
   useEffect(() => {
     if (!isUnlocked || !activeNetwork) return;
 
-    verifyIfIsTestnet(
-      activeNetwork.url,
-      isBitcoinBased,
-      isInCooldown,
-      activeNetwork
-    ).then((_isTestnet) => setIsTestnet(_isTestnet));
+    setIsTestnet(activeNetwork.isTestnet);
   }, [isUnlocked, activeNetwork, isBitcoinBased, isInCooldown]);
 
   useEffect(() => {
