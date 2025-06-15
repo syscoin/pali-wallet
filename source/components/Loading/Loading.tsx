@@ -106,7 +106,7 @@ export const Loading = ({
 
   return (
     <div
-      className={`bg-bkg-1 z-50 h-screen ${
+      className={`bg-bkg-1 z-[60] h-screen ${
         usePopupSize ? 'min-w-popup' : 'w-full'
       } top-0 left-0 absolute flex flex-col items-center justify-center bg-opacity-${opacity}`}
       key={networkTarget?.chainId || 'loading'}
