@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
-import { LoadingComponent } from 'components/Loading';
+import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -75,6 +75,31 @@ export const TransactionsPanel = () => {
     </div>
   );
 
+  const TransactionSkeleton = () => (
+    <div className="p-4 mt-8 w-full mb-9 text-white text-base bg-brand-blue600">
+      <div className="space-y-3">
+        {[...Array(3)].map((_, index) => (
+          <div
+            key={index}
+            className="flex items-center justify-between p-3 bg-brand-blue500 rounded-lg"
+          >
+            <div className="flex items-center space-x-3">
+              <SkeletonLoader width="40px" height="40px" />
+              <div className="space-y-1">
+                <SkeletonLoader width="120px" height="16px" />
+                <SkeletonLoader width="80px" height="12px" />
+              </div>
+            </div>
+            <div className="text-right space-y-1">
+              <SkeletonLoader width="100px" height="16px" />
+              <SkeletonLoader width="60px" height="12px" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   const OpenTransactionExplorer = useMemo(() => {
     const { xpub, address: userAddress } =
       accounts[activeAccount.type][activeAccount.id];
@@ -108,7 +133,7 @@ export const TransactionsPanel = () => {
 
   return (
     <>
-      {isLoading && !hasTransactions && <LoadingComponent />}
+      {isLoading && !hasTransactions && <TransactionSkeleton />}
       {!isLoading && !hasTransactions && (
         <div className="w-full mt-8 text-white bg-brand-blue600">
           <NoTransactionsComponent />
