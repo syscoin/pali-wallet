@@ -6,22 +6,13 @@ import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
 import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
-const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
-  // Defer creation of EVM controller until needed
-  let evmAssetsController: any = null;
-
-  const getEvmController = () => {
-    if (!evmAssetsController && w3Provider) {
-      evmAssetsController = EvmAssetsController(w3Provider);
-    }
-    return evmAssetsController;
-  };
-
+const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    networkChainId: number
+    networkChainId: number,
+    web3Provider: CustomJsonRpcProvider
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
@@ -54,8 +45,7 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
 
       case false:
         try {
-          const assetsController = getEvmController();
-          if (!assetsController) {
+          if (!web3Provider) {
             console.error('No valid web3Provider for EVM assets fetching');
             return {
               ...currentAccount.assets,
@@ -63,9 +53,12 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
             };
           }
 
+          // Create EVM controller fresh with current provider
+          const assetsController = EvmAssetsController();
           const getEvmAssets = await assetsController.updateAllEvmTokens(
             currentAccount,
-            networkChainId
+            networkChainId,
+            web3Provider
           );
 
           return {
@@ -79,7 +72,6 @@ const AssetsManager = (w3Provider: CustomJsonRpcProvider): IAssetsManager => {
   };
 
   return {
-    evm: getEvmController(), // Return the controller (may be null for UTXO networks)
     sys: SysAssetsController(),
     utils: {
       updateAssetsFromCurrentAccount,

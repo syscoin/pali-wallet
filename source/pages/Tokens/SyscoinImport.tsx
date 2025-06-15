@@ -120,17 +120,17 @@ export const SyscoinImport = () => {
             assetContract: '',
           });
         }
-      } catch (error) {
-        console.error('Asset lookup error:', error);
+      } catch (lookupError) {
+        console.error('Asset lookup error:', lookupError);
 
         // This should rarely happen since getAsset catches errors internally
-        const errorMessage = t('tokens.assetNotFound');
+        const lookupErrorMessage = t('tokens.assetNotFound');
 
         // Set error state with visual X
         form.setFields([
           {
             name: 'assetGuid',
-            errors: [errorMessage],
+            errors: [lookupErrorMessage],
           },
         ]);
         setLookupStatus('error');
@@ -219,7 +219,7 @@ export const SyscoinImport = () => {
       const { assetGuid } = values;
 
       const addTokenMethodResponse = await controllerEmitter(
-        ['wallet', 'assets', 'sys', 'addSysDefaultToken'],
+        ['wallet', 'addSysDefaultToken'],
         [assetGuid, activeNetwork.url]
       );
 
@@ -232,7 +232,7 @@ export const SyscoinImport = () => {
       }
 
       await controllerEmitter(
-        ['wallet', 'account', 'sys', 'saveTokenInfo'],
+        ['wallet', 'saveTokenInfo'],
         [addTokenMethodResponse]
       );
 
@@ -243,14 +243,14 @@ export const SyscoinImport = () => {
 
       // Don't clear the form - let users see what was imported
       // form.resetFields();
-    } catch (error) {
-      console.error('Failed to import token:', error);
+    } catch (importError) {
+      console.error('Failed to import token:', importError);
 
       // Handle specific error messages
       let specificErrorMessage = t('tokens.tokenNotAdded');
 
-      if (error instanceof Error) {
-        const errorMsg = error.message.toLowerCase();
+      if (importError instanceof Error) {
+        const errorMsg = importError.message.toLowerCase();
 
         if (
           errorMsg.includes('token already exists') ||
@@ -265,9 +265,9 @@ export const SyscoinImport = () => {
           specificErrorMessage = t('tokens.assetInvalidOrUnknown');
         } else if (errorMsg.includes('network')) {
           specificErrorMessage = t('tokens.notAvailableInCurrentNetwork');
-        } else if (error.message && error.message.length > 0) {
+        } else if (importError.message && importError.message.length > 0) {
           // Use the actual error message if it's meaningful
-          specificErrorMessage = error.message;
+          specificErrorMessage = importError.message;
         }
       }
 
@@ -325,7 +325,7 @@ export const SyscoinImport = () => {
                       )
                     );
                   }
-                } catch (error) {
+                } catch (validationError) {
                   return Promise.reject(
                     new Error(t('tokens.invalidAssetGuidFormat'))
                   );

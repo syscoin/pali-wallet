@@ -7,13 +7,13 @@ import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 // SYS TYPES
 
 export interface IAssetsManager {
-  evm: IEvmAssetsController;
   sys: ISysAssetsController;
   utils: IAssetsManagerUtils;
 }
 
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
+  nfts: INftsStructure[];
   syscoin: ITokenSysProps[];
 }
 
@@ -27,6 +27,7 @@ export interface INftController {
     fetchedNfts: INftsStructure[]
   ) => INftsStructure[];
 }
+
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
     currentAccount: IPaliAccount,
@@ -36,6 +37,7 @@ export interface IAssetsManagerUtils {
     web3Provider: CustomJsonRpcProvider
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
+
 export interface ISysAssetsController {
   addSysDefaultToken: (
     assetGuid: string,
@@ -72,33 +74,43 @@ export interface IAddCustomTokenResponse {
 
 export interface IEvmAssetsController {
   addCustomTokenByType: (
-    walletAddres: string,
+    walletAddress: string,
     contractAddress: string,
     symbol: string,
-    decimals: number
+    decimals: number,
+    w3Provider: CustomJsonRpcProvider
   ) => Promise<IAddCustomTokenResponse>;
   addEvmDefaultToken: (
     token: ITokenEthProps,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ) => Promise<ITokenEthProps | boolean>;
-  checkContractType: (contractAddress: string) => Promise<any>;
+  checkContractType: (
+    contractAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<any>;
   getERC20TokenInfo: (
     contractAddress: string,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ) => Promise<{
     balance: string;
     decimals: number;
     name: string;
     symbol: string;
   }>;
-  getNftMetadata: (contractAddress: string) => Promise<any>;
+  getNftMetadata: (
+    contractAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<any>;
   getTokenMetadata: (
     contractAddress: string,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ) => Promise<any>;
   updateAllEvmTokens: (
     account: IPaliAccount,
-
-    currentNetworkChainId: number
+    currentNetworkChainId: number,
+    w3Provider: CustomJsonRpcProvider
   ) => Promise<ITokenEthProps[]>;
 }

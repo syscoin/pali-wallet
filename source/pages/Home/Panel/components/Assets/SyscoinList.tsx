@@ -49,7 +49,7 @@ export const SyscoinAssetsList = () => {
   const handleConfirmDelete = () => {
     if (assetToDelete) {
       controllerEmitter(
-        ['wallet', 'account', 'sys', 'deleteTokenInfo'],
+        ['wallet', 'deleteTokenInfo'],
         [assetToDelete.assetGuid]
       );
     }

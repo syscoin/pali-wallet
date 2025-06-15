@@ -265,7 +265,7 @@ export const ApproveTransactionComponent = () => {
     const getTokenName = async (contractAddress: string) => {
       try {
         const tokenInfo = (await controllerEmitter(
-          ['wallet', 'assets', 'evm', 'getERC20TokenInfo'],
+          ['wallet', 'getERC20TokenInfo'],
           [contractAddress, activeAccount.address]
         )) as {
           balance: string;

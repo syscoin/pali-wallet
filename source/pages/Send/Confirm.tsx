@@ -766,7 +766,7 @@ export const SendConfirm = () => {
             //HANDLE ERC721/ERC1155 NFTS TRANSACTIONS
             case true:
               const contractInfo = (await controllerEmitter(
-                ['wallet', 'assets', 'evm', 'checkContractType'],
+                ['wallet', 'checkContractType'],
                 [basicTxValues.token.contractAddress]
               )) as { type: string };
               const { type } = contractInfo;

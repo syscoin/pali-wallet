@@ -6,24 +6,11 @@ import { IPaliAccount } from 'state/vault/types';
 import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
 import { ITransactionsManager } from './types';
-
 // Cache for transaction results
 const transactionCache = new Map();
 const CACHE_TTL = 60000; // 1 minute TTL
 
-const TransactionsManager = (
-  web3Provider: CustomJsonRpcProvider
-): ITransactionsManager => {
-  // Defer creation of EVM controller until needed
-  let evmTransactionsController: any = null;
-
-  const getEvmController = () => {
-    if (!evmTransactionsController && web3Provider) {
-      evmTransactionsController = EvmTransactionsController(web3Provider);
-    }
-    return evmTransactionsController;
-  };
-
+const TransactionsManager = (): ITransactionsManager => {
   const clearExpiredCache = () => {
     const now = Date.now();
     for (const [key, value] of transactionCache.entries()) {
@@ -49,11 +36,11 @@ const TransactionsManager = (
       transactions.some((tx: any) => tx.confirmations === 0)
     );
   };
-
   const updateTransactionsFromCurrentAccount = async (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
-    activeNetworkUrl: string
+    activeNetworkUrl: string,
+    web3Provider?: CustomJsonRpcProvider
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -81,7 +68,6 @@ const TransactionsManager = (
         return cachedResult.data;
       }
     }
-
     try {
       let result;
       if (isBitcoinBased) {
@@ -99,14 +85,14 @@ const TransactionsManager = (
           activeNetworkUrl
         );
       } else {
-        const evmController = getEvmController();
-        if (!evmController) {
+        if (!web3Provider) {
           console.error('No valid web3Provider for EVM transaction polling');
           return [];
         }
-        result = await evmController.pollingEvmTransactions();
+        result = await EvmTransactionsController().pollingEvmTransactions(
+          web3Provider
+        );
       }
-
       // Cache the result only if no pending transactions
       // This prevents caching stale confirmation data
       if (!hasUnconfirmedTxs) {
@@ -122,13 +108,11 @@ const TransactionsManager = (
       return error;
     }
   };
-
   const clearCache = () => {
     transactionCache.clear();
   };
 
   return {
-    evm: getEvmController(), // Return the controller (may be null for UTXO networks)
     sys: SysTransactionController(),
     utils: {
       updateTransactionsFromCurrentAccount,

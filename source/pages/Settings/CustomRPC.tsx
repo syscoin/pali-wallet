@@ -115,14 +115,12 @@ const CustomRPCView = () => {
       console.log('testBlockExplorerApi called with:', apiUrl);
       console.log('About to call controllerEmitter with path:', [
         'wallet',
-        'transactions',
-        'evm',
         'testExplorerApi',
       ]);
 
       // Use the controller's testExplorerApi method
       const result = await controllerEmitter(
-        ['wallet', 'transactions', 'evm', 'testExplorerApi'],
+        ['wallet', 'testExplorerApi'],
         [apiUrl]
       );
 

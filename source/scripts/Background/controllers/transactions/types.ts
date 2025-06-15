@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 
+import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
 
 import { IPaliAccount } from 'state/vault/types';
@@ -106,9 +107,12 @@ export interface IEvmTransactionsController {
     apiUrl: string
   ) => Promise<any>;
   getUserTransactionByDefaultProvider: (
-    numBlocks?: number
+    numBlocks: number,
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<IEvmTransactionResponse[]>;
-  pollingEvmTransactions: () => Promise<IEvmTransactionResponse[]>;
+  pollingEvmTransactions: (
+    web3Provider: CustomJsonRpcProvider
+  ) => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (
     apiUrl: string
   ) => Promise<{ error?: string; success: boolean }>;
@@ -153,11 +157,11 @@ export interface ITransactionsManagerUtils {
   updateTransactionsFromCurrentAccount: (
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
-    activeNetworkUrl: string
-  ) => Promise<ISysTransaction[] | IEvmTransaction[]>;
+    activeNetworkUrl: string,
+    web3Provider?: CustomJsonRpcProvider
+  ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {
-  evm: IEvmTransactionsController;
   sys: ISysTransactionsController;
   utils: ITransactionsManagerUtils;
 }

@@ -89,7 +89,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
       case false:
         try {
           const addTokenMethodResponse = (await controllerEmitter(
-            ['wallet', 'assets', 'evm', 'addCustomTokenByType'],
+            ['wallet', 'addCustomTokenByType'],
             [activeAccount.address, contractAddress, assetSymbol, assetDecimals]
           )) as any;
 
@@ -151,7 +151,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
           //Save token at state
           await controllerEmitter(
-            ['wallet', 'account', 'eth', 'saveTokenInfo'],
+            ['wallet', 'saveTokenInfo'],
             [
               tokenToAddWithSubmitValues,
               tokenContractType.contractType,
@@ -185,10 +185,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
             decimals: Number(assetDecimals),
           };
 
-          controllerEmitter(
-            ['wallet', 'account', 'eth', 'editTokenInfo'],
-            [editedToken]
-          );
+          controllerEmitter(['wallet', 'editTokenInfo'], [editedToken]);
 
           setAdded(true);
         } catch (error) {
@@ -240,7 +237,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     isForEdit?: boolean
   ) => {
     const contractResponse = (await controllerEmitter(
-      ['wallet', 'assets', 'evm', 'checkContractType'],
+      ['wallet', 'checkContractType'],
       [contractValue]
     )) as ISupportsInterfaceProps;
 
@@ -314,7 +311,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     isForEdit?: boolean
   ) => {
     const metadata = (await controllerEmitter(
-      ['wallet', 'assets', 'evm', 'getTokenMetadata'],
+      ['wallet', 'getTokenMetadata'],
       [tokenAddress, activeAccount.address]
     )) as { decimals: number; symbol: string };
     const { decimals, symbol: tokenSymbol } = metadata;

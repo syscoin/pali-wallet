@@ -9,14 +9,13 @@ import {
   findUserTxsInProviderByBlocksRange,
   validateAndManageUserTransactions,
 } from './utils';
-const EvmTransactionsController = (
-  web3Provider: CustomJsonRpcProvider
-): IEvmTransactionsController => {
-  const getUserTransactionByDefaultProvider = async (numBlocks = 30) => {
-    const provider = web3Provider;
-
+const EvmTransactionsController = (): IEvmTransactionsController => {
+  const getUserTransactionByDefaultProvider = async (
+    numBlocks: number,
+    web3Provider: CustomJsonRpcProvider
+  ) => {
     const providerUserTxs = await findUserTxsInProviderByBlocksRange(
-      provider,
+      web3Provider,
       numBlocks
     );
 
@@ -331,7 +330,9 @@ const EvmTransactionsController = (
     return null;
   };
 
-  const pollingEvmTransactions = async () => {
+  const pollingEvmTransactions = async (
+    web3Provider: CustomJsonRpcProvider
+  ) => {
     // Guard: ensure web3Provider is valid before polling
     if (!web3Provider) {
       console.warn(
@@ -388,8 +389,13 @@ const EvmTransactionsController = (
 
       // Fallback to RPC scanning if API failed or no API configured
       if (!rpcForbiddenList.includes(currentNetworkChainId!)) {
-        console.log(`[pollingEvmTransactions] Scanning last 30 blocks`);
-        const providerTxs = await getUserTransactionByDefaultProvider(30);
+        console.log(
+          `[pollingEvmTransactions] Scanning up to the last 30 blocks`
+        );
+        const providerTxs = await getUserTransactionByDefaultProvider(
+          30,
+          web3Provider
+        );
 
         // Ensure providerTxs is an array
         allTransactions = Array.isArray(providerTxs) ? providerTxs : [];

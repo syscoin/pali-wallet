@@ -81,12 +81,26 @@ class ChainListService {
     data: IChainInfo[],
     timestamp: number
   ): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       chrome.storage.local.set(
         {
           [this.STORAGE_KEY]: { data, timestamp },
         },
-        () => resolve()
+        () => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[ChainListService] Failed to save chain data to cache:',
+              chrome.runtime.lastError.message
+            );
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+
+          console.log(
+            '[ChainListService] Successfully saved chain data to cache'
+          );
+          resolve();
+        }
       );
     });
   }

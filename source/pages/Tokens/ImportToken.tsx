@@ -80,7 +80,7 @@ export const ImportToken: FC = () => {
     setIsLoading(true);
     try {
       const addTokenMethodResponse = await controllerEmitter(
-        ['wallet', 'assets', 'evm', 'addEvmDefaultToken'],
+        ['wallet', 'addEvmDefaultToken'],
         [token, activeAccount.address]
       );
 
@@ -92,7 +92,7 @@ export const ImportToken: FC = () => {
       }
 
       await controllerEmitter(
-        ['wallet', 'account', 'eth', 'saveTokenInfo'],
+        ['wallet', 'saveTokenInfo'],
         [addTokenMethodResponse]
       );
 

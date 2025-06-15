@@ -26,7 +26,6 @@ export interface IBalancesManagerUtils {
 }
 
 export interface IBalancesManager {
-  evm: IEvmBalanceController;
   sys: ISysBalanceController;
   utils: IBalancesManagerUtils;
 }

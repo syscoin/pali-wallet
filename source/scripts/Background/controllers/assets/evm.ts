@@ -23,12 +23,11 @@ import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
 
-const EvmAssetsController = (
-  w3Provider: CustomJsonRpcProvider
-): IEvmAssetsController => {
+const EvmAssetsController = (): IEvmAssetsController => {
   const addEvmDefaultToken = async (
     token: ITokenEthProps,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenEthProps | boolean> => {
     try {
       const provider = w3Provider;
@@ -52,14 +51,15 @@ const EvmAssetsController = (
   };
 
   const handleERC20Tokens = async (
-    walletAddres: string,
+    walletAddress: string,
     contractAddress: string,
-    decimals: number
+    decimals: number,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const metadata = await getTokenStandardMetadata(
         contractAddress,
-        walletAddres,
+        walletAddress,
         w3Provider
       );
 
@@ -94,15 +94,16 @@ const EvmAssetsController = (
   };
 
   const handleERC721NFTs = async (
-    walletAddres: string,
+    walletAddress: string,
     contractAddress: string,
     symbol: string,
-    decimals: number
+    decimals: number,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const getBalance = await getERC721StandardBalance(
         contractAddress,
-        walletAddres,
+        walletAddress,
         w3Provider
       );
 
@@ -115,7 +116,12 @@ const EvmAssetsController = (
         Number.isNaN(balanceToNumber) ||
         Boolean(String(getBalance).includes('Error'))
       ) {
-        await handleERC20Tokens(walletAddres, contractAddress, decimals);
+        await handleERC20Tokens(
+          walletAddress,
+          contractAddress,
+          decimals,
+          w3Provider
+        );
 
         return;
       }
@@ -142,15 +148,16 @@ const EvmAssetsController = (
   };
 
   const handleERC1155Tokens = async (
-    walletAddres: string,
+    walletAddress: string,
     contractAddress: string,
     symbol: string,
-    decimals: number
+    decimals: number,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<IAddCustomTokenResponse> => {
     try {
       const getBalance = await getERC1155StandardBalance(
         contractAddress,
-        walletAddres,
+        walletAddress,
         w3Provider,
         decimals
       );
@@ -169,7 +176,12 @@ const EvmAssetsController = (
         Number.isNaN(balanceToNumber) ||
         Boolean(String(getBalance).includes('Error'))
       ) {
-        await handleERC20Tokens(walletAddres, contractAddress, decimals);
+        await handleERC20Tokens(
+          walletAddress,
+          contractAddress,
+          decimals,
+          w3Provider
+        );
 
         return;
       }
@@ -204,10 +216,11 @@ const EvmAssetsController = (
   };
 
   const addCustomTokenByType = async (
-    walletAddres: string,
+    walletAddress: string,
     contractAddress: string,
     symbol: string,
-    decimals: number
+    decimals: number,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<IAddCustomTokenResponse> => {
     //First validate contract address type
     const contractTypeResponse = (await contractChecker(
@@ -228,10 +241,11 @@ const EvmAssetsController = (
       case 'ERC-721':
         try {
           return await handleERC721NFTs(
-            walletAddres,
+            walletAddress,
             contractAddress,
             symbol,
-            decimals
+            decimals,
+            w3Provider
           );
         } catch (erc721Error) {
           return erc721Error;
@@ -239,10 +253,11 @@ const EvmAssetsController = (
       case 'ERC-1155':
         try {
           return await handleERC1155Tokens(
-            walletAddres,
+            walletAddress,
             contractAddress,
             symbol,
-            decimals
+            decimals,
+            w3Provider
           );
         } catch (erc1155Error) {
           return erc1155Error;
@@ -252,9 +267,10 @@ const EvmAssetsController = (
       default:
         try {
           return await handleERC20Tokens(
-            walletAddres,
+            walletAddress,
             contractAddress,
-            decimals
+            decimals,
+            w3Provider
           );
         } catch (erc20Error) {
           return erc20Error;
@@ -264,7 +280,8 @@ const EvmAssetsController = (
 
   const updateAllEvmTokens = async (
     account: IPaliAccount,
-    currentNetworkChainId: number
+    currentNetworkChainId: number,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(account.assets.ethereum)) return [];
     const queue = new Queue(3);
@@ -356,7 +373,10 @@ const EvmAssetsController = (
   };
 
   // Wrapper methods for UI components to use via controllerEmitter
-  const checkContractType = async (contractAddress: string) => {
+  const checkContractType = async (
+    contractAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => {
     try {
       return await contractChecker(contractAddress, w3Provider);
     } catch (error) {
@@ -367,7 +387,8 @@ const EvmAssetsController = (
 
   const getTokenMetadata = async (
     contractAddress: string,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ) => {
     try {
       return await getTokenStandardMetadata(
@@ -381,7 +402,10 @@ const EvmAssetsController = (
     }
   };
 
-  const getNftMetadata = async (contractAddress: string) => {
+  const getNftMetadata = async (
+    contractAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => {
     try {
       // getNftStandardMetadata only needs contractAddress and provider
       return await getNftStandardMetadata(contractAddress, w3Provider);
@@ -393,7 +417,8 @@ const EvmAssetsController = (
 
   const getERC20TokenInfo = async (
     contractAddress: string,
-    accountAddress: string
+    accountAddress: string,
+    w3Provider: CustomJsonRpcProvider
   ): Promise<{
     balance: string;
     decimals: number;

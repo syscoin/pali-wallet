@@ -110,7 +110,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   const handleConfirmDelete = () => {
     if (tokenToDelete) {
       controllerEmitter(
-        ['wallet', 'account', 'eth', 'deleteTokenInfo'],
+        ['wallet', 'deleteTokenInfo'],
         [tokenToDelete.contractAddress]
       );
     }

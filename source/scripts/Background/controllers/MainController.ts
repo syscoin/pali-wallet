@@ -72,6 +72,7 @@ import { getNetworkChain } from 'utils/network';
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
 import AssetsManager from './assets';
+import EvmAssetsController from './assets/evm';
 import { IAssetsManager, INftController } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
@@ -90,12 +91,12 @@ import {
 } from './providers/patchFetchWithPaliHeaders';
 import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
+import EvmTransactionsController from './transactions/evm';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
   ITransactionsManager,
 } from './transactions/types';
-import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
 // Constants for fiat price functionality
 const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
@@ -227,25 +228,9 @@ class MainController extends KeyringManager {
       isBitcoinBased = false;
     }
 
-    // Initialize managers based on network type
-    if (isBitcoinBased) {
-      // For UTXO networks, initialize with null providers to prevent web3 calls to blockbook
-      console.log(
-        '[MainController] Constructor: Initializing managers with null providers for UTXO network'
-      );
-      this.assetsManager = AssetsManager(null as any);
-      this.transactionsManager = TransactionsManager(null as any);
-      this.balancesManager = BalancesManager(null as any);
-    } else {
-      // For EVM networks, use the web3Provider as before
-      this.assetsManager = AssetsManager(this.ethereumTransaction.web3Provider);
-      this.transactionsManager = TransactionsManager(
-        this.ethereumTransaction.web3Provider
-      );
-      this.balancesManager = BalancesManager(
-        this.ethereumTransaction.web3Provider
-      );
-    }
+    this.assetsManager = AssetsManager();
+    this.transactionsManager = TransactionsManager();
+    this.balancesManager = BalancesManager();
 
     this.nftsController = NftsController();
     this.cancellablePromises = new CancellablePromises();
@@ -253,8 +238,6 @@ class MainController extends KeyringManager {
       eth: EthAccountController(),
       sys: SysAccountController(() => this),
     };
-    this.assets = this.assetsManager;
-    this.transactions = this.transactionsManager;
 
     this.bindMethods();
   }
@@ -1181,20 +1164,6 @@ class MainController extends KeyringManager {
       store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
       this.updateNetworkConfig(newNetwork, chain as INetworkType);
 
-      // Update web3Provider after network config change
-      const isBitcoinBased = chain === INetworkType.Syscoin;
-      if (!isBitcoinBased) {
-        this.transactionsManager = TransactionsManager(
-          this.ethereumTransaction.web3Provider
-        );
-        this.balancesManager = BalancesManager(
-          this.ethereumTransaction.web3Provider
-        );
-      } else {
-        this.transactionsManager = TransactionsManager(null as any);
-        this.balancesManager = BalancesManager(null as any);
-      }
-
       return newNetwork;
     }
     throw new Error(
@@ -1587,7 +1556,7 @@ class MainController extends KeyringManager {
       }
 
       // UTXO: Use centralized caching and handle Redux dispatch
-      this.transactions.sys
+      this.transactionsManager.sys
         .getInitialUserTransactionsByXpub(
           currentAccount.xpub,
           activeNetwork.url
@@ -2354,35 +2323,6 @@ class MainController extends KeyringManager {
           this.cancellablePromises.nftsPromise.cancel();
         }
 
-        // Only update web3Provider and EVM-specific managers for EVM networks
-        const isBitcoinBased = activeChain === INetworkType.Syscoin;
-
-        if (!isBitcoinBased) {
-          this.assetsManager = AssetsManager(
-            this.ethereumTransaction.web3Provider
-          );
-          this.transactionsManager = TransactionsManager(
-            this.ethereumTransaction.web3Provider
-          );
-          this.balancesManager = BalancesManager(
-            this.ethereumTransaction.web3Provider
-          );
-        } else {
-          // For UTXO networks, use null/dummy providers to prevent web3 calls
-          // The managers handle isBitcoinBased checks internally
-          console.log(
-            '[MainController] Skipping web3Provider setup for UTXO network'
-          );
-
-          // Still initialize managers with null provider - they handle UTXO logic internally
-          // AssetsManager and BalancesManager use separate controllers for UTXO that don't need web3Provider
-          this.assetsManager = AssetsManager(null as any);
-          this.balancesManager = BalancesManager(null as any);
-          // TransactionsManager also handles UTXO networks through SysTransactionController
-          this.transactionsManager = TransactionsManager(null as any);
-        }
-
-        this.assets = this.assetsManager;
         return { success, wallet, activeChain };
       } else {
         // setSignerNetwork failed but didn't throw an error
@@ -2734,6 +2674,155 @@ class MainController extends KeyringManager {
       'eth_getBlockByNumber',
       ['latest', false]
     );
+  }
+
+  // Create EVM controller once (no provider stored)
+  private evmAssetsController = EvmAssetsController();
+  private evmTransactionsController = EvmTransactionsController();
+
+  // Direct EVM methods for cleaner UI access
+  public async addCustomTokenByType(
+    walletAddress: string,
+    contractAddress: string,
+    symbol: string,
+    decimals: number
+  ) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.addCustomTokenByType(
+      walletAddress,
+      contractAddress,
+      symbol,
+      decimals,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async addEvmDefaultToken(token: any, accountAddress: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.addEvmDefaultToken(
+      token,
+      accountAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async checkContractType(contractAddress: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.checkContractType(
+      contractAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async getERC20TokenInfo(
+    contractAddress: string,
+    accountAddress: string
+  ) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.getERC20TokenInfo(
+      contractAddress,
+      accountAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async getNftMetadata(contractAddress: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.getNftMetadata(
+      contractAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async getTokenMetadata(
+    contractAddress: string,
+    accountAddress: string
+  ) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.getTokenMetadata(
+      contractAddress,
+      accountAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  public async updateAllEvmTokens(account: any, currentNetworkChainId: number) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.updateAllEvmTokens(
+      account,
+      currentNetworkChainId,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  // Direct transaction EVM method for UI access
+  public async testExplorerApi(apiUrl: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmTransactionsController.testExplorerApi(apiUrl);
+  }
+
+  // Direct Syscoin methods for consistency
+  public async getSysAssetsByXpub(xpub: string, url: string, chainId: number) {
+    return this.assetsManager.sys.getSysAssetsByXpub(xpub, url, chainId);
+  }
+
+  public async addSysDefaultToken(assetGuid: string, networkUrl: string) {
+    return this.assetsManager.sys.addSysDefaultToken(assetGuid, networkUrl);
+  }
+
+  public async saveTokenInfo(token: any, tokenType?: string) {
+    const { isBitcoinBased } = store.getState().vault;
+
+    // Handle Ethereum tokens
+    if (!isBitcoinBased || token.contractAddress) {
+      return this.account.eth.saveTokenInfo(token, tokenType);
+    }
+
+    // Handle Syscoin tokens
+    return this.account.sys.saveTokenInfo(token);
+  }
+
+  public async editTokenInfo(token: any) {
+    const { isBitcoinBased } = store.getState().vault;
+
+    // Handle Ethereum tokens
+    if (!isBitcoinBased || token.contractAddress) {
+      return this.account.eth.editTokenInfo(token);
+    }
+
+    // Syscoin tokens don't currently have edit functionality
+    throw new Error('Edit token is not supported for Syscoin tokens');
+  }
+
+  public async deleteTokenInfo(tokenToDelete: any) {
+    const { isBitcoinBased } = store.getState().vault;
+
+    // Handle Ethereum tokens (tokenToDelete is contractAddress string)
+    if (
+      !isBitcoinBased ||
+      (typeof tokenToDelete === 'string' && tokenToDelete.startsWith('0x'))
+    ) {
+      return this.account.eth.deleteTokenInfo(tokenToDelete);
+    }
+
+    // Handle Syscoin tokens (tokenToDelete is assetGuid string)
+    return this.account.sys.deleteTokenInfo(tokenToDelete);
   }
 }
 

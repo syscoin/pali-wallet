@@ -245,7 +245,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
               // If not found locally, fetch from network
               try {
                 const assetData = await controllerEmitter(
-                  ['wallet', 'assets', 'sys', 'addSysDefaultToken'],
+                  ['wallet', 'addSysDefaultToken'],
                   [assetGuid, activeNetwork.url]
                 );
                 if (assetData && typeof assetData === 'object') {

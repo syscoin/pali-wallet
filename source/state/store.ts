@@ -5,7 +5,6 @@ import {
   Middleware, // Import Middleware type
 } from '@reduxjs/toolkit';
 import isEqual from 'lodash/isEqual';
-import logger from 'redux-logger';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
@@ -35,10 +34,10 @@ const customMiddlewareToAdd: Middleware[] = [];
 // Add your custom thunk first
 customMiddlewareToAdd.push(thunk as ThunkMiddleware<any, any>); // Using any for RootState for now
 
-// In development, add logger
-if (nodeEnv !== 'production' && nodeEnv !== 'test') {
-  customMiddlewareToAdd.push(logger); // redux-logger is typically compatible, cast with 'as Middleware' if needed
-}
+// In development, add logger - DISABLED to reduce console noise
+// if (nodeEnv !== 'production' && nodeEnv !== 'test') {
+//   customMiddlewareToAdd.push(logger); // redux-logger is typically compatible, cast with 'as Middleware' if needed
+// }
 
 const store: Store<{
   dapp: IDAppState;
