@@ -1220,8 +1220,7 @@ class MainController extends KeyringManager {
   }
 
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
-    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
-      store.getState().vault;
+    const { accounts, activeNetwork } = store.getState().vault;
     const importedAccount = await this.importAccount(
       privKey,
       label,
@@ -1255,17 +1254,7 @@ class MainController extends KeyringManager {
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Imported })
     );
-
-    this.updateUserTransactionsState({
-      isPolling: false,
-      isBitcoinBased,
-      activeNetwork,
-    });
-    this.updateAssetsFromCurrentAccount({
-      activeAccount,
-      activeNetwork,
-      isBitcoinBased,
-    });
+    await this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
@@ -1275,8 +1264,7 @@ class MainController extends KeyringManager {
     slip44: number,
     index: string
   ) {
-    const { accounts, isBitcoinBased, activeAccount, activeNetwork } =
-      store.getState().vault;
+    const { accounts, activeNetwork } = store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await this.importTrezorAccount(coin, slip44, index);
@@ -1311,16 +1299,7 @@ class MainController extends KeyringManager {
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
-    this.updateUserTransactionsState({
-      isPolling: false,
-      isBitcoinBased,
-      activeNetwork,
-    });
-    this.updateAssetsFromCurrentAccount({
-      activeAccount,
-      activeNetwork,
-      isBitcoinBased,
-    });
+    await this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
@@ -1331,7 +1310,7 @@ class MainController extends KeyringManager {
     index: string,
     isAlreadyConnected: boolean
   ) {
-    const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
+    const { accounts, activeNetwork } = store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await this.importLedgerAccount(
@@ -1370,16 +1349,7 @@ class MainController extends KeyringManager {
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
     );
-    this.updateUserTransactionsState({
-      isPolling: false,
-      isBitcoinBased,
-      activeNetwork,
-    });
-    this.updateAssetsFromCurrentAccount({
-      activeAccount: { id: paliImp.id, type: KeyringAccountType.Ledger },
-      activeNetwork,
-      isBitcoinBased,
-    });
+    await this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
@@ -1488,15 +1458,22 @@ class MainController extends KeyringManager {
     return getCachedRequest(cacheKey, async () => {
       store.dispatch(setIsLoadingTxs(true));
 
-      const initialTxsForAccount =
-        await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
-          xpub,
-          initialState.activeNetwork.url
-        );
+      try {
+        const initialTxsForAccount =
+          await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
+            xpub,
+            initialState.activeNetwork.url
+          );
 
-      store.dispatch(setIsLoadingTxs(false));
-
-      return initialTxsForAccount;
+        return initialTxsForAccount;
+      } catch (error) {
+        console.error('Error fetching initial Syscoin transactions:', error);
+        // Return empty array on error instead of throwing
+        return [];
+      } finally {
+        // Always reset loading state
+        store.dispatch(setIsLoadingTxs(false));
+      }
     });
   }
 
@@ -1541,7 +1518,8 @@ class MainController extends KeyringManager {
       id: number;
       type: KeyringAccountType;
     },
-    activeNetwork: INetworkWithKind
+    activeNetwork: INetworkWithKind,
+    isPolling = false
   ) {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -1554,6 +1532,11 @@ class MainController extends KeyringManager {
         );
         // Skip fetching transactions with invalid xpub
         return;
+      }
+
+      // Only set loading state for initial loads, not background polling
+      if (!isPolling) {
+        store.dispatch(setIsLoadingTxs(true));
       }
 
       // UTXO: Use centralized caching and handle Redux dispatch
@@ -1576,14 +1559,40 @@ class MainController extends KeyringManager {
         })
         .catch((error) => {
           console.error('Error fetching Syscoin transactions:', error);
+        })
+        .finally(() => {
+          // Only reset loading state if we set it in the first place
+          if (!isPolling) {
+            store.dispatch(setIsLoadingTxs(false));
+          }
         });
     } else {
+      // Only set loading state for initial loads, not background polling
+      if (!isPolling) {
+        store.dispatch(setIsLoadingTxs(true));
+      }
+
       // EVM: Use centralized caching (handles its own Redux dispatch via validateAndManageUserTransactions)
-      this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
-        currentAccount,
-        isBitcoinBased,
-        activeNetwork.url
-      );
+      this.transactionsManager.utils
+        .updateTransactionsFromCurrentAccount(
+          currentAccount,
+          isBitcoinBased,
+          activeNetwork.url,
+          this.ethereumTransaction.web3Provider
+        )
+        .then((result) => {
+          // EVM transaction fetching handles its own state updates
+          // Just ensure we have some result
+        })
+        .catch((error) => {
+          console.error('Error fetching EVM transactions:', error);
+        })
+        .finally(() => {
+          // Only reset loading state if we set it in the first place
+          if (!isPolling) {
+            store.dispatch(setIsLoadingTxs(false));
+          }
+        });
     }
   }
 
@@ -1609,7 +1618,8 @@ class MainController extends KeyringManager {
                 .updateTransactionsFromCurrentAccount(
                   currentAccount,
                   isBitcoinBased,
-                  activeNetwork.url
+                  activeNetwork.url,
+                  this.ethereumTransaction.web3Provider
                 )
                 .then((txs) => {
                   const canDispatch =
@@ -1629,7 +1639,8 @@ class MainController extends KeyringManager {
               this.callUpdateTxsMethodBasedByIsBitcoinBased(
                 isBitcoinBased,
                 activeAccount,
-                activeNetwork
+                activeNetwork,
+                false // This method is only called for initial loads, never for background polling
               );
             }
             resolve();
@@ -1691,16 +1702,23 @@ class MainController extends KeyringManager {
     return getCachedRequest(cacheKey, async () => {
       store.dispatch(setIsLoadingAssets(true));
 
-      const initialSysAssetsForAccount =
-        await this.assetsManager.sys.getSysAssetsByXpub(
-          xpub,
-          initialState.activeNetwork.url,
-          initialState.activeNetwork.chainId
-        );
+      try {
+        const initialSysAssetsForAccount =
+          await this.assetsManager.sys.getSysAssetsByXpub(
+            xpub,
+            initialState.activeNetwork.url,
+            initialState.activeNetwork.chainId
+          );
 
-      store.dispatch(setIsLoadingAssets(false));
-
-      return initialSysAssetsForAccount;
+        return initialSysAssetsForAccount;
+      } catch (error) {
+        console.error('Error fetching initial Syscoin assets:', error);
+        // Return empty array on error instead of throwing
+        return [];
+      } finally {
+        // Always reset loading state
+        store.dispatch(setIsLoadingAssets(false));
+      }
     });
   }
 
@@ -1821,7 +1839,8 @@ class MainController extends KeyringManager {
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
-                activeNetwork.url
+                activeNetwork.url,
+                this.ethereumTransaction.web3Provider
                 // No need to pass a provider - let the manager use its own
               );
 

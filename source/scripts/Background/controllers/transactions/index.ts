@@ -40,7 +40,7 @@ const TransactionsManager = (): ITransactionsManager => {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider?: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider
   ) => {
     // Clear expired cache entries
     clearExpiredCache();

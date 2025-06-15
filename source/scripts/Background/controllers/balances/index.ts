@@ -14,7 +14,7 @@ const BalancesManager = (): IBalancesManager => {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider?: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
   ) => {
     switch (isBitcoinBased) {
       case true:

@@ -158,7 +158,7 @@ export interface ITransactionsManagerUtils {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider?: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

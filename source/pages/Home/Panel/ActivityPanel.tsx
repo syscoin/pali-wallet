@@ -7,12 +7,9 @@ import { LoadingComponent } from 'components/Loading';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { createTemporaryAlarm } from 'utils/alarmUtils';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
-
-const TIMEOUT_SECONDS = 10;
 
 export const TransactionsPanel = () => {
   const {
@@ -30,9 +27,6 @@ export const TransactionsPanel = () => {
     ? adjustedNetworkUrl
     : networkExplorer;
 
-  const [internalLoading, setInternalLoading] = useState<boolean>(
-    isLoadingTxs || isSwitchingAccount
-  );
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
   const transactions = useMemo(() => {
@@ -105,28 +99,7 @@ export const TransactionsPanel = () => {
     );
   }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);
 
-  // Handle loading timeout with Chrome alarms (proper MV3 approach)
-  useEffect(() => {
-    if (isLoadingTxs || isSwitchingAccount) {
-      setInternalLoading(true);
-
-      // Create alarm for 10 second timeout with proper cleanup
-      createTemporaryAlarm({
-        delayInSeconds: TIMEOUT_SECONDS,
-        callback: () => {
-          setInternalLoading(false);
-          console.warn('Loading timeout reached for transactions');
-        },
-        onError: (error) => {
-          // Ensure loading state is reset even if callback fails
-          setInternalLoading(false);
-          console.error('Loading timeout alarm callback failed:', error);
-        },
-      });
-    } else {
-      setInternalLoading(false);
-    }
-  }, [isLoadingTxs, isSwitchingAccount]);
+  const isLoading = isLoadingTxs || isSwitchingAccount;
 
   const allTransactions = useMemo(
     () => (hasTransactions ? transactions : previousTransactions),
@@ -135,8 +108,8 @@ export const TransactionsPanel = () => {
 
   return (
     <>
-      {internalLoading && !hasTransactions && <LoadingComponent />}
-      {!internalLoading && !hasTransactions && (
+      {isLoading && !hasTransactions && <LoadingComponent />}
+      {!isLoading && !hasTransactions && (
         <div className="w-full mt-8 text-white bg-brand-blue600">
           <NoTransactionsComponent />
           {OpenTransactionExplorer}

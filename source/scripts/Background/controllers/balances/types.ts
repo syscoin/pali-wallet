@@ -21,7 +21,7 @@ export interface IBalancesManagerUtils {
     currentAccount: IPaliAccount,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider?: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
   ) => Promise<string>;
 }
 
