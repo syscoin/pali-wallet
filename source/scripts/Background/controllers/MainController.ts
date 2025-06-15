@@ -776,18 +776,16 @@ class MainController extends KeyringManager {
   ): Promise<void> {
     const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
 
-    // Prevent concurrent account switches
-    if (this.isAccountSwitching) {
-      console.warn(
-        '[MainController] Account switch already in progress, ignoring request'
-      );
-      return;
-    }
-
-    // Lock account switching
-    this.isAccountSwitching = true;
-
     try {
+      // Prevent concurrent account switching
+      if (this.isAccountSwitching) {
+        console.log('Account switching already in progress, ignoring request');
+        return;
+      }
+
+      this.isAccountSwitching = true;
+
+      // Cancel any pending async operations before switching accounts
       if (this.cancellablePromises.transactionPromise) {
         this.cancellablePromises.transactionPromise.cancel();
       }
@@ -821,13 +819,46 @@ class MainController extends KeyringManager {
       }
 
       // Use the parent's setActiveAccount method to properly handle all setup
-      this.setActiveAccount(id, type).then(() => {
-        // Only update Redux state after keyring state is fully synchronized
-        store.dispatch(setActiveAccount({ id, type }));
+      // But first, optimistically update Redux state for immediate UI feedback
+      store.dispatch(setActiveAccount({ id, type }));
 
-        // Fetch data for the newly active account only - after keyring state is updated
-        this.getLatestUpdateForCurrentAccount(false);
-      });
+      // Run keyring update asynchronously without blocking
+      this.setActiveAccount(id, type)
+        .then(() => {
+          // Defer heavy operations to prevent blocking the UI
+          setTimeout(() => {
+            this.performPostAccountSwitchOperations(
+              isBitcoinBased,
+              accounts,
+              type,
+              id
+            );
+          }, 0);
+        })
+        .catch((error) => {
+          console.error('Keyring synchronization failed:', error);
+          // Could revert Redux state here if needed
+        });
+    } catch (error) {
+      console.error('Failed to set active account:', error);
+      // Re-throw to let the UI handle the error
+      throw error;
+    } finally {
+      // Always clear switching account loading state and unlock, even if there's an error
+      store.dispatch(setIsSwitchingAccount(false));
+      this.isAccountSwitching = false;
+    }
+  }
+
+  private async performPostAccountSwitchOperations(
+    isBitcoinBased: boolean,
+    accounts: any,
+    type: KeyringAccountType,
+    id: number
+  ) {
+    try {
+      // Fetch data for the newly active account
+      this.getLatestUpdateForCurrentAccount(false);
 
       // Skip dapp notifications and updates during startup
       if (this.isStartingUp) {
@@ -866,13 +897,7 @@ class MainController extends KeyringManager {
         ]);
       }
     } catch (error) {
-      console.error('Failed to set active account:', error);
-      // Re-throw to let the UI handle the error
-      throw error;
-    } finally {
-      // Always clear switching account loading state and unlock, even if there's an error
-      store.dispatch(setIsSwitchingAccount(false));
-      this.isAccountSwitching = false;
+      console.error('Error in post-account-switch operations:', error);
     }
   }
 
@@ -1975,71 +2000,6 @@ class MainController extends KeyringManager {
       });
     }
 
-    // Skip dapp notifications during startup
-    if (this.isStartingUp) {
-      console.log(
-        '[MainController] Skipping dapp notifications during startup'
-      );
-      // Still need to check for changes and return the result
-    } else {
-      // Handle state changes for dapps
-      this.handleStateChange([
-        {
-          method: PaliEvents.chainChanged,
-          params: {
-            chainId: `0x${activeNetwork.chainId.toString(16)}`,
-            networkVersion: activeNetwork.chainId,
-          },
-        },
-        {
-          method: PaliEvents.isBitcoinBased,
-          params: { isBitcoinBased },
-        },
-        {
-          method: PaliSyscoinEvents.blockExplorerChanged,
-          params: isBitcoinBased ? activeNetwork.url : null,
-        },
-      ]);
-
-      if (isBitcoinBased) {
-        const isTestnet = this.verifyIfIsTestnet();
-        const accountXpub = accounts[activeAccount.type][activeAccount.id].xpub;
-
-        // Check if xpub is valid for UTXO network (not an Ethereum public key)
-        const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
-
-        this.handleStateChange([
-          {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet },
-          },
-          {
-            method: PaliEvents.xpubChanged,
-            params: isValidXpub ? accountXpub : null,
-          },
-          {
-            method: PaliEvents.accountsChanged,
-            params: null,
-          },
-        ]);
-      } else {
-        this.handleStateChange([
-          {
-            method: PaliEvents.isTestnet,
-            params: { isTestnet: undefined },
-          },
-          {
-            method: PaliEvents.xpubChanged,
-            params: null,
-          },
-          {
-            method: PaliEvents.accountsChanged,
-            params: [accounts[activeAccount.type][activeAccount.id].address],
-          },
-        ]);
-      }
-    }
-
     store.dispatch(switchNetworkSuccess(activeNetwork));
 
     // Check if anything changed by comparing initial and final state
@@ -2079,12 +2039,7 @@ class MainController extends KeyringManager {
     });
   }
   private handleNetworkChangeError = (reason: any) => {
-    const {
-      activeNetwork,
-      isBitcoinBased,
-      accounts,
-      activeAccount: { id: activeAccountId, type: activeAccountType },
-    } = store.getState().vault;
+    const { activeNetwork } = store.getState().vault;
 
     console.error('Network change error:', reason);
     console.error('Error type:', typeof reason);
@@ -2097,42 +2052,6 @@ class MainController extends KeyringManager {
         responseData: reason.response?.data,
         errorMessage: reason.message,
       });
-    }
-
-    if (reason === 'Network change cancelled') {
-      console.error('User asked to switch network - slow connection');
-    } else {
-      this.handleStateChange([
-        {
-          method: PaliEvents.chainChanged,
-          params: {
-            chainId: `0x${activeNetwork.chainId.toString(16)}`,
-            networkVersion: activeNetwork.chainId,
-          },
-        },
-        {
-          method: PaliSyscoinEvents.blockExplorerChanged,
-          params: isBitcoinBased ? activeNetwork.url : null,
-        },
-        {
-          method: PaliEvents.isTestnet,
-          params: {
-            isTestnet: isBitcoinBased ? this.verifyIfIsTestnet() : undefined,
-          },
-        },
-        {
-          method: PaliEvents.xpubChanged,
-          params: isBitcoinBased
-            ? accounts[activeAccountType][activeAccountId].xpub
-            : null,
-        },
-        {
-          method: PaliEvents.accountsChanged,
-          params: isBitcoinBased
-            ? null
-            : [accounts[activeAccountType][activeAccountId].address],
-        },
-      ]);
     }
 
     let errorMessage = `Failed to switch to ${activeNetwork.label}`;
@@ -2539,22 +2458,8 @@ class MainController extends KeyringManager {
       console.warn(
         'Skipping asset and transaction updates - account has invalid xpub for UTXO network'
       );
-      // Don't update assets or transactions with invalid xpub
-      // The updateUTXOAccounts in setSignerNetwork should have already handled regenerating accounts
     } else {
-      this.updateAssetsFromCurrentAccount({
-        isBitcoinBased,
-        activeNetwork: network,
-        activeAccount: {
-          id: wallet.activeAccountId,
-          type: wallet.activeAccountType,
-        },
-      });
-      this.updateUserTransactionsState({
-        isPolling: false,
-        isBitcoinBased,
-        activeNetwork: network,
-      });
+      this.getLatestUpdateForCurrentAccount(false);
     }
 
     // Skip dapp notifications during startup
@@ -2583,8 +2488,8 @@ class MainController extends KeyringManager {
         params: isBitcoinBased ? network.url : null,
       },
     ]);
+    const isTestnet = network.isTestnet;
     if (isBitcoinBased) {
-      const isTestnet = this.verifyIfIsTestnet();
       const accountXpub =
         wallet.accounts[wallet.activeAccountType][wallet.activeAccountId].xpub;
 
@@ -2609,7 +2514,7 @@ class MainController extends KeyringManager {
       this.handleStateChange([
         {
           method: PaliEvents.isTestnet,
-          params: { isTestnet: undefined },
+          params: { isTestnet },
         },
         {
           method: PaliEvents.xpubChanged,
