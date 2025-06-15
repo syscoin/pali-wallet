@@ -133,6 +133,7 @@ export const Home = () => {
     return dismissed !== 'true';
   });
   const [isInCooldown, setIsInCooldown] = useState(false);
+  const [shouldShowFaucet, setShouldShowFaucet] = useState(false);
 
   // ALL useEffect hooks
   useEffect(() => {
@@ -320,6 +321,34 @@ export const Home = () => {
   const isWalletImported = state?.isWalletImported;
   const isNetworkChanging = networkStatus === 'switching';
 
+  // Debounced faucet modal display to prevent flashing during network/account switches
+  useEffect(() => {
+    const canShowFaucet =
+      isFaucetAvailable &&
+      actualBalance === 0 &&
+      !isLoadingBalances &&
+      !isNetworkChanging &&
+      !isSwitchingAccount;
+
+    if (canShowFaucet) {
+      // Delay showing the faucet modal to allow loading states to update
+      const timer = setTimeout(() => {
+        setShouldShowFaucet(true);
+      }, 500); // 500ms delay to ensure loading states are properly set
+
+      return () => clearTimeout(timer);
+    } else {
+      // Immediately hide the faucet modal if conditions aren't met
+      setShouldShowFaucet(false);
+    }
+  }, [
+    isFaucetAvailable,
+    actualBalance,
+    isLoadingBalances,
+    isNetworkChanging,
+    isSwitchingAccount,
+  ]);
+
   // Early returns only AFTER all hooks are called
   if (!accounts || !activeAccount || !activeNetwork) {
     return (
@@ -353,7 +382,7 @@ export const Home = () => {
           <Header accountHeader />
           <WalletProviderDefaultModal />
 
-          {isFaucetAvailable && actualBalance === 0 && !isLoadingBalances && (
+          {shouldShowFaucet && (
             <>
               {shouldShowFaucetFirstModal ? (
                 <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
