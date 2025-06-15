@@ -1289,7 +1289,7 @@ class MainController extends KeyringManager {
     slip44: number,
     index: string
   ) {
-    const { accounts, activeNetwork } = store.getState().vault;
+    const { accounts } = store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await this.importTrezorAccount(coin, slip44, index);
@@ -1335,7 +1335,7 @@ class MainController extends KeyringManager {
     index: string,
     isAlreadyConnected: boolean
   ) {
-    const { accounts, activeNetwork } = store.getState().vault;
+    const { accounts } = store.getState().vault;
     let importedAccount;
     try {
       importedAccount = await this.importLedgerAccount(
@@ -1605,10 +1605,6 @@ class MainController extends KeyringManager {
           activeNetwork.url,
           this.ethereumTransaction.web3Provider
         )
-        .then((result) => {
-          // EVM transaction fetching handles its own state updates
-          // Just ensure we have some result
-        })
         .catch((error) => {
           console.error('Error fetching EVM transactions:', error);
         })

@@ -1,14 +1,8 @@
 import { ethers } from 'ethers';
 
-import {
-  INetworkType,
-  validateEthRpc,
-  validateSysRpc,
-} from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
-
-import { ethTestnetsChainsIds } from './constants';
 
 export const isActiveNetwork = (chain: string, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
