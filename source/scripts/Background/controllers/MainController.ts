@@ -97,6 +97,7 @@ import {
   ISysTransaction,
   ITransactionsManager,
 } from './transactions/types';
+import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 
 // Constants for fiat price functionality
 const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';

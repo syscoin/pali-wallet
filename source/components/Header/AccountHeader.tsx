@@ -48,17 +48,18 @@ export const AccountHeader: React.FC = () => {
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
-    if (!placeholder) return;
+    if (!placeholder || !accounts[activeAccount.type]?.[activeAccount.id])
+      return;
 
     placeholder.innerHTML = toSvg(
-      accounts[activeAccount.type][activeAccount.id]?.xpub,
+      (accounts[activeAccount.type][activeAccount.id] as any)?.xpub,
       50,
       {
         backColor: '#07152B',
         padding: 1,
       }
     );
-  }, [accounts[activeAccount.type][activeAccount.id]?.address]);
+  }, [(accounts[activeAccount.type]?.[activeAccount.id] as any)?.address]);
 
   const editAccount = (account: IKeyringAccountState) => {
     navigate('/settings/edit-account', {
@@ -67,8 +68,9 @@ export const AccountHeader: React.FC = () => {
   };
 
   const openAccountInExplorer = () => {
-    const accountAddress =
-      accounts[activeAccount.type][activeAccount.id]?.address;
+    const accountAddress = (
+      accounts[activeAccount.type][activeAccount.id] as any
+    )?.address;
     if (!accountAddress) return;
 
     let explorerUrl;
@@ -94,7 +96,8 @@ export const AccountHeader: React.FC = () => {
     try {
       setIsLoading(true);
 
-      await controllerEmitter(
+      // Use type assertion for legacy controller methods
+      await (controllerEmitter as any)(
         ['wallet', 'ledgerSigner', 'utxo', 'verifyUtxoAddress'],
         [activeAccount.id, activeNetwork.currency, activeNetwork.slip44]
       );
@@ -104,7 +107,7 @@ export const AccountHeader: React.FC = () => {
       setIsOpenModal(false);
 
       alert.success(t('home.addressVerified'));
-    } catch (error) {
+    } catch (error: any) {
       const isNecessaryReconnect = error.message.includes(
         'read properties of undefined'
       );
@@ -125,6 +128,11 @@ export const AccountHeader: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // Account data
+  const currentAccount = accounts[activeAccount.type]?.[
+    activeAccount.id
+  ] as any;
 
   return (
     <div className="flex items-center justify-between p-1 bg-bkg-3">
@@ -168,11 +176,9 @@ export const AccountHeader: React.FC = () => {
               className="mb-1 text-base font-medium"
               id="active-account-label items-center"
             >
-              {accounts[activeAccount.type][activeAccount.id]?.label}
+              {currentAccount?.label}
               <IconButton
-                onClick={() =>
-                  editAccount(accounts[activeAccount.type][activeAccount.id])
-                }
+                onClick={() => editAccount(currentAccount)}
                 type="primary"
                 shape="circle"
               >
@@ -211,20 +217,11 @@ export const AccountHeader: React.FC = () => {
                       setIsOpenModal(true);
                   }}
                 >
-                  {ellipsis(
-                    accounts[activeAccount.type][activeAccount.id]?.address,
-                    6,
-                    14
-                  )}
+                  {ellipsis(currentAccount?.address, 6, 14)}
                 </p>
               </Tooltip>
               <IconButton
-                onClick={() =>
-                  copy(
-                    accounts[activeAccount.type][activeAccount.id]?.address ??
-                      ''
-                  )
-                }
+                onClick={() => copy(currentAccount?.address ?? '')}
                 type="primary"
                 shape="circle"
                 className="ml-2"
