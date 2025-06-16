@@ -69,8 +69,8 @@ export const ROLLUX_DEFAULT_NETWORK = {
     url: 'https://rpc.rollux.com',
     apiUrl: 'https://explorer.rollux.com/api',
     explorer: 'https://explorer.rollux.com',
-    isTestnet: false,
     kind: 'evm',
+    slip44: 60, // EVM networks use Ethereum's slip44
   } as INetworkWithKind,
   isEdit: false,
 };
@@ -110,8 +110,8 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   label: 'Syscoin NEVM Testnet',
   default: true,
   currency: 'tsys',
-  isTestnet: true,
   kind: 'evm',
+  slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.tanenbaum.io/api',
   explorer: 'https://explorer.tanenbaum.io/',
 } as INetworkWithKind;
@@ -122,8 +122,8 @@ export const SYSCOIN_MAINNET_NETWORK = {
   label: 'Syscoin NEVM',
   default: true,
   currency: 'sys',
-  isTestnet: false,
   kind: 'evm',
+  slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.syscoin.org/api',
   explorer: 'https://explorer.syscoin.org',
 } as INetworkWithKind;
@@ -135,7 +135,6 @@ export const SYSCOIN_UTXO_MAINNET_NETWORK = {
   default: true,
   currency: 'sys',
   slip44: 57,
-  isTestnet: false,
   kind: 'utxo',
 } as INetworkWithKind;
 
@@ -145,8 +144,7 @@ export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   label: 'Syscoin Testnet',
   default: true,
   currency: 'tsys',
-  slip44: 0,
-  isTestnet: true,
+  slip44: 1, // Standard testnet slip44
   kind: 'utxo',
 } as INetworkWithKind;
 
@@ -235,8 +233,8 @@ export const PALI_NETWORKS_STATE = {
       currency: 'eth',
       explorer: 'https://etherscan.io/',
       apiUrl: 'https://api.etherscan.io/api',
-      isTestnet: false,
       kind: 'evm',
+      slip44: 60, // Ethereum
     } as INetworkWithKind,
     [CHAIN_IDS.POLYGON_MAINNET]: {
       chainId: CHAIN_IDS.POLYGON_MAINNET,
@@ -246,8 +244,8 @@ export const PALI_NETWORKS_STATE = {
       url: 'https://polygon-rpc.com/',
       apiUrl: 'https://api.polygonscan.com/api',
       explorer: 'https://polygonscan.com',
-      isTestnet: false,
       kind: 'evm',
+      slip44: 60, // EVM networks use Ethereum's slip44
     } as INetworkWithKind,
   },
   syscoin: {

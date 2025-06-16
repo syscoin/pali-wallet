@@ -24,7 +24,6 @@ import {
   PALI_NETWORKS_STATE,
   SYSCOIN_MAINNET_DEFAULT_NETWORK,
 } from 'utils/constants';
-import { chromeStorage } from 'utils/storageAPI';
 import { isTokenTransfer } from 'utils/transactions';
 import { convertTransactionValueToCompare } from 'utils/transactionValue';
 
@@ -100,8 +99,24 @@ export const initialState: IVaultState = {
 export const getHasEncryptedVault = createAsyncThunk(
   'vault/getHasEncryptedVault',
   async () => {
-    const hasEncryptedVault = await chromeStorage.getItem('sysweb3-vault');
-    return !!hasEncryptedVault;
+    // Get all storage keys
+    const storageKeys = await new Promise<string[]>((resolve) => {
+      chrome.storage.local.get(null, (items) => {
+        resolve(Object.keys(items));
+      });
+    });
+
+    // Check if any vault exists:
+    // - sysweb3-vault (legacy)
+    // - sysweb3-vault-{slip44} (new multi-keyring vaults)
+    // Note: sysweb3-vault-keys is the password store, not a vault
+    const hasAnyVault = storageKeys.some(
+      (key) =>
+        key === 'sysweb3-vault' ||
+        (key.startsWith('sysweb3-vault-') && key !== 'sysweb3-vault-keys')
+    );
+
+    return hasAnyVault;
   }
 );
 

@@ -118,23 +118,13 @@ export const ConnectWallet = () => {
 
               switch (keyringAccountType) {
                 case KeyringAccountType.Trezor:
-                  if (!isBitcoinBased) {
-                    for (const acc of accountList) {
-                      const networkKeys = Object.keys(acc.originNetwork);
-
-                      if (networkKeys.includes('slip44')) {
-                        accountList = accountList.filter((ac) => ac !== acc);
-                      }
-                    }
-                  } else {
-                    for (const acc of accountList) {
-                      const networkKeys = Object.keys(acc.originNetwork);
-
-                      if (!networkKeys.includes('slip44')) {
-                        accountList = accountList.filter((ac) => ac !== acc);
-                      }
-                    }
-                  }
+                case KeyringAccountType.Ledger:
+                  accountList = accountList.filter((acc) => {
+                    const accountIsUtxo =
+                      acc.originNetwork?.kind === 'utxo' ||
+                      acc.originNetwork?.isBitcoinBased === true;
+                    return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
+                  });
                   break;
               }
               return (

@@ -517,17 +517,6 @@ const CustomRPCView = () => {
         if (chainId === lowerQuery) score += 90;
         else if (chainId.startsWith(lowerQuery)) score += 45;
 
-        // Filter out testnets
-        const isTestnet =
-          name.includes('test') ||
-          name.includes('goerli') ||
-          name.includes('sepolia') ||
-          name.includes('tanenbaum') ||
-          name.includes('rinkeby') ||
-          name.includes('ropsten') ||
-          name.includes('kovan');
-        if (isTestnet) score = 0;
-
         if (score > 0 && chain.rpc && chain.rpc.length > 0) {
           results.push({ ...chain, score });
         }

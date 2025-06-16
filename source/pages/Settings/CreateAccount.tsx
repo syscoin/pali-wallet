@@ -1,22 +1,16 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import { Layout, NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
-
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
@@ -26,7 +20,7 @@ const CreateAccount = () => {
 
     const { address: newAddress } = (await controllerEmitter(
       ['wallet', 'createAccount'],
-      [isBitcoinBased, activeNetwork.chainId, label, false]
+      [label]
     )) as any;
 
     setAddress(newAddress);

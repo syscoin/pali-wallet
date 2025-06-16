@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { FaucetChainIds } from '../../types/faucet';
@@ -125,45 +124,15 @@ export const Home = () => {
   } = useSelector((rootState: RootState) => rootState.vault);
 
   // ALL useState hooks
-  const [isTestnet, setIsTestnet] = useState(false);
   const [showModalCongrats, setShowModalCongrats] = useState(false);
   const [showModalHardWallet, setShowModalHardWallet] = useState(() => {
     // Check if user has previously dismissed this modal
     const dismissed = localStorage.getItem('hardwareWalletModalDismissed');
     return dismissed !== 'true';
   });
-  const [isInCooldown, setIsInCooldown] = useState(false);
   const [shouldShowFaucet, setShouldShowFaucet] = useState(false);
 
   // ALL useEffect hooks
-  useEffect(() => {
-    if (!isUnlocked) return;
-
-    // Only check cooldown for EVM networks since UTXO networks don't have web3Provider
-    if (isBitcoinBased) {
-      setIsInCooldown(false);
-      return;
-    }
-
-    controllerEmitter(
-      ['wallet', 'ethereumTransaction', 'web3Provider'],
-      [],
-      true
-    )
-      .then((response: CustomJsonRpcProvider) => {
-        setIsInCooldown(response?.isInCooldown || false);
-      })
-      .catch((error) => {
-        console.warn('Failed to get web3Provider cooldown status:', error);
-        setIsInCooldown(false);
-      });
-  }, [isUnlocked, isBitcoinBased, controllerEmitter]);
-
-  useEffect(() => {
-    if (!isUnlocked || !activeNetwork) return;
-
-    setIsTestnet(activeNetwork.isTestnet);
-  }, [isUnlocked, activeNetwork, isBitcoinBased, isInCooldown]);
 
   useEffect(() => {
     if (!isUnlocked || !lastLogin) return;
@@ -303,7 +272,7 @@ export const Home = () => {
   }, [getFiatAmount, actualBalance, fiatAsset]);
 
   const formatFiatAmount = useMemo(() => {
-    if (isTestnet || !fiatPriceValue) return null;
+    if (!fiatPriceValue) return null;
 
     if (moreThanMillion) {
       const matches = fiatPriceValue.match(/[\d\.]+/g);
@@ -315,7 +284,7 @@ export const Home = () => {
     }
 
     return fiatPriceValue;
-  }, [fiatPriceValue, isTestnet, moreThanMillion]);
+  }, [fiatPriceValue, moreThanMillion]);
 
   // Safe computed values - AFTER all hooks
   const isWalletImported = state?.isWalletImported;

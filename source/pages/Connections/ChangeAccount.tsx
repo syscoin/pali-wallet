@@ -96,23 +96,17 @@ export const ChangeAccount = () => {
 
               switch (keyringAccountType) {
                 case KeyringAccountType.Trezor:
-                  if (!isBitcoinBased) {
-                    for (const acc of accountList) {
-                      const networkKeys = Object.keys(acc.originNetwork);
-
-                      if (networkKeys.includes('slip44')) {
-                        accountList = accountList.filter((ac) => ac !== acc);
-                      }
-                    }
-                  } else {
-                    for (const acc of accountList) {
-                      const networkKeys = Object.keys(acc.originNetwork);
-
-                      if (!networkKeys.includes('slip44')) {
-                        accountList = accountList.filter((ac) => ac !== acc);
-                      }
-                    }
-                  }
+                case KeyringAccountType.Ledger:
+                  // Filter hardware wallet accounts based on network compatibility
+                  // For UTXO networks: keep accounts created on UTXO networks
+                  // For EVM networks: keep accounts created on EVM networks
+                  accountList = accountList.filter((acc) => {
+                    // Check if account was created on a compatible network type
+                    const accountIsUtxo =
+                      acc.originNetwork?.kind === 'utxo' ||
+                      acc.originNetwork?.isBitcoinBased === true;
+                    return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
+                  });
                   break;
               }
               return (

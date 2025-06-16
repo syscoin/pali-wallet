@@ -6,15 +6,22 @@ import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotVa
 import { saveState } from 'state/paliStorage';
 import store from 'state/store';
 import { setPrevBalances } from 'state/vault';
+import { IVaultState } from 'state/vault/types';
 
 function shouldUpdate() {
+  const vault = store.getState().vault as unknown as IVaultState;
+
+  if (!vault) {
+    return false;
+  }
+
   const {
     accounts,
     activeAccount,
     isBitcoinBased,
     activeNetwork,
     prevBalances,
-  } = store.getState().vault;
+  } = vault;
 
   const chain = isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
   const chainId = activeNetwork.chainId;

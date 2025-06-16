@@ -176,33 +176,11 @@ const MasterController = (
         CHAIN_IDS.ETHEREUM_MAINNET
       ]?.default ?? false;
 
-    const isNetworkOldEVMStateWithoutTestnet =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][
-        CHAIN_IDS.ETHEREUM_MAINNET
-      ]?.isTestnet === undefined;
-
-    const isNetworkOldUTXOStateWithoutTestnet =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Syscoin][
-        CHAIN_IDS.SYSCOIN_MAINNET
-      ]?.isTestnet === undefined;
-
-    if (isNetworkOldState || isNetworkOldEVMStateWithoutTestnet) {
+    if (isNetworkOldState) {
       Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
         externalStore.dispatch(
           setNetwork({
             chain: INetworkType.Ethereum,
-            network: network,
-            isFirstTime: true,
-          })
-        );
-      });
-    }
-
-    if (isNetworkOldUTXOStateWithoutTestnet) {
-      Object.values(PALI_NETWORKS_STATE.syscoin).forEach((network) => {
-        externalStore.dispatch(
-          setNetwork({
-            chain: INetworkType.Syscoin,
             network: network,
             isFirstTime: true,
           })
@@ -301,7 +279,6 @@ const MasterController = (
     const walletState = vaultToWalletState(externalStore.getState().vault);
     dapp = Object.freeze(DAppController());
     wallet = new MainController(walletState);
-    wallet.setStorage(chrome.storage.local);
 
     // Initialize startup state if wallet is already unlocked
     wallet.initializeStartupState();

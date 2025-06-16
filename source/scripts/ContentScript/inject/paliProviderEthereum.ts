@@ -200,8 +200,6 @@ export class PaliInpageProviderEth extends BaseProvider {
             break;
           case 'pali_blockExplorerChanged':
             break;
-          case 'pali_isTestnet':
-            break;
           case EMITTED_NOTIFICATIONS.includes(method):
             //TODO: implement subscription messages
             throw {

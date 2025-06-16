@@ -94,19 +94,11 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
       : Object.values(networks.syscoin);
   }, [isBitcoinBased, isChanging, selectedNetwork, networks]);
 
-  const testnetNetworks = useMemo(
-    () => newNetworks.filter((obj) => obj?.isTestnet),
-    [newNetworks]
-  );
-
-  const mainnetNetworks = useMemo(
+  const networks = useMemo(
     () =>
-      newNetworks
-        .filter((obj) => !obj?.isTestnet)
-        .sort(
-          (a, b) =>
-            getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
-        ),
+      newNetworks.sort(
+        (a, b) => getChainIdPriority(a.chainId) - getChainIdPriority(b.chainId)
+      ),
     [newNetworks]
   );
 
@@ -153,7 +145,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           <p className="text-brand-gray200 text-xs font-medium mb-2">
             {selectedNetworkText}
           </p>
-          {mainnetNetworks.map((currentNetworks: INetworkWithKind) => (
+          {networks.map((currentNetworks: INetworkWithKind) => (
             <div
               key={uniqueId()}
               className={`${
@@ -177,43 +169,6 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
                 />
                 <span>
                   {currentNetworks.label || `Chain ${currentNetworks.chainId}`}
-                </span>
-              </div>
-              {selectCurrentNetwork?.current?.label ===
-                currentNetworks?.label && (
-                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="flex flex-col">
-          <p className="text-brand-gray200 text-xs font-medium mb-2">
-            Testnet network:
-          </p>
-          {testnetNetworks.map((currentNetworks: INetworkWithKind) => (
-            <div
-              key={uniqueId()}
-              className={`${
-                selectCurrentNetwork?.current?.label === currentNetworks?.label
-                  ? 'bg-brand-blue800'
-                  : 'bg-brand-blue600'
-              } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}
-              onClick={() =>
-                setSelectCurrentNetwork({
-                  current: currentNetworks,
-                  chain: chainName,
-                })
-              }
-            >
-              <div className="flex items-center gap-2">
-                <ChainIcon
-                  chainId={currentNetworks.chainId}
-                  size={20}
-                  networkKind={selectedNetwork === 'UTXO' ? 'utxo' : 'evm'}
-                  className="flex-shrink-0"
-                />
-                <span>
-                  {currentNetworks?.label || `Chain ${currentNetworks.chainId}`}
                 </span>
               </div>
               {selectCurrentNetwork?.current?.label ===

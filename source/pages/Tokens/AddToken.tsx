@@ -1,13 +1,12 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useState, FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { Layout } from 'components/index';
-import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 import { CustomToken } from './CustomToken';
@@ -20,29 +19,11 @@ export const AddToken: FC = () => {
   const { state } = useLocation();
 
   const [importCustom, setImportCustom] = useState(false);
-  const [isTestnet, setIsTestnet] = useState(false);
 
-  const { controllerEmitter } = useController();
-  const [isInCooldown, setIsInCooldown] = useState(false);
   const { isBitcoinBased, activeNetwork: network } = useSelector(
     (paliState: RootState) => paliState.vault
   );
   const { t } = useTranslation();
-
-  useEffect(() => {
-    // Get provider status including isInCooldown
-    controllerEmitter(['wallet', 'getProviderStatus'], [])
-      .then((status: any) => {
-        setIsInCooldown(status.isInCooldown || false);
-      })
-      .catch(() => {
-        setIsInCooldown(false);
-      });
-  }, [controllerEmitter]);
-
-  useEffect(() => {
-    setIsTestnet(network.isTestnet);
-  }, [network, network.chainId, isBitcoinBased, isInCooldown]);
 
   const searchTokenValidation = Boolean(network.chainId === 1); // Only allow to Ethereum Mainnet chain ID
 
@@ -58,7 +39,7 @@ export const AddToken: FC = () => {
         <SyscoinImport />
       ) : (
         <>
-          {!isTestnet && searchTokenValidation ? (
+          {searchTokenValidation ? (
             <>
               <Form
                 form={form}

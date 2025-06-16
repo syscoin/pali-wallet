@@ -16,7 +16,6 @@ interface SysProviderState {
   initialized: boolean;
   isBitcoinBased: boolean;
   isPermanentlyDisconnected: boolean;
-  isTestnet: boolean | undefined;
   isUnlocked: boolean;
   xpub: string | null;
 }
@@ -29,7 +28,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     isUnlocked: false,
     initialized: false,
     isPermanentlyDisconnected: false,
-    isTestnet: false,
     isBitcoinBased: false,
   };
   private _sysState: SysProviderState;
@@ -91,9 +89,6 @@ export class PaliInpageProviderSys extends BaseProvider {
             break;
           case 'pali_blockExplorerChanged':
             this._handleActiveBlockExplorer(params);
-            break;
-          case 'pali_isTestnet':
-            this._handleIsTestnet(params);
             break;
           case 'pali_isBitcoinBased':
             this._handleIsBitcoinBased(params);
@@ -208,15 +203,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     return this._sysState.isUnlocked;
   }
 
-  public async isTestnet(): Promise<boolean> {
-    if (!this._sysState.initialized) {
-      await new Promise<void>((resolve) => {
-        this.on('_sysInitialized', () => resolve());
-      });
-    }
-    return this._sysState.isTestnet;
-  }
-
   public isBitcoinBased(): boolean {
     return this._sysState.isBitcoinBased;
   }
@@ -285,9 +271,6 @@ export class PaliInpageProviderSys extends BaseProvider {
     isBitcoinBased: boolean;
   }) {
     this._sysState.isBitcoinBased = isBitcoinBased;
-  }
-  private _handleIsTestnet({ isTestnet }: { isTestnet: boolean }) {
-    this._sysState.isTestnet = isTestnet;
   }
   private async _isBlockbookChain(): Promise<boolean> {
     let checkExplorer = false;

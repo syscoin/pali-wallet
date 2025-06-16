@@ -18,7 +18,7 @@ const ConnectHardwareWalletView: FC = () => {
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
   );
-  const { activeNetwork, accounts, advancedSettings } = useSelector(
+  const { accounts, advancedSettings } = useSelector(
     (state: RootState) => state.vault
   );
   const { t } = useTranslation();
@@ -68,11 +68,7 @@ const ConnectHardwareWalletView: FC = () => {
 
           await controllerEmitter(
             ['wallet', 'importTrezorAccountFromController'],
-            [
-              activeNetwork.currency,
-              `${activeNetwork.slip44}`,
-              `${trezorAccounts.length}`,
-            ]
+            []
           );
 
           setIsModalOpen(true);
@@ -106,12 +102,7 @@ const ConnectHardwareWalletView: FC = () => {
           if (webHidIsConnected) {
             await controllerEmitter(
               ['wallet', 'importLedgerAccountFromController'],
-              [
-                activeNetwork.currency,
-                `${activeNetwork.slip44}`,
-                `${ledgerAccounts.length}`,
-                false,
-              ]
+              [false]
             );
 
             setIsModalOpen(true);
@@ -127,12 +118,7 @@ const ConnectHardwareWalletView: FC = () => {
       if (isAlreadyConnected) {
         await controllerEmitter(
           ['wallet', 'importLedgerAccountFromController'],
-          [
-            activeNetwork.currency,
-            `${activeNetwork.slip44}`,
-            `${ledgerAccounts.length}`,
-            true,
-          ]
+          [true]
         );
         setIsModalOpen(true);
         return;

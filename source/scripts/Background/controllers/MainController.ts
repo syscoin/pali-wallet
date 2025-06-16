@@ -8,6 +8,7 @@ import {
   IKeyringAccountState,
   KeyringAccountType,
   IWalletState,
+  initialWalletState,
 } from '@pollum-io/sysweb3-keyring';
 import { getSysRpc, getEthRpc, INetworkType } from '@pollum-io/sysweb3-network';
 import {
@@ -35,7 +36,6 @@ import {
   setNetworkChange,
   setHasEthProperty as setEthProperty,
   setIsLoadingTxs,
-  initialState,
   setIsLoadingAssets,
   setIsLastTxConfirmed as setIsLastTxConfirmedToState,
   setIsLoadingBalances,
@@ -103,57 +103,16 @@ import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrappe
 const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
 const COINS_LIST_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-// Add request deduplication cache
-interface IRequestCache {
-  [key: string]: {
-    promise: Promise<any>;
-    timestamp: number;
-  };
-}
+// Default slip44 values for fallback cases
+const DEFAULT_EVM_SLIP44 = 60; // Ethereum
+const DEFAULT_UTXO_SLIP44 = 57; // Syscoin
 
-const requestCache: IRequestCache = {};
-const CACHE_TTL = 5000; // 5 seconds TTL for cache entries
+class MainController {
+  // Map of keyrings indexed by slip44
+  private keyrings: Map<number, KeyringManager> = new Map();
+  // Current active slip44
+  private activeSlip44: number = DEFAULT_EVM_SLIP44;
 
-// Helper function to create cache key
-const createCacheKey = (method: string, ...args: any[]): string =>
-  `${method}:${args.join(':')}`;
-
-// Helper function to get or create cached request
-const getCachedRequest = async <T>(
-  key: string,
-  requestFn: () => Promise<T>
-): Promise<T> => {
-  const now = Date.now();
-
-  // Clean up expired cache entries
-  Object.keys(requestCache).forEach((cacheKey) => {
-    if (now - requestCache[cacheKey].timestamp > CACHE_TTL) {
-      delete requestCache[cacheKey];
-    }
-  });
-
-  // Check if we have a valid cached request
-  if (requestCache[key] && now - requestCache[key].timestamp < CACHE_TTL) {
-    console.log(`[MainController] Using cached request for ${key}`);
-    return requestCache[key].promise as Promise<T>;
-  }
-
-  // Create new request and cache it
-  console.log(`[MainController] Creating new request for ${key}`);
-  const promise = requestFn();
-  requestCache[key] = { promise, timestamp: now };
-
-  // Clean up cache entry after request completes
-  promise.finally(() => {
-    setTimeout(() => {
-      delete requestCache[key];
-    }, 100); // Small delay to handle rapid successive calls
-  });
-
-  return promise;
-};
-
-class MainController extends KeyringManager {
   public account: {
     eth: IEthAccountController;
     sys: ISysAccountController;
@@ -175,8 +134,6 @@ class MainController extends KeyringManager {
   private isAccountSwitching = false;
 
   constructor(walletState: any) {
-    super(walletState);
-
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
 
@@ -190,44 +147,47 @@ class MainController extends KeyringManager {
         );
       });
 
-    // Determine if we're on a Bitcoin-based network to avoid web3 calls to blockbook
-    // Check from walletState or store state to determine initial network type
-    let isBitcoinBased = false;
+    // Determine initial slip44 based on wallet state
+    let initialSlip44 = DEFAULT_EVM_SLIP44;
 
     try {
-      // First try to get from store state if available
-      const storeState = store.getState().vault;
-      if (storeState && typeof storeState.isBitcoinBased === 'boolean') {
-        isBitcoinBased = storeState.isBitcoinBased;
-      } else if (walletState && walletState.activeChain) {
-        // Fallback to checking walletState
-        isBitcoinBased = walletState.activeChain === INetworkType.Syscoin;
+      const storeState = store.getState().vault as any;
+      // Handle new slip44-based structure
+      if (storeState.activeSlip44 !== undefined) {
+        initialSlip44 = storeState.activeSlip44;
+        console.log(
+          `[MainController] Using activeSlip44 from Redux: ${initialSlip44}`
+        );
       } else {
-        // Last fallback - check if activeNetwork looks like a UTXO network
+        // Fallback to checking activeNetwork or isBitcoinBased
         const activeNetwork =
           walletState?.activeNetwork || storeState?.activeNetwork;
-        if (activeNetwork) {
-          // Generic UTXO network detection patterns:
-          // 1. URL contains blockbook or trezor (most reliable)
-          // 2. Network kind is explicitly set to 'utxo'
-          const hasBlockbookUrl =
-            activeNetwork.url?.includes('blockbook') ||
-            activeNetwork.url?.includes('trezor');
-          const hasUtxoKind = activeNetwork.kind === 'utxo';
 
-          isBitcoinBased = hasBlockbookUrl || hasUtxoKind;
+        if (activeNetwork && activeNetwork.slip44) {
+          initialSlip44 = activeNetwork.slip44;
+        } else if (
+          storeState &&
+          typeof storeState.isBitcoinBased === 'boolean'
+        ) {
+          // Fallback to isBitcoinBased flag
+          initialSlip44 = storeState.isBitcoinBased
+            ? DEFAULT_UTXO_SLIP44
+            : DEFAULT_EVM_SLIP44;
         }
       }
 
       console.log(
-        `[MainController] Constructor detected isBitcoinBased: ${isBitcoinBased}`
+        `[MainController] Constructor detected initial slip44: ${initialSlip44}`
       );
     } catch (error) {
       console.warn(
-        '[MainController] Could not determine network type in constructor, defaulting to EVM'
+        '[MainController] Could not determine initial slip44, defaulting to Ethereum'
       );
-      isBitcoinBased = false;
     }
+
+    // Initialize the appropriate keyring based on slip44
+    this.activeSlip44 = initialSlip44;
+    this.initializeKeyring(this.activeSlip44, walletState);
 
     this.assetsManager = AssetsManager();
     this.transactionsManager = TransactionsManager();
@@ -237,10 +197,299 @@ class MainController extends KeyringManager {
     this.cancellablePromises = new CancellablePromises();
     this.account = {
       eth: EthAccountController(),
-      sys: SysAccountController(() => this),
+      sys: SysAccountController(() => this.getActiveKeyring()),
     };
 
     this.bindMethods();
+  }
+
+  // Initialize a keyring for a specific slip44
+  private initializeKeyring(slip44: number, walletState?: any): KeyringManager {
+    if (!this.keyrings.has(slip44)) {
+      console.log(
+        `[MainController] Initializing keyring for slip44: ${slip44}`
+      );
+      const keyring = new KeyringManager({
+        ...walletState,
+        slip44,
+      });
+      // Set up storage access for each keyring
+      keyring.setStorage(chrome.storage.local);
+      this.keyrings.set(slip44, keyring);
+    }
+    return this.keyrings.get(slip44)!;
+  }
+
+  // Get the active keyring
+  private getActiveKeyring(): KeyringManager {
+    const keyring = this.keyrings.get(this.activeSlip44);
+    if (!keyring) {
+      throw new Error(`No keyring found for slip44: ${this.activeSlip44}`);
+    }
+    return keyring;
+  }
+
+  // Get slip44 from network object
+  private getSlip44ForNetwork(network: INetworkWithKind): number {
+    // Network objects should always have slip44 property
+    return (
+      network.slip44 ||
+      (network.kind === 'utxo' ? DEFAULT_UTXO_SLIP44 : DEFAULT_EVM_SLIP44)
+    );
+  }
+
+  // Switch active keyring based on network
+  private async switchActiveKeyring(
+    network: INetworkWithKind,
+    chain: INetworkType
+  ): Promise<void> {
+    const slip44 = this.getSlip44ForNetwork(network);
+
+    // Get the current active keyring before switching
+    const previousKeyring = this.keyrings.get(this.activeSlip44);
+    const wasUnlocked = previousKeyring?.isUnlocked() || false;
+
+    // If switching to a different slip44 and current keyring is unlocked, we'll need to transfer session
+    const needsSessionTransfer = slip44 !== this.activeSlip44 && wasUnlocked;
+
+    // Update our internal active slip44
+    if (slip44 !== this.activeSlip44) {
+      console.log(
+        `[MainController] Switching keyring from slip44 ${this.activeSlip44} to ${slip44}`
+      );
+      this.activeSlip44 = slip44;
+    }
+
+    // Ensure the target keyring exists
+    if (!this.keyrings.has(slip44)) {
+      await this.createKeyringOnDemand(slip44, network);
+    }
+
+    const targetKeyring = this.keyrings.get(slip44);
+    if (!targetKeyring) {
+      throw new Error(`Failed to get keyring for slip44: ${slip44}`);
+    }
+
+    // Handle session transfer if needed
+    if (needsSessionTransfer && previousKeyring) {
+      try {
+        console.log(
+          `[MainController] Transferring session from slip44 ${previousKeyring.wallet.activeNetwork.slip44} to ${slip44}`
+        );
+        const sessionData = previousKeyring.getSessionData();
+        targetKeyring.setSessionData(sessionData);
+        previousKeyring.lockWallet(); // Lock the previous keyring
+        console.log(
+          `[MainController] Session transferred and previous keyring locked`
+        );
+      } catch (error) {
+        console.error(`[MainController] Error transferring session:`, error);
+        throw new Error(
+          `Failed to transfer session to new keyring: ${error.message}`
+        );
+      }
+    } else if (!targetKeyring.isUnlocked()) {
+      // If target keyring is not unlocked and we didn't transfer session, fail
+      throw new Error(
+        `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
+      );
+    }
+
+    // Set up the network on the keyring
+    console.log(
+      `[MainController] Setting up network on keyring for slip44 ${slip44}`
+    );
+    await targetKeyring.setSignerNetwork(network as any, chain);
+
+    // Sync Redux state from the active keyring
+    this.syncReduxFromKeyring();
+
+    // Lock all other keyrings for security (belt and suspenders approach)
+    this.keyrings.forEach((keyring, keyringSlip44) => {
+      if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
+        console.log(
+          `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
+        );
+        keyring.lockWallet();
+      }
+    });
+  }
+
+  // Sync Redux state from the active keyring
+  private syncReduxFromKeyring(): void {
+    const keyring = this.getActiveKeyring();
+    const wallet = keyring.wallet;
+
+    // Update Redux to reflect the active keyring's state
+    store.dispatch(
+      setNetworkChange({
+        activeChain: keyring.activeChain,
+        wallet: wallet,
+      })
+    );
+
+    console.log(
+      `[MainController] Synced Redux state from keyring slip44: ${this.activeSlip44}`
+    );
+  }
+
+  // Create a keyring on demand with storage access
+  private async createKeyringOnDemand(
+    slip44: number,
+    network: INetworkWithKind
+  ) {
+    console.log(
+      `[MainController] Creating keyring on demand for slip44: ${slip44}`
+    );
+
+    // Get wallet state template from an existing keyring or use defaults
+    const existingKeyring =
+      this.keyrings.size > 0 ? Array.from(this.keyrings.values())[0] : null;
+
+    // Create wallet state for the new keyring - minimal state needed
+    const walletStateForNewKeyring = existingKeyring
+      ? {
+          // Copy structure from existing keyring but reset account-specific data
+          accounts: {
+            [KeyringAccountType.HDAccount]: {},
+            [KeyringAccountType.Imported]: {},
+            [KeyringAccountType.Trezor]: {},
+            [KeyringAccountType.Ledger]: {},
+          },
+          activeAccountId: 0,
+          activeAccountType: KeyringAccountType.HDAccount,
+          networks: existingKeyring.wallet.networks,
+          activeNetwork: network as any,
+        }
+      : {
+          ...initialWalletState,
+          activeNetwork: network as any,
+        };
+
+    // Create new keyring with the wallet state
+    const keyring = new KeyringManager({
+      wallet: walletStateForNewKeyring,
+      activeChain:
+        network.kind === 'utxo' ? INetworkType.Syscoin : INetworkType.Ethereum,
+      slip44,
+    });
+
+    // Set up storage access - this gives it access to the global encrypted vault
+    keyring.setStorage(chrome.storage.local);
+
+    this.keyrings.set(slip44, keyring);
+    console.log(
+      `[MainController] Created keyring for slip44: ${slip44} with access to global vault`
+    );
+
+    // Note: Session transfer is now handled in switchActiveKeyring method
+  }
+
+  // Lock all keyrings - used when user explicitly locks wallet
+  private lockAllKeyrings(): void {
+    console.log('[MainController] Locking all keyrings...');
+    this.keyrings.forEach((keyring, slip44) => {
+      if (keyring.isUnlocked()) {
+        console.log(`[MainController] Locking keyring for slip44: ${slip44}`);
+        keyring.lockWallet();
+      }
+    });
+  }
+
+  // Proxy methods to active keyring
+  private get wallet() {
+    return this.getActiveKeyring().wallet;
+  }
+
+  private get syscoinTransaction() {
+    return this.getActiveKeyring().syscoinTransaction;
+  }
+
+  private get ethereumTransaction() {
+    return this.getActiveKeyring().ethereumTransaction;
+  }
+
+  private forgetMainWallet(pwd: string) {
+    return this.getActiveKeyring().forgetMainWallet(pwd);
+  }
+
+  private async unlock(pwd: string) {
+    return this.getActiveKeyring().unlock(pwd);
+  }
+
+  private isUnlocked() {
+    return this.getActiveKeyring().isUnlocked();
+  }
+
+  private isSeedValid(phrase: string) {
+    return this.getActiveKeyring().isSeedValid(phrase);
+  }
+
+  private setSeed(phrase: string) {
+    return this.getActiveKeyring().setSeed(phrase);
+  }
+
+  private async setWalletPassword(password: string) {
+    return this.getActiveKeyring().setWalletPassword(password);
+  }
+
+  private async createKeyringVault() {
+    return this.getActiveKeyring().createKeyringVault();
+  }
+
+  private logout() {
+    return this.getActiveKeyring().logout();
+  }
+
+  private updateAccountLabel(
+    label: string,
+    accountId: number,
+    accountType: KeyringAccountType
+  ) {
+    return this.getActiveKeyring().updateAccountLabel(
+      label,
+      accountId,
+      accountType
+    );
+  }
+
+  private removeNetwork(
+    chain: INetworkType,
+    chainId: number,
+    rpcUrl: string,
+    label: string,
+    key?: string
+  ) {
+    return this.getActiveKeyring().removeNetwork(
+      chain,
+      chainId,
+      rpcUrl,
+      label,
+      key
+    );
+  }
+
+  private addCustomNetwork(chain: INetworkType, network: any) {
+    return this.getActiveKeyring().addCustomNetwork(chain, network);
+  }
+
+  private updateNetworkConfig(network: any, chain: INetworkType) {
+    return this.getActiveKeyring().updateNetworkConfig(network, chain);
+  }
+
+  private async setSignerNetwork(
+    network: INetworkWithKind,
+    chain: INetworkType
+  ) {
+    // switchActiveKeyring handles everything: creating keyring if needed and setting up network
+    await this.switchActiveKeyring(network, chain);
+
+    // Return the current wallet state from the keyring
+    return {
+      success: true,
+      wallet: this.getActiveKeyring().wallet,
+      activeChain: this.getActiveKeyring().activeChain,
+    };
   }
 
   // Fiat price fetching functionality moved from ControllerUtils
@@ -398,49 +647,33 @@ class MainController extends KeyringManager {
         case INetworkType.Syscoin:
           try {
             const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
-            if (!activeNetwork.isTestnet) {
-              const currencies = await (
-                await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
-              ).json();
-              if (currencies && currencies.rates) {
-                store.dispatch(setCoins(currencies.rates));
-                if (currencies.rates[currency]) {
-                  store.dispatch(
-                    setPrices({
-                      asset: currency,
-                      price: currencies.rates[currency],
-                    })
-                  );
-                  return;
-                }
+            // Try to fetch prices for all networks - no testnet differentiation
+            const currencies = await (
+              await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
+            ).json();
+            if (currencies && currencies.rates) {
+              store.dispatch(setCoins(currencies.rates));
+              if (currencies.rates[currency]) {
+                store.dispatch(
+                  setPrices({
+                    asset: currency,
+                    price: currencies.rates[currency],
+                  })
+                );
+                return;
               }
             }
 
             store.dispatch(setPrices({ asset: currency, price: 0 }));
           } catch (error) {
-            logError(
-              'Failed to retrieve asset price - SYSCOIN UTXO',
-              '',
-              error
-            );
+            // If price API is not available (e.g., on testnets), just set price to 0
             store.dispatch(setPrices({ asset: currency, price: 0 }));
           }
           break;
 
         case INetworkType.Ethereum:
           try {
-            // Use existing network info instead of making redundant RPC call
-            const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69];
-
-            if (
-              activeNetwork.isTestnet ||
-              ethTestnetsChainsIds.some(
-                (validationChain) => validationChain === activeNetwork.chainId
-              )
-            ) {
-              store.dispatch(setPrices({ asset: currency, price: 0 }));
-              return;
-            }
+            // Try to fetch prices for all networks - no testnet differentiation
 
             if (coinsList && Array.isArray(coinsList) && coinsList.length > 0) {
               const findCoinSymbolByNetwork = coinsList.find(
@@ -509,12 +742,32 @@ class MainController extends KeyringManager {
     store.dispatch(setEthProperty(exist));
   }
 
-  public setAdvancedSettings(advancedProperty: string, isActive: boolean) {
+  public async setAdvancedSettings(
+    advancedProperty: string,
+    isActive: boolean
+  ) {
+    // Update Redux state
     store.dispatch(setSettings({ advancedProperty, isActive }));
+
+    // Also update global settings
+    const currentSettings = await this.getGlobalSettings();
+    await this.updateGlobalSettings({
+      advancedSettings: {
+        ...currentSettings.advancedSettings,
+        [advancedProperty]: isActive,
+      },
+    });
   }
 
-  public forgetWallet(pwd: string) {
+  public async forgetWallet(pwd: string) {
     this.forgetMainWallet(pwd);
+
+    // Clear global settings
+    await this.setGlobalSettings({
+      hasEncryptedVault: false,
+      advancedSettings: {},
+      coinsList: [],
+    });
 
     store.dispatch(forgetWalletState());
     store.dispatch(setLastLogin());
@@ -534,7 +787,7 @@ class MainController extends KeyringManager {
       console.log(
         '[MainController] Storage initialized, proceeding with unlock...'
       );
-
+      this.lockAllKeyrings();
       const { canLogin, wallet } = await this.unlock(pwd);
 
       if (!canLogin) {
@@ -558,7 +811,6 @@ class MainController extends KeyringManager {
         const activeChain = isSyscoinNetwork
           ? INetworkType.Syscoin
           : INetworkType.Ethereum;
-
         store.dispatch(
           setNetworkChange({
             activeChain,
@@ -639,31 +891,32 @@ class MainController extends KeyringManager {
 
     await handleWalletInfo();
 
-    if (activeAccount.address !== '') {
-      this.forgetWallet(password);
+    // Update global settings to mark that we now have an encrypted vault
+    await this.updateGlobalSettings({ hasEncryptedVault: true });
+
+    // Check if there's an existing account (either EVM with address or UTXO with xpub)
+    const hasExistingAccount =
+      ('address' in activeAccount && activeAccount.address !== '') ||
+      ('xpub' in activeAccount && activeAccount.xpub !== '');
+
+    if (hasExistingAccount) {
+      await this.forgetWallet(password);
       await handleWalletInfo();
     }
 
     const account = (await this.createKeyringVault()) as IKeyringAccountState;
 
-    const initialSysAssetsForAccount = await this.getInitialSysTokenForAccount(
-      account.xpub
-    );
-    const initialTxsForAccount = await this.getInitialSysTransactionsForAccount(
-      account.xpub
-    );
-
     const newAccountWithAssets: IPaliAccount = {
       ...account,
       assets: {
-        syscoin: initialSysAssetsForAccount,
+        syscoin: [],
         ethereum: [],
         nfts: [],
       },
       transactions: {
         ethereum: {},
         syscoin: {
-          [activeNetwork.chainId]: initialTxsForAccount,
+          [activeNetwork.chainId]: [],
         },
       },
     };
@@ -682,7 +935,7 @@ class MainController extends KeyringManager {
       })
     );
     store.dispatch(setLastLogin());
-
+    this.getLatestUpdateForCurrentAccount(false);
     // Fetch fresh fiat prices immediately after wallet creation
     this.setFiat().catch((error) =>
       console.warn(
@@ -710,49 +963,24 @@ class MainController extends KeyringManager {
     return;
   }
 
-  public async createAccount(
-    isBitcoinBased: boolean,
-    activeNetworkChainId: number,
-    label?: string
-  ): Promise<IPaliAccount> {
-    const newAccount = await this.addNewAccount(label);
-    let newAccountWithAssets: IPaliAccount;
-
-    if (isBitcoinBased) {
-      const initialSysAssetsForAccount =
-        await this.getInitialSysTokenForAccount(newAccount.xpub);
-
-      const initialTxsForAccount =
-        await this.getInitialSysTransactionsForAccount(newAccount.xpub);
-
-      newAccountWithAssets = {
-        ...newAccount,
-        assets: {
-          syscoin: initialSysAssetsForAccount,
-          ethereum: [],
-          nfts: [],
-        },
-        transactions: {
-          syscoin: {
-            [activeNetworkChainId]: initialTxsForAccount,
-          },
-          ethereum: {},
-        },
-      };
-    } else {
-      newAccountWithAssets = {
-        ...newAccount,
-        assets: {
-          syscoin: [],
-          ethereum: [],
-          nfts: [],
-        },
-        transactions: {
-          syscoin: {},
-          ethereum: {},
-        },
-      };
-    }
+  public async createAccount(label?: string): Promise<IPaliAccount> {
+    const newAccount = await this.getActiveKeyring().addNewAccount(label);
+    const newAccountWithAssets: IPaliAccount = {
+      ...newAccount,
+      assets: {
+        syscoin: [],
+        ethereum: [],
+        nfts: [],
+      },
+      transactions: {
+        syscoin: {},
+        ethereum: {},
+      },
+    };
+    this.getActiveKeyring().setActiveAccount(
+      newAccountWithAssets.id,
+      KeyringAccountType.HDAccount
+    );
     store.dispatch(
       addAccountToStore({
         account: newAccountWithAssets,
@@ -765,6 +993,7 @@ class MainController extends KeyringManager {
         type: KeyringAccountType.HDAccount,
       })
     );
+    this.getLatestUpdateForCurrentAccount(false);
     return newAccountWithAssets;
   }
 
@@ -823,7 +1052,8 @@ class MainController extends KeyringManager {
       store.dispatch(setActiveAccount({ id, type }));
 
       // Run keyring update asynchronously without blocking
-      this.setActiveAccount(id, type)
+      this.getActiveKeyring()
+        .setActiveAccount(id, type)
         .then(() => {
           // Defer heavy operations to prevent blocking the UI
           setTimeout(() => {
@@ -1245,11 +1475,10 @@ class MainController extends KeyringManager {
   }
 
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
-    const { accounts, activeNetwork } = store.getState().vault;
-    const importedAccount = await this.importAccount(
+    const { accounts } = store.getState().vault;
+    const importedAccount = await this.getActiveKeyring().importAccount(
       privKey,
-      label,
-      activeNetwork
+      label
     );
 
     const paliImp: IPaliAccount = {
@@ -1274,25 +1503,26 @@ class MainController extends KeyringManager {
       })
     );
 
-    await this.setActiveAccount(paliImp.id, KeyringAccountType.Imported);
+    await this.getActiveKeyring().setActiveAccount(
+      paliImp.id,
+      KeyringAccountType.Imported
+    );
 
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Imported })
     );
-    await this.getLatestUpdateForCurrentAccount(false);
+    this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
 
-  public async importTrezorAccountFromController(
-    coin: string,
-    slip44: number,
-    index: string
-  ) {
+  public async importTrezorAccountFromController(label?: string) {
     const { accounts } = store.getState().vault;
     let importedAccount;
     try {
-      importedAccount = await this.importTrezorAccount(coin, slip44, index);
+      importedAccount = await this.getActiveKeyring().importTrezorAccount(
+        label
+      );
     } catch (error) {
       console.error(error);
       throw new Error(
@@ -1320,29 +1550,28 @@ class MainController extends KeyringManager {
         },
       })
     );
-    await this.setActiveAccount(paliImp.id, KeyringAccountType.Trezor);
+    this.getActiveKeyring().setActiveAccount(
+      paliImp.id,
+      KeyringAccountType.Trezor
+    );
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Trezor })
     );
-    await this.getLatestUpdateForCurrentAccount(false);
+    this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
 
   public async importLedgerAccountFromController(
-    coin: string,
-    slip44: number,
-    index: string,
-    isAlreadyConnected: boolean
+    isAlreadyConnected: boolean,
+    label?: string
   ) {
     const { accounts } = store.getState().vault;
     let importedAccount;
     try {
-      importedAccount = await this.importLedgerAccount(
-        coin,
-        slip44,
-        index,
-        isAlreadyConnected
+      importedAccount = await this.getActiveKeyring().importLedgerAccount(
+        isAlreadyConnected,
+        label
       );
     } catch (error) {
       console.error(error);
@@ -1370,11 +1599,14 @@ class MainController extends KeyringManager {
         },
       })
     );
-    await this.setActiveAccount(paliImp.id, KeyringAccountType.Ledger);
+    this.getActiveKeyring().setActiveAccount(
+      paliImp.id,
+      KeyringAccountType.Ledger
+    );
     store.dispatch(
       setActiveAccount({ id: paliImp.id, type: KeyringAccountType.Ledger })
     );
-    await this.getLatestUpdateForCurrentAccount(false);
+    this.getLatestUpdateForCurrentAccount(false);
 
     return importedAccount;
   }
@@ -1473,35 +1705,6 @@ class MainController extends KeyringManager {
     this.cancellablePromises.runPromise(PromiseTargets.NFTS);
   }
 
-  public async getInitialSysTransactionsForAccount(xpub: string) {
-    const cacheKey = createCacheKey(
-      'sysTransactions',
-      xpub,
-      initialState.activeNetwork.url
-    );
-
-    return getCachedRequest(cacheKey, async () => {
-      store.dispatch(setIsLoadingTxs(true));
-
-      try {
-        const initialTxsForAccount =
-          await this.transactionsManager.sys.getInitialUserTransactionsByXpub(
-            xpub,
-            initialState.activeNetwork.url
-          );
-
-        return initialTxsForAccount;
-      } catch (error) {
-        console.error('Error fetching initial Syscoin transactions:', error);
-        // Return empty array on error instead of throwing
-        return [];
-      } finally {
-        // Always reset loading state
-        store.dispatch(setIsLoadingTxs(false));
-      }
-    });
-  }
-
   public setEvmTransactionAsCanceled(txHash: string, chainID: number) {
     store.dispatch(
       setTransactionStatusToCanceled({
@@ -1537,86 +1740,6 @@ class MainController extends KeyringManager {
     );
   }
 
-  public callUpdateTxsMethodBasedByIsBitcoinBased(
-    isBitcoinBased: boolean,
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    },
-    activeNetwork: INetworkWithKind,
-    isPolling = false
-  ) {
-    const { accounts } = store.getState().vault;
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
-    if (isBitcoinBased) {
-      // Check if the xpub is valid for UTXO (not an Ethereum public key)
-      if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
-        console.error(
-          'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
-        );
-        // Skip fetching transactions with invalid xpub
-        return;
-      }
-
-      // Only set loading state for initial loads, not background polling
-      if (!isPolling) {
-        store.dispatch(setIsLoadingTxs(true));
-      }
-
-      // UTXO: Use centralized caching and handle Redux dispatch
-      this.transactionsManager.sys
-        .getInitialUserTransactionsByXpub(
-          currentAccount.xpub,
-          activeNetwork.url
-        )
-        .then((txs) => {
-          if (isNil(txs) || isEmpty(txs)) {
-            return;
-          }
-          store.dispatch(
-            setMultipleTransactionToState({
-              chainId: activeNetwork.chainId,
-              networkType: TransactionsType.Syscoin,
-              transactions: txs,
-            })
-          );
-        })
-        .catch((error) => {
-          console.error('Error fetching Syscoin transactions:', error);
-        })
-        .finally(() => {
-          // Only reset loading state if we set it in the first place
-          if (!isPolling) {
-            store.dispatch(setIsLoadingTxs(false));
-          }
-        });
-    } else {
-      // Only set loading state for initial loads, not background polling
-      if (!isPolling) {
-        store.dispatch(setIsLoadingTxs(true));
-      }
-
-      // EVM: Use centralized caching (handles its own Redux dispatch via validateAndManageUserTransactions)
-      this.transactionsManager.utils
-        .updateTransactionsFromCurrentAccount(
-          currentAccount,
-          isBitcoinBased,
-          activeNetwork.url,
-          this.ethereumTransaction.web3Provider
-        )
-        .catch((error) => {
-          console.error('Error fetching EVM transactions:', error);
-        })
-        .finally(() => {
-          // Only reset loading state if we set it in the first place
-          if (!isPolling) {
-            store.dispatch(setIsLoadingTxs(false));
-          }
-        });
-    }
-  }
-
   public updateUserTransactionsState({
     isPolling,
     isBitcoinBased,
@@ -1627,46 +1750,44 @@ class MainController extends KeyringManager {
     isPolling: boolean;
   }) {
     const { accounts, activeAccount } = store.getState().vault;
-
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
     const { currentPromise: transactionPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            if (isPolling) {
-              await this.transactionsManager.utils
-                .updateTransactionsFromCurrentAccount(
-                  currentAccount,
-                  isBitcoinBased,
-                  activeNetwork.url,
-                  this.ethereumTransaction.web3Provider
-                )
-                .then((txs) => {
-                  const canDispatch =
-                    isBitcoinBased && !(isNil(txs) && isEmpty(txs));
+            // Set loading state for non-polling calls
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(true));
+            }
 
-                  if (canDispatch) {
-                    store.dispatch(
-                      setMultipleTransactionToState({
-                        chainId: activeNetwork.chainId,
-                        networkType: TransactionsType.Syscoin,
-                        transactions: txs,
-                      })
-                    );
-                  }
-                });
-            } else {
-              this.callUpdateTxsMethodBasedByIsBitcoinBased(
+            const txs =
+              await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
+                currentAccount,
                 isBitcoinBased,
-                activeAccount,
-                activeNetwork,
-                false // This method is only called for initial loads, never for background polling
+                activeNetwork.url,
+                this.ethereumTransaction.web3Provider
+              );
+
+            // For UTXO, handle dispatch (EVM handles it internally)
+            if (isBitcoinBased && txs && !isEmpty(txs)) {
+              store.dispatch(
+                setMultipleTransactionToState({
+                  chainId: activeNetwork.chainId,
+                  networkType: TransactionsType.Syscoin,
+                  transactions: txs,
+                })
               );
             }
+
             resolve();
           } catch (error) {
+            console.error('Error fetching transactions:', error);
             reject(error);
+          } finally {
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(false));
+            }
           }
         }
       );
@@ -1677,8 +1798,6 @@ class MainController extends KeyringManager {
     });
 
     this.cancellablePromises.runPromise(PromiseTargets.TRANSACTION);
-
-    // Return the promise so callers can wait for it to complete
     return transactionPromise;
   }
 
@@ -1710,37 +1829,6 @@ class MainController extends KeyringManager {
 
   public openDAppErrorModal() {
     store.dispatch(setOpenDAppErrorModal(true));
-  }
-
-  public async getInitialSysTokenForAccount(xpub: string) {
-    const cacheKey = createCacheKey(
-      'sysAssets',
-      xpub,
-      initialState.activeNetwork.url,
-      initialState.activeNetwork.chainId
-    );
-
-    return getCachedRequest(cacheKey, async () => {
-      store.dispatch(setIsLoadingAssets(true));
-
-      try {
-        const initialSysAssetsForAccount =
-          await this.assetsManager.sys.getSysAssetsByXpub(
-            xpub,
-            initialState.activeNetwork.url,
-            initialState.activeNetwork.chainId
-          );
-
-        return initialSysAssetsForAccount;
-      } catch (error) {
-        console.error('Error fetching initial Syscoin assets:', error);
-        // Return empty array on error instead of throwing
-        return [];
-      } finally {
-        // Always reset loading state
-        store.dispatch(setIsLoadingAssets(false));
-      }
-    });
   }
 
   public updateAssetsFromCurrentAccount({
@@ -2115,7 +2203,7 @@ class MainController extends KeyringManager {
 
   private async configureNetwork(
     network: INetworkWithKind,
-    chain: string
+    chain: INetworkType
   ): Promise<{
     activeChain: INetworkType;
     error?: any;
@@ -2364,7 +2452,7 @@ class MainController extends KeyringManager {
   }
   private setActiveNetworkLogic = async (
     network: INetworkWithKind,
-    chain: string,
+    chain: INetworkType,
     cancelled: boolean,
     resolve: (value: {
       activeChain: INetworkType;
@@ -2420,6 +2508,9 @@ class MainController extends KeyringManager {
     isBitcoinBased: boolean,
     network: INetworkWithKind
   ) {
+    // Switch to the appropriate keyring based on the network's slip44
+    await this.switchActiveKeyring(network, activeChain);
+
     // Ensure the wallet's activeNetwork has the enhanced properties
     const enhancedWallet = {
       ...wallet,
@@ -2484,7 +2575,7 @@ class MainController extends KeyringManager {
         params: isBitcoinBased ? network.url : null,
       },
     ]);
-    const isTestnet = network.isTestnet;
+
     if (isBitcoinBased) {
       const accountXpub =
         wallet.accounts[wallet.activeAccountType][wallet.activeAccountId].xpub;
@@ -2493,10 +2584,6 @@ class MainController extends KeyringManager {
       const isValidXpub = accountXpub && !accountXpub.startsWith('0x');
 
       this.handleStateChange([
-        {
-          method: PaliEvents.isTestnet,
-          params: { isTestnet },
-        },
         {
           method: PaliEvents.xpubChanged,
           params: isValidXpub ? accountXpub : null,
@@ -2508,10 +2595,6 @@ class MainController extends KeyringManager {
       ]);
     } else {
       this.handleStateChange([
-        {
-          method: PaliEvents.isTestnet,
-          params: { isTestnet },
-        },
         {
           method: PaliEvents.xpubChanged,
           params: null,
@@ -2744,6 +2827,28 @@ class MainController extends KeyringManager {
 
     // Handle Syscoin tokens (tokenToDelete is assetGuid string)
     return this.account.sys.deleteTokenInfo(tokenToDelete);
+  }
+
+  // Global settings management
+  private async getGlobalSettings() {
+    const settings = await chrome.storage.local.get('global-settings');
+    return (
+      settings['global-settings'] || {
+        hasEncryptedVault: false,
+        advancedSettings: {},
+        coinsList: [],
+      }
+    );
+  }
+
+  private async setGlobalSettings(settings: any) {
+    await chrome.storage.local.set({ 'global-settings': settings });
+  }
+
+  private async updateGlobalSettings(updates: Partial<any>) {
+    const current = await this.getGlobalSettings();
+    const updated = { ...current, ...updates };
+    await this.setGlobalSettings(updated);
   }
 }
 
