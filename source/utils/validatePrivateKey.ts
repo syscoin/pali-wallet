@@ -1,12 +1,13 @@
 import { ethers } from 'ethers';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import { getController } from 'scripts/Background';
-import { INetworkWithKind } from 'state/vault/types';
 
 export const validatePrivateKeyValue = (
   privKey: string,
   isBitcoinBased: boolean,
-  activeNetwork?: INetworkWithKind
+  activeNetwork?: INetwork
 ) => {
   const mainController = getController();
 

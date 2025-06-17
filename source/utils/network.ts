@@ -4,7 +4,7 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 
-export const isActiveNetwork = (chain: string, chainId: number) => {
+export const isActiveNetwork = (chain: INetworkType, chainId: number) => {
   const { activeNetwork } = store.getState().vault;
   const activeChain = networkChain();
 
@@ -15,7 +15,7 @@ export const isActiveNetwork = (chain: string, chainId: number) => {
 };
 
 /**
- * `{ chaindId, url }` is compatible with `INetworkWithKind`
+ * `{ chaindId, url }` is compatible with `INetwork`
  */
 export const networkChain = () =>
   getNetworkChain(store.getState().vault.isBitcoinBased);

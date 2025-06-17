@@ -180,7 +180,6 @@ const MasterController = (
       Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
         externalStore.dispatch(
           setNetwork({
-            chain: INetworkType.Ethereum,
             network: network,
             isFirstTime: true,
           })

@@ -1,11 +1,13 @@
 import React from 'react';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { ChainIcon } from 'components/ChainIcon';
 
 type FaucetFeedbackProps = {
   chainId?: number;
   icon?: string;
-  networkKind?: 'evm' | 'utxo';
+  networkKind?: INetworkType;
   textFeedbackDesc: string;
   textFeedbackTitle: string;
 };
@@ -13,7 +15,7 @@ type FaucetFeedbackProps = {
 export const FaucetFeedback: React.FC<FaucetFeedbackProps> = ({
   icon,
   chainId,
-  networkKind = 'evm',
+  networkKind = INetworkType.Ethereum,
   textFeedbackDesc,
   textFeedbackTitle,
 }) => (

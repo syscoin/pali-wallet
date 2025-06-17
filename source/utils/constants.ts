@@ -1,6 +1,5 @@
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
-import { INetworkWithKind } from '../state/vault/types';
 import {
   FaucetChainIds,
   FaucetChainNames,
@@ -69,40 +68,11 @@ export const ROLLUX_DEFAULT_NETWORK = {
     url: 'https://rpc.rollux.com',
     apiUrl: 'https://explorer.rollux.com/api',
     explorer: 'https://explorer.rollux.com',
-    kind: 'evm',
+    kind: INetworkType.Ethereum,
     slip44: 60, // EVM networks use Ethereum's slip44
-  } as INetworkWithKind,
+  } as INetwork,
   isEdit: false,
 };
-
-/**
- * SYSCOIN NETWORK ARCHITECTURE EXPLANATION:
- *
- * Syscoin has two different network types that can share the same chain ID (57):
- *
- * 1. Syscoin NEVM (Network Enhanced Virtual Machine):
- *    - EVM-compatible layer built on top of Syscoin
- *    - Uses RPC endpoints like https://rpc.syscoin.org
- *    - Supports Ethereum-style transactions, smart contracts, etc.
- *    - Chain ID 57 (mainnet) and 5700 (testnet)
- *    - Handles eth_chainId, eth_requestAccounts, etc.
- *    - kind: 'evm'
- *
- * 2. Syscoin UTXO (Bitcoin-style):
- *    - Traditional UTXO-based blockchain (like Bitcoin)
- *    - Uses Blockbook endpoints like https://explorer-blockbook.syscoin.org
- *    - Supports Bitcoin-style transactions
- *    - Chain ID 57 (same as NEVM but different protocol)
- *    - Does NOT support eth_* methods
- *    - kind: 'utxo'
- *
- * The distinction is made by network.kind field:
- * - kind: 'evm' = NEVM (EVM-compatible)
- * - kind: 'utxo' = UTXO (Bitcoin-style)
- *
- * Other networks:
- * - Chain ID 57000: Rollux Testnet
- */
 
 export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   chainId: CHAIN_IDS.SYSCOIN_NEVM_TESTNET,
@@ -110,11 +80,11 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   label: 'Syscoin NEVM Testnet',
   default: true,
   currency: 'tsys',
-  kind: 'evm',
+  kind: INetworkType.Ethereum,
   slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.tanenbaum.io/api',
   explorer: 'https://explorer.tanenbaum.io/',
-} as INetworkWithKind;
+} as INetwork;
 
 export const SYSCOIN_MAINNET_NETWORK = {
   chainId: CHAIN_IDS.SYSCOIN_MAINNET,
@@ -122,11 +92,11 @@ export const SYSCOIN_MAINNET_NETWORK = {
   label: 'Syscoin NEVM',
   default: true,
   currency: 'sys',
-  kind: 'evm',
+  kind: INetworkType.Ethereum,
   slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.syscoin.org/api',
   explorer: 'https://explorer.syscoin.org',
-} as INetworkWithKind;
+} as INetwork;
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = {
   chainId: CHAIN_IDS.SYSCOIN_MAINNET,
@@ -135,8 +105,8 @@ export const SYSCOIN_UTXO_MAINNET_NETWORK = {
   default: true,
   currency: 'sys',
   slip44: 57,
-  kind: 'utxo',
-} as INetworkWithKind;
+  kind: INetworkType.Syscoin,
+} as INetwork;
 
 export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   chainId: CHAIN_IDS.SYSCOIN_TESTNET,
@@ -145,8 +115,8 @@ export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   default: true,
   currency: 'tsys',
   slip44: 1, // Standard testnet slip44
-  kind: 'utxo',
-} as INetworkWithKind;
+  kind: INetworkType.Syscoin,
+} as INetwork;
 
 export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
   chain: INetworkType.Syscoin,
@@ -233,9 +203,9 @@ export const PALI_NETWORKS_STATE = {
       currency: 'eth',
       explorer: 'https://etherscan.io/',
       apiUrl: 'https://api.etherscan.io/api',
-      kind: 'evm',
+      kind: INetworkType.Ethereum,
       slip44: 60, // Ethereum
-    } as INetworkWithKind,
+    } as INetwork,
     [CHAIN_IDS.POLYGON_MAINNET]: {
       chainId: CHAIN_IDS.POLYGON_MAINNET,
       currency: 'matic',
@@ -244,9 +214,9 @@ export const PALI_NETWORKS_STATE = {
       url: 'https://polygon-rpc.com/',
       apiUrl: 'https://api.polygonscan.com/api',
       explorer: 'https://polygonscan.com',
-      kind: 'evm',
+      kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44
-    } as INetworkWithKind,
+    } as INetwork,
   },
   syscoin: {
     [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_UTXO_MAINNET_NETWORK,

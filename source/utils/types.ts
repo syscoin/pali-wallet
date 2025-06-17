@@ -3,11 +3,6 @@ import { IEvmTransaction } from 'scripts/Background/controllers/transactions/typ
 import { UpdateTxAction } from './transactions';
 
 // eslint-disable-next-line no-shadow
-export enum NetworkType {
-  EVM = 'EVM',
-  UTXO = 'UTXO',
-}
-// eslint-disable-next-line no-shadow
 export enum PaliLanguages {
   DE = 'de',
   EN = 'en',

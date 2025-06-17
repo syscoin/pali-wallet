@@ -10,7 +10,12 @@ import {
   IWalletState,
   initialWalletState,
 } from '@pollum-io/sysweb3-keyring';
-import { getSysRpc, getEthRpc, INetworkType } from '@pollum-io/sysweb3-network';
+import {
+  getSysRpc,
+  getEthRpc,
+  INetwork,
+  INetworkType,
+} from '@pollum-io/sysweb3-network';
 import {
   getSearch,
   getTokenStandardMetadata,
@@ -61,7 +66,6 @@ import {
   IOmmitedAccount,
   IPaliAccount,
   TransactionsType,
-  INetworkWithKind,
 } from 'state/vault/types';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -111,7 +115,7 @@ class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
   // Current active slip44
-  private activeSlip44: number = DEFAULT_EVM_SLIP44;
+  private activeSlip44: number = DEFAULT_UTXO_SLIP44;
 
   public account: {
     eth: IEthAccountController;
@@ -148,7 +152,7 @@ class MainController {
       });
 
     // Determine initial slip44 based on wallet state
-    let initialSlip44 = DEFAULT_EVM_SLIP44;
+    let initialSlip44 = DEFAULT_UTXO_SLIP44;
 
     try {
       const storeState = store.getState().vault as any;
@@ -230,19 +234,18 @@ class MainController {
   }
 
   // Get slip44 from network object
-  private getSlip44ForNetwork(network: INetworkWithKind): number {
+  private getSlip44ForNetwork(network: INetwork): number {
     // Network objects should always have slip44 property
     return (
       network.slip44 ||
-      (network.kind === 'utxo' ? DEFAULT_UTXO_SLIP44 : DEFAULT_EVM_SLIP44)
+      (network.kind === INetworkType.Syscoin
+        ? DEFAULT_UTXO_SLIP44
+        : DEFAULT_EVM_SLIP44)
     );
   }
 
   // Switch active keyring based on network
-  private async switchActiveKeyring(
-    network: INetworkWithKind,
-    chain: INetworkType
-  ): Promise<void> {
+  private async switchActiveKeyring(network: INetwork): Promise<void> {
     const slip44 = this.getSlip44ForNetwork(network);
 
     // Get the current active keyring before switching
@@ -299,7 +302,7 @@ class MainController {
     console.log(
       `[MainController] Setting up network on keyring for slip44 ${slip44}`
     );
-    await targetKeyring.setSignerNetwork(network as any, chain);
+    await targetKeyring.setSignerNetwork(network as any);
 
     // Sync Redux state from the active keyring
     this.syncReduxFromKeyring();
@@ -334,10 +337,7 @@ class MainController {
   }
 
   // Create a keyring on demand with storage access
-  private async createKeyringOnDemand(
-    slip44: number,
-    network: INetworkWithKind
-  ) {
+  private async createKeyringOnDemand(slip44: number, network: INetwork) {
     console.log(
       `[MainController] Creating keyring on demand for slip44: ${slip44}`
     );
@@ -369,8 +369,7 @@ class MainController {
     // Create new keyring with the wallet state
     const keyring = new KeyringManager({
       wallet: walletStateForNewKeyring,
-      activeChain:
-        network.kind === 'utxo' ? INetworkType.Syscoin : INetworkType.Ethereum,
+      activeChain: network.kind,
       slip44,
     });
 
@@ -396,32 +395,69 @@ class MainController {
     });
   }
 
-  // Proxy methods to active keyring
-  private get wallet() {
+  // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
+  public get wallet() {
     return this.getActiveKeyring().wallet;
   }
 
-  private get syscoinTransaction() {
+  public get syscoinTransaction() {
     return this.getActiveKeyring().syscoinTransaction;
   }
 
-  private get ethereumTransaction() {
+  public get ethereumTransaction() {
     return this.getActiveKeyring().ethereumTransaction;
+  }
+
+  // Additional public methods for UX access (used by controllerEmitter)
+  public validateZprv(zprv: string, targetNetwork?: any) {
+    return this.getActiveKeyring().validateZprv(zprv, targetNetwork);
+  }
+
+  public get trezorSigner() {
+    return this.getActiveKeyring().trezorSigner;
+  }
+
+  public get ledgerSigner() {
+    return this.getActiveKeyring().ledgerSigner;
+  }
+
+  public getChangeAddress(id: number) {
+    return this.getActiveKeyring().getChangeAddress(id);
+  }
+
+  public getSeed(pwd: string) {
+    return this.getActiveKeyring().getSeed(pwd);
+  }
+
+  public getPrivateKeyByAccountId(id: number, accountType: any, pwd: string) {
+    return this.getActiveKeyring().getPrivateKeyByAccountId(
+      id,
+      accountType,
+      pwd
+    );
+  }
+
+  public getActiveAccount() {
+    return this.getActiveKeyring().getActiveAccount();
+  }
+
+  public createNewSeed() {
+    return this.getActiveKeyring().createNewSeed();
   }
 
   private forgetMainWallet(pwd: string) {
     return this.getActiveKeyring().forgetMainWallet(pwd);
   }
 
-  private async unlock(pwd: string) {
+  public async unlock(pwd: string) {
     return this.getActiveKeyring().unlock(pwd);
   }
 
-  private isUnlocked() {
+  public isUnlocked() {
     return this.getActiveKeyring().isUnlocked();
   }
 
-  private isSeedValid(phrase: string) {
+  public isSeedValid(phrase: string) {
     return this.getActiveKeyring().isSeedValid(phrase);
   }
 
@@ -469,20 +505,17 @@ class MainController {
     );
   }
 
-  private addCustomNetwork(chain: INetworkType, network: any) {
-    return this.getActiveKeyring().addCustomNetwork(chain, network);
+  private addCustomNetwork(network: any) {
+    return this.getActiveKeyring().addCustomNetwork(network);
   }
 
-  private updateNetworkConfig(network: any, chain: INetworkType) {
-    return this.getActiveKeyring().updateNetworkConfig(network, chain);
+  private updateNetworkConfig(network: any) {
+    return this.getActiveKeyring().updateNetworkConfig(network);
   }
 
-  private async setSignerNetwork(
-    network: INetworkWithKind,
-    chain: INetworkType
-  ) {
+  private async setSignerNetwork(network: INetwork) {
     // switchActiveKeyring handles everything: creating keyring if needed and setting up network
-    await this.switchActiveKeyring(network, chain);
+    await this.switchActiveKeyring(network);
 
     // Return the current wallet state from the keyring
     return {
@@ -1132,7 +1165,7 @@ class MainController {
   }
 
   public async setActiveNetwork(
-    network: INetworkWithKind
+    network: INetwork
   ): Promise<{ chainId: string; networkVersion: number }> {
     // Cancel the current promise if it exists
     if (this.currentPromise) {
@@ -1141,7 +1174,7 @@ class MainController {
     }
 
     // Ensure the network object has all required properties
-    const completeNetwork: INetworkWithKind = {
+    const completeNetwork: INetwork = {
       ...network,
       label: network.label || `Chain ${network.chainId}`,
     };
@@ -1150,21 +1183,12 @@ class MainController {
       activeChain: INetworkType;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetworkWithKind;
+      network: INetwork;
       networkVersion: number;
       wallet: IWalletState;
     }>((resolve, reject) => {
-      const chain =
-        completeNetwork.kind === 'utxo'
-          ? INetworkType.Syscoin
-          : INetworkType.Ethereum;
-      this.setActiveNetworkLogic(
-        completeNetwork,
-        chain,
-        false,
-        resolve,
-        reject
-      );
+      completeNetwork.kind;
+      this.setActiveNetworkLogic(completeNetwork, false, resolve, reject);
     });
 
     this.currentPromise = promiseWrapper;
@@ -1218,15 +1242,14 @@ class MainController {
     );
   }
 
-  public async getRpc(data: ICustomRpcParams): Promise<INetworkWithKind> {
+  public async getRpc(data: ICustomRpcParams): Promise<INetwork> {
     try {
       const { formattedNetwork } = data.isSyscoinRpc
         ? (await getSysRpc(data)).rpc
         : await getEthRpc(data, false);
       return {
         ...formattedNetwork,
-        kind: data.isSyscoinRpc ? 'utxo' : 'evm',
-      } as INetworkWithKind;
+      } as INetwork;
     } catch (error) {
       if (!data.isSyscoinRpc) {
         throw cleanErrorStack(ethErrors.rpc.internal());
@@ -1353,7 +1376,7 @@ class MainController {
     return web3Token;
   }
 
-  public async addCustomRpc(data: ICustomRpcParams): Promise<INetworkWithKind> {
+  public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
     const { networks } = store.getState().vault;
     const network = await this.getRpc(data);
 
@@ -1367,16 +1390,13 @@ class MainController {
       apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
       explorer: data?.explorer ? data.explorer : network?.explorer || '',
       currency: data.symbol ? data.symbol : network.currency,
-      kind: data.isSyscoinRpc ? 'utxo' : 'evm',
-    } as INetworkWithKind;
+      kind: data.isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
+    } as INetwork;
 
-    const chain = data.isSyscoinRpc
-      ? INetworkType.Syscoin
-      : INetworkType.Ethereum;
+    store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
-    store.dispatch(setNetwork({ chain, network: networkWithCustomParams }));
-
-    const networksAfterDispatch = store.getState().vault.networks[chain];
+    const networksAfterDispatch =
+      store.getState().vault.networks[networkWithCustomParams.kind];
 
     const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
       (netValues) =>
@@ -1385,15 +1405,15 @@ class MainController {
         netValues.label === networkWithCustomParams.label
     );
 
-    this.addCustomNetwork(chain, findCorrectNetworkValue);
+    this.addCustomNetwork(findCorrectNetworkValue);
 
     return findCorrectNetworkValue;
   }
 
   public async editCustomRpc(
     newRpc: ICustomRpcParams,
-    oldRpc: INetworkWithKind
-  ): Promise<INetworkWithKind> {
+    oldRpc: INetwork
+  ): Promise<INetwork> {
     const changedChainId = oldRpc.chainId !== newRpc.chainId;
     const network = await this.getRpc(newRpc);
     const chain = getNetworkChain(newRpc.isSyscoinRpc);
@@ -1411,14 +1431,14 @@ class MainController {
         default: oldRpc.default,
         kind: oldRpc.kind,
         ...(oldRpc?.key && { key: oldRpc.key }),
-      } as INetworkWithKind;
+      } as INetwork;
 
       if (changedChainId) {
         throw new Error('RPC from a different chainId');
       }
 
-      store.dispatch(setNetwork({ chain, network: newNetwork, isEdit: true }));
-      this.updateNetworkConfig(newNetwork, chain as INetworkType);
+      store.dispatch(setNetwork({ network: newNetwork, isEdit: true }));
+      this.updateNetworkConfig(newNetwork);
 
       return newNetwork;
     }
@@ -1635,7 +1655,7 @@ class MainController {
       id: number;
       type: KeyringAccountType;
     };
-    activeNetwork: INetworkWithKind;
+    activeNetwork: INetwork;
   }) {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -1745,7 +1765,7 @@ class MainController {
     isBitcoinBased,
     activeNetwork,
   }: {
-    activeNetwork: INetworkWithKind;
+    activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) {
@@ -1841,7 +1861,7 @@ class MainController {
       id: number;
       type: KeyringAccountType;
     };
-    activeNetwork: INetworkWithKind;
+    activeNetwork: INetwork;
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
   }) {
@@ -1931,7 +1951,7 @@ class MainController {
       id: number;
       type: KeyringAccountType;
     };
-    activeNetwork: INetworkWithKind;
+    activeNetwork: INetwork;
     isBitcoinBased: boolean;
   }) {
     const { accounts } = store.getState().vault;
@@ -2201,10 +2221,7 @@ class MainController {
     }, 1000);
   };
 
-  private async configureNetwork(
-    network: INetworkWithKind,
-    chain: INetworkType
-  ): Promise<{
+  private async configureNetwork(network: INetwork): Promise<{
     activeChain: INetworkType;
     error?: any;
     success: boolean;
@@ -2223,7 +2240,7 @@ class MainController {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         // Determine the appropriate endpoint and method based on network type
-        const isUtxo = chain === INetworkType.Syscoin;
+        const isUtxo = network.kind === INetworkType.Syscoin;
 
         let testUrl: string;
         let requestConfig: RequestInit;
@@ -2327,8 +2344,7 @@ class MainController {
 
     try {
       const { success, wallet, activeChain } = await this.setSignerNetwork(
-        network,
-        chain
+        network
       );
 
       if (success) {
@@ -2362,11 +2378,7 @@ class MainController {
         return {
           success: false,
           wallet: wallet || this.wallet,
-          activeChain:
-            activeChain ||
-            (chain === INetworkType.Syscoin
-              ? INetworkType.Syscoin
-              : INetworkType.Ethereum),
+          activeChain: network.kind,
           error: networkCallError || new Error('Failed to configure network'),
         };
       }
@@ -2376,10 +2388,7 @@ class MainController {
       return {
         success: false,
         wallet: this.wallet,
-        activeChain:
-          chain === INetworkType.Syscoin
-            ? INetworkType.Syscoin
-            : INetworkType.Ethereum,
+        activeChain: network.kind,
         error,
       };
     }
@@ -2388,16 +2397,14 @@ class MainController {
   private resolveNetworkConfiguration(
     resolve: (value: {
       activeChain: INetworkType;
-      chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetworkWithKind;
+      network: INetwork;
       networkVersion: number;
       wallet: IWalletState;
     }) => void,
     {
       activeChain,
-      chain,
       chainId,
       isBitcoinBased,
       network,
@@ -2405,17 +2412,15 @@ class MainController {
       wallet,
     }: {
       activeChain: INetworkType;
-      chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetworkWithKind;
+      network: INetwork;
       networkVersion: number;
       wallet: IWalletState;
     }
   ) {
     resolve({
       activeChain,
-      chain,
       chainId,
       isBitcoinBased,
       network,
@@ -2451,15 +2456,13 @@ class MainController {
     return { promise, cancel };
   }
   private setActiveNetworkLogic = async (
-    network: INetworkWithKind,
-    chain: INetworkType,
+    network: INetwork,
     cancelled: boolean,
     resolve: (value: {
       activeChain: INetworkType;
-      chain: string;
       chainId: string;
       isBitcoinBased: boolean;
-      network: INetworkWithKind;
+      network: INetwork;
       networkVersion: number;
       wallet: IWalletState;
     }) => void,
@@ -2471,17 +2474,16 @@ class MainController {
     store.dispatch(startSwitchNetwork(network));
     store.dispatch(setIsLoadingBalances(true));
 
-    const isBitcoinBased = chain === INetworkType.Syscoin;
+    const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {
       const { success, wallet, activeChain, error } =
-        await this.configureNetwork(network, chain);
+        await this.configureNetwork(network);
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
 
       if (success) {
         this.resolveNetworkConfiguration(resolve, {
           activeChain,
-          chain,
           chainId,
           isBitcoinBased,
           network,
@@ -2506,10 +2508,10 @@ class MainController {
     wallet: IWalletState,
     activeChain: INetworkType,
     isBitcoinBased: boolean,
-    network: INetworkWithKind
+    network: INetwork
   ) {
     // Switch to the appropriate keyring based on the network's slip44
-    await this.switchActiveKeyring(network, activeChain);
+    await this.switchActiveKeyring(network);
 
     // Ensure the wallet's activeNetwork has the enhanced properties
     const enhancedWallet = {

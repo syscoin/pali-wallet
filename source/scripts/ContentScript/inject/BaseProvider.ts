@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import messages from './messages';
 import { getRpcPromiseCallback } from './utils';
 export type Maybe<T> = Partial<T> | null | undefined;
@@ -49,7 +51,7 @@ export interface UnvalidatedJsonRpcRequest {
 }
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export interface EnableLegacyPali {
-  chain: string;
+  chain: INetworkType;
   chainId?: unknown;
 }
 //TODO: switch to SafeEventEmitter

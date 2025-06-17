@@ -1,6 +1,8 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from 'react';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import {
   ChainFallbackSvg,
   EthChainSvg,
@@ -25,9 +27,8 @@ interface IChainIconProps {
   chainId: number;
   className?: string;
   fallbackClassName?: string;
-  // Optional hint about network type
   iconName?: string;
-  networkKind?: 'evm' | 'utxo';
+  networkKind?: INetworkType;
   size?: number | string; // Optional icon name for custom networks
 }
 
@@ -84,7 +85,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       }
 
       // UTXO networks don't have remote icons
-      if (networkKind === 'utxo') {
+      if (networkKind === INetworkType.Syscoin) {
         return {
           url: null,
           component: null,
@@ -147,7 +148,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
       }
 
       // For UTXO networks, skip ChainList fetching as they're not in ChainList
-      if (networkKind === 'utxo') {
+      if (networkKind === INetworkType.Syscoin) {
         if (!error) {
           setError(true);
           setIsLoading(false);

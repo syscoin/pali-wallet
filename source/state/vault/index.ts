@@ -10,7 +10,7 @@ import {
   IWalletState,
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
@@ -33,7 +33,6 @@ import {
   IVaultState,
   PaliAccount,
   TransactionsType,
-  INetworkWithKind,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -191,8 +190,8 @@ const VaultState = createSlice({
         networkWithKind ||
         ({
           ...wallet.activeNetwork,
-          kind: activeChain === INetworkType.Syscoin ? 'utxo' : 'evm',
-        } as INetworkWithKind);
+          kind: activeChain,
+        } as INetwork);
 
       state.activeAccount = {
         id: wallet.activeAccountId,
@@ -268,31 +267,30 @@ const VaultState = createSlice({
     setNetwork(
       state: IVaultState,
       action: PayloadAction<{
-        chain: string;
         isEdit?: boolean;
         isFirstTime?: boolean;
-        network: INetworkWithKind;
+        network: INetwork;
       }>
     ) {
-      const { chain, network, isEdit, isFirstTime } = action.payload;
+      const { network, isEdit, isFirstTime } = action.payload;
       const networkKeyIdentifier = network.key ? network.key : network.chainId;
 
-      if (state.networks[chain][networkKeyIdentifier]) {
+      if (state.networks[network.kind][networkKeyIdentifier]) {
         if (!isEdit && !isFirstTime) {
           throw new Error('Network already exists!');
         }
         if (isEdit) {
-          state.networks[chain][networkKeyIdentifier] = {
-            ...state.networks[chain][networkKeyIdentifier],
+          state.networks[network.kind][networkKeyIdentifier] = {
+            ...state.networks[network.kind][networkKeyIdentifier],
             ...network,
           };
         }
         return;
       }
-      state.networks[chain][networkKeyIdentifier] = network;
+      state.networks[network.kind][networkKeyIdentifier] = network;
 
       if (
-        chain === state.activeChain &&
+        network.kind === state.activeChain &&
         network.chainId === state.activeNetwork.chainId &&
         network.url === state.activeNetwork.url
       ) {
@@ -347,10 +345,7 @@ const VaultState = createSlice({
     ) {
       state.activeAccount = action.payload;
     },
-    setActiveNetwork(
-      state: IVaultState,
-      action: PayloadAction<INetworkWithKind>
-    ) {
+    setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
@@ -892,17 +887,11 @@ const VaultState = createSlice({
 
       state.prevBalances[activeAccountId][chain][chainId] = balance;
     },
-    startSwitchNetwork(
-      state: IVaultState,
-      action: PayloadAction<INetworkWithKind>
-    ) {
+    startSwitchNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.networkStatus = 'switching';
       state.networkTarget = action.payload;
     },
-    switchNetworkSuccess(
-      state: IVaultState,
-      action: PayloadAction<INetworkWithKind>
-    ) {
+    switchNetworkSuccess(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
       state.networkStatus = 'idle';
       state.networkTarget = undefined;

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Modal, PrimaryButton, SecondaryButton } from 'components/index';
@@ -10,10 +11,9 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { setIsSwitchingAccount } from 'state/vault';
-import { INetworkWithKind } from 'state/vault/types';
 
 interface ISetActiveAccountModalProps {
-  selectedNetwork: { chain: string; network: INetworkWithKind };
+  selectedNetwork: INetwork;
   setIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
 }

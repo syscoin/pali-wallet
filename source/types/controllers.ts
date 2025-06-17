@@ -1,11 +1,11 @@
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import {
   PaliEvents,
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 import { IDApp } from 'state/dapp/types';
-import { INetworkWithKind } from 'state/vault/types';
 import { IOmmitedAccount } from 'state/vault/types';
 
 export interface IDAppController {
@@ -37,7 +37,7 @@ export interface IDAppController {
    */
   getAccount: (host: string) => IOmmitedAccount;
   getAll: () => { [host: string]: IDApp };
-  getNetwork: () => INetworkWithKind;
+  getNetwork: () => INetwork;
   getState: () => any;
   /**
    * Update state and emit events to all connected dApps

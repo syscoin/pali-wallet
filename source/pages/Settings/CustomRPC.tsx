@@ -8,7 +8,11 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { validateEthRpc, validateSysRpc } from '@pollum-io/sysweb3-network';
+import {
+  validateEthRpc,
+  validateSysRpc,
+  INetworkType,
+} from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Button, Layout, Tooltip, Icon } from 'components/index';
@@ -37,7 +41,7 @@ const CustomRPCView = () => {
   const [errorModalMessage, setErrorModalMessage] = useState<string>('');
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(() => {
     if (state?.isEditing && state?.selected) {
-      return state.selected.kind === 'utxo';
+      return state.selected.kind === INetworkType.Syscoin;
     }
     return Boolean(isSyscoinSelected);
   });
@@ -804,7 +808,8 @@ const CustomRPCView = () => {
                 chainId={currentNetwork.chainId || 0}
                 size={32}
                 networkKind={
-                  currentNetwork.kind || (isSyscoinRpc ? 'utxo' : 'evm')
+                  currentNetwork.kind ||
+                  (isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum)
                 }
                 className="flex-shrink-0 ring-2 ring-white shadow-md rounded-full transform group-hover:scale-110 transition-transform duration-300"
               />
@@ -816,14 +821,14 @@ const CustomRPCView = () => {
                   {currentNetwork.label || 'Unknown Network'}
                 </span>
                 <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0">
-                  {currentNetwork.kind === 'utxo' || isSyscoinRpc
+                  {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                     ? currentNetwork.slip44 || currentNetwork.chainId
                     : currentNetwork.chainId}
                 </span>
               </div>
               <div className="text-sm text-gray-700 mt-1 font-medium group-hover:text-gray-900 transition-colors duration-200">
                 ${currentNetwork.currency.toUpperCase()} •{' '}
-                {currentNetwork.kind === 'utxo' || isSyscoinRpc
+                {currentNetwork.kind === INetworkType.Syscoin || isSyscoinRpc
                   ? 'UTXO Network'
                   : 'EVM Network'}
               </div>

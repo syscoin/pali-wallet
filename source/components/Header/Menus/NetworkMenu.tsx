@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {
@@ -21,8 +22,6 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
 import { startSwitchNetwork, switchNetworkError } from 'state/vault';
-import { INetworkWithKind } from 'state/vault/types';
-import { NetworkType } from 'utils/types';
 
 const GlobeIcon = memo(() => (
   <Icon
@@ -40,12 +39,10 @@ CheckIcon.displayName = 'CheckIcon';
 
 interface INetworkComponent {
   setActiveAccountModalIsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setSelectedNetwork: React.Dispatch<
-    React.SetStateAction<{ chain: string; network: INetworkWithKind }>
-  >;
+  setSelectedNetwork: React.Dispatch<React.SetStateAction<INetwork>>;
 }
 
-const customSort = (a: INetworkWithKind, b: INetworkWithKind) => {
+const customSort = (a: INetwork, b: INetwork) => {
   const order = { 570: 2, 57: 1 };
 
   return (order[b.chainId] || 0) - (order[a.chainId] || 0);
@@ -81,12 +78,14 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
 
   const isNetworkChanging = networkStatus === 'switching';
-  const networkType = isBitcoinBased ? NetworkType.UTXO : NetworkType.EVM;
+  const networkType = isBitcoinBased
+    ? INetworkType.Syscoin
+    : INetworkType.Ethereum;
 
   const bgColor =
-    networkType === NetworkType.UTXO ? 'bg-brand-pink' : 'bg-brand-blue';
+    networkType === INetworkType.Syscoin ? 'bg-brand-pink' : 'bg-brand-blue';
 
-  const activeNetworkValidator = (currentNetwork: INetworkWithKind): boolean =>
+  const activeNetworkValidator = (currentNetwork: INetwork): boolean =>
     Boolean(
       activeNetwork.chainId === currentNetwork.chainId &&
         activeNetwork.url === currentNetwork.url &&
@@ -96,11 +95,10 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { navigate } = useUtils();
 
   const handleChangeNetwork = async (
-    network: INetworkWithKind,
-    chain: string,
+    network: INetwork,
     closeMenu?: () => void
   ) => {
-    setSelectedNetwork({ network, chain });
+    setSelectedNetwork(network);
 
     // Check if user is trying to switch to the same network that's already active
     if (activeNetworkValidator(network)) {
@@ -175,7 +173,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               <ChainIcon
                 chainId={activeNetwork.chainId}
                 size={20}
-                networkKind={isBitcoinBased ? 'utxo' : 'evm'}
+                networkKind={
+                  isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum
+                }
                 className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
               />
             </div>
@@ -285,7 +285,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
                           {Object.values(networks.syscoin).map(
-                            (currentNetwork: INetworkWithKind) => (
+                            (currentNetwork: INetwork) => (
                               <li
                                 key={uniqueId()}
                                 className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 

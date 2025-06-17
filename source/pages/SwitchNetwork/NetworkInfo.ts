@@ -1,23 +1,24 @@
 import React from 'react';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import {
   EthChainDarkBlueSvg,
   PinkBitcoinSvg,
   RolluxChainWhiteSvg,
   SysChainWhiteSvg,
 } from 'components/Icon/Icon';
-import { NetworkType } from 'utils/types';
 
 interface INetworkInfo {
   connectedColor: string;
-  connectedNetwork: NetworkType;
+  connectedNetwork: INetworkType;
   leftLogo: React.ComponentType<{
     className?: string;
     style?: React.CSSProperties;
   }>;
   networkDescription: string;
   networkNeedsChangingColor: string;
-  networkThatNeedsChanging: NetworkType;
+  networkThatNeedsChanging: INetworkType;
   rightLogo: React.ComponentType<{
     className?: string;
     style?: React.CSSProperties;
@@ -38,8 +39,8 @@ export const useNetworkInfo = ({
   selectedNetwork?: string;
 }): INetworkInfo => {
   const utxoNetwork: INetworkInfo = {
-    connectedNetwork: NetworkType.UTXO,
-    networkThatNeedsChanging: NetworkType.EVM,
+    connectedNetwork: INetworkType.Syscoin,
+    networkThatNeedsChanging: INetworkType.Ethereum,
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',
@@ -49,8 +50,8 @@ export const useNetworkInfo = ({
   };
 
   const evmNetworkInfo: INetworkInfo = {
-    connectedNetwork: NetworkType.EVM,
-    networkThatNeedsChanging: NetworkType.UTXO,
+    connectedNetwork: INetworkType.Ethereum,
+    networkThatNeedsChanging: INetworkType.Syscoin,
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
@@ -62,7 +63,8 @@ export const useNetworkInfo = ({
   let value: any;
 
   if (isChanging) {
-    value = selectedNetwork === 'UTXO' ? evmNetworkInfo : utxoNetwork;
+    value =
+      selectedNetwork === INetworkType.Syscoin ? evmNetworkInfo : utxoNetwork;
   } else {
     value = isBitcoinBased ? utxoNetwork : evmNetworkInfo;
   }

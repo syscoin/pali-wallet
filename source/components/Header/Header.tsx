@@ -3,10 +3,11 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { INetworkWithKind } from 'state/vault/types';
 
 import { AccountHeader } from '.';
 import { GeneralMenu, NetworkMenu } from './Menus';
@@ -41,8 +42,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   });
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [selectedNetwork, setSelectedNetwork] = useState<{
-    chain: string;
-    network: INetworkWithKind;
+    network: INetwork;
   }>();
 
   useEffect(() => {

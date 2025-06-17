@@ -121,7 +121,7 @@ export const ConnectWallet = () => {
                 case KeyringAccountType.Ledger:
                   accountList = accountList.filter((acc) => {
                     const accountIsUtxo =
-                      acc.originNetwork?.kind === 'utxo' ||
+                      acc.originNetwork?.kind === 'syscoin' ||
                       acc.originNetwork?.isBitcoinBased === true;
                     return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
                   });

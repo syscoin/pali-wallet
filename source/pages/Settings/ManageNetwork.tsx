@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import {
@@ -15,7 +16,6 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { INetworkWithKind } from 'state/vault/types';
 import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
@@ -47,7 +47,7 @@ const ManageNetworkView = () => {
   }: {
     chain: INetworkType;
     isDefault: boolean;
-    selected: INetworkWithKind;
+    selected: INetwork;
   }) => {
     navigate('/settings/networks/custom-rpc', {
       state: { selected, chain, isDefault, isEditing: true },
@@ -60,7 +60,7 @@ const ManageNetworkView = () => {
         <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
           UTXO
         </p>
-        {Object.values(networks.syscoin).map((network: INetworkWithKind) => (
+        {Object.values(networks.syscoin).map((network: INetwork) => (
           <li
             key={
               network.key

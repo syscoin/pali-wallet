@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
@@ -103,7 +104,7 @@ export const ChangeAccount = () => {
                   accountList = accountList.filter((acc) => {
                     // Check if account was created on a compatible network type
                     const accountIsUtxo =
-                      acc.originNetwork?.kind === 'utxo' ||
+                      acc.originNetwork?.kind === INetworkType.Syscoin ||
                       acc.originNetwork?.isBitcoinBased === true;
                     return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
                   });

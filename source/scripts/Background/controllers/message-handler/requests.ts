@@ -1,13 +1,13 @@
 import { ethErrors } from 'helpers/errors';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { setIsDappAskingToChangeNetwork } from 'state/vault';
-import { INetworkWithKind } from 'state/vault/types';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { CHAIN_IDS } from 'utils/constants';
 import { areStringsPresent } from 'utils/format';
@@ -397,7 +397,7 @@ export const methodRequest = async (
     const networks = store.getState().vault.networks;
 
     const newChainValue = getNetworkChain(prefix?.toLowerCase() === 'sys');
-    const findCorrectNetwork: INetworkWithKind =
+    const findCorrectNetwork: INetwork =
       networks[newChainValue.toLowerCase()][chain];
     if (!findCorrectNetwork) {
       throw cleanErrorStack(
@@ -503,7 +503,7 @@ export const methodRequest = async (
 
 export const enable = async (
   host: string,
-  chain: string,
+  chain: INetworkType,
   chainId: number,
   isSyscoinDapp = false,
   isHybridDapp = true

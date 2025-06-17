@@ -1,5 +1,7 @@
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 interface IChainInfo {
-  chain: string;
+  chain: INetworkType;
   chainId: number;
   chainSlug?: string;
   explorers?: Array<{
