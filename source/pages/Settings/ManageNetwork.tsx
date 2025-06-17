@@ -73,7 +73,7 @@ const ManageNetworkView = () => {
               <ChainIcon
                 chainId={network.chainId}
                 size={24}
-                networkKind="utxo"
+                networkKind={INetworkType.Syscoin}
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">
@@ -167,7 +167,7 @@ const ManageNetworkView = () => {
               <ChainIcon
                 chainId={network.chainId}
                 size={24}
-                networkKind="evm"
+                networkKind={INetworkType.Ethereum}
                 className="flex-shrink-0"
               />
               <div className="flex flex-col items-start">

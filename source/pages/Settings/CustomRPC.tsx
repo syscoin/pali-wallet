@@ -662,7 +662,7 @@ const CustomRPCView = () => {
         <ChainIcon
           chainId={chain.chainId}
           size={size}
-          networkKind="evm"
+          networkKind={INetworkType.Ethereum}
           iconName={chain.icon || chain.chainSlug}
           className="flex-shrink-0"
         />

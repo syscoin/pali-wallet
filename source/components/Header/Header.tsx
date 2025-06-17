@@ -41,9 +41,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     title: '',
   });
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [selectedNetwork, setSelectedNetwork] = useState<{
-    network: INetwork;
-  }>();
+  const [selectedNetwork, setSelectedNetwork] = useState<INetwork>();
 
   useEffect(() => {
     if (error) {

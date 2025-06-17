@@ -57,7 +57,7 @@ export interface EnableLegacyPali {
 //TODO: switch to SafeEventEmitter
 export class BaseProvider extends EventEmitter {
   public wallet: string;
-  public chainType: string;
+  public chainType: INetworkType;
   protected _sentWarnings: SentWarningsState = {
     // methods
     enable: false,

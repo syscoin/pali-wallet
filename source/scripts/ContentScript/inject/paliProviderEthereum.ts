@@ -1,5 +1,7 @@
 import { ethers } from 'ethers';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import {
   BaseProvider,
   UnvalidatedJsonRpcRequest,
@@ -56,7 +58,7 @@ export class PaliInpageProviderEth extends BaseProvider {
   private _initializationPromise: Promise<void> | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
-    super('ethereum', maxEventListeners, wallet);
+    super(INetworkType.Ethereum, maxEventListeners, wallet);
     this._metamask = this._getExperimentalApi();
     this._sendSync = this._sendSync.bind(this);
     this.send = this.send.bind(this);

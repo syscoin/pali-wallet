@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
@@ -37,7 +38,7 @@ export class PaliInpageProviderSys extends BaseProvider {
   private _isInitializing = false;
   private _initializationPromise: Promise<void> | null = null;
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
-    super('syscoin', maxEventListeners, wallet);
+    super(INetworkType.Syscoin, maxEventListeners, wallet);
     this._sys = this._getSysAPI();
     // Private state
     this._sysState = {

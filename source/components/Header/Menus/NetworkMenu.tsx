@@ -294,7 +294,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 onClick={() => {
                                   handleChangeNetwork(
                                     currentNetwork,
-                                    'syscoin',
                                     menuprops.close
                                   );
                                 }}
@@ -308,7 +307,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     <ChainIcon
                                       chainId={currentNetwork.chainId}
                                       size={18}
-                                      networkKind="utxo"
+                                      networkKind={INetworkType.Syscoin}
                                       className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
                                     />
                                   </div>
@@ -372,7 +371,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                               onClick={() => {
                                 handleChangeNetwork(
                                   currentNetwork,
-                                  'ethereum',
                                   menuprops.close
                                 );
                               }}
@@ -386,7 +384,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                   <ChainIcon
                                     chainId={currentNetwork.chainId}
                                     size={18}
-                                    networkKind="evm"
+                                    networkKind={INetworkType.Ethereum}
                                     className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
                                   />
                                 </div>
