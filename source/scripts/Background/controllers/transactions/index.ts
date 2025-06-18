@@ -105,7 +105,8 @@ const TransactionsManager = (): ITransactionsManager => {
       return result;
     } catch (error) {
       console.error('Transaction polling error:', error);
-      return error;
+      // Return empty array instead of error object to prevent iteration issues
+      return [];
     }
   };
   const clearCache = () => {

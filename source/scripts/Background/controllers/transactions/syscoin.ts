@@ -18,9 +18,12 @@ const SysTransactionController = (): ISysTransactionsController => {
       const { transactions }: { transactions: ISysTransaction[] } =
         await fetchBackendAccountCached(networkUrl, xpub, requestOptions, true);
 
-      return transactions;
+      // Ensure we always return an array, even if transactions is falsy
+      return Array.isArray(transactions) ? transactions : [];
     } catch (error) {
-      return error;
+      console.error('Error fetching transactions by xpub:', error);
+      // Return empty array instead of error object to prevent iteration issues
+      return [];
     }
   };
 
@@ -35,11 +38,19 @@ const SysTransactionController = (): ISysTransactionsController => {
 
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
+    // Ensure syscoinUserTransactions is always an array
     const syscoinUserTransactions = clone(
-      userTransactions[TransactionsType.Syscoin][activeNetwork.chainId]
+      userTransactions?.[TransactionsType.Syscoin]?.[activeNetwork.chainId] ||
+        []
     ) as ISysTransaction[];
 
-    const mergedArrays = [...getSysTxs, ...syscoinUserTransactions];
+    // Ensure both values are arrays before spreading
+    const validGetSysTxs = Array.isArray(getSysTxs) ? getSysTxs : [];
+    const validSyscoinUserTransactions = Array.isArray(syscoinUserTransactions)
+      ? syscoinUserTransactions
+      : [];
+
+    const mergedArrays = [...validGetSysTxs, ...validSyscoinUserTransactions];
 
     return treatDuplicatedTxs(mergedArrays) as ISysTransaction[];
   };
