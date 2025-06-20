@@ -241,12 +241,12 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               />
             </div>
             <span className="relative z-10 font-light group-hover:font-medium group-hover:text-white transition-all duration-300">
-              {networkDisplayType}
+              {activeNetwork.label}
             </span>
             <span
               className={`relative z-10 px-[6px] py-[2px] text-xs font-medium text-white rounded-full ${bgColor} group-hover:shadow-md transform group-hover:scale-105 transition-all duration-300`}
             >
-              {activeNetwork.label}
+              {networkDisplayType}
             </span>
             {isNetworkChanging && (
               <div className="relative z-10">

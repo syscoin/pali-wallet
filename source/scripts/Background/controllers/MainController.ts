@@ -246,6 +246,7 @@ class MainController {
   // Switch active keyring based on network
   private async switchActiveKeyring(network: INetwork): Promise<void> {
     const slip44 = this.getSlip44ForNetwork(network);
+    let hasExistingVaultState = false;
 
     // Save current vault state before switching if we're changing slip44
     if (slip44 !== this.activeSlip44) {
@@ -264,11 +265,14 @@ class MainController {
 
       // Load vault state for target slip44 (lazy loading with cache)
       const targetVaultState = await vaultCache.getSlip44Vault(slip44);
+      hasExistingVaultState = !!targetVaultState;
+
       if (targetVaultState) {
         console.log(
           `[MainController] Loaded vault state for slip44 ${slip44} from cache`
         );
-        // Set as active in cache and dispatch to Redux
+
+        // Set as active in cache and dispatch vault state to Redux
         vaultCache.setActiveSlip44(slip44);
         store.dispatch(vaultRehydrate(targetVaultState));
       } else {
@@ -278,6 +282,12 @@ class MainController {
         // Set as active even without existing vault - will be created
         vaultCache.setActiveSlip44(slip44);
       }
+
+      // This prevents slip44 mismatch errors regardless of cached vs new vault state
+      console.log(
+        `[MainController] Ensuring Redux vault state has correct network (slip44=${network.slip44})`
+      );
+      store.dispatch(setNetworkChange({ activeNetwork: network }));
     }
 
     // Get the current active keyring before switching
@@ -311,16 +321,31 @@ class MainController {
           } to ${slip44}`
         );
         previousKeyring.transferSessionTo(targetKeyring);
-        if (createdNewKeyring) {
-          const account =
-            (await targetKeyring.createKeyringVaultFromSession()) as IKeyringAccountState;
-          console.log('[MainController] new keyring account', account);
+
+        // Only create accounts if no existing vault state was rehydrated
+        if (!hasExistingVaultState) {
+          // No existing vault state - create first account
+          // Session data was already transferred, so we can create the first account directly
+          const account = await targetKeyring.createFirstAccount();
+          console.log('[MainController] Created new keyring account', account);
           store.dispatch(
             addAccountToStore({
               account: account,
               accountType: KeyringAccountType.HDAccount,
             })
           );
+          // This ensures setSignerNetwork() finds the correct account
+          store.dispatch(
+            setActiveAccount({
+              id: account.id,
+              type: KeyringAccountType.HDAccount,
+            })
+          );
+        } else {
+          console.log(
+            '[MainController] Using existing accounts from rehydrated vault state'
+          );
+          // Note: Rehydrated vault state should already have correct activeAccount
         }
         console.log(
           `[MainController] Session transferred and previous keyring locked`
@@ -825,27 +850,35 @@ class MainController {
   public async createWallet(password: string, phrase: string): Promise<void> {
     store.dispatch(setIsLoadingBalances(true));
     try {
-      const account = await this.getActiveKeyring().initializeWalletSecurely(
-        phrase,
-        password
-      );
-      // Update global settings to mark that we now have an encrypted vault
-      store.dispatch(setHasEncryptedVault(true));
+      const keyring = this.getActiveKeyring();
 
-      store.dispatch(setIsLoadingBalances(false));
-      store.dispatch(
-        setActiveAccount({
-          id: account.id,
-          type: KeyringAccountType.HDAccount,
-        })
-      );
+      // This now uses the separated approach internally:
+      // 1. initializeSession() - creates session data only
+      // 2. createFirstAccount() - creates account without signer setup
+      const account = await keyring.initializeWalletSecurely(phrase, password);
+
+      // Add account to Redux state FIRST (before signer setup)
       store.dispatch(
         addAccountToStore({
           account: account,
           accountType: KeyringAccountType.HDAccount,
         })
       );
+      store.dispatch(
+        setActiveAccount({
+          id: account.id,
+          type: KeyringAccountType.HDAccount,
+        })
+      );
+
+      // Now account exists in vault state, so signer setup will work properly
+      // (This is handled in the session transfer logic for network switching)
+
+      // Update global settings to mark that we now have an encrypted vault
+      store.dispatch(setHasEncryptedVault(true));
+      store.dispatch(setIsLoadingBalances(false));
       store.dispatch(setLastLogin());
+
       this.getLatestUpdateForCurrentAccount(false);
       // Fetch fresh fiat prices immediately after wallet creation
       this.setFiat().catch((error) =>
