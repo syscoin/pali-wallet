@@ -11,7 +11,7 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import store from 'state/store';
-import { resetNetworkStatus } from 'state/vault';
+import { resetNetworkStatus } from 'state/vaultGlobal';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -21,10 +21,10 @@ export const ChainErrorPage = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const networkTarget = useSelector(
-    (state: RootState) => state.vault.networkTarget
+    (state: RootState) => state.vaultGlobal.networkTarget
   );
   const networkStatus = useSelector(
-    (state: RootState) => state.vault.networkStatus
+    (state: RootState) => state.vaultGlobal.networkStatus
   );
 
   // Use the target network if we're trying to switch, otherwise use active network

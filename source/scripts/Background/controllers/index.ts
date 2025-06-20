@@ -1,7 +1,6 @@
 import { AnyAction, Store } from 'redux';
 
-import { IWalletState, KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IDAppState } from 'state/dapp/types';
@@ -11,13 +10,13 @@ import store from 'state/store';
 import {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
-  setAdvancedSettings,
   setIsLastTxConfirmed,
   setNetwork,
   setAccountAssets,
 } from 'state/vault';
 import { selectActiveAccount } from 'state/vault/selectors';
-import { IVaultState, TransactionsType } from 'state/vault/types';
+import { IVaultState, IGlobalState, TransactionsType } from 'state/vault/types';
+import { setAdvancedSettings } from 'state/vaultGlobal';
 import { IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
@@ -42,29 +41,13 @@ export interface IMasterController {
   wallet: MainController;
 }
 
-export const vaultToWalletState = (vaultState: IVaultState) => {
-  // With the new architecture, accounts are already clean IKeyringAccountState objects
-  // stored in the correct structure - no transformation needed
-  const accounts = vaultState.accounts;
-
-  const sysweb3Wallet: IWalletState = {
-    accounts,
-    activeAccountId: vaultState.activeAccount.id,
-    activeAccountType: vaultState.activeAccount.type,
-    networks: vaultState.networks,
-    activeNetwork: vaultState.activeNetwork,
-  };
-  const activeChain: INetworkType = vaultState.activeChain;
-
-  return { wallet: sysweb3Wallet, activeChain };
-};
-
 const MasterController = (
   externalStore: Store<
     {
       dapp: IDAppState;
       price: IPriceState;
       vault: IVaultState;
+      vaultGlobal: IGlobalState;
     },
     AnyAction
   >
@@ -156,7 +139,7 @@ const MasterController = (
         setAccountTypeInAccountsObject(KeyringAccountType.Ledger)
       );
     }
-    if (externalStore.getState().vault?.advancedSettings === undefined) {
+    if (externalStore.getState().vaultGlobal?.advancedSettings === undefined) {
       externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'refresh',
@@ -182,13 +165,8 @@ const MasterController = (
         })
       );
     }
-
-    // Note: Removed old transaction migration logic since the new architecture
-    // handles this differently with separated accountTransactions structure
-
-    const walletState = vaultToWalletState(externalStore.getState().vault);
     dapp = Object.freeze(DAppController());
-    wallet = new MainController(walletState);
+    wallet = new MainController();
 
     // Initialize startup state if wallet is already unlocked
     wallet.initializeStartupState();

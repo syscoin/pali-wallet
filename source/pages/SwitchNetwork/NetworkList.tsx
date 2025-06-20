@@ -8,8 +8,7 @@ import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import store, { RootState } from 'state/store';
-import { setOpenDAppErrorModal } from 'state/vault';
+import { RootState } from 'state/store';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -20,8 +19,11 @@ type currentNetwork = {
 
 export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { controllerEmitter } = useController();
-  const { isBitcoinBased, networks, isDappAskingToChangeNetwork } = useSelector(
+  const { isBitcoinBased, networks } = useSelector(
     (state: RootState) => state.vault
+  );
+  const { isDappAskingToChangeNetwork } = useSelector(
+    (state: RootState) => state.vaultGlobal
   );
   const { navigate } = useUtils();
 
@@ -53,7 +55,6 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const handleChangeNetwork = async (network: INetwork) => {
     try {
       setIsLoading(true);
-      store.dispatch(setOpenDAppErrorModal(false));
 
       // Wait for the network change to complete
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);

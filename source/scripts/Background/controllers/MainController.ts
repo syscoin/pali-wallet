@@ -7,8 +7,6 @@ import {
   KeyringManager,
   IKeyringAccountState,
   KeyringAccountType,
-  IWalletState,
-  initialWalletState,
   CustomJsonRpcProvider,
 } from '@pollum-io/sysweb3-keyring';
 import {
@@ -30,39 +28,43 @@ import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import {
-  forgetWallet as forgetWalletState,
-  setActiveAccount,
-  setLastLogin,
   createAccount as addAccountToStore,
-  setNetwork,
-  setNetworkChange,
-  removeNetwork as removeNetworkFromStore,
-  setStoreError,
-  setChangingConnectedAccount,
-  setHasEthProperty as setEthProperty,
-  setIsLoadingTxs,
+  forgetWallet,
+  removeNetwork,
+  setAccountPropertyByIdAndType,
+  setActiveAccount,
+  setTransactionStatusToAccelerated,
+  setTransactionStatusToCanceled,
+  setFaucetModalState,
+  setIsLastTxConfirmed,
   setIsLoadingAssets,
-  setIsLastTxConfirmed as setIsLastTxConfirmedToState,
   setIsLoadingBalances,
   setIsLoadingNfts,
-  setAccountPropertyByIdAndType,
+  setIsLoadingTxs,
+  setMultipleTransactionToState,
+  setNetworkChange,
+  setSingleTransactionToState,
+  rehydrate as vaultRehydrate,
+  setNetwork,
   setAccountAssets,
   setAccountsWithLabelEdited,
-  setAdvancedSettings as setSettings,
-  setMultipleTransactionToState,
-  setSingleTransactionToState,
-  setTransactionStatusToCanceled,
-  setTransactionStatusToAccelerated,
-  setOpenDAppErrorModal,
-  setFaucetModalState as setShouldShowFaucetModal,
-  setCoinsList,
-  startSwitchNetwork,
-  switchNetworkError,
-  resetNetworkStatus,
-  switchNetworkSuccess,
-  setIsSwitchingAccount,
 } from 'state/vault';
 import { IOmmitedAccount, TransactionsType } from 'state/vault/types';
+import vaultCache from 'state/vaultCache';
+import {
+  setAdvancedSettings,
+  setCoinsList,
+  setHasEthProperty,
+  setHasEncryptedVault,
+  setLastLogin,
+  resetNetworkStatus,
+  setIsSwitchingAccount,
+  setChangingConnectedAccount,
+  startSwitchNetwork,
+  switchNetworkError,
+  switchNetworkSuccess,
+  setError as setStoreError,
+} from 'state/vaultGlobal';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -133,7 +135,7 @@ class MainController {
   // Add a property to track account switching state
   private isAccountSwitching = false;
 
-  constructor(walletState: any) {
+  constructor() {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
 
@@ -160,8 +162,7 @@ class MainController {
         );
       } else {
         // Fallback to checking activeNetwork or isBitcoinBased
-        const activeNetwork =
-          walletState?.activeNetwork || storeState?.activeNetwork;
+        const activeNetwork = storeState?.activeNetwork;
 
         if (activeNetwork && activeNetwork.slip44) {
           initialSlip44 = activeNetwork.slip44;
@@ -187,7 +188,11 @@ class MainController {
 
     // Initialize the appropriate keyring based on slip44
     this.activeSlip44 = initialSlip44;
-    this.initializeKeyring(this.activeSlip44, walletState);
+
+    // Initialize vault cache with the active slip44
+    vaultCache.setActiveSlip44(initialSlip44);
+
+    this.initializeKeyring(this.activeSlip44);
 
     this.assetsManager = AssetsManager();
     this.transactionsManager = TransactionsManager();
@@ -204,17 +209,15 @@ class MainController {
   }
 
   // Initialize a keyring for a specific slip44
-  private initializeKeyring(slip44: number, walletState?: any): KeyringManager {
+  private initializeKeyring(slip44: number): KeyringManager {
     if (!this.keyrings.has(slip44)) {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      const keyring = new KeyringManager({
-        ...walletState,
-        slip44,
-      });
+      const keyring = new KeyringManager();
       // Set up storage access for each keyring
       keyring.setStorage(chrome.storage.local);
+      keyring.setVaultStateGetter(() => store.getState().vault);
       this.keyrings.set(slip44, keyring);
     }
     return this.keyrings.get(slip44)!;
@@ -244,19 +247,45 @@ class MainController {
   private async switchActiveKeyring(network: INetwork): Promise<void> {
     const slip44 = this.getSlip44ForNetwork(network);
 
+    // Save current vault state before switching if we're changing slip44
+    if (slip44 !== this.activeSlip44) {
+      console.log(
+        `[MainController] Switching keyring from slip44 ${this.activeSlip44} to ${slip44}`
+      );
+
+      // Save current vault state to cache and storage
+      const currentState = store.getState().vault;
+      if (currentState && this.activeSlip44 !== null) {
+        console.log(
+          `[MainController] Saving vault state for slip44 ${this.activeSlip44}`
+        );
+        await vaultCache.setSlip44Vault(this.activeSlip44, currentState);
+      }
+
+      // Load vault state for target slip44 (lazy loading with cache)
+      const targetVaultState = await vaultCache.getSlip44Vault(slip44);
+      if (targetVaultState) {
+        console.log(
+          `[MainController] Loaded vault state for slip44 ${slip44} from cache`
+        );
+        // Set as active in cache and dispatch to Redux
+        vaultCache.setActiveSlip44(slip44);
+        store.dispatch(vaultRehydrate(targetVaultState));
+      } else {
+        console.log(
+          `[MainController] No existing vault state for slip44 ${slip44}, will create new`
+        );
+        // Set as active even without existing vault - will be created
+        vaultCache.setActiveSlip44(slip44);
+      }
+    }
+
     // Get the current active keyring before switching
     const previousKeyring = this.keyrings.get(this.activeSlip44);
     const wasUnlocked = previousKeyring?.isUnlocked() || false;
 
     // If switching to a different slip44 and current keyring is unlocked, we'll need to transfer session
     const needsSessionTransfer = slip44 !== this.activeSlip44 && wasUnlocked;
-
-    // Update our internal active slip44
-    if (slip44 !== this.activeSlip44) {
-      console.log(
-        `[MainController] Switching keyring from slip44 ${this.activeSlip44} to ${slip44}`
-      );
-    }
 
     // Ensure the target keyring exists
     let targetKeyring = this.keyrings.get(slip44);
@@ -277,7 +306,9 @@ class MainController {
     if (needsSessionTransfer && previousKeyring) {
       try {
         console.log(
-          `[MainController] Transferring session from slip44 ${previousKeyring.wallet.activeNetwork.slip44} to ${slip44}`
+          `[MainController] Transferring session from slip44 ${
+            previousKeyring.getNetwork().chainId
+          } to ${slip44}`
         );
         previousKeyring.transferSessionTo(targetKeyring);
         if (createdNewKeyring) {
@@ -334,38 +365,12 @@ class MainController {
       `[MainController] Creating keyring on demand for network: ${network}`
     );
 
-    // Get wallet state template from an existing keyring or use defaults
-    const existingKeyring =
-      this.keyrings.size > 0 ? Array.from(this.keyrings.values())[0] : null;
-
-    // Create wallet state for the new keyring - minimal state needed
-    const walletStateForNewKeyring = existingKeyring
-      ? {
-          // Copy structure from existing keyring but reset account-specific data
-          accounts: {
-            [KeyringAccountType.HDAccount]: {},
-            [KeyringAccountType.Imported]: {},
-            [KeyringAccountType.Trezor]: {},
-            [KeyringAccountType.Ledger]: {},
-          },
-          activeAccountId: 0,
-          activeAccountType: KeyringAccountType.HDAccount,
-          networks: existingKeyring.wallet.networks,
-          activeNetwork: network as any,
-        }
-      : {
-          ...initialWalletState,
-          activeNetwork: network as any,
-        };
-
     // Create new keyring with the wallet state
-    const keyring = new KeyringManager({
-      wallet: walletStateForNewKeyring,
-      activeChain: network.kind,
-    });
+    const keyring = new KeyringManager();
 
     // Set up storage access - this gives it access to the global encrypted vault
     keyring.setStorage(chrome.storage.local);
+    keyring.setVaultStateGetter(() => store.getState().vault);
 
     console.log(
       `[MainController] Created keyring for network: ${network} with access to global vault`
@@ -386,10 +391,6 @@ class MainController {
   }
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
-  public get wallet() {
-    return this.getActiveKeyring().wallet;
-  }
-
   public get syscoinTransaction() {
     return this.getActiveKeyring().syscoinTransaction;
   }
@@ -459,38 +460,6 @@ class MainController {
     return this.getActiveKeyring().logout();
   }
 
-  private updateAccountLabel(
-    label: string,
-    accountId: number,
-    accountType: KeyringAccountType
-  ) {
-    return this.getActiveKeyring().updateAccountLabel(
-      label,
-      accountId,
-      accountType
-    );
-  }
-
-  private removeNetwork(
-    chain: INetworkType,
-    chainId: number,
-    rpcUrl: string,
-    label: string,
-    key?: string
-  ) {
-    return this.getActiveKeyring().removeNetwork(
-      chain,
-      chainId,
-      rpcUrl,
-      label,
-      key
-    );
-  }
-
-  private addCustomNetwork(network: any) {
-    return this.getActiveKeyring().addCustomNetwork(network);
-  }
-
   private updateNetworkConfig(network: any) {
     return this.getActiveKeyring().updateNetworkConfig(network);
   }
@@ -502,8 +471,6 @@ class MainController {
     // Return the current wallet state from the keyring
     return {
       success: true,
-      wallet: this.getActiveKeyring().wallet,
-      activeChain: this.getActiveKeyring().activeChain,
     };
   }
 
@@ -642,7 +609,7 @@ class MainController {
         }
       } catch (fetchError) {
         console.error('Failed to fetch or cache coinsList:', fetchError);
-        const coinsListState = store.getState().vault.coinsList;
+        const coinsListState = store.getState().vaultGlobal.coinsList;
         if (coinsListState?.length > 0) {
           coinsList = coinsListState;
           console.log(
@@ -652,7 +619,7 @@ class MainController {
       }
 
       if (!coinsList) {
-        coinsList = store.getState().vault.coinsList;
+        coinsList = store.getState().vaultGlobal.coinsList;
         if (!coinsList || coinsList.length === 0) {
           logError('setFiat: coinsList is empty and could not be fetched.', '');
         }
@@ -754,37 +721,38 @@ class MainController {
   }
 
   public setHasEthProperty(exist: boolean) {
-    store.dispatch(setEthProperty(exist));
+    store.dispatch(setHasEthProperty(exist));
   }
 
   public async setAdvancedSettings(
     advancedProperty: string,
     isActive: boolean
   ) {
-    // Update Redux state
-    store.dispatch(setSettings({ advancedProperty, isActive }));
-
-    // Also update global settings
-    const currentSettings = await this.getGlobalSettings();
-    await this.updateGlobalSettings({
-      advancedSettings: {
-        ...currentSettings.advancedSettings,
-        [advancedProperty]: isActive,
-      },
-    });
+    // Update Redux state - no need for separate global settings storage
+    store.dispatch(setAdvancedSettings({ advancedProperty, isActive }));
   }
 
   public async forgetWallet(pwd: string) {
     this.forgetMainWallet(pwd);
 
-    // Clear global settings
-    await this.setGlobalSettings({
-      hasEncryptedVault: false,
-      advancedSettings: {},
-      coinsList: [],
-    });
+    // Emergency save any dirty vaults before clearing
+    await vaultCache.emergencySave();
 
-    store.dispatch(forgetWalletState());
+    // Clear vault cache
+    vaultCache.clearCache();
+
+    // Clear global settings via Redux
+    store.dispatch(setHasEncryptedVault(false));
+    store.dispatch(
+      setAdvancedSettings({
+        advancedProperty: 'refresh',
+        isActive: false,
+        isFirstTime: true,
+      })
+    );
+    store.dispatch(setCoinsList([]));
+
+    store.dispatch(forgetWallet());
     store.dispatch(setLastLogin());
   }
 
@@ -862,7 +830,7 @@ class MainController {
         password
       );
       // Update global settings to mark that we now have an encrypted vault
-      await this.updateGlobalSettings({ hasEncryptedVault: true });
+      store.dispatch(setHasEncryptedVault(true));
 
       store.dispatch(setIsLoadingBalances(false));
       store.dispatch(
@@ -896,6 +864,17 @@ class MainController {
   public lock() {
     const controller = getController();
     this.logout();
+
+    // Emergency save any dirty vaults before clearing cache
+    vaultCache.emergencySave().catch((error) => {
+      console.error(
+        '[MainController] Failed to emergency save on lock:',
+        error
+      );
+    });
+
+    // Clear vault cache on lock
+    vaultCache.clearCache();
 
     store.dispatch(setLastLogin());
 
@@ -1084,12 +1063,10 @@ class MainController {
     };
 
     const promiseWrapper = this.createCancellablePromise<{
-      activeChain: INetworkType;
       chainId: string;
       isBitcoinBased: boolean;
       network: INetwork;
       networkVersion: number;
-      wallet: IWalletState;
     }>((resolve, reject) => {
       completeNetwork.kind;
       this.setActiveNetworkLogic(completeNetwork, false, resolve, reject);
@@ -1098,12 +1075,8 @@ class MainController {
     this.currentPromise = promiseWrapper;
 
     promiseWrapper.promise
-      .then(async ({ wallet, activeChain }) => {
-        await this.handleNetworkChangeSuccess(
-          wallet,
-          activeChain,
-          completeNetwork
-        );
+      .then(async () => {
+        await this.handleNetworkChangeSuccess(completeNetwork);
       })
       .catch(this.handleNetworkChangeError);
 
@@ -1308,8 +1281,6 @@ class MainController {
         netValues.label === networkWithCustomParams.label
     );
 
-    this.addCustomNetwork(findCorrectNetworkValue);
-
     return findCorrectNetworkValue;
   }
 
@@ -1355,7 +1326,7 @@ class MainController {
     isFirstTime?: boolean
   ) {
     store.dispatch(
-      setIsLastTxConfirmedToState({ chainId, wasConfirmed, isFirstTime })
+      setIsLastTxConfirmed({ chainId, wasConfirmed, isFirstTime })
     );
   }
 
@@ -1364,8 +1335,6 @@ class MainController {
     accountId: number,
     accountType: KeyringAccountType
   ) {
-    this.updateAccountLabel(label, accountId, accountType);
-
     store.dispatch(
       setAccountsWithLabelEdited({
         label,
@@ -1382,11 +1351,7 @@ class MainController {
     label: string,
     key?: string
   ) {
-    store.dispatch(
-      removeNetworkFromStore({ chain, chainId, rpcUrl, label, key })
-    );
-
-    this.removeNetwork(chain, chainId, rpcUrl, label, key);
+    store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
   }
 
   public getRecommendedFee() {
@@ -1717,10 +1682,6 @@ class MainController {
     return state;
   }
 
-  public openDAppErrorModal() {
-    store.dispatch(setOpenDAppErrorModal(true));
-  }
-
   public updateAssetsFromCurrentAccount({
     isBitcoinBased,
     activeNetwork,
@@ -1796,6 +1757,8 @@ class MainController {
             store.dispatch(setIsLoadingAssets(false));
             resolve();
           } catch (error) {
+            // Ensure loading state is cleared on error
+            store.dispatch(setIsLoadingAssets(false));
             reject(error);
           }
         }
@@ -1870,6 +1833,8 @@ class MainController {
 
             resolve();
           } catch (error) {
+            // Ensure loading state is cleared on error
+            store.dispatch(setIsLoadingBalances(false));
             reject(error);
           }
         }
@@ -1978,7 +1943,7 @@ class MainController {
       }
     });
 
-    store.dispatch(switchNetworkSuccess(activeNetwork));
+    store.dispatch(switchNetworkSuccess());
 
     // Check if anything changed by comparing initial and final state
     const {
@@ -2036,7 +2001,7 @@ class MainController {
     chainId: number;
     isOpen: boolean;
   }) {
-    store.dispatch(setShouldShowFaucetModal({ chainId, isOpen }));
+    store.dispatch(setFaucetModalState({ chainId, isOpen }));
   }
 
   private handleStateChange(
@@ -2118,7 +2083,7 @@ class MainController {
     store.dispatch(setIsLoadingBalances(false));
     // Ensure we don't leave the network in switching state
     setTimeout(() => {
-      const currentStatus = store.getState().vault.networkStatus;
+      const currentStatus = store.getState().vaultGlobal.networkStatus;
       if (currentStatus === 'switching' || currentStatus === 'error') {
         console.log('switchNetwork: Forcing network status reset after error');
         store.dispatch(resetNetworkStatus());
@@ -2127,10 +2092,8 @@ class MainController {
   };
 
   private async configureNetwork(network: INetwork): Promise<{
-    activeChain: INetworkType;
     error?: any;
     success: boolean;
-    wallet: IWalletState;
   }> {
     let networkCallError: any = null;
     const MAX_RETRIES = 3;
@@ -2248,9 +2211,7 @@ class MainController {
     };
 
     try {
-      const { success, wallet, activeChain } = await this.setSignerNetwork(
-        network
-      );
+      const { success } = await this.setSignerNetwork(network);
 
       if (success) {
         // Cancel any pending async operations before switching managers
@@ -2267,7 +2228,7 @@ class MainController {
           this.cancellablePromises.nftsPromise.cancel();
         }
 
-        return { success, wallet, activeChain };
+        return { success };
       } else {
         // setSignerNetwork failed but didn't throw an error
         // Try to get the actual error by making a test call
@@ -2282,8 +2243,6 @@ class MainController {
 
         return {
           success: false,
-          wallet: wallet || this.wallet,
-          activeChain: network.kind,
           error: networkCallError || new Error('Failed to configure network'),
         };
       }
@@ -2292,8 +2251,6 @@ class MainController {
       // Return with success: false and include the error
       return {
         success: false,
-        wallet: this.wallet,
-        activeChain: network.kind,
         error,
       };
     }
@@ -2301,36 +2258,28 @@ class MainController {
 
   private resolveNetworkConfiguration(
     resolve: (value: {
-      activeChain: INetworkType;
       chainId: string;
       isBitcoinBased: boolean;
       network: INetwork;
       networkVersion: number;
-      wallet: IWalletState;
     }) => void,
     {
-      activeChain,
       chainId,
       isBitcoinBased,
       network,
       networkVersion,
-      wallet,
     }: {
-      activeChain: INetworkType;
       chainId: string;
       isBitcoinBased: boolean;
       network: INetwork;
       networkVersion: number;
-      wallet: IWalletState;
     }
   ) {
     resolve({
-      activeChain,
       chainId,
       isBitcoinBased,
       network,
       networkVersion,
-      wallet,
     });
   }
   private bindMethods() {
@@ -2364,16 +2313,17 @@ class MainController {
     network: INetwork,
     cancelled: boolean,
     resolve: (value: {
-      activeChain: INetworkType;
       chainId: string;
       isBitcoinBased: boolean;
       network: INetwork;
       networkVersion: number;
-      wallet: IWalletState;
     }) => void,
     reject: (reason?: any) => void
   ) => {
-    if (store.getState().vault.networkStatus === 'switching' && !cancelled) {
+    if (
+      store.getState().vaultGlobal.networkStatus === 'switching' &&
+      !cancelled
+    ) {
       return;
     }
     store.dispatch(startSwitchNetwork(network));
@@ -2381,19 +2331,16 @@ class MainController {
 
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {
-      const { success, wallet, activeChain, error } =
-        await this.configureNetwork(network);
+      const { success, error } = await this.configureNetwork(network);
       const chainId = network.chainId.toString(16);
       const networkVersion = network.chainId;
 
       if (success) {
         this.resolveNetworkConfiguration(resolve, {
-          activeChain,
           chainId,
           isBitcoinBased,
           network,
           networkVersion,
-          wallet,
         });
       } else {
         // If there's an error from configureNetwork, use it; otherwise use a generic message
@@ -2409,20 +2356,18 @@ class MainController {
       reject(error);
     }
   };
-  private async handleNetworkChangeSuccess(
-    wallet: IWalletState,
-    activeChain: INetworkType,
-    network: INetwork
-  ) {
-    const isBitcoinBased = activeChain === INetworkType.Syscoin;
+  private async handleNetworkChangeSuccess(network: INetwork) {
+    const isBitcoinBased = network.kind === INetworkType.Syscoin;
+
+    const { activeAccount } = store.getState().vault;
     console.log(
       '[MainController] Network switch success - replacing vault state from keyring:',
       {
         slip44: this.activeSlip44,
         networkChainId: network.chainId,
         activeAccount: {
-          id: wallet.activeAccountId,
-          type: wallet.activeAccountType,
+          id: activeAccount.id,
+          type: activeAccount.type,
         },
       }
     );
@@ -2433,14 +2378,11 @@ class MainController {
     // - all accounts
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
-    store.dispatch(setNetworkChange({ activeChain, wallet }));
+    store.dispatch(setNetworkChange({ activeNetwork: network }));
     store.dispatch(setIsLoadingBalances(false));
 
     await this.setFiat();
 
-    // Get latest updates for the newly active account
-    const activeAccountData =
-      wallet.accounts[wallet.activeAccountType][wallet.activeAccountId];
     this.getLatestUpdateForCurrentAccount(false);
 
     // Skip dapp notifications during startup
@@ -2448,10 +2390,12 @@ class MainController {
       console.log(
         '[MainController] Skipping network change dapp notifications during startup'
       );
-      store.dispatch(switchNetworkSuccess(network));
+      store.dispatch(switchNetworkSuccess());
       return;
     }
-
+    // Get latest updates for the newly active account
+    const { accounts } = store.getState().vault;
+    const activeAccountData = accounts[activeAccount.type][activeAccount.id];
     this.handleStateChange([
       {
         method: PaliEvents.chainChanged,
@@ -2493,7 +2437,7 @@ class MainController {
         },
       ]);
     }
-    store.dispatch(switchNetworkSuccess(network));
+    store.dispatch(switchNetworkSuccess());
   }
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();
@@ -2718,28 +2662,6 @@ class MainController {
 
     // Handle Syscoin tokens (tokenToDelete is assetGuid string)
     return this.account.sys.deleteTokenInfo(tokenToDelete);
-  }
-
-  // Global settings management
-  private async getGlobalSettings() {
-    const settings = await chrome.storage.local.get('global-settings');
-    return (
-      settings['global-settings'] || {
-        hasEncryptedVault: false,
-        advancedSettings: {},
-        coinsList: [],
-      }
-    );
-  }
-
-  private async setGlobalSettings(settings: any) {
-    await chrome.storage.local.set({ 'global-settings': settings });
-  }
-
-  private async updateGlobalSettings(updates: Partial<any>) {
-    const current = await this.getGlobalSettings();
-    const updated = { ...current, ...updates };
-    await this.setGlobalSettings(updated);
   }
 }
 

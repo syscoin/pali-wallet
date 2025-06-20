@@ -9,7 +9,9 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 const RemoveEthView = () => {
-  const { hasEthProperty } = useSelector((state: RootState) => state.vault);
+  const { hasEthProperty } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);

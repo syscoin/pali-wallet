@@ -24,18 +24,42 @@ export interface IAccountTransactions {
   syscoin: { [chainId: number]: ISysTransaction[] };
 }
 
-export interface IVaultState {
-  // New: Separate global asset storage
+// Global state shared across all slip44s (stored in main state)
+export interface IGlobalState {
+  // User preferences - should be shared across all networks
+  advancedSettings: {
+    [k: string]: boolean;
+  };
+
+  changingConnectedAccount: IChangingConnectedAccount;
+  // Global data that doesn't vary by slip44
+  coinsList: any[];
+  // Global UI states
+  error: string | null;
+
+  hasEncryptedVault: boolean;
+
+  hasEthProperty: boolean;
+  isDappAskingToChangeNetwork: boolean;
+  isSwitchingAccount: boolean;
+  // Authentication & security
+  lastLogin: number;
+  networkStatus: 'idle' | 'switching' | 'error';
+
+  networkTarget?: INetwork;
+}
+
+// Slip44-specific state (per network type) - this is what IVaultState represents
+export interface ISlip44State {
   accountAssets: {
     [key in KeyringAccountType]: { [id: number]: IAccountAssets };
   };
 
-  // New: Separate global transaction storage
   accountTransactions: {
     [key in KeyringAccountType]: { [id: number]: IAccountTransactions };
   };
 
-  // Updated: Clean accounts - just references to keyring data
+  // Network-specific data
   accounts: {
     [key in KeyringAccountType]: { [id: number]: IKeyringAccountState };
   };
@@ -44,32 +68,28 @@ export interface IVaultState {
     id: number;
     type: KeyringAccountType;
   };
+
   activeChain: INetworkType;
   activeNetwork: INetwork;
-  advancedSettings: {
-    [k: string]: boolean;
-  };
-  changingConnectedAccount: IChangingConnectedAccount;
-  coinsList: any[];
-  error: string | null;
-  hasEncryptedVault: boolean;
-  hasErrorOndAppEVM: boolean;
-  hasEthProperty: boolean;
+  // Network-specific states
   isBitcoinBased: boolean;
-  isDappAskingToChangeNetwork: boolean;
+
+  // Dirty flag for this slip44 vault
+  isDirty?: boolean;
   isLastTxConfirmed: null | { [k: number]: boolean };
   isLoadingAssets: boolean;
   isLoadingBalances: boolean;
   isLoadingNfts: boolean;
   isLoadingTxs: boolean;
-  isSwitchingAccount: boolean;
-  lastLogin: number;
-  networkStatus: 'idle' | 'switching' | 'error';
-  networkTarget?: INetwork;
   networks: INetworksVault;
   prevBalances: IPrevBalances;
+
   shouldShowFaucetModal: { [k: number]: boolean };
 }
+
+// For backward compatibility, IVaultState is the slip44-specific state
+// Components can access global state via state.vaultGlobal
+export type IVaultState = ISlip44State;
 
 export interface INetworksVault {
   [INetworkType.Ethereum]: {

@@ -1,3 +1,5 @@
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { saveState, setMigratedVersions } from 'state/paliStorage';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
@@ -10,74 +12,103 @@ type V3_5_0 = {
 const MigrateRunner = async (oldState: any) => {
   try {
     console.log(
-      'Starting migration to v3.5.0 - fixing networks without kind property'
+      'Starting migration to v3.5.0 - replacing networks with correct configurations'
     );
 
-    // Fix networks to ensure they all have kind properties
-    const fixedNetworks = {
+    // Instead of patching individual properties, completely replace networks
+    // with the correct configurations from PALI_NETWORKS_STATE
+    // This ensures ALL properties are correct: kind, slip44, apiUrl, explorer, etc.
+
+    // Preserve any custom networks that users may have added
+    const preservedCustomNetworks = {
       syscoin: {},
       ethereum: {},
     };
 
-    // Fix syscoin networks - ensure they have kind: 'utxo'
+    // Check for custom networks in syscoin
     if (oldState.vault.networks?.syscoin) {
       for (const [chainId, network] of Object.entries(
         oldState.vault.networks.syscoin
       )) {
-        const networkObj = network as any;
-        fixedNetworks.syscoin[chainId] = {
-          ...networkObj,
-          kind: 'utxo',
-        };
+        // If it's not in our default networks, preserve it (it's custom)
+        if (!PALI_NETWORKS_STATE.syscoin[chainId]) {
+          preservedCustomNetworks.syscoin[chainId] = {
+            ...(network as any),
+            kind: INetworkType.Syscoin, // Ensure custom syscoin networks have correct kind
+            slip44: (network as any).slip44 || 57, // Default to Syscoin slip44 for UTXO
+          };
+          console.log(`Preserved custom Syscoin network: chainId ${chainId}`);
+        }
       }
     }
 
-    // Fix ethereum networks - ensure they have kind: 'evm'
+    // Check for custom networks in ethereum
     if (oldState.vault.networks?.ethereum) {
       for (const [chainId, network] of Object.entries(
         oldState.vault.networks.ethereum
       )) {
-        const networkObj = network as any;
-        fixedNetworks.ethereum[chainId] = {
-          ...networkObj,
-          kind: 'evm',
-        };
+        // If it's not in our default networks, preserve it (it's custom)
+        if (!PALI_NETWORKS_STATE.ethereum[chainId]) {
+          preservedCustomNetworks.ethereum[chainId] = {
+            ...(network as any),
+            kind: INetworkType.Ethereum, // Ensure custom ethereum networks have correct kind
+            slip44: 60, // All EVM networks use Ethereum's slip44
+          };
+          console.log(`Preserved custom Ethereum network: chainId ${chainId}`);
+        }
       }
     }
 
-    // Merge with PALI_NETWORKS_STATE to ensure we have all default networks with proper kind
-    const mergedNetworks = {
+    // Use the correct networks from PALI_NETWORKS_STATE and add any custom ones
+    const correctNetworks = {
       syscoin: {
         ...PALI_NETWORKS_STATE.syscoin,
-        ...fixedNetworks.syscoin,
+        ...preservedCustomNetworks.syscoin,
       },
       ethereum: {
         ...PALI_NETWORKS_STATE.ethereum,
-        ...fixedNetworks.ethereum,
+        ...preservedCustomNetworks.ethereum,
       },
     };
 
-    // Fix activeNetwork to ensure it has kind property
+    // Fix activeNetwork - find the correct one from our networks or recreate it
     let fixedActiveNetwork = oldState.vault.activeNetwork;
-    if (fixedActiveNetwork && !fixedActiveNetwork.kind) {
-      // Determine kind based on which networks collection contains this network
-      const isInSyscoin = Object.values(mergedNetworks.syscoin).some(
-        (network: any) =>
-          network.chainId === fixedActiveNetwork.chainId &&
-          network.url === fixedActiveNetwork.url
+    if (fixedActiveNetwork) {
+      // Try to find the network in our correct networks
+      const foundInSyscoin = Object.values(correctNetworks.syscoin).find(
+        (network: any) => network.chainId === fixedActiveNetwork.chainId
+      );
+      const foundInEthereum = Object.values(correctNetworks.ethereum).find(
+        (network: any) => network.chainId === fixedActiveNetwork.chainId
       );
 
-      fixedActiveNetwork = {
-        ...fixedActiveNetwork,
-        kind: isInSyscoin ? 'utxo' : 'evm',
-      };
+      if (foundInSyscoin) {
+        fixedActiveNetwork = foundInSyscoin;
+        console.log(
+          `Updated activeNetwork to correct Syscoin config for chainId ${fixedActiveNetwork.chainId}`
+        );
+      } else if (foundInEthereum) {
+        fixedActiveNetwork = foundInEthereum;
+        console.log(
+          `Updated activeNetwork to correct Ethereum config for chainId ${fixedActiveNetwork.chainId}`
+        );
+      } else {
+        // If not found, add kind property based on existing network
+        fixedActiveNetwork = {
+          ...fixedActiveNetwork,
+          kind: fixedActiveNetwork.kind || INetworkType.Ethereum, // Default to evm if unknown
+        };
+        console.log(
+          `Preserved custom activeNetwork with kind for chainId ${fixedActiveNetwork.chainId}`
+        );
+      }
     }
 
     const newState: V3_5_0 = {
       ...oldState,
       vault: {
         ...oldState.vault,
-        networks: mergedNetworks,
+        networks: correctNetworks,
         activeNetwork: fixedActiveNetwork,
       },
     };
@@ -85,7 +116,7 @@ const MigrateRunner = async (oldState: any) => {
     await Promise.all([saveState(newState), setMigratedVersions('3.5.0')]);
 
     console.log(
-      'Migrate to <v3.5.0> successfully! Fixed networks with kind properties.'
+      'Migrate to <v3.5.0> successfully! Replaced networks with correct configurations (kind, slip44, API URLs) while preserving custom networks.'
     );
   } catch (error) {
     console.log('<v3.5.0> Migration Error');

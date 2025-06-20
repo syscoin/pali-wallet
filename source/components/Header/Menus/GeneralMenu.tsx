@@ -24,10 +24,11 @@ export const GeneralMenu: React.FC = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { navigate } = useUtils();
+  const {} = useSelector((state: RootState) => state.vault);
   const {
     changingConnectedAccount: { isChangingConnectedAccount },
     advancedSettings,
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((state: RootState) => state.vaultGlobal);
   const [currentTab, setCurrentTab] = useState({
     host: '',
     isConnected: false,

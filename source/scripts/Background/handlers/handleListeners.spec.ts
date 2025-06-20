@@ -65,8 +65,10 @@ jest.mock('scripts/Background/handlers/handleLogout');
 jest.mock('state/store', () => ({
   getState: jest.fn(() => ({
     vault: {
-      hasEthProperty: true, // Mock relevant state parts
       isBitcoinBased: false,
+    },
+    vaultGlobal: {
+      hasEthProperty: true, // Mock relevant state parts
     },
   })),
   dispatch: jest.fn(),

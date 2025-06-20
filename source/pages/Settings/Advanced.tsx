@@ -15,7 +15,9 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 const Advanced = () => {
-  const { advancedSettings } = useSelector((state: RootState) => state.vault);
+  const { advancedSettings } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{

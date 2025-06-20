@@ -222,8 +222,9 @@ export const EvmAssetsList = () => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [sortByValue, setSortyByValue] = useState<string>('');
 
-  const { isLoadingAssets, networkStatus } = useSelector(
-    (state: RootState) => state.vault
+  const { isLoadingAssets } = useSelector((state: RootState) => state.vault);
+  const { networkStatus } = useSelector(
+    (state: RootState) => state.vaultGlobal
   );
 
   const isNetworkChanging = networkStatus === 'switching';

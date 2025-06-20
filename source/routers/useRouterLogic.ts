@@ -23,8 +23,11 @@ export const useRouterLogic = () => {
   const { alert, navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
-  const { isBitcoinBased, networkStatus, activeNetwork } = useSelector(
+  const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
+  );
+  const { networkStatus } = useSelector(
+    (state: RootState) => state.vaultGlobal
   );
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const { isUnlocked, isLoading, controllerEmitter } = useController();

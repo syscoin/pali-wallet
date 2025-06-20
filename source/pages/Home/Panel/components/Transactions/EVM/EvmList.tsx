@@ -25,11 +25,11 @@ export const EvmTransactionsList = ({
   const {
     activeAccount,
     accounts,
-    coinsList,
     activeNetwork: { chainId, currency },
     isLastTxConfirmed,
     accountTransactions,
   } = useSelector((state: RootState) => state.vault);
+  const { coinsList } = useSelector((state: RootState) => state.vaultGlobal);
 
   const {
     filteredTransactions,

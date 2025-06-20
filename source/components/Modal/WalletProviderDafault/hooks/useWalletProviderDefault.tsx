@@ -11,7 +11,9 @@ import { RootState } from 'state/store';
 
 export const useWalletProviderDefault = () => {
   const { controllerEmitter } = useController();
-  const { hasEthProperty } = useSelector((state: RootState) => state.vault);
+  const { hasEthProperty } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const [isHovered, setIsHovered] = useState(false);
   const [isEnabled, setIsEnabled] = useState<boolean>(hasEthProperty);
   const [isNotVisible, setIsNotVisible] = useState(!!isEnabled);

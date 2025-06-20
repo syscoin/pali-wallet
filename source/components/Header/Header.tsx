@@ -21,7 +21,7 @@ interface IHeader {
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const error = useSelector((state: RootState) => state.vault.error);
+  const error = useSelector((state: RootState) => state.vaultGlobal.error);
 
   const activeAccount = useSelector(selectActiveAccount);
 
@@ -30,7 +30,9 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
     host,
     isChangingConnectedAccount,
     connectedAccountType,
-  } = useSelector((state: RootState) => state.vault.changingConnectedAccount);
+  } = useSelector(
+    (state: RootState) => state.vaultGlobal.changingConnectedAccount
+  );
 
   const [networkErrorStatus, setNetworkErrorStatus] = useState({
     error: false,

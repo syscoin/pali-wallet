@@ -113,15 +113,15 @@ export const Home = () => {
 
   const {
     accounts,
-    networkStatus,
     activeAccount,
     activeNetwork,
     isBitcoinBased,
-    lastLogin,
     isLoadingBalances,
-    isSwitchingAccount,
     shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
+  const { networkStatus, lastLogin, isSwitchingAccount } = useSelector(
+    (rootState: RootState) => rootState.vaultGlobal
+  );
 
   // ALL useState hooks
   const [showModalCongrats, setShowModalCongrats] = useState(false);

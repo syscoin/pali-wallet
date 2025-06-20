@@ -18,8 +18,9 @@ const ConnectHardwareWalletView: FC = () => {
   const [isSmallScreen, setIsSmallScreen] = useState<boolean>(
     window.innerWidth <= 600
   );
-  const { accounts, advancedSettings } = useSelector(
-    (state: RootState) => state.vault
+  const { accounts } = useSelector((state: RootState) => state.vault);
+  const { advancedSettings } = useSelector(
+    (state: RootState) => state.vaultGlobal
   );
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();

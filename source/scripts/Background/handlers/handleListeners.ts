@@ -70,7 +70,7 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // Create and store message listener
   messageListener = ({ type, data, action }, sender, sendResponse) => {
-    const { hasEthProperty } = store.getState().vault;
+    const { hasEthProperty } = store.getState().vaultGlobal;
 
     // Let specialized handlers handle their message types
     if (

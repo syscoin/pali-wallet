@@ -17,10 +17,10 @@ export const Loading = ({
 }) => {
   const { t } = useTranslation();
   const networkStatus = useSelector(
-    (state: RootState) => state.vault.networkStatus
+    (state: RootState) => state.vaultGlobal.networkStatus
   );
   const networkTarget = useSelector(
-    (state: RootState) => state.vault.networkTarget
+    (state: RootState) => state.vaultGlobal.networkTarget
   );
 
   const isNetworkChanging = networkStatus === 'switching';

@@ -1,17 +1,36 @@
 import MasterController from 'scripts/Background/controllers';
-import { rehydrate as dappRehydrate } from 'state/dapp';
+import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { loadState } from 'state/paliStorage';
-import { rehydrate as priceRehydrate } from 'state/price';
+import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
-import { rehydrate as vaultRehydrate } from 'state/vault';
 
 export const handleMasterControllerInstance = async () => {
+  // Add performance timing
+  const startTime = performance.now();
+
   const storageState = await loadState();
+
   if (storageState) {
-    store.dispatch(vaultRehydrate(storageState.vault));
-    store.dispatch(dappRehydrate(storageState.dapp));
-    store.dispatch(priceRehydrate(storageState.price));
+    // Run migrations before rehydrating state
+    console.log('[handleMasterControllerInstance] Running migrations...');
+    await MigrationController(storageState);
+
+    // Use slip44-aware rehydration instead of direct vault rehydration
+    console.log(
+      '[handleMasterControllerInstance] Rehydrating with slip44 support...'
+    );
+    const currentSlip44 = storageState?.currentSlip44;
+    await rehydrateStore(store, null, currentSlip44);
   }
 
-  return MasterController(store);
+  const controller = MasterController(store);
+
+  const endTime = performance.now();
+  console.log(
+    `[handleMasterControllerInstance] Initialization took ${
+      endTime - startTime
+    }ms`
+  );
+
+  return controller;
 };

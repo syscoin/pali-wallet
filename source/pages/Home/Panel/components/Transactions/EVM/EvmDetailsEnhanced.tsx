@@ -42,8 +42,8 @@ CopyIcon.displayName = 'CopyIcon';
 export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const {
     activeNetwork: { chainId, currency, apiUrl },
-    coinsList,
   } = useSelector((state: RootState) => state.vault);
+  const { coinsList } = useSelector((state: RootState) => state.vaultGlobal);
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);

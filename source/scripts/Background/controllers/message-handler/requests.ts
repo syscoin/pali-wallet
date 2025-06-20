@@ -7,7 +7,7 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import { setIsDappAskingToChangeNetwork } from 'state/vault';
+import { setIsDappAskingToChangeNetwork } from 'state/vaultGlobal';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { CHAIN_IDS } from 'utils/constants';
 import { areStringsPresent } from 'utils/format';
@@ -51,11 +51,11 @@ export const methodRequest = async (
   const {
     activeAccount,
     isBitcoinBased,
-    networkStatus,
     accounts,
     activeNetwork,
     activeChain,
   } = store.getState().vault;
+  const { networkStatus } = store.getState().vaultGlobal;
   const { chainId } = activeNetwork;
 
   const isNetworkChanging = networkStatus === 'switching';

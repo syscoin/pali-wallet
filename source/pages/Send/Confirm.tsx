@@ -52,12 +52,12 @@ export const SendConfirm = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    networkStatus,
-    isSwitchingAccount,
-  } = useSelector((state: RootState) => state.vault);
+  const { accounts, activeAccount: activeAccountMeta } = useSelector(
+    (state: RootState) => state.vault
+  );
+  const { networkStatus, isSwitchingAccount } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
   const { fiat } = useSelector((state: RootState) => state.price);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   // when using the default routing, state will have the tx data

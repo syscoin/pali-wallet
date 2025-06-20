@@ -1,11 +1,10 @@
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
 import {
   IKeyringBalances,
   initialActiveHdAccountState,
-  IWalletState,
   KeyringAccountType,
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
@@ -26,7 +25,6 @@ import { isTokenTransfer } from 'utils/transactions';
 import { convertTransactionValueToCompare } from 'utils/transactionValue';
 
 import {
-  IChangingConnectedAccount,
   IVaultState,
   TransactionsType,
   IAccountAssets,
@@ -34,7 +32,7 @@ import {
 } from './types';
 
 export const initialState: IVaultState = {
-  lastLogin: 0,
+  isDirty: false,
   accounts: {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
@@ -72,32 +70,15 @@ export const initialState: IVaultState = {
     id: 0,
     type: KeyringAccountType.HDAccount,
   },
-  advancedSettings: {
-    refresh: false,
-    ledger: false,
-  },
   isLastTxConfirmed: {},
-  hasEthProperty: true,
-  hasEncryptedVault: false,
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
-  hasErrorOndAppEVM: false,
   isBitcoinBased: true,
-  isDappAskingToChangeNetwork: false,
   isLoadingBalances: false,
   isLoadingTxs: false,
   isLoadingAssets: false,
   isLoadingNfts: false,
-  isSwitchingAccount: false,
-  changingConnectedAccount: {
-    host: undefined,
-    isChangingConnectedAccount: false,
-    newConnectedAccount: undefined,
-    connectedAccountType: undefined,
-  },
   networks: PALI_NETWORKS_STATE,
-  error: null,
-  coinsList: [],
   shouldShowFaucetModal: {
     57: true,
     570: true,
@@ -110,33 +91,7 @@ export const initialState: IVaultState = {
       [INetworkType.Syscoin]: {},
     },
   },
-  networkStatus: 'idle',
-  networkTarget: undefined,
 };
-
-export const getHasEncryptedVault = createAsyncThunk(
-  'vault/getHasEncryptedVault',
-  async () => {
-    // Get all storage keys
-    const storageKeys = await new Promise<string[]>((resolve) => {
-      chrome.storage.local.get(null, (items) => {
-        resolve(Object.keys(items));
-      });
-    });
-
-    // Check if any vault exists:
-    // - sysweb3-vault (legacy)
-    // - sysweb3-vault-{slip44} (new multi-keyring vaults)
-    // Note: sysweb3-vault-keys is the password store, not a vault
-    const hasAnyVault = storageKeys.some(
-      (key) =>
-        key === 'sysweb3-vault' ||
-        (key.startsWith('sysweb3-vault-') && key !== 'sysweb3-vault-keys')
-    );
-
-    return hasAnyVault;
-  }
-);
 
 const VaultState = createSlice({
   name: 'vault',
@@ -156,6 +111,7 @@ const VaultState = createSlice({
     ) {
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
+      state.isDirty = true; // Account structure changes should be saved
     },
     setAccountsWithLabelEdited(
       state: IVaultState,
@@ -166,8 +122,8 @@ const VaultState = createSlice({
       }>
     ) {
       const { label, accountId, accountType } = action.payload;
-
       state.accounts[accountType][accountId].label = label;
+      state.isDirty = true; // Account label changes should be saved
     },
     setEditedEvmToken(
       state: IVaultState,
@@ -199,24 +155,14 @@ const VaultState = createSlice({
     setNetworkChange(
       state: IVaultState,
       action: PayloadAction<{
-        activeChain: INetworkType;
-        wallet: IWalletState;
+        activeNetwork: INetwork;
       }>
     ) {
-      const { activeChain, wallet } = action.payload;
-      state.activeChain = activeChain;
-      state.isBitcoinBased = activeChain === INetworkType.Syscoin;
-
-      // With multi-keyring architecture, wallet.activeNetwork from keyring already has correct kind
-      state.activeNetwork = wallet.activeNetwork;
-
-      state.activeAccount = {
-        id: wallet.activeAccountId,
-        type: wallet.activeAccountType,
-      };
-
-      // Just set the clean accounts reference - no assets/transactions
-      state.accounts = wallet.accounts;
+      const { activeNetwork } = action.payload;
+      state.activeChain = activeNetwork.kind;
+      state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
+      state.activeNetwork = activeNetwork;
+      state.isDirty = true; // Network changes should be saved
     },
     setAccountBalances(
       state: IVaultState,
@@ -258,6 +204,8 @@ const VaultState = createSlice({
         ethereum: {},
         syscoin: {},
       };
+
+      state.isDirty = true; // Creating accounts should be saved
     },
     setIsLastTxConfirmed(
       state: IVaultState,
@@ -273,6 +221,7 @@ const VaultState = createSlice({
         return;
       }
       state.isLastTxConfirmed[chainId] = wasConfirmed;
+      state.isDirty = true; // Transaction confirmation state should be saved
     },
     setNetwork(
       state: IVaultState,
@@ -282,29 +231,30 @@ const VaultState = createSlice({
         network: INetwork;
       }>
     ) {
-      const { network, isEdit, isFirstTime } = action.payload;
-      const networkKeyIdentifier = network.key ? network.key : network.chainId;
+      const { network, isFirstTime, isEdit } = action.payload;
 
-      if (state.networks[network.kind][networkKeyIdentifier]) {
-        if (!isEdit && !isFirstTime) {
-          throw new Error('Network already exists!');
+      if (isEdit) {
+        // Find and update existing network
+        const chainType = network.kind;
+        const networks =
+          chainType === INetworkType.Ethereum
+            ? state.networks.ethereum
+            : state.networks.syscoin;
+
+        if (networks[network.chainId]) {
+          networks[network.chainId] = network;
         }
-        if (isEdit) {
-          state.networks[network.kind][networkKeyIdentifier] = {
-            ...state.networks[network.kind][networkKeyIdentifier],
-            ...network,
-          };
+      } else {
+        // Add new network
+        if (network.kind === INetworkType.Ethereum) {
+          state.networks.ethereum[network.chainId] = network;
+        } else {
+          state.networks.syscoin[network.chainId] = network;
         }
-        return;
       }
-      state.networks[network.kind][networkKeyIdentifier] = network;
 
-      if (
-        network.kind === state.activeChain &&
-        network.chainId === state.activeNetwork.chainId &&
-        network.url === state.activeNetwork.url
-      ) {
-        state.activeNetwork = network;
+      if (!isFirstTime) {
+        state.isDirty = true; // Network changes should be saved
       }
     },
     removeNetwork(
@@ -317,33 +267,15 @@ const VaultState = createSlice({
         rpcUrl: string;
       }>
     ) {
-      const { chain, chainId, rpcUrl, label, key } = action.payload;
+      const { chain, chainId } = action.payload;
 
-      const clonedNetworks = cloneDeep(state.networks[chain]);
-
-      if (key && clonedNetworks[key]) {
-        delete clonedNetworks[key];
+      if (chain === INetworkType.Ethereum) {
+        delete state.networks.ethereum[chainId];
       } else {
-        const networkToDeleteKey = Object.keys(clonedNetworks).find(
-          (networkKey) => {
-            const network = clonedNetworks[networkKey];
-            return (
-              network.url === rpcUrl &&
-              network.chainId === chainId &&
-              network.label === label
-            );
-          }
-        );
-
-        if (networkToDeleteKey) {
-          delete clonedNetworks[networkToDeleteKey];
-        }
+        delete state.networks.syscoin[chainId];
       }
 
-      state.networks[chain] = clonedNetworks;
-    },
-    setLastLogin(state: IVaultState) {
-      state.lastLogin = Date.now();
+      state.isDirty = true; // Removing networks should be saved
     },
 
     setActiveAccount(
@@ -354,9 +286,11 @@ const VaultState = createSlice({
       }>
     ) {
       state.activeAccount = action.payload;
+      state.isDirty = true; // Active account changes should be saved
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
+      state.isDirty = true; // Active network changes should be saved
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
@@ -373,56 +307,6 @@ const VaultState = createSlice({
     setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
       state.isLoadingNfts = action.payload;
     },
-    setIsSwitchingAccount(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isSwitchingAccount = action.payload;
-    },
-    setIsDappAskingToChangeNetwork(
-      state: IVaultState,
-      action: PayloadAction<boolean>
-    ) {
-      state.isDappAskingToChangeNetwork = action.payload;
-    },
-    setOpenDAppErrorModal(state: IVaultState, action: PayloadAction<boolean>) {
-      state.hasErrorOndAppEVM = action.payload;
-    },
-    setCongratulationsModalOnImportWallet(
-      state: IVaultState,
-      action: PayloadAction<boolean>
-    ) {
-      state.hasErrorOndAppEVM = action.payload;
-    },
-    setHasEthProperty(state: IVaultState, action: PayloadAction<boolean>) {
-      state.hasEthProperty = action.payload;
-    },
-    setCoinsList(state: IVaultState, action: PayloadAction<Array<any>>) {
-      state.coinsList = action.payload;
-    },
-    setAdvancedSettings(
-      state: IVaultState,
-      action: PayloadAction<{
-        advancedProperty: string;
-        isActive: boolean;
-        isFirstTime?: boolean;
-      }>
-    ) {
-      const { advancedProperty, isActive, isFirstTime } = action.payload;
-      if (
-        state.advancedSettings?.[advancedProperty] !== undefined ||
-        isFirstTime
-      ) {
-        state.advancedSettings = {
-          ...state.advancedSettings,
-          [advancedProperty]: isActive,
-        };
-      }
-
-      if (state.advancedSettings?.[advancedProperty] === undefined) {
-        state.advancedSettings = {
-          ...state.advancedSettings,
-          [advancedProperty]: isActive,
-        };
-      }
-    },
 
     setAccountTypeInAccountsObject(
       state: IVaultState,
@@ -435,14 +319,10 @@ const VaultState = createSlice({
           ...state.accounts,
           [accountType]: {},
         };
+        state.isDirty = true; // Account structure changes should be saved
       }
     },
-    setChangingConnectedAccount(
-      state: IVaultState,
-      action: PayloadAction<IChangingConnectedAccount>
-    ) {
-      state.changingConnectedAccount = action.payload;
-    },
+
     setActiveAccountProperty(
       state: IVaultState,
       action: PayloadAction<{
@@ -546,6 +426,8 @@ const VaultState = createSlice({
       if (state.accountTransactions[type]) {
         delete state.accountTransactions[type][id];
       }
+
+      state.isDirty = true; // Removing accounts should be saved
     },
     setAccountLabel(
       state: IVaultState,
@@ -561,10 +443,9 @@ const VaultState = createSlice({
         throw new Error('Unable to set label. Account not found');
 
       state.accounts[type][id].label = label;
+      state.isDirty = true; // Account label changes should be saved
     },
-    setStoreError(state: IVaultState, action: PayloadAction<string | null>) {
-      state.error = action.payload;
-    },
+
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
@@ -601,6 +482,11 @@ const VaultState = createSlice({
       } else if (assets) {
         // Full replacement
         state.accountAssets[accountType][accountId] = assets;
+      }
+
+      // Only mark dirty for meaningful changes (not frequent balance updates)
+      if (property === 'nfts' || assets) {
+        state.isDirty = true; // NFT and full asset changes should be saved
       }
     },
 
@@ -976,28 +862,15 @@ const VaultState = createSlice({
 
       state.prevBalances[activeAccountId][chain][chainId] = balance;
     },
-    startSwitchNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
-      state.networkStatus = 'switching';
-      state.networkTarget = action.payload;
-    },
-    switchNetworkSuccess(state: IVaultState, action: PayloadAction<INetwork>) {
-      state.activeNetwork = action.payload;
-      state.networkStatus = 'idle';
-      state.networkTarget = undefined;
-    },
-    switchNetworkError(state: IVaultState) {
-      state.networkStatus = 'error';
-    },
-    resetNetworkStatus(state: IVaultState) {
-      state.networkStatus = 'idle';
-      state.networkTarget = undefined;
-    },
-  },
 
-  extraReducers: (builder) => {
-    builder.addCase(getHasEncryptedVault.fulfilled, (state, action) => {
-      state.hasEncryptedVault = action.payload;
-    });
+    // Dirty flag management
+    markDirty(state: IVaultState) {
+      state.isDirty = true;
+    },
+
+    markClean(state: IVaultState) {
+      state.isDirty = false;
+    },
   },
 });
 
@@ -1012,41 +885,30 @@ export const {
   setNetworkType,
   setAccountTypeInAccountsObject,
   setActiveNetwork,
-  setIsDappAskingToChangeNetwork,
   setFaucetModalState,
   setIsLoadingBalances,
   setIsLoadingAssets,
   setIsLoadingTxs,
   setIsLoadingNfts,
-  setOpenDAppErrorModal,
   setAccountBalances,
-  setChangingConnectedAccount,
-  setLastLogin,
   setNetwork,
   forgetWallet,
   removeAccount,
-  setHasEthProperty,
   removeAccounts,
   removeNetwork,
   createAccount,
   setAccountLabel,
-  setStoreError,
   setIsBitcoinBased,
   setAccountAssets,
-  setAdvancedSettings,
   setSingleTransactionToState,
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
-  setCoinsList,
   setIsLastTxConfirmed,
   setPrevBalances,
-  startSwitchNetwork,
-  switchNetworkSuccess,
-  switchNetworkError,
-  resetNetworkStatus,
-  setIsSwitchingAccount,
   setAccounts,
+  markDirty,
+  markClean,
 } = VaultState.actions;
 
 export default VaultState.reducer;

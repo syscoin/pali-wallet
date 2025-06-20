@@ -34,8 +34,8 @@ export const AccountHeader: React.FC = () => {
   } = useSelector((state: RootState) => ({
     isBitcoinBased: state.vault.isBitcoinBased,
     activeNetwork: state.vault.activeNetwork,
-    networkStatus: state.vault.networkStatus,
-    isSwitchingAccount: state.vault.isSwitchingAccount,
+    networkStatus: state.vaultGlobal.networkStatus,
+    isSwitchingAccount: state.vaultGlobal.isSwitchingAccount,
     activeAccount: state.vault.activeAccount,
   }));
   const { useCopyClipboard, alert, navigate } = useUtils();
