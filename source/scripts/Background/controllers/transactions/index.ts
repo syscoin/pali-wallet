@@ -1,7 +1,10 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountTransactions } from 'state/vault/types';
 
 import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
@@ -23,24 +26,25 @@ const TransactionsManager = (): ITransactionsManager => {
   const getCacheKey = (account: string, networkUrl: string) =>
     `${account}:${networkUrl}`;
 
-  // Helper function to check if account has pending transactions based on local data
+  // Helper function to check if account has pending transactions based on passed transaction data
   const hasPendingTransactions = (
-    account: IPaliAccount,
+    accountTransactions: any,
     isBitcoinBased: boolean,
     chainId: number
   ) => {
     const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
-    const transactions = account.transactions?.[chain]?.[chainId] || [];
+    const transactions = accountTransactions?.[chain]?.[chainId] || [];
     return (
       Array.isArray(transactions) &&
       transactions.some((tx: any) => tx.confirmations === 0)
     );
   };
   const updateTransactionsFromCurrentAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    accountTransactions?: IAccountTransactions // Pass transactions separately
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -49,7 +53,7 @@ const TransactionsManager = (): ITransactionsManager => {
 
     // Check if this account has pending transactions that need confirmation updates
     const hasUnconfirmedTxs = hasPendingTransactions(
-      currentAccount,
+      accountTransactions,
       isBitcoinBased,
       activeNetwork.chainId
     );
@@ -71,15 +75,6 @@ const TransactionsManager = (): ITransactionsManager => {
     try {
       let result;
       if (isBitcoinBased) {
-        // Check if the xpub is valid for UTXO (not an Ethereum public key)
-        if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
-          console.error(
-            'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
-          );
-          // Return empty array for invalid xpub
-          return [];
-        }
-
         result = await SysTransactionController().pollingSysTransactions(
           currentAccount.xpub,
           activeNetworkUrl

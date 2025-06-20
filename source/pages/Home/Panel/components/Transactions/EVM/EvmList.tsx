@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
@@ -9,7 +9,6 @@ import { TransactionOptions } from 'components/TransactionOptions';
 import { useController } from 'hooks/useController';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
-import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import {
@@ -29,6 +28,7 @@ export const EvmTransactionsList = ({
     coinsList,
     activeNetwork: { chainId, currency },
     isLastTxConfirmed,
+    accountTransactions,
   } = useSelector((state: RootState) => state.vault);
 
   const {
@@ -51,10 +51,9 @@ export const EvmTransactionsList = ({
     [date: string]: ITransactionInfoEvm[];
   }>({});
 
-  const currentAccount = useMemo(
-    () => accounts[activeAccount.type][activeAccount.id],
-    [accounts, activeAccount]
-  );
+  const currentAccountTransactions =
+    accountTransactions[activeAccount.type]?.[activeAccount.id];
+  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
 
   const getTxOptions = useCallback(
     (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {
@@ -175,13 +174,11 @@ export const EvmTransactionsList = ({
   }, [filteredTransactions]);
 
   useEffect(() => {
-    if (!currentAccount.transactions.ethereum?.[chainId]) {
+    if (!currentAccountTransactions?.ethereum?.[chainId]) {
       return;
     }
-    const lastIndex = currentAccount.transactions.ethereum[chainId].length - 1;
-    const lastTx = currentAccount.transactions.ethereum[chainId][
-      lastIndex
-    ] as IEvmTransaction;
+    const lastIndex = currentAccountTransactions.ethereum[chainId].length - 1;
+    const lastTx = currentAccountTransactions.ethereum[chainId][lastIndex];
     if (isLastTxConfirmed?.[chainId]) {
       return;
     }
@@ -193,7 +190,7 @@ export const EvmTransactionsList = ({
       setShowModal(true);
       controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, true]);
     }
-  }, [currentAccount]);
+  }, [currentAccountTransactions]);
 
   return (
     <>

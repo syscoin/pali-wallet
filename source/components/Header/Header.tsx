@@ -8,6 +8,7 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { ErrorModal, Icon, Modal, PrimaryButton, SecondaryButton } from '..';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccount } from 'state/vault/selectors';
 
 import { AccountHeader } from '.';
 import { GeneralMenu, NetworkMenu } from './Menus';
@@ -22,11 +23,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const { t } = useTranslation();
   const error = useSelector((state: RootState) => state.vault.error);
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-
-  const { accounts } = useSelector((state: RootState) => state.vault);
+  const activeAccount = useSelector(selectActiveAccount);
 
   const {
     newConnectedAccount,
@@ -123,8 +120,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
                   <b className="text-gray-400">{host}</b>{' '}
                   {t('header.hostIsConnected')}{' '}
                   {newConnectedAccount ? newConnectedAccount.label : ''}.{' '}
-                  {t('header.yourActiveAccountIs')}{' '}
-                  {accounts[activeAccount.type][activeAccount.id].label}.{' '}
+                  {t('header.yourActiveAccountIs')} {activeAccount?.label}.{' '}
                   {t('header.wouldYouLikeTo')}
                 </p>
               </div>

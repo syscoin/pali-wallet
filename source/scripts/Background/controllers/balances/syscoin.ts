@@ -1,14 +1,14 @@
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
-import { IPaliAccount } from 'state/vault/types';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
 import { ISysBalanceController } from './types';
 
 const SyscoinBalanceController = (): ISysBalanceController => {
   const getSysBalanceForAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => {
     try {

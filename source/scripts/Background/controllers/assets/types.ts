@@ -1,7 +1,8 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountAssets } from 'state/vault/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
 // SYS TYPES
@@ -30,11 +31,12 @@ export interface INftController {
 
 export interface IAssetsManagerUtils {
   updateAssetsFromCurrentAccount: (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networkChainId: number,
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    currentAssets: IAccountAssets
   ) => Promise<IAssetsManagerUtilsResponse>;
 }
 
@@ -109,8 +111,9 @@ export interface IEvmAssetsController {
     w3Provider: CustomJsonRpcProvider
   ) => Promise<any>;
   updateAllEvmTokens: (
-    account: IPaliAccount,
+    account: IKeyringAccountState,
     currentNetworkChainId: number,
-    w3Provider: CustomJsonRpcProvider
+    w3Provider: CustomJsonRpcProvider,
+    accountAssets: ITokenEthProps[]
   ) => Promise<ITokenEthProps[]>;
 }

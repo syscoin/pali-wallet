@@ -181,7 +181,12 @@ export const validateAndManageUserTransactions = (
   // If providerTxs is empty, return an empty array
   if (isEmpty(providerTxs)) return [];
 
-  const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+  const {
+    accounts,
+    activeAccount,
+    activeNetwork,
+    accountTransactions: vaultAccountTransactions,
+  } = store.getState().vault;
 
   // Safety check: if activeNetwork is undefined, return empty array
   if (!activeNetwork) {
@@ -228,7 +233,9 @@ export const validateAndManageUserTransactions = (
   const transactionType = TransactionsType.Ethereum;
 
   const accountTransactions =
-    account.transactions?.[transactionType]?.[activeNetwork.chainId];
+    vaultAccountTransactions[activeAccount.type]?.[activeAccount.id]?.[
+      transactionType
+    ]?.[activeNetwork.chainId];
 
   const updatedTxs = accountTransactions
     ? (compact(clone(accountTransactions)) as UnifiedTransaction[])

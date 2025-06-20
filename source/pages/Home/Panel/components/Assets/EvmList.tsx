@@ -37,16 +37,15 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   );
 
   const {
-    accounts,
+    accountAssets,
     activeAccount,
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
 
-  const assets = accounts[activeAccount.type][activeAccount.id].assets;
+  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
 
-  const currentChainAssets = assets.ethereum?.filter(
-    (token) => token.chainId === chainId
-  );
+  const currentChainAssets =
+    assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
 
   const assetsSorted = (sortBy: string) => {
     switch (sortBy) {

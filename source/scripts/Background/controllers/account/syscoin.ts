@@ -1,12 +1,11 @@
 import axios from 'axios';
-import cloneDeep from 'lodash/cloneDeep';
 import isEmpty from 'lodash/isEmpty';
 
 import { KeyringManager } from '@pollum-io/sysweb3-keyring';
 
 import SysTrezorController, { ISysTrezorController } from '../trezor/syscoin';
 import store from 'state/store';
-import { setAccountPropertyByIdAndType } from 'state/vault';
+import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
 const config = {
@@ -47,12 +46,12 @@ const SysAccountController = (
 
   const saveTokenInfo = async (token: ITokenSysProps) => {
     try {
-      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
-
+      const { activeAccount, activeNetwork, accountAssets } =
+        store.getState().vault;
+      const activeAccountAssets =
+        accountAssets[activeAccount.type][activeAccount.id];
       // Check for duplicate considering both assetGuid AND chainId (network-specific)
-      const tokenExists = accounts[activeAccount.type][
-        activeAccount.id
-      ].assets.syscoin.find(
+      const tokenExists = activeAccountAssets.syscoin.find(
         (asset: ITokenSysProps) =>
           asset.assetGuid === token.assetGuid &&
           asset.chainId === activeNetwork.chainId
@@ -82,17 +81,11 @@ const SysAccountController = (
       }
 
       store.dispatch(
-        setAccountPropertyByIdAndType({
-          id: activeAccount.id,
-          type: activeAccount.type,
-          property: 'assets',
-          value: {
-            ...accounts[activeAccount.type][activeAccount.id].assets,
-            syscoin: [
-              ...accounts[activeAccount.type][activeAccount.id].assets.syscoin,
-              assetInfos,
-            ],
-          },
+        setAccountAssets({
+          accountId: activeAccount.id,
+          accountType: activeAccount.type,
+          property: 'syscoin',
+          value: [...activeAccountAssets.syscoin, assetInfos],
         })
       );
     } catch (error) {
@@ -102,12 +95,13 @@ const SysAccountController = (
 
   const deleteTokenInfo = (assetGuid: string) => {
     try {
-      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
+      const { activeAccount, activeNetwork, accountAssets } =
+        store.getState().vault;
+      const activeAccountAssets =
+        accountAssets[activeAccount.type][activeAccount.id];
 
       // Find token considering both assetGuid AND chainId (network-specific)
-      const tokenExists = accounts[activeAccount.type][
-        activeAccount.id
-      ].assets.syscoin?.find(
+      const tokenExists = activeAccountAssets.syscoin?.find(
         (asset: ITokenSysProps) =>
           asset.assetGuid === assetGuid &&
           asset.chainId === activeNetwork.chainId
@@ -115,28 +109,18 @@ const SysAccountController = (
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
 
-      const cloneAssets = cloneDeep(
-        accounts[activeAccount.type][activeAccount.id].assets
-      );
-
-      // Filter out the token by both assetGuid AND chainId
-      const newAssetsValue = {
-        ...cloneAssets,
-        syscoin: cloneAssets.syscoin.filter(
-          (currentToken) =>
-            !(
-              currentToken.assetGuid === assetGuid &&
-              currentToken.chainId === activeNetwork.chainId
-            )
-        ),
-      };
-
       store.dispatch(
-        setAccountPropertyByIdAndType({
-          id: activeAccount.id,
-          type: activeAccount.type,
-          property: 'assets',
-          value: newAssetsValue,
+        setAccountAssets({
+          accountId: activeAccount.id,
+          accountType: activeAccount.type,
+          property: 'syscoin',
+          value: activeAccountAssets.syscoin.filter(
+            (currentToken) =>
+              !(
+                currentToken.assetGuid === assetGuid &&
+                currentToken.chainId === activeNetwork.chainId
+              )
+          ),
         })
       );
     } catch (error) {

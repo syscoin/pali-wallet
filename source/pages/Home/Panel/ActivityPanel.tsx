@@ -1,61 +1,60 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
-import { RootState } from 'state/store';
+import {
+  selectActiveAccountWithTransactions,
+  selectVaultCoreData,
+} from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 export const TransactionsPanel = () => {
-  const {
-    accounts,
-    activeAccount,
-    activeNetwork: { url: networkUrl, chainId, explorer },
-    isBitcoinBased,
-    isLoadingTxs,
-    isSwitchingAccount,
-  } = useSelector((state: RootState) => state.vault);
+  // ✅ OPTIMIZED: Use compound selectors to reduce re-renders
+  const { account: activeAccount, transactions: accountTransactions } =
+    useSelector(selectActiveAccountWithTransactions);
+  const { activeNetwork, isBitcoinBased, isLoadingTxs, isSwitchingAccount } =
+    useSelector(selectVaultCoreData);
+
   const { t } = useTranslation();
-  const networkExplorer = useAdjustedExplorer(explorer);
-  const adjustedNetworkUrl = useAdjustedExplorer(networkUrl);
-  const adjustedExplorer = isBitcoinBased
-    ? adjustedNetworkUrl
-    : networkExplorer;
+
+  // ✅ MEMOIZED: Explorer URLs
+  const networkExplorer = useAdjustedExplorer(activeNetwork.explorer);
+  const adjustedNetworkUrl = useAdjustedExplorer(activeNetwork.url);
+  const adjustedExplorer = useMemo(
+    () => (isBitcoinBased ? adjustedNetworkUrl : networkExplorer),
+    [isBitcoinBased, adjustedNetworkUrl, networkExplorer]
+  );
 
   const [previousTransactions, setPreviousTransactions] = useState([]);
 
+  // ✅ OPTIMIZED: Memoized transaction selection
   const transactions = useMemo(() => {
-    const accountTransactions =
-      accounts[activeAccount.type][activeAccount.id].transactions;
-
     if (isBitcoinBased) {
-      if (Array.isArray(accountTransactions)) return [];
-      const sysTxs = accountTransactions[TransactionsType.Syscoin][chainId];
-
-      if (sysTxs && sysTxs.length > 0) {
-        return sysTxs;
-      } else {
-        return [];
-      }
+      const sysTxs =
+        accountTransactions[TransactionsType.Syscoin][activeNetwork.chainId];
+      return sysTxs && sysTxs.length > 0 ? sysTxs : [];
     } else {
-      if (Array.isArray(accountTransactions)) return [];
-      const ethTxs = accountTransactions[TransactionsType.Ethereum][chainId];
-
-      if (ethTxs && ethTxs.length > 0) {
-        return ethTxs;
-      } else {
-        return [];
-      }
+      const ethTxs =
+        accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
+      return ethTxs && ethTxs.length > 0 ? ethTxs : [];
     }
-  }, [accounts, activeAccount, chainId, isBitcoinBased]);
+  }, [accountTransactions, activeNetwork.chainId, isBitcoinBased]);
 
-  const hasTransactions =
-    transactions.length > 0 || previousTransactions.length > 0;
+  const hasTransactions = useMemo(
+    () => transactions.length > 0 || previousTransactions.length > 0,
+    [transactions.length, previousTransactions.length]
+  );
+
+  // ✅ OPTIMIZED: useCallback for state updates to prevent unnecessary re-renders
+  const updatePreviousTransactions = useCallback((newTransactions: any[]) => {
+    setPreviousTransactions(newTransactions);
+  }, []);
 
   useEffect(() => {
     if (
@@ -63,46 +62,60 @@ export const TransactionsPanel = () => {
       transactions.length === 0 &&
       previousTransactions.length > 0
     ) {
-      setPreviousTransactions(transactions);
+      updatePreviousTransactions(transactions);
     } else if (transactions.length > 0) {
-      setPreviousTransactions(transactions);
+      updatePreviousTransactions(transactions);
     }
-  }, [isLoadingTxs, transactions, previousTransactions]);
+  }, [
+    isLoadingTxs,
+    transactions,
+    previousTransactions,
+    updatePreviousTransactions,
+  ]);
 
-  const NoTransactionsComponent = () => (
-    <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
-      <p>{t('home.youHaveNoTxs')}</p>
-    </div>
+  // ✅ MEMOIZED: Component definitions to prevent recreation
+  const NoTransactionsComponent = useCallback(
+    () => (
+      <div className="flex items-center justify-center pt-3 pb-6 text-brand-white text-sm">
+        <p>{t('home.youHaveNoTxs')}</p>
+      </div>
+    ),
+    [t]
   );
 
-  const TransactionSkeleton = () => (
-    <div className="p-4 mt-8 w-full mb-9 text-white text-base bg-brand-blue600">
-      <div className="space-y-3">
-        {[...Array(3)].map((_, index) => (
-          <div
-            key={index}
-            className="flex items-center justify-between p-3 bg-brand-blue500 rounded-lg"
-          >
-            <div className="flex items-center space-x-3">
-              <SkeletonLoader width="40px" height="40px" />
-              <div className="space-y-1">
-                <SkeletonLoader width="120px" height="16px" />
-                <SkeletonLoader width="80px" height="12px" />
+  const TransactionSkeleton = useCallback(
+    () => (
+      <div className="p-4 mt-8 w-full mb-9 text-white text-base bg-brand-blue600">
+        <div className="space-y-3">
+          {[...Array(3)].map((_, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between p-3 bg-brand-blue500 rounded-lg"
+            >
+              <div className="flex items-center space-x-3">
+                <SkeletonLoader width="40px" height="40px" />
+                <div className="space-y-1">
+                  <SkeletonLoader width="120px" height="16px" />
+                  <SkeletonLoader width="80px" height="12px" />
+                </div>
+              </div>
+              <div className="text-right space-y-1">
+                <SkeletonLoader width="100px" height="16px" />
+                <SkeletonLoader width="60px" height="12px" />
               </div>
             </div>
-            <div className="text-right space-y-1">
-              <SkeletonLoader width="100px" height="16px" />
-              <SkeletonLoader width="60px" height="12px" />
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
+    ),
+    []
   );
 
+  // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
   const OpenTransactionExplorer = useMemo(() => {
-    const { xpub, address: userAddress } =
-      accounts[activeAccount.type][activeAccount.id];
+    if (!activeAccount) return null;
+
+    const { xpub, address: userAddress } = activeAccount;
 
     const explorerUrl = `${adjustedExplorer}${
       isBitcoinBased ? 'xpub' : 'address'
@@ -122,9 +135,12 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [networkUrl, adjustedExplorer, chainId, isBitcoinBased, activeAccount]);
+  }, [activeAccount, adjustedExplorer, isBitcoinBased, t]);
 
-  const isLoading = isLoadingTxs || isSwitchingAccount;
+  const isLoading = useMemo(
+    () => isLoadingTxs || isSwitchingAccount,
+    [isLoadingTxs, isSwitchingAccount]
+  );
 
   const allTransactions = useMemo(
     () => (hasTransactions ? transactions : previousTransactions),

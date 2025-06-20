@@ -2,15 +2,22 @@ import store from 'state/store';
 
 // Export the function so it can be imported elsewhere
 export function getPollingInterval() {
-  const { isBitcoinBased, accounts, activeAccount, activeNetwork } =
-    store.getState().vault;
+  const {
+    isBitcoinBased,
+    accounts,
+    activeAccount,
+    activeNetwork,
+    accountTransactions,
+  } = store.getState().vault;
 
   // Check if there are pending transactions
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
   if (currentAccount) {
     const chain = isBitcoinBased ? 'syscoin' : 'ethereum';
     const transactions =
-      currentAccount.transactions?.[chain]?.[activeNetwork.chainId] || [];
+      accountTransactions[activeAccount.type]?.[activeAccount.id]?.[chain]?.[
+        activeNetwork.chainId
+      ] || [];
     const hasPendingTransactions =
       Array.isArray(transactions) &&
       transactions.some((tx: any) => tx.confirmations === 0);

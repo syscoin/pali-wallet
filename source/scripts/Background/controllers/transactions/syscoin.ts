@@ -31,17 +31,16 @@ const SysTransactionController = (): ISysTransactionsController => {
     xpub: string,
     networkUrl: string
   ): Promise<ISysTransaction[]> => {
-    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
-
-    const { transactions: userTransactions } =
-      accounts[activeAccount.type][activeAccount.id];
+    const { activeAccount, activeNetwork, accountTransactions } =
+      store.getState().vault;
 
     const getSysTxs = await getInitialUserTransactionsByXpub(xpub, networkUrl);
 
     // Ensure syscoinUserTransactions is always an array
     const syscoinUserTransactions = clone(
-      userTransactions?.[TransactionsType.Syscoin]?.[activeNetwork.chainId] ||
-        []
+      accountTransactions[activeAccount.type]?.[activeAccount.id]?.[
+        TransactionsType.Syscoin
+      ]?.[activeNetwork.chainId] || []
     ) as ISysTransaction[];
 
     // Ensure both values are arrays before spreading

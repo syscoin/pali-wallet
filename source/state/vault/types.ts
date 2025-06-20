@@ -11,8 +11,35 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
+// Clean account assets structure
+export interface IAccountAssets {
+  ethereum: ITokenEthProps[];
+  nfts: INftsStructure[];
+  syscoin: ITokenSysProps[];
+}
+
+// Clean account transactions structure
+export interface IAccountTransactions {
+  ethereum: { [chainId: number]: IEvmTransaction[] };
+  syscoin: { [chainId: number]: ISysTransaction[] };
+}
+
 export interface IVaultState {
-  accounts: { [key in KeyringAccountType]: PaliAccount };
+  // New: Separate global asset storage
+  accountAssets: {
+    [key in KeyringAccountType]: { [id: number]: IAccountAssets };
+  };
+
+  // New: Separate global transaction storage
+  accountTransactions: {
+    [key in KeyringAccountType]: { [id: number]: IAccountTransactions };
+  };
+
+  // Updated: Clean accounts - just references to keyring data
+  accounts: {
+    [key in KeyringAccountType]: { [id: number]: IKeyringAccountState };
+  };
+
   activeAccount: {
     id: number;
     type: KeyringAccountType;
@@ -71,33 +98,14 @@ export interface IChangingConnectedAccount {
   newConnectedAccount: IKeyringAccountState | undefined;
 }
 
-export interface IPaliAccount extends IKeyringAccountState {
-  assets: {
-    ethereum: ITokenEthProps[];
-    nfts: INftsStructure[];
-    syscoin: ITokenSysProps[];
-  };
-  transactions: TransactionsNetworkTypeMapping;
-}
-export type PaliAccount = {
-  [id: number]: IPaliAccount;
-};
-
 // eslint-disable-next-line no-shadow
 export enum TransactionsType {
   Ethereum = 'ethereum',
   Syscoin = 'syscoin',
 }
 
-export type TransactionsNetworkTypeMapping = {
-  [key in TransactionsType]: IChainNumberTransactions;
-};
-
-export interface IChainNumberTransactions {
-  [chainId: number]: IEvmTransaction[] | ISysTransaction[];
-}
-
-export type IOmmitedAccount = Omit<IPaliAccount, 'xprv'>;
+// Removed: IPaliAccount and related types - use separated structures instead
+export type IOmmitedAccount = Omit<IKeyringAccountState, 'xprv'>;
 
 export type IOmittedVault = Omit<IVaultState, 'accounts'> & {
   accounts: { [id: number]: IOmmitedAccount };

@@ -20,15 +20,16 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [isCopied, copy] = useCopyClipboard();
 
-  const { accounts, activeAccount, activeNetwork } = useSelector(
+  const { activeAccount, accountAssets, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+  const accountAssetData = accountAssets[activeAccount.type]?.[
+    activeAccount.id
+  ] || { ethereum: [], syscoin: [], nfts: [] };
 
   const { t } = useTranslation();
 
-  const { assets } = accounts[activeAccount.type][activeAccount.id];
-
-  const asset = assets.syscoin?.find(
+  const asset = accountAssetData.syscoin?.find(
     (sysAsset: any) => sysAsset.assetGuid === id
   );
 

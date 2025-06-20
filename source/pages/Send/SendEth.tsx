@@ -4,7 +4,7 @@ import { Form } from 'antd';
 import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -17,20 +17,37 @@ import { Layout, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 import { getAssetBalance, ellipsis } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+  const { controllerEmitter } = useController();
+
+  // ✅ OPTIMIZED: Consolidate vault selectors
+  const {
+    activeNetwork,
+    account: activeAccount,
+    assets: activeAccountAssets,
+  } = useSelector((state: RootState) => ({
+    activeNetwork: state.vault.activeNetwork,
+    ...selectActiveAccountWithAssets(state),
+  }));
+
+  // ✅ MEMOIZED: Computed values
+  const isAccountImported = useMemo(
+    () => activeAccount?.isImported || false,
+    [activeAccount?.isImported]
   );
 
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
+  const hasAccountAssets = useMemo(
+    () => activeAccountAssets && activeAccountAssets.ethereum?.length > 0,
+    [activeAccountAssets?.ethereum?.length]
   );
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+
+  // State management
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [isCalculatingFee, setIsCalculatingFee] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<{
@@ -43,77 +60,89 @@ export const SendEth = () => {
   const [isValidAddress, setIsValidAddress] = useState(null);
   const [isValidAmount, setIsValidAmount] = useState(null);
 
-  const { controllerEmitter } = useController();
-
   const [form] = Form.useForm();
 
-  const isAccountImported =
-    accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
+  // ✅ MEMOIZED: Handlers
+  const handleInputChange = useCallback(
+    (e) => {
+      const { name, value } = e.target;
 
-  const hasAccountAssets =
-    activeAccount && activeAccount.assets.ethereum?.length > 0;
+      setInputValue((prevState) => ({ ...prevState, [name]: value }));
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
+      if (name === 'address' && value.trim() !== '') {
+        const validAddress = isValidEthereumAddress(value);
+        setIsValidAddress(validAddress);
+      } else if (name === 'amount') {
+        // Don't clear cache on every keystroke - let validation handle it
 
-    setInputValue((prevState) => ({ ...prevState, [name]: value }));
+        const balance = selectedAsset
+          ? selectedAsset.balance
+          : Number(activeAccount?.balances.ethereum);
 
-    if (name === 'address' && value.trim() !== '') {
-      const validAddress = isValidEthereumAddress(value);
-      setIsValidAddress(validAddress);
-    } else if (name === 'amount') {
-      // Don't clear cache on every keystroke - let validation handle it
+        const validAmount =
+          Number(value) > 0 && parseFloat(value) <= parseFloat(balance);
 
-      const balance = selectedAsset
-        ? selectedAsset.balance
-        : Number(activeAccount?.balances.ethereum);
+        const isValidForSelectedAsset = selectedAsset
+          ? selectedAsset.isNft || (!selectedAsset.isNft && validAmount)
+          : validAmount;
 
-      const validAmount =
-        Number(value) > 0 && parseFloat(value) <= parseFloat(balance);
-
-      const isValidForSelectedAsset = selectedAsset
-        ? selectedAsset.isNft || (!selectedAsset.isNft && validAmount)
-        : validAmount;
-
-      if (isValidForSelectedAsset) {
-        setIsValidAmount(true);
+        if (isValidForSelectedAsset) {
+          setIsValidAmount(true);
+        } else {
+          setIsValidAmount(false);
+        }
       } else {
-        setIsValidAmount(false);
+        setIsValidAddress(null);
       }
-    } else {
-      setIsValidAddress(null);
-    }
-  };
+    },
+    [selectedAsset, activeAccount?.balances.ethereum]
+  );
 
-  const handleSelectedAsset = (item: string) => {
-    // Clear cached fee when switching assets
-    setCachedFeeData(null);
+  const handleSelectedAsset = useCallback(
+    (item: string) => {
+      // Clear cached fee when switching assets
+      setCachedFeeData(null);
 
-    if (activeAccount.assets.ethereum?.length > 0) {
-      const getAsset = activeAccount.assets.ethereum.find(
-        (asset) => asset.contractAddress === item
-      );
+      if (activeAccountAssets?.ethereum?.length > 0) {
+        const getAsset = activeAccountAssets.ethereum.find(
+          (asset) => asset.contractAddress === item
+        );
 
-      if (getAsset) {
-        setSelectedAsset(getAsset);
+        if (getAsset) {
+          setSelectedAsset(getAsset);
+          return;
+        }
 
-        return;
+        setSelectedAsset(null);
       }
+    },
+    [activeAccountAssets?.ethereum]
+  );
 
-      setSelectedAsset(null);
-    }
-  };
+  // ✅ MEMOIZED: Complex computed values
+  const tokenId = useMemo(() => form.getFieldValue('amount'), [form]);
 
-  const tokenId = form.getFieldValue('amount');
-  const collectionItemSymbol = selectedAsset?.collection?.find(
-    (item) => item.tokenId === +tokenId
-  )?.tokenSymbol;
+  const collectionItemSymbol = useMemo(
+    () =>
+      selectedAsset?.collection?.find((item) => item.tokenId === +tokenId)
+        ?.tokenSymbol,
+    [selectedAsset?.collection, tokenId]
+  );
 
-  const finalSymbolToNextStep = selectedAsset?.is1155
-    ? collectionItemSymbol || selectedAsset?.collectionName
-    : selectedAsset?.tokenSymbol;
+  const finalSymbolToNextStep = useMemo(
+    () =>
+      selectedAsset?.is1155
+        ? collectionItemSymbol || selectedAsset?.collectionName
+        : selectedAsset?.tokenSymbol,
+    [
+      selectedAsset?.is1155,
+      collectionItemSymbol,
+      selectedAsset?.collectionName,
+      selectedAsset?.tokenSymbol,
+    ]
+  );
 
-  const nextStep = () => {
+  const nextStep = useCallback(() => {
     const receiver = form.getFieldValue('receiver');
     const amount = form.getFieldValue('amount');
 
@@ -139,9 +168,19 @@ export const SendEth = () => {
       alert.removeAll();
       alert.error(t('send.internalError"'));
     }
-  };
+  }, [
+    isValidAmount,
+    isValidAddress,
+    form,
+    navigate,
+    activeAccount.address,
+    selectedAsset,
+    finalSymbolToNextStep,
+    alert,
+    t,
+  ]);
 
-  const finalBalance = () => {
+  const finalBalance = useCallback(() => {
     if (selectedAsset?.is1155 === undefined) {
       const balance = selectedAsset
         ? getAssetBalance(selectedAsset, activeAccount, false, activeNetwork)
@@ -157,9 +196,9 @@ export const SendEth = () => {
           index === arr.length - 1 ? '' : '- '
         }`
     );
-  };
+  }, [selectedAsset, activeAccount, activeNetwork]);
 
-  const getLabel = () => {
+  const getLabel = useCallback(() => {
     if (selectedAsset?.is1155 === undefined) {
       return selectedAsset?.tokenSymbol
         ? selectedAsset?.tokenSymbol.toUpperCase()
@@ -167,9 +206,9 @@ export const SendEth = () => {
     }
 
     return selectedAsset?.collectionName.toUpperCase();
-  };
+  }, [selectedAsset, activeNetwork.currency]);
 
-  const getTitle = () => {
+  const getTitle = useCallback(() => {
     if (selectedAsset?.is1155 === undefined) {
       return `${t('send.send')} ${
         selectedAsset && selectedAsset.tokenSymbol
@@ -178,9 +217,9 @@ export const SendEth = () => {
       }`;
     }
     return `${t('send.send')} NFT`;
-  };
+  }, [selectedAsset, activeNetwork.currency, t]);
 
-  const calculateMaxAmount = async () => {
+  const calculateMaxAmount = useCallback(async () => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
       return selectedAsset.balance;
@@ -259,23 +298,25 @@ export const SendEth = () => {
         Number(activeAccount.balances.ethereum) - conservativeFee
       );
     }
-  };
+  }, [
+    selectedAsset,
+    cachedFeeData,
+    controllerEmitter,
+    form,
+    activeAccount,
+    activeNetwork.chainId,
+  ]);
 
-  // Remove the useEffect that was calling getFees since we calculate on demand now
-
+  // ✅ OPTIMIZED: Effect with proper dependencies
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
-    if (!placeholder) return;
+    if (!placeholder || !activeAccount?.xpub) return;
 
-    placeholder.innerHTML = toSvg(
-      accounts[activeAccountMeta.type][activeAccountMeta.id]?.xpub,
-      50,
-      {
-        backColor: '#07152B',
-        padding: 1,
-      }
-    );
-  }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
+    placeholder.innerHTML = toSvg(activeAccount.xpub, 50, {
+      backColor: '#07152B',
+      padding: 1,
+    });
+  }, [activeAccount?.address, activeAccount?.xpub]);
 
   return (
     <Layout title={getTitle()}>
@@ -285,17 +326,8 @@ export const SendEth = () => {
           <div className="flex gap-1 justify-center items-center">
             <PaliWhiteSmallIconSvg />
             <div className="flex text-white gap-1 text-xs font-normal w-max">
-              <p>
-                {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}
-              </p>
-              <p>
-                {ellipsis(
-                  accounts[activeAccountMeta.type][activeAccountMeta.id]
-                    ?.address,
-                  4,
-                  4
-                )}
-              </p>
+              <p>{activeAccount?.label}</p>
+              <p>{ellipsis(activeAccount?.address, 4, 4)}</p>
             </div>
             {isAccountImported && (
               <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
@@ -415,7 +447,7 @@ export const SendEth = () => {
                             </Menu.Item>
 
                             {hasAccountAssets &&
-                              Object.values(activeAccount.assets.ethereum).map(
+                              Object.values(activeAccountAssets.ethereum).map(
                                 (item: ITokenEthProps) => (
                                   <div key={uniqueId()}>
                                     {item.chainId === activeNetwork.chainId ? (

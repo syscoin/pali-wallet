@@ -3,9 +3,9 @@ import { ethers } from 'ethers';
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
+  IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 
-import { IPaliAccount } from 'state/vault/types';
 import { ONE_MILLION } from 'utils/constants';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
 
@@ -15,7 +15,9 @@ import { zerosRepeatingAtStartOfEvmBalance } from './utils';
 const EvmBalanceController = (
   web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
 ): IEvmBalanceController => {
-  const getEvmBalanceForAccount = async (currentAccount: IPaliAccount) => {
+  const getEvmBalanceForAccount = async (
+    currentAccount: IKeyringAccountState
+  ) => {
     try {
       //LATER CHANGE THIS TO USE NEW PROVIDER FROM SYSWEB3
       const provider = web3Provider;

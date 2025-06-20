@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
@@ -7,23 +7,26 @@ import { ChainIcon } from 'components/ChainIcon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { nftsVideoFormats } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
 export const EvmNftsList = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
-  const { accounts, activeAccount, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
+
+  // ✅ OPTIMIZED: Use compound selector and separate network selector
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const { account: activeAccount, assets: accountAssets } = useSelector(
+    selectActiveAccountWithAssets
   );
 
   const [nftsGrouped, setNftsGrouped] = useState<Record<string, Array<any>>>(
     {}
   );
 
-  const userAccount = accounts[activeAccount.type][activeAccount.id];
-
-  const getUserNfts = async () => {
+  // ✅ MEMOIZED: NFT fetching function
+  const getUserNfts = useCallback(async () => {
     try {
       await controllerEmitter(
         ['wallet', 'fetchAndUpdateNftsState'],
@@ -32,9 +35,10 @@ export const EvmNftsList = () => {
     } catch (error) {
       console.error('Error on get NFTs:', error);
     }
-  };
+  }, [controllerEmitter, activeAccount, activeNetwork]);
 
-  const groupSameCollection = (nfts: INftsStructure[]) => {
+  // ✅ MEMOIZED: Grouping function
+  const groupSameCollection = useCallback((nfts: INftsStructure[]) => {
     const groups = {};
 
     nfts.forEach((item) => {
@@ -48,32 +52,78 @@ export const EvmNftsList = () => {
     });
 
     setNftsGrouped(groups);
-  };
+  }, []);
 
-  const handleNavigateToNftDetail = (tokenId, address) => {
-    navigate('/home/details', {
-      state: {
-        nftId: tokenId,
-        nftAddress: address,
-      },
-    });
-  };
+  // ✅ MEMOIZED: Navigation handler
+  const handleNavigateToNftDetail = useCallback(
+    (tokenId: string, address: string) => {
+      navigate('/home/details', {
+        state: {
+          nftId: tokenId,
+          nftAddress: address,
+        },
+      });
+    },
+    [navigate]
+  );
+
+  // ✅ OPTIMIZED: Fetch NFTs only when necessary dependencies change
+  useEffect(() => {
+    if (activeAccount?.address && activeNetwork?.chainId) {
+      getUserNfts();
+    }
+  }, [activeAccount?.address, activeNetwork?.chainId, getUserNfts]);
+
+  // ✅ OPTIMIZED: Filter and group NFTs when data changes
+  const filteredNfts = useMemo(
+    () =>
+      accountAssets.nfts.filter(
+        (nft) => Number(nft.chainId) === activeNetwork.chainId
+      ),
+    [accountAssets.nfts, activeNetwork.chainId]
+  );
 
   useEffect(() => {
-    getUserNfts();
-  }, [userAccount.address, activeNetwork.chainId]);
+    groupSameCollection(filteredNfts);
+  }, [filteredNfts, groupSameCollection]);
 
-  useEffect(() => {
-    const userNftsFromCurrentChain = userAccount.assets.nfts.filter(
-      (nft) => Number(nft.chainId) === activeNetwork.chainId
-    );
-
-    groupSameCollection(userNftsFromCurrentChain);
-  }, [userAccount.assets.nfts]);
+  // ✅ MEMOIZED: Render NFT item to prevent recreation
+  const renderNftItem = useCallback(
+    (data: any, index: number) => (
+      <div key={index} className="rounded-[10px] overflow-hidden">
+        {nftsVideoFormats.some((format) =>
+          data.image_preview_url.endsWith(format)
+        ) ? (
+          <video
+            className="max-w-none w-[153px] h-[153px] hover:cursor-pointer"
+            autoPlay
+            muted
+            loop
+            onClick={() =>
+              handleNavigateToNftDetail(data.token_id, data.address)
+            }
+          >
+            <source src={data.image_preview_url} type="video/mp4" />
+            Video not supported
+          </video>
+        ) : (
+          <img
+            id="nft-image"
+            className="rounded-[10px] w-[153px] h-[153px] cursor-pointer"
+            onClick={() =>
+              handleNavigateToNftDetail(data.token_id, data.address)
+            }
+            src={data?.image_preview_url}
+          />
+        )}
+      </div>
+    ),
+    [handleNavigateToNftDetail]
+  );
 
   return (
     <div className="flex flex-col gap-6 mt-6">
-      {userAccount.assets.nfts &&
+      {accountAssets.nfts &&
         Object.entries(nftsGrouped).map(([collections, nfts]) => (
           <div
             key={collections}
@@ -104,35 +154,7 @@ export const EvmNftsList = () => {
             </div>
 
             <div className="flex gap-2 items-start flex-wrap">
-              {nfts.map((data, index) => (
-                <div key={index} className="rounded-[10px] overflow-hidden">
-                  {nftsVideoFormats.some((format) =>
-                    data.image_preview_url.endsWith(format)
-                  ) ? (
-                    <video
-                      className="max-w-none w-[153px] h-[153px] hover:cursor-pointer"
-                      autoPlay
-                      muted
-                      loop
-                      onClick={() =>
-                        handleNavigateToNftDetail(data.token_id, data.address)
-                      }
-                    >
-                      <source src={data.image_preview_url} type="video/mp4" />
-                      Video not supported
-                    </video>
-                  ) : (
-                    <img
-                      id="nft-image"
-                      className="rounded-[10px] w-[153px] h-[153px] cursor-pointer"
-                      onClick={() =>
-                        handleNavigateToNftDetail(data.token_id, data.address)
-                      }
-                      src={data?.image_preview_url}
-                    />
-                  )}
-                </div>
-              ))}
+              {nfts.map(renderNftItem)}
             </div>
             <div id="nft-by" className="overflow-hidden max-w-[100px]">
               <p className="text-brand-gray200 text-xs overflow-hidden whitespace-nowrap">

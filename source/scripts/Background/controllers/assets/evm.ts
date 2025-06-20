@@ -4,6 +4,7 @@ import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import {
   ISupportsInterfaceProps,
   contractChecker,
@@ -17,7 +18,6 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { Queue } from '../transactions/queue';
-import { IPaliAccount } from 'state/vault/types';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
 
 import { IAddCustomTokenResponse, IEvmAssetsController } from './types';
@@ -279,18 +279,19 @@ const EvmAssetsController = (): IEvmAssetsController => {
   };
 
   const updateAllEvmTokens = async (
-    account: IPaliAccount,
+    account: IKeyringAccountState,
     currentNetworkChainId: number,
-    w3Provider: CustomJsonRpcProvider
+    w3Provider: CustomJsonRpcProvider,
+    accountAssets: ITokenEthProps[]
   ): Promise<ITokenEthProps[]> => {
-    if (isEmpty(account.assets.ethereum)) return [];
+    if (isEmpty(accountAssets)) return [];
     const queue = new Queue(3);
 
     try {
       queue.execute(
         async () =>
           await Promise.all(
-            account.assets.ethereum.map(async (vaultAssets: ITokenEthProps) => {
+            accountAssets.map(async (vaultAssets: ITokenEthProps) => {
               if (vaultAssets.chainId === currentNetworkChainId) {
                 const provider = w3Provider;
                 let nftContractType = null;
@@ -359,7 +360,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         .map(({ result }) => result);
 
       const tokens = updatedTokens.some((entry) => isNil(entry))
-        ? [...account.assets.ethereum]
+        ? [...accountAssets]
         : updatedTokens.filter((entry) => !isNil(entry));
 
       return validateAndManageUserAssets(true, tokens) as ITokenEthProps[];
@@ -368,7 +369,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         "Pali utils: Couldn't update assets due to the following issue ",
         error
       );
-      return account.assets.ethereum as ITokenEthProps[];
+      return accountAssets;
     }
   };
 

@@ -1,5 +1,5 @@
 import { Menu } from '@headlessui/react';
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
@@ -10,6 +10,7 @@ import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { PaliWhiteSmallIconSvg, LoadingSvg } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import { RootState } from 'state/store';
+import { selectActiveAccountRef } from 'state/vault';
 import { ellipsis } from 'utils/index';
 
 type RenderAccountsListByBitcoinBasedProps = {
@@ -25,30 +26,41 @@ const RenderAccountsListByBitcoinBased = (
     type: KeyringAccountType;
   } | null>(null);
 
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
-
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
+  const { accounts, activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => ({
+      accounts: state.vault.accounts,
+      activeNetwork: state.vault.activeNetwork,
+      isBitcoinBased: state.vault.isBitcoinBased,
+    })
   );
 
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+  const activeAccount = useSelector(selectActiveAccountRef);
+
+  const handleAccountSwitch = useCallback(
+    async (id: number, type: KeyringAccountType, close: () => void) => {
+      setSwitchingAccount({ id, type });
+      try {
+        await setActiveAccount(id, type);
+        close();
+      } finally {
+        setSwitchingAccount(null);
+      }
+    },
+    [setActiveAccount]
   );
 
-  const handleAccountSwitch = async (
-    id: number,
-    type: KeyringAccountType,
-    close: () => void
-  ) => {
-    setSwitchingAccount({ id, type });
-    try {
-      await setActiveAccount(id, type);
-      close();
-    } finally {
-      setSwitchingAccount(null);
-    }
-  };
+  const isAccountSwitching = useCallback(
+    (accountId: number, accountType: KeyringAccountType) =>
+      switchingAccount?.id === accountId &&
+      switchingAccount?.type === accountType,
+    [switchingAccount]
+  );
+
+  const isAccountActive = useCallback(
+    (accountId: number, accountType: KeyringAccountType) =>
+      activeAccount.id === accountId && activeAccount.type === accountType,
+    [activeAccount]
+  );
 
   return (
     <Menu.Item>
@@ -63,10 +75,21 @@ const RenderAccountsListByBitcoinBased = (
                     className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                   font-medium hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none cursor-pointer transform
                    transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-                     switchingAccount ? 'pointer-events-none opacity-60' : ''
+                     isAccountSwitching(
+                       account.id,
+                       KeyringAccountType.HDAccount
+                     )
+                       ? 'pointer-events-none opacity-60'
+                       : ''
                    }`}
                     onClick={() => {
-                      if (switchingAccount) return;
+                      if (
+                        isAccountSwitching(
+                          account.id,
+                          KeyringAccountType.HDAccount
+                        )
+                      )
+                        return;
                       handleAccountSwitch(
                         account.id,
                         KeyringAccountType.HDAccount,
@@ -91,26 +114,28 @@ const RenderAccountsListByBitcoinBased = (
 
                     {/* Right side: Badge + Checkmark */}
                     <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-                      {switchingAccount?.id === account.id &&
-                      switchingAccount?.type ===
-                        KeyringAccountType.HDAccount ? (
+                      {isAccountSwitching(
+                        account.id,
+                        KeyringAccountType.HDAccount
+                      ) ? (
                         <LoadingSvg className="w-4 h-4 text-brand-royalblue" />
                       ) : (
                         <>
                           <span className="text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300">
                             Pali
                           </span>
-                          {activeAccount.id === account.id &&
-                            activeAccount.type ===
-                              KeyringAccountType.HDAccount && (
-                              <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                <Icon
-                                  name="check"
-                                  className="w-4 h-4"
-                                  color="#8EC100"
-                                />
-                              </div>
-                            )}
+                          {isAccountActive(
+                            account.id,
+                            KeyringAccountType.HDAccount
+                          ) && (
+                            <div className="transform group-hover:scale-110 transition-transform duration-300">
+                              <Icon
+                                name="check"
+                                className="w-4 h-4"
+                                color="#8EC100"
+                              />
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -124,10 +149,18 @@ const RenderAccountsListByBitcoinBased = (
                     className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                   font-medium hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none cursor-pointer transform
                    transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-blue600/20 ${
-                     switchingAccount ? 'pointer-events-none opacity-60' : ''
+                     isAccountSwitching(account.id, KeyringAccountType.Imported)
+                       ? 'pointer-events-none opacity-60'
+                       : ''
                    }`}
                     onClick={() => {
-                      if (switchingAccount) return;
+                      if (
+                        isAccountSwitching(
+                          account.id,
+                          KeyringAccountType.Imported
+                        )
+                      )
+                        return;
                       handleAccountSwitch(
                         account.id,
                         KeyringAccountType.Imported,
@@ -152,25 +185,28 @@ const RenderAccountsListByBitcoinBased = (
 
                     {/* Right side: Badge + Checkmark */}
                     <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-                      {switchingAccount?.id === account.id &&
-                      switchingAccount?.type === KeyringAccountType.Imported ? (
+                      {isAccountSwitching(
+                        account.id,
+                        KeyringAccountType.Imported
+                      ) ? (
                         <LoadingSvg className="w-4 h-4 text-orange-500" />
                       ) : (
                         <>
                           <span className="text-xs px-2 py-0.5 text-white bg-orange-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-orange-400 transform group-hover:scale-105 transition-all duration-300">
                             Imported
                           </span>
-                          {activeAccount.id === account.id &&
-                            activeAccount.type ===
-                              KeyringAccountType.Imported && (
-                              <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                <Icon
-                                  name="check"
-                                  className="w-4 h-4"
-                                  color="#8EC100"
-                                />
-                              </div>
-                            )}
+                          {isAccountActive(
+                            account.id,
+                            KeyringAccountType.Imported
+                          ) && (
+                            <div className="transform group-hover:scale-110 transition-transform duration-300">
+                              <Icon
+                                name="check"
+                                className="w-4 h-4"
+                                color="#8EC100"
+                              />
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -186,7 +222,10 @@ const RenderAccountsListByBitcoinBased = (
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
                       : `cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-                          switchingAccount
+                          isAccountSwitching(
+                            account.id,
+                            KeyringAccountType.Trezor
+                          )
                             ? 'pointer-events-none opacity-60'
                             : ''
                         }`
@@ -194,7 +233,10 @@ const RenderAccountsListByBitcoinBased = (
                     onClick={() => {
                       if (
                         account?.originNetwork.url !== activeNetwork.url ||
-                        switchingAccount
+                        isAccountSwitching(
+                          account.id,
+                          KeyringAccountType.Trezor
+                        )
                       ) {
                         return;
                       }
@@ -234,25 +276,28 @@ const RenderAccountsListByBitcoinBased = (
 
                     {/* Right side: Badge + Checkmark */}
                     <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-                      {switchingAccount?.id === account.id &&
-                      switchingAccount?.type === KeyringAccountType.Trezor ? (
+                      {isAccountSwitching(
+                        account.id,
+                        KeyringAccountType.Trezor
+                      ) ? (
                         <LoadingSvg className="w-4 h-4 text-green-500" />
                       ) : (
                         <>
                           <span className="text-xs px-2 py-0.5 text-white bg-green-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-green-400 transform group-hover:scale-105 transition-all duration-300">
                             Trezor
                           </span>
-                          {activeAccount.id === account.id &&
-                            activeAccount.type ===
-                              KeyringAccountType.Trezor && (
-                              <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                <Icon
-                                  name="check"
-                                  className="w-4 h-4"
-                                  color="#8EC100"
-                                />
-                              </div>
-                            )}
+                          {isAccountActive(
+                            account.id,
+                            KeyringAccountType.Trezor
+                          ) && (
+                            <div className="transform group-hover:scale-110 transition-transform duration-300">
+                              <Icon
+                                name="check"
+                                className="w-4 h-4"
+                                color="#8EC100"
+                              />
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -268,7 +313,10 @@ const RenderAccountsListByBitcoinBased = (
                     account?.originNetwork.url !== activeNetwork.url
                       ? 'hidden'
                       : `cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-                          switchingAccount
+                          isAccountSwitching(
+                            account.id,
+                            KeyringAccountType.Ledger
+                          )
                             ? 'pointer-events-none opacity-60'
                             : ''
                         }`
@@ -276,7 +324,10 @@ const RenderAccountsListByBitcoinBased = (
                     onClick={() => {
                       if (
                         account?.originNetwork.url !== activeNetwork.url ||
-                        switchingAccount
+                        isAccountSwitching(
+                          account.id,
+                          KeyringAccountType.Ledger
+                        )
                       ) {
                         return;
                       }
@@ -316,25 +367,28 @@ const RenderAccountsListByBitcoinBased = (
 
                     {/* Right side: Badge + Checkmark */}
                     <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-                      {switchingAccount?.id === account.id &&
-                      switchingAccount?.type === KeyringAccountType.Ledger ? (
+                      {isAccountSwitching(
+                        account.id,
+                        KeyringAccountType.Ledger
+                      ) ? (
                         <LoadingSvg className="w-4 h-4 text-blue-500" />
                       ) : (
                         <>
                           <span className="text-xs px-2 py-0.5 text-white bg-blue-500 rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-blue-400 transform group-hover:scale-105 transition-all duration-300">
                             Ledger
                           </span>
-                          {activeAccount.id === account.id &&
-                            activeAccount.type ===
-                              KeyringAccountType.Ledger && (
-                              <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                <Icon
-                                  name="check"
-                                  className="w-4 h-4"
-                                  color="#8EC100"
-                                />
-                              </div>
-                            )}
+                          {isAccountActive(
+                            account.id,
+                            KeyringAccountType.Ledger
+                          ) && (
+                            <div className="transform group-hover:scale-110 transition-transform duration-300">
+                              <Icon
+                                name="check"
+                                className="w-4 h-4"
+                                color="#8EC100"
+                              />
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -356,7 +410,12 @@ const RenderAccountsListByBitcoinBased = (
                   account?.originNetwork?.isBitcoinBased)
                   ? 'hidden'
                   : `cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-                      switchingAccount ? 'pointer-events-none opacity-60' : ''
+                      isAccountSwitching(
+                        account.id,
+                        keyringAccountType as KeyringAccountType
+                      )
+                        ? 'pointer-events-none opacity-60'
+                        : ''
                     }`
               } transform`}
                       onClick={() => {
@@ -365,7 +424,10 @@ const RenderAccountsListByBitcoinBased = (
                             account?.originNetwork?.isBitcoinBased) ||
                           (account.isLedgerWallet &&
                             account?.originNetwork?.isBitcoinBased) ||
-                          switchingAccount
+                          isAccountSwitching(
+                            account.id,
+                            keyringAccountType as KeyringAccountType
+                          )
                         ) {
                           return;
                         }
@@ -434,8 +496,10 @@ const RenderAccountsListByBitcoinBased = (
 
                       {/* Right side: Badge + Checkmark */}
                       <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
-                        {switchingAccount?.id === account.id &&
-                        switchingAccount?.type === keyringAccountType ? (
+                        {isAccountSwitching(
+                          account.id,
+                          keyringAccountType as KeyringAccountType
+                        ) ? (
                           <LoadingSvg
                             className={`w-4 h-4 ${
                               account.isImported
@@ -466,16 +530,18 @@ const RenderAccountsListByBitcoinBased = (
                                 Pali
                               </span>
                             )}
-                            {activeAccount.id === account.id &&
-                              activeAccount.type === keyringAccountType && (
-                                <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                  <Icon
-                                    name="check"
-                                    className="w-4 h-4"
-                                    color="#8EC100"
-                                  />
-                                </div>
-                              )}
+                            {isAccountActive(
+                              account.id,
+                              keyringAccountType as KeyringAccountType
+                            ) && (
+                              <div className="transform group-hover:scale-110 transition-transform duration-300">
+                                <Icon
+                                  name="check"
+                                  className="w-4 h-4"
+                                  color="#8EC100"
+                                />
+                              </div>
+                            )}
                           </>
                         )}
                       </div>

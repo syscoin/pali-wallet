@@ -4,7 +4,7 @@ import { getTokenInfoBasedOnNetwork } from '@pollum-io/sysweb3-utils';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
-import { setAccountPropertyByIdAndType, setEditedEvmToken } from 'state/vault';
+import { setEditedEvmToken, setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
@@ -19,12 +19,14 @@ export interface IEthAccountController {
 
 const EthAccountController = (): IEthAccountController | any => {
   const saveTokenInfo = async (token: ITokenEthProps, tokenType: string) => {
-    const { activeAccount, activeNetwork, accounts } = store.getState().vault;
+    const { activeAccount, activeNetwork, accountAssets } =
+      store.getState().vault;
     const { chainId } = activeNetwork;
-    const activeAccountData = accounts[activeAccount.type][activeAccount.id];
+    const activeAccountAssets =
+      accountAssets[activeAccount.type][activeAccount.id];
     try {
       if (tokenType === 'ERC-1155') {
-        const currentAssets = [...activeAccountData.assets.ethereum];
+        const currentAssets = [...activeAccountAssets.ethereum];
 
         const nftCollection = currentAssets.find(
           (nft) => nft.contractAddress === token.contractAddress
@@ -35,50 +37,34 @@ const EthAccountController = (): IEthAccountController | any => {
           const indexItem = currentAssets.indexOf(nftCollection);
 
           const finalEthAssets = [
-            ...accounts[activeAccount.type][
-              activeAccount.id
-            ].assets.ethereum.slice(0, indexItem),
+            ...activeAccountAssets.ethereum.slice(0, indexItem),
             finalToken,
-            ...accounts[activeAccount.type][
-              activeAccount.id
-            ].assets.ethereum.slice(indexItem + 1),
+            ...activeAccountAssets.ethereum.slice(indexItem + 1),
           ];
 
           store.dispatch(
-            setAccountPropertyByIdAndType({
-              id: activeAccount.id,
-              type: activeAccount.type,
-              property: 'assets',
-              value: {
-                ...accounts[activeAccount.type][activeAccount.id].assets,
-                ethereum: finalEthAssets,
-              },
+            setAccountAssets({
+              accountId: activeAccount.id,
+              accountType: activeAccount.type,
+              property: 'ethereum',
+              value: finalEthAssets,
             })
           );
           return;
         }
 
         store.dispatch(
-          setAccountPropertyByIdAndType({
-            id: activeAccount.id,
-            type: activeAccount.type,
-            property: 'assets',
-            value: {
-              ...accounts[activeAccount.type][activeAccount.id].assets,
-              ethereum: [
-                ...accounts[activeAccount.type][activeAccount.id].assets
-                  .ethereum,
-                finalToken,
-              ],
-            },
+          setAccountAssets({
+            accountId: activeAccount.id,
+            accountType: activeAccount.type,
+            property: 'ethereum',
+            value: [...activeAccountAssets.ethereum, finalToken],
           })
         );
         return;
       }
 
-      const tokenExists = accounts[activeAccount.type][
-        activeAccount.id
-      ].assets.ethereum?.find(
+      const tokenExists = activeAccountAssets.ethereum?.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress
       );
@@ -95,17 +81,11 @@ const EthAccountController = (): IEthAccountController | any => {
       }
 
       store.dispatch(
-        setAccountPropertyByIdAndType({
-          id: activeAccount.id,
-          type: activeAccount.type,
-          property: 'assets',
-          value: {
-            ...accounts[activeAccount.type][activeAccount.id].assets,
-            ethereum: [
-              ...accounts[activeAccount.type][activeAccount.id].assets.ethereum,
-              web3Token,
-            ],
-          },
+        setAccountAssets({
+          accountId: activeAccount.id,
+          accountType: activeAccount.type,
+          property: 'ethereum',
+          value: [...activeAccountAssets.ethereum, web3Token],
         })
       );
     } catch (error) {
@@ -115,11 +95,11 @@ const EthAccountController = (): IEthAccountController | any => {
 
   const editTokenInfo = (token: ITokenEthProps) => {
     try {
-      const { activeAccount, accounts } = store.getState().vault;
+      const { activeAccount, accountAssets } = store.getState().vault;
+      const activeAccountAssets =
+        accountAssets[activeAccount.type][activeAccount.id];
 
-      const cloneArray = cloneDeep(
-        accounts[activeAccount.type][activeAccount.id].assets
-      );
+      const cloneArray = cloneDeep(activeAccountAssets);
 
       const findIndex = cloneArray.ethereum.findIndex(
         (stateToken) => stateToken.contractAddress === token.contractAddress
@@ -140,33 +120,26 @@ const EthAccountController = (): IEthAccountController | any => {
 
   const deleteTokenInfo = (tokenAddress: string) => {
     try {
-      const { activeAccount, accounts } = store.getState().vault;
+      const { activeAccount, accountAssets } = store.getState().vault;
+      const activeAccountAssets =
+        accountAssets[activeAccount.type][activeAccount.id];
 
-      const tokenExists = accounts[activeAccount.type][
-        activeAccount.id
-      ].assets.ethereum?.find(
+      const tokenExists = activeAccountAssets.ethereum?.find(
         (asset: ITokenEthProps) => asset.contractAddress === tokenAddress
       );
 
       if (!tokenExists) throw new Error("Token doesn't exists!");
 
-      const cloneAssets = cloneDeep(
-        accounts[activeAccount.type][activeAccount.id].assets
-      );
-
-      const newAssetsValue = {
-        ...cloneAssets,
-        ethereum: cloneAssets.ethereum.filter(
-          (currentToken) => currentToken.contractAddress !== tokenAddress
-        ),
-      };
+      const cloneAssets = cloneDeep(activeAccountAssets);
 
       store.dispatch(
-        setAccountPropertyByIdAndType({
-          id: activeAccount.id,
-          type: activeAccount.type,
-          property: 'assets',
-          value: newAssetsValue,
+        setAccountAssets({
+          accountId: activeAccount.id,
+          accountType: activeAccount.type,
+          property: 'ethereum',
+          value: cloneAssets.ethereum.filter(
+            (currentToken) => currentToken.contractAddress !== tokenAddress
+          ),
         })
       );
     } catch (error) {

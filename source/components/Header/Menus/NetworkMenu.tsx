@@ -1,6 +1,6 @@
 import { Disclosure, Menu } from '@headlessui/react';
 import { uniqueId } from 'lodash';
-import React, { memo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -22,6 +22,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
 import { startSwitchNetwork, switchNetworkError } from 'state/vault';
+import { selectActiveAccount } from 'state/vault/selectors';
 
 const GlobeIcon = memo(() => (
   <Icon
@@ -44,7 +45,6 @@ interface INetworkComponent {
 
 const customSort = (a: INetwork, b: INetwork) => {
   const order = { 570: 2, 57: 1 };
-
   return (order[b.chainId] || 0) - (order[a.chainId] || 0);
 };
 
@@ -55,109 +55,165 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { controllerEmitter } = useController();
   const { t, i18n } = useTranslation();
   const { language } = i18n;
-  const { dapps } = useSelector((state: RootState) => state.dapp);
-
-  const networks = useSelector((state: RootState) => state.vault.networks);
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-  const {
-    activeAccount: { type: activeAccountType },
-    networkStatus,
-  } = useSelector((state: RootState) => state.vault);
-
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
-
-  const activeAccount = useSelector(
-    (state: RootState) =>
-      state.vault.accounts[state.vault.activeAccount.type][
-        state.vault.activeAccount.id
-      ]
-  );
-
-  const isNetworkChanging = networkStatus === 'switching';
-  const networkType = isBitcoinBased
-    ? INetworkType.Syscoin
-    : INetworkType.Ethereum;
-
-  const bgColor =
-    networkType === INetworkType.Syscoin ? 'bg-brand-pink' : 'bg-brand-blue';
-
-  const activeNetworkValidator = (currentNetwork: INetwork): boolean =>
-    Boolean(
-      activeNetwork.chainId === currentNetwork.chainId &&
-        activeNetwork.url === currentNetwork.url &&
-        activeNetwork.label === currentNetwork.label
-    );
-
   const { navigate } = useUtils();
 
-  const handleChangeNetwork = async (
-    network: INetwork,
-    closeMenu?: () => void
-  ) => {
-    setSelectedNetwork(network);
+  // ✅ OPTIMIZED: Consolidate multiple vault selectors
+  const {
+    networks,
+    isBitcoinBased,
+    activeAccountType,
+    networkStatus,
+    activeNetwork,
+  } = useSelector((state: RootState) => ({
+    networks: state.vault.networks,
+    isBitcoinBased: state.vault.isBitcoinBased,
+    activeAccountType: state.vault.activeAccount.type,
+    networkStatus: state.vault.networkStatus,
+    activeNetwork: state.vault.activeNetwork,
+  }));
 
-    // Check if user is trying to switch to the same network that's already active
-    if (activeNetworkValidator(network)) {
-      // Already on this network, no need to switch
-      return;
-    }
+  const { dapps } = useSelector((state: RootState) => state.dapp);
+  const activeAccount = useSelector(selectActiveAccount);
 
-    const cannotContinueWithTrezorAccount =
-      // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
-      (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
-      (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
-      // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
-      (Object.keys(networks.ethereum).find(
-        (chainId) => `${activeNetwork.chainId}` === chainId
-      ) &&
-        Object.keys(networks.syscoin).find(
-          (chainId) => `${network.chainId}` === chainId
-        ) &&
-        `${network.slip44}` !== 'undefined' &&
-        (activeAccountType === KeyringAccountType.Trezor ||
-          activeAccountType === KeyringAccountType.Ledger));
+  // ✅ MEMOIZED: Computed values
+  const isNetworkChanging = useMemo(
+    () => networkStatus === 'switching',
+    [networkStatus]
+  );
 
-    try {
-      if (cannotContinueWithTrezorAccount) {
-        setActiveAccountModalIsOpen(true);
+  const networkType = useMemo(
+    () => (isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum),
+    [isBitcoinBased]
+  );
+
+  const bgColor = useMemo(
+    () =>
+      networkType === INetworkType.Syscoin ? 'bg-brand-pink' : 'bg-brand-blue',
+    [networkType]
+  );
+
+  // ✅ MEMOIZED: Network validation function
+  const activeNetworkValidator = useCallback(
+    (currentNetwork: INetwork): boolean =>
+      Boolean(
+        activeNetwork.chainId === currentNetwork.chainId &&
+          activeNetwork.url === currentNetwork.url &&
+          activeNetwork.label === currentNetwork.label
+      ),
+    [activeNetwork.chainId, activeNetwork.url, activeNetwork.label]
+  );
+
+  // ✅ MEMOIZED: Dapp connection status
+  const hasConnectedDapps = useMemo(
+    () => Object.values(dapps).length > 0,
+    [dapps]
+  );
+
+  const connectedWebsiteTitle = useMemo(
+    () =>
+      hasConnectedDapps
+        ? t('networkMenu.viewConnected')
+        : t('networkMenu.noConnected'),
+    [hasConnectedDapps, t]
+  );
+
+  const currentBgColor = useMemo(
+    () => (hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red'),
+    [hasConnectedDapps]
+  );
+
+  const currentBdgColor = useMemo(
+    () =>
+      hasConnectedDapps ? 'border-warning-success' : 'border-warning-error',
+    [hasConnectedDapps]
+  );
+
+  // ✅ MEMOIZED: Network change handler
+  const handleChangeNetwork = useCallback(
+    async (network: INetwork, closeMenu?: () => void) => {
+      setSelectedNetwork(network);
+
+      // Check if user is trying to switch to the same network that's already active
+      if (activeNetworkValidator(network)) {
+        // Already on this network, no need to switch
         return;
       }
 
-      // Optimistic update: dispatch the network switch action immediately
-      store.dispatch(startSwitchNetwork(network));
+      const cannotContinueWithTrezorAccount =
+        // verify if user are on bitcoinBased network and if current account is Trezor-based or Ledger-based
+        (isBitcoinBased && activeAccountType === KeyringAccountType.Trezor) ||
+        (isBitcoinBased && activeAccountType === KeyringAccountType.Ledger) ||
+        // or if user are in EVM network, using a trezor account, trying to change to UTXO network.
+        (Object.keys(networks.ethereum).find(
+          (chainId) => `${activeNetwork.chainId}` === chainId
+        ) &&
+          Object.keys(networks.syscoin).find(
+            (chainId) => `${network.chainId}` === chainId
+          ) &&
+          `${network.slip44}` !== 'undefined' &&
+          (activeAccountType === KeyringAccountType.Trezor ||
+            activeAccountType === KeyringAccountType.Ledger));
 
-      // Close menu immediately after starting the switch
-      if (closeMenu) {
-        closeMenu();
-      }
+      try {
+        if (cannotContinueWithTrezorAccount) {
+          setActiveAccountModalIsOpen(true);
+          return;
+        }
 
-      // Then perform the actual network switch in the background
-      controllerEmitter(['wallet', 'setActiveNetwork'], [network])
-        .then(() => {
-          // Success is already handled by the controller via setNetworkChange
-        })
-        .catch(() => {
-          // On error, revert the optimistic update
-          store.dispatch(switchNetworkError());
-        });
-    } catch (networkError) {}
-  };
+        // Optimistic update: dispatch the network switch action immediately
+        store.dispatch(startSwitchNetwork(network));
 
-  const hasConnectedDapps = Object.values(dapps).length > 0;
+        // Close menu immediately after starting the switch
+        if (closeMenu) {
+          closeMenu();
+        }
 
-  const connectedWebsiteTitle = hasConnectedDapps
-    ? t('networkMenu.viewConnected')
-    : t('networkMenu.noConnected');
+        // Then perform the actual network switch in the background
+        controllerEmitter(['wallet', 'setActiveNetwork'], [network])
+          .then(() => {
+            // Success is already handled by the controller via setNetworkChange
+          })
+          .catch(() => {
+            // On error, revert the optimistic update
+            store.dispatch(switchNetworkError());
+          });
+      } catch (networkError) {}
+    },
+    [
+      setSelectedNetwork,
+      activeNetworkValidator,
+      isBitcoinBased,
+      activeAccountType,
+      networks,
+      activeNetwork,
+      setActiveAccountModalIsOpen,
+      controllerEmitter,
+    ]
+  );
 
-  const currentBgColor = hasConnectedDapps ? 'bg-brand-green' : 'bg-brand-red';
+  // ✅ MEMOIZED: Navigation handlers
+  const handleConnectedSitesNavigation = useCallback(() => {
+    navigate('/settings/networks/connected-sites', {
+      state: { fromMenu: true },
+    });
+  }, [navigate]);
 
-  const currentBdgColor = hasConnectedDapps
-    ? 'border-warning-success'
-    : 'border-warning-error';
+  const handleTrustedSitesNavigation = useCallback(() => {
+    navigate('/settings/networks/trusted-sites', {
+      state: { fromMenu: true },
+    });
+  }, [navigate]);
+
+  const handleCustomRpcNavigation = useCallback(() => {
+    navigate('/settings/networks/custom-rpc', {
+      state: { fromMenu: true },
+    });
+  }, [navigate]);
+
+  const handleManageNetworksNavigation = useCallback(() => {
+    navigate('/settings/networks/edit');
+  }, [navigate]);
+
   return (
     <Menu
       as="div"
@@ -222,11 +278,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           >
             <Menu.Item>
               <li
-                onClick={() =>
-                  navigate('/settings/networks/connected-sites', {
-                    state: { fromMenu: true },
-                  })
-                }
+                onClick={handleConnectedSitesNavigation}
                 className={`flex items-center justify-start mb-2 mx-3 px-2 py-1  text-base ${currentBgColor} hover:bg-opacity-70 border border-solid border-transparent hover:${currentBdgColor} rounded-full cursor-pointer transition-all duration-200`}
               >
                 <GlobeIcon />
@@ -246,11 +298,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Item>
               <li
-                onClick={() =>
-                  navigate('/settings/networks/trusted-sites', {
-                    state: { fromMenu: true },
-                  })
-                }
+                onClick={handleTrustedSitesNavigation}
                 className="flex items-center justify-start mb-4 mx-3 px-2 py-1 text-base bg-brand-blue200 hover:bg-opacity-70 border border-solid border-brand-royalblue rounded-full cursor-pointer transition-all duration-200"
               >
                 <WhiteSuccessIconSvg />
@@ -260,7 +308,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                 </span>
               </li>
             </Menu.Item>
-            {isBitcoinBased || !activeAccount.isImported ? (
+            {isBitcoinBased || !activeAccount?.isImported ? (
               <Menu.Item>
                 <>
                   <span className="disabled text-xs flex justify-start px-5 py-4">
@@ -340,7 +388,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
               </Menu.Item>
             ) : null}
 
-            {activeAccount.isImported && isBitcoinBased ? null : (
+            {activeAccount?.isImported && isBitcoinBased ? null : (
               <Menu.Item>
                 <Disclosure>
                   {({ open }) => (
@@ -421,11 +469,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Item>
               <li
-                onClick={() =>
-                  navigate('/settings/networks/custom-rpc', {
-                    state: { fromMenu: true },
-                  })
-                }
+                onClick={handleCustomRpcNavigation}
                 className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
               >
                 <NetworkIconSvg />
@@ -438,7 +482,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
             <Menu.Item>
               <li
-                onClick={() => navigate('/settings/networks/edit')}
+                onClick={handleManageNetworksNavigation}
                 className="flex px-5 py-2 w-full text-base hover:bg-brand-blue500 hover:bg-opacity-20 cursor-pointer transition-all duration-200"
               >
                 <EditIconSvg />

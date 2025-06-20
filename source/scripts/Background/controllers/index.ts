@@ -1,12 +1,6 @@
-import omit from 'lodash/omit';
 import { AnyAction, Store } from 'redux';
 
-import {
-  accountType,
-  IKeyringAccountState,
-  IWalletState,
-  KeyringAccountType,
-} from '@pollum-io/sysweb3-keyring';
+import { IWalletState, KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
@@ -15,14 +9,15 @@ import { IPriceState } from 'state/price/types';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import {
-  setAccountPropertyByIdAndType,
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setAdvancedSettings,
   setIsLastTxConfirmed,
   setNetwork,
+  setAccountAssets,
 } from 'state/vault';
-import { IPaliAccount, IVaultState, TransactionsType } from 'state/vault/types';
+import { selectActiveAccount } from 'state/vault/selectors';
+import { IVaultState, TransactionsType } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
@@ -30,7 +25,6 @@ import {
   CHAIN_IDS,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
-import { getNetworkChain } from 'utils/network';
 
 import DAppController from './DAppController';
 import MainController from './MainController';
@@ -49,20 +43,9 @@ export interface IMasterController {
 }
 
 export const vaultToWalletState = (vaultState: IVaultState) => {
-  const accounts: { [key in KeyringAccountType]: accountType } = Object.entries(
-    vaultState.accounts
-  ).reduce((acc, [sysAccountType, paliAccountType]) => {
-    acc[sysAccountType as KeyringAccountType] = Object.fromEntries(
-      Object.entries(paliAccountType).map(([accountId, paliAccount]) => {
-        const keyringAccountState: IKeyringAccountState = omit(paliAccount, [
-          'assets',
-          'transactions',
-        ]) as IKeyringAccountState;
-        return [accountId, keyringAccountState];
-      })
-    );
-    return acc;
-  }, {} as { [key in KeyringAccountType]: accountType });
+  // With the new architecture, accounts are already clean IKeyringAccountState objects
+  // stored in the correct structure - no transformation needed
+  const accounts = vaultState.accounts;
 
   const sysweb3Wallet: IWalletState = {
     accounts,
@@ -91,49 +74,30 @@ const MasterController = (
   let wallet: MainController;
   let dapp: Readonly<IDAppController>;
 
-  const getAccountType = (account: IPaliAccount): KeyringAccountType =>
-    !account.isImported && !account.isTrezorWallet
-      ? KeyringAccountType.HDAccount
-      : account.isTrezorWallet
-      ? KeyringAccountType.Trezor
-      : account.isLedgerWallet
-      ? KeyringAccountType.Ledger
-      : KeyringAccountType.Imported;
-
   const initializeMainController = () => {
-    const hdAccounts = Object.values(
-      externalStore.getState().vault.accounts.HDAccount
-    );
-    const trezorAccounts = Object.values(
-      externalStore.getState().vault.accounts.Trezor
-    );
-    const importedAccounts = Object.values(
-      externalStore.getState().vault.accounts.Imported
+    const vaultState = externalStore.getState().vault;
+
+    // Check if NFTs structure exists in accountAssets
+    const needsNftsInit = Object.entries(vaultState.accountAssets).some(
+      ([, accounts]) =>
+        Object.entries(accounts).some(([, assets]) => !assets.nfts)
     );
 
-    const accountsObj = [...hdAccounts, ...trezorAccounts, ...importedAccounts];
-
-    const validateIfNftsStateExists = accountsObj.some((account) =>
-      account.assets.hasOwnProperty('nfts')
-    );
-
-    if (!validateIfNftsStateExists) {
-      accountsObj.forEach((account) => {
-        const accType = getAccountType(account);
-
-        const updatedAssets = {
-          ...account.assets,
-          nfts: [] as INftsStructure[],
-        };
-
-        externalStore.dispatch(
-          setAccountPropertyByIdAndType({
-            id: account.id,
-            type: accType,
-            property: 'assets',
-            value: updatedAssets,
-          })
-        );
+    if (needsNftsInit) {
+      // Initialize NFTs array for any accounts missing it
+      Object.entries(vaultState.accountAssets).forEach(([, accounts]) => {
+        Object.entries(accounts).forEach(([accountId, assets]) => {
+          if (!assets.nfts) {
+            externalStore.dispatch(
+              setAccountAssets({
+                accountId: Number(accountId),
+                accountType: KeyringAccountType.HDAccount,
+                property: 'nfts',
+                value: [] as INftsStructure[],
+              })
+            );
+          }
+        });
       });
     }
 
@@ -219,62 +183,9 @@ const MasterController = (
       );
     }
 
-    const isBitcoinBased = externalStore.getState()?.vault?.isBitcoinBased;
+    // Note: Removed old transaction migration logic since the new architecture
+    // handles this differently with separated accountTransactions structure
 
-    const isTransactionsOldState = accountsObj.some((account) =>
-      Array.isArray(account.transactions)
-    );
-
-    if (isTransactionsOldState) {
-      const {
-        activeNetwork: { chainId },
-      } = externalStore.getState().vault;
-
-      accountsObj.forEach((account) => {
-        const accType = getAccountType(account);
-
-        if (Array.isArray(account.transactions)) {
-          if (account.transactions.length > 0) {
-            const updatedTransactions = {
-              [INetworkType.Syscoin]: {},
-              [INetworkType.Ethereum]: {},
-            } as { [chainType: string]: { [chainId: string]: any } };
-
-            account.transactions.forEach((tx) => {
-              const currentNetwork = getNetworkChain(isBitcoinBased);
-              const currentChainId = isBitcoinBased ? chainId : tx.chainId;
-
-              updatedTransactions[currentNetwork][currentChainId] = [
-                ...(updatedTransactions[currentNetwork]?.[currentChainId] ??
-                  []),
-                tx,
-              ];
-            });
-
-            externalStore.dispatch(
-              setAccountPropertyByIdAndType({
-                id: account.id,
-                type: accType,
-                property: 'transactions',
-                value: updatedTransactions,
-              })
-            );
-          } else {
-            externalStore.dispatch(
-              setAccountPropertyByIdAndType({
-                id: account.id,
-                type: accType,
-                property: 'transactions',
-                value: {
-                  [INetworkType.Syscoin]: {},
-                  [INetworkType.Ethereum]: {},
-                },
-              })
-            );
-          }
-        }
-      });
-    }
     const walletState = vaultToWalletState(externalStore.getState().vault);
     dapp = Object.freeze(DAppController());
     wallet = new MainController(walletState);
@@ -287,8 +198,9 @@ const MasterController = (
     wallet.getLatestUpdateForCurrentAccount();
 
   const refresh = () => {
-    const { activeAccount, accounts } = externalStore.getState().vault;
-    if (!accounts[activeAccount.type][activeAccount.id].address) return;
+    const vaultState = externalStore.getState().vault;
+    const activeAccount = selectActiveAccount({ vault: vaultState } as any);
+    if (!activeAccount?.address) return;
     callGetLatestUpdateForAccount();
   };
 

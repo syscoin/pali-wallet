@@ -13,10 +13,12 @@ import { IERC1155Collection } from 'types/tokens';
 import { ellipsis } from 'utils/index';
 
 export const EvmAssetDetais = ({ id }: { id: string }) => {
-  const { accounts, activeAccount, activeNetwork } = useSelector(
+  const { activeAccount, accountAssets, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
-  const { assets } = accounts[activeAccount.type][activeAccount.id];
+  const accountAssetData = accountAssets[activeAccount.type]?.[
+    activeAccount.id
+  ] || { ethereum: [], syscoin: [], nfts: [] };
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
 
@@ -29,11 +31,11 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
     alert.info(t('home.contractCopied'));
   }, [isCopied, alert, t]);
 
-  const currentAsset = assets.ethereum.find((asset) => asset.id === id);
+  const currentAsset = accountAssetData.ethereum.find(
+    (asset) => asset.id === id
+  );
 
-  const { explorer } = activeNetwork;
-
-  const adjustedExplorer = useAdjustedExplorer(explorer);
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   const currentName = currentAsset?.is1155
     ? currentAsset.collectionName

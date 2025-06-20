@@ -196,7 +196,8 @@ export const methodRequest = async (
       case 'getAddress':
         return account.address;
       case 'getTokens':
-        return account.assets;
+        const { accountAssets } = store.getState().vault;
+        return accountAssets[activeAccount.type]?.[activeAccount.id];
       case 'estimateFee':
         return estimateFee();
       case 'changeAccount':

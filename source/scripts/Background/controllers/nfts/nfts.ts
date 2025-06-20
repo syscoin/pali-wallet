@@ -23,11 +23,11 @@ const NftsController = () => {
   const validateAndManagerUserNfts = (fetchedNfts: INftsStructure[]) => {
     if (fetchedNfts?.length === 0) return [];
 
-    const { accounts, activeAccount } = store.getState().vault;
+    const { activeAccount, accountAssets } = store.getState().vault;
 
-    const { assets } = accounts[activeAccount.type][activeAccount.id];
+    const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
 
-    const nftsValueToUse = assets.nfts;
+    const nftsValueToUse = currentAssets.nfts;
 
     const userClonedNfts = clone(compact(nftsValueToUse));
 

@@ -11,6 +11,10 @@ import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, ellipsis } from 'utils/index';
 
@@ -24,19 +28,22 @@ const CopyIcon = memo(() => (
 ));
 CopyIcon.displayName = 'CopyIcon';
 
-export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
+interface ISyscoinTransactionDetailsProps {
+  hash: string;
+}
+
+export const SyscoinTransactionDetails = ({
+  hash,
+}: ISyscoinTransactionDetailsProps) => {
   const { controllerEmitter } = useController();
   const {
-    accounts,
-    activeAccount,
+    activeNetwork: { chainId, url: activeNetworkUrl },
     isBitcoinBased,
-    activeNetwork: { chainId: activeChainId, url: activeNetworkUrl },
   } = useSelector((state: RootState) => state.vault);
-  const { getTxStatus, getTxType } = useTransactionsListConfig();
-
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
-  const { transactions } = accounts[activeAccount.type][activeAccount.id];
+  const { getTxType, getTxStatus } = useTransactionsListConfig();
+  // Use proper selector
+  const accountTransactions = useSelector(selectActiveAccountTransactions);
+  const activeAccount = useSelector(selectActiveAccount);
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
@@ -57,7 +64,7 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
   let isConfirmed: boolean;
   let isTxSent: boolean;
   let transactionTx: any;
-  let txValue: string;
+  let txValue: number;
 
   const setTx = async () =>
     setRawTransaction(
@@ -130,19 +137,19 @@ export const SyscoinTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  const syscoinTransactions = transactions[TransactionsType.Syscoin][
-    activeChainId
+  const syscoinTransactions = accountTransactions[TransactionsType.Syscoin][
+    chainId
   ] as ISysTransaction[];
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
     transactionTx = tx;
-    txValue = tx?.vout?.[0]?.value || '0';
+    txValue = tx?.vout?.[0]?.value || 0;
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = isBitcoinBased
       ? false
-      : tx.from.toLowerCase() === currentAccount.address;
+      : tx.from.toLowerCase() === activeAccount.address.toLowerCase();
 
     const vinAddresses = tx.vin?.[0]?.addresses || [];
     const vinFormattedValue = {

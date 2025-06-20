@@ -10,30 +10,21 @@ import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
 export const AssetsPanel = () => {
   const { t } = useTranslation();
-  const { id, type } = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const { assets } = useSelector(
-    (state: RootState) => state.vault.accounts[type][id]
-  );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
-
-  const { chainId } = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
+  const { accountAssets, activeAccount, isBitcoinBased, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
+  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
+  const { chainId } = activeNetwork;
 
   const ethTokensValidation =
-    assets.ethereum?.filter((token: any) => token?.chainId === chainId)
+    assets?.ethereum?.filter((token: any) => token?.chainId === chainId)
       ?.length === 0;
 
   const sysAssetsValidation =
-    assets.syscoin?.filter((asset) => asset.chainId === chainId)?.length === 0;
+    assets?.syscoin?.filter((asset) => asset.chainId === chainId)?.length === 0;
 
   const filterValidation = isBitcoinBased
-    ? assets.syscoin?.length === 0 || sysAssetsValidation
-    : assets.ethereum?.length === 0 || ethTokensValidation;
+    ? assets?.syscoin?.length === 0 || sysAssetsValidation
+    : assets?.ethereum?.length === 0 || ethTokensValidation;
 
   const { navigate } = useUtils();
 

@@ -1,24 +1,25 @@
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
+  IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 
-import { IPaliAccount } from 'state/vault/types';
-
 export interface IEvmBalanceController {
-  getEvmBalanceForAccount: (currentAccount: IPaliAccount) => Promise<string>;
+  getEvmBalanceForAccount: (
+    currentAccount: IKeyringAccountState
+  ) => Promise<string>;
 }
 
 export interface ISysBalanceController {
   getSysBalanceForAccount: (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     networkUrl: string
   ) => Promise<string>;
 }
 
 export interface IBalancesManagerUtils {
   getBalanceUpdatedForAccount: (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     networkUrl: string,
     provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider

@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -13,6 +13,10 @@ import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import {
   camelCaseToText,
@@ -25,16 +29,26 @@ import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
 const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Memoize copy icon to prevent unnecessary re-renders
+const CopyIcon = memo(() => (
+  <Icon
+    wrapperClassname="flex items-center justify-center"
+    name="copy"
+    className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+  />
+));
+CopyIcon.displayName = 'CopyIcon';
+
 export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const {
-    accounts,
-    activeAccount,
     activeNetwork: { chainId, currency, apiUrl },
     coinsList,
   } = useSelector((state: RootState) => state.vault);
 
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
-  const { transactions } = accounts[activeAccount.type][activeAccount.id];
+  // Use proper selectors
+  const currentAccount = useSelector(selectActiveAccount);
+  const accountTransactions = useSelector(selectActiveAccountTransactions);
+
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
@@ -103,7 +117,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  const ethereumTransactions = transactions[TransactionsType.Ethereum][
+  const ethereumTransactions = accountTransactions[TransactionsType.Ethereum][
     chainId
   ] as IEvmTransaction[];
 
@@ -140,7 +154,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     txSymbol = getTokenSymbol(isErc20Tx, coinsList, tx, currency);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
-    isTxSent = tx.from.toLowerCase() === currentAccount.address.toLowerCase();
+    isTxSent = tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 
     // Merge with enhanced details if available
     const mergedTx = enhancedDetails ? { ...tx, ...enhancedDetails } : tx;
@@ -243,11 +257,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
                       </p>
                       {canCopy && (
                         <IconButton onClick={() => copy(value ?? '')}>
-                          <Icon
-                            wrapperClassname="flex items-center justify-center"
-                            name="copy"
-                            className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-                          />
+                          <CopyIcon />
                         </IconButton>
                       )}
                     </Tooltip>

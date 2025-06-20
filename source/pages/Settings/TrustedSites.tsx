@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux';
 
 import { Icon, Layout } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
-import { RootState } from 'state/store';
+import { selectActiveAccount } from 'state/vault/selectors';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
@@ -44,9 +44,7 @@ const TrustedSitesView = () => {
 
   const [status, setStatus] = useState(EMPTY_STATE);
 
-  const { accounts, activeAccount } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const activeAccount = useSelector(selectActiveAccount);
 
   const handleSearch = (typed) => {
     if (!typed) setStatus({ name: '', icon: '', color: '', size: '' });
@@ -85,8 +83,8 @@ const TrustedSitesView = () => {
   return (
     <Layout title={t('settings.trustedWebsites')}>
       <p className="text-white text-sm font-normal pb-6">
-        {accounts[activeAccount.type][activeAccount.id].label} is connected to
-        these site. They can view your account address.
+        {activeAccount?.label} is connected to these site. They can view your
+        account address.
       </p>
       <div className="relative">
         <input

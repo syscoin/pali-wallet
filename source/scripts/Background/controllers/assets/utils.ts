@@ -16,11 +16,11 @@ export const validateAndManageUserAssets = (
 ) => {
   if (fetchedAssetsOrTokens.length === 0) return [];
 
-  const { accounts, activeAccount } = store.getState().vault;
+  const { activeAccount, accountAssets } = store.getState().vault;
 
-  const { assets } = accounts[activeAccount.type][activeAccount.id];
+  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
 
-  const assetsValueToUse = isForEvm ? assets.ethereum : assets.syscoin;
+  const assetsValueToUse = isForEvm ? assets?.ethereum : assets?.syscoin;
   //@ts-ignore
   const userClonedAssets = clone(compact(assetsValueToUse));
 

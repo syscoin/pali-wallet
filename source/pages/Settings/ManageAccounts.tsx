@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiOutlineUsb } from 'react-icons/ai';
 import { RiUserReceivedLine } from 'react-icons/ri/';
@@ -16,24 +16,41 @@ import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 
 const ManageAccountsView = () => {
-  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  // ✅ OPTIMIZED: Consolidate vault selectors
+  const { accounts, activeAccountRef } = useSelector((state: RootState) => ({
+    accounts: state.vault.accounts,
+    activeAccountRef: state.vault.activeAccount,
+  }));
 
   const { navigate } = useUtils();
   const { t } = useTranslation();
-  const editAccount = (account: IKeyringAccountState) => {
-    navigate('/settings/edit-account', {
-      state: account,
-    });
-  };
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
+
+  const editAccount = useCallback(
+    (account: IKeyringAccountState) => {
+      navigate('/settings/edit-account', {
+        state: account,
+      });
+    },
+    [navigate]
   );
 
-  const existImportedAccounts = Boolean(
-    Object.values(accounts.Imported).length > 0
+  const handleClose = useCallback(() => {
+    navigate('/home');
+  }, [navigate]);
+
+  const accountTypeExists = useMemo(
+    () => ({
+      imported: Object.values(accounts.Imported).length > 0,
+      trezor: Object.values(accounts.Trezor).length > 0,
+      ledger: Object.values(accounts.Ledger).length > 0,
+    }),
+    [accounts.Imported, accounts.Trezor, accounts.Ledger]
   );
-  const existTrezorAccounts = Boolean(
-    Object.values(accounts.Trezor).length > 0
+
+  const isActiveAccount = useCallback(
+    (account: IKeyringAccountState, type: KeyringAccountType) =>
+      activeAccountRef?.id === account.id && activeAccountRef?.type === type,
+    [activeAccountRef?.id, activeAccountRef?.type]
   );
 
   return (
@@ -56,10 +73,9 @@ const ManageAccountsView = () => {
                 <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
                   Pali
                 </span>
-                {activeAccount.id === account.id &&
-                  activeAccount.type === KeyringAccountType.HDAccount && (
-                    <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                  )}
+                {isActiveAccount(account, KeyringAccountType.HDAccount) && (
+                  <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                )}
               </div>
               <div className="flex gap-x-3 items-center justify-between">
                 <IconButton
@@ -77,7 +93,7 @@ const ManageAccountsView = () => {
             </li>
           )
         )}
-        {existImportedAccounts ? (
+        {accountTypeExists.imported ? (
           <>
             {Object.values(accounts.Imported).map(
               (account: IKeyringAccountState) => (
@@ -99,10 +115,9 @@ const ManageAccountsView = () => {
                     <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
                       Imported
                     </span>
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Imported && (
-                        <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                      )}
+                    {isActiveAccount(account, KeyringAccountType.Imported) && (
+                      <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                    )}
                   </div>
 
                   <div className="flex gap-x-3 items-center justify-between">
@@ -123,7 +138,7 @@ const ManageAccountsView = () => {
           </>
         ) : null}
 
-        {existTrezorAccounts ? (
+        {accountTypeExists.trezor ? (
           <>
             {Object.values(accounts.Trezor).map(
               (account: IKeyringAccountState) => (
@@ -145,10 +160,9 @@ const ManageAccountsView = () => {
                     <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
                       Trezor
                     </span>
-                    {activeAccount.id === account.id &&
-                      activeAccount.type === KeyringAccountType.Trezor && (
-                        <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                      )}
+                    {isActiveAccount(account, KeyringAccountType.Trezor) && (
+                      <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+                    )}
                   </div>
 
                   <div className="flex gap-x-3 items-center justify-between">
@@ -170,11 +184,7 @@ const ManageAccountsView = () => {
         ) : null}
       </ul>
       <div className="w-full px-4 absolute bottom-12 md:static">
-        <NeutralButton
-          type="button"
-          fullWidth
-          onClick={() => navigate('/home')}
-        >
+        <NeutralButton type="button" fullWidth onClick={handleClose}>
           {t('buttons.close')}
         </NeutralButton>{' '}
       </div>

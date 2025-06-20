@@ -5,13 +5,11 @@ import take from 'lodash/take';
 import {
   IKeyringBalances,
   initialActiveHdAccountState,
-  initialActiveImportedAccountState,
-  initialActiveTrezorAccountState,
   IWalletState,
   KeyringAccountType,
+  IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
-import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
   IEvmTransaction,
@@ -29,10 +27,10 @@ import { convertTransactionValueToCompare } from 'utils/transactionValue';
 
 import {
   IChangingConnectedAccount,
-  IPaliAccount,
   IVaultState,
-  PaliAccount,
   TransactionsType,
+  IAccountAssets,
+  IAccountTransactions,
 } from './types';
 
 export const initialState: IVaultState = {
@@ -41,8 +39,29 @@ export const initialState: IVaultState = {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
-        assets: { ethereum: [], syscoin: [], nfts: [] },
-        transactions: { ethereum: {}, syscoin: {} },
+      },
+    },
+    [KeyringAccountType.Imported]: {},
+    [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
+  },
+  accountAssets: {
+    [KeyringAccountType.HDAccount]: {
+      [initialActiveHdAccountState.id]: {
+        ethereum: [],
+        syscoin: [],
+        nfts: [],
+      },
+    },
+    [KeyringAccountType.Imported]: {},
+    [KeyringAccountType.Trezor]: {},
+    [KeyringAccountType.Ledger]: {},
+  },
+  accountTransactions: {
+    [KeyringAccountType.HDAccount]: {
+      [initialActiveHdAccountState.id]: {
+        ethereum: {},
+        syscoin: {},
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -132,9 +151,10 @@ const VaultState = createSlice({
     setAccounts(
       state: IVaultState,
       action: PayloadAction<{
-        [key in KeyringAccountType]: PaliAccount;
+        [key in KeyringAccountType]: { [id: number]: IKeyringAccountState };
       }>
     ) {
+      // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
     },
     setAccountsWithLabelEdited(
@@ -161,7 +181,19 @@ const VaultState = createSlice({
       const { editedToken, tokenIndex, accountId, accountType } =
         action.payload;
 
-      state.accounts[accountType][accountId].assets.ethereum[tokenIndex] =
+      // Ensure accountAssets exists for this account
+      if (!state.accountAssets[accountType]) {
+        state.accountAssets[accountType] = {};
+      }
+      if (!state.accountAssets[accountType][accountId]) {
+        state.accountAssets[accountType][accountId] = {
+          ethereum: [],
+          syscoin: [],
+          nfts: [],
+        };
+      }
+
+      state.accountAssets[accountType][accountId].ethereum[tokenIndex] =
         editedToken;
     },
     setNetworkChange(
@@ -173,63 +205,18 @@ const VaultState = createSlice({
     ) {
       const { activeChain, wallet } = action.payload;
       state.activeChain = activeChain;
+      state.isBitcoinBased = activeChain === INetworkType.Syscoin;
 
-      // Find the correct network with kind property from our networks state
-      const networksInChain =
-        activeChain === INetworkType.Syscoin
-          ? state.networks.syscoin
-          : state.networks.ethereum;
-      const networkWithKind = Object.values(networksInChain).find(
-        (network) =>
-          network.chainId === wallet.activeNetwork.chainId &&
-          network.url === wallet.activeNetwork.url
-      );
-
-      // Use the network with proper kind property, falling back to wallet network with all properties
-      state.activeNetwork =
-        networkWithKind ||
-        ({
-          ...wallet.activeNetwork,
-          kind: activeChain,
-        } as INetwork);
+      // With multi-keyring architecture, wallet.activeNetwork from keyring already has correct kind
+      state.activeNetwork = wallet.activeNetwork;
 
       state.activeAccount = {
         id: wallet.activeAccountId,
         type: wallet.activeAccountType,
       };
-      state.networks = state.networks;
-      for (const accountType in wallet.accounts) {
-        for (const accountId in wallet.accounts[accountType]) {
-          const account = wallet.accounts[accountType][accountId];
-          if (!account.xpub) {
-            //This is for the default imported account, we don't want to add it yet to pali State
-            continue;
-          }
 
-          // Check if we're switching to UTXO and the xpub is actually an Ethereum public key
-          const isInvalidXpubForUTXO =
-            activeChain === INetworkType.Syscoin &&
-            account.xpub.startsWith('0x');
-
-          if (isInvalidXpubForUTXO) {
-            // Skip updating this account - it needs to be regenerated with proper Bitcoin xpub
-            // The updateUTXOAccounts method in KeyringManager will handle regenerating it
-            console.log(
-              `Skipping account ${accountId} update - invalid xpub for UTXO network`
-            );
-            continue;
-          }
-
-          const mainAccount: IPaliAccount =
-            state.accounts[accountType][account.id];
-          // Update the account properties, leaving the assets and transactions fields unchanged
-          state.accounts[accountType][account.id] = {
-            ...account,
-            assets: mainAccount.assets,
-            transactions: mainAccount.transactions,
-          };
-        }
-      }
+      // Just set the clean accounts reference - no assets/transactions
+      state.accounts = wallet.accounts;
     },
     setAccountBalances(
       state: IVaultState,
@@ -242,12 +229,35 @@ const VaultState = createSlice({
     createAccount(
       state: IVaultState,
       action: PayloadAction<{
-        account: IPaliAccount;
+        account: IKeyringAccountState;
         accountType: KeyringAccountType;
+        assets?: IAccountAssets;
+        transactions?: IAccountTransactions;
       }>
     ) {
-      const { account, accountType } = action.payload;
+      const { account, accountType, assets, transactions } = action.payload;
+
+      // Set the clean account data
       state.accounts[accountType][account.id] = account;
+
+      // Set up accountAssets
+      if (!state.accountAssets[accountType]) {
+        state.accountAssets[accountType] = {};
+      }
+      state.accountAssets[accountType][account.id] = assets || {
+        ethereum: [],
+        syscoin: [],
+        nfts: [],
+      };
+
+      // Set up accountTransactions
+      if (!state.accountTransactions[accountType]) {
+        state.accountTransactions[accountType] = {};
+      }
+      state.accountTransactions[accountType][account.id] = transactions || {
+        ethereum: {},
+        syscoin: {},
+      };
     },
     setIsLastTxConfirmed(
       state: IVaultState,
@@ -448,6 +458,13 @@ const VaultState = createSlice({
       const { id, type } = state.activeAccount;
       const { property, value } = action.payload;
 
+      if (!state.accounts[type][id]) throw new Error('Account not found');
+
+      // Don't allow setting assets or transactions through this reducer
+      if (property === 'assets' || property === 'transactions') {
+        throw new Error('Use dedicated asset/transaction reducers instead');
+      }
+
       if (!(property in state.accounts[type][id]))
         throw new Error('Unable to set property. Unknown key');
 
@@ -466,6 +483,11 @@ const VaultState = createSlice({
 
       if (!state.accounts[type][id]) throw new Error('Account not found');
 
+      // Don't allow setting assets or transactions through this reducer
+      if (property === 'assets' || property === 'transactions') {
+        throw new Error('Use dedicated asset/transaction reducers instead');
+      }
+
       if (!(property in state.accounts[type][id]))
         throw new Error('Unable to set property. Unknown key');
 
@@ -479,31 +501,34 @@ const VaultState = createSlice({
         [KeyringAccountType.HDAccount]: {
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
-            assets: { ethereum: [], syscoin: [], nfts: [] },
-            transactions: { ethereum: {}, syscoin: {} },
           },
         },
-        [KeyringAccountType.Imported]: {
-          [initialActiveImportedAccountState.id]: {
-            ...initialActiveImportedAccountState,
-            assets: { ethereum: [], syscoin: [], nfts: [] },
-            transactions: { ethereum: {}, syscoin: {} },
+        [KeyringAccountType.Imported]: {},
+        [KeyringAccountType.Trezor]: {},
+        [KeyringAccountType.Ledger]: {},
+      };
+      state.accountAssets = {
+        [KeyringAccountType.HDAccount]: {
+          [initialActiveHdAccountState.id]: {
+            ethereum: [],
+            syscoin: [],
+            nfts: [],
           },
         },
-        [KeyringAccountType.Trezor]: {
-          [initialActiveTrezorAccountState.id]: {
-            ...initialActiveTrezorAccountState,
-            assets: { ethereum: [], syscoin: [], nfts: [] },
-            transactions: { ethereum: {}, syscoin: {} },
+        [KeyringAccountType.Imported]: {},
+        [KeyringAccountType.Trezor]: {},
+        [KeyringAccountType.Ledger]: {},
+      };
+      state.accountTransactions = {
+        [KeyringAccountType.HDAccount]: {
+          [initialActiveHdAccountState.id]: {
+            ethereum: {},
+            syscoin: {},
           },
         },
-        [KeyringAccountType.Ledger]: {
-          [initialActiveTrezorAccountState.id]: {
-            ...initialActiveTrezorAccountState,
-            assets: { ethereum: [], syscoin: [], nfts: [] },
-            transactions: { ethereum: {}, syscoin: {} },
-          },
-        },
+        [KeyringAccountType.Imported]: {},
+        [KeyringAccountType.Trezor]: {},
+        [KeyringAccountType.Ledger]: {},
       };
       state.activeAccount = { id: 0, type: KeyringAccountType.HDAccount };
     },
@@ -513,6 +538,14 @@ const VaultState = createSlice({
     ) {
       const { id, type } = action.payload;
       delete state.accounts[type][id];
+
+      // Also clean up assets and transactions
+      if (state.accountAssets[type]) {
+        delete state.accountAssets[type][id];
+      }
+      if (state.accountTransactions[type]) {
+        delete state.accountTransactions[type][id];
+      }
     },
     setAccountLabel(
       state: IVaultState,
@@ -535,38 +568,40 @@ const VaultState = createSlice({
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
     },
-    setUpdatedAllErcTokensBalance(
+
+    setAccountAssets: (
       state: IVaultState,
       action: PayloadAction<{
-        updatedTokens: any[];
-      }>
-    ) {
-      const { updatedTokens } = action.payload;
-      const { isBitcoinBased, accounts, activeAccount } = state;
-      const { type, id } = activeAccount;
-      const findAccount = accounts[type][id];
-
-      if (
-        !Boolean(
-          findAccount.address === accounts[type][id].address || isBitcoinBased
-        )
-      )
-        return;
-
-      state.accounts[type][id].assets.ethereum = updatedTokens;
-    },
-
-    setUpdatedNftsToState: (
-      state: IVaultState,
-      action: PayloadAction<{
-        id: number;
-        type: KeyringAccountType;
-        updatedNfts: INftsStructure[];
+        accountId: number;
+        accountType: KeyringAccountType;
+        // 'ethereum' | 'syscoin' | 'nfts'
+        assets?: IAccountAssets;
+        property?: keyof IAccountAssets; // For full replacement
+        value?: any; // For property-specific updates
       }>
     ) => {
-      const { updatedNfts, id, type } = action.payload;
+      const { accountId, accountType, property, assets, value } =
+        action.payload;
 
-      state.accounts[type][id].assets.nfts = updatedNfts;
+      // Ensure accountAssets exists for this account
+      if (!state.accountAssets[accountType]) {
+        state.accountAssets[accountType] = {};
+      }
+      if (!state.accountAssets[accountType][accountId]) {
+        state.accountAssets[accountType][accountId] = {
+          ethereum: [],
+          syscoin: [],
+          nfts: [],
+        };
+      }
+
+      if (property && value !== undefined) {
+        // Update specific property
+        state.accountAssets[accountType][accountId][property] = value;
+      } else if (assets) {
+        // Full replacement
+        state.accountAssets[accountType][accountId] = assets;
+      }
     },
 
     setSingleTransactionToState: (
@@ -579,29 +614,41 @@ const VaultState = createSlice({
     ) => {
       const { activeAccount } = state;
       const { networkType, chainId, transaction } = action.payload;
-      const currentAccount =
-        state.accounts[activeAccount.type][activeAccount.id];
+
+      // Ensure accountTransactions exists for this account
+      if (!state.accountTransactions[activeAccount.type]) {
+        state.accountTransactions[activeAccount.type] = {};
+      }
+      if (!state.accountTransactions[activeAccount.type][activeAccount.id]) {
+        state.accountTransactions[activeAccount.type][activeAccount.id] = {
+          ethereum: {},
+          syscoin: {},
+        };
+      }
+
+      const currentAccountTransactions =
+        state.accountTransactions[activeAccount.type][activeAccount.id];
 
       // Check if the networkType exists in the current account's transactions
-      if (!currentAccount.transactions[networkType]) {
-        currentAccount.transactions[networkType] = {
+      if (!currentAccountTransactions[networkType]) {
+        currentAccountTransactions[networkType] = {
           [chainId]: [
             transaction,
           ] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[],
-        };
+        } as any;
       } else {
         // Check if the chainId exists in the current networkType's transactions
-        if (!currentAccount.transactions[networkType][chainId]) {
-          currentAccount.transactions[networkType][chainId] = [
+        if (!currentAccountTransactions[networkType][chainId]) {
+          currentAccountTransactions[networkType][chainId] = [
             transaction,
           ] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
             : ISysTransaction)[];
         } else {
           // If the chainId exists, check for duplicates before adding
-          const currentUserTransactions = currentAccount.transactions[
+          const currentUserTransactions = currentAccountTransactions[
             networkType
           ][chainId] as (typeof networkType extends TransactionsType.Ethereum
             ? IEvmTransaction
@@ -637,7 +684,7 @@ const VaultState = createSlice({
                 30
               );
 
-              currentAccount.transactions[networkType][chainId] =
+              currentAccountTransactions[networkType][chainId] =
                 updatedTransactions as IEvmTransaction[] & ISysTransaction[];
             } else {
               // If the array length is less than 30, simply add the new transaction at the beginning
@@ -670,14 +717,26 @@ const VaultState = createSlice({
       const targetAccountType = accountType ?? activeAccount.type;
       const targetAccountId = accountId ?? activeAccount.id;
 
-      const currentAccount = state.accounts[targetAccountType][targetAccountId];
+      // Ensure accountTransactions exists for this account
+      if (!state.accountTransactions[targetAccountType]) {
+        state.accountTransactions[targetAccountType] = {};
+      }
+      if (!state.accountTransactions[targetAccountType][targetAccountId]) {
+        state.accountTransactions[targetAccountType][targetAccountId] = {
+          ethereum: {},
+          syscoin: {},
+        };
+      }
+
+      const currentAccountTransactions =
+        state.accountTransactions[targetAccountType][targetAccountId];
 
       const uniqueTxs: {
         [key: string]: IEvmTransactionResponse | ISysTransaction;
       } = {};
 
       const clonedUserTxs =
-        cloneDeep(currentAccount.transactions[networkType][chainId]) || [];
+        cloneDeep(currentAccountTransactions[networkType]?.[chainId]) || [];
 
       const transactionsToVerify = [...transactions, ...clonedUserTxs];
 
@@ -696,7 +755,7 @@ const VaultState = createSlice({
       const treatedTxs = Object.values(uniqueTxs);
 
       // Check if the networkType exists in the current account's transactions
-      if (!currentAccount.transactions[networkType]) {
+      if (!currentAccountTransactions[networkType]) {
         let chainTransactions = treatedTxs;
         // Cast the array to the correct type based on the networkType and value bigger than 0
         if (!isBitcoinBased) {
@@ -715,15 +774,15 @@ const VaultState = createSlice({
           });
         }
 
-        currentAccount.transactions[networkType] = {
+        currentAccountTransactions[networkType] = {
           [chainId]:
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
               : ISysTransaction)[],
-        };
+        } as any;
       } else {
         // Check if the chainId exists in the current networkType's transactions
-        if (!currentAccount.transactions[networkType][chainId]) {
+        if (!currentAccountTransactions[networkType][chainId]) {
           let chainTransactions = treatedTxs;
           // Create a new array with the correct type based on the networkType and value bigger than 0
           if (!isBitcoinBased) {
@@ -742,7 +801,7 @@ const VaultState = createSlice({
             });
           }
 
-          currentAccount.transactions[networkType][chainId] =
+          currentAccountTransactions[networkType][chainId] =
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
               ? IEvmTransaction
               : ISysTransaction)[];
@@ -765,7 +824,7 @@ const VaultState = createSlice({
             });
           }
 
-          currentAccount.transactions[networkType][chainId] =
+          currentAccountTransactions[networkType][chainId] =
             //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
             take(
               castedTransactions,
@@ -800,22 +859,39 @@ const VaultState = createSlice({
         return;
       }
 
-      const currentUserTransactions = state.accounts[type][id].transactions[
+      // Ensure accountTransactions exists
+      if (!state.accountTransactions[type]) {
+        state.accountTransactions[type] = {};
+      }
+      if (!state.accountTransactions[type][id]) {
+        state.accountTransactions[type][id] = {
+          ethereum: {},
+          syscoin: {},
+        };
+      }
+
+      const currentUserTransactions = state.accountTransactions[type][id][
         TransactionsType.Ethereum
       ][chainID] as IEvmTransactionResponse[];
+
+      if (!currentUserTransactions) {
+        return; // No transactions to cancel
+      }
 
       const findTxIndex = currentUserTransactions.findIndex(
         (tx: IEvmTransactionResponse) => tx.hash === txHash
       );
 
-      state.accounts[type][id].transactions[TransactionsType.Ethereum][chainID][
-        findTxIndex
-      ] = {
-        ...state.accounts[type][id].transactions[TransactionsType.Ethereum][
-          chainID
-        ][findTxIndex],
-        isCanceled: true,
-      } as IEvmTransactionResponse;
+      if (findTxIndex !== -1) {
+        state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
+          findTxIndex
+        ] = {
+          ...state.accountTransactions[type][id][TransactionsType.Ethereum][
+            chainID
+          ][findTxIndex],
+          isCanceled: true,
+        } as IEvmTransactionResponse;
+      }
     },
 
     setFaucetModalState: (
@@ -853,15 +929,28 @@ const VaultState = createSlice({
         return;
       }
 
-      const userTransactions = state.accounts[type][id].transactions[
+      // Ensure accountTransactions exists
+      if (!state.accountTransactions[type]) {
+        state.accountTransactions[type] = {};
+      }
+      if (!state.accountTransactions[type][id]) {
+        state.accountTransactions[type][id] = {
+          ethereum: {},
+          syscoin: {},
+        };
+      }
+
+      const userTransactions = state.accountTransactions[type][id][
         TransactionsType.Ethereum
       ][chainID] as IEvmTransaction[];
 
-      state.accounts[type][id].transactions[TransactionsType.Ethereum][
-        chainID
-      ] = userTransactions.filter(
-        (tx) => tx.hash !== oldTxHash
-      ) as IEvmTransaction[];
+      if (userTransactions) {
+        state.accountTransactions[type][id][TransactionsType.Ethereum][
+          chainID
+        ] = userTransactions.filter(
+          (tx) => tx.hash !== oldTxHash
+        ) as IEvmTransaction[];
+      }
     },
     setPrevBalances(
       state: IVaultState,
@@ -914,14 +1003,13 @@ const VaultState = createSlice({
 
 export const {
   rehydrate,
-  setAccounts,
   setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
   setEditedEvmToken,
-  setNetworkType,
   setNetworkChange,
+  setNetworkType,
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsDappAskingToChangeNetwork,
@@ -944,8 +1032,7 @@ export const {
   setAccountLabel,
   setStoreError,
   setIsBitcoinBased,
-  setUpdatedAllErcTokensBalance,
-  setUpdatedNftsToState,
+  setAccountAssets,
   setAdvancedSettings,
   setSingleTransactionToState,
   setMultipleTransactionToState,
@@ -959,6 +1046,10 @@ export const {
   switchNetworkError,
   resetNetworkStatus,
   setIsSwitchingAccount,
+  setAccounts,
 } = VaultState.actions;
 
 export default VaultState.reducer;
+
+// Export selectors
+export * from './selectors';

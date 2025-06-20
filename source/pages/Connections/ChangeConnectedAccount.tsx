@@ -5,17 +5,18 @@ import { useSelector } from 'react-redux';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountRef,
+} from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
 export const ChangeConnectedAccount = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
-  const { accounts } = useSelector((state: RootState) => state.vault);
+  const activeAccountRef = useSelector(selectActiveAccountRef);
+  const activeAccount = useSelector(selectActiveAccount);
   //TODO: validate this
   const { host, eventName, connectedAccount, accountType } = useQueryData();
 
@@ -33,7 +34,7 @@ export const ChangeConnectedAccount = () => {
   const handleActiveAccount = async () => {
     await controllerEmitter(
       ['dapp', 'changeAccount'],
-      [host, activeAccount.id, activeAccount.type]
+      [host, activeAccountRef.id, activeAccountRef.type]
     );
     //this should be passed to constant instead of being hardcoded
     dispatchBackgroundEvent(`${eventName}.${host}`, false);
@@ -56,15 +57,14 @@ export const ChangeConnectedAccount = () => {
             {t('header.hostIsConnected')} {connectedAccount.label} (
             {ellipsis(connectedAccount.address)}).
             {t('header.yourAcctiveAccountIs')}
-            {accounts[activeAccount.type][activeAccount.id].label} (
-            {ellipsis(accounts[activeAccount.type][activeAccount.id].address)}).
+            {activeAccount?.label} ({ellipsis(activeAccount?.address)}).
             {t('connections.withWitchAccount')}
           </h2>
           <div className="mt-1 px-4 w-full text-center text-xs">
             <span>
               {t('header.ifYouContinueWith')}{' '}
               <b className="text-gray-400">{host}</b> {t('header.to')}{' '}
-              {accounts[activeAccount.type][activeAccount.id].label}.
+              {activeAccount?.label}.
             </span>
           </div>
         </div>

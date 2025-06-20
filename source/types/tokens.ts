@@ -50,7 +50,6 @@ export interface ITokenSysProps {
   totalSupply?: string;
   transfers?: number;
   type?: string;
-  updateCapabilityFlags?: number;
 }
 
 export interface IAddCustomTokenMetadataInfos {

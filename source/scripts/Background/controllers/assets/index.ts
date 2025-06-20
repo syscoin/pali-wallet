@@ -1,6 +1,9 @@
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
 
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountAssets } from 'state/vault/types';
 
 import EvmAssetsController from './evm';
 import SysAssetsController from './syscoin';
@@ -8,27 +11,16 @@ import { IAssetsManager, IAssetsManagerUtilsResponse } from './types';
 
 const AssetsManager = (): IAssetsManager => {
   const updateAssetsFromCurrentAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     networkChainId: number,
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    currentAssets: IAccountAssets
   ): Promise<IAssetsManagerUtilsResponse> => {
     switch (isBitcoinBased) {
       case true:
         try {
-          // Check if the xpub is valid for UTXO (not an Ethereum public key)
-          if (currentAccount.xpub && currentAccount.xpub.startsWith('0x')) {
-            console.error(
-              'Invalid xpub for UTXO network - account has Ethereum public key instead of Bitcoin xpub'
-            );
-            // Return empty assets for invalid xpub
-            return {
-              ...currentAccount.assets,
-              syscoin: [],
-            };
-          }
-
           const getSysAssets = await SysAssetsController().getSysAssetsByXpub(
             currentAccount.xpub,
             activeNetworkUrl,
@@ -36,7 +28,7 @@ const AssetsManager = (): IAssetsManager => {
           );
 
           return {
-            ...currentAccount.assets,
+            ...currentAssets,
             syscoin: getSysAssets,
           };
         } catch (sysUpdateError) {
@@ -48,7 +40,7 @@ const AssetsManager = (): IAssetsManager => {
           if (!web3Provider) {
             console.error('No valid web3Provider for EVM assets fetching');
             return {
-              ...currentAccount.assets,
+              ...currentAssets,
               ethereum: [],
             };
           }
@@ -58,11 +50,12 @@ const AssetsManager = (): IAssetsManager => {
           const getEvmAssets = await assetsController.updateAllEvmTokens(
             currentAccount,
             networkChainId,
-            web3Provider
+            web3Provider,
+            currentAssets.ethereum || []
           );
 
           return {
-            ...currentAccount.assets,
+            ...currentAssets,
             ethereum: getEvmAssets,
           };
         } catch (evmUpdateError) {

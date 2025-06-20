@@ -1,5 +1,5 @@
 import { toSvg } from 'jdenticon';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -20,57 +20,57 @@ import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccount } from 'state/vault/selectors';
 import { ellipsis, adjustUrl } from 'utils/index';
 
 export const AccountHeader: React.FC = () => {
-  const activeAccount = useSelector(
-    (state: RootState) => state.vault.activeAccount
-  );
+  const currentAccount = useSelector(selectActiveAccount);
   const {
-    accounts,
     isBitcoinBased,
     activeNetwork,
     networkStatus,
     isSwitchingAccount,
-  } = useSelector((state: RootState) => state.vault);
+    activeAccount,
+  } = useSelector((state: RootState) => ({
+    isBitcoinBased: state.vault.isBitcoinBased,
+    activeNetwork: state.vault.activeNetwork,
+    networkStatus: state.vault.networkStatus,
+    isSwitchingAccount: state.vault.isSwitchingAccount,
+    activeAccount: state.vault.activeAccount,
+  }));
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
+  const { controllerEmitter } = useController();
   const [copied, copy] = useCopyClipboard();
   const [isLoading, setIsLoading] = useState(false);
   const [isOpenModal, setIsOpenModal] = useState(false);
   const [isReconectModalOpen, setIsReconectModalOpen] = useState(false);
-  const { controllerEmitter } = useController();
-  const isLedger = activeAccount.type === KeyringAccountType.Ledger;
-  const url = chrome.runtime.getURL('app.html');
 
-  const isNetworkChanging = networkStatus === 'switching';
+  const isLedger = useMemo(
+    () => activeAccount?.type === KeyringAccountType.Ledger,
+    [activeAccount?.type]
+  );
+
+  const isNetworkChanging = useMemo(
+    () => networkStatus === 'switching',
+    [networkStatus]
+  );
+
+  const url = useMemo(() => chrome.runtime.getURL('app.html'), []);
+
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
-  useEffect(() => {
-    const placeholder = document.querySelector('.add-identicon');
-    if (!placeholder || !accounts[activeAccount.type]?.[activeAccount.id])
-      return;
+  const editAccount = useCallback(
+    (account: IKeyringAccountState) => {
+      navigate('/settings/edit-account', {
+        state: account,
+      });
+    },
+    [navigate]
+  );
 
-    placeholder.innerHTML = toSvg(
-      (accounts[activeAccount.type][activeAccount.id] as any)?.xpub,
-      50,
-      {
-        backColor: '#07152B',
-        padding: 1,
-      }
-    );
-  }, [(accounts[activeAccount.type]?.[activeAccount.id] as any)?.address]);
-
-  const editAccount = (account: IKeyringAccountState) => {
-    navigate('/settings/edit-account', {
-      state: account,
-    });
-  };
-
-  const openAccountInExplorer = () => {
-    const accountAddress = (
-      accounts[activeAccount.type][activeAccount.id] as any
-    )?.address;
+  const openAccountInExplorer = useCallback(() => {
+    const accountAddress = currentAccount?.address;
     if (!accountAddress) return;
 
     let explorerUrl;
@@ -83,29 +83,25 @@ export const AccountHeader: React.FC = () => {
     }
 
     window.open(explorerUrl, '_blank');
-  };
+  }, [
+    currentAccount?.address,
+    isBitcoinBased,
+    activeNetwork.url,
+    adjustedExplorer,
+  ]);
 
-  useEffect(() => {
-    if (!copied) return;
-
-    alert.removeAll();
-    alert.info(t('home.addressCopied'));
-  }, [copied, alert, t]);
-
-  const handleVerifyAddress = async () => {
+  const handleVerifyAddress = useCallback(async () => {
     try {
       setIsLoading(true);
 
       // Use type assertion for legacy controller methods
       await (controllerEmitter as any)(
         ['wallet', 'ledgerSigner', 'utxo', 'verifyUtxoAddress'],
-        [activeAccount.id, activeNetwork.currency, activeNetwork.slip44]
+        [activeAccount?.id, activeNetwork.currency, activeNetwork.slip44]
       );
 
       setIsLoading(false);
-
       setIsOpenModal(false);
-
       alert.success(t('home.addressVerified'));
     } catch (error: any) {
       const isNecessaryReconnect = error.message.includes(
@@ -124,15 +120,48 @@ export const AccountHeader: React.FC = () => {
       }
 
       setIsOpenModal(false);
-
       setIsLoading(false);
     }
-  };
+  }, [
+    controllerEmitter,
+    activeAccount?.id,
+    activeNetwork.currency,
+    activeNetwork.slip44,
+    alert,
+    t,
+  ]);
 
-  // Account data
-  const currentAccount = accounts[activeAccount.type]?.[
-    activeAccount.id
-  ] as any;
+  const handleCloseReconnectModal = useCallback(() => {
+    setIsReconectModalOpen(false);
+    window.open(`${url}?isReconnect=true`, '_blank');
+  }, [url]);
+
+  const handleLedgerAddressClick = useCallback(() => {
+    if (isLedger && isBitcoinBased && activeNetwork.chainId === 57) {
+      setIsOpenModal(true);
+    }
+  }, [isLedger, isBitcoinBased, activeNetwork.chainId]);
+
+  const copyAddress = useCallback(() => {
+    copy(currentAccount?.address ?? '');
+  }, [copy, currentAccount?.address]);
+
+  useEffect(() => {
+    const placeholder = document.querySelector('.add-identicon');
+    if (!placeholder || !currentAccount?.xpub) return;
+
+    placeholder.innerHTML = toSvg(currentAccount.xpub, 50, {
+      backColor: '#07152B',
+      padding: 1,
+    });
+  }, [currentAccount?.xpub]);
+
+  useEffect(() => {
+    if (!copied) return;
+
+    alert.removeAll();
+    alert.info(t('home.addressCopied'));
+  }, [copied, alert, t]);
 
   return (
     <div className="flex items-center justify-between p-1 bg-bkg-3">
@@ -154,10 +183,7 @@ export const AccountHeader: React.FC = () => {
         title={t('settings.ledgerReconnection')}
         buttonText={t('buttons.reconnect')}
         description={t('settings.ledgerReconnectionMessage')}
-        onClose={() => {
-          setIsReconectModalOpen(false);
-          window.open(`${url}?isReconnect=true`, '_blank');
-        }}
+        onClose={handleCloseReconnectModal}
       />
       <div className="flex ml-[15px] items-center w-full text-brand-white">
         <Tooltip content="View on Explorer">
@@ -208,20 +234,13 @@ export const AccountHeader: React.FC = () => {
                       ? 'cursor-pointer'
                       : ''
                   }`}
-                  onClick={() => {
-                    if (
-                      isLedger &&
-                      isBitcoinBased &&
-                      activeNetwork.chainId === 57
-                    )
-                      setIsOpenModal(true);
-                  }}
+                  onClick={handleLedgerAddressClick}
                 >
                   {ellipsis(currentAccount?.address, 6, 14)}
                 </p>
               </Tooltip>
               <IconButton
-                onClick={() => copy(currentAccount?.address ?? '')}
+                onClick={copyAddress}
                 type="primary"
                 shape="circle"
                 className="ml-2"

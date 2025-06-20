@@ -13,7 +13,10 @@ import { Card, NeutralButton } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountAssets,
+} from 'state/vault/selectors';
 import { IAddCustomTokenMetadataInfos, ITokenEthProps } from 'types/tokens';
 
 import { CustomTokenErrorModal } from './CustomTokenErrorModal';
@@ -62,10 +65,8 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
     TOKENS_WARNING_INITIAL_VALUE
   );
 
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const activeAccount = useSelector(selectActiveAccount);
+  const accountAssets = useSelector(selectActiveAccountAssets);
 
   const isTokenErc20 = tokenContractType.contractType === 'ERC-20';
   const isTokenErc721 = tokenContractType.contractType === 'ERC-721';
@@ -90,7 +91,12 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
         try {
           const addTokenMethodResponse = (await controllerEmitter(
             ['wallet', 'addCustomTokenByType'],
-            [activeAccount.address, contractAddress, assetSymbol, assetDecimals]
+            [
+              activeAccount?.address,
+              contractAddress,
+              assetSymbol,
+              assetDecimals,
+            ]
           )) as any;
 
           if (addTokenMethodResponse.error) {
@@ -101,7 +107,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
 
             return;
           }
-          const currentTokens = activeAccount.assets.ethereum;
+          const currentTokens = accountAssets.ethereum;
 
           switch (tokenContractType.contractType) {
             case 'ERC-1155':
@@ -312,7 +318,7 @@ export const CustomToken = (props: ICustomTokenComponentProps) => {
   ) => {
     const metadata = (await controllerEmitter(
       ['wallet', 'getTokenMetadata'],
-      [tokenAddress, activeAccount.address]
+      [tokenAddress, activeAccount?.address]
     )) as { decimals: number; symbol: string };
     const { decimals, symbol: tokenSymbol } = metadata;
 

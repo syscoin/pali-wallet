@@ -1,9 +1,8 @@
 import {
   CustomJsonRpcProvider,
   CustomL2JsonRpcProvider,
+  IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
-
-import { IPaliAccount } from 'state/vault/types';
 
 import EvmBalanceController from './evm';
 import SyscoinBalanceController from './syscoin';
@@ -11,7 +10,7 @@ import { IBalancesManager } from './types';
 
 const BalancesManager = (): IBalancesManager => {
   const getBalanceUpdatedForAccount = async (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     networkUrl: string,
     provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider

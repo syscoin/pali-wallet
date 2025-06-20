@@ -16,13 +16,13 @@ import { formatCurrency, truncate } from 'utils/index';
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
   const {
-    accounts,
+    accountAssets,
     activeAccount,
     isLoadingAssets,
     activeNetwork: { chainId },
     networkStatus,
   } = useSelector((state: RootState) => state.vault);
-  const { assets } = accounts[activeAccount.type][activeAccount.id];
+  const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -35,8 +35,8 @@ export const SyscoinAssetsList = () => {
 
   // Memoize filtered assets for performance
   const filteredAssets = useMemo(
-    () => assets.syscoin.filter((asset) => asset.chainId === chainId),
-    [assets.syscoin, chainId]
+    () => assets?.syscoin?.filter((asset) => asset.chainId === chainId) || [],
+    [assets?.syscoin, chainId]
   );
 
   // Memoize delete handlers

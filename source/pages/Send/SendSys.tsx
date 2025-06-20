@@ -3,7 +3,7 @@ import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -17,6 +17,7 @@ import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { ITokenSysProps } from 'types/tokens';
 import {
   truncate,
@@ -31,13 +32,12 @@ export const SendSys = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
+
+  // ✅ OPTIMIZED: Use compound selector
+  const { account: activeAccount, assets: accountAssets } = useSelector(
+    selectActiveAccountWithAssets
   );
-  const { accounts, activeAccount: activeAccountMeta } = useSelector(
-    (state: RootState) => state.vault
-  );
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
 
   const [RBF, setRBF] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
@@ -52,12 +52,12 @@ export const SendSys = () => {
   // Fee rate will be managed by the Fee component
   const [feeRate, setFeeRate] = useState<number | null>(null);
 
-  // Update feeRate when form fee changes (no polling needed)
+  // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
     setFeeRate(newFee);
   }, []);
 
-  // Set a default fee rate on mount
+  // ✅ OPTIMIZED: Fee fetching with proper dependencies
   useEffect(() => {
     const fetchInitialFee = async () => {
       try {
@@ -75,32 +75,46 @@ export const SendSys = () => {
       }
     };
     fetchInitialFee();
-  }, [activeNetwork.chainId, form]);
+  }, [activeNetwork.chainId, form, controllerEmitter]);
 
-  const isAccountImported =
-    accounts[activeAccountMeta.type][activeAccountMeta.id]?.isImported;
+  // ✅ MEMOIZED: Computed values
+  const isAccountImported = useMemo(
+    () => activeAccount?.isImported,
+    [activeAccount?.isImported]
+  );
 
-  const assets = activeAccount.assets.syscoin
-    ? Object.values(activeAccount.assets.syscoin)
-    : [];
+  const assets = useMemo(
+    () => (accountAssets.syscoin ? Object.values(accountAssets.syscoin) : []),
+    [accountAssets.syscoin]
+  );
 
-  const assetDecimals =
-    selectedAsset && selectedAsset?.decimals ? selectedAsset.decimals : 8;
+  const assetDecimals = useMemo(
+    () =>
+      selectedAsset && selectedAsset?.decimals ? selectedAsset.decimals : 8,
+    [selectedAsset?.decimals]
+  );
 
-  const formattedAssetBalance =
-    selectedAsset &&
-    truncate(
-      formatCurrency(
-        String(+selectedAsset.balance / 10 ** assetDecimals),
-        selectedAsset.decimals
+  const formattedAssetBalance = useMemo(
+    () =>
+      selectedAsset &&
+      truncate(
+        formatCurrency(
+          String(+selectedAsset.balance / 10 ** assetDecimals),
+          selectedAsset.decimals
+        ),
+        14
       ),
-      14
-    );
+    [selectedAsset, assetDecimals]
+  );
 
   // Keep balance as string to preserve precision
-  const balanceStr = selectedAsset
-    ? formattedAssetBalance || '0'
-    : activeAccount?.balances[INetworkType.Syscoin] || '0';
+  const balanceStr = useMemo(
+    () =>
+      selectedAsset
+        ? formattedAssetBalance || '0'
+        : activeAccount?.balances[INetworkType.Syscoin] || '0',
+    [selectedAsset, formattedAssetBalance, activeAccount?.balances]
+  );
 
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
@@ -118,31 +132,37 @@ export const SendSys = () => {
     [balanceStr]
   );
 
-  const handleSelectedAsset = (item: number) => {
-    if (assets) {
-      const getAsset = assets.find((asset: any) => asset.assetGuid === item);
+  const handleSelectedAsset = useCallback(
+    (item: number) => {
+      if (assets) {
+        const getAsset = assets.find((asset: any) => asset.assetGuid === item);
 
-      if (getAsset) {
-        setSelectedAsset(getAsset);
-        // Clear cached fee when switching assets
+        if (getAsset) {
+          setSelectedAsset(getAsset);
+          // Clear cached fee when switching assets
+          setIsMaxSend(false);
+          return;
+        }
+
+        setSelectedAsset(null);
+        // Clear cached fee when switching to native
         setIsMaxSend(false);
-        return;
       }
+    },
+    [assets]
+  );
 
-      setSelectedAsset(null);
-      // Clear cached fee when switching to native
-      setIsMaxSend(false);
-    }
-  };
+  const RBFOnChange = useCallback(
+    (value: any) => {
+      // For SPTs, the switch shows ZDAG, so we need to invert the value
+      // When ZDAG is enabled (value=true), RBF should be disabled (false)
+      const rbfValue = selectedAsset ? !value : value;
+      setRBF(rbfValue);
 
-  const RBFOnChange = (value: any) => {
-    // For SPTs, the switch shows ZDAG, so we need to invert the value
-    // When ZDAG is enabled (value=true), RBF should be disabled (false)
-    const rbfValue = selectedAsset ? !value : value;
-    setRBF(rbfValue);
-
-    form.setFieldsValue({ RBF: rbfValue });
-  };
+      form.setFieldsValue({ RBF: rbfValue });
+    },
+    [selectedAsset, form]
+  );
 
   const nextStep = async ({ receiver, amount }: any) => {
     try {
@@ -255,7 +275,7 @@ export const SendSys = () => {
         // The sysweb3-keyring library expects a fee rate (SYS per byte), not a total fee.
 
         const txData = {
-          sender: activeAccount.address,
+          sender: activeAccount?.address,
           receivingAddress: receiver,
           amount: Number(amount),
           fee: estimatedTotalFee, // Actual fee amount (compliant with SysProvider API)
@@ -365,7 +385,7 @@ export const SendSys = () => {
         navigate('/send/confirm', {
           state: {
             tx: {
-              sender: activeAccount.address,
+              sender: activeAccount?.address,
               receivingAddress: receiver,
               amount: Number(amount),
               fee: tokenFeeEstimate, // Actual fee amount (compliant with SysProvider API)
@@ -392,15 +412,11 @@ export const SendSys = () => {
     const placeholder = document.querySelector('.add-identicon');
     if (!placeholder) return;
 
-    placeholder.innerHTML = toSvg(
-      accounts[activeAccountMeta.type][activeAccountMeta.id]?.xpub,
-      50,
-      {
-        backColor: '#07152B',
-        padding: 1,
-      }
-    );
-  }, [accounts[activeAccountMeta.type][activeAccountMeta.id]?.address]);
+    placeholder.innerHTML = toSvg(activeAccount?.xpub, 50, {
+      backColor: '#07152B',
+      padding: 1,
+    });
+  }, [activeAccount?.address]);
 
   // Remove the useEffect that was causing fluctuations
   // The MAX button already handles the calculation properly
@@ -413,17 +429,8 @@ export const SendSys = () => {
           <div className="flex gap-1 justify-center items-center">
             <PaliWhiteSmallIconSvg />
             <div className="flex text-white gap-1 text-xs font-normal w-max">
-              <p>
-                {accounts[activeAccountMeta.type][activeAccountMeta.id]?.label}
-              </p>
-              <p>
-                {ellipsis(
-                  accounts[activeAccountMeta.type][activeAccountMeta.id]
-                    ?.address,
-                  4,
-                  4
-                )}
-              </p>
+              <p>{activeAccount?.label}</p>
+              <p>{ellipsis(activeAccount?.address, 4, 4)}</p>
             </div>
             {isAccountImported && (
               <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
@@ -538,8 +545,8 @@ export const SendSys = () => {
                             </button>
                           </Menu.Item>
 
-                          {activeAccount.assets.syscoin.length > 0
-                            ? activeAccount.assets.syscoin.map((item: any) =>
+                          {accountAssets.syscoin.length > 0
+                            ? accountAssets.syscoin.map((item: any) =>
                                 item?.assetGuid ? (
                                   <Menu.Item
                                     as="div"

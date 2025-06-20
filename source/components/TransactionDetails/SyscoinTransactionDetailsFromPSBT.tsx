@@ -14,6 +14,7 @@ import { Tooltip, IconButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/format';
 
 export interface IDecodedTransaction {
@@ -206,12 +207,10 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
   const [assetInfoMap, setAssetInfoMap] = useState<Record<string, any>>({});
   const [copiedJson, copyJson] = useCopyClipboard();
   const [copiedAddress, copyAddress] = useCopyClipboard();
-  const {
-    accounts,
-    activeAccount: activeAccountMeta,
-    activeNetwork,
-  } = useSelector((state: RootState) => state.vault);
-  const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+
+  // Use proper selectors
+  const activeAccountAssets = useSelector(selectActiveAccountAssets);
+  const { activeNetwork } = useSelector((state: RootState) => state.vault);
 
   useEffect(() => {
     const fetchTransactionDetails = async () => {
@@ -235,7 +234,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
             const assetGuid = asset.assetGuid;
 
             // First try local assets
-            const localAsset = activeAccount?.assets?.syscoin?.find(
+            const localAsset = activeAccountAssets?.syscoin?.find(
               (a: any) => a.assetGuid === assetGuid
             );
 
@@ -272,7 +271,13 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
     };
 
     fetchTransactionDetails();
-  }, [psbt, transaction, activeNetwork, activeAccount, controllerEmitter]);
+  }, [
+    psbt,
+    transaction,
+    activeNetwork,
+    activeAccountAssets,
+    controllerEmitter,
+  ]);
 
   useEffect(() => {
     if (copiedJson) {

@@ -1,9 +1,12 @@
 import { ethers } from 'ethers';
 
-import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import {
+  CustomJsonRpcProvider,
+  IKeyringAccountState,
+} from '@pollum-io/sysweb3-keyring';
 import { ISyscoinVIn, ISyscoinVOut } from '@pollum-io/sysweb3-utils';
 
-import { IPaliAccount } from 'state/vault/types';
+import { IAccountTransactions } from 'state/vault/types';
 
 //------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
@@ -155,10 +158,11 @@ export interface ISysTransactionsController {
 export interface ITransactionsManagerUtils {
   clearCache: () => void;
   updateTransactionsFromCurrentAccount: (
-    currentAccount: IPaliAccount,
+    currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    accountTransactions?: IAccountTransactions
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

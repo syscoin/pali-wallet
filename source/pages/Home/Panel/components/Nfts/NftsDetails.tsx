@@ -9,6 +9,7 @@ import { ChainIcon } from 'components/ChainIcon';
 import { Button, NeutralButton } from 'components/index';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { RootState } from 'state/store';
+import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
 
@@ -20,10 +21,11 @@ export const NftsDetails = ({
   nftId: string;
 }) => {
   const {
-    accounts,
-    activeAccount,
     activeNetwork: { label, explorer },
   } = useSelector((state: RootState) => state.vault);
+
+  // Use proper selector for assets
+  const accountAssets = useSelector(selectActiveAccountAssets);
 
   const { useCopyClipboard, alert } = useUtils();
 
@@ -31,9 +33,7 @@ export const NftsDetails = ({
 
   const { t } = useTranslation();
 
-  const { assets } = accounts[activeAccount.type][activeAccount.id];
-
-  const currentNft = assets.nfts.find(
+  const currentNft = accountAssets.nfts.find(
     (nft) => nft.token_id === nftId && nft.address === nftAddress
   );
 

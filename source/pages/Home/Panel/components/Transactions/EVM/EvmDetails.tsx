@@ -10,6 +10,10 @@ import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
+import {
+  selectActiveAccount,
+  selectActiveAccountTransactions,
+} from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import {
   camelCaseToText,
@@ -30,15 +34,14 @@ CopyIcon.displayName = 'CopyIcon';
 
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
-    accounts,
-    activeAccount,
     activeNetwork: { chainId, currency },
     coinsList,
   } = useSelector((state: RootState) => state.vault);
 
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
+  // Use proper selectors
+  const currentAccount = useSelector(selectActiveAccount);
+  const accountTransactions = useSelector(selectActiveAccountTransactions);
 
-  const { transactions } = accounts[activeAccount.type][activeAccount.id];
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
@@ -62,7 +65,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
 
   const formattedTransaction = [];
 
-  const ethereumTransactions = transactions[TransactionsType.Ethereum][
+  const ethereumTransactions = accountTransactions[TransactionsType.Ethereum][
     chainId
   ] as IEvmTransaction[];
 
@@ -82,7 +85,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     isConfirmed = tx.confirmations > 0;
     isTxSent = tx.direction
       ? tx.direction === 'sent'
-      : tx.from.toLowerCase() === currentAccount.address;
+      : tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 
     for (const [key, value] of Object.entries(tx)) {
       const formattedKey = camelCaseToText(key);

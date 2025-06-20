@@ -21,6 +21,7 @@ function shouldUpdate() {
     isBitcoinBased,
     activeNetwork,
     prevBalances,
+    accountTransactions,
   } = vault;
 
   const chain = isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
@@ -35,10 +36,9 @@ function shouldUpdate() {
       ];
 
   const previousBalance = prevBalances[activeAccount.id]?.[chain]?.[chainId];
-  const currentAccount = accounts[activeAccount.type][activeAccount.id];
-  const currentAccountTransactions = currentAccount.transactions[chain]?.[
-    chainId
-  ] as any[];
+  const currentAccountTransactions = accountTransactions[activeAccount.type][
+    activeAccount.id
+  ][chain]?.[chainId] as any[];
 
   // Check if there are any pending transactions (confirmations === 0)
   const hasPendingTransactions = Array.isArray(currentAccountTransactions)

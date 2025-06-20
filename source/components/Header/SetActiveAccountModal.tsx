@@ -10,7 +10,7 @@ import { Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
-import { setIsSwitchingAccount } from 'state/vault';
+import { setIsSwitchingAccount, selectActiveAccountRef } from 'state/vault';
 
 interface ISetActiveAccountModalProps {
   selectedNetwork: INetwork;
@@ -21,9 +21,10 @@ interface ISetActiveAccountModalProps {
 export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
   const { controllerEmitter } = useController();
   const { showModal, setIsOpen } = props;
-  const { accounts, isBitcoinBased, activeAccount } = useSelector(
+  const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
+  const activeAccount = useSelector(selectActiveAccountRef);
   const { t } = useTranslation();
 
   const { alert } = useUtils();
