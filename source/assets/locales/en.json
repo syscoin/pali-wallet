@@ -37,7 +37,8 @@
     "reconnect": "Reconnect",
     "verify": "Verify",
     "retryConnect": "Retry connect",
-    "delete": "Delete"
+    "delete": "Delete",
+    "remove": "Remove"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -440,7 +441,11 @@
     "setAutoLockTime": "Set auto lock timer",
     "errorMinutes": "the minutes must be between 5 and 120",
     "defaultMinutes": "Default: 5 minutes after no activity.",
-    "maximumMinutes": "Maximum: 120 minutes."
+    "maximumMinutes": "Maximum: 120 minutes.",
+    "removeAccount": "Remove Account",
+    "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
+    "accountRemovedSuccessfully": "Account removed successfully",
+    "failedToRemoveAccount": "Failed to remove account"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

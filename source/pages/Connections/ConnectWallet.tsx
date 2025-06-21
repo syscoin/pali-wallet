@@ -112,21 +112,12 @@ export const ConnectWallet = () => {
                   ? !isHexString(currentAccount.address)
                   : isHexString(currentAccount.address);
 
-              let accountList = Object.values(account).filter(isValidAccount);
+              const accountList = Object.values(account).filter(isValidAccount);
 
               if (!accountList.length) return null;
 
-              switch (keyringAccountType) {
-                case KeyringAccountType.Trezor:
-                case KeyringAccountType.Ledger:
-                  accountList = accountList.filter((acc) => {
-                    const accountIsUtxo =
-                      acc.originNetwork?.kind === 'syscoin' ||
-                      acc.originNetwork?.isBitcoinBased === true;
-                    return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
-                  });
-                  break;
-              }
+              // In multi-keyring architecture, all accounts in current keyring are compatible
+              // No filtering needed - network isolation is handled at keyring level
               return (
                 <div
                   key={keyringAccountType}

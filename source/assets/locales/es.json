@@ -37,7 +37,8 @@
     "reconnect": "Reconectar",
     "verify": "Verificar",
     "retryConnect": "Reintentar conexión",
-    "delete": "Eliminar"
+    "delete": "Eliminar",
+    "remove": "Remover"
   },
   "components": {
     "newPassword": "Nueva contraseña (mín. 8 caracteres)",
@@ -440,7 +441,11 @@
     "setAutoLockTime": "Configurar tiempo de bloqueo automático",
     "errorMinutes": "los minutos deben ser entre 5 y 120",
     "defaultMinutes": "Predeterminado: 5 minutos después de inactividad.",
-    "maximumMinutes": "Máximo: 120 minutos."
+    "maximumMinutes": "Máximo: 120 minutos.",
+    "removeAccount": "Eliminar cuenta",
+    "removeAccountConfirmation": "¿Estás seguro de que deseas eliminar la cuenta {{accountType}} \"{{accountName}}\"? Siempre puedes recrear la cuenta más tarde si es necesario.",
+    "accountRemovedSuccessfully": "Cuenta eliminada exitosamente",
+    "failedToRemoveAccount": "Error al eliminar la cuenta"
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

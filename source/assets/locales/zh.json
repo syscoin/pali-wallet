@@ -37,7 +37,8 @@
     "reconnect": "重新连接",
     "verify": "验证",
     "retryConnect": "重试连接",
-    "delete": "删除"
+    "delete": "删除",
+    "remove": "移除"
   },
   "header": {
     "accounts": "账户",
@@ -246,7 +247,11 @@
     "setAutoLockTime": "设置自动锁定时间",
     "errorMinutes": "分钟数必须在5到120之间",
     "defaultMinutes": "默认：无活动5分钟后。",
-    "maximumMinutes": "最大：120分钟。"
+    "maximumMinutes": "最大：120分钟。",
+    "removeAccount": "移除账户",
+    "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
+    "accountRemovedSuccessfully": "账户移除成功",
+    "failedToRemoveAccount": "移除账户失败"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",

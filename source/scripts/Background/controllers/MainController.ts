@@ -31,6 +31,7 @@ import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
 import {
   createAccount as addAccountToStore,
   forgetWallet,
+  removeAccount,
   removeNetwork,
   setAccountPropertyByIdAndType,
   setActiveAccount,
@@ -1406,6 +1407,57 @@ class MainController {
         accountType,
       })
     );
+  }
+
+  public removeAccount(accountId: number, accountType: KeyringAccountType) {
+    const { accounts, activeAccount } = store.getState().vault;
+
+    // Safety check: Don't allow removing the active account
+    if (activeAccount.id === accountId && activeAccount.type === accountType) {
+      throw new Error(
+        'Cannot remove the currently active account. Please switch to another account first.'
+      );
+    }
+
+    // Safety check: Don't allow removing the last account
+    const allAccountsCount = Object.values(accounts).reduce(
+      (total, accountTypeAccounts) =>
+        total + Object.keys(accountTypeAccounts).length,
+      0
+    );
+
+    if (allAccountsCount <= 1) {
+      throw new Error('Cannot remove the last remaining account.');
+    }
+
+    // Safety check: For HD accounts, don't allow removing if it's the only one
+    if (accountType === KeyringAccountType.HDAccount) {
+      const hdAccountsCount = Object.keys(accounts.HDAccount).length;
+      if (hdAccountsCount <= 1) {
+        throw new Error(
+          'Cannot remove the only HD account. At least one HD account must remain.'
+        );
+      }
+    }
+
+    // Remove from store
+    store.dispatch(removeAccount({ id: accountId, type: accountType }));
+
+    // Notify connected DApps if needed
+    const controller = getController();
+    const { dapps } = store.getState().dapp;
+
+    // Check if any dApps were connected to this account and disconnect them
+    Object.keys(dapps).forEach((dappHost) => {
+      const dapp = dapps[dappHost];
+      if (
+        dapp &&
+        dapp.accountId === accountId &&
+        dapp.accountType === accountType
+      ) {
+        controller.dapp.disconnect(dappHost);
+      }
+    });
   }
 
   public removeKeyringNetwork(

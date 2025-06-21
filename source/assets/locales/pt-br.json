@@ -37,7 +37,8 @@
     "reconnect": "Reconectar",
     "verify": "Verificar",
     "retryConnect": "Tentar conectar novamente",
-    "delete": "Excluir"
+    "delete": "Excluir",
+    "remove": "Remover"
   },
   "components": {
     "newPassword": "Nova senha (mín. 8 caracteres)",
@@ -426,6 +427,10 @@
     "errorMinutes": "O tempo deve ser entre 5 e 120 minutos",
     "defaultMinutes": "Padrão: 5 minutos após inatividade",
     "maximumMinutes": "Máximo: 120 minutos",
+    "removeAccount": "Remover conta",
+    "removeAccountConfirmation": "Tem certeza de que deseja remover a conta {{accountType}} \"{{accountName}}\"? Você sempre pode recriar a conta mais tarde se necessário.",
+    "accountRemovedSuccessfully": "Conta removida com sucesso",
+    "failedToRemoveAccount": "Falha ao remover conta",
     "connectYourWalletAndClick": "CONECTE SUA {{hardwalletName}} E CLIQUE PARA CONECTAR!",
     "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}."
   },

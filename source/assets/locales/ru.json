@@ -37,7 +37,8 @@
     "reconnect": "Переподключить",
     "verify": "Проверить",
     "retryConnect": "Повторить подключение",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "remove": "Удалить"
   },
   "header": {
     "accounts": "Аккаунты",
@@ -246,7 +247,11 @@
     "setAutoLockTime": "Установить время автоблокировки",
     "errorMinutes": "минуты должны быть от 5 до 120",
     "defaultMinutes": "По умолчанию: 5 минут после бездействия.",
-    "maximumMinutes": "Максимум: 120 минут."
+    "maximumMinutes": "Максимум: 120 минут.",
+    "removeAccount": "Удалить аккаунт",
+    "removeAccountConfirmation": "Вы уверены, что хотите удалить {{accountType}} аккаунт \"{{accountName}}\"? Вы всегда можете пересоздать аккаунт позже при необходимости.",
+    "accountRemovedSuccessfully": "Аккаунт успешно удален",
+    "failedToRemoveAccount": "Не удалось удалить аккаунт"
   },
   "components": {
     "newPassword": "Новый пароль (мин. 8 символов)",

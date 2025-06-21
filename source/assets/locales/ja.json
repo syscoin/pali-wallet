@@ -37,7 +37,8 @@
     "reconnect": "再接続",
     "verify": "確認",
     "retryConnect": "接続を再試行",
-    "delete": "削除"
+    "delete": "削除",
+    "remove": "削除"
   },
   "header": {
     "accounts": "アカウント",
@@ -246,7 +247,11 @@
     "setAutoLockTime": "自動ロック時間を設定",
     "errorMinutes": "分数は5から120の間でなければなりません",
     "defaultMinutes": "デフォルト：非アクティブ5分後。",
-    "maximumMinutes": "最大：120分。"
+    "maximumMinutes": "最大：120分。",
+    "removeAccount": "アカウントを削除",
+    "removeAccountConfirmation": "{{accountType}}アカウント \"{{accountName}}\" を削除してもよろしいですか？必要に応じて、いつでもアカウントを再作成できます。",
+    "accountRemovedSuccessfully": "アカウントが正常に削除されました",
+    "failedToRemoveAccount": "アカウントの削除に失敗しました"
   },
   "components": {
     "newPassword": "新しいパスワード（最低8文字）",

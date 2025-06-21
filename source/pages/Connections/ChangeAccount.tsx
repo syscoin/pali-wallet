@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
@@ -91,25 +90,12 @@ export const ChangeAccount = () => {
                   ? !isHexString(currentAccount.address)
                   : isHexString(currentAccount.address);
 
-              let accountList = Object.values(account).filter(isValidAccount);
+              const accountList = Object.values(account).filter(isValidAccount);
 
               if (!accountList.length) return null;
 
-              switch (keyringAccountType) {
-                case KeyringAccountType.Trezor:
-                case KeyringAccountType.Ledger:
-                  // Filter hardware wallet accounts based on network compatibility
-                  // For UTXO networks: keep accounts created on UTXO networks
-                  // For EVM networks: keep accounts created on EVM networks
-                  accountList = accountList.filter((acc) => {
-                    // Check if account was created on a compatible network type
-                    const accountIsUtxo =
-                      acc.originNetwork?.kind === INetworkType.Syscoin ||
-                      acc.originNetwork?.isBitcoinBased === true;
-                    return isBitcoinBased ? accountIsUtxo : !accountIsUtxo;
-                  });
-                  break;
-              }
+              // In multi-keyring architecture, all accounts in current keyring are compatible
+              // No filtering needed - network isolation is handled at keyring level
               return (
                 <div
                   key={keyringAccountType}

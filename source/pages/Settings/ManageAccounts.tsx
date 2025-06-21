@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiOutlineUsb } from 'react-icons/ai';
 import { RiUserReceivedLine } from 'react-icons/ri/';
@@ -9,20 +9,80 @@ import {
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 
+import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { IconButton, Layout, Icon, NeutralButton } from 'components/index';
+import {
+  IconButton,
+  Layout,
+  Icon,
+  NeutralButton,
+  ConfirmationModal,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 
-const ManageAccountsView = () => {
+// Static account type configuration to prevent recreation
+const ACCOUNT_TYPE_CONFIG = {
+  [KeyringAccountType.HDAccount]: {
+    label: 'Pali',
+    bgColor: 'bg-brand-royalblue',
+    icon: (props: any) => (
+      <PaliWhiteSmallIconSvg
+        className="mr-1 w-7 text-brand-gray300 opacity-80"
+        {...props}
+      />
+    ),
+  },
+  [KeyringAccountType.Imported]: {
+    label: 'Imported',
+    bgColor: 'bg-orange-500',
+    icon: (props: any) => (
+      <RiUserReceivedLine size={20} className="mr-1" {...props} />
+    ),
+  },
+  [KeyringAccountType.Trezor]: {
+    label: 'Trezor',
+    bgColor: 'bg-green-500',
+    icon: (props: any) => (
+      <AiOutlineUsb size={20} className="mr-1" {...props} />
+    ),
+  },
+  [KeyringAccountType.Ledger]: {
+    label: 'Ledger',
+    bgColor: 'bg-blue-500',
+    icon: (props: any) => (
+      <img
+        src={ledgerLogo}
+        alt=""
+        className="mr-1 w-5 h-5"
+        style={{
+          filter:
+            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+        }}
+        {...props}
+      />
+    ),
+  },
+} as const;
+
+const ManageAccountsView = React.memo(() => {
   const accounts = useSelector((state: RootState) => state.vault.accounts);
   const activeAccountRef = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
 
-  const { navigate } = useUtils();
+  const { navigate, alert } = useUtils();
+  const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
+  // State for confirmation dialog
+  const [accountToRemove, setAccountToRemove] = useState<{
+    account: IKeyringAccountState;
+    accountType: KeyringAccountType;
+  } | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
 
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
@@ -37,158 +97,175 @@ const ManageAccountsView = () => {
     navigate('/home');
   }, [navigate]);
 
-  const accountTypeExists = useMemo(
-    () => ({
-      imported: Object.values(accounts.Imported).length > 0,
-      trezor: Object.values(accounts.Trezor).length > 0,
-      ledger: Object.values(accounts.Ledger).length > 0,
-    }),
-    [accounts.Imported, accounts.Trezor, accounts.Ledger]
-  );
-
   const isActiveAccount = useCallback(
     (account: IKeyringAccountState, type: KeyringAccountType) =>
       activeAccountRef?.id === account.id && activeAccountRef?.type === type,
     [activeAccountRef?.id, activeAccountRef?.type]
   );
 
-  return (
-    <Layout title={t('settings.manageAccounts')}>
-      <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
-        {Object.values(accounts.HDAccount).map(
-          (account: IKeyringAccountState) => (
-            <li
-              key={account.id}
-              className={`my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
-            >
-              <div className="flex items-center">
-                <span
-                  style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
-                  className="w-max  flex items-center justify-start whitespace-nowrap overflow-hidden"
-                >
-                  <PaliWhiteSmallIconSvg className="mr-1 w-7 text-brand-gray300 opacity-80" />
-                  {account.label} ({ellipsis(account.address, 4, 4)})
-                </span>
-                <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                  Pali
-                </span>
-                {isActiveAccount(account, KeyringAccountType.HDAccount) && (
-                  <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                )}
-              </div>
-              <div className="flex gap-x-3 items-center justify-between">
-                <IconButton
-                  onClick={() => editAccount(account)}
-                  type="primary"
-                  shape="circle"
-                >
-                  <Icon
-                    name="edit"
-                    size={20}
-                    className="hover:text-brand-royalblue text-xl"
-                  />
-                </IconButton>
-              </div>
-            </li>
-          )
-        )}
-        {accountTypeExists.imported ? (
-          <>
-            {Object.values(accounts.Imported).map(
-              (account: IKeyringAccountState) => (
-                <li
-                  key={account.id}
-                  className={`my-3 py-1 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
-                >
-                  <div className="flex items-center">
-                    <span
-                      style={{
-                        maxWidth: '16.25rem',
-                        textOverflow: 'ellipsis',
-                      }}
-                      className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <RiUserReceivedLine size={20} className="mr-1" />
-                      {account.label} ({ellipsis(account.address, 4, 4)})
-                    </span>
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Imported
-                    </span>
-                    {isActiveAccount(account, KeyringAccountType.Imported) && (
-                      <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                    )}
-                  </div>
+  // Check if account can be removed
+  const canRemoveAccount = useCallback(
+    (account: IKeyringAccountState, accountType: KeyringAccountType) => {
+      // Don't allow removing active account
+      if (isActiveAccount(account, accountType)) return false;
 
-                  <div className="flex gap-x-3 items-center justify-between">
-                    <IconButton
-                      onClick={() => editAccount(account)}
-                      type="primary"
-                      shape="circle"
-                    >
-                      <Icon
-                        name="edit"
-                        className="hover:text-brand-royalblue text-xl"
-                      />
-                    </IconButton>
-                  </div>
-                </li>
-              )
-            )}
-          </>
-        ) : null}
+      // Check if this is the last account overall
+      const totalAccounts = Object.values(accounts).reduce(
+        (total, typeAccounts) => total + Object.keys(typeAccounts).length,
+        0
+      );
+      if (totalAccounts <= 1) return false;
 
-        {accountTypeExists.trezor ? (
-          <>
-            {Object.values(accounts.Trezor).map(
-              (account: IKeyringAccountState) => (
-                <li
-                  key={account.id}
-                  className={`my-3 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default`}
-                >
-                  <div className="flex items-center">
-                    <span
-                      style={{
-                        maxWidth: '16.25rem',
-                        textOverflow: 'ellipsis',
-                      }}
-                      className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
-                    >
-                      <AiOutlineUsb size={20} className="mr-1" />
-                      {account.label} ({ellipsis(account.address, 4, 4)})
-                    </span>
-                    <span className="text-xs ml-2 px-2 py-0.5 text-white bg-brand-blue500 rounded-full">
-                      Trezor
-                    </span>
-                    {isActiveAccount(account, KeyringAccountType.Trezor) && (
-                      <Icon name="greenCheck" isSvg className="ml-2 w-4" />
-                    )}
-                  </div>
+      // For HD accounts, must keep at least one
+      if (accountType === KeyringAccountType.HDAccount) {
+        const hdAccountsCount = Object.keys(accounts.HDAccount).length;
+        if (hdAccountsCount <= 1) return false;
+      }
 
-                  <div className="flex gap-x-3 items-center justify-between">
-                    <IconButton
-                      onClick={() => editAccount(account)}
-                      type="primary"
-                      shape="circle"
-                    >
-                      <Icon
-                        name="edit"
-                        className="hover:text-brand-royalblue text-xl"
-                      />
-                    </IconButton>
-                  </div>
-                </li>
-              )
-            )}
-          </>
-        ) : null}
-      </ul>
-      <div className="w-full px-4 absolute bottom-12 md:static">
-        <NeutralButton type="button" fullWidth onClick={handleClose}>
-          {t('buttons.close')}
-        </NeutralButton>{' '}
-      </div>
-    </Layout>
+      return true;
+    },
+    [accounts, isActiveAccount]
   );
-};
+
+  const handleRemoveClick = useCallback(
+    (account: IKeyringAccountState, accountType: KeyringAccountType) => {
+      setAccountToRemove({ account, accountType });
+    },
+    []
+  );
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!accountToRemove) return;
+
+    setIsRemoving(true);
+    try {
+      await controllerEmitter(
+        ['wallet', 'removeAccount'],
+        [accountToRemove.account.id, accountToRemove.accountType]
+      );
+
+      alert.success(t('settings.accountRemovedSuccessfully'));
+      setAccountToRemove(null);
+    } catch (error: any) {
+      alert.error(error.message || t('settings.failedToRemoveAccount'));
+    } finally {
+      setIsRemoving(false);
+    }
+  }, [accountToRemove, controllerEmitter, alert, t]);
+
+  const handleCancelRemove = useCallback(() => {
+    setAccountToRemove(null);
+  }, []);
+
+  // Memoized unified account rendering
+  const renderAccount = useCallback(
+    (account: IKeyringAccountState, accountType: KeyringAccountType) => {
+      const config = ACCOUNT_TYPE_CONFIG[accountType];
+      const IconComponent = config.icon;
+
+      return (
+        <li
+          key={`${accountType}-${account.id}`}
+          className="my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
+        >
+          <div className="flex items-center">
+            <span
+              style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
+              className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
+            >
+              <IconComponent />
+              {account.label} ({ellipsis(account.address, 4, 4)})
+            </span>
+            <span
+              className={`text-xs ml-2 px-2 py-0.5 text-white ${config.bgColor} rounded-full`}
+            >
+              {config.label}
+            </span>
+            {isActiveAccount(account, accountType) && (
+              <Icon name="greenCheck" isSvg className="ml-2 w-4" />
+            )}
+          </div>
+
+          <div className="flex gap-x-2 items-center justify-between">
+            <IconButton
+              onClick={() => editAccount(account)}
+              type="primary"
+              shape="circle"
+            >
+              <Icon
+                name="edit"
+                size={20}
+                className="hover:text-brand-royalblue text-xl"
+              />
+            </IconButton>
+
+            {canRemoveAccount(account, accountType) && (
+              <IconButton
+                onClick={() => handleRemoveClick(account, accountType)}
+                type="primary"
+                shape="circle"
+                className="hover:bg-red-500 hover:bg-opacity-20"
+              >
+                <Icon
+                  name="delete"
+                  size={20}
+                  className="hover:text-red-500 text-xl"
+                />
+              </IconButton>
+            )}
+          </div>
+        </li>
+      );
+    },
+    [editAccount, isActiveAccount]
+  );
+
+  // Memoize the account list computation
+  const accountsList = useMemo(
+    () =>
+      Object.entries(accounts).flatMap(([accountType, accountsOfType]) =>
+        Object.values(accountsOfType || {}).map((account) => ({
+          account: account as IKeyringAccountState,
+          accountType: accountType as KeyringAccountType,
+        }))
+      ),
+    [accounts]
+  );
+
+  return (
+    <>
+      <Layout title={t('settings.manageAccounts')}>
+        <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
+          {accountsList.map(({ account, accountType }) =>
+            renderAccount(account, accountType)
+          )}
+        </ul>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton type="button" fullWidth onClick={handleClose}>
+            {t('buttons.close')}
+          </NeutralButton>
+        </div>
+      </Layout>
+
+      {/* Confirmation Modal */}
+      {accountToRemove && (
+        <ConfirmationModal
+          show={true}
+          onClose={handleCancelRemove}
+          onClick={handleConfirmRemove}
+          title={t('settings.removeAccount')}
+          description={t('settings.removeAccountConfirmation', {
+            accountName: accountToRemove.account.label,
+            accountType: ACCOUNT_TYPE_CONFIG[accountToRemove.accountType].label,
+          })}
+          buttonText={t('buttons.remove')}
+          isButtonLoading={isRemoving}
+        />
+      )}
+    </>
+  );
+});
+
+ManageAccountsView.displayName = 'ManageAccountsView';
 
 export default ManageAccountsView;

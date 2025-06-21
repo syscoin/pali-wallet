@@ -37,7 +37,8 @@
     "reconnect": "Reconnecter",
     "verify": "Vérifier",
     "retryConnect": "Réessayer la connexion",
-    "delete": "Supprimer"
+    "delete": "Supprimer",
+    "remove": "Retirer"
   },
   "header": {
     "accounts": "COMPTES",
@@ -246,7 +247,11 @@
     "setAutoLockTime": "Définir le minuteur de verrouillage automatique",
     "errorMinutes": "les minutes doivent être entre 5 et 120",
     "defaultMinutes": "Par défaut : 5 minutes après aucune activité.",
-    "maximumMinutes": "Maximum : 120 minutes."
+    "maximumMinutes": "Maximum : 120 minutes.",
+    "removeAccount": "Supprimer le compte",
+    "removeAccountConfirmation": "Êtes-vous sûr de vouloir supprimer le compte {{accountType}} \"{{accountName}}\" ? Vous pouvez toujours recréer le compte plus tard si nécessaire.",
+    "accountRemovedSuccessfully": "Compte supprimé avec succès",
+    "failedToRemoveAccount": "Échec de la suppression du compte"
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",

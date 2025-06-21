@@ -37,7 +37,8 @@
     "reconnect": "Neu verbinden",
     "verify": "Überprüfen",
     "retryConnect": "Verbindung erneut versuchen",
-    "delete": "Löschen"
+    "delete": "Löschen",
+    "remove": "Entfernen"
   },
   "header": {
     "accounts": "Konten",
@@ -246,7 +247,11 @@
     "setAutoLockTime": "Automatische Sperrzeit einstellen",
     "errorMinutes": "Die Minuten müssen zwischen 5 und 120 liegen",
     "defaultMinutes": "Standard: 5 Minuten nach Inaktivität.",
-    "maximumMinutes": "Maximum: 120 Minuten."
+    "maximumMinutes": "Maximum: 120 Minuten.",
+    "removeAccount": "Konto entfernen",
+    "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
+    "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
+    "failedToRemoveAccount": "Konto konnte nicht entfernt werden"
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",
