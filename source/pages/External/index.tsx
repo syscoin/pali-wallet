@@ -6,7 +6,6 @@ import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import 'assets/styles/index.css';
@@ -53,8 +52,7 @@ if (externalRootElement) {
       </React.StrictMode>
     );
 
-    // Subscribe store to updates
-    handleStoreSubscribe(store);
+    // Removed store subscription - now using periodic/emergency/strategic saves
   });
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");

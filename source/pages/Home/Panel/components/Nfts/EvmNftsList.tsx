@@ -15,7 +15,6 @@ export const EvmNftsList = () => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
 
-  // ✅ OPTIMIZED: Use compound selector and separate network selector
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const { account: activeAccount, assets: accountAssets } = useSelector(
     selectActiveAccountWithAssets

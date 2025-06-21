@@ -57,22 +57,21 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { language } = i18n;
   const { navigate } = useUtils();
 
-  // ✅ OPTIMIZED: Consolidate multiple vault selectors
-  const {
-    networks,
-    isBitcoinBased,
-    activeAccountType,
-    networkStatus,
-    activeNetwork,
-  } = useSelector((state: RootState) => ({
-    networks: state.vault.networks,
-    isBitcoinBased: state.vault.isBitcoinBased,
-    activeAccountType: state.vault.activeAccount.type,
-    networkStatus: state.vaultGlobal.networkStatus,
-    activeNetwork: state.vault.activeNetwork,
-  }));
+  const networks = useSelector((state: RootState) => state.vault.networks);
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const activeAccountType = useSelector(
+    (state: RootState) => state.vault.activeAccount.type
+  );
+  const networkStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.networkStatus
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
-  const { dapps } = useSelector((state: RootState) => state.dapp);
+  const dapps = useSelector((state: RootState) => state.dapp.dapps);
   const activeAccount = useSelector(selectActiveAccount);
 
   // ✅ MEMOIZED: Computed values

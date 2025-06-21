@@ -5,7 +5,6 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
-import store from 'state/store';
 import { ITransactionParams, ITxState } from 'types/transactions';
 
 import { formatCurrency, truncate } from './format';
@@ -58,6 +57,7 @@ const cancelTransaction = async (
   alert: any
 ) => {
   // Safety check: this function is only for EVM networks
+  const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
     alert.removeAll();
@@ -106,6 +106,7 @@ const speedUpTransaction = async (
   alert: any
 ) => {
   // Safety check: this function is only for EVM networks
+  const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
     alert.removeAll();

@@ -22,14 +22,24 @@ export const EvmTransactionsList = ({
 }: {
   userTransactions: ITransactionInfoEvm[];
 }) => {
-  const {
-    activeAccount,
-    accounts,
-    activeNetwork: { chainId, currency },
-    isLastTxConfirmed,
-    accountTransactions,
-  } = useSelector((state: RootState) => state.vault);
-  const { coinsList } = useSelector((state: RootState) => state.vaultGlobal);
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isLastTxConfirmed = useSelector(
+    (state: RootState) => state.vault.isLastTxConfirmed
+  );
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
+  const coinsList = useSelector(
+    (state: RootState) => state.vaultGlobal.coinsList
+  );
+
+  const { chainId, currency } = activeNetwork;
 
   const {
     filteredTransactions,

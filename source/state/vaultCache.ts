@@ -1,14 +1,68 @@
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
+
 import { loadSlip44State, saveSlip44State } from './paliStorage';
+import store, { saveMainState } from './store';
 import { ISlip44State } from './vault/types';
+
+// Slip44 constants
+export const DEFAULT_EVM_SLIP44 = 60; // Ethereum
+export const DEFAULT_UTXO_SLIP44 = 57; // Syscoin
+
+/**
+ * Extract slip44 from network object
+ */
+export function getSlip44ForNetwork(network: INetwork): number {
+  return (
+    network.slip44 ||
+    (network.kind === INetworkType.Syscoin
+      ? DEFAULT_UTXO_SLIP44
+      : DEFAULT_EVM_SLIP44)
+  );
+}
+
+/**
+ * Validate that vault's activeNetwork slip44 matches the expected slip44
+ * This prevents accidentally saving vault data to wrong slip44 storage
+ */
+function validateVaultSlip44(
+  slip44State: ISlip44State,
+  expectedSlip44: number
+): boolean {
+  if (!slip44State.activeNetwork) {
+    console.warn(
+      `[VaultCache] No activeNetwork in vault state - cannot validate slip44`
+    );
+    return false;
+  }
+
+  const vaultSlip44 = getSlip44ForNetwork(slip44State.activeNetwork);
+
+  if (vaultSlip44 !== expectedSlip44) {
+    console.error(`[VaultCache] 🚨 SLIP44 MISMATCH DETECTED! 🚨`);
+    console.error(`[VaultCache] Expected slip44: ${expectedSlip44}`);
+    console.error(`[VaultCache] Vault activeNetwork slip44: ${vaultSlip44}`);
+    console.error(
+      `[VaultCache] Vault activeNetwork:`,
+      slip44State.activeNetwork
+    );
+    console.error(
+      `[VaultCache] This would cause cross-network contamination - BLOCKING SAVE!`
+    );
+    return false;
+  }
+
+  return true;
+}
 
 /**
  * Simplified vault cache system for lazy loading slip44-specific vault states
  */
 class VaultCache {
   private slip44Cache: Map<number, ISlip44State> = new Map();
-  private activeSlip44: number | null = null;
-  private autoSaveTimeout: NodeJS.Timeout | null = null;
-  private readonly AUTO_SAVE_DELAY = 2000; // 2 seconds delay for batching
+
+  // 🔥 FIX: Periodic safety save for service workers (they can be terminated unexpectedly)
+  private periodicSaveInterval: NodeJS.Timeout | null = null;
+  private readonly PERIODIC_SAVE_INTERVAL = 30000; // 30 seconds
 
   /**
    * Get slip44-specific vault state, loading it if not cached
@@ -41,7 +95,16 @@ class VaultCache {
     slip44: number,
     slip44State: ISlip44State
   ): Promise<void> {
-    console.log(`[VaultCache] Setting slip44 vault: ${slip44}`);
+    // 🛡️ SAFEGUARD: Validate slip44 matches before saving
+    if (!validateVaultSlip44(slip44State, slip44)) {
+      throw new Error(
+        `VaultCache.setSlip44Vault: Slip44 validation failed! Cannot save vault with slip44=${slip44}`
+      );
+    }
+
+    console.log(
+      `[VaultCache] ✅ Slip44 validation passed for slip44=${slip44}`
+    );
 
     // Mark as clean since we're saving immediately
     const cleanSlip44State = { ...slip44State, isDirty: false };
@@ -54,18 +117,6 @@ class VaultCache {
   }
 
   /**
-   * Update slip44 vault state in cache and optionally schedule auto-save
-   */
-  updateSlip44VaultInCache(slip44: number, slip44State: ISlip44State): void {
-    this.slip44Cache.set(slip44, slip44State);
-
-    // If the vault is dirty, schedule auto-save
-    if (slip44State.isDirty) {
-      this.scheduleAutoSave();
-    }
-  }
-
-  /**
    * Check if a slip44 vault is dirty
    */
   isDirty(slip44: number): boolean {
@@ -74,99 +125,37 @@ class VaultCache {
   }
 
   /**
-   * Schedule auto-save with debouncing
+   * Save only the active slip44 vault to storage (for periodic/emergency saves)
    */
-  private scheduleAutoSave(): void {
-    // Clear existing timeout
-    if (this.autoSaveTimeout) {
-      clearTimeout(this.autoSaveTimeout);
+  async saveActiveVault(activeSlip44: number): Promise<void> {
+    const slip44State = this.slip44Cache.get(activeSlip44);
+
+    if (!slip44State || !slip44State.isDirty) {
+      return; // Nothing to save
     }
 
-    // Schedule new auto-save
-    this.autoSaveTimeout = setTimeout(() => {
-      this.saveDirtyVaults();
-    }, this.AUTO_SAVE_DELAY);
-  }
-
-  /**
-   * Save all dirty slip44 vaults to storage
-   */
-  async saveDirtyVaults(): Promise<void> {
-    const dirtySlip44s = Array.from(this.slip44Cache.entries())
-      .filter(([, slip44State]) => slip44State.isDirty)
-      .map(([slip44]) => slip44);
-
-    if (dirtySlip44s.length === 0) {
-      return;
+    // 🛡️ SAFEGUARD: Validate slip44 matches before saving
+    if (!validateVaultSlip44(slip44State, activeSlip44)) {
+      console.warn(
+        `[VaultCache] saveActiveVault: Slip44 validation failed! Skipping save for slip44=${activeSlip44}, activeSlip44=${activeSlip44}`
+      );
+      return; // Don't throw here since this is called from periodic/emergency saves
     }
 
+    console.log(`[VaultCache] Saving active vault: ${activeSlip44}`);
     console.log(
-      `[VaultCache] Auto-saving dirty slip44 vaults: ${dirtySlip44s.join(', ')}`
+      `[VaultCache] ✅ Slip44 validation passed for slip44=${activeSlip44}`
     );
 
-    const savePromises = dirtySlip44s.map(async (slip44) => {
-      const slip44State = this.slip44Cache.get(slip44);
-      if (slip44State && slip44State.isDirty) {
-        // Mark as clean before saving
-        const cleanSlip44State = { ...slip44State, isDirty: false };
-        this.slip44Cache.set(slip44, cleanSlip44State);
-        await saveSlip44State(slip44, cleanSlip44State);
-      }
-    });
+    // Mark as clean before saving
+    const cleanSlip44State = { ...slip44State, isDirty: false };
+    this.slip44Cache.set(activeSlip44, cleanSlip44State);
+    await saveSlip44State(activeSlip44, cleanSlip44State);
 
-    await Promise.all(savePromises);
-    console.log(`[VaultCache] Auto-save completed`);
+    console.log(`[VaultCache] Save completed for slip44=${activeSlip44}`);
   }
 
-  /**
-   * Force save a specific slip44 vault from cache to storage
-   */
-  async saveVaultToStorage(slip44: number): Promise<void> {
-    const slip44State = this.slip44Cache.get(slip44);
-    if (slip44State) {
-      const cleanSlip44State = { ...slip44State, isDirty: false };
-      this.slip44Cache.set(slip44, cleanSlip44State);
-      await saveSlip44State(slip44, cleanSlip44State);
-    }
-  }
-
-  /**
-   * Save all cached slip44 vaults to storage (force save)
-   */
-  async saveAllCachedVaults(): Promise<void> {
-    const savePromises = Array.from(this.slip44Cache.entries()).map(
-      async ([slip44, slip44State]) => {
-        const cleanSlip44State = { ...slip44State, isDirty: false };
-        this.slip44Cache.set(slip44, cleanSlip44State);
-        await saveSlip44State(slip44, cleanSlip44State);
-      }
-    );
-    await Promise.all(savePromises);
-  }
-
-  /**
-   * Get currently active slip44
-   */
-  getActiveSlip44(): number | null {
-    return this.activeSlip44;
-  }
-
-  /**
-   * Set currently active slip44
-   */
-  setActiveSlip44(slip44: number): void {
-    this.activeSlip44 = slip44;
-  }
-
-  /**
-   * Get active slip44 vault state from cache
-   */
-  getActiveSlip44Vault(): ISlip44State | null {
-    if (this.activeSlip44 && this.slip44Cache.has(this.activeSlip44)) {
-      return this.slip44Cache.get(this.activeSlip44)!;
-    }
-    return null;
-  }
+  // activeSlip44 tracking removed - now handled by Redux global state
 
   /**
    * Check if a slip44 vault is cached
@@ -183,39 +172,76 @@ class VaultCache {
   }
 
   /**
-   * Get list of dirty slip44s
+   * 🔥 FIX: Start periodic safety saves for service worker environments
    */
-  getDirtySlip44s(): number[] {
-    return Array.from(this.slip44Cache.entries())
-      .filter(([, slip44State]) => slip44State.isDirty)
-      .map(([slip44]) => slip44);
+  startPeriodicSave(): void {
+    if (this.periodicSaveInterval) {
+      this.stopPeriodicSave();
+    }
+
+    console.log('[VaultCache] Starting periodic safety saves every 30 seconds');
+    this.periodicSaveInterval = setInterval(async () => {
+      try {
+        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+
+        if (activeSlip44 !== null) {
+          // Only save if there are dirty changes (important structural changes)
+          const slip44State = this.slip44Cache.get(activeSlip44);
+          if (slip44State?.isDirty) {
+            console.log(
+              '[VaultCache] Periodic safety save: saving dirty vault changes'
+            );
+            await this.saveActiveVault(activeSlip44);
+          }
+
+          // Also save main state (dapp, price, vaultGlobal) periodically
+          await saveMainState();
+        }
+      } catch (error) {
+        console.error('[VaultCache] Error in periodic save:', error);
+      }
+    }, this.PERIODIC_SAVE_INTERVAL);
+  }
+
+  /**
+   * 🔥 FIX: Stop periodic safety saves
+   */
+  stopPeriodicSave(): void {
+    if (this.periodicSaveInterval) {
+      clearInterval(this.periodicSaveInterval);
+      this.periodicSaveInterval = null;
+      console.log('[VaultCache] Stopped periodic safety saves');
+    }
   }
 
   /**
    * Clear cache (useful for logout/reset)
    */
   clearCache(): void {
-    // Clear auto-save timeout
-    if (this.autoSaveTimeout) {
-      clearTimeout(this.autoSaveTimeout);
-      this.autoSaveTimeout = null;
-    }
+    // 🔥 FIX: Stop periodic saves
+    this.stopPeriodicSave();
 
     this.slip44Cache.clear();
-    this.activeSlip44 = null;
+    // activeSlip44 now managed by Redux global state
   }
 
   /**
    * Emergency save before app closes/navigates away
    */
   async emergencySave(): Promise<void> {
-    // Clear timeout to prevent duplicate saves
-    if (this.autoSaveTimeout) {
-      clearTimeout(this.autoSaveTimeout);
-      this.autoSaveTimeout = null;
-    }
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
-    await this.saveDirtyVaults();
+    if (activeSlip44 !== null) {
+      console.log(
+        `[VaultCache] Emergency save: saving only active vault (slip44=${activeSlip44})`
+      );
+      await this.saveActiveVault(activeSlip44);
+
+      // Also save main state to ensure consistency
+      await saveMainState();
+    } else {
+      console.log(`[VaultCache] Emergency save: no active slip44 to save`);
+    }
   }
 }
 

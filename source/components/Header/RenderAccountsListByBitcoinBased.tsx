@@ -26,12 +26,12 @@ const RenderAccountsListByBitcoinBased = (
     type: KeyringAccountType;
   } | null>(null);
 
-  const { accounts, activeNetwork, isBitcoinBased } = useSelector(
-    (state: RootState) => ({
-      accounts: state.vault.accounts,
-      activeNetwork: state.vault.activeNetwork,
-      isBitcoinBased: state.vault.isBitcoinBased,
-    })
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
   );
 
   const activeAccount = useSelector(selectActiveAccountRef);

@@ -45,7 +45,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
 
   const { t } = useTranslation();
   const { navigate } = useUtils();
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   const handleOnClick = (actionType: UpdateTxAction) => {

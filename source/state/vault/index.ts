@@ -111,7 +111,7 @@ const VaultState = createSlice({
     ) {
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
-      state.isDirty = true; // Account structure changes should be saved
+      state.isDirty = true; // Account structure changes need immediate saving
     },
     setAccountsWithLabelEdited(
       state: IVaultState,
@@ -123,7 +123,7 @@ const VaultState = createSlice({
     ) {
       const { label, accountId, accountType } = action.payload;
       state.accounts[accountType][accountId].label = label;
-      state.isDirty = true; // Account label changes should be saved
+      state.isDirty = true; // Account label changes need immediate saving
     },
     setEditedEvmToken(
       state: IVaultState,
@@ -162,15 +162,15 @@ const VaultState = createSlice({
       state.activeChain = activeNetwork.kind;
       state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
       state.activeNetwork = activeNetwork;
-      state.isDirty = true; // Network changes should be saved
+      state.isDirty = true; // Network changes need immediate saving
     },
     setAccountBalances(
       state: IVaultState,
       action: PayloadAction<IKeyringBalances>
     ) {
-      state.accounts[state.activeAccount.type][
-        state.activeAccount.id
-      ].balances = action.payload;
+      const { id, type } = state.activeAccount;
+
+      state.accounts[type][id].balances = action.payload;
     },
     createAccount(
       state: IVaultState,
@@ -205,7 +205,7 @@ const VaultState = createSlice({
         syscoin: {},
       };
 
-      state.isDirty = true; // Creating accounts should be saved
+      state.isDirty = true; // Creating accounts needs immediate saving
     },
     setIsLastTxConfirmed(
       state: IVaultState,
@@ -221,7 +221,6 @@ const VaultState = createSlice({
         return;
       }
       state.isLastTxConfirmed[chainId] = wasConfirmed;
-      state.isDirty = true; // Transaction confirmation state should be saved
     },
     setNetwork(
       state: IVaultState,
@@ -254,7 +253,7 @@ const VaultState = createSlice({
       }
 
       if (!isFirstTime) {
-        state.isDirty = true; // Network changes should be saved
+        state.isDirty = true; // Network changes need immediate saving
       }
     },
     removeNetwork(
@@ -275,7 +274,7 @@ const VaultState = createSlice({
         delete state.networks.syscoin[chainId];
       }
 
-      state.isDirty = true; // Removing networks should be saved
+      state.isDirty = true; // Removing networks needs immediate saving
     },
 
     setActiveAccount(
@@ -286,11 +285,11 @@ const VaultState = createSlice({
       }>
     ) {
       state.activeAccount = action.payload;
-      state.isDirty = true; // Active account changes should be saved
+      state.isDirty = true; // Active account changes need immediate saving
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
-      state.isDirty = true; // Active network changes should be saved
+      state.isDirty = true; // Active network changes need immediate saving
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
@@ -319,7 +318,7 @@ const VaultState = createSlice({
           ...state.accounts,
           [accountType]: {},
         };
-        state.isDirty = true; // Account structure changes should be saved
+        state.isDirty = true; // Account structure changes need immediate saving
       }
     },
 
@@ -376,6 +375,57 @@ const VaultState = createSlice({
     forgetWallet() {
       return initialState;
     },
+    initializeCleanVaultForSlip44(
+      state: IVaultState,
+      action: PayloadAction<INetwork>
+    ) {
+      const network = action.payload;
+
+      // Create TRULY clean state - NO accounts, assets, or transactions
+      const cleanState: IVaultState = {
+        isDirty: true, // Mark as dirty since we're creating new vault state
+        accounts: {
+          [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default accounts!
+          [KeyringAccountType.Imported]: {},
+          [KeyringAccountType.Trezor]: {},
+          [KeyringAccountType.Ledger]: {},
+        },
+        accountAssets: {
+          [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default assets!
+          [KeyringAccountType.Imported]: {},
+          [KeyringAccountType.Trezor]: {},
+          [KeyringAccountType.Ledger]: {},
+        },
+        accountTransactions: {
+          [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default transactions!
+          [KeyringAccountType.Imported]: {},
+          [KeyringAccountType.Trezor]: {},
+          [KeyringAccountType.Ledger]: {},
+        },
+        activeAccount: {
+          id: 0, // Will be updated when first account is created
+          type: KeyringAccountType.HDAccount,
+        },
+        isLastTxConfirmed: {},
+        activeChain: network.kind,
+        activeNetwork: network,
+        isBitcoinBased: network.kind === INetworkType.Syscoin,
+        isLoadingBalances: false,
+        isLoadingTxs: false,
+        isLoadingAssets: false,
+        isLoadingNfts: false,
+        networks: PALI_NETWORKS_STATE, // Keep default networks
+        shouldShowFaucetModal: {
+          57: true,
+          570: true,
+          5700: true,
+          57000: true,
+        },
+        prevBalances: {}, // 🔥 EMPTY - no previous balances for fresh slip44
+      };
+
+      return cleanState;
+    },
     removeAccounts(state: IVaultState) {
       state.accounts = {
         [KeyringAccountType.HDAccount]: {
@@ -427,7 +477,7 @@ const VaultState = createSlice({
         delete state.accountTransactions[type][id];
       }
 
-      state.isDirty = true; // Removing accounts should be saved
+      state.isDirty = true; // Removing accounts needs immediate saving
     },
     setAccountLabel(
       state: IVaultState,
@@ -443,7 +493,7 @@ const VaultState = createSlice({
         throw new Error('Unable to set label. Account not found');
 
       state.accounts[type][id].label = label;
-      state.isDirty = true; // Account label changes should be saved
+      state.isDirty = true; // Account label changes need immediate saving
     },
 
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
@@ -482,11 +532,6 @@ const VaultState = createSlice({
       } else if (assets) {
         // Full replacement
         state.accountAssets[accountType][accountId] = assets;
-      }
-
-      // Only mark dirty for meaningful changes (not frequent balance updates)
-      if (property === 'nfts' || assets) {
-        state.isDirty = true; // NFT and full asset changes should be saved
       }
     },
 
@@ -862,15 +907,6 @@ const VaultState = createSlice({
 
       state.prevBalances[activeAccountId][chain][chainId] = balance;
     },
-
-    // Dirty flag management
-    markDirty(state: IVaultState) {
-      state.isDirty = true;
-    },
-
-    markClean(state: IVaultState) {
-      state.isDirty = false;
-    },
   },
 });
 
@@ -893,6 +929,7 @@ export const {
   setAccountBalances,
   setNetwork,
   forgetWallet,
+  initializeCleanVaultForSlip44,
   removeAccount,
   removeAccounts,
   removeNetwork,
@@ -907,8 +944,6 @@ export const {
   setIsLastTxConfirmed,
   setPrevBalances,
   setAccounts,
-  markDirty,
-  markClean,
 } = VaultState.actions;
 
 export default VaultState.reducer;

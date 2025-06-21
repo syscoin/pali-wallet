@@ -8,16 +8,20 @@ import isEqual from 'lodash/isEqual';
 // Assuming redux-thunk v3+, which exports 'thunk' and ThunkMiddleware type
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
+import { INetwork } from '@pollum-io/sysweb3-network';
+
 import dapp from './dapp';
 import { IDAppState } from './dapp/types';
 import { loadState, saveState } from './paliStorage';
 import price from './price';
 import { IPriceState } from './price/types';
 import { IPersistState } from './types';
-import vault, { markDirty } from './vault';
+import vault, {
+  rehydrate as vaultRehydrate,
+  initializeCleanVaultForSlip44,
+} from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
-import vaultCache from './vaultCache';
-import vaultGlobal from './vaultGlobal';
+import vaultGlobal, { setActiveSlip44 } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
 // For now, let's assume RootState will be defined later and use 'any' for the thunk state type.
@@ -61,8 +65,7 @@ const store: Store<{
 // Cache the last persisted state locally to avoid the expensive
 // read-&-parse cycle from chrome.storage on every store update. This
 // drastically reduces the amount of asynchronous I/O **and** the number of
-// full-state JSON serialisations, which were happening every second via the
-// throttled subscriber in `handleStoreSubscribe`.
+// full-state JSON serialisations.
 
 let lastPersistedState: any | null = null;
 
@@ -76,139 +79,108 @@ let lastPersistedState: any | null = null;
   }
 })();
 
-// Add emergency save on page unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    // Synchronous emergency save for page unload
-    vaultCache.emergencySave().catch((error) => {
-      console.error('Failed to emergency save on page unload:', error);
-    });
-  });
-}
-
-export async function updateState() {
+// Manual state persistence for important operations
+// We rely on periodic saves (every 30s) and emergency saves (on close) instead of
+// subscribing to every Redux state change, which was causing excessive noise
+export async function saveMainState() {
   try {
     const state = store.getState();
 
     // Fast in-memory comparison first. This avoids hitting chrome.storage
     // for the common case where nothing relevant has changed.
-    if (lastPersistedState && isEqual(lastPersistedState, state)) {
+    if (
+      lastPersistedState &&
+      isEqual(lastPersistedState.dapp, state.dapp) &&
+      isEqual(lastPersistedState.price, state.price) &&
+      isEqual(lastPersistedState.vaultGlobal, state.vaultGlobal)
+    ) {
       return false;
     }
+    // Create main state with only global data (dapp, price, vaultGlobal)
+    const mainState = {
+      dapp: state.dapp,
+      price: state.price,
+      vaultGlobal: state.vaultGlobal,
+    };
 
-    // Get current active slip44 from vault cache
-    const activeSlip44 = vaultCache.getActiveSlip44();
-
-    if (activeSlip44 !== null && state.vault) {
-      // Update the slip44-specific vault in cache
-      vaultCache.updateSlip44VaultInCache(activeSlip44, state.vault);
-
-      // Save main state with global data
-      const mainState = {
-        dapp: state.dapp,
-        price: state.price,
-        vaultGlobal: state.vaultGlobal,
-        currentSlip44: activeSlip44,
-      };
-
-      // Only save main state if it actually changed
-      if (
-        !lastPersistedState ||
-        !isEqual(lastPersistedState.dapp, state.dapp) ||
-        !isEqual(lastPersistedState.price, state.price) ||
-        !isEqual(lastPersistedState.vaultGlobal, state.vaultGlobal) ||
-        lastPersistedState.currentSlip44 !== activeSlip44
-      ) {
-        await saveState(mainState);
-      }
-    } else {
-      // Fallback to saving complete state (for initial setup or migration)
-      await saveState(state);
-    }
-
+    await saveState(mainState);
     lastPersistedState = state;
-
     return true;
   } catch (error) {
-    console.error('updateState() failed', error);
+    console.error('saveMainState() failed', error);
     return false;
   }
 }
 
-// New function to force save dirty vaults (for important changes)
-export async function forceSaveDirtyVaults() {
+// New function to force save active vault (for important changes)
+export async function forceSaveActiveVault() {
   try {
-    await vaultCache.saveDirtyVaults();
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    if (activeSlip44 !== null) {
+      const { default: vaultCache } = await import('./vaultCache');
+      await vaultCache.saveActiveVault(activeSlip44);
+      // Also save main state to ensure consistency
+      await saveMainState();
+    }
     return true;
   } catch (error) {
-    console.error('forceSaveDirtyVaults() failed', error);
+    console.error('forceSaveActiveVault() failed', error);
     return false;
   }
 }
 
-// New function to mark active vault as dirty (for manual dirty marking)
-export function markActiveVaultDirty() {
-  const activeSlip44 = vaultCache.getActiveSlip44();
-  if (activeSlip44 !== null) {
-    const currentState = store.getState();
-    if (currentState.vault) {
-      // Import the markDirty action
-      store.dispatch(markDirty());
-    }
-  }
-}
-
-// New function to get dirty vault status
-export function getDirtyVaultStatus() {
-  return {
-    dirtySlip44s: vaultCache.getDirtySlip44s(),
-    activeSlip44: vaultCache.getActiveSlip44(),
-    isActiveDirty:
-      vaultCache.getActiveSlip44() !== null
-        ? vaultCache.isDirty(vaultCache.getActiveSlip44()!)
-        : false,
-  };
-}
-
-// New function to load state with vault cache
-export async function loadStateWithSlip44(slip44?: number) {
+// New centralized function to load and activate a slip44 vault
+export async function loadAndActivateSlip44Vault(
+  slip44: number,
+  targetNetwork?: INetwork
+): Promise<boolean> {
   try {
-    // Load global state (dapp, price, vaultGlobal)
-    const globalState = await loadState();
+    console.log(`[Store] Loading slip44 vault: ${slip44}`);
 
-    if (!globalState) {
-      return null;
+    // CRITICAL: Always set activeSlip44 first, regardless of whether vault state exists
+    // This ensures the correct slip44 is active for network switching
+    console.log(`[Store] Setting activeSlip44 to ${slip44}`);
+    store.dispatch(setActiveSlip44(slip44));
+
+    // 🔥 CRITICAL: Save main state immediately when activeSlip44 changes (global setting)
+    // This ensures the new activeSlip44 is persisted to local storage for subsequent operations
+    saveMainState().catch((error) => {
+      console.error(
+        `[Store] Failed to save main state after activeSlip44 change in loadAndActivateSlip44Vault:`,
+        error
+      );
+    });
+
+    const { default: vaultCache } = await import('./vaultCache');
+    const slip44VaultState = await vaultCache.getSlip44Vault(slip44);
+
+    if (slip44VaultState) {
+      console.log(`[Store] Loading existing vault state for slip44: ${slip44}`);
+
+      // Load vault state into Redux
+      store.dispatch(vaultRehydrate(slip44VaultState));
+
+      console.log(`[Store] Successfully loaded slip44 vault: ${slip44}`);
+      return true;
+    } else {
+      console.log(
+        `[Store] No vault data found for slip44: ${slip44} - initializing clean vault state`
+      );
+
+      // No vault exists - initialize clean state for this slip44
+      // This prevents copying accounts from previous slip44 when saving later
+      const networkToUse =
+        targetNetwork || store.getState().vault.activeNetwork;
+      store.dispatch(initializeCleanVaultForSlip44(networkToUse));
+
+      console.log(
+        `[Store] Initialized clean vault state for slip44: ${slip44}`
+      );
+      return false;
     }
-
-    // Determine which slip44 to load
-    const targetSlip44 = slip44 || globalState?.currentSlip44;
-
-    if (targetSlip44) {
-      // Load slip44-specific vault state using cache
-      const slip44VaultState = await vaultCache.getSlip44Vault(targetSlip44);
-
-      if (slip44VaultState) {
-        // Set as active in cache
-        vaultCache.setActiveSlip44(targetSlip44);
-
-        return {
-          dapp: globalState.dapp,
-          price: globalState.price,
-          vaultGlobal: globalState.vaultGlobal,
-          vault: slip44VaultState,
-        };
-      }
-    }
-
-    // Fallback: return state as-is if it has vault
-    if (globalState.vault) {
-      return globalState;
-    }
-
-    return globalState;
   } catch (error) {
-    console.error('loadStateWithSlip44() failed', error);
-    return null;
+    console.error(`[Store] Failed to load slip44 vault ${slip44}:`, error);
+    return false;
   }
 }
 

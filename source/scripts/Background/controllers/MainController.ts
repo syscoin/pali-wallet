@@ -27,6 +27,7 @@ import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
+import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
 import {
   createAccount as addAccountToStore,
   forgetWallet,
@@ -44,14 +45,18 @@ import {
   setMultipleTransactionToState,
   setNetworkChange,
   setSingleTransactionToState,
-  rehydrate as vaultRehydrate,
   setNetwork,
   setAccountAssets,
   setAccountsWithLabelEdited,
 } from 'state/vault';
 import { IOmmitedAccount, TransactionsType } from 'state/vault/types';
-import vaultCache from 'state/vaultCache';
+import vaultCache, {
+  getSlip44ForNetwork,
+  DEFAULT_EVM_SLIP44,
+  DEFAULT_UTXO_SLIP44,
+} from 'state/vaultCache';
 import {
+  setActiveSlip44,
   setAdvancedSettings,
   setCoinsList,
   setHasEthProperty,
@@ -106,14 +111,10 @@ const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
 const COINS_LIST_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Default slip44 values for fallback cases
-const DEFAULT_EVM_SLIP44 = 60; // Ethereum
-const DEFAULT_UTXO_SLIP44 = 57; // Syscoin
 
 class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
-  // Current active slip44
-  private activeSlip44: number = DEFAULT_UTXO_SLIP44;
 
   public account: {
     eth: IEthAccountController;
@@ -134,6 +135,8 @@ class MainController {
   private isStartingUp = false;
   // Add a property to track account switching state
   private isAccountSwitching = false;
+  // Add a property to track network switching state
+  private isNetworkSwitching = false;
 
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
@@ -149,50 +152,62 @@ class MainController {
         );
       });
 
-    // Determine initial slip44 based on wallet state
+    // Get initial slip44 from Redux global state (single source of truth)
     let initialSlip44 = DEFAULT_UTXO_SLIP44;
 
     try {
-      const storeState = store.getState().vault as any;
-      // Handle new slip44-based structure
-      if (storeState.activeSlip44 !== undefined) {
-        initialSlip44 = storeState.activeSlip44;
+      const globalState = store.getState().vaultGlobal;
+      if (globalState.activeSlip44 !== null) {
+        initialSlip44 = globalState.activeSlip44;
         console.log(
-          `[MainController] Using activeSlip44 from Redux: ${initialSlip44}`
+          `[MainController] Using activeSlip44 from Redux global state: ${initialSlip44}`
         );
       } else {
-        // Fallback to checking activeNetwork or isBitcoinBased
-        const activeNetwork = storeState?.activeNetwork;
-
-        if (activeNetwork && activeNetwork.slip44) {
-          initialSlip44 = activeNetwork.slip44;
+        // Fallback: check if we can determine from vault state
+        const vaultState = store.getState().vault;
+        if (vaultState?.activeNetwork?.slip44) {
+          initialSlip44 = vaultState.activeNetwork.slip44;
         } else if (
-          storeState &&
-          typeof storeState.isBitcoinBased === 'boolean'
+          vaultState &&
+          typeof vaultState.isBitcoinBased === 'boolean'
         ) {
-          // Fallback to isBitcoinBased flag
-          initialSlip44 = storeState.isBitcoinBased
+          initialSlip44 = vaultState.isBitcoinBased
             ? DEFAULT_UTXO_SLIP44
             : DEFAULT_EVM_SLIP44;
         }
+        // Update Redux with detected/fallback slip44
+        store.dispatch(setActiveSlip44(initialSlip44));
+
+        // Save main state immediately to persist the initial activeSlip44
+        saveMainState().catch((error) => {
+          console.error(
+            `[MainController] Failed to save main state after initial activeSlip44 setup:`,
+            error
+          );
+        });
       }
 
       console.log(
-        `[MainController] Constructor detected initial slip44: ${initialSlip44}`
+        `[MainController] Constructor using slip44: ${initialSlip44}`
       );
     } catch (error) {
       console.warn(
-        '[MainController] Could not determine initial slip44, defaulting to Ethereum'
+        '[MainController] Could not determine initial slip44, using default'
       );
+      // Ensure Redux has a valid slip44
+      store.dispatch(setActiveSlip44(initialSlip44));
+
+      // Save main state immediately to persist the fallback activeSlip44
+      saveMainState().catch((error) => {
+        console.error(
+          `[MainController] Failed to save main state after fallback activeSlip44 setup:`,
+          error
+        );
+      });
     }
 
-    // Initialize the appropriate keyring based on slip44
-    this.activeSlip44 = initialSlip44;
-
-    // Initialize vault cache with the active slip44
-    vaultCache.setActiveSlip44(initialSlip44);
-
-    this.initializeKeyring(this.activeSlip44);
+    // Initialize keyring based on detected slip44
+    this.initializeKeyring(initialSlip44);
 
     this.assetsManager = AssetsManager();
     this.transactionsManager = TransactionsManager();
@@ -225,87 +240,103 @@ class MainController {
 
   // Get the active keyring
   private getActiveKeyring(): KeyringManager {
-    const keyring = this.keyrings.get(this.activeSlip44);
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    let keyring = this.keyrings.get(activeSlip44);
+
     if (!keyring) {
-      throw new Error(`No keyring found for slip44: ${this.activeSlip44}`);
+      console.warn(
+        `[MainController] No keyring found for slip44: ${activeSlip44}, creating on-demand`
+      );
+      // Create keyring on-demand to handle state rehydration edge cases
+      keyring = this.initializeKeyring(activeSlip44);
     }
+
     return keyring;
   }
 
-  // Get slip44 from network object
-  private getSlip44ForNetwork(network: INetwork): number {
-    // Network objects should always have slip44 property
-    return (
-      network.slip44 ||
-      (network.kind === INetworkType.Syscoin
-        ? DEFAULT_UTXO_SLIP44
-        : DEFAULT_EVM_SLIP44)
-    );
+  // Safe getter that checks if wallet is unlocked before returning keyring
+  private getActiveKeyringIfUnlocked(): KeyringManager | null {
+    const keyring = this.getActiveKeyring();
+
+    if (!keyring.isUnlocked()) {
+      // During network switching, the keyring might temporarily appear locked
+      // due to session transfer between keyrings. Be more lenient in this case.
+      if (this.isNetworkSwitching) {
+        console.warn(
+          '[MainController] Wallet appears locked during network switching, allowing operation to proceed'
+        );
+        return keyring; // Return the keyring anyway during network switching
+      }
+
+      console.warn('[MainController] Wallet is locked, skipping operation');
+      return null;
+    }
+
+    return keyring;
   }
 
   // Switch active keyring based on network
   private async switchActiveKeyring(network: INetwork): Promise<void> {
-    const slip44 = this.getSlip44ForNetwork(network);
+    const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
-
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    // Get the current active keyring before switching
+    const previousKeyring = this.keyrings.get(activeSlip44);
+    const wasUnlocked = previousKeyring?.isUnlocked() || false;
     // Save current vault state before switching if we're changing slip44
-    if (slip44 !== this.activeSlip44) {
+    if (slip44 !== activeSlip44) {
       console.log(
-        `[MainController] Switching keyring from slip44 ${this.activeSlip44} to ${slip44}`
+        `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
       );
 
-      // Save current vault state to cache and storage
+      // Save current vault state to cache and storage (background)
       const currentState = store.getState().vault;
-      if (currentState && this.activeSlip44 !== null) {
-        console.log(
-          `[MainController] Saving vault state for slip44 ${this.activeSlip44}`
-        );
-        await vaultCache.setSlip44Vault(this.activeSlip44, currentState);
+      if (currentState && activeSlip44 !== null) {
+        vaultCache
+          .setSlip44Vault(activeSlip44, currentState)
+          .then(() => {
+            console.log(
+              `[MainController] Pre-switch: background save completed for slip44=${activeSlip44}`
+            );
+          })
+          .catch((error) => {
+            console.error(
+              `[MainController] Pre-switch: background save failed for slip44=${activeSlip44}:`,
+              error
+            );
+          });
       }
 
-      // Load vault state for target slip44 (lazy loading with cache)
-      const targetVaultState = await vaultCache.getSlip44Vault(slip44);
-      hasExistingVaultState = !!targetVaultState;
+      // Load vault state for target slip44 (this also sets activeSlip44 and saves main state)
+      hasExistingVaultState = await loadAndActivateSlip44Vault(slip44, network);
 
-      if (targetVaultState) {
-        console.log(
-          `[MainController] Loaded vault state for slip44 ${slip44} from cache`
-        );
-
-        // Set as active in cache and dispatch vault state to Redux
-        vaultCache.setActiveSlip44(slip44);
-        store.dispatch(vaultRehydrate(targetVaultState));
-      } else {
-        console.log(
-          `[MainController] No existing vault state for slip44 ${slip44}, will create new`
-        );
-        // Set as active even without existing vault - will be created
-        vaultCache.setActiveSlip44(slip44);
-      }
-
-      // This prevents slip44 mismatch errors regardless of cached vs new vault state
-      console.log(
-        `[MainController] Ensuring Redux vault state has correct network (slip44=${network.slip44})`
-      );
+      // Update vault state with correct network info
       store.dispatch(setNetworkChange({ activeNetwork: network }));
+
+      // 🔥 Background save for network switching (don't block UI)
+      vaultCache
+        .setSlip44Vault(slip44, store.getState().vault)
+        .then(() => {
+          console.log(
+            `[MainController] Network switch: background save completed for slip44=${slip44}`
+          );
+        })
+        .catch((error) => {
+          console.error(
+            `[MainController] Network switch: background save failed for slip44=${slip44}:`,
+            error
+          );
+        });
     }
 
-    // Get the current active keyring before switching
-    const previousKeyring = this.keyrings.get(this.activeSlip44);
-    const wasUnlocked = previousKeyring?.isUnlocked() || false;
-
     // If switching to a different slip44 and current keyring is unlocked, we'll need to transfer session
-    const needsSessionTransfer = slip44 !== this.activeSlip44 && wasUnlocked;
+    const needsSessionTransfer = slip44 !== activeSlip44 && wasUnlocked;
 
     // Ensure the target keyring exists
     let targetKeyring = this.keyrings.get(slip44);
-    let createdNewKeyring = false;
     if (!targetKeyring) {
       console.log('[MainController] Creating new keyring on demand');
       targetKeyring = this.createKeyringOnDemand(network);
-      createdNewKeyring = true;
-    } else {
-      console.log('[MainController] Using existing keyring for slip44', slip44);
     }
 
     if (!targetKeyring) {
@@ -315,11 +346,6 @@ class MainController {
     // Handle session transfer if needed
     if (needsSessionTransfer && previousKeyring) {
       try {
-        console.log(
-          `[MainController] Transferring session from slip44 ${
-            previousKeyring.getNetwork().chainId
-          } to ${slip44}`
-        );
         previousKeyring.transferSessionTo(targetKeyring);
 
         // Only create accounts if no existing vault state was rehydrated
@@ -328,12 +354,14 @@ class MainController {
           // Session data was already transferred, so we can create the first account directly
           const account = await targetKeyring.createFirstAccount();
           console.log('[MainController] Created new keyring account', account);
+
           store.dispatch(
             addAccountToStore({
               account: account,
               accountType: KeyringAccountType.HDAccount,
             })
           );
+
           // This ensures setSignerNetwork() finds the correct account
           store.dispatch(
             setActiveAccount({
@@ -341,15 +369,7 @@ class MainController {
               type: KeyringAccountType.HDAccount,
             })
           );
-        } else {
-          console.log(
-            '[MainController] Using existing accounts from rehydrated vault state'
-          );
-          // Note: Rehydrated vault state should already have correct activeAccount
         }
-        console.log(
-          `[MainController] Session transferred and previous keyring locked`
-        );
       } catch (error) {
         console.error(`[MainController] Error transferring session:`, error);
         throw new Error(
@@ -363,10 +383,6 @@ class MainController {
       );
     }
 
-    // Set up the network on the keyring
-    console.log(
-      `[MainController] Setting up network on keyring for slip44 ${slip44}`
-    );
     await targetKeyring.setSignerNetwork(network as any);
 
     // Lock all other keyrings for security (belt and suspenders approach)
@@ -379,17 +395,14 @@ class MainController {
       }
     });
 
-    // Update our active slip44 - the active account is now whatever this keyring says it is
-    this.activeSlip44 = slip44;
+    // activeSlip44 is already set correctly by loadAndActivateSlip44Vault
+    // No need to set it again - that could trigger unnecessary state updates
+
     this.keyrings.set(slip44, targetKeyring);
   }
 
   // Create a keyring on demand with storage access
   private createKeyringOnDemand(network: INetwork): KeyringManager {
-    console.log(
-      `[MainController] Creating keyring on demand for network: ${network}`
-    );
-
     // Create new keyring with the wallet state
     const keyring = new KeyringManager();
 
@@ -397,19 +410,14 @@ class MainController {
     keyring.setStorage(chrome.storage.local);
     keyring.setVaultStateGetter(() => store.getState().vault);
 
-    console.log(
-      `[MainController] Created keyring for network: ${network} with access to global vault`
-    );
     return keyring;
     // Note: Session transfer is now handled in switchActiveKeyring method
   }
 
   // Lock all keyrings - used when user explicitly locks wallet
   private lockAllKeyrings(): void {
-    console.log('[MainController] Locking all keyrings...');
-    this.keyrings.forEach((keyring, slip44) => {
+    this.keyrings.forEach((keyring, _) => {
       if (keyring.isUnlocked()) {
-        console.log(`[MainController] Locking keyring for network: ${slip44}`);
         keyring.lockWallet();
       }
     });
@@ -417,11 +425,41 @@ class MainController {
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
   public get syscoinTransaction() {
-    return this.getActiveKeyring().syscoinTransaction;
+    const keyring = this.getActiveKeyringIfUnlocked();
+
+    if (!keyring) {
+      throw new Error(
+        'Wallet is locked. Please unlock to access syscoin transactions.'
+      );
+    }
+
+    const { isBitcoinBased } = store.getState().vault;
+    if (!isBitcoinBased) {
+      console.warn(
+        '[MainController] Accessing syscoinTransaction for non-UTXO network'
+      );
+    }
+
+    return keyring.syscoinTransaction;
   }
 
   public get ethereumTransaction() {
-    return this.getActiveKeyring().ethereumTransaction;
+    const keyring = this.getActiveKeyringIfUnlocked();
+
+    if (!keyring) {
+      throw new Error(
+        'Wallet is locked. Please unlock to access ethereum transactions.'
+      );
+    }
+
+    const { isBitcoinBased } = store.getState().vault;
+    if (isBitcoinBased) {
+      console.warn(
+        '[MainController] Accessing ethereumTransaction for UTXO network - this might cause issues'
+      );
+    }
+
+    return keyring.ethereumTransaction;
   }
 
   // Additional public methods for UX access (used by controllerEmitter)
@@ -490,13 +528,21 @@ class MainController {
   }
 
   private async setSignerNetwork(network: INetwork) {
-    // switchActiveKeyring handles everything: creating keyring if needed and setting up network
-    await this.switchActiveKeyring(network);
+    // Set network switching flag for UI/logging purposes only
+    this.isNetworkSwitching = true;
 
-    // Return the current wallet state from the keyring
-    return {
-      success: true,
-    };
+    try {
+      // switchActiveKeyring handles everything: creating keyring if needed and setting up network
+      await this.switchActiveKeyring(network);
+
+      // Return the current wallet state from the keyring
+      return {
+        success: true,
+      };
+    } finally {
+      // Clear network switching flag
+      this.isNetworkSwitching = false;
+    }
   }
 
   // Fiat price fetching functionality moved from ControllerUtils
@@ -827,14 +873,12 @@ class MainController {
       store.dispatch(setLastLogin());
 
       // Fetch fresh fiat prices immediately after successful unlock
-      this.setFiat().catch((error) =>
-        console.warn(
-          '[MainController] Failed to fetch fiat prices after unlock:',
-          error
-        )
-      );
+      this.setFiat();
 
-      // Clear the flags after a short delay to allow initialization to complete
+      // 🔥 FIX: Start periodic safety saves after successful unlock
+      vaultCache.startPeriodicSave();
+
+      // Clear startup flags after 2 seconds
       setTimeout(() => {
         this.justUnlocked = false;
         this.isStartingUp = false;
@@ -879,14 +923,10 @@ class MainController {
       store.dispatch(setIsLoadingBalances(false));
       store.dispatch(setLastLogin());
 
-      this.getLatestUpdateForCurrentAccount(false);
-      // Fetch fresh fiat prices immediately after wallet creation
-      this.setFiat().catch((error) =>
-        console.warn(
-          '[MainController] Failed to fetch fiat prices after wallet creation:',
-          error
-        )
-      );
+      setTimeout(() => {
+        this.setFiat();
+        this.getLatestUpdateForCurrentAccount(false);
+      }, 10);
     } catch (error) {
       store.dispatch(setIsLoadingBalances(false));
       console.error('[MainController] Failed to create wallet:', error);
@@ -926,10 +966,6 @@ class MainController {
   public async createAccount(label?: string): Promise<IKeyringAccountState> {
     const newAccount = await this.getActiveKeyring().addNewAccount(label);
 
-    this.getActiveKeyring().setActiveAccount(
-      newAccount.id,
-      KeyringAccountType.HDAccount
-    );
     store.dispatch(
       addAccountToStore({
         account: newAccount,
@@ -942,7 +978,9 @@ class MainController {
         type: KeyringAccountType.HDAccount,
       })
     );
-    this.getLatestUpdateForCurrentAccount(false);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(false);
+    }, 10);
     return newAccount;
   }
 
@@ -976,6 +1014,7 @@ class MainController {
       if (this.cancellablePromises.nftsPromise) {
         this.cancellablePromises.nftsPromise.cancel();
       }
+
       // Set switching account loading state
       store.dispatch(setIsSwitchingAccount(true));
 
@@ -996,36 +1035,26 @@ class MainController {
         }
       }
 
-      // Use the parent's setActiveAccount method to properly handle all setup
-      // But first, optimistically update Redux state for immediate UI feedback
+      // Set active account
       store.dispatch(setActiveAccount({ id, type }));
-
-      // Run keyring update asynchronously without blocking
-      this.getActiveKeyring()
-        .setActiveAccount(id, type)
-        .then(() => {
-          // Defer heavy operations to prevent blocking the UI
-          setTimeout(() => {
-            this.performPostAccountSwitchOperations(
-              isBitcoinBased,
-              accounts,
-              type,
-              id
-            );
-          }, 0);
-        })
-        .catch((error) => {
-          console.error('Keyring synchronization failed:', error);
-          // Could revert Redux state here if needed
-        });
+      // Defer heavy operations to prevent blocking the UI
+      setTimeout(() => {
+        this.performPostAccountSwitchOperations(
+          isBitcoinBased,
+          accounts,
+          type,
+          id
+        );
+      }, 0);
     } catch (error) {
       console.error('Failed to set active account:', error);
       // Re-throw to let the UI handle the error
       throw error;
     } finally {
-      // Always clear switching account loading state and unlock, even if there's an error
-      store.dispatch(setIsSwitchingAccount(false));
-      this.isAccountSwitching = false;
+      setTimeout(() => {
+        store.dispatch(setIsSwitchingAccount(false));
+        this.isAccountSwitching = false;
+      }, 50); // Ensure this happens after other operations
     }
   }
 
@@ -1036,8 +1065,9 @@ class MainController {
     id: number
   ) {
     try {
-      // Fetch data for the newly active account
-      this.getLatestUpdateForCurrentAccount(false);
+      setTimeout(() => {
+        this.getLatestUpdateForCurrentAccount(false);
+      }, 10);
 
       // Skip dapp notifications and updates during startup
       if (this.isStartingUp) {
@@ -1389,9 +1419,30 @@ class MainController {
 
   public getRecommendedFee() {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-    if (isBitcoinBased)
-      return this.syscoinTransaction.getRecommendedFee(activeNetwork.url);
-    return this.ethereumTransaction.getRecommendedGasPrice(true);
+
+    // Check if wallet is unlocked first
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      console.warn(
+        '[MainController] Wallet is locked, cannot get recommended fee'
+      );
+      // Return a default/fallback fee structure
+      return isBitcoinBased
+        ? { fastestFee: 1, halfHourFee: 1, hourFee: 1 }
+        : '20000000000'; // 20 gwei
+    }
+
+    try {
+      if (isBitcoinBased) {
+        return this.syscoinTransaction.getRecommendedFee(activeNetwork.url);
+      } else {
+        return this.ethereumTransaction.getRecommendedGasPrice(true);
+      }
+    } catch (error) {
+      console.error('[MainController] Error getting recommended fee:', error);
+      // Return fallback values
+      return isBitcoinBased ? 0.0000001 : '20000000000'; // 20 gwei
+    }
   }
 
   public async importAccountFromPrivateKey(privKey: string, label?: string) {
@@ -1405,19 +1456,15 @@ class MainController {
         accountType: KeyringAccountType.Imported,
       })
     );
-
-    await this.getActiveKeyring().setActiveAccount(
-      importedAccount.id,
-      KeyringAccountType.Imported
-    );
-
     store.dispatch(
       setActiveAccount({
         id: importedAccount.id,
         type: KeyringAccountType.Imported,
       })
     );
-    this.getLatestUpdateForCurrentAccount(false);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(false);
+    }, 10);
 
     return importedAccount;
   }
@@ -1441,17 +1488,15 @@ class MainController {
         accountType: KeyringAccountType.Trezor,
       })
     );
-    this.getActiveKeyring().setActiveAccount(
-      importedAccount.id,
-      KeyringAccountType.Trezor
-    );
     store.dispatch(
       setActiveAccount({
         id: importedAccount.id,
         type: KeyringAccountType.Trezor,
       })
     );
-    this.getLatestUpdateForCurrentAccount(false);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(false);
+    }, 10);
 
     return importedAccount;
   }
@@ -1479,17 +1524,15 @@ class MainController {
         accountType: KeyringAccountType.Ledger,
       })
     );
-    this.getActiveKeyring().setActiveAccount(
-      importedAccount.id,
-      KeyringAccountType.Ledger
-    );
     store.dispatch(
       setActiveAccount({
         id: importedAccount.id,
         type: KeyringAccountType.Ledger,
       })
     );
-    this.getLatestUpdateForCurrentAccount(false);
+    setTimeout(() => {
+      this.getLatestUpdateForCurrentAccount(false);
+    }, 10);
 
     return importedAccount;
   }
@@ -1634,6 +1677,16 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling: boolean;
   }) {
+    // Check if wallet is unlocked first - skip if locked
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      console.log(
+        '[MainController] Wallet is locked, skipping transaction updates'
+      );
+      // Return a resolved promise to maintain API consistency
+      return Promise.resolve();
+    }
+
     const { accounts, activeAccount, accountTransactions } =
       store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -1648,12 +1701,30 @@ class MainController {
               store.dispatch(setIsLoadingTxs(true));
             }
 
+            // Safe access to transaction objects with error handling
+            let web3Provider = null;
+            try {
+              web3Provider = isBitcoinBased
+                ? null
+                : this.ethereumTransaction.web3Provider;
+            } catch (error) {
+              console.warn(
+                '[MainController] Cannot access ethereumTransaction:',
+                error
+              );
+              if (!isPolling) {
+                store.dispatch(setIsLoadingTxs(false));
+              }
+              resolve();
+              return;
+            }
+
             const txs =
               await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
-                this.ethereumTransaction.web3Provider,
+                web3Provider,
                 currentAccountTxs
               );
 
@@ -1729,6 +1800,14 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean | null;
   }) {
+    // Check if wallet is unlocked first - skip if locked
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      console.log('[MainController] Wallet is locked, skipping asset updates');
+      // Return a resolved promise to maintain API consistency
+      return Promise.resolve();
+    }
+
     const { accounts, accountAssets } = store.getState().vault;
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
@@ -1738,13 +1817,28 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
+            // Safe access to transaction objects with error handling
+            let web3Provider = null;
+            try {
+              web3Provider = isBitcoinBased
+                ? null
+                : this.ethereumTransaction.web3Provider;
+            } catch (error) {
+              console.warn(
+                '[MainController] Cannot access ethereumTransaction for asset update:',
+                error
+              );
+              resolve();
+              return;
+            }
+
             const updatedAssets =
               await this.assetsManager.utils.updateAssetsFromCurrentAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
                 activeNetwork.chainId,
-                this.ethereumTransaction.web3Provider,
+                web3Provider,
                 currentAssets
               );
             const validateUpdatedAndPreviousAssetsLength =
@@ -1819,6 +1913,16 @@ class MainController {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
   }) {
+    // Check if wallet is unlocked first - skip if locked
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      console.log(
+        '[MainController] Wallet is locked, skipping balance updates'
+      );
+      // Return a resolved promise to maintain API consistency
+      return Promise.resolve();
+    }
+
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
@@ -1829,12 +1933,27 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
+            // Safe access to transaction objects with error handling
+            let web3Provider = null;
+            try {
+              web3Provider = isBitcoinBased
+                ? null
+                : this.ethereumTransaction.web3Provider;
+            } catch (error) {
+              console.warn(
+                '[MainController] Cannot access ethereumTransaction for balance update:',
+                error
+              );
+              resolve();
+              return;
+            }
+
             const updatedBalance =
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
                 isBitcoinBased,
                 activeNetwork.url,
-                this.ethereumTransaction.web3Provider
+                web3Provider
                 // No need to pass a provider - let the manager use its own
               );
 
@@ -1846,7 +1965,6 @@ class MainController {
             );
 
             if (validateIfCanDispatch) {
-              store.dispatch(setIsLoadingBalances(true));
               store.dispatch(
                 setAccountPropertyByIdAndType({
                   id: activeAccount.id,
@@ -1860,15 +1978,13 @@ class MainController {
                   },
                 })
               );
-
-              store.dispatch(setIsLoadingBalances(false));
             }
 
             resolve();
           } catch (error) {
-            // Ensure loading state is cleared on error
-            store.dispatch(setIsLoadingBalances(false));
             reject(error);
+          } finally {
+            store.dispatch(setIsLoadingBalances(false));
           }
         }
       );
@@ -1886,6 +2002,15 @@ class MainController {
   public async getLatestUpdateForCurrentAccount(
     isPolling = false
   ): Promise<boolean> {
+    // Check if wallet is unlocked first
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      console.log(
+        '[MainController] Wallet is locked, skipping account updates'
+      );
+      return false;
+    }
+
     const {
       accounts,
       activeAccount,
@@ -1893,6 +2018,8 @@ class MainController {
       activeNetwork,
       accountTransactions,
     } = store.getState().vault;
+
+    const { isSwitchingAccount } = store.getState().vaultGlobal;
 
     const activeAccountValues = accounts[activeAccount.type][activeAccount.id];
     if (!activeAccountValues) {
@@ -1915,9 +2042,17 @@ class MainController {
     }
 
     // Guard: Skip EVM operations if web3Provider isn't ready (during keyring switches)
-    if (!isBitcoinBased && !this.ethereumTransaction?.web3Provider) {
+    // Note: we now use try-catch for transaction access since we check unlock status above
+    try {
+      if (!isBitcoinBased && !this.ethereumTransaction?.web3Provider) {
+        console.log(
+          '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
+        );
+        return false;
+      }
+    } catch (error) {
       console.log(
-        '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
+        '[MainController] Cannot access ethereumTransaction - wallet may be locked or keyring switching'
       );
       return false;
     }
@@ -1991,24 +2126,28 @@ class MainController {
     });
 
     const hasChanges = initialStateSnapshot !== finalStateSnapshot;
-    console.log(
-      `[MainController] Update detection: ${
-        hasChanges ? 'CHANGES FOUND' : 'No changes'
-      }`
-    );
 
-    if (hasChanges) {
-      console.log('[MainController] Initial state:', initialStateSnapshot);
-      console.log('[MainController] Final state:', finalStateSnapshot);
+    // Reduce logging during account switching to avoid noise
+    if (!isSwitchingAccount) {
+      console.log(
+        `[MainController] Update detection: ${
+          hasChanges ? 'CHANGES FOUND' : 'No changes'
+        }`
+      );
 
-      // Try to parse and show differences
-      try {
-        const initial = JSON.parse(initialStateSnapshot);
-        const final = JSON.parse(finalStateSnapshot);
-        console.log('[MainController] Initial parsed:', initial);
-        console.log('[MainController] Final parsed:', final);
-      } catch (parseError) {
-        console.error('[MainController] JSON parse error:', parseError);
+      if (hasChanges) {
+        console.log('[MainController] Initial state:', initialStateSnapshot);
+        console.log('[MainController] Final state:', finalStateSnapshot);
+
+        // Try to parse and show differences
+        try {
+          const initial = JSON.parse(initialStateSnapshot);
+          const final = JSON.parse(finalStateSnapshot);
+          console.log('[MainController] Initial parsed:', initial);
+          console.log('[MainController] Final parsed:', final);
+        } catch (parseError) {
+          console.error('[MainController] JSON parse error:', parseError);
+        }
       }
     }
 
@@ -2318,7 +2457,18 @@ class MainController {
   private bindMethods() {
     const proto = Object.getPrototypeOf(this);
     for (const key of Object.getOwnPropertyNames(proto)) {
-      if (typeof this[key] === 'function' && key !== 'constructor') {
+      // Skip constructor and getters to avoid evaluating them during binding
+      if (key === 'constructor') continue;
+
+      // Get property descriptor to check if it's a getter
+      const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+      if (descriptor && descriptor.get) {
+        // Skip getters - they should not be bound
+        continue;
+      }
+
+      // Only bind actual methods
+      if (typeof this[key] === 'function') {
         this[key] = this[key].bind(this);
       }
     }
@@ -2393,10 +2543,11 @@ class MainController {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
     const { activeAccount } = store.getState().vault;
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
     console.log(
       '[MainController] Network switch success - replacing vault state from keyring:',
       {
-        slip44: this.activeSlip44,
+        slip44: activeSlip44,
         networkChainId: network.chainId,
         activeAccount: {
           id: activeAccount.id,
@@ -2412,11 +2563,11 @@ class MainController {
     // - network configuration
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
-    store.dispatch(setIsLoadingBalances(false));
 
-    await this.setFiat();
-
-    this.getLatestUpdateForCurrentAccount(false);
+    setTimeout(() => {
+      this.setFiat();
+      this.getLatestUpdateForCurrentAccount(false);
+    }, 10);
 
     // Skip dapp notifications during startup
     if (this.isStartingUp) {
@@ -2480,6 +2631,14 @@ class MainController {
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = (psbt: any) => {
+    // Check if wallet is unlocked first
+    const keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      throw new Error(
+        'Wallet is locked. Please unlock to decode transactions.'
+      );
+    }
+
     try {
       return this.syscoinTransaction.decodeRawTransaction(psbt);
     } catch (error) {

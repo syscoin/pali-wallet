@@ -10,8 +10,11 @@ import {
 import { EvmTransactionDetailsEnhanced } from './Transactions/EVM/EvmDetailsEnhanced';
 
 export const TransactionDetails = ({ hash }: { hash: string }) => {
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
   );
 
   if (isBitcoinBased) {

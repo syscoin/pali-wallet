@@ -1,18 +1,22 @@
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
-import { saveState, setMigratedVersions } from 'state/paliStorage';
+import {
+  saveState,
+  saveSlip44State,
+  setMigratedVersions,
+} from 'state/paliStorage';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
 type V3_5_0 = {
   dapp: any;
   price: any;
-  vault: any;
+  vaultGlobal: any;
 };
 
 const MigrateRunner = async (oldState: any) => {
   try {
     console.log(
-      'Starting migration to v3.5.0 - replacing networks with correct configurations'
+      'Starting migration to v3.5.0 - replacing networks with correct configurations and converting to slip44 architecture'
     );
 
     // Instead of patching individual properties, completely replace networks
@@ -26,7 +30,7 @@ const MigrateRunner = async (oldState: any) => {
     };
 
     // Check for custom networks in syscoin
-    if (oldState.vault.networks?.syscoin) {
+    if (oldState.vault?.networks?.syscoin) {
       for (const [chainId, network] of Object.entries(
         oldState.vault.networks.syscoin
       )) {
@@ -43,7 +47,7 @@ const MigrateRunner = async (oldState: any) => {
     }
 
     // Check for custom networks in ethereum
-    if (oldState.vault.networks?.ethereum) {
+    if (oldState.vault?.networks?.ethereum) {
       for (const [chainId, network] of Object.entries(
         oldState.vault.networks.ethereum
       )) {
@@ -72,7 +76,9 @@ const MigrateRunner = async (oldState: any) => {
     };
 
     // Fix activeNetwork - find the correct one from our networks or recreate it
-    let fixedActiveNetwork = oldState.vault.activeNetwork;
+    let fixedActiveNetwork = oldState.vault?.activeNetwork;
+    let activeSlip44 = 57; // Default to UTXO
+
     if (fixedActiveNetwork) {
       // Try to find the network in our correct networks
       const foundInSyscoin = Object.values(correctNetworks.syscoin).find(
@@ -84,39 +90,56 @@ const MigrateRunner = async (oldState: any) => {
 
       if (foundInSyscoin) {
         fixedActiveNetwork = foundInSyscoin;
+        activeSlip44 = 57;
         console.log(
           `Updated activeNetwork to correct Syscoin config for chainId ${fixedActiveNetwork.chainId}`
         );
       } else if (foundInEthereum) {
         fixedActiveNetwork = foundInEthereum;
+        activeSlip44 = 60;
         console.log(
           `Updated activeNetwork to correct Ethereum config for chainId ${fixedActiveNetwork.chainId}`
         );
       } else {
-        // If not found, add kind property based on existing network
+        // If not found, determine slip44 based on existing network type
+        const isBitcoinBased = oldState.vault?.isBitcoinBased;
+        activeSlip44 = isBitcoinBased ? 57 : 60;
         fixedActiveNetwork = {
           ...fixedActiveNetwork,
-          kind: fixedActiveNetwork.kind || INetworkType.Ethereum, // Default to evm if unknown
+          kind: isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
+          slip44: activeSlip44,
         };
         console.log(
-          `Preserved custom activeNetwork with kind for chainId ${fixedActiveNetwork.chainId}`
+          `Preserved custom activeNetwork with kind for chainId ${fixedActiveNetwork.chainId}, slip44=${activeSlip44}`
         );
       }
     }
 
-    const newState: V3_5_0 = {
-      ...oldState,
-      vault: {
-        ...oldState.vault,
-        networks: correctNetworks,
-        activeNetwork: fixedActiveNetwork,
+    // Create updated vault state
+    const updatedVaultState = {
+      ...oldState.vault,
+      networks: correctNetworks,
+      activeNetwork: fixedActiveNetwork,
+    };
+
+    // Save vault to slip44-specific storage
+    await saveSlip44State(activeSlip44, updatedVaultState);
+    console.log(`Saved vault state to slip44-${activeSlip44} storage`);
+
+    // Create new main state without vault (using slip44 architecture)
+    const newMainState: V3_5_0 = {
+      dapp: oldState.dapp || {},
+      price: oldState.price || {},
+      vaultGlobal: {
+        ...oldState.vaultGlobal,
+        activeSlip44: activeSlip44,
       },
     };
 
-    await Promise.all([saveState(newState), setMigratedVersions('3.5.0')]);
+    await Promise.all([saveState(newMainState), setMigratedVersions('3.5.0')]);
 
     console.log(
-      'Migrate to <v3.5.0> successfully! Replaced networks with correct configurations (kind, slip44, API URLs) while preserving custom networks.'
+      `Migrate to <v3.5.0> successfully! Converted to slip44 architecture with activeSlip44=${activeSlip44} and updated network configurations.`
     );
   } catch (error) {
     console.log('<v3.5.0> Migration Error');

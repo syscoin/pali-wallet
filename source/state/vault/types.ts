@@ -26,6 +26,9 @@ export interface IAccountTransactions {
 
 // Global state shared across all slip44s (stored in main state)
 export interface IGlobalState {
+  // Current active slip44 - single source of truth
+  activeSlip44: number | null;
+
   // User preferences - should be shared across all networks
   advancedSettings: {
     [k: string]: boolean;
@@ -74,7 +77,7 @@ export interface ISlip44State {
   // Network-specific states
   isBitcoinBased: boolean;
 
-  // Dirty flag for this slip44 vault
+  // Dirty flag for important changes that need immediate saving (account/network/settings)
   isDirty?: boolean;
   isLastTxConfirmed: null | { [k: number]: boolean };
   isLoadingAssets: boolean;

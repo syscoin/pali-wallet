@@ -6,7 +6,7 @@ import { rehydrate as vaultRehydrate } from 'state/vault';
 import { rehydrate as vaultGlobalRehydrate } from 'state/vaultGlobal';
 
 import { loadState } from './paliStorage';
-import vaultCache from './vaultCache';
+import { loadAndActivateSlip44Vault } from './store';
 
 export const rehydrateStore = async (
   store: Store,
@@ -17,7 +17,7 @@ export const rehydrateStore = async (
     let storageState = state;
 
     if (!storageState) {
-      // Load main state (dapp, price, vaultGlobal, currentSlip44)
+      // Load main state (dapp, price, vaultGlobal)
       storageState = await loadState();
     }
 
@@ -33,32 +33,39 @@ export const rehydrateStore = async (
         store.dispatch(vaultGlobalRehydrate(storageState.vaultGlobal));
       }
 
-      // Load slip44-specific vault
-      const targetSlip44 = slip44 || storageState.currentSlip44;
+      // Handle vault state based on context
+      if (state && state.vault) {
+        // Frontend context: Complete state provided by background script
+        // Just rehydrate the vault directly - no need to load from storage
+        console.log('[Rehydrate] Using vault state from background script');
+        store.dispatch(vaultRehydrate(state.vault));
+      } else {
+        // Background context: Need to load slip44-specific vault from storage
+        const targetSlip44 = slip44 || storageState.vaultGlobal?.activeSlip44;
 
-      if (targetSlip44) {
-        console.log(`[Rehydrate] Loading slip44 vault: ${targetSlip44}`);
-
-        const slip44VaultState = await vaultCache.getSlip44Vault(targetSlip44);
-
-        if (slip44VaultState) {
-          // Set as active in cache
-          vaultCache.setActiveSlip44(targetSlip44);
-
-          // Rehydrate vault with slip44-specific state
-          store.dispatch(vaultRehydrate(slip44VaultState));
-
+        if (targetSlip44) {
           console.log(
-            `[Rehydrate] Successfully loaded slip44 vault: ${targetSlip44}`
+            `[Rehydrate] Loading slip44 vault using centralized function: ${targetSlip44}`
           );
+
+          const hasExistingVaultState = await loadAndActivateSlip44Vault(
+            targetSlip44
+          );
+
+          if (hasExistingVaultState) {
+            console.log(
+              `[Rehydrate] Successfully loaded slip44 vault: ${targetSlip44}`
+            );
+          } else {
+            console.log(
+              `[Rehydrate] No vault found for slip44: ${targetSlip44}, will create new`
+            );
+          }
         } else {
           console.log(
-            `[Rehydrate] No vault found for slip44: ${targetSlip44}, will create new`
+            '[Rehydrate] No slip44 context available - vault will be created when wallet is initialized'
           );
         }
-      } else if (storageState.vault) {
-        // Fallback for legacy state structure
-        store.dispatch(vaultRehydrate(storageState.vault));
       }
     }
 

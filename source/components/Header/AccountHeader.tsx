@@ -25,19 +25,21 @@ import { ellipsis, adjustUrl } from 'utils/index';
 
 export const AccountHeader: React.FC = () => {
   const currentAccount = useSelector(selectActiveAccount);
-  const {
-    isBitcoinBased,
-    activeNetwork,
-    networkStatus,
-    isSwitchingAccount,
-    activeAccount,
-  } = useSelector((state: RootState) => ({
-    isBitcoinBased: state.vault.isBitcoinBased,
-    activeNetwork: state.vault.activeNetwork,
-    networkStatus: state.vaultGlobal.networkStatus,
-    isSwitchingAccount: state.vaultGlobal.isSwitchingAccount,
-    activeAccount: state.vault.activeAccount,
-  }));
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const networkStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.networkStatus
+  );
+  const isSwitchingAccount = useSelector(
+    (state: RootState) => state.vaultGlobal.isSwitchingAccount
+  );
+  const activeAccount = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
   const { useCopyClipboard, alert, navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();

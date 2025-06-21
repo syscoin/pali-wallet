@@ -33,11 +33,12 @@ export const SendSys = () => {
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
 
-  // ✅ OPTIMIZED: Use compound selector
   const { account: activeAccount, assets: accountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
-  const { activeNetwork } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
 
   const [RBF, setRBF] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(

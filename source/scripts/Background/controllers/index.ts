@@ -4,6 +4,7 @@ import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IDAppState } from 'state/dapp/types';
+import { loadState } from 'state/paliStorage';
 import { IPriceState } from 'state/price/types';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
@@ -237,7 +238,11 @@ const MasterController = (
     });
 
   const rehydrate = async () => {
-    await rehydrateStore(store);
+    const storageState = await loadState();
+    const activeSlip44 = storageState?.vaultGlobal?.activeSlip44;
+
+    console.log(`[MasterController] Rehydrating with slip44: ${activeSlip44}`);
+    await rehydrateStore(store, undefined, activeSlip44);
   };
 
   initializeMainController();

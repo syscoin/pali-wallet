@@ -5,6 +5,7 @@ import { INetwork } from '@pollum-io/sysweb3-network';
 import { IGlobalState, IChangingConnectedAccount } from '../vault/types';
 
 const initialState: IGlobalState = {
+  activeSlip44: null,
   advancedSettings: {
     refresh: false,
     ledger: false,
@@ -35,6 +36,9 @@ const vaultGlobalSlice = createSlice({
         ...state,
         ...action.payload,
       };
+    },
+    setActiveSlip44(state: IGlobalState, action: PayloadAction<number>) {
+      state.activeSlip44 = action.payload;
     },
     setAdvancedSettings(
       state: IGlobalState,
@@ -111,6 +115,7 @@ const vaultGlobalSlice = createSlice({
 
 export const {
   rehydrate,
+  setActiveSlip44,
   setAdvancedSettings,
   setError,
   setNetworkStatus,

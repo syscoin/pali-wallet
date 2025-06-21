@@ -26,15 +26,12 @@ export const SendEth = () => {
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
 
-  // ✅ OPTIMIZED: Consolidate vault selectors
-  const {
-    activeNetwork,
-    account: activeAccount,
-    assets: activeAccountAssets,
-  } = useSelector((state: RootState) => ({
-    activeNetwork: state.vault.activeNetwork,
-    ...selectActiveAccountWithAssets(state),
-  }));
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const { account: activeAccount, assets: activeAccountAssets } = useSelector(
+    selectActiveAccountWithAssets
+  );
 
   // ✅ MEMOIZED: Computed values
   const isAccountImported = useMemo(

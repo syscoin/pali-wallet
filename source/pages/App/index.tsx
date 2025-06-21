@@ -24,7 +24,6 @@ const ToastContainer = React.lazy(() =>
 
 import 'react-toastify/dist/ReactToastify.css';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { handleStoreSubscribe } from 'scripts/Background/controllers/handlers';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -79,10 +78,6 @@ if (appRootElement) {
           </React.StrictMode>
         );
 
-        // Subscribe store to updates
-        handleStoreSubscribe(store);
-        console.log('[App] App rendered and store subscribed');
-
         // Load non-critical CSS after app is visible
         setTimeout(() => {
           // @ts-ignore
@@ -119,7 +114,6 @@ if (appRootElement) {
             </Provider>
           </React.StrictMode>
         );
-        handleStoreSubscribe(store);
       });
     }
   };

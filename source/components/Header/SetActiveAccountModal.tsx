@@ -53,12 +53,8 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
     // Close modal immediately for better UX
     setIsOpen(false);
 
-    // Let MainController handle the proper sequencing:
-    // 1. this.setActiveAccount(id, type) - updates keyring
-    // 2. store.dispatch(setActiveAccount({ id, type })) - updates Redux
     controllerEmitter(['wallet', 'setAccount'], [accountId, accountType])
       .then(() => {
-        // Success - MainController already updated Redux state in correct order
         store.dispatch(setIsSwitchingAccount(false));
       })
       .catch((error) => {

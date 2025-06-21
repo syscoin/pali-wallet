@@ -16,11 +16,10 @@ import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
 
 const ManageAccountsView = () => {
-  // ✅ OPTIMIZED: Consolidate vault selectors
-  const { accounts, activeAccountRef } = useSelector((state: RootState) => ({
-    accounts: state.vault.accounts,
-    activeAccountRef: state.vault.activeAccount,
-  }));
+  const accounts = useSelector((state: RootState) => state.vault.accounts);
+  const activeAccountRef = useSelector(
+    (state: RootState) => state.vault.activeAccount
+  );
 
   const { navigate } = useUtils();
   const { t } = useTranslation();

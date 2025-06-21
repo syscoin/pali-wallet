@@ -40,10 +40,13 @@ ReceivedIcon.displayName = 'ReceivedIcon';
 export const useTransactionsListConfig = (
   userTransactions?: any[]
 ): ITransactionsListConfig => {
-  const {
-    activeNetwork: { chainId },
-    isBitcoinBased,
-  } = useSelector((state: RootState) => state.vault);
+  const activeNetwork = useSelector(
+    (state: RootState) => state.vault.activeNetwork
+  );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+  const chainId = activeNetwork.chainId;
 
   const { t } = useTranslation();
 
