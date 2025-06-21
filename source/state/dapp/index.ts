@@ -12,11 +12,9 @@ const DAppState = createSlice({
   name: 'dapp',
   initialState,
   reducers: {
-    rehydrate(state: IDAppState, action: PayloadAction<IDAppState>) {
-      return {
-        ...state,
-        ...action.payload,
-      };
+    rehydrate(_state: IDAppState, action: PayloadAction<IDAppState>) {
+      // Complete replacement - consistent with vault and vaultGlobal rehydration
+      return action.payload;
     },
     addDApp(state: IDAppState, action: PayloadAction<IDApp>) {
       state.dapps[action.payload.host] = action.payload;

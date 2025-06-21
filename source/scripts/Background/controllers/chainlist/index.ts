@@ -171,12 +171,17 @@ class ChainListService {
   }
 
   async getChainData(): Promise<IChainInfo[]> {
-    // If we have valid cached data, return it
+    // 🔥 FIX: Initialize if not already done (lazy initialization)
+    if (!this.chainData) {
+      await this.initialize();
+    }
+
+    // If we have valid cached data after initialization, return it
     if (this.chainData && this.isCacheValid(this.lastFetchTime)) {
       return this.chainData;
     }
 
-    // Otherwise fetch fresh data
+    // Otherwise fetch fresh data from network
     return this.fetchData();
   }
 

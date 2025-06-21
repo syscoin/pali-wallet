@@ -31,11 +31,10 @@ const vaultGlobalSlice = createSlice({
   name: 'vaultGlobal',
   initialState,
   reducers: {
-    rehydrate(state: IGlobalState, action: PayloadAction<IGlobalState>) {
-      return {
-        ...state,
-        ...action.payload,
-      };
+    rehydrate(_state: IGlobalState, action: PayloadAction<IGlobalState>) {
+      // Complete replacement - ensures loaded global state is exactly what was saved
+      // This matches the behavior of vault rehydration for consistency
+      return action.payload;
     },
     setActiveSlip44(state: IGlobalState, action: PayloadAction<number>) {
       state.activeSlip44 = action.payload;

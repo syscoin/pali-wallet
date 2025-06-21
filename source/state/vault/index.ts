@@ -97,11 +97,10 @@ const VaultState = createSlice({
   name: 'vault',
   initialState,
   reducers: {
-    rehydrate(state: IVaultState, action: PayloadAction<IVaultState>) {
-      return {
-        ...state,
-        ...action.payload,
-      };
+    rehydrate(_state: IVaultState, action: PayloadAction<IVaultState>) {
+      // Complete replacement - ensures loaded vault state is exactly what was saved
+      // This matches the behavior of initializeCleanVaultForSlip44 for consistency
+      return action.payload;
     },
     setAccounts(
       state: IVaultState,
@@ -498,6 +497,11 @@ const VaultState = createSlice({
 
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
+    },
+
+    // 🔥 FIX: Action to mark vault as clean after saving
+    markVaultAsClean(state: IVaultState) {
+      state.isDirty = false;
     },
 
     setAccountAssets: (
@@ -936,6 +940,7 @@ export const {
   createAccount,
   setAccountLabel,
   setIsBitcoinBased,
+  markVaultAsClean,
   setAccountAssets,
   setSingleTransactionToState,
   setMultipleTransactionToState,

@@ -2,6 +2,7 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { loadSlip44State, saveSlip44State } from './paliStorage';
 import store, { saveMainState } from './store';
+import { markVaultAsClean } from './vault';
 import { ISlip44State } from './vault/types';
 
 // Slip44 constants
@@ -64,6 +65,9 @@ class VaultCache {
   private periodicSaveInterval: NodeJS.Timeout | null = null;
   private readonly PERIODIC_SAVE_INTERVAL = 30000; // 30 seconds
 
+  // 🔥 Simple flag to prevent double emergency saves
+  private emergencySaveInProgress = false;
+
   /**
    * Get slip44-specific vault state, loading it if not cached
    */
@@ -101,11 +105,6 @@ class VaultCache {
         `VaultCache.setSlip44Vault: Slip44 validation failed! Cannot save vault with slip44=${slip44}`
       );
     }
-
-    console.log(
-      `[VaultCache] ✅ Slip44 validation passed for slip44=${slip44}`
-    );
-
     // Mark as clean since we're saving immediately
     const cleanSlip44State = { ...slip44State, isDirty: false };
 
@@ -114,30 +113,47 @@ class VaultCache {
 
     // Save to storage immediately
     await saveSlip44State(slip44, cleanSlip44State);
+
+    // 🔥 FIX: If this is the active slip44, mark Redux vault as clean too
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    if (slip44 === activeSlip44) {
+      store.dispatch(markVaultAsClean());
+    }
   }
 
   /**
    * Check if a slip44 vault is dirty
+   * 🔥 FIX: Check live Redux state for active slip44, cached state for others
    */
   isDirty(slip44: number): boolean {
-    const slip44State = this.slip44Cache.get(slip44);
-    return slip44State?.isDirty || false;
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+
+    if (slip44 === activeSlip44) {
+      // For active slip44, check live Redux state
+      return store.getState().vault.isDirty;
+    } else {
+      // For non-active slip44s, check cached state
+      const slip44State = this.slip44Cache.get(slip44);
+      return slip44State?.isDirty || false;
+    }
   }
 
   /**
    * Save only the active slip44 vault to storage (for periodic/emergency saves)
+   * Uses live Redux state instead of cached state to ensure we save current data
    */
   async saveActiveVault(activeSlip44: number): Promise<void> {
-    const slip44State = this.slip44Cache.get(activeSlip44);
+    // 🔥 FIX: Use live Redux state instead of cached state
+    const liveVaultState = store.getState().vault;
 
-    if (!slip44State || !slip44State.isDirty) {
+    if (!liveVaultState.isDirty) {
       return; // Nothing to save
     }
 
     // 🛡️ SAFEGUARD: Validate slip44 matches before saving
-    if (!validateVaultSlip44(slip44State, activeSlip44)) {
+    if (!validateVaultSlip44(liveVaultState, activeSlip44)) {
       console.warn(
-        `[VaultCache] saveActiveVault: Slip44 validation failed! Skipping save for slip44=${activeSlip44}, activeSlip44=${activeSlip44}`
+        `[VaultCache] saveActiveVault: Slip44 validation failed! Skipping save for slip44=${activeSlip44}`
       );
       return; // Don't throw here since this is called from periodic/emergency saves
     }
@@ -148,9 +164,11 @@ class VaultCache {
     );
 
     // Mark as clean before saving
-    const cleanSlip44State = { ...slip44State, isDirty: false };
+    const cleanSlip44State = { ...liveVaultState, isDirty: false };
     this.slip44Cache.set(activeSlip44, cleanSlip44State);
     await saveSlip44State(activeSlip44, cleanSlip44State);
+
+    store.dispatch(markVaultAsClean());
 
     console.log(`[VaultCache] Save completed for slip44=${activeSlip44}`);
   }
@@ -185,13 +203,14 @@ class VaultCache {
         const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
         if (activeSlip44 !== null) {
-          // Only save if there are dirty changes (important structural changes)
-          const slip44State = this.slip44Cache.get(activeSlip44);
-          if (slip44State?.isDirty) {
+          // 🔥 FIX: Check live Redux state's isDirty, not cached copy's isDirty
+          const liveVaultState = store.getState().vault;
+          if (liveVaultState.isDirty) {
             console.log(
-              '[VaultCache] Periodic safety save: saving dirty vault changes'
+              '[VaultCache] Periodic safety save: saving dirty vault changes from live Redux state'
             );
-            await this.saveActiveVault(activeSlip44);
+            // Update cache with live state and save
+            await this.setSlip44Vault(activeSlip44, liveVaultState);
           }
 
           // Also save main state (dapp, price, vaultGlobal) periodically
@@ -227,20 +246,123 @@ class VaultCache {
 
   /**
    * Emergency save before app closes/navigates away
+   * Always saves everything regardless of dirty flags - better safe than sorry
    */
   async emergencySave(): Promise<void> {
+    // 🔥 Simple flag check to prevent double execution
+    if (this.emergencySaveInProgress) {
+      console.log(
+        `[VaultCache] ⚡ Emergency save already in progress, skipping...`
+      );
+      return;
+    }
+
+    this.emergencySaveInProgress = true;
+    const now = Date.now();
+
+    // 🔥 Write to chrome.storage for persistent detection (survives extension shutdown)
+    try {
+      await chrome.storage.local.set({
+        'emergency-save-last-attempt': now,
+        'emergency-save-context':
+          typeof window !== 'undefined' ? 'popup' : 'background',
+      });
+    } catch (error) {
+      console.error(
+        '[VaultCache] Failed to log emergency save attempt:',
+        error
+      );
+    }
+
+    // Stop periodic saves to avoid race conditions during emergency save
+    this.stopPeriodicSave();
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
-    if (activeSlip44 !== null) {
-      console.log(
-        `[VaultCache] Emergency save: saving only active vault (slip44=${activeSlip44})`
-      );
-      await this.saveActiveVault(activeSlip44);
-
-      // Also save main state to ensure consistency
+    try {
+      // Always save main state (vaultGlobal, dapp, price) - settings could have changed
       await saveMainState();
-    } else {
-      console.log(`[VaultCache] Emergency save: no active slip44 to save`);
+
+      if (activeSlip44 !== null) {
+        // Force save vault regardless of isDirty flag - emergency saves should be comprehensive
+        const liveVaultState = store.getState().vault;
+        await this.setSlip44Vault(activeSlip44, liveVaultState);
+        // Note: setSlip44Vault already dispatches markVaultAsClean for active slip44
+      } else {
+        console.log(`[VaultCache] Emergency save: no active slip44 to save`);
+      }
+
+      // 🔥 Mark completion for deduplication
+      try {
+        await chrome.storage.local.set({
+          'emergency-save-last-completed': Date.now(),
+        });
+      } catch (error) {
+        console.error(
+          '[VaultCache] Failed to log emergency save completion:',
+          error
+        );
+      }
+
+      // 🔥 Write completion timestamp for persistent verification
+      try {
+        await chrome.storage.local.set({
+          'emergency-save-last-completed': Date.now(),
+        });
+      } catch (storageError) {
+        console.error(
+          '[VaultCache] Failed to log emergency save completion:',
+          storageError
+        );
+      }
+    } catch (error) {
+      console.error(`[VaultCache] ❌ Emergency save failed:`, error);
+      // Don't re-throw - we still want to mark as complete to avoid retries
+    } finally {
+      // Always reset flag so subsequent calls can work (in case of partial failure)
+      this.emergencySaveInProgress = false;
+    }
+
+    // Note: We don't restart periodic saves since emergency save typically means shutdown
+  }
+
+  /**
+   * 🔧 Debug utility: Check if emergency save was successful
+   * Can be called from console to verify emergency save worked after extension restart
+   */
+  async getEmergencySaveStatus(): Promise<void> {
+    try {
+      const result = await chrome.storage.local.get([
+        'emergency-save-last-attempt',
+        'emergency-save-last-completed',
+        'emergency-save-context',
+      ]);
+
+      const lastAttempt = result['emergency-save-last-attempt'];
+      const lastCompleted = result['emergency-save-last-completed'];
+      const context = result['emergency-save-context'];
+
+      console.log('🔍 Emergency Save Status:');
+      console.log(
+        '- Last attempt:',
+        lastAttempt ? new Date(lastAttempt).toISOString() : 'Never'
+      );
+      console.log(
+        '- Last completed:',
+        lastCompleted ? new Date(lastCompleted).toISOString() : 'Never'
+      );
+      console.log('- Context:', context || 'Unknown');
+
+      if (lastAttempt && lastCompleted && lastCompleted >= lastAttempt) {
+        console.log('✅ Emergency save appears successful!');
+      } else if (lastAttempt && !lastCompleted) {
+        console.log(
+          '⚠️ Emergency save was attempted but may not have completed'
+        );
+      } else {
+        console.log('ℹ️ No recent emergency save activity');
+      }
+    } catch (error) {
+      console.error('❌ Failed to check emergency save status:', error);
     }
   }
 }
@@ -248,3 +370,8 @@ class VaultCache {
 // Export singleton instance
 export const vaultCache = new VaultCache();
 export default vaultCache;
+
+// 🔧 Debug utility: Make emergency save status checker globally available
+// Usage in console: checkEmergencySave()
+(globalThis as any).checkEmergencySave = () =>
+  vaultCache.getEmergencySaveStatus();

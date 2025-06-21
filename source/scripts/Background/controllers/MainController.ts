@@ -84,7 +84,6 @@ import { IAssetsManager, INftController } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
-import ChainListService from './chainlist';
 import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import NftsController from './nfts/nfts';
@@ -142,15 +141,8 @@ class MainController {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
 
-    // Initialize ChainList service in background
-    ChainListService.getInstance()
-      .initialize()
-      .catch((error) => {
-        console.error(
-          '[MainController] Failed to initialize ChainList service:',
-          error
-        );
-      });
+    // 🔥 REMOVED: Eager ChainList initialization - now lazy-loads on first use
+    // This prevents loading large rpcs.json file on every app startup
 
     // Get initial slip44 from Redux global state (single source of truth)
     let initialSlip44 = DEFAULT_UTXO_SLIP44;
@@ -198,10 +190,10 @@ class MainController {
       store.dispatch(setActiveSlip44(initialSlip44));
 
       // Save main state immediately to persist the fallback activeSlip44
-      saveMainState().catch((error) => {
+      saveMainState().catch((saveError) => {
         console.error(
           `[MainController] Failed to save main state after fallback activeSlip44 setup:`,
-          error
+          saveError
         );
       });
     }
@@ -280,9 +272,11 @@ class MainController {
     const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-    // Get the current active keyring before switching
-    const previousKeyring = this.keyrings.get(activeSlip44);
-    const wasUnlocked = previousKeyring?.isUnlocked() || false;
+    // 🔥 FIX: Find ANY unlocked keyring to transfer session from (handles undefined state)
+    const anyUnlockedKeyring = Array.from(this.keyrings.values()).find((kr) =>
+      kr.isUnlocked()
+    );
+
     // Save current vault state before switching if we're changing slip44
     if (slip44 !== activeSlip44) {
       console.log(
@@ -329,14 +323,14 @@ class MainController {
         });
     }
 
-    // If switching to a different slip44 and current keyring is unlocked, we'll need to transfer session
-    const needsSessionTransfer = slip44 !== activeSlip44 && wasUnlocked;
+    // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
+    const needsSessionTransfer = slip44 !== activeSlip44 && anyUnlockedKeyring;
 
     // Ensure the target keyring exists
     let targetKeyring = this.keyrings.get(slip44);
     if (!targetKeyring) {
       console.log('[MainController] Creating new keyring on demand');
-      targetKeyring = this.createKeyringOnDemand(network);
+      targetKeyring = this.createKeyringOnDemand();
     }
 
     if (!targetKeyring) {
@@ -344,9 +338,9 @@ class MainController {
     }
 
     // Handle session transfer if needed
-    if (needsSessionTransfer && previousKeyring) {
+    if (needsSessionTransfer && anyUnlockedKeyring) {
       try {
-        previousKeyring.transferSessionTo(targetKeyring);
+        anyUnlockedKeyring.transferSessionTo(targetKeyring);
 
         // Only create accounts if no existing vault state was rehydrated
         if (!hasExistingVaultState) {
@@ -378,6 +372,13 @@ class MainController {
       }
     } else if (!targetKeyring.isUnlocked()) {
       // If target keyring is not unlocked and we didn't transfer session, fail
+      if (slip44 !== activeSlip44) {
+        console.error(
+          `[MainController] No unlocked keyring found to transfer session from. Available keyrings: ${Array.from(
+            this.keyrings.keys()
+          )}`
+        );
+      }
       throw new Error(
         `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
       );
@@ -402,7 +403,7 @@ class MainController {
   }
 
   // Create a keyring on demand with storage access
-  private createKeyringOnDemand(network: INetwork): KeyringManager {
+  private createKeyringOnDemand(): KeyringManager {
     // Create new keyring with the wallet state
     const keyring = new KeyringManager();
 
@@ -416,7 +417,7 @@ class MainController {
 
   // Lock all keyrings - used when user explicitly locks wallet
   private lockAllKeyrings(): void {
-    this.keyrings.forEach((keyring, _) => {
+    this.keyrings.forEach((keyring) => {
       if (keyring.isUnlocked()) {
         keyring.lockWallet();
       }

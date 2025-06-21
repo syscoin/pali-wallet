@@ -3,6 +3,7 @@ import { HashRouter } from 'react-router-dom';
 
 import { Container, Loading, KeepAliveContainer } from 'components/index';
 import { Router } from 'routers/index';
+import { vaultCache } from 'state/vaultCache';
 
 const App: FC = () => {
   useEffect(() => {
@@ -33,9 +34,19 @@ const App: FC = () => {
     // Add the listener when the component mounts
     chrome.runtime.onMessage.addListener(messageListener);
 
+    const handleBeforeUnload = () => {
+      vaultCache.emergencySave().catch((error) => {
+        console.error('[App] Failed to emergency save on beforeunload:', error);
+      });
+    };
+
+    // 🔥 Only trigger emergency save on actual page unload, not just tab switching
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     // Cleanup: remove the listener when the component unmounts
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
     };

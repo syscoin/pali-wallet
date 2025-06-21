@@ -35,13 +35,10 @@ export const handleMasterControllerInstance = async () => {
     vaultCache.startPeriodicSave();
   }
 
-  // 🔥 FIX: Set up emergency save handlers in service worker context
-  // This ensures they're registered in the correct context (not just when store.ts is imported)
-  if (typeof chrome !== 'undefined' && chrome.runtime) {
-    console.log(
-      '[handleMasterControllerInstance] Setting up emergency save handlers...'
-    );
+  // Note: Window/tab shutdown detection needs to be in popup context, not background script
 
+  // Chrome extension service worker events
+  if (typeof chrome !== 'undefined' && chrome.runtime) {
     // Save before service worker is suspended/terminated
     if (chrome.runtime.onSuspend) {
       chrome.runtime.onSuspend.addListener(() => {

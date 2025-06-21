@@ -62,7 +62,7 @@ const MasterController = (
     const vaultState = externalStore.getState().vault;
 
     // Check if NFTs structure exists in accountAssets
-    const needsNftsInit = Object.entries(vaultState.accountAssets).some(
+    const needsNftsInit = Object.entries(vaultState.accountAssets ?? {}).some(
       ([, accounts]) =>
         Object.entries(accounts).some(([, assets]) => !assets.nfts)
     );
