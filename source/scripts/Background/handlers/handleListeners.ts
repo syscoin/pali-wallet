@@ -63,6 +63,14 @@ export const handleListeners = (masterController: IMasterController) => {
     if (alarm.name === 'update_fiat_price_initial') {
       masterController.wallet.setFiat();
     }
+
+    // Handle auto-lock timer
+    if (alarm.name === 'pali_auto_lock_timer') {
+      console.log(
+        '🔒 handleListeners: Auto-lock timer triggered, locking wallet'
+      );
+      masterController.wallet.lock();
+    }
   };
 
   // Add the alarm listener

@@ -12,7 +12,7 @@ import { RootState } from 'state/store';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, handleWalletLockedError } = useController();
   const { navigate, alert } = useUtils();
   const [form] = useForm();
   const [validPrivateKey, setValidPrivateKey] = useState(false);
@@ -45,9 +45,15 @@ const ImportAccountView = () => {
 
         setIsImporting(false);
       } catch (error) {
-        alert.removeAll();
-        alert.error(String(error.message));
         setIsImporting(false);
+
+        // Check if this is a wallet locked error and handle redirect
+        const wasHandled = handleWalletLockedError(error);
+        if (!wasHandled) {
+          // If not a wallet locked error, show the original error message
+          alert.removeAll();
+          alert.error(String(error.message));
+        }
       }
     }
   };

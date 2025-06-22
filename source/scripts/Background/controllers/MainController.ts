@@ -138,6 +138,9 @@ class MainController {
   // Add a property to track network switching state
   private isNetworkSwitching = false;
 
+  // Auto-lock timer management
+  private autoLockAlarmName = 'pali_auto_lock_timer';
+
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
@@ -799,10 +802,78 @@ class MainController {
 
   public async setAdvancedSettings(
     advancedProperty: string,
-    isActive: boolean
+    value: boolean | number
   ) {
-    // Update Redux state - no need for separate global settings storage
-    store.dispatch(setAdvancedSettings({ advancedProperty, isActive }));
+    // Update Redux state
+    store.dispatch(setAdvancedSettings({ advancedProperty, value }));
+
+    // If this is the autolock setting, restart the timer
+    if (advancedProperty === 'autolock' && typeof value === 'number') {
+      // Validate timer range (5-120 minutes)
+      if (value < 5 || value > 120) {
+        throw new Error('Auto-lock timer must be between 5 and 120 minutes');
+      }
+
+      // Always restart the timer since auto-lock is always enabled
+      await this.startAutoLockTimer();
+    }
+  }
+
+  private async startAutoLockTimer() {
+    try {
+      const vaultGlobalState = store.getState().vaultGlobal;
+
+      // Auto-lock is always enabled, just get the timer value from advancedSettings
+      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock || 5;
+
+      if (!this.isUnlocked()) {
+        return;
+      }
+
+      // Clear any existing auto-lock alarm
+      await this.stopAutoLockTimer();
+
+      // Create Chrome alarm for auto-lock
+      chrome.alarms.create(this.autoLockAlarmName, {
+        delayInMinutes: autoLockTimer as number,
+      });
+
+      console.log(
+        `[MainController] Auto-lock timer started: ${autoLockTimer} minutes`
+      );
+    } catch (error) {
+      console.error('[MainController] Error in startAutoLockTimer:', error);
+      // Fail silently - auto-lock is a convenience feature, not critical
+    }
+  }
+
+  private async stopAutoLockTimer() {
+    // Clear the Chrome alarm
+    chrome.alarms.clear(this.autoLockAlarmName);
+    console.log('[MainController] Auto-lock timer stopped');
+  }
+
+  // Reset auto-lock timer on user activity
+  public resetAutoLockTimer() {
+    try {
+      const vaultGlobalState = store.getState().vaultGlobal;
+
+      // Auto-lock is always enabled, just get the timer value from advancedSettings
+      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock;
+
+      if (autoLockTimer && this.isUnlocked()) {
+        // Restart the timer
+        this.startAutoLockTimer().catch((error) => {
+          console.error(
+            '[MainController] Failed to restart auto-lock timer:',
+            error
+          );
+        });
+      }
+    } catch (error) {
+      console.error('[MainController] Error in resetAutoLockTimer:', error);
+      // Fail silently - auto-lock is a convenience feature, not critical
+    }
   }
 
   public async forgetWallet(pwd: string) {
@@ -819,7 +890,7 @@ class MainController {
     store.dispatch(
       setAdvancedSettings({
         advancedProperty: 'refresh',
-        isActive: false,
+        value: false,
         isFirstTime: true,
       })
     );
@@ -880,6 +951,12 @@ class MainController {
       // 🔥 FIX: Start periodic safety saves after successful unlock
       vaultCache.startPeriodicSave();
 
+      // Start auto-lock timer (always enabled)
+      const { advancedSettings } = store.getState().vaultGlobal;
+      if (advancedSettings?.autolock) {
+        await this.startAutoLockTimer();
+      }
+
       // Clear startup flags after 2 seconds
       setTimeout(() => {
         this.justUnlocked = false;
@@ -939,6 +1016,14 @@ class MainController {
   public lock() {
     const controller = getController();
     this.logout();
+
+    // Stop auto-lock timer when wallet is locked
+    this.stopAutoLockTimer().catch((error) => {
+      console.error(
+        '[MainController] Failed to stop auto-lock timer on lock:',
+        error
+      );
+    });
 
     // Emergency save any dirty vaults before clearing cache
     vaultCache.emergencySave().catch((error) => {

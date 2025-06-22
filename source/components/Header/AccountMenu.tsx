@@ -20,38 +20,48 @@ import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased
 
 export const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, handleWalletLockedError } = useController();
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
   const url = chrome.runtime.getURL('app.html');
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
-    if (!isBitcoinBased) {
-      const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-        chrome.tabs.query(
-          {
-            active: true,
-            currentWindow: true,
-          },
-          resolve
-        );
-      });
-      const host = new URL(tabs[0].url!).hostname;
-
-      await controllerEmitter(['dapp', 'getAccount'], [host]).then(
-        async (res) => {
-          await controllerEmitter(
-            ['wallet', 'setAccount'],
-            [Number(id), type, host, res]
+    try {
+      if (!isBitcoinBased) {
+        const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+          chrome.tabs.query(
+            {
+              active: true,
+              currentWindow: true,
+            },
+            resolve
           );
-        }
-      );
+        });
+        const host = new URL(tabs[0].url!).hostname;
 
-      return;
+        await controllerEmitter(['dapp', 'getAccount'], [host]).then(
+          async (res) => {
+            await controllerEmitter(
+              ['wallet', 'setAccount'],
+              [Number(id), type, host, res]
+            );
+          }
+        );
+
+        return;
+      }
+
+      await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
+    } catch (error) {
+      // Check if this is a wallet locked error and handle redirect
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        // If not a wallet locked error, log it but don't show UI error
+        // since account switching should be seamless
+        console.error('Error switching account:', error);
+      }
     }
-
-    await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
   };
 
   return (

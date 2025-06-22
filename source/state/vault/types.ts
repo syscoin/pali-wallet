@@ -39,7 +39,7 @@ export interface IGlobalState {
 
   // User preferences - should be shared across all networks
   advancedSettings: {
-    [k: string]: boolean;
+    [k: string]: boolean | number; // Allow both boolean and number values
   };
 
   changingConnectedAccount: IChangingConnectedAccount;

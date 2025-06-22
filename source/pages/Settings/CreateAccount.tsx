@@ -12,19 +12,31 @@ const CreateAccount = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [accountName, setAccountName] = useState<string>('');
   const { t } = useTranslation();
-  const { controllerEmitter } = useController();
+  const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
 
-    const { address: newAddress } = (await controllerEmitter(
-      ['wallet', 'createAccount'],
-      [label]
-    )) as any;
+    try {
+      const { address: newAddress } = (await controllerEmitter(
+        ['wallet', 'createAccount'],
+        [label]
+      )) as any;
 
-    setAddress(newAddress);
-    setLoading(false);
+      setAddress(newAddress);
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+
+      // Check if this is a wallet locked error and handle redirect
+      const wasHandled = handleWalletLockedError(error);
+      if (!wasHandled) {
+        // If not a wallet locked error, just log it since the original component
+        // didn't have explicit error handling UI for create account failures
+        console.error('Error creating account:', error);
+      }
+    }
   };
 
   return (

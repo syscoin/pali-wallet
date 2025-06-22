@@ -144,14 +144,14 @@ const MasterController = (
       externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'refresh',
-          isActive: false,
+          value: false,
           isFirstTime: true,
         })
       );
       externalStore.dispatch(
         setAdvancedSettings({
           advancedProperty: 'ledger',
-          isActive: false,
+          value: false,
           isFirstTime: true,
         })
       );

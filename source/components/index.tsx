@@ -16,3 +16,4 @@ export * from './Fee';
 export * from './KeepAliveContainer';
 export * from './Modal';
 export * from './Loader/SkeletonLoader';
+export * from './WalletErrorBoundary';

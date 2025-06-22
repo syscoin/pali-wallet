@@ -9,6 +9,7 @@ const initialState: IGlobalState = {
   advancedSettings: {
     refresh: false,
     ledger: false,
+    autolock: 5, // default 5 minutes timer
   },
   lastLogin: 0,
   hasEncryptedVault: false,
@@ -78,20 +79,21 @@ const vaultGlobalSlice = createSlice({
       state: IGlobalState,
       action: PayloadAction<{
         advancedProperty: string;
-        isActive: boolean;
         isFirstTime?: boolean;
+        value: boolean | number;
       }>
     ) {
-      const { advancedProperty, isActive, isFirstTime } = action.payload;
+      const { advancedProperty, value, isFirstTime } = action.payload;
 
       if (isFirstTime) {
         state.advancedSettings = {
           refresh: false,
           ledger: false,
+          autolock: 5, // default 5 minutes timer
         };
       }
 
-      state.advancedSettings[advancedProperty] = isActive;
+      state.advancedSettings[advancedProperty] = value;
     },
     setError(state: IGlobalState, action: PayloadAction<string | null>) {
       state.error = action.payload;
