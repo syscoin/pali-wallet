@@ -128,9 +128,8 @@ export const Router = () => {
       />
       <Suspense
         fallback={
-          <div className="flex items-center justify-center h-full min-h-popup bg-bkg-3">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-          </div>
+          // Minimal transparent fallback - AppLayout will handle the actual loading display
+          <div style={{ opacity: 0 }}>Loading...</div>
         }
       >
         <Routes>

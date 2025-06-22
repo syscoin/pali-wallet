@@ -24,7 +24,6 @@ import {
   SwitchChain,
   SwitchNeworkUtxoEvm,
 } from '../pages';
-import { Loading } from 'components/Loading';
 import { useQuery, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { SwitchNetwork } from 'pages/SwitchNetwork';
@@ -105,7 +104,7 @@ export const ExternalRoute = () => {
   }, []);
 
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<div style={{ opacity: 0 }}>Loading...</div>}>
       <Routes>
         <Route
           path="/"

@@ -1,4 +1,4 @@
-import React, { FC, useMemo, memo, useCallback, Suspense } from 'react';
+import React, { FC, useMemo, memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -6,7 +6,8 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import dotsImage from 'assets/all_assets/dotsHeader.png';
 import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
-import { Loading } from 'components/Loading';
+import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
+import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders
@@ -30,6 +31,9 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+
+  // Use the new page loading state hook
+  const { isLoading, message } = usePageLoadingState();
 
   // Determine if we should show the account header based on route
   const shouldShowAccountHeader = useMemo(() => {
@@ -171,11 +175,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     locationState,
   ]);
 
-  // Background color based on loading states
-  const bgColor = useMemo(() => {
-    const isLoading = networkStatus === 'switching' || isSwitchingAccount;
-    return isLoading ? 'bg-bkg-2' : 'bg-bkg-3';
-  }, [networkStatus, isSwitchingAccount]);
+  // Background color - always use dark background, no color change during loading
+  const bgColor = 'bg-bkg-3';
 
   // Don't show banner on home page and chain error page
   const showBanner = useMemo(() => {
@@ -269,6 +270,14 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
         disableScroll ? '' : 'overflow-y-auto'
       }`}
     >
+      {/* Loading overlay - shows after delay for content area only */}
+      <PageLoadingOverlay
+        isLoading={isLoading}
+        message={message}
+        hasHeader={!hideHeader && !titleOnly}
+        hasBanner={showBanner}
+      />
+
       {/* Persistent header across all routes - respect hideHeader and titleOnly */}
       {!hideHeader && !titleOnly && (
         <Header accountHeader={shouldShowAccountHeader} />
@@ -276,7 +285,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Page title banner - only shown on pages that need it */}
       {showBanner && (
         <div
-          className={`relative flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white gradient-banner-animated ${bannerGradient}`}
+          className={`relative z-[60] flex rounded-b-[20px] items-center justify-center px-[18px] py-5 w-full h-[4.25rem] text-brand-white gradient-banner-animated ${bannerGradient}`}
         >
           <img
             src={dotsImage}
@@ -331,7 +340,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Content area */}
       {location.pathname === '/home' ? (
         // Home page gets no wrapper - it has its own layout
-        <Suspense fallback={<Loading />}>{children || <Outlet />}</Suspense>
+        <>{children || <Outlet />}</>
       ) : (
         // Other pages get the standard content wrapper
         <div
@@ -341,7 +350,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
             isConnectPage ? '' : 'md:max-w-sm'
           } text-brand-white sm:max-w-full`}
         >
-          <Suspense fallback={<Loading />}>{children || <Outlet />}</Suspense>
+          {children || <Outlet />}
         </div>
       )}
     </div>

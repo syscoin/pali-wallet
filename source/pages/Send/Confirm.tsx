@@ -1170,28 +1170,9 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
-  // Show loading component only for essential states that should block the UI
-  // Don't use useController's isLoading as it can become true during background operations
-  const shouldShowLoading =
-    loading || // Transaction is being processed
-    networkStatus === 'switching' || // Network switching
-    isSwitchingAccount || // Account switching
-    !basicTxValues || // Missing transaction data
-    (!fee && !isBitcoinBased); // Missing fee data for EVM transactions
-
   // Don't render main content if transaction is confirmed (success modal will show)
-  // This prevents blank screen between loading completion and success modal
-  const shouldShowMainContent = !confirmed && !shouldShowLoading;
-
-  if (shouldShowLoading) {
-    return (
-      <>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
-        </div>
-      </>
-    );
-  }
+  // The overlay handles loading display, so we just check for confirmed state
+  const shouldShowMainContent = !confirmed;
 
   return (
     <>

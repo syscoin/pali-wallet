@@ -32,21 +32,19 @@ const BalanceDisplay = memo(
   ({
     actualBalance,
     moreThanMillion,
-    isNetworkChanging,
-    isSwitchingAccount,
+    isLoadingBalance,
     currency,
   }: {
     actualBalance: number;
     currency: string;
-    isNetworkChanging: boolean;
-    isSwitchingAccount: boolean;
+    isLoadingBalance: boolean;
     moreThanMillion: boolean;
   }) => {
-    if (isNetworkChanging || isSwitchingAccount) {
+    if (isLoadingBalance) {
       return (
-        <div className="flex items-center">
-          <SkeletonLoader width="200px" height="40px" />
-          <SkeletonLoader width="50px" height="35px" />
+        <div className="flex items-center justify-center gap-2">
+          <SkeletonLoader width="200px" height="48px" />
+          <SkeletonLoader width="60px" height="35px" />
         </div>
       );
     }
@@ -69,16 +67,14 @@ BalanceDisplay.displayName = 'BalanceDisplay';
 // Memoize fiat display component
 const FiatDisplay = memo(
   ({
-    isNetworkChanging,
-    isSwitchingAccount,
+    isLoadingBalance,
     formatFiatAmount,
   }: {
     formatFiatAmount: string | null;
-    isNetworkChanging: boolean;
-    isSwitchingAccount: boolean;
+    isLoadingBalance: boolean;
   }) => {
-    if (isNetworkChanging || isSwitchingAccount) {
-      return <SkeletonLoader width="80px" height="30px" margin="10px 0 0 0" />;
+    if (isLoadingBalance) {
+      return <SkeletonLoader width="100px" height="20px" margin="10px 0 0 0" />;
     }
 
     if (!formatFiatAmount) return null;
@@ -118,7 +114,7 @@ export const Home = () => {
     isLoadingBalances,
     shouldShowFaucetModal: isOpenFaucetModal,
   } = useSelector((rootState: RootState) => rootState.vault);
-  const { networkStatus, lastLogin, isSwitchingAccount } = useSelector(
+  const { lastLogin } = useSelector(
     (rootState: RootState) => rootState.vaultGlobal
   );
 
@@ -287,16 +283,16 @@ export const Home = () => {
 
   // Safe computed values - AFTER all hooks
   const isWalletImported = state?.isWalletImported;
-  const isNetworkChanging = networkStatus === 'switching';
+
+  const isLoadingBalance = isLoadingBalances;
 
   // Debounced faucet modal display to prevent flashing during network/account switches
   useEffect(() => {
     const canShowFaucet =
       isFaucetAvailable &&
       actualBalance === 0 &&
-      !isLoadingBalances &&
-      !isNetworkChanging &&
-      !isSwitchingAccount;
+      !isLoadingBalance &&
+      currentAccount;
 
     if (canShowFaucet) {
       // Delay showing the faucet modal to allow loading states to update
@@ -309,42 +305,16 @@ export const Home = () => {
       // Immediately hide the faucet modal if conditions aren't met
       setShouldShowFaucet(false);
     }
-  }, [
-    isFaucetAvailable,
-    actualBalance,
-    isLoadingBalances,
-    isNetworkChanging,
-    isSwitchingAccount,
-  ]);
+  }, [isFaucetAvailable, actualBalance, isLoadingBalance, currentAccount]);
 
   // Early returns only AFTER all hooks are called
-  if (!accounts || !activeAccount || !activeNetwork) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-popup bg-bkg-3">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-          <p className="text-sm">Loading wallet data...</p>
-        </div>
-      </div>
-    );
+  if (!accounts || !activeAccount || !activeNetwork || !currentAccount) {
+    // This should be handled by AppLayout's PageLoadingOverlay instead
+    return null;
   }
-
-  // Check if account data exists
-  if (!currentAccount) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-popup bg-bkg-3">
-        <div className="text-white text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-2"></div>
-          <p className="text-sm">Loading account data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
 
   return (
-    <div className={`h-full ${bgColor}`}>
+    <div className="h-full bg-bkg-3">
       {currentAccount && lastLogin && isUnlocked && (
         <>
           {/* Floating dots container wrapping both blue sections for continuity */}
@@ -366,13 +336,11 @@ export const Home = () => {
                 <BalanceDisplay
                   actualBalance={actualBalance}
                   moreThanMillion={moreThanMillion}
-                  isNetworkChanging={isNetworkChanging}
-                  isSwitchingAccount={isSwitchingAccount}
+                  isLoadingBalance={isLoadingBalance}
                   currency={activeNetwork.currency}
                 />
                 <FiatDisplay
-                  isNetworkChanging={isNetworkChanging}
-                  isSwitchingAccount={isSwitchingAccount}
+                  isLoadingBalance={isLoadingBalance}
                   formatFiatAmount={formatFiatAmount}
                 />
               </div>
@@ -387,9 +355,7 @@ export const Home = () => {
                       ? navigate('/send/sys')
                       : navigate('/send/eth')
                   }
-                  disabled={
-                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
-                  }
+                  disabled={isLoadingBalance}
                 >
                   <SendIcon />
                   {t('buttons.send')}
@@ -400,9 +366,7 @@ export const Home = () => {
                   className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
                   id="receive-btn"
                   onClick={() => navigate('/receive')}
-                  disabled={
-                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
-                  }
+                  disabled={isLoadingBalance}
                 >
                   <ReceiveIcon />
                   {t('buttons.receive')}

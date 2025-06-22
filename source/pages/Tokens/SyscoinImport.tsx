@@ -8,12 +8,7 @@ import * as syscoinjs from 'syscoinjs-lib';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
 
-import {
-  DefaultModal,
-  ErrorModal,
-  LoadingComponent,
-  NeutralButton,
-} from 'components/index';
+import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -278,7 +273,12 @@ export const SyscoinImport = () => {
   };
 
   if (isLoading) {
-    return <LoadingComponent />;
+    // Component continues to render, overlay handles loading display
+    return (
+      <div className="flex items-center justify-center h-64 opacity-50">
+        <p className="text-brand-gray300">Processing...</p>
+      </div>
+    );
   }
 
   return (
