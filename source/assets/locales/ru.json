@@ -543,7 +543,17 @@
   "networkConnection": {
     "connecting": "Подключение к",
     "slowConnection": "Подключение занимает больше времени, чем ожидалось",
-    "mayBeRateLimited": "Сеть может быть медленной или ограничивать запросы"
+    "mayBeRateLimited": "Сеть может быть медленной или ограничивать запросы",
+    "operationInProgress": "Сетевая операция в процессе...",
+    "switchingNetwork": "Переключение сети...",
+    "updatingBalances": "Обновление балансов...",
+    "loadingAssets": "Загрузка активов...",
+    "loadingTransactions": "Загрузка транзакций...",
+    "loadingNfts": "Загрузка NFT...",
+    "switchingAccount": "Переключение аккаунта...",
+    "operationCompleted": "Операция успешно завершена",
+    "operationFailing": "Сетевая операция занимает слишком много времени - нажмите для повтора",
+    "operationSlow": "{{operation}} - медленнее, чем ожидалось"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Импортированные аккаунты не будут связаны с вашей исходной секретной фразой восстановления аккаунта Pali",

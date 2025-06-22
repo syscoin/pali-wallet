@@ -24,6 +24,14 @@ export interface IAccountTransactions {
   syscoin: { [chainId: number]: ISysTransaction[] };
 }
 
+// Loading states interface for transient UI states
+export interface ILoadingStates {
+  isLoadingAssets: boolean;
+  isLoadingBalances: boolean;
+  isLoadingNfts: boolean;
+  isLoadingTxs: boolean;
+}
+
 // Global state shared across all slip44s (stored in main state)
 export interface IGlobalState {
   // Current active slip44 - single source of truth
@@ -47,6 +55,8 @@ export interface IGlobalState {
   isSwitchingAccount: boolean;
   // Authentication & security
   lastLogin: number;
+  // Transient loading states - never persisted across app restarts
+  loadingStates: ILoadingStates;
   networkStatus: 'idle' | 'switching' | 'error';
 
   networkTarget?: INetwork;
@@ -80,10 +90,6 @@ export interface ISlip44State {
   // Dirty flag for important changes that need immediate saving (account/network/settings)
   isDirty?: boolean;
   isLastTxConfirmed: null | { [k: number]: boolean };
-  isLoadingAssets: boolean;
-  isLoadingBalances: boolean;
-  isLoadingNfts: boolean;
-  isLoadingTxs: boolean;
   networks: INetworksVault;
   prevBalances: IPrevBalances;
 

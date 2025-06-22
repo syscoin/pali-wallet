@@ -33,7 +33,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   );
 
   // Use the new page loading state hook
-  const { isLoading, message } = usePageLoadingState();
+  const { isLoading, message, hasTimedOut } = usePageLoadingState();
 
   // Determine if we should show the account header based on route
   const shouldShowAccountHeader = useMemo(() => {
@@ -273,7 +273,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Loading overlay - shows after delay for content area only */}
       <PageLoadingOverlay
         isLoading={isLoading}
-        message={message}
+        hasTimedOut={hasTimedOut}
         hasHeader={!hideHeader && !titleOnly}
         hasBanner={showBanner}
       />

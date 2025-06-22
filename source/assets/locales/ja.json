@@ -543,7 +543,17 @@
   "networkConnection": {
     "connecting": "接続中：",
     "slowConnection": "接続が予想より時間がかかっています",
-    "mayBeRateLimited": "ネットワークが遅いかリクエストを制限している可能性があります"
+    "mayBeRateLimited": "ネットワークが遅いかリクエストを制限している可能性があります",
+    "operationInProgress": "ネットワーク操作が進行中...",
+    "switchingNetwork": "ネットワークを切り替え中...",
+    "updatingBalances": "残高を更新中...",
+    "loadingAssets": "アセットを読み込み中...",
+    "loadingTransactions": "取引を読み込み中...",
+    "loadingNfts": "NFTを読み込み中...",
+    "switchingAccount": "アカウントを切り替え中...",
+    "operationCompleted": "操作が正常に完了しました",
+    "operationFailing": "ネットワーク操作に時間がかかりすぎています - クリックして再試行",
+    "operationSlow": "{{operation}} - 予想より遅くなっています"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",

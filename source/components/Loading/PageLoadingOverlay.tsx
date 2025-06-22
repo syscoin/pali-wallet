@@ -3,23 +3,21 @@ import React, { memo, useEffect, useState, useRef } from 'react';
 interface PageLoadingOverlayProps {
   hasBanner?: boolean;
   hasHeader?: boolean;
+  hasTimedOut?: boolean;
   isLoading: boolean;
-  message?: string;
 }
 
 export const PageLoadingOverlay = memo(
   ({
     isLoading,
-    message,
     hasHeader = true,
     hasBanner = false,
+    hasTimedOut = false,
   }: PageLoadingOverlayProps) => {
     const [showOverlay, setShowOverlay] = useState(false);
     const [showSpinner, setShowSpinner] = useState(false);
-    const [showSlowWarning, setShowSlowWarning] = useState(false);
     const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);
     const spinnerTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const warningTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
       // Clear existing timers
@@ -30,10 +28,6 @@ export const PageLoadingOverlay = memo(
       if (spinnerTimerRef.current) {
         clearTimeout(spinnerTimerRef.current);
         spinnerTimerRef.current = null;
-      }
-      if (warningTimerRef.current) {
-        clearTimeout(warningTimerRef.current);
-        warningTimerRef.current = null;
       }
 
       if (isLoading) {
@@ -46,16 +40,10 @@ export const PageLoadingOverlay = memo(
         overlayTimerRef.current = setTimeout(() => {
           setShowOverlay(true);
         }, 500);
-
-        // Show slow warning after 5 seconds
-        warningTimerRef.current = setTimeout(() => {
-          setShowSlowWarning(true);
-        }, 5000);
       } else {
         // Reset states when loading is complete
         setShowOverlay(false);
         setShowSpinner(false);
-        setShowSlowWarning(false);
       }
 
       return () => {
@@ -67,42 +55,38 @@ export const PageLoadingOverlay = memo(
           clearTimeout(spinnerTimerRef.current);
           spinnerTimerRef.current = null;
         }
-        if (warningTimerRef.current) {
-          clearTimeout(warningTimerRef.current);
-          warningTimerRef.current = null;
-        }
       };
     }, [isLoading]);
 
+    // If we've timed out (redirecting to error page), don't show spinner
+    if (hasTimedOut) {
+      return null;
+    }
+
     if (!showSpinner && !showOverlay) return null;
 
-    // Calculate top position based on header and banner
-    // Header is 52px, banner is 68px based on existing Loading components
-    const topPosition = hasHeader ? (hasBanner ? '120px' : '52px') : '0';
+    // Calculate content area positioning for spinner
+    const spinnerTopPosition = hasHeader ? (hasBanner ? '148px' : '80px') : '0';
 
     return (
       <>
-        {/* Overlay - only shows after delay */}
+        {/* Overlay - covers entire screen, header appears on top due to higher z-index */}
         {showOverlay && (
           <div
-            className="fixed z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200"
+            className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200"
             style={{
-              top: topPosition,
-              left: '0',
-              right: '0',
-              bottom: '0',
               pointerEvents: 'auto', // Blocks all clicks
               opacity: showOverlay ? 1 : 0,
             }}
           />
         )}
 
-        {/* Spinner - shows immediately, positioned in center of content area */}
+        {/* Spinner - positioned in content area below header */}
         {showSpinner && (
           <div
             className="fixed z-[55] pointer-events-none"
             style={{
-              top: topPosition,
+              top: spinnerTopPosition,
               left: '0',
               right: '0',
               bottom: '0',

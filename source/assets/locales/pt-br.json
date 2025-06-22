@@ -537,7 +537,17 @@
   "networkConnection": {
     "connecting": "Conectando a",
     "slowConnection": "A conexão está demorando mais do que o esperado",
-    "mayBeRateLimited": "A rede pode estar lenta ou limitando as solicitações"
+    "mayBeRateLimited": "A rede pode estar lenta ou limitando as solicitações",
+    "operationInProgress": "Operação de rede em andamento...",
+    "switchingNetwork": "Mudando de rede...",
+    "updatingBalances": "Atualizando saldos...",
+    "loadingAssets": "Carregando ativos...",
+    "loadingTransactions": "Carregando transações...",
+    "loadingNfts": "Carregando NFTs...",
+    "switchingAccount": "Mudando de conta...",
+    "operationCompleted": "Operação concluída com sucesso",
+    "operationFailing": "Operação de rede está demorando muito - clique para tentar novamente",
+    "operationSlow": "{{operation}} - mais lento que o esperado"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",

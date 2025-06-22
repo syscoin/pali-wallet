@@ -25,16 +25,51 @@ const initialState: IGlobalState = {
     connectedAccountType: undefined,
   },
   coinsList: [],
+  // Transient loading states - always start as false
+  loadingStates: {
+    isLoadingBalances: false,
+    isLoadingTxs: false,
+    isLoadingAssets: false,
+    isLoadingNfts: false,
+  },
 };
 
 const vaultGlobalSlice = createSlice({
   name: 'vaultGlobal',
   initialState,
   reducers: {
-    rehydrate(_state: IGlobalState, action: PayloadAction<IGlobalState>) {
-      // Complete replacement - ensures loaded global state is exactly what was saved
-      // This matches the behavior of vault rehydration for consistency
-      return action.payload;
+    rehydrate(state: IGlobalState, action: PayloadAction<IGlobalState>) {
+      // Complete replacement but ALWAYS reset loading states to false
+      const restoredState = action.payload;
+      return {
+        ...restoredState,
+        loadingStates: {
+          isLoadingBalances: false,
+          isLoadingTxs: false,
+          isLoadingAssets: false,
+          isLoadingNfts: false,
+        },
+      };
+    },
+    resetLoadingStates(state: IGlobalState) {
+      state.loadingStates = {
+        isLoadingBalances: false,
+        isLoadingTxs: false,
+        isLoadingAssets: false,
+        isLoadingNfts: false,
+      };
+    },
+    setIsLoadingBalances(state: IGlobalState, action: PayloadAction<boolean>) {
+      state.loadingStates.isLoadingBalances = action.payload;
+    },
+    setIsLoadingTxs(state: IGlobalState, action: PayloadAction<boolean>) {
+      state.loadingStates.isLoadingTxs = action.payload;
+    },
+    setIsLoadingAssets(state: IGlobalState, action: PayloadAction<boolean>) {
+      state.loadingStates.isLoadingAssets = action.payload;
+    },
+    setIsLoadingNfts(state: IGlobalState, action: PayloadAction<boolean>) {
+      state.loadingStates.isLoadingNfts = action.payload;
     },
     setActiveSlip44(state: IGlobalState, action: PayloadAction<number>) {
       state.activeSlip44 = action.payload;
@@ -114,6 +149,11 @@ const vaultGlobalSlice = createSlice({
 
 export const {
   rehydrate,
+  resetLoadingStates,
+  setIsLoadingBalances,
+  setIsLoadingTxs,
+  setIsLoadingAssets,
+  setIsLoadingNfts,
   setActiveSlip44,
   setAdvancedSettings,
   setError,

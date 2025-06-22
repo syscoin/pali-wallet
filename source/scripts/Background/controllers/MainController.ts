@@ -39,10 +39,6 @@ import {
   setTransactionStatusToCanceled,
   setFaucetModalState,
   setIsLastTxConfirmed,
-  setIsLoadingAssets,
-  setIsLoadingBalances,
-  setIsLoadingNfts,
-  setIsLoadingTxs,
   setMultipleTransactionToState,
   setNetworkChange,
   setSingleTransactionToState,
@@ -70,6 +66,10 @@ import {
   switchNetworkError,
   switchNetworkSuccess,
   setError as setStoreError,
+  setIsLoadingAssets,
+  setIsLoadingBalances,
+  setIsLoadingNfts,
+  setIsLoadingTxs,
 } from 'state/vaultGlobal';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -1671,7 +1671,10 @@ class MainController {
             store.dispatch(setIsLoadingNfts(false));
             resolve();
           } catch (error) {
-            if (error && store.getState().vault.isLoadingNfts) {
+            if (
+              error &&
+              store.getState().vaultGlobal.loadingStates.isLoadingNfts
+            ) {
               store.dispatch(setIsLoadingNfts(false));
             }
             reject(error);

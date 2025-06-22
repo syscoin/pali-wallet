@@ -11,6 +11,7 @@ import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 
 import { AccountHeader } from '.';
+import { ConnectionStatusIndicator } from './ConnectionStatusIndicator';
 import { GeneralMenu, NetworkMenu } from './Menus';
 import { SetActiveAccountModal } from './SetActiveAccountModal';
 
@@ -75,10 +76,13 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   return (
     <>
       <div className="relative z-[60] flex items-center justify-between p-2 py-6 w-full text-gray-300 bg-bkg-1">
-        <NetworkMenu
-          setActiveAccountModalIsOpen={setIsOpen}
-          setSelectedNetwork={setSelectedNetwork}
-        />
+        <div className="flex items-center gap-3">
+          <NetworkMenu
+            setActiveAccountModalIsOpen={setIsOpen}
+            setSelectedNetwork={setSelectedNetwork}
+          />
+          <ConnectionStatusIndicator />
+        </div>
 
         <GeneralMenu />
         <SetActiveAccountModal

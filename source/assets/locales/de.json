@@ -543,7 +543,17 @@
   "networkConnection": {
     "connecting": "Verbinden mit",
     "slowConnection": "Die Verbindung dauert länger als erwartet",
-    "mayBeRateLimited": "Das Netzwerk ist möglicherweise langsam oder begrenzt Anfragen"
+    "mayBeRateLimited": "Das Netzwerk ist möglicherweise langsam oder begrenzt Anfragen",
+    "operationInProgress": "Netzwerkoperation läuft...",
+    "switchingNetwork": "Netzwerk wechseln...",
+    "updatingBalances": "Guthaben aktualisieren...",
+    "loadingAssets": "Assets laden...",
+    "loadingTransactions": "Transaktionen laden...",
+    "loadingNfts": "NFTs laden...",
+    "switchingAccount": "Konto wechseln...",
+    "operationCompleted": "Operation erfolgreich abgeschlossen",
+    "operationFailing": "Netzwerkoperation dauert zu lange - klicken Sie zum Wiederholen",
+    "operationSlow": "{{operation}} - langsamer als erwartet"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",

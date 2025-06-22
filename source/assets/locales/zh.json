@@ -399,7 +399,17 @@
   "networkConnection": {
     "connecting": "连接到",
     "slowConnection": "连接比预期时间更长",
-    "mayBeRateLimited": "网络可能较慢或正在限制请求"
+    "mayBeRateLimited": "网络可能较慢或正在限制请求",
+    "operationInProgress": "网络操作进行中...",
+    "switchingNetwork": "切换网络中...",
+    "updatingBalances": "更新余额中...",
+    "loadingAssets": "加载资产中...",
+    "loadingTransactions": "加载交易中...",
+    "loadingNfts": "加载NFT中...",
+    "switchingAccount": "切换账户中...",
+    "operationCompleted": "操作成功完成",
+    "operationFailing": "网络操作耗时过长 - 点击重试",
+    "operationSlow": "{{operation}} - 比预期慢"
   },
   "transactions": {
     "messageCopied": "消息复制成功",

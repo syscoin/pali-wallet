@@ -5,15 +5,20 @@ import { useLocation } from 'react-router-dom';
 import { RootState } from 'state/store';
 
 interface PageLoadingState {
+  hasTimedOut?: boolean;
   isLoading: boolean;
   message?: string;
 }
+
+const TEN_SECONDS = 10000;
 
 export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []
 ): PageLoadingState => {
   const location = useLocation();
   const [navigationLoading, setNavigationLoading] = useState(false);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
@@ -32,6 +37,44 @@ export const usePageLoadingState = (
     isNetworkChanging ||
     isSwitchingAccount ||
     additionalLoadingConditions.some((condition) => condition);
+
+  // Handle network switching timeout
+  useEffect(() => {
+    // Clear existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (isNetworkChanging) {
+      // Set 10-second timeout for network switching
+      timeoutRef.current = setTimeout(() => {
+        setHasTimedOut(true);
+      }, TEN_SECONDS);
+    } else {
+      // Reset timeout state when not switching networks
+      setHasTimedOut(false);
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [isNetworkChanging]);
+
+  // Handle timeout redirect
+  useEffect(() => {
+    if (hasTimedOut) {
+      // Clear the timeout immediately to prevent duplicate redirects
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      window.location.hash = '/chain-fail-to-connect';
+    }
+  }, [hasTimedOut]);
 
   // Track navigation changes
   useEffect(() => {
@@ -57,5 +100,6 @@ export const usePageLoadingState = (
   return {
     isLoading,
     message,
+    hasTimedOut,
   };
 };

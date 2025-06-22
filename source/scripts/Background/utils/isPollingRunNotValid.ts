@@ -1,12 +1,16 @@
 import store from 'state/store';
 
 export const isPollingRunNotValid = () => {
-  const { isLoadingTxs, isLoadingBalances, isLoadingAssets, isLoadingNfts } =
-    store.getState().vault;
   const {
     networkStatus,
     changingConnectedAccount: { isChangingConnectedAccount },
     lastLogin,
+    loadingStates: {
+      isLoadingTxs,
+      isLoadingBalances,
+      isLoadingAssets,
+      isLoadingNfts,
+    },
   } = store.getState().vaultGlobal;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;

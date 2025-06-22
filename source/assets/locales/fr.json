@@ -543,7 +543,17 @@
   "networkConnection": {
     "connecting": "Connexion à",
     "slowConnection": "La connexion prend plus de temps que prévu",
-    "mayBeRateLimited": "Le réseau peut être lent ou limiter les requêtes"
+    "mayBeRateLimited": "Le réseau peut être lent ou limiter les requêtes",
+    "operationInProgress": "Opération réseau en cours...",
+    "switchingNetwork": "Changement de réseau...",
+    "updatingBalances": "Mise à jour des soldes...",
+    "loadingAssets": "Chargement des actifs...",
+    "loadingTransactions": "Chargement des transactions...",
+    "loadingNfts": "Chargement des NFTs...",
+    "switchingAccount": "Changement de compte...",
+    "operationCompleted": "Opération terminée avec succès",
+    "operationFailing": "L'opération réseau prend trop de temps - cliquez pour réessayer",
+    "operationSlow": "{{operation}} - plus lent que prévu"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",

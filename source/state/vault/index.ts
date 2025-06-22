@@ -74,10 +74,6 @@ export const initialState: IVaultState = {
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
   isBitcoinBased: true,
-  isLoadingBalances: false,
-  isLoadingTxs: false,
-  isLoadingAssets: false,
-  isLoadingNfts: false,
   networks: PALI_NETWORKS_STATE,
   shouldShowFaucetModal: {
     57: true,
@@ -293,18 +289,6 @@ const VaultState = createSlice({
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
     },
-    setIsLoadingBalances(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isLoadingBalances = action.payload;
-    },
-    setIsLoadingTxs(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isLoadingTxs = action.payload;
-    },
-    setIsLoadingAssets(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isLoadingAssets = action.payload;
-    },
-    setIsLoadingNfts(state: IVaultState, action: PayloadAction<boolean>) {
-      state.isLoadingNfts = action.payload;
-    },
 
     setAccountTypeInAccountsObject(
       state: IVaultState,
@@ -409,10 +393,6 @@ const VaultState = createSlice({
         activeChain: network.kind,
         activeNetwork: network,
         isBitcoinBased: network.kind === INetworkType.Syscoin,
-        isLoadingBalances: false,
-        isLoadingTxs: false,
-        isLoadingAssets: false,
-        isLoadingNfts: false,
         networks: PALI_NETWORKS_STATE, // Keep default networks
         shouldShowFaucetModal: {
           57: true,
@@ -926,10 +906,6 @@ export const {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setFaucetModalState,
-  setIsLoadingBalances,
-  setIsLoadingAssets,
-  setIsLoadingTxs,
-  setIsLoadingNfts,
   setAccountBalances,
   setNetwork,
   forgetWallet,
