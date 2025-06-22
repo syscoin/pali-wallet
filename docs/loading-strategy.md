@@ -125,11 +125,11 @@ const LazyComponent = lazy(() => import('./MyComponent'));
 
 ## Loading UX Flow
 
-1. **After 200ms**: Dark overlay appears with backdrop blur (content area only)
-2. **After 500ms**: Spinner appears if still loading
+1. **After 150ms**: Spinner appears for immediate feedback (no screen darkening)
+2. **After 500ms**: Dark overlay appears with backdrop blur if still loading
 3. **After 5s**: Slow connection warning appears
 
-This provides quick feedback while preventing flash for very fast navigation.
+This provides instant visual feedback with the spinner, while delaying screen changes until needed.
 
 ## Best Practices
 
@@ -155,11 +155,11 @@ When updating a component to use the new loading strategy:
 ## Key Features
 
 - **Single source of timing**: PageLoadingOverlay handles all delays and transitions
+- **Instant feedback**: Spinner appears immediately (50ms) without screen changes
+- **Progressive darkening**: Overlay only appears if loading takes longer (250ms)
 - **Header remains accessible**: Overlay only covers content area below header  
-- **Near-instant feedback**: 200ms delay provides quick response without flash
-- **Consistent background**: No jarring color changes during loading
-- **Progressive enhancement**: Spinner delayed to 500ms for less disruption
-- **Non-intrusive**: Dark overlay is subtle, not jarring
+- **Consistent background**: No jarring color changes during quick operations
+- **Non-intrusive**: Clean spinner with delayed screen interaction blocking
 
 ## Common Patterns
 

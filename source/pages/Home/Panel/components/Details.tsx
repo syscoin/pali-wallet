@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { ExternalLinkSvg, LoadingSvg } from 'components/Icon/Icon';
+import { ExternalLinkSvg } from 'components/Icon/Icon';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { adjustUrl } from 'utils/index';
@@ -54,7 +54,9 @@ export const DetailsView = () => {
   return (
     <>
       {isLoading && !isNft ? (
-        <LoadingSvg className="absolute left-1/2 top-1/2 w-3 animate-spin" />
+        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-blue500"></div>
+        </div>
       ) : (
         <>
           <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">

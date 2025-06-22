@@ -272,17 +272,15 @@ export const SyscoinImport = () => {
     }
   };
 
-  if (isLoading) {
-    // Component continues to render, overlay handles loading display
-    return (
-      <div className="flex items-center justify-center h-64 opacity-50">
-        <p className="text-brand-gray300">Processing...</p>
-      </div>
-    );
-  }
-
   return (
     <>
+      {/* Loading overlay - covers entire screen */}
+      {isLoading && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        </div>
+      )}
+
       <Form
         validateMessages={{ default: '' }}
         form={form}
@@ -416,7 +414,7 @@ export const SyscoinImport = () => {
         </div>
 
         <div className="flex flex-col items-center justify-center w-full">
-          <div className="w-full px-4 absolute bottom-12 md:static">
+          <div className="w-full px-4 absolute bottom-12 md:static md:mt-6">
             <NeutralButton
               type="submit"
               disabled={

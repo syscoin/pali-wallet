@@ -1,7 +1,5 @@
 import React, { memo, useEffect, useState, useRef } from 'react';
 
-import { LoadingSvg } from '../Icon/Icon';
-
 interface PageLoadingOverlayProps {
   hasBanner?: boolean;
   hasHeader?: boolean;
@@ -39,14 +37,14 @@ export const PageLoadingOverlay = memo(
       }
 
       if (isLoading) {
-        // Show overlay after just 50ms - almost immediate but prevents flash
-        overlayTimerRef.current = setTimeout(() => {
-          setShowOverlay(true);
-        }, 200);
-
-        // Show spinner after 500ms
+        // Show spinner immediately for instant feedback (no overlay yet)
         spinnerTimerRef.current = setTimeout(() => {
           setShowSpinner(true);
+        }, 150);
+
+        // Show overlay if still loading (darkens screen)
+        overlayTimerRef.current = setTimeout(() => {
+          setShowOverlay(true);
         }, 500);
 
         // Show slow warning after 5 seconds
@@ -76,43 +74,46 @@ export const PageLoadingOverlay = memo(
       };
     }, [isLoading]);
 
-    if (!showOverlay) return null;
+    if (!showSpinner && !showOverlay) return null;
 
     // Calculate top position based on header and banner
     // Header is 52px, banner is 68px based on existing Loading components
     const topPosition = hasHeader ? (hasBanner ? '120px' : '52px') : '0';
 
     return (
-      <div
-        className="fixed z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200"
-        style={{
-          top: topPosition,
-          left: '0',
-          right: '0',
-          bottom: '0',
-          pointerEvents: 'auto', // Blocks all clicks
-          opacity: isLoading ? 1 : 0,
-        }}
-      >
+      <>
+        {/* Overlay - only shows after delay */}
+        {showOverlay && (
+          <div
+            className="fixed z-50 bg-black/20 backdrop-blur-[1px] transition-opacity duration-200"
+            style={{
+              top: topPosition,
+              left: '0',
+              right: '0',
+              bottom: '0',
+              pointerEvents: 'auto', // Blocks all clicks
+              opacity: showOverlay ? 1 : 0,
+            }}
+          />
+        )}
+
+        {/* Spinner - shows immediately, positioned in center of content area */}
         {showSpinner && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <LoadingSvg
-              className="text-brand-white animate-spin-slow drop-shadow-lg"
-              style={{ width: '48px', height: '48px' }}
-            />
-            {message && (
-              <p className="mt-4 text-brand-white text-sm font-light animate-pulse drop-shadow-lg">
-                {message}
-              </p>
-            )}
-            {showSlowWarning && (
-              <p className="text-xs text-yellow-400 mt-2 animate-pulse drop-shadow-lg">
-                This is taking longer than expected...
-              </p>
-            )}
+          <div
+            className="fixed z-[55] pointer-events-none"
+            style={{
+              top: topPosition,
+              left: '0',
+              right: '0',
+              bottom: '0',
+            }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-brand-blue500 drop-shadow-lg"></div>
+            </div>
           </div>
         )}
-      </div>
+      </>
     );
   }
 );
