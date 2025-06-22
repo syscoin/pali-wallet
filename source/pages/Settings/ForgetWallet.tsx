@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
-import { Layout, Button, Card } from 'components/index';
+import { Button, Card } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -43,7 +43,7 @@ const ForgetWalletView = () => {
   const [form] = Form.useForm();
 
   return (
-    <Layout title={t('menus.forget')}>
+    <>
       <p className="text-sm mb-6">
         {t('forgetWalletPage.importedAccountsWont')}
       </p>
@@ -163,7 +163,7 @@ const ForgetWalletView = () => {
           </Button>
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

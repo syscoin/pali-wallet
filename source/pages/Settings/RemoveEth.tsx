@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import metamaskIcon from 'assets/all_assets/metamask.svg';
-import { Layout, DefaultModal, NeutralButton, Icon } from 'components/index';
+import { DefaultModal, NeutralButton, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
@@ -73,7 +73,7 @@ const RemoveEthView = () => {
   );
 
   return (
-    <Layout title={t('settings.manageEthProvider')} id="auto-lock-timer-title">
+    <>
       <DefaultModal
         show={confirmed}
         onClose={() => {
@@ -142,7 +142,7 @@ const RemoveEthView = () => {
           </NeutralButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

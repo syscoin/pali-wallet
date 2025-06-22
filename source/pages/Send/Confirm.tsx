@@ -10,11 +10,9 @@ import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
-  Layout,
   DefaultModal,
   Button,
   Icon,
-  LoadingComponent,
   Tooltip,
   IconButton,
 } from 'components/index';
@@ -1186,11 +1184,17 @@ export const SendConfirm = () => {
   const shouldShowMainContent = !confirmed && !shouldShowLoading;
 
   if (shouldShowLoading) {
-    return <LoadingComponent />;
+    return (
+      <>
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-brand-blue500"></div>
+        </div>
+      </>
+    );
   }
 
   return (
-    <Layout title={t('send.confirm')} canGoBack={true}>
+    <>
       <TxSuccessful
         show={confirmed}
         title={t('send.txSuccessfull')}
@@ -1557,6 +1561,6 @@ export const SendConfirm = () => {
           </div>
         </div>
       ) : null}
-    </Layout>
+    </>
   );
 };

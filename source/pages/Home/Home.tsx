@@ -11,7 +11,6 @@ import {
   Button,
   FaucetAccessModal,
   FaucetFirstAccessModal,
-  Header,
 } from 'components/index';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { StatusModal } from 'components/Modal/StatusModal';
@@ -345,68 +344,74 @@ export const Home = () => {
   const bgColor = isNetworkChanging ? 'bg-bkg-2' : 'bg-bkg-3';
 
   return (
-    <div className={`scrollbar-styled h-full ${bgColor} overflow-auto`}>
+    <div className={`h-full ${bgColor}`}>
       {currentAccount && lastLogin && isUnlocked && (
         <>
-          <Header accountHeader />
-          <WalletProviderDefaultModal />
+          {/* Floating dots container wrapping both blue sections for continuity */}
+          <div className="floating-dots-container">
+            <WalletProviderDefaultModal />
 
-          {shouldShowFaucet && (
-            <>
-              {shouldShowFaucetFirstModal ? (
-                <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
-              ) : (
-                <FaucetAccessModal />
-              )}
-            </>
-          )}
+            {shouldShowFaucet && (
+              <>
+                {shouldShowFaucetFirstModal ? (
+                  <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
+                ) : (
+                  <FaucetAccessModal />
+                )}
+              </>
+            )}
 
-          <section className="flex flex-col gap-1 items-center pt-14 pb-24 text-brand-white bg-bkg-1">
-            <div className="flex flex-col items-center justify-center text-center">
-              <BalanceDisplay
-                actualBalance={actualBalance}
-                moreThanMillion={moreThanMillion}
-                isNetworkChanging={isNetworkChanging}
-                isSwitchingAccount={isSwitchingAccount}
-                currency={activeNetwork.currency}
-              />
-              <FiatDisplay
-                isNetworkChanging={isNetworkChanging}
-                isSwitchingAccount={isSwitchingAccount}
-                formatFiatAmount={formatFiatAmount}
-              />
-            </div>
+            <section className="flex flex-col gap-1 items-center pt-8 pb-24 text-brand-white bg-bkg-1">
+              <div className="flex flex-col items-center justify-center text-center floating-dots-content">
+                <BalanceDisplay
+                  actualBalance={actualBalance}
+                  moreThanMillion={moreThanMillion}
+                  isNetworkChanging={isNetworkChanging}
+                  isSwitchingAccount={isSwitchingAccount}
+                  currency={activeNetwork.currency}
+                />
+                <FiatDisplay
+                  isNetworkChanging={isNetworkChanging}
+                  isSwitchingAccount={isSwitchingAccount}
+                  formatFiatAmount={formatFiatAmount}
+                />
+              </div>
 
-            <div className="flex items-center justify-center pt-8 w-3/4 max-w-md">
-              <Button
-                type="button"
-                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
-                id="send-btn"
-                onClick={() =>
-                  isBitcoinBased ? navigate('/send/sys') : navigate('/send/eth')
-                }
-                disabled={
-                  isLoadingBalances || isNetworkChanging || isSwitchingAccount
-                }
-              >
-                <SendIcon />
-                {t('buttons.send')}
-              </Button>
+              <div className="flex items-center justify-center pt-8 w-3/4 max-w-md floating-dots-content">
+                <Button
+                  type="button"
+                  className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-l-full transition-all duration-300 xl:flex-none"
+                  id="send-btn"
+                  onClick={() =>
+                    isBitcoinBased
+                      ? navigate('/send/sys')
+                      : navigate('/send/eth')
+                  }
+                  disabled={
+                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
+                  }
+                >
+                  <SendIcon />
+                  {t('buttons.send')}
+                </Button>
 
-              <Button
-                type="button"
-                className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
-                id="receive-btn"
-                onClick={() => navigate('/receive')}
-                disabled={
-                  isLoadingBalances || isNetworkChanging || isSwitchingAccount
-                }
-              >
-                <ReceiveIcon />
-                {t('buttons.receive')}
-              </Button>
-            </div>
-          </section>
+                <Button
+                  type="button"
+                  className="xl:p-18 h-8 font-medium flex flex-1 items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-r-full transition-all duration-300 xl:flex-none"
+                  id="receive-btn"
+                  onClick={() => navigate('/receive')}
+                  disabled={
+                    isLoadingBalances || isNetworkChanging || isSwitchingAccount
+                  }
+                >
+                  <ReceiveIcon />
+                  {t('buttons.receive')}
+                </Button>
+              </div>
+            </section>
+          </div>
+          {/* End floating dots container */}
+
           {isWalletImported && (
             <>
               <ConnectHardwareWallet

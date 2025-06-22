@@ -15,6 +15,7 @@ import {
   WhiteSuccessIconSvg,
   NetworkIconSvg,
   EditIconSvg,
+  LoadingSvg,
 } from 'components/Icon/Icon';
 import { Icon } from 'components/index';
 import Spinner from 'components/Spinner/Spinner';
@@ -336,54 +337,74 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                         </Disclosure.Button>
 
                         <Disclosure.Panel className="h-max pb-2 pt-0.5 text-sm">
-                          {Object.values(networks.syscoin).map(
-                            (currentNetwork: INetwork) => (
-                              <li
-                                key={uniqueId()}
-                                className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-                                font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
-                                onClick={() => {
-                                  handleChangeNetwork(
-                                    currentNetwork,
-                                    menuprops.close
-                                  );
-                                }}
-                              >
-                                {/* Background glow effect on hover */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                          <div
+                            className={`relative w-full block ${
+                              isNetworkChanging ? 'pointer-events-none' : ''
+                            }`}
+                          >
+                            {/* Gray overlay when network is switching */}
+                            {isNetworkChanging && (
+                              <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
+                            )}
 
-                                {/* Left side: Icon + Network name */}
-                                <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
-                                  <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
-                                    <ChainIcon
-                                      chainId={currentNetwork.chainId}
-                                      size={18}
-                                      networkKind={INetworkType.Syscoin}
-                                      className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
-                                    />
+                            {Object.values(networks.syscoin).map(
+                              (currentNetwork: INetwork) => (
+                                <li
+                                  key={uniqueId()}
+                                  className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                                  font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
+                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
+                                  onClick={() => {
+                                    handleChangeNetwork(
+                                      currentNetwork,
+                                      menuprops.close
+                                    );
+                                  }}
+                                >
+                                  {/* Background glow effect on hover */}
+                                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+
+                                  {/* Left side: Icon + Network name */}
+                                  <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
+                                    <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                                      <ChainIcon
+                                        chainId={currentNetwork.chainId}
+                                        size={18}
+                                        networkKind={INetworkType.Syscoin}
+                                        className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
+                                      />
+                                    </div>
+                                    <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
+                                      {currentNetwork.label}
+                                    </span>
                                   </div>
-                                  <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
-                                    {currentNetwork.label}
-                                  </span>
-                                </div>
 
-                                {/* Right side: Checkmark */}
-                                <div className="flex items-center flex-shrink-0 relative z-10">
-                                  {isBitcoinBased &&
-                                    activeNetworkValidator(currentNetwork) && (
+                                  {/* Right side: Checkmark or Spinner */}
+                                  <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
+                                    {isNetworkChanging &&
+                                    activeNetworkValidator(currentNetwork) ? (
                                       <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                        <Icon
-                                          name="check"
-                                          className="w-4 h-4"
-                                          color="#8EC100"
-                                        />
+                                        <LoadingSvg className="w-4 animate-spin h-4 text-brand-graylight" />
                                       </div>
+                                    ) : (
+                                      isBitcoinBased &&
+                                      activeNetworkValidator(
+                                        currentNetwork
+                                      ) && (
+                                        <div className="transform group-hover:scale-110 transition-transform duration-300">
+                                          <Icon
+                                            name="check"
+                                            className="w-4 h-4"
+                                            color="#8EC100"
+                                          />
+                                        </div>
+                                      )
                                     )}
-                                </div>
-                              </li>
-                            )
-                          )}
+                                  </div>
+                                </li>
+                              )
+                            )}
+                          </div>
                         </Disclosure.Panel>
                       </>
                     )}
@@ -412,54 +433,72 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                       </Disclosure.Button>
 
                       <Disclosure.Panel className="h-max pb-2 pt-4 text-sm">
-                        {Object.values(networks.ethereum)
-                          .sort(customSort)
-                          .map((currentNetwork: any) => (
-                            <li
-                              key={uniqueId()}
-                              className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-                                font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                 transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
-                              onClick={() => {
-                                handleChangeNetwork(
-                                  currentNetwork,
-                                  menuprops.close
-                                );
-                              }}
-                            >
-                              {/* Background glow effect on hover */}
-                              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+                        <div
+                          className={`relative w-full block ${
+                            isNetworkChanging ? 'pointer-events-none' : ''
+                          }`}
+                        >
+                          {/* Gray overlay when network is switching */}
+                          {isNetworkChanging && (
+                            <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
+                          )}
 
-                              {/* Left side: Icon + Network name */}
-                              <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
-                                <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
-                                  <ChainIcon
-                                    chainId={currentNetwork.chainId}
-                                    size={18}
-                                    networkKind={INetworkType.Ethereum}
-                                    className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
-                                  />
+                          {Object.values(networks.ethereum)
+                            .sort(customSort)
+                            .map((currentNetwork: any) => (
+                              <li
+                                key={uniqueId()}
+                                className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                                  font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
+                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
+                                onClick={() => {
+                                  handleChangeNetwork(
+                                    currentNetwork,
+                                    menuprops.close
+                                  );
+                                }}
+                              >
+                                {/* Background glow effect on hover */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
+
+                                {/* Left side: Icon + Network name */}
+                                <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
+                                  <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                                    <ChainIcon
+                                      chainId={currentNetwork.chainId}
+                                      size={18}
+                                      networkKind={INetworkType.Ethereum}
+                                      className="flex-shrink-0 group-hover:brightness-110 transition-all duration-300"
+                                    />
+                                  </div>
+                                  <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
+                                    {currentNetwork.label}
+                                  </span>
                                 </div>
-                                <span className="text-left group-hover:text-white transition-colors duration-300 truncate">
-                                  {currentNetwork.label}
-                                </span>
-                              </div>
 
-                              {/* Right side: Checkmark */}
-                              <div className="flex items-center flex-shrink-0 relative z-10">
-                                {!isBitcoinBased &&
-                                  activeNetworkValidator(currentNetwork) && (
+                                {/* Right side: Checkmark or Spinner */}
+                                <div className="flex items-center flex-shrink-0 relative z-10 mr-2">
+                                  {isNetworkChanging &&
+                                  activeNetworkValidator(currentNetwork) ? (
                                     <div className="transform group-hover:scale-110 transition-transform duration-300">
-                                      <Icon
-                                        name="check"
-                                        className="w-4 h-4"
-                                        color="#8EC100"
-                                      />
+                                      <LoadingSvg className="w-4 animate-spin h-4 text-brand-graylight" />
                                     </div>
+                                  ) : (
+                                    !isBitcoinBased &&
+                                    activeNetworkValidator(currentNetwork) && (
+                                      <div className="transform group-hover:scale-110 transition-transform duration-300">
+                                        <Icon
+                                          name="check"
+                                          className="w-4 h-4"
+                                          color="#8EC100"
+                                        />
+                                      </div>
+                                    )
                                   )}
-                              </div>
-                            </li>
-                          ))}
+                                </div>
+                              </li>
+                            ))}
+                        </div>
                       </Disclosure.Panel>
                     </>
                   )}

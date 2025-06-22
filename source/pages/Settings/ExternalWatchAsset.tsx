@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 
 import {
   DefaultModal,
-  Layout,
   LoadingComponent,
   PrimaryButton,
   SecondaryButton,
@@ -78,7 +77,7 @@ const ExternalWatchAsset = () => {
   }, []);
 
   return (
-    <Layout canGoBack={false} title={t('settings.addNewToken')}>
+    <>
       <DefaultModal
         show={confirmed}
         onClose={window.close}
@@ -156,7 +155,7 @@ const ExternalWatchAsset = () => {
       ) : (
         <LoadingComponent />
       )}
-    </Layout>
+    </>
   );
 };
 

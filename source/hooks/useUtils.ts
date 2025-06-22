@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 
+import { useSafeNavigate } from './useSafeNavigate';
+
 export const useUtils = () => {
-  const navigate = useNavigate();
+  const navigate = useSafeNavigate();
 
   const useCopyClipboard = (
     timeout = 1000

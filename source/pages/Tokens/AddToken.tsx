@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout } from 'components/index';
 import { RootState } from 'state/store';
 
 import { CustomToken } from './CustomToken';
@@ -34,7 +33,7 @@ export const AddToken: FC = () => {
     : t('tokens.importToken');
 
   return (
-    <Layout title={validatedTitle}>
+    <>
       {isBitcoinBased ? (
         <SyscoinImport />
       ) : (
@@ -98,6 +97,6 @@ export const AddToken: FC = () => {
           )}
         </>
       )}
-    </Layout>
+    </>
   );
 };

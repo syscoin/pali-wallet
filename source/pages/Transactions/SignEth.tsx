@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { DefaultModal, ErrorModal, Layout, Button } from 'components/index';
+import { DefaultModal, ErrorModal, Button } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -202,7 +202,7 @@ const EthSign: React.FC<ISign> = () => {
   );
 
   return (
-    <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
+    <>
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
@@ -310,7 +310,7 @@ const EthSign: React.FC<ISign> = () => {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

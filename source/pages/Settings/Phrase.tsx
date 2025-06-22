@@ -3,7 +3,7 @@ import { isEmpty } from 'lodash';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Layout, Card, Button } from 'components/index';
+import { Card, Button } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -31,7 +31,7 @@ const PhraseView = () => {
   };
 
   return (
-    <Layout title={t('settings.walletSeedPhrase')} id="seed-phrase-title">
+    <>
       <StatusModal
         status="success"
         title="Copied"
@@ -168,7 +168,7 @@ const PhraseView = () => {
           </Button>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

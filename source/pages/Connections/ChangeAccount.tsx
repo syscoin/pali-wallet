@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { LoadingSvg } from 'components/Icon/Icon';
-import { Layout, SecondaryButton, PrimaryButton } from 'components/index';
+import { SecondaryButton, PrimaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -76,11 +76,7 @@ export const ChangeAccount = () => {
   };
 
   return (
-    <Layout
-      canGoBack={false}
-      title={t('connections.connectedAccount')}
-      titleOnly={true}
-    >
+    <>
       <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
@@ -173,6 +169,6 @@ export const ChangeAccount = () => {
           </PrimaryButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };

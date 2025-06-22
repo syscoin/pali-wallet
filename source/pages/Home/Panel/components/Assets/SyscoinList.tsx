@@ -5,7 +5,7 @@ import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
-import { IconButton, LoadingComponent } from 'components/index';
+import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -160,7 +160,7 @@ export const SyscoinAssetsList = () => {
     <>
       {isLoadingAssets || isNetworkChanging ? (
         <div className="flex flex-col items-center justify-center py-8">
-          <LoadingComponent />
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-brand-blue500"></div>
           <p className="text-brand-gray300 text-sm mt-2">
             {isNetworkChanging
               ? 'Switching network...'

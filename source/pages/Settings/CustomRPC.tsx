@@ -15,7 +15,7 @@ import {
 } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
-import { Button, Layout, Tooltip, Icon } from 'components/index';
+import { Button, Tooltip, Icon } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
@@ -753,11 +753,7 @@ const CustomRPCView = () => {
   NetworkSuggestionItem.displayName = 'NetworkSuggestionItem';
 
   return (
-    <Layout
-      title={
-        state?.isEditing ? `${t('buttons.edit')} RPC` : t('settings.customRpc')
-      }
-    >
+    <>
       <RPCSuccessfullyAdded
         show={addedRpc}
         title={t('titles.congratulations')}
@@ -1159,7 +1155,7 @@ const CustomRPCView = () => {
           )}
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

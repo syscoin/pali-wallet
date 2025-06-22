@@ -1,12 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import {
-  DefaultModal,
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-} from 'components/index';
+import { DefaultModal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -45,7 +40,7 @@ const CustomRPCExternal = () => {
   };
 
   return (
-    <Layout canGoBack={false} title={t('settings.addNewChain')}>
+    <>
       <DefaultModal
         show={confirmed}
         onClose={window.close}
@@ -118,7 +113,7 @@ const CustomRPCExternal = () => {
           </PrimaryButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

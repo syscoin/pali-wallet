@@ -46,7 +46,15 @@ export const Start = (props: any) => {
   }
 
   return (
-    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen">
+    <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen login-animated-bg">
+      {/* Subtle twinkling particles */}
+      <div className="particle-1"></div>
+      <div className="particle-2"></div>
+      <div className="particle-3"></div>
+      <div className="particle-4"></div>
+      <div className="particle-5"></div>
+      <div className="particle-6"></div>
+
       <ImportWalletWarning
         title={t('settings.importWalletWarning')}
         phraseOne={t('settings.thisActionErases')}
@@ -55,11 +63,12 @@ export const Start = (props: any) => {
         onClose={setIsOpenValidation}
         show={isOpenValidation}
       />
-      <p className=" pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
+
+      <p className="relative z-10 pt-[14rem] mb-2 text-center text-white text-opacity-92 font-poppins text-sm font-light leading-normal tracking-[0.175rem]">
         {t('start.welcomeTo')}
       </p>
 
-      <div className="flex flex-row gap-3 mb-6">
+      <div className="relative z-10 flex flex-row gap-3 mb-6">
         <h1 className="text-[#4DA2CF] text-justify font-poppins text-[37.87px] font-bold leading-[37.87px] tracking-[0.379px]">
           Pali
         </h1>
@@ -67,15 +76,18 @@ export const Start = (props: any) => {
           Wallet
         </h1>
       </div>
-      {isFirstStep ? (
-        <GetStarted />
-      ) : (
-        <Unlock
-          setIsOpenValidation={setIsOpenValidation}
-          isExternal={isExternal}
-          externalRoute={externalRoute}
-        />
-      )}
+
+      <div className="relative z-10">
+        {isFirstStep ? (
+          <GetStarted />
+        ) : (
+          <Unlock
+            setIsOpenValidation={setIsOpenValidation}
+            isExternal={isExternal}
+            externalRoute={externalRoute}
+          />
+        )}
+      </div>
     </div>
   );
 };

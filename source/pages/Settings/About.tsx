@@ -2,8 +2,9 @@ import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
+import copyIcon from 'assets/images/copy.svg';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { Layout, Icon, SimpleCard, IconButton, Button } from 'components/index';
+import { Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 
 // Memoize copy icon to prevent unnecessary re-renders
@@ -28,10 +29,7 @@ const AboutView: FC = () => {
   }, [copied, alert, t]);
 
   return (
-    <Layout
-      title={t('generalMenu.infoHelp').toUpperCase()}
-      id="info-help-title"
-    >
+    <>
       <div className="flex items-center justify-center flex-col w-full text-sm font-normal">
         <PaliWhiteSmallIconSvg className="pb-6 w-16" />
         <p className=" text-white">Pali Wallet Browser Extension</p>
@@ -90,7 +88,7 @@ const AboutView: FC = () => {
           {t('buttons.close')}
         </Button>
       </div>
-    </Layout>
+    </>
   );
 };
 

@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 
 import { LoadingSvg } from 'components/Icon/Icon';
 import { IconButton } from 'components/IconButton';
-import { Layout, DefaultModal, Button, Icon } from 'components/index';
+import { DefaultModal, Button, Icon } from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -430,7 +430,7 @@ export const SendNTokenTransaction = () => {
   }, [copied, alert, t]);
 
   return (
-    <Layout title={t('send.send')} canGoBack={!isExternal}>
+    <>
       <DefaultModal
         show={confirmed}
         title={t('send.txSuccessfull')}
@@ -641,6 +641,6 @@ export const SendNTokenTransaction = () => {
           </div>
         </div>
       ) : null}
-    </Layout>
+    </>
   );
 };

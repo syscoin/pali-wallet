@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-  Layout,
   PrimaryButton,
   SecondaryButton,
   LoadingComponent,
@@ -48,7 +47,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   };
 
   return (
-    <Layout canGoBack={false} title={titleValue}>
+    <>
       <DefaultModal
         show={confirmed}
         onClose={window.close}
@@ -118,7 +117,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
           <LoadingComponent />
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

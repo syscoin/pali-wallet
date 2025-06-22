@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Button, DefaultModal, ErrorModal, Layout } from 'components/index';
+import { Button, DefaultModal, ErrorModal } from 'components/index';
 import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useQueryData } from 'hooks/index';
@@ -91,7 +91,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   };
 
   return (
-    <Layout canGoBack={false} title={t('transactions.signatureRequest')}>
+    <>
       <TokenSuccessfullyAdded
         show={confirmed}
         onClose={window.close}
@@ -171,7 +171,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

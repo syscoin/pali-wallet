@@ -4,7 +4,6 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { ExternalLinkSvg, LoadingSvg } from 'components/Icon/Icon';
-import { Layout } from 'components/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { RootState } from 'state/store';
 import { adjustUrl } from 'utils/index';
@@ -53,15 +52,7 @@ export const DetailsView = () => {
   const isLoading = (isAsset && !id) || (!isAsset && !hash);
 
   return (
-    <Layout
-      title={`${
-        isNft
-          ? 'NFT DETAILS'
-          : isAsset
-          ? t('titles.assetDetails')
-          : t('titles.transactionDetails')
-      }`}
-    >
+    <>
       {isLoading && !isNft ? (
         <LoadingSvg className="absolute left-1/2 top-1/2 w-3 animate-spin" />
       ) : (
@@ -92,6 +83,6 @@ export const DetailsView = () => {
           </ul>
         </>
       )}
-    </Layout>
+    </>
   );
 };

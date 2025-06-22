@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 import { SecondButton } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
-import { Layout, PrimaryButton, LoadingComponent } from 'components/index';
+import { PrimaryButton, LoadingComponent } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -67,11 +67,7 @@ const SwitchChain: React.FC = () => {
     );
   };
   return (
-    <Layout
-      canGoBack={false}
-      title={t('settings.switchChain')}
-      isSwitchChainPage={true}
-    >
+    <>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-15 flex flex-col pb-4 pt-4 w-full gap-4">
@@ -108,7 +104,7 @@ const SwitchChain: React.FC = () => {
           <LoadingComponent />
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

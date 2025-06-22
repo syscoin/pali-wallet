@@ -146,12 +146,12 @@ const RenderAccountsListByBitcoinBased =
         return (
           <li
             className={`group relative py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
-            font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-             transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
-               isAccountSwitching(account.id, accountType)
-                 ? 'pointer-events-none opacity-60'
-                 : ''
-             }`}
+          font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
+           transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 ${
+             isAccountSwitching(account.id, accountType)
+               ? 'bg-brand-blue600/20 ring-1 ring-brand-blue500/30'
+               : ''
+           }`}
             onClick={() => {
               if (isAccountSwitching(account.id, accountType)) return;
               handleAccountSwitch(account.id, accountType, close);
@@ -175,7 +175,9 @@ const RenderAccountsListByBitcoinBased =
             {/* Right side: Badge + Checkmark */}
             <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
               {isAccountSwitching(account.id, accountType) ? (
-                <LoadingSvg className={`w-4 h-4 ${badgeInfo.loadingColor}`} />
+                <LoadingSvg
+                  className={`w-4 animate-spin h-4 ${badgeInfo.loadingColor}`}
+                />
               ) : (
                 <>
                   <span
@@ -210,14 +212,25 @@ const RenderAccountsListByBitcoinBased =
       [accounts]
     );
 
+    const isAnySwitching = switchingAccount !== null;
+
     return (
       <Menu.Item>
         {({ close }) => (
-          <>
+          <div
+            className={`relative w-full block ${
+              isAnySwitching ? 'pointer-events-none' : ''
+            }`}
+          >
+            {/* Gray overlay when any account is switching */}
+            {isAnySwitching && (
+              <div className="absolute inset-0 bg-gray-500/30 z-20 rounded-lg backdrop-blur-[0.5px]" />
+            )}
+
             {accountsList.map(({ account, accountType, index }) =>
               renderAccount(account, accountType, index, close)
             )}
-          </>
+          </div>
         )}
       </Menu.Item>
     );

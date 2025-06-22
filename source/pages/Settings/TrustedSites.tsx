@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Icon, Layout } from 'components/index';
+import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { truncate } from 'utils/index';
@@ -81,7 +81,7 @@ const TrustedSitesView = () => {
   };
 
   return (
-    <Layout title={t('settings.trustedWebsites')}>
+    <>
       <p className="text-white text-sm font-normal pb-6">
         {activeAccount?.label} is connected to these site. They can view your
         account address.
@@ -114,7 +114,7 @@ const TrustedSitesView = () => {
             ))}
         </ul>
       </div>
-    </Layout>
+    </>
   );
 };
 

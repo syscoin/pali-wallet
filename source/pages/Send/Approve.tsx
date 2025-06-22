@@ -7,13 +7,7 @@ import { useLocation } from 'react-router-dom';
 
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
-import {
-  Layout,
-  DefaultModal,
-  Button,
-  Icon,
-  IconButton,
-} from 'components/index';
+import { DefaultModal, Button, Icon, IconButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -112,8 +106,6 @@ export const ApproveTransactionComponent = () => {
     : state.external
     ? state.decodedTx
     : state.decodedTx;
-
-  const canGoBack = state?.external ? !state.external : !isExternal;
 
   const [formControl] = Form.useForm();
 
@@ -337,7 +329,7 @@ export const ApproveTransactionComponent = () => {
   }, [fiatPrice, calculatedFeeValue]);
 
   return (
-    <Layout title={t('send.approve')} canGoBack={canGoBack}>
+    <>
       <DefaultModal
         show={confirmedDefaultModal}
         title={t('send.approveSuccessful')}
@@ -623,6 +615,6 @@ export const ApproveTransactionComponent = () => {
           </div>
         </>
       ) : null}
-    </Layout>
+    </>
   );
 };

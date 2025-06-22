@@ -7,7 +7,6 @@ import {
   ErrorModal,
   Icon,
   IconButton,
-  Layout,
   PrimaryButton,
   SecondaryButton,
 } from 'components/index';
@@ -96,7 +95,7 @@ const Decrypt: React.FC<ISign> = () => {
   };
 
   return (
-    <Layout canGoBack={false} title={t('transactions.decryptRequest')}>
+    <>
       <ErrorModal
         show={Boolean(errorMsg)}
         onClose={window.close}
@@ -183,7 +182,7 @@ const Decrypt: React.FC<ISign> = () => {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

@@ -1,7 +1,7 @@
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-import { LoadingSpinner } from 'components/LoadingSpinner';
+import { AppLayout } from 'components/Layout/AppLayout';
 import { WarningModal } from 'components/Modal';
 import { useRouterLogic } from 'routers/useRouterLogic';
 
@@ -9,10 +9,6 @@ import { ProtectedRoute } from './ProtectedRoute';
 
 // Lazy load route groups
 const AuthRoutes = lazy(() => import('./routes/AuthRoutes'));
-const HomeRoutes = lazy(() => import('./routes/HomeRoutes'));
-const SettingsRoutes = lazy(() => import('./routes/SettingsRoutes'));
-const TransactionRoutes = lazy(() => import('./routes/TransactionRoutes'));
-const NetworkRoutes = lazy(() => import('./routes/NetworkRoutes'));
 
 // Lazy load components with proper imports
 const About = lazy(() => import('pages').then((m) => ({ default: m.About })));
@@ -130,9 +126,15 @@ export const Router = () => {
         warningMessage={warningMessage}
         onClose={() => setShowModal(false)}
       />
-      <Suspense fallback={<LoadingSpinner />}>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full min-h-popup bg-bkg-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+          </div>
+        }
+      >
         <Routes>
-          {/* Auth Routes */}
+          {/* Auth Routes - No persistent layout */}
           <Route path="/" element={<AuthRoutes />}>
             <Route path="/" element={<Start />} />
             <Route path="create-password" element={<CreatePass />} />
@@ -144,126 +146,69 @@ export const Router = () => {
             <Route path="phrase" element={<SeedConfirm />} />
           </Route>
 
-          {/* Home Routes */}
-          <Route path="/home" element={<HomeRoutes />}>
-            <Route index element={<ProtectedRoute element={<Home />} />} />
-            <Route
-              path="details"
-              element={<ProtectedRoute element={<DetailsView />} />}
-            />
-          </Route>
+          {/* Special route for switch-network that needs different handling */}
+          <Route path="switch-network" element={<SwitchNetwork />} />
 
-          {/* Transaction Routes */}
-          <Route path="/" element={<TransactionRoutes />}>
-            <Route
-              path="/receive"
-              element={<ProtectedRoute element={<Receive />} />}
-            />
-            <Route
-              path="/faucet"
-              element={<ProtectedRoute element={<Faucet />} />}
-            />
-            <Route
-              path="send/eth"
-              element={<ProtectedRoute element={<SendEth />} />}
-            />
-            <Route
-              path="send/sys"
-              element={<ProtectedRoute element={<SendSys />} />}
-            />
-            <Route
-              path="send/confirm"
-              element={<ProtectedRoute element={<SendConfirm />} />}
-            />
-          </Route>
+          {/* All protected routes wrapped in AppLayout for persistent header */}
+          <Route element={<ProtectedRoute element={<AppLayout />} />}>
+            {/* Home Routes */}
+            <Route path="/home" element={<Home />} />
+            <Route path="/home/details" element={<DetailsView />} />
 
-          {/* Network Routes */}
-          <Route path="/" element={<NetworkRoutes />}>
-            <Route path="switch-network" element={<SwitchNetwork />} />
-            <Route
-              path="chain-fail-to-connect"
-              element={<ProtectedRoute element={<ChainErrorPage />} />}
-            />
-            <Route
-              path="tokens/add"
-              element={<ProtectedRoute element={<AddToken />} />}
-            />
-          </Route>
+            {/* Transaction Routes */}
+            <Route path="/receive" element={<Receive />} />
+            <Route path="/faucet" element={<Faucet />} />
+            <Route path="/send/eth" element={<SendEth />} />
+            <Route path="/send/sys" element={<SendSys />} />
+            <Route path="/send/confirm" element={<SendConfirm />} />
 
-          {/* Settings Routes */}
-          <Route path="settings" element={<SettingsRoutes />}>
+            {/* Network Routes */}
+            <Route path="/chain-fail-to-connect" element={<ChainErrorPage />} />
+            <Route path="/tokens/add" element={<AddToken />} />
+
+            {/* Settings Routes */}
+            <Route path="/settings/about" element={<About />} />
+            <Route path="/settings/remove-eth" element={<RemoveEth />} />
+            <Route path="/settings/advanced" element={<Advanced />} />
+            <Route path="/settings/languages" element={<Languages />} />
+            <Route path="/settings/currency" element={<Currency />} />
+            <Route path="/settings/forget-wallet" element={<ForgetWallet />} />
+            <Route path="/settings/seed" element={<Phrase />} />
             <Route
-              path="about"
-              element={<ProtectedRoute element={<About />} />}
+              path="/settings/manage-accounts"
+              element={<ManageAccounts />}
+            />
+            <Route path="/settings/edit-account" element={<EditAccount />} />
+
+            {/* Account sub-routes */}
+            <Route
+              path="/settings/account/hardware"
+              element={<ConnectHardwareWallet />}
+            />
+            <Route path="/settings/account/new" element={<CreateAccount />} />
+            <Route
+              path="/settings/account/import"
+              element={<ImportAccount />}
             />
             <Route
-              path="remove-eth"
-              element={<ProtectedRoute element={<RemoveEth />} />}
+              path="/settings/account/private-key"
+              element={<PrivateKey />}
+            />
+
+            {/* Network sub-routes */}
+            <Route
+              path="/settings/networks/connected-sites"
+              element={<ConnectedSites />}
             />
             <Route
-              path="advanced"
-              element={<ProtectedRoute element={<Advanced />} />}
+              path="/settings/networks/custom-rpc"
+              element={<CustomRPC />}
             />
+            <Route path="/settings/networks/edit" element={<ManageNetwork />} />
             <Route
-              path="languages"
-              element={<ProtectedRoute element={<Languages />} />}
+              path="/settings/networks/trusted-sites"
+              element={<TrustedSites />}
             />
-            <Route
-              path="currency"
-              element={<ProtectedRoute element={<Currency />} />}
-            />
-            <Route
-              path="forget-wallet"
-              element={<ProtectedRoute element={<ForgetWallet />} />}
-            />
-            <Route
-              path="seed"
-              element={<ProtectedRoute element={<Phrase />} />}
-            />
-            <Route
-              path="manage-accounts"
-              element={<ProtectedRoute element={<ManageAccounts />} />}
-            />
-            <Route
-              path="edit-account"
-              element={<ProtectedRoute element={<EditAccount />} />}
-            />
-            <Route path="account">
-              <Route
-                path="hardware"
-                element={<ProtectedRoute element={<ConnectHardwareWallet />} />}
-              />
-              <Route
-                path="new"
-                element={<ProtectedRoute element={<CreateAccount />} />}
-              />
-              <Route
-                path="import"
-                element={<ProtectedRoute element={<ImportAccount />} />}
-              />
-              <Route
-                path="private-key"
-                element={<ProtectedRoute element={<PrivateKey />} />}
-              />
-            </Route>
-            <Route path="networks">
-              <Route
-                path="connected-sites"
-                element={<ProtectedRoute element={<ConnectedSites />} />}
-              />
-              <Route
-                path="custom-rpc"
-                element={<ProtectedRoute element={<CustomRPC />} />}
-              />
-              <Route
-                path="edit"
-                element={<ProtectedRoute element={<ManageNetwork />} />}
-              />
-              <Route
-                path="trusted-sites"
-                element={<ProtectedRoute element={<TrustedSites />} />}
-              />
-            </Route>
           </Route>
 
           <Route

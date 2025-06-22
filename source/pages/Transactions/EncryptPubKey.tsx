@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Layout, PrimaryButton, SecondaryButton } from 'components/index';
+import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -59,7 +59,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
     window.close();
   };
   return (
-    <Layout canGoBack={false} title={t('transactions.encryptPubKey')}>
+    <>
       {!loading && (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="flex flex-row justify-between mb-16 w-full">
@@ -95,7 +95,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
           </div>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

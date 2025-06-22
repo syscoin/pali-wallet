@@ -13,7 +13,7 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
-import { Tooltip, Fee, NeutralButton, Layout, Icon } from 'components/index';
+import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -423,310 +423,308 @@ export const SendSys = () => {
   // The MAX button already handles the calculation properly
 
   return (
-    <Layout title={`${t('send.send')} ${activeNetwork.currency.toUpperCase()}`}>
-      <div>
-        <div className="flex flex-col items-center justify-center">
-          <div className="add-identicon ml-1 mr-2 my-2" />
-          <div className="flex gap-1 justify-center items-center">
-            <PaliWhiteSmallIconSvg />
-            <div className="flex text-white gap-1 text-xs font-normal w-max">
-              <p>{activeAccount?.label}</p>
-              <p>{ellipsis(activeAccount?.address, 4, 4)}</p>
+    <div className="w-full md:max-w-sm">
+      <div className="flex flex-col items-center justify-center">
+        <div className="add-identicon ml-1 mr-2 my-2" />
+        <div className="flex gap-1 justify-center items-center">
+          <PaliWhiteSmallIconSvg />
+          <div className="flex text-white gap-1 text-xs font-normal w-max">
+            <p>{activeAccount?.label}</p>
+            <p>{ellipsis(activeAccount?.address, 4, 4)}</p>
+          </div>
+          {isAccountImported && (
+            <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
+              Imported
             </div>
-            {isAccountImported && (
-              <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
-                Imported
-              </div>
-            )}
-          </div>
-          <div className="flex gap-1 mt-[6px]">
-            <p className="text-brand-gray200 text-xs">Your balance:</p>
-            <p className="text-white text-xs font-semibold">
-              {selectedAsset
-                ? getAssetBalance(
-                    selectedAsset,
-                    activeAccount,
-                    true,
-                    activeNetwork
-                  )
-                : `${activeAccount.balances[INetworkType.Syscoin]} ${
-                    activeNetwork.currency
-                  }`}
-            </p>
-          </div>
+          )}
         </div>
+        <div className="flex gap-1 mt-[6px]">
+          <p className="text-brand-gray200 text-xs">Your balance:</p>
+          <p className="text-white text-xs font-semibold">
+            {selectedAsset
+              ? getAssetBalance(
+                  selectedAsset,
+                  activeAccount,
+                  true,
+                  activeNetwork
+                )
+              : `${activeAccount.balances[INetworkType.Syscoin]} ${
+                  activeNetwork.currency
+                }`}
+          </p>
+        </div>
+      </div>
 
-        <Form
-          validateMessages={{ default: '' }}
-          form={form}
-          id="send-form"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-          initialValues={{
-            RBF: true,
-          }}
-          onFinish={nextStep}
-          autoComplete="off"
-          className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
-        >
-          <Form.Item
-            name="receiver"
-            className="md:w-full md:max-w-md"
-            hasFeedback
-            rules={[
-              {
-                required: true,
-                message: '',
+      <Form
+        validateMessages={{ default: '' }}
+        form={form}
+        id="send-form"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 8 }}
+        initialValues={{
+          RBF: true,
+        }}
+        onFinish={nextStep}
+        autoComplete="off"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
+      >
+        <Form.Item
+          name="receiver"
+          className="md:w-full md:max-w-md"
+          hasFeedback
+          rules={[
+            {
+              required: true,
+              message: '',
+            },
+            () => ({
+              validator(_, value) {
+                if (
+                  !value ||
+                  isValidSYSAddress(value, activeNetwork.chainId, true)
+                ) {
+                  return Promise.resolve();
+                }
+
+                return Promise.reject();
               },
-              () => ({
-                validator(_, value) {
-                  if (
-                    !value ||
-                    isValidSYSAddress(value, activeNetwork.chainId, true)
-                  ) {
-                    return Promise.resolve();
-                  }
+            }),
+          ]}
+        >
+          <Input
+            type="text"
+            placeholder={t('send.receiver')}
+            className="sender-custom-input"
+            onChange={(e) => handleInputChange('receiver', e)}
+          />
+        </Form.Item>
+        <div className="flex gap-2 w-full items-center">
+          <div className="flex md:max-w-md">
+            {
+              <Form.Item
+                name="asset"
+                className=""
+                rules={[
+                  {
+                    required: false,
+                    message: '',
+                  },
+                ]}
+              >
+                <Menu>
+                  {({ open }) => (
+                    <div className="relative inline-block text-left">
+                      <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                        <p className="w-full uppercase text-white text-xs font-normal">
+                          {String(
+                            selectedAsset?.symbol
+                              ? selectedAsset?.symbol
+                              : activeNetwork.currency
+                          )}
+                        </p>
+                        <ArrowDownSvg />
+                      </Menu.Button>
 
-                  return Promise.reject();
-                },
-              }),
-            ]}
-          >
-            <Input
-              type="text"
-              placeholder={t('send.receiver')}
-              className="sender-custom-input"
-              onChange={(e) => handleInputChange('receiver', e)}
-            />
-          </Form.Item>
-          <div className="flex gap-2 w-full items-center">
-            <div className="flex md:max-w-md">
-              {
-                <Form.Item
-                  name="asset"
-                  className=""
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
-                >
-                  <Menu>
-                    {({ open }) => (
-                      <div className="relative inline-block text-left">
-                        <Menu.Button className="inline-flex items-center w-[100px] gap-4  justify-center border border-alpha-whiteAlpha300 px-5 py-[7px]  bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
-                          <p className="w-full uppercase text-white text-xs font-normal">
-                            {String(
-                              selectedAsset?.symbol
-                                ? selectedAsset?.symbol
-                                : activeNetwork.currency
-                            )}
-                          </p>
-                          <ArrowDownSvg />
-                        </Menu.Button>
-
-                        <Menu.Items
-                          as="div"
-                          className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                      <Menu.Items
+                        as="div"
+                        className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
                           transform transition-all duration-100 ease-out ${
                             open
                               ? 'opacity-100 scale-100 pointer-events-auto'
                               : 'opacity-0 scale-95 pointer-events-none'
                           }`}
-                          static
-                        >
-                          <Menu.Item as="div" key="native-sys">
-                            <button
-                              onClick={() => handleSelectedAsset(-1)}
-                              className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                            >
-                              <p>SYS</p>
-                              <small>{t('send.native')}</small>
-                            </button>
-                          </Menu.Item>
+                        static
+                      >
+                        <Menu.Item as="div" key="native-sys">
+                          <button
+                            onClick={() => handleSelectedAsset(-1)}
+                            className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                          >
+                            <p>SYS</p>
+                            <small>{t('send.native')}</small>
+                          </button>
+                        </Menu.Item>
 
-                          {accountAssets.syscoin.length > 0
-                            ? accountAssets.syscoin.map((item: any) =>
-                                item?.assetGuid ? (
-                                  <Menu.Item
-                                    as="div"
-                                    key={`asset-${item.assetGuid}`}
+                        {accountAssets.syscoin.length > 0
+                          ? accountAssets.syscoin.map((item: any) =>
+                              item?.assetGuid ? (
+                                <Menu.Item
+                                  as="div"
+                                  key={`asset-${item.assetGuid}`}
+                                >
+                                  <button
+                                    onClick={() => {
+                                      handleSelectedAsset(item.assetGuid);
+                                    }}
+                                    className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                   >
-                                    <button
-                                      onClick={() => {
-                                        handleSelectedAsset(item.assetGuid);
-                                      }}
-                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                    >
-                                      <p>{item?.symbol}</p>
+                                    <p>{item?.symbol}</p>
 
-                                      <small>
-                                        {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
-                                      </small>
-                                    </button>
-                                  </Menu.Item>
-                                ) : null
-                              )
-                            : null}
-                        </Menu.Items>
-                      </div>
-                    )}
-                  </Menu>
-                </Form.Item>
-              }
-            </div>
-
-            <div className="flex md:w-96 relative">
-              <Form.Item
-                name="amount"
-                className="relative w-full"
-                hasFeedback
-                rules={[
-                  {
-                    required: true,
-                    message: '',
-                  },
-                  () => ({
-                    async validator(_, value) {
-                      // Work with strings to avoid precision loss
-                      const inputAmount = value ? String(value).trim() : '';
-
-                      // Check if empty or invalid
-                      if (!inputAmount || inputAmount === '') {
-                        return Promise.reject('');
-                      }
-
-                      // Check if it's a valid positive number
-                      const numValue = parseFloat(inputAmount);
-                      if (isNaN(numValue) || numValue <= 0) {
-                        return Promise.reject('');
-                      }
-
-                      // Get balance as string to preserve precision
-                      let validationBalanceStr: string;
-                      if (selectedAsset) {
-                        // For assets, the balance is already formatted
-                        validationBalanceStr = formattedAssetBalance
-                          ? String(formattedAssetBalance)
-                          : '0';
-                      } else {
-                        // For native SYS, balance is already in decimal format
-                        validationBalanceStr = activeAccount?.balances[
-                          INetworkType.Syscoin
-                        ]
-                          ? String(activeAccount.balances[INetworkType.Syscoin])
-                          : '0';
-                      }
-
-                      // Use currency.js with 8 decimal precision for safe comparison
-                      try {
-                        const inputCurrency = currency(inputAmount, {
-                          precision: 8,
-                        });
-                        const balanceCurrency = currency(validationBalanceStr, {
-                          precision: 8,
-                        });
-
-                        if (inputCurrency.value <= 0) {
-                          return Promise.reject('');
-                        }
-
-                        if (inputCurrency.value > balanceCurrency.value) {
-                          return Promise.reject(t('send.insufficientFunds'));
-                        }
-
-                        return Promise.resolve();
-                      } catch (error) {
-                        // If currency.js can't parse, it's an invalid amount
-                        return Promise.reject('');
-                      }
-                    },
-                  }),
-                ]}
-              >
-                <div className="relative">
-                  <Input
-                    name="amount"
-                    id="with-max-button"
-                    className="value-custom-input"
-                    type="number"
-                    placeholder={t('send.amount')}
-                    onChange={(e) => handleInputChange('amount', e)}
-                  />
-                  <span
-                    className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                    onClick={handleMaxButton}
-                  >
-                    MAX
-                  </span>
-                </div>
+                                    <small>
+                                      {isNFT(item.assetGuid) ? 'NFT' : 'SPT'}
+                                    </small>
+                                  </button>
+                                </Menu.Item>
+                              ) : null
+                            )
+                          : null}
+                      </Menu.Items>
+                    </div>
+                  )}
+                </Menu>
               </Form.Item>
-            </div>
+            }
           </div>
 
-          <Fee
-            disabled={false}
-            recommend={feeRate}
-            form={form}
-            onFeeChange={handleFeeChange}
-          />
-
-          <div className="flex justify-between w-full">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-normal text-white">
-                {selectedAsset ? 'Z-DAG' : 'RBF'}
-              </span>
-              <Tooltip
-                childrenClassName="text-brand-white h-4"
-                content={
-                  selectedAsset
-                    ? t('send.zdagOption', {
-                        currency: activeNetwork.currency.toUpperCase(),
-                      })
-                    : t('send.rbfOption', {
-                        currency: activeNetwork.currency.toUpperCase(),
-                      })
-                }
-              >
-                <Icon isSvg name="Info" />
-              </Tooltip>
-            </div>
+          <div className="flex md:w-96 relative">
             <Form.Item
-              name="RBF"
+              name="amount"
+              className="relative w-full"
+              hasFeedback
               rules={[
                 {
-                  required: false,
+                  required: true,
                   message: '',
                 },
+                () => ({
+                  async validator(_, value) {
+                    // Work with strings to avoid precision loss
+                    const inputAmount = value ? String(value).trim() : '';
+
+                    // Check if empty or invalid
+                    if (!inputAmount || inputAmount === '') {
+                      return Promise.reject('');
+                    }
+
+                    // Check if it's a valid positive number
+                    const numValue = parseFloat(inputAmount);
+                    if (isNaN(numValue) || numValue <= 0) {
+                      return Promise.reject('');
+                    }
+
+                    // Get balance as string to preserve precision
+                    let validationBalanceStr: string;
+                    if (selectedAsset) {
+                      // For assets, the balance is already formatted
+                      validationBalanceStr = formattedAssetBalance
+                        ? String(formattedAssetBalance)
+                        : '0';
+                    } else {
+                      // For native SYS, balance is already in decimal format
+                      validationBalanceStr = activeAccount?.balances[
+                        INetworkType.Syscoin
+                      ]
+                        ? String(activeAccount.balances[INetworkType.Syscoin])
+                        : '0';
+                    }
+
+                    // Use currency.js with 8 decimal precision for safe comparison
+                    try {
+                      const inputCurrency = currency(inputAmount, {
+                        precision: 8,
+                      });
+                      const balanceCurrency = currency(validationBalanceStr, {
+                        precision: 8,
+                      });
+
+                      if (inputCurrency.value <= 0) {
+                        return Promise.reject('');
+                      }
+
+                      if (inputCurrency.value > balanceCurrency.value) {
+                        return Promise.reject(t('send.insufficientFunds'));
+                      }
+
+                      return Promise.resolve();
+                    } catch (error) {
+                      // If currency.js can't parse, it's an invalid amount
+                      return Promise.reject('');
+                    }
+                  },
+                }),
               ]}
             >
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={selectedAsset ? !RBF : RBF}
-                  onChange={RBFOnChange}
-                  className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
+              <div className="relative">
+                <Input
+                  name="amount"
+                  id="with-max-button"
+                  className="value-custom-input"
+                  type="number"
+                  placeholder={t('send.amount')}
+                  onChange={(e) => handleInputChange('amount', e)}
+                />
+                <span
+                  className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
+                  onClick={handleMaxButton}
                 >
-                  <span
-                    className={`${
-                      (selectedAsset ? !RBF : RBF)
-                        ? 'bg-brand-green translate-x-6'
-                        : 'bg-brand-redDark translate-x-1'
-                    } inline-block w-2 h-2 transform rounded-full`}
-                    id="rbf-switch"
-                  />
-                </Switch>
+                  MAX
+                </span>
               </div>
             </Form.Item>
           </div>
+        </div>
 
-          <div className="relative mt-14 w-[96%] md:static md:mt-3">
-            <NeutralButton type="submit" fullWidth loading={isLoading}>
-              {t('buttons.next')}
-            </NeutralButton>
+        <Fee
+          disabled={false}
+          recommend={feeRate}
+          form={form}
+          onFeeChange={handleFeeChange}
+        />
+
+        <div className="flex justify-between w-full">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-normal text-white">
+              {selectedAsset ? 'Z-DAG' : 'RBF'}
+            </span>
+            <Tooltip
+              childrenClassName="text-brand-white h-4"
+              content={
+                selectedAsset
+                  ? t('send.zdagOption', {
+                      currency: activeNetwork.currency.toUpperCase(),
+                    })
+                  : t('send.rbfOption', {
+                      currency: activeNetwork.currency.toUpperCase(),
+                    })
+              }
+            >
+              <Icon isSvg name="Info" />
+            </Tooltip>
           </div>
-        </Form>
-      </div>
-    </Layout>
+          <Form.Item
+            name="RBF"
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
+          >
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={selectedAsset ? !RBF : RBF}
+                onChange={RBFOnChange}
+                className="relative inline-flex items-center w-9 h-4 border border-white rounded-full"
+              >
+                <span
+                  className={`${
+                    (selectedAsset ? !RBF : RBF)
+                      ? 'bg-brand-green translate-x-6'
+                      : 'bg-brand-redDark translate-x-1'
+                  } inline-block w-2 h-2 transform rounded-full`}
+                  id="rbf-switch"
+                />
+              </Switch>
+            </div>
+          </Form.Item>
+        </div>
+
+        <div className="relative mt-14 w-[96%] md:static md:mt-3">
+          <NeutralButton type="submit" fullWidth loading={isLoading}>
+            {t('buttons.next')}
+          </NeutralButton>
+        </div>
+      </Form>
+    </div>
   );
 };

@@ -106,9 +106,16 @@ export const Loading = ({
 
   return (
     <div
-      className={`bg-bkg-1 z-[60] h-screen ${
+      className={`bg-bkg-1 z-[60] ${
         usePopupSize ? 'min-w-popup' : 'w-full'
-      } top-0 left-0 absolute flex flex-col items-center justify-center bg-opacity-${opacity}`}
+      } absolute flex flex-col items-center justify-center bg-opacity-${opacity}`}
+      style={{
+        top: '120px', // Below header (80px) + banner (68px)
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 'calc(100vh - 120px)',
+      }}
       key={networkTarget?.chainId || 'loading'}
     >
       <Icon

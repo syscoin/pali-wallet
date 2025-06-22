@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Layout, DefaultModal, Button } from 'components/index';
+import { DefaultModal, Button } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -84,8 +84,6 @@ export const SendTransaction = () => {
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
   });
-
-  const canGoBack = state?.external ? !state.external : !isExternal;
 
   const formattedValueAndCurrency = `${removeScientificNotation(
     Number(tx?.value ? tx?.value : 0) / 10 ** 18
@@ -247,7 +245,7 @@ export const SendTransaction = () => {
   }, [tx]);
 
   return (
-    <Layout title={t('send.tx')} canGoBack={canGoBack}>
+    <>
       <DefaultModal
         show={confirmed}
         title={t('send.txSuccessfull')}
@@ -417,6 +415,6 @@ export const SendTransaction = () => {
           </div>
         </div>
       ) : null}
-    </Layout>
+    </>
   );
 };

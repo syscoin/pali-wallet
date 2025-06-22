@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import checked from 'assets/all_assets/greenChecked.svg';
-import { DefaultModal, Layout, NeutralButton } from 'components/index';
+import { DefaultModal, NeutralButton } from 'components/index';
 import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
 import { i18next } from 'utils/i18n';
 import { chromeStorage } from 'utils/storageAPI';
@@ -79,7 +79,7 @@ const Languages = () => {
   );
 
   return (
-    <Layout title={t('settings.languages')} id="auto-lock-timer-title">
+    <>
       <DefaultModal
         show={confirmed}
         onClose={() => {
@@ -118,7 +118,7 @@ const Languages = () => {
           <NeutralButton type="submit">{t('buttons.save')}</NeutralButton>
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

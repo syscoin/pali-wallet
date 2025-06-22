@@ -4,7 +4,7 @@ import { t } from 'i18next';
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 
-import { Layout, NeutralButton } from 'components/index';
+import { NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -53,7 +53,7 @@ const ImportAccountView = () => {
   };
 
   return (
-    <Layout title={t('header.importAccount').toUpperCase()}>
+    <>
       <ImportedWalletSuccessfully
         show={isAccountImported}
         onClose={() => navigate('/home')}
@@ -141,7 +141,7 @@ const ImportAccountView = () => {
           </Form>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

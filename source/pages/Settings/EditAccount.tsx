@@ -7,7 +7,7 @@ import { useLocation } from 'react-router-dom';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import { Icon, Layout, NeutralButton } from 'components/index';
+import { Icon, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
@@ -75,7 +75,7 @@ const EditAccountView = () => {
   };
 
   return (
-    <Layout title={t('settings.editAccount')}>
+    <>
       <Form
         form={form}
         validateMessages={{ default: '' }}
@@ -162,7 +162,7 @@ const EditAccountView = () => {
           </NeutralButton>
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

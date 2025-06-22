@@ -6,13 +6,7 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
-import {
-  IconButton,
-  Layout,
-  Icon,
-  NeutralButton,
-  Tooltip,
-} from 'components/index';
+import { IconButton, Icon, NeutralButton, Tooltip } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -55,7 +49,7 @@ const ManageNetworkView = () => {
   };
 
   return (
-    <Layout title={t('settings.manageNetworks')}>
+    <>
       <ul className=" mb-4 w-full h-85 text-sm overflow-auto md:h-96">
         <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
           UTXO
@@ -255,7 +249,7 @@ const ManageNetworkView = () => {
           {t('buttons.close')}
         </NeutralButton>{' '}
       </div>
-    </Layout>
+    </>
   );
 };
 

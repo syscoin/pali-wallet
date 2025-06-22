@@ -2,7 +2,7 @@ import React, { FC, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Layout, DefaultModal, Button } from 'components/index';
+import { DefaultModal, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
@@ -225,11 +225,7 @@ const ConnectHardwareWalletView: FC = () => {
   }, [navigate]);
 
   return (
-    <Layout
-      title={t('settings.hardwareWallet')}
-      id="hardware-wallet-title"
-      hideHeader={true}
-    >
+    <>
       {/* Instructions for after setup */}
       {!isLoading && isModalOpen && (
         <div className="mx-4 mb-4 p-3 bg-green-500/20 border border-green-500/40 rounded-lg">
@@ -314,26 +310,24 @@ const ConnectHardwareWalletView: FC = () => {
         </div>
         <div className="scrollbar-styled px-2 h-80 text-sm overflow-y-auto md:h-3/4">
           {selectedHardwareWallet ? (
-            <>
-              <div className="flex flex-col text-center justify-center items-center w-max text-sm">
-                <p>
-                  {t('settings.connectYourWalletAndClick', {
-                    hardwalletName:
-                      selectedHardwareWallet === HardWallets.LEDGER
-                        ? 'LEDGER'
-                        : 'TREZOR',
-                  })}
-                </p>
-                <p className="text-brand-gray200">
-                  {t('settings.youCanUseAny', {
-                    hardwalletName:
-                      selectedHardwareWallet === HardWallets.LEDGER
-                        ? 'Ledger'
-                        : 'Trezor',
-                  })}
-                </p>
-              </div>
-            </>
+            <div className="flex flex-col text-center justify-center items-center w-max text-sm">
+              <p>
+                {t('settings.connectYourWalletAndClick', {
+                  hardwalletName:
+                    selectedHardwareWallet === HardWallets.LEDGER
+                      ? 'LEDGER'
+                      : 'TREZOR',
+                })}
+              </p>
+              <p className="text-brand-gray200">
+                {t('settings.youCanUseAny', {
+                  hardwalletName:
+                    selectedHardwareWallet === HardWallets.LEDGER
+                      ? 'Ledger'
+                      : 'Trezor',
+                })}
+              </p>
+            </div>
           ) : (
             <div className="flex flex-col items-center justify-center">
               <p className="text-white text-center text-sm">
@@ -390,7 +384,7 @@ const ConnectHardwareWalletView: FC = () => {
           </Button>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

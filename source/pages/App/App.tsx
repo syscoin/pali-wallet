@@ -1,7 +1,7 @@
-import React, { FC, Suspense, useEffect } from 'react';
+import React, { FC, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
 
-import { Container, Loading, KeepAliveContainer } from 'components/index';
+import { Container, KeepAliveContainer } from 'components/index';
 import { Router } from 'routers/index';
 import { vaultCache } from 'state/vaultCache';
 
@@ -54,17 +54,15 @@ const App: FC = () => {
 
   // other logic
   return (
-    <section className="mx-auto h-full min-w-popup min-h-popup bg-brand-blue700 md:max-w-2xl transition-all duration-200 ease-in-out">
+    <section className="mx-auto h-full min-w-popup min-h-popup md:max-w-2xl">
       <KeepAliveContainer />
-      <Suspense fallback={<Loading />}>
-        <Container>
-          <HashRouter>
-            <div className="w-full min-w-popup h-full min-h-popup transition-all duration-200 ease-in-out">
-              <Router />
-            </div>
-          </HashRouter>
-        </Container>
-      </Suspense>
+      <Container>
+        <HashRouter>
+          <div className="w-full min-w-popup h-full min-h-popup">
+            <Router />
+          </div>
+        </HashRouter>
+      </Container>
     </section>
   );
 };

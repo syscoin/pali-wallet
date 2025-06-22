@@ -2,7 +2,8 @@ import { Form, Input } from 'antd';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { OnboardingLayout, Button } from 'components/index';
+import { Button } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 
 type FormErrors = {
   [key: string]: string;

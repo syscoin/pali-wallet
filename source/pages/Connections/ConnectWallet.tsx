@@ -7,13 +7,7 @@ import { useSelector } from 'react-redux';
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
 import { LoadingSvg } from 'components/Icon/Icon';
-import {
-  Layout,
-  PrimaryButton,
-  SecondaryButton,
-  Icon,
-  Modal,
-} from 'components/index';
+import { PrimaryButton, SecondaryButton, Icon, Modal } from 'components/index';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -97,12 +91,7 @@ export const ConnectWallet = () => {
   }, [isUnlocked, accountType]);
 
   return (
-    <Layout
-      canGoBack={false}
-      title={t('connections.connectAccount')}
-      titleOnly={true}
-      isConnectPage={true}
-    >
+    <>
       <div className="h-80 flex flex-col gap-7 items-center justify-center mt-6 w-full">
         {accounts && Object.keys(accounts).length > 0 ? (
           <>
@@ -232,6 +221,6 @@ export const ConnectWallet = () => {
           </div>
         </Modal>
       </div>
-    </Layout>
+    </>
   );
 };

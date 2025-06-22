@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { EditIconSvg } from 'components/Icon/Icon';
-import { Layout, Icon, IconButton, NeutralButton } from 'components/index';
+import { Icon, IconButton, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { IDApp } from 'state/dapp/types';
@@ -38,7 +38,7 @@ const ConnectedSites = () => {
   };
 
   return (
-    <Layout title={t('settings.connectedSites')}>
+    <>
       <p className="w-full text-white text-sm md:max-w-md">
         {dapps.length > 0
           ? `${activeAccount.label} ${t('settings.isConnected')}`
@@ -170,7 +170,7 @@ const ConnectedSites = () => {
           </NeutralButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

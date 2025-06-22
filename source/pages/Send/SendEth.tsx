@@ -13,7 +13,7 @@ import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 import errorIcon from 'assets/all_assets/errorIcon.svg';
 import successIcon from 'assets/all_assets/successIcon.svg';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { Layout, Button } from 'components/index';
+import { Button } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -316,8 +316,8 @@ export const SendEth = () => {
   }, [activeAccount?.address, activeAccount?.xpub]);
 
   return (
-    <Layout title={getTitle()}>
-      <div>
+    <>
+      <div className="w-full md:max-w-sm">
         <div className="flex flex-col items-center justify-center">
           <div className="add-identicon ml-1 mr-2 my-2" />
           <div className="flex gap-1 justify-center items-center">
@@ -641,6 +641,6 @@ export const SendEth = () => {
           </div>
         </Form>
       </div>
-    </Layout>
+    </>
   );
 };

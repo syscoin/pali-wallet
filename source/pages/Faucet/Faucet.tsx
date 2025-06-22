@@ -10,7 +10,6 @@ import errorIcon from 'assets/all_assets/faucet-error.svg';
 import loadingIcon from 'assets/all_assets/faucet-loading.svg';
 import successIcon from 'assets/all_assets/faucet-success.svg';
 import { NeutralButton } from 'components/Button';
-import { Layout } from 'components/Layout';
 import { RootState } from 'state/store';
 import { faucetNetworkData } from 'utils/constants';
 import { ellipsis } from 'utils/format';
@@ -104,7 +103,7 @@ export const Faucet: React.FC = () => {
   };
 
   return (
-    <Layout title={currentFaucetNetwork?.network} canGoBack>
+    <>
       {isLoading && (
         <FaucetFeedback
           icon={loadingIcon}
@@ -120,6 +119,6 @@ export const Faucet: React.FC = () => {
           </NeutralButton>
         </div>
       )}
-    </Layout>
+    </>
   );
 };

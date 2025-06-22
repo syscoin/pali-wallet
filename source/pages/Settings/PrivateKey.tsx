@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { Layout, Card, CopyCard, NeutralButton } from 'components/index';
+import { Card, CopyCard, NeutralButton } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -82,7 +82,7 @@ const PrivateKeyView = () => {
     : `${url}${property}/${value}`;
 
   return (
-    <Layout title={t('accountMenu.yourKeys').toUpperCase()}>
+    <>
       {isBitcoinBased && (
         <Card type="info">
           <p>
@@ -167,7 +167,7 @@ const PrivateKeyView = () => {
           </NeutralButton>
         </div>
       )}
-    </Layout>
+    </>
   );
 };
 

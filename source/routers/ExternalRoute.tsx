@@ -70,8 +70,11 @@ export const ExternalRoute = () => {
     }
 
     async function checkExternalRoute() {
-      const externalRoute = await controllerEmitter(['appRoute'], [null, true]);
-      if (externalRoute !== '/') navigate(externalRoute);
+      const externalRoute = (await controllerEmitter(
+        ['appRoute'],
+        [null, true]
+      )) as string;
+      if (externalRoute && externalRoute !== '/') navigate(externalRoute);
     }
 
     checkExternalRoute();

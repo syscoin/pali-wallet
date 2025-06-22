@@ -6,7 +6,6 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 
 import {
-  Layout,
   DefaultModal,
   NeutralButton,
   ConfirmationModal,
@@ -81,7 +80,7 @@ const Advanced = () => {
     setIsOpenConfirmationModal(!isOpenConfirmationModal);
   };
   return (
-    <Layout title={t('settings.advancedTitle')} id="auto-lock-timer-title">
+    <>
       <p className="mb-8 text-center text-white text-sm">
         {t('settings.hereYouCanEnable')}
       </p>
@@ -158,7 +157,7 @@ const Advanced = () => {
           </NeutralButton>
         </div>
       </Form>
-    </Layout>
+    </>
   );
 };
 

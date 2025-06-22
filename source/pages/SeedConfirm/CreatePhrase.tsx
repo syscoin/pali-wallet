@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { OnboardingLayout, Button } from 'components/index';
+import { Button } from 'components/index';
+import { OnboardingLayout } from 'components/Layout/OnboardingLayout';
 import { useController } from 'hooks/useController';
 
 export const CreatePhrase = ({ password }: { password: string }) => {

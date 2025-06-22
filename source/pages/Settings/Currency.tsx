@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
-import { Layout, DefaultModal, NeutralButton } from 'components/index';
+import { DefaultModal, NeutralButton } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -84,7 +84,7 @@ const CurrencyView = () => {
   ]);
 
   return (
-    <Layout title={t('settings.fiatCurrency')} id="fiat-currency-title">
+    <>
       <DefaultModal
         show={confirmed}
         onClose={() => navigate('/home')}
@@ -191,7 +191,7 @@ const CurrencyView = () => {
           </NeutralButton>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };
 

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
-import { Layout, NeutralButton } from 'components/index';
+import { NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
 
@@ -28,7 +28,7 @@ const CreateAccount = () => {
   };
 
   return (
-    <Layout title={t('settings.createAccount')} id="create-account-title">
+    <>
       {address ? (
         <CreatedAccountSuccessfully
           show={address !== ''}
@@ -85,7 +85,7 @@ const CreateAccount = () => {
           </div>
         </Form>
       )}
-    </Layout>
+    </>
   );
 };
 
