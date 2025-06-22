@@ -2436,6 +2436,17 @@ class MainController {
     };
 
     try {
+      // Test network connectivity for both EVM and UTXO networks
+      try {
+        await testNetworkConnectivity(network.url);
+      } catch (testError) {
+        console.error('Network test error:', testError);
+        networkCallError = testError;
+        return {
+          success: false,
+          error: networkCallError || new Error('Failed to configure network'),
+        };
+      }
       const { success } = await this.setSignerNetwork(network);
 
       if (success) {
@@ -2454,30 +2465,10 @@ class MainController {
         }
 
         return { success };
-      } else {
-        // setSignerNetwork failed but didn't throw an error
-        // Try to get the actual error by making a test call
-
-        // Test network connectivity for both EVM and UTXO networks
-        try {
-          await testNetworkConnectivity(network.url);
-        } catch (testError) {
-          console.error('Network test error:', testError);
-          networkCallError = testError;
-        }
-
-        return {
-          success: false,
-          error: networkCallError || new Error('Failed to configure network'),
-        };
       }
     } catch (error) {
       console.error('configureNetwork error:', error);
-      // Return with success: false and include the error
-      return {
-        success: false,
-        error,
-      };
+      return { success: false, error };
     }
   }
 
