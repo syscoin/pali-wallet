@@ -48,19 +48,21 @@ const App: FC = () => {
     // Add the listener when the component mounts
     chrome.runtime.onMessage.addListener(messageListener);
 
-    const handleBeforeUnload = () => {
+    // 🔥 Emergency save when popup closes
+    const performEmergencySave = () => {
+      console.log('[App] Popup closing, triggering emergency save...');
       vaultCache.emergencySave().catch((error) => {
-        console.error('[App] Failed to emergency save on beforeunload:', error);
+        console.error('[App] Failed to emergency save on popup close:', error);
       });
     };
 
-    // 🔥 Only trigger emergency save on actual page unload, not just tab switching
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    // unload only fires when popup is actually being closed/destroyed (not just hidden)
+    window.addEventListener('unload', performEmergencySave);
 
-    // Cleanup: remove the listener when the component unmounts
+    // Cleanup: remove all listeners when the component unmounts
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', performEmergencySave);
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
     };
