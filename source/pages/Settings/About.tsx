@@ -2,6 +2,7 @@ import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
+import copyIcon from 'assets/images/copy.svg';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -79,13 +80,15 @@ const AboutView: FC = () => {
           </div>
         </SimpleCard>
 
-        <Button
-          className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
-          type="button"
-          onClick={() => navigate('/home')}
-        >
-          {t('buttons.close')}
-        </Button>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <Button
+            className="flex items-center justify-center w-full h-10 bg-white text-brand-blue400 text-base font-medium rounded-[100px]"
+            type="button"
+            onClick={() => navigate('/home')}
+          >
+            {t('buttons.close')}
+          </Button>
+        </div>
       </div>
     </>
   );

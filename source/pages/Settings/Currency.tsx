@@ -33,8 +33,13 @@ const CurrencyView = () => {
   if (!activeAccount) throw new Error('No account');
 
   //* Functions
-  const handleConfirmCurrencyChange = () => {
-    setConfirmed(true);
+  const handleConfirmCurrencyChange = async () => {
+    if (hasUnsavedChanges) {
+      // Actually save the currency
+      await controllerEmitter(['wallet', 'setFiat'], [selectedCoin]);
+      setSavedCoin(selectedCoin); // Update saved state
+      setConfirmed(true);
+    }
   };
 
   //* Constants
@@ -49,18 +54,59 @@ const CurrencyView = () => {
 
   //* States
   const [selectedCoin, setSelectedCoin] = useState(String(fiat.asset));
+  const [savedCoin, setSavedCoin] = useState(String(fiat.asset)); // Track saved currency
   const [confirmed, setConfirmed] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
+
+  // Currency to flag mapping (most common currencies)
+  const currencyFlags = {
+    usd: '🇺🇸',
+    eur: '🇪🇺',
+    gbp: '🇬🇧',
+    jpy: '🇯🇵',
+    cad: '🇨🇦',
+    aud: '🇦🇺',
+    chf: '🇨🇭',
+    cny: '🇨🇳',
+    sek: '🇸🇪',
+    nzd: '🇳🇿',
+    mxn: '🇲🇽',
+    sgd: '🇸🇬',
+    hkd: '🇭🇰',
+    nok: '🇳🇴',
+    dkk: '🇩🇰',
+    krw: '🇰🇷',
+    inr: '🇮🇳',
+    brl: '🇧🇷',
+    rub: '🇷🇺',
+    zar: '🇿🇦',
+    try: '🇹🇷',
+    pln: '🇵🇱',
+    ils: '🇮🇱',
+    czk: '🇨🇿',
+    twd: '🇹🇼',
+    thb: '🇹🇭',
+    php: '🇵🇭',
+    cop: '🇨🇴',
+    pen: '🇵🇪',
+    clp: '🇨🇱',
+  };
 
   const filteredCoins = Object.keys(coins).filter((code) =>
     code.toLowerCase().includes(inputValue.toLowerCase())
   );
 
+  // Track changes to the saved fiat currency
   useEffect(() => {
-    if (selectedCoin) {
-      controllerEmitter(['wallet', 'setFiat'], [selectedCoin]);
+    const currentSavedCoin = String(fiat.asset);
+    setSavedCoin(currentSavedCoin);
+    if (selectedCoin === savedCoin) {
+      setSelectedCoin(currentSavedCoin);
     }
-  }, [selectedCoin]);
+  }, [fiat.asset]);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = selectedCoin !== savedCoin;
 
   const fiatPriceValue = useMemo(() => {
     const getAmount = getFiatAmount(
@@ -94,21 +140,33 @@ const CurrencyView = () => {
         })} ${selectedCoin.toUpperCase() || 'USD'}`}
       />
 
-      <p className="mb-2 text-left text-white text-sm md:max-w-full">
-        {t('settings.setYourPreferred')}
-      </p>
+      <div className="flex flex-col gap-y-6">
+        <p className="mb-2 text-left text-white text-sm">
+          {t('settings.setYourPreferred')}
+        </p>
 
-      <div className="flex flex-col gap-y-12">
         <Menu as="div" className="relative inline-block text-left">
           {({ open }) => (
             <>
               <Menu.Button
                 disabled={!fiat || !coins}
-                className="inline-flex justify-between p-[10px] w-[352px] h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]"
+                className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]"
               >
-                <p className="ml-2">
-                  {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
-                </p>
+                <div className="flex items-center gap-2 ml-2">
+                  <span className="text-lg">
+                    {currencyFlags[selectedCoin?.toLowerCase()] || '💰'}
+                  </span>
+                  <div className="flex flex-col items-start">
+                    <span className="text-sm font-medium">
+                      {selectedCoin ? selectedCoin.toUpperCase() : fiatCurrency}
+                    </span>
+                    <span className="text-xs text-brand-gray200">
+                      {getSymbolFromCurrency(
+                        selectedCoin?.toUpperCase() || fiatCurrency
+                      )}
+                    </span>
+                  </div>
+                </div>
 
                 <ArrowDownSvg />
               </Menu.Button>
@@ -116,7 +174,7 @@ const CurrencyView = () => {
               {fiat && coins && (
                 <Menu.Items
                   as="div"
-                  className={`scrollbar-styled absolute z-10 px-4 py-5 w-full h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
+                  className={`scrollbar-styled absolute z-10 px-4 py-5 w-full max-h-80 text-brand-white font-poppins bg-brand-blue600 border border-fields-input-border rounded-[10px] shadow-2xl overflow-auto origin-top-right
                   transform transition-all duration-100 ease-out ${
                     open
                       ? 'opacity-100 scale-100 pointer-events-auto'
@@ -124,10 +182,10 @@ const CurrencyView = () => {
                   }`}
                   static
                 >
-                  <div className="flex justify-center items-center mb-[1px]">
+                  <div className="flex justify-center items-center mb-4">
                     <input
-                      className="text-xs text-brand-gray200 w-[304px] h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
-                      placeholder="Search"
+                      className="text-xs text-brand-gray200 w-full h-[40px] py-[11px] px-[20px] bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-[100px]"
+                      placeholder="Search currencies..."
                       value={inputValue}
                       onChange={(e) => setInputValue(e.target.value)}
                     />
@@ -135,16 +193,33 @@ const CurrencyView = () => {
                   {filteredCoins.map((coin, index) => (
                     <Menu.Item as="div" key={index}>
                       <button
-                        key={index}
+                        type="button"
                         onClick={() => {
                           setSelectedCoin(coin);
                           setInputValue(''); // Clear search when currency is selected
                         }}
-                        className="group flex gap-x-1 items-center justify-start px-4 py-2 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300"
+                        className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300 ${
+                          selectedCoin === coin
+                            ? 'text-brand-royalbluemedium'
+                            : ''
+                        }`}
                       >
-                        {getSymbolFromCurrency(coin.toUpperCase())}
-
-                        <p>{coin.toUpperCase()}</p>
+                        <span className="text-lg flex-shrink-0">
+                          {currencyFlags[coin.toLowerCase()] || '💰'}
+                        </span>
+                        <div className="flex flex-col items-start text-left">
+                          <span className="text-sm font-medium">
+                            {coin.toUpperCase()}
+                          </span>
+                          <span className="text-xs text-brand-gray200">
+                            {getSymbolFromCurrency(coin.toUpperCase())}
+                          </span>
+                        </div>
+                        {selectedCoin === coin && (
+                          <span className="ml-auto text-brand-royalbluemedium">
+                            ✓
+                          </span>
+                        )}
                       </button>
                     </Menu.Item>
                   ))}
@@ -154,42 +229,46 @@ const CurrencyView = () => {
           )}
         </Menu>
 
-        <div className="flex flex-col items-center justify-center text-center">
+        <div className="flex flex-col items-center justify-center text-center bg-brand-blue800 rounded-lg p-4">
+          <p className="text-brand-gray200 text-xs mb-3">Current Balance</p>
           {activeNetwork.chainId === 5700 ? (
-            <div className="flex gap-x-0.5 items-center justify-center">
-              <p className="font-poppins text-[50px] font-medium">
-                {formatNumber(Number(actualBalance) || 0)}{' '}
-              </p>
-
-              <p className="font-poppins text-lg md:mt-4">TSYS</p>
+            <div className="flex flex-col items-center">
+              <div className="flex gap-x-1 items-baseline">
+                <p className="font-poppins text-2xl font-medium text-white">
+                  {formatNumber(Number(actualBalance) || 0)}
+                </p>
+                <p className="font-poppins text-sm text-brand-gray300">TSYS</p>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col justify-center items-center">
-              <div className="flex w-full h-full gap-1 items-end">
-                <p className="flex font-poppins text-[50px] font-medium">
-                  {formatNumber(actualBalance || 0)}{' '}
+            <div className="flex flex-col items-center">
+              <div className="flex gap-x-1 items-baseline">
+                <p className="font-poppins text-2xl font-medium text-white">
+                  {formatNumber(actualBalance || 0)}
                 </p>
-
-                <p className="font-poppins h-max text-lg">
+                <p className="font-poppins text-sm text-brand-gray300">
                   {activeNetwork.currency
                     ? activeNetwork.currency.toUpperCase()
                     : ''}
                 </p>
               </div>
-
-              <p className="text-brand-gray200 mt-1">{fiatPriceValue || 0}</p>
+              <p className="text-brand-gray200 text-sm mt-1 font-medium">
+                {fiatPriceValue || '$0.00'}
+              </p>
             </div>
           )}
         </div>
-        <div className="w-full relative bottom-[-8rem] right-[0%] md:static">
-          <NeutralButton
-            fullWidth={true}
-            type="button"
-            onClick={handleConfirmCurrencyChange}
-          >
-            {t('buttons.save')}
-          </NeutralButton>
-        </div>
+      </div>
+
+      <div className="w-full px-4 absolute bottom-12 md:static">
+        <NeutralButton
+          fullWidth={true}
+          type="button"
+          disabled={!hasUnsavedChanges}
+          onClick={handleConfirmCurrencyChange}
+        >
+          {t('buttons.save')}
+        </NeutralButton>
       </div>
     </>
   );

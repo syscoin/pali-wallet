@@ -153,7 +153,7 @@ export const ChangeAccount = () => {
           <a href="https://docs.syscoin.org/">{t('connections.learnMore')}</a>
         </small>
 
-        <div className="absolute bottom-14 flex items-center justify-between px-10 w-full md:max-w-2xl">
+        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
           <SecondaryButton type="button" onClick={() => window.close()}>
             {t('buttons.cancel')}
           </SecondaryButton>

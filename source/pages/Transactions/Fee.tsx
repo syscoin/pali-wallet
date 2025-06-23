@@ -9,7 +9,6 @@ import { RootState } from 'state/store';
 
 interface IFee {
   onFinish: (fee: number) => any;
-  title: string;
 }
 
 const Fee: React.FC<IFee> = ({ onFinish }) => {
@@ -78,7 +77,7 @@ const Fee: React.FC<IFee> = ({ onFinish }) => {
           {getFeeDescription()}
         </p>
 
-        <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+        <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
           <SecondaryButton type="button" onClick={window.close}>
             {t('buttons.cancel')}
           </SecondaryButton>

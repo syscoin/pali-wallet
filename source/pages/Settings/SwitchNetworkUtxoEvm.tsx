@@ -27,6 +27,10 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
   const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
 
+  const titleValue = `${t(
+    'buttons.switch'
+  )} ${previousChain} -> ${newChainValue}`;
+
   const onSubmit = async () => {
     setLoading(true);
     try {
@@ -93,7 +97,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
             </div>
           </div>
 
-          <div className="absolute bottom-10 flex items-center justify-between px-10 w-full md:max-w-2xl">
+          <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
             <SecondaryButton type="button" onClick={window.close}>
               {t('buttons.cancel')}
             </SecondaryButton>

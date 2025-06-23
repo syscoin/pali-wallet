@@ -1,9 +1,10 @@
 import { Input, Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
-import { Card, CopyCard, NeutralButton } from 'components/index';
+import { Card, CopyCard } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -157,14 +158,18 @@ const PrivateKeyView = () => {
       </CopyCard>
 
       {isBitcoinBased && (
-        <div className="absolute bottom-8 md:static">
-          <NeutralButton
-            width="56 px-8"
-            type="button"
-            onClick={() => window.open(explorerLink)}
+        <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 my-6">
+          <a
+            href={explorerLink}
+            target="_blank"
+            className="flex items-center justify-center gap-x-2"
+            rel="noreferrer"
           >
-            {t('settings.seeOnExplorer')}
-          </NeutralButton>
+            <ExternalLinkIcon size={16} />
+            <span className="font-normal font-poppins underline text-sm">
+              {t('settings.seeOnExplorer')}
+            </span>
+          </a>
         </div>
       )}
     </>

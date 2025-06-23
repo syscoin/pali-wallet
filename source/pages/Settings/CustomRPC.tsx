@@ -54,6 +54,7 @@ const CustomRPCView = () => {
     total: number;
     url: string;
   } | null>(null);
+  // Removed conditional save logic to keep it simple
 
   const { controllerEmitter } = useController();
   const { alert, navigate } = useUtils();
@@ -417,6 +418,8 @@ const CustomRPCView = () => {
     apiUrl: currentNetwork?.apiUrl ?? '',
   };
 
+  // Simplified - no conditional save logic
+
   const isInputDisableByEditMode = state ? state.isDefault : false;
 
   // Load and cache chain data once on component mount
@@ -446,21 +449,26 @@ const CustomRPCView = () => {
     };
 
     loadChainData();
+
+    // Simplified initialization
   }, []);
 
-  // Update form when Redux state changes (after editing)
+  // Update form when Redux state changes (for editing mode)
   useEffect(() => {
     if (currentNetwork && state?.isEditing) {
-      form.setFieldsValue({
-        label: currentNetwork.label,
-        url: currentNetwork.url,
-        chainId: currentNetwork.chainId,
-        symbol: currentNetwork.currency.toUpperCase(),
-        explorer: currentNetwork.explorer,
-        apiUrl: currentNetwork.apiUrl,
-      });
+      const formValues = {
+        label: currentNetwork?.label ?? '',
+        url: currentNetwork?.url ?? '',
+        chainId: currentNetwork?.chainId ?? '',
+        symbol: currentNetwork?.currency?.toUpperCase() ?? '',
+        explorer: currentNetwork?.explorer ?? '',
+        apiUrl: currentNetwork?.apiUrl ?? '',
+      };
+      form.setFieldsValue(formValues);
     }
   }, [currentNetwork, form, state?.isEditing]);
+
+  // Simplified - no form change tracking needed
 
   // Handle clicks outside dropdown to close it
   useEffect(() => {
@@ -1096,7 +1104,7 @@ const CustomRPCView = () => {
           </div>
           <Form.Item
             hasFeedback
-            className="md:w-full mb-0"
+            className="md:w-full mb-6"
             name="apiUrl"
             rules={[
               {
@@ -1126,7 +1134,7 @@ const CustomRPCView = () => {
             />
           </Form.Item>
         </div>
-        <div className="absolute bottom-10 left-0 right-0 px-4 md:static md:px-0">
+        <div className="w-full px-4 absolute bottom-12 md:static">
           {state?.isEditing ? (
             <div className="flex gap-6 justify-center">
               <Button
@@ -1146,7 +1154,7 @@ const CustomRPCView = () => {
             </div>
           ) : (
             <Button
-              className="xl:p-18 h-[40px] w-[352px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
+              className="w-full h-[40px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300"
               type="submit"
               loading={loading}
             >

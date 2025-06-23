@@ -157,16 +157,16 @@ const PhraseView = () => {
             </p>
           </div>
         </Card>
+      </div>
 
-        <div className="my-7">
-          <Button
-            type="button"
-            onClick={() => navigate('/home')}
-            className="w-[352px] h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400"
-          >
-            {t('buttons.close')}
-          </Button>
-        </div>
+      <div className="w-full px-4 absolute bottom-12 md:static">
+        <Button
+          type="button"
+          onClick={() => navigate('/home')}
+          className="w-full h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400"
+        >
+          {t('buttons.close')}
+        </Button>
       </div>
     </>
   );

@@ -1607,8 +1607,14 @@ class MainController {
     );
   }
 
-  public setIsLastTxConfirmed(chainId: number, wasConfirmed: boolean) {
-    store.dispatch(setIsLastTxConfirmed({ chainId, wasConfirmed }));
+  public setIsLastTxConfirmed(
+    chainId: number,
+    wasConfirmed: boolean,
+    isFirstTime?: boolean
+  ) {
+    store.dispatch(
+      setIsLastTxConfirmed({ chainId, wasConfirmed, isFirstTime })
+    );
   }
 
   public editAccountLabel(

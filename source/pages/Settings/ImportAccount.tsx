@@ -71,80 +71,76 @@ const ImportAccountView = () => {
       </p>
 
       <div className="flex flex-col items-center justify-center">
-        <div className="flex flex-col items-center justify-center text-center">
-          <Form
-            validateMessages={{ default: '' }}
-            className="flex flex-col gap-2 text-center md:w-full mb-10"
-            name="newaccount"
-            labelCol={{ span: 8 }}
-            wrapperCol={{ span: 16 }}
-            autoComplete="off"
-            form={form}
+        <Form
+          validateMessages={{ default: '' }}
+          className="flex flex-col gap-2 text-center md:w-full mb-10"
+          name="newaccount"
+          labelCol={{ span: 8 }}
+          wrapperCol={{ span: 16 }}
+          autoComplete="off"
+          form={form}
+        >
+          <Form.Item
+            name="label"
+            className="md:w-full"
+            hasFeedback
+            rules={[
+              {
+                required: false,
+                message: '',
+              },
+            ]}
           >
-            <Form.Item
-              name="label"
-              className="md:w-full"
-              hasFeedback
-              rules={[
-                {
-                  required: false,
-                  message: '',
+            <Input
+              type="text"
+              className="custom-input-normal relative"
+              placeholder={`${t('settings.label')} (${t('settings.optional')})`}
+              id="account-name-input"
+            />
+          </Form.Item>
+          <Form.Item
+            name="privKey"
+            className="md:w-full"
+            hasFeedback
+            rules={[
+              { required: true, message: '' },
+              () => ({
+                async validator(_, value) {
+                  if (
+                    validatePrivateKeyValue(
+                      value,
+                      isBitcoinBased,
+                      activeNetwork
+                    )
+                  ) {
+                    setValidPrivateKey(true);
+                    return Promise.resolve();
+                  }
+                  setValidPrivateKey(false);
+                  return Promise.reject();
                 },
-              ]}
-            >
-              <Input
-                type="text"
-                className="custom-input-normal relative"
-                placeholder={`${t('settings.label')} (${t(
-                  'settings.optional'
-                )})`}
-                id="account-name-input"
-              />
-            </Form.Item>
-            <Form.Item
-              name="privKey"
-              className="md:w-full"
-              hasFeedback
-              rules={[
-                { required: true, message: '' },
-                () => ({
-                  async validator(_, value) {
-                    if (
-                      validatePrivateKeyValue(
-                        value,
-                        isBitcoinBased,
-                        activeNetwork
-                      )
-                    ) {
-                      setValidPrivateKey(true);
-                      return Promise.resolve();
-                    }
-                    setValidPrivateKey(false);
-                    return Promise.reject();
-                  },
-                }),
-              ]}
-            >
-              <Input
-                type="text"
-                className="custom-input-normal relative"
-                placeholder={t('settings.yourPrivateKey')}
-                id="account-name-input"
-              />
-            </Form.Item>
+              }),
+            ]}
+          >
+            <Input
+              type="text"
+              className="custom-input-normal relative"
+              placeholder={t('settings.yourPrivateKey')}
+              id="account-name-input"
+            />
+          </Form.Item>
+        </Form>
 
-            <div className="w-full relative bottom-[-14rem] right-[0%] md:static">
-              <NeutralButton
-                type="button"
-                loading={isImporting}
-                onClick={handleImportAccount}
-                fullWidth={true}
-                disabled={!validPrivateKey}
-              >
-                {t('buttons.import')}
-              </NeutralButton>
-            </div>
-          </Form>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton
+            type="button"
+            loading={isImporting}
+            onClick={handleImportAccount}
+            fullWidth={true}
+            disabled={!validPrivateKey}
+          >
+            {t('buttons.import')}
+          </NeutralButton>
         </div>
       </div>
     </>

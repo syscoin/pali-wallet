@@ -1,6 +1,6 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,11 @@ const Advanced = () => {
   const { t } = useTranslation();
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [enabledProperties, setEnabledProperties] = useState<{
+    [k: string]: boolean | number | undefined;
+  }>({
+    ...advancedSettings,
+  });
+  const [savedProperties, setSavedProperties] = useState<{
     [k: string]: boolean | number | undefined;
   }>({
     ...advancedSettings,
@@ -46,17 +51,28 @@ const Advanced = () => {
     autolock: '', // No warning needed for autolock
   };
 
+  // Track changes to saved settings from Redux
+  useEffect(() => {
+    setSavedProperties({ ...advancedSettings });
+    setEnabledProperties({ ...advancedSettings });
+  }, [advancedSettings]);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = ADVANCED_SETTINGS.some(
+    (prop) => enabledProperties[prop] !== savedProperties[prop]
+  );
+
   const handleSwitchChange = (checked: boolean, advancedProperty: string) => {
     // Only handle confirmation for boolean settings that have warnings
     if (settingsWarnings[advancedProperty]) {
       setCurrentAdvancedProperty(advancedProperty);
       setConfirmationMessage(settingsWarnings[advancedProperty]);
 
-      if (!checked) {
-        // If disabling, confirm first
+      if (checked) {
+        // If enabling, confirm first (since enabling creates more requests)
         setIsOpenConfirmationModal(true);
       } else {
-        // If enabling, update directly
+        // If disabling, update directly
         setEnabledProperties((prevState) => ({
           ...prevState,
           [advancedProperty]: checked,
@@ -71,15 +87,17 @@ const Advanced = () => {
     }
   };
 
-  const handleConfirmDisable = () => {
+  const handleConfirmEnable = () => {
     setEnabledProperties((prevState) => ({
       ...prevState,
-      [currentAdvancedProperty]: false,
+      [currentAdvancedProperty]: true,
     }));
     setIsOpenConfirmationModal(false);
   };
 
   const onSubmit = async () => {
+    if (!hasUnsavedChanges) return;
+
     setLoading(true);
 
     try {
@@ -91,6 +109,8 @@ const Advanced = () => {
         );
       }
 
+      // Update saved state after successful save
+      setSavedProperties({ ...enabledProperties });
       setConfirmed(true);
     } catch (error) {
       console.error('Failed to save advanced settings:', error);
@@ -116,11 +136,11 @@ const Advanced = () => {
       />
 
       <ConfirmationModal
-        title={t('settings.forgetWarning')}
+        title={t('buttons.confirm')}
         description={confirmationMessage}
         show={isOpenConfirmationModal}
         onClose={() => setIsOpenConfirmationModal(false)}
-        onClick={handleConfirmDisable}
+        onClick={handleConfirmEnable}
       />
 
       <Form
@@ -228,8 +248,13 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit" loading={loading}>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton
+            type="submit"
+            loading={loading}
+            fullWidth
+            disabled={!hasUnsavedChanges}
+          >
             {t('buttons.save')}
           </NeutralButton>
         </div>

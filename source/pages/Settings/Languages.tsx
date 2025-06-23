@@ -13,9 +13,10 @@ import { PaliLanguages } from 'utils/types';
 
 const Languages = () => {
   const [confirmed, setConfirmed] = useState<boolean>(false);
-  const [currentLang, setCurrentLang] = useState<PaliLanguages>(
+  const [savedLang, setSavedLang] = useState<PaliLanguages>(PaliLanguages.EN); // Actually saved language
+  const [selectedLang, setSelectedLang] = useState<PaliLanguages>(
     PaliLanguages.EN
-  );
+  ); // Preview selection
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -23,97 +24,109 @@ const Languages = () => {
       const storedLang = await chromeStorage
         .getItem('language')
         .then((state) => JSON.parse(state));
-      setCurrentLang(storedLang ?? PaliLanguages.EN);
+      const currentLang = storedLang ?? PaliLanguages.EN;
+      setSavedLang(currentLang);
+      setSelectedLang(currentLang); // Initialize preview with saved value
     };
 
     fetchLanguage().then((lng) => lng);
   }, []);
 
-  // Language configuration with translated names, native names, and emoji flags
+  // Language configuration with static names to avoid t() dependency issues
   const availableLanguages = useMemo(
     () => [
       {
         id: 1,
-        name: t('settings.english'),
+        name: 'English',
         nativeName: 'English',
         value: PaliLanguages.EN,
         flag: '🇺🇸',
       },
       {
         id: 2,
-        name: t('settings.spanish'),
+        name: 'Spanish',
         nativeName: 'Español',
         value: PaliLanguages.ES,
         flag: '🇪🇸',
       },
       {
         id: 3,
-        name: t('settings.portuguese'),
+        name: 'Portuguese',
         nativeName: 'Português',
         value: PaliLanguages.PT,
         flag: '🇧🇷',
       },
       {
         id: 4,
-        name: t('settings.french'),
+        name: 'French',
         nativeName: 'Français',
         value: PaliLanguages.FR,
         flag: '🇫🇷',
       },
       {
         id: 5,
-        name: t('settings.german'),
+        name: 'German',
         nativeName: 'Deutsch',
         value: PaliLanguages.DE,
         flag: '🇩🇪',
       },
       {
         id: 6,
-        name: t('settings.chinese'),
+        name: 'Chinese',
         nativeName: '中文',
         value: PaliLanguages.ZH,
         flag: '🇨🇳',
       },
       {
         id: 7,
-        name: t('settings.japanese'),
+        name: 'Japanese',
         nativeName: '日本語',
         value: PaliLanguages.JA,
         flag: '🇯🇵',
       },
       {
         id: 8,
-        name: t('settings.korean'),
+        name: 'Korean',
         nativeName: '한국어',
         value: PaliLanguages.KO,
         flag: '🇰🇷',
       },
       {
         id: 9,
-        name: t('settings.russian'),
+        name: 'Russian',
         nativeName: 'Русский',
         value: PaliLanguages.RU,
         flag: '🇷🇺',
       },
     ],
-    [t]
+    [] // Remove t dependency
   );
 
   const navigate = useNavigate();
 
   const onSubmit = async () => {
-    await setLanguageInLocalStorage(currentLang);
-    await i18next.changeLanguage(currentLang);
+    // Only save when explicitly clicking save button
+    await setLanguageInLocalStorage(selectedLang);
+    await i18next.changeLanguage(selectedLang);
+    setSavedLang(selectedLang); // Update saved state
     setConfirmed(true);
   };
 
   const handleLanguageChange = (langValue: PaliLanguages) => {
-    setCurrentLang(langValue);
+    // Only update preview state - don't save yet
+    setSelectedLang(langValue);
   };
 
   const selectedLanguage = availableLanguages.find(
-    (lang) => lang.value === currentLang
+    (lang) => lang.value === selectedLang
   );
+
+  const currentLanguage = availableLanguages.find(
+    (lang) => lang.value === savedLang
+  );
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = selectedLang !== savedLang;
 
   return (
     <>
@@ -137,13 +150,12 @@ const Languages = () => {
         wrapperCol={{ span: 16 }}
         autoComplete="off"
       >
-        <div className="flex flex-col gap-y-4 w-full max-w-md">
+        <div className="flex flex-col gap-y-6">
           <p className="mb-2 text-left text-white text-sm">
-            {/* Keep "Languages" in English for accessibility */}
-            {t('generalMenu.languages')} / Languages
+            {t('settings.setYourPreferredLanguage')}
           </p>
 
-          <Menu as="div" className="relative inline-block text-left">
+          <Menu as="div" className="relative inline-block text-left w-[352px]">
             {({ open }) => (
               <>
                 <Menu.Button className="inline-flex justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px]">
@@ -174,9 +186,10 @@ const Languages = () => {
                   {availableLanguages.map((lang) => (
                     <Menu.Item as="div" key={lang.id}>
                       <button
+                        type="button"
                         onClick={() => handleLanguageChange(lang.value)}
                         className={`group flex gap-x-3 items-center justify-start px-4 py-3 w-full hover:text-brand-royalbluemedium text-brand-white font-poppins text-sm border-0 border-b border-dashed border-border-default transition-all duration-300 ${
-                          currentLang === lang.value
+                          selectedLang === lang.value
                             ? 'text-brand-royalbluemedium'
                             : ''
                         }`}
@@ -192,7 +205,7 @@ const Languages = () => {
                             {lang.nativeName}
                           </span>
                         </div>
-                        {currentLang === lang.value && (
+                        {selectedLang === lang.value && (
                           <span className="ml-auto text-brand-royalbluemedium">
                             ✓
                           </span>
@@ -204,10 +217,29 @@ const Languages = () => {
               </>
             )}
           </Menu>
+
+          <div className="bg-brand-blue800 rounded-lg p-6">
+            <p className="text-brand-gray200 text-xs mb-4 text-center">
+              Current Language
+            </p>
+            <div className="flex items-center justify-center gap-6">
+              <span className="text-6xl">{currentLanguage?.flag}</span>
+              <div className="flex flex-col items-start">
+                <span className="text-xl font-medium text-white">
+                  {currentLanguage?.name}
+                </span>
+                <span className="text-sm text-brand-gray200 mt-1">
+                  {currentLanguage?.nativeName}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="absolute bottom-12 md:static">
-          <NeutralButton type="submit">{t('buttons.save')}</NeutralButton>
+        <div className="w-full px-4 absolute bottom-12 md:static">
+          <NeutralButton type="submit" fullWidth disabled={!hasUnsavedChanges}>
+            {t('buttons.save')}
+          </NeutralButton>
         </div>
       </Form>
     </>
