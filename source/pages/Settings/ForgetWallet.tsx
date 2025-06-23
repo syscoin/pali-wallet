@@ -1,14 +1,16 @@
-import { Form, Input } from 'antd';
-import TextArea from 'antd/lib/input/TextArea';
-import { debounce } from 'lodash';
+import { Form } from 'antd';
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BiCopy } from 'react-icons/bi';
 import { useSelector } from 'react-redux';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
-import { Button, Card } from 'components/index';
+import {
+  Button,
+  Card,
+  ValidatedPasswordInput,
+  SeedPhraseDisplay,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -32,145 +34,98 @@ const ForgetWalletView = () => {
       ? activeAccount.balances[INetworkType.Syscoin]
       : activeAccount.balances[INetworkType.Ethereum]) > 0;
 
-  // Separate loading states for better UX
-  const [isValidatingPassword, setIsValidatingPassword] = useState(false);
+  // Loading state for submit action
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Validation status states
-  const [passwordStatus, setPasswordStatus] = useState<
-    'success' | 'error' | ''
-  >('');
 
   // Cached seed for copying
   const [cachedSeed, setCachedSeed] = useState<string>('');
 
-  // if account has no funds, no need to input the seed
+  // Password validation state
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
+
+  // Copy state for SeedPhraseDisplay
+  const [copied, setCopied] = useState<boolean>(false);
 
   const [form] = Form.useForm();
 
-  // Debounced password validation - faster response like SyscoinImport
-  const debouncedPasswordValidation = useCallback(
-    debounce(async (password: string) => {
-      if (!password) {
-        setPasswordStatus('');
-        setIsPasswordValid(false);
-        setCachedSeed('');
-        return;
+  // Password validation function for ValidatedPasswordInput
+  const validatePassword = useCallback(
+    async (password: string) => {
+      const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
+      if (!seed) {
+        throw new Error('Invalid password');
       }
-
-      setIsValidatingPassword(true);
-      setPasswordStatus('');
-
-      try {
-        const seed = await controllerEmitter(['wallet', 'getSeed'], [password]);
-
-        if (seed) {
-          setPasswordStatus('success');
-          setIsPasswordValid(true);
-          setCachedSeed(String(seed)); // Cache seed for seed validation
-
-          // Auto-fill seed field so user can copy it when they have funds
-          if (hasAccountFunds) {
-            form.setFieldsValue({ seed: String(seed) });
-          }
-
-          // Clear password field errors
-          form.setFields([
-            {
-              name: 'password',
-              errors: [],
-            },
-          ]);
-        } else {
-          setPasswordStatus('error');
-          setIsPasswordValid(false);
-          setCachedSeed('');
-
-          // Set password field error
-          form.setFields([
-            {
-              name: 'password',
-              errors: [t('start.wrongPassword')],
-            },
-          ]);
-        }
-      } catch (error) {
-        console.error('Password validation error:', error);
-        setPasswordStatus('error');
-        setIsPasswordValid(false);
-        setCachedSeed('');
-
-        form.setFields([
-          {
-            name: 'password',
-            errors: [t('start.wrongPassword')],
-          },
-        ]);
-      } finally {
-        setIsValidatingPassword(false);
-      }
-    }, 300), // Reduced to 300ms for faster response
-    [controllerEmitter, form, t]
+      return seed;
+    },
+    [controllerEmitter]
   );
 
-  // Handle password input change
-  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
+  // Handle successful password validation
+  const handleValidationSuccess = useCallback(
+    (seed: string) => {
+      setIsPasswordValid(true);
+      setCachedSeed(String(seed));
 
-    // Clear previous validation state when user starts typing
-    if (passwordStatus) {
-      setPasswordStatus('');
-      form.setFields([
-        {
-          name: 'password',
-          errors: [],
-        },
-      ]);
-    }
+      // Auto-fill seed field so user can copy it when they have funds
+      if (hasAccountFunds) {
+        form.setFieldsValue({ seed: String(seed) });
+      }
+    },
+    [hasAccountFunds, form]
+  );
 
-    // Reset seed state when password changes
+  // Handle failed password validation
+  const handleValidationError = useCallback(() => {
+    setIsPasswordValid(false);
     setCachedSeed('');
 
     if (hasAccountFunds) {
       form.setFieldsValue({ seed: '' }); // Clear seed field
     }
+  }, [hasAccountFunds, form]);
 
-    if (value.trim()) {
-      setIsValidatingPassword(true); // Show spinner immediately
-      debouncedPasswordValidation(value);
-    } else {
-      setIsPasswordValid(false);
-      setCachedSeed('');
-      setIsValidatingPassword(false);
-      setPasswordStatus('');
-    }
-  };
+  // Copy seed phrase to clipboard using SeedPhraseDisplay
+  const handleCopySeed = useCallback(
+    async (seedPhrase: string) => {
+      try {
+        await navigator.clipboard.writeText(seedPhrase);
+        alert.success(t('settings.seedPhraseCopied'));
+        setCopied(true);
+        // Reset copied state after a delay
+        setTimeout(() => setCopied(false), 2000);
+      } catch (error) {
+        console.error('Failed to copy seed:', error);
+        alert.error(t('buttons.error'));
+      }
+    },
+    [alert, t]
+  );
 
-  // Copy seed phrase to clipboard
-  const handleCopySeed = async () => {
-    try {
-      await navigator.clipboard.writeText(cachedSeed);
-      alert.success(t('settings.seedPhraseCopied'));
-    } catch (error) {
-      console.error('Failed to copy seed:', error);
-      alert.error(t('buttons.error'));
-    }
-  };
+  const onSubmit = useCallback(
+    async ({ password }: { password: string }) => {
+      setIsSubmitting(true);
 
-  const onSubmit = async ({ password }: { password: string }) => {
-    setIsSubmitting(true);
+      try {
+        await controllerEmitter(['wallet', 'forgetWallet'], [password]);
+        navigate('/');
+      } catch (error) {
+        console.error('Failed to forget wallet:', error);
+        // Handle error if needed
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [controllerEmitter, navigate]
+  );
 
-    try {
-      await controllerEmitter(['wallet', 'forgetWallet'], [password]);
-      navigate('/');
-    } catch (error) {
-      console.error('Failed to forget wallet:', error);
-      // Handle error if needed
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // Navigation callbacks
+  const handleCancel = useCallback(() => {
+    navigate('/home');
+  }, [navigate]);
+
+  const handleSubmit = useCallback(() => {
+    form.submit();
+  }, [form]);
 
   return (
     <>
@@ -193,28 +148,15 @@ const ForgetWalletView = () => {
           name="forget"
           autoComplete="off"
         >
-          <Form.Item
+          <ValidatedPasswordInput
+            onValidate={validatePassword}
+            onValidationSuccess={handleValidationSuccess}
+            onValidationError={handleValidationError}
+            placeholder={t('settings.enterYourPassword')}
+            id="forget_password"
+            form={form}
             name="password"
-            className="w-full md:max-w-md"
-            hasFeedback
-            validateStatus={
-              isValidatingPassword ? 'validating' : passwordStatus || ''
-            }
-            rules={[
-              {
-                required: true,
-                message: t('settings.enterYourPassword'),
-              },
-            ]}
-          >
-            <Input
-              type="password"
-              className="custom-import-input relative"
-              placeholder={t('settings.enterYourPassword')}
-              id="forget_password"
-              onChange={handlePasswordChange}
-            />
-          </Form.Item>
+          />
 
           {hasAccountFunds && (
             <>
@@ -228,33 +170,14 @@ const ForgetWalletView = () => {
                   },
                 ]}
               >
-                <div className="relative">
-                  <TextArea
-                    className={`${
-                      !isPasswordValid
-                        ? 'opacity-50 cursor-not-allowed bg-gray-800'
-                        : 'opacity-100 bg-fields-input-primary'
-                    } p-2 pl-4 pr-12 w-full h-[90px] text-brand-graylight text-sm border border-border-default focus:border-fields-input-borderfocus rounded-[10px] outline-none resize-none`}
-                    placeholder={
-                      !isPasswordValid ? t('settings.enterYourPassword') : ''
-                    }
-                    id="forget_seed"
-                    value={cachedSeed} // Display the cached seed directly
-                    readOnly={true} // Always read-only since it's auto-filled
-                  />
-
-                  {/* Copy icon - only show when password is valid and seed is available */}
-                  {isPasswordValid && cachedSeed && (
-                    <button
-                      type="button"
-                      onClick={handleCopySeed}
-                      className="absolute top-2 right-2 p-1 rounded hover:bg-gray-700 transition-colors duration-200"
-                      title={t('buttons.copy')}
-                    >
-                      <BiCopy className="w-4 h-4 text-brand-graylight hover:text-white" />
-                    </button>
-                  )}
-                </div>
+                <SeedPhraseDisplay
+                  seedPhrase={cachedSeed}
+                  isEnabled={isPasswordValid}
+                  showEyeToggle={true}
+                  onCopy={handleCopySeed}
+                  copied={copied}
+                  displayMode="textarea"
+                />
               </Form.Item>
 
               <Card type="info">
@@ -277,7 +200,7 @@ const ForgetWalletView = () => {
         <div className="flex gap-x-8 justify-between md:gap-x-40">
           <Button
             type="button"
-            onClick={() => navigate('/home')}
+            onClick={handleCancel}
             className="w-[164px] h-10 flex items-center justify-center rounded-[100px] border-2 border-white text-base font-medium text-white"
             disabled={isSubmitting}
           >
@@ -286,7 +209,7 @@ const ForgetWalletView = () => {
 
           <Button
             type="button"
-            onClick={() => form.submit()}
+            onClick={handleSubmit}
             className={`${
               !isPasswordValid || isSubmitting ? 'opacity-60' : 'opacity-100'
             } w-[164px] h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400`}

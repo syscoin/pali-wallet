@@ -17,3 +17,6 @@ export * from './Fee';
 export * from './Modal';
 export * from './Loader/SkeletonLoader';
 export * from './WalletErrorBoundary';
+
+export { ValidatedPasswordInput } from './Input/ValidatedPasswordInput';
+export { SeedPhraseDisplay } from './Input/SeedPhraseDisplay';
