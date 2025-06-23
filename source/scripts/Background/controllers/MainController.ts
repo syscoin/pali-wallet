@@ -2356,8 +2356,8 @@ class MainController {
       return false;
     }
 
-    // Store initial state for change detection - latest tx hash + balances only
-    const getLatestTxHash = (transactions: any) => {
+    // Store initial state for change detection - latest tx object + balances
+    const getLatestTx = (transactions: any) => {
       const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
       const chainTxs = transactions?.[networkType]?.[activeNetwork.chainId];
 
@@ -2366,14 +2366,13 @@ class MainController {
       }
 
       // Get the first transaction (should be latest due to desc sort)
-      // Use hash for EVM, txid for UTXO
-      const latestTx = chainTxs[0];
-      return latestTx?.hash || latestTx?.txid || null;
+      // Return the full transaction object to detect content changes like confirmations, status, etc.
+      return chainTxs[0];
     };
 
     const initialStateSnapshot = JSON.stringify({
       balances: activeAccountValues.balances,
-      latestTxHash: getLatestTxHash(currentAccountTransactions),
+      latestTx: getLatestTx(currentAccountTransactions),
     });
 
     // Use Promise.allSettled for coordinated updates
@@ -2421,7 +2420,7 @@ class MainController {
       finalAccountTransactions[activeAccount.type][activeAccount.id];
     const finalStateSnapshot = JSON.stringify({
       balances: finalAccounts[activeAccount.type][activeAccount.id].balances,
-      latestTxHash: getLatestTxHash(finalAccountTxs),
+      latestTx: getLatestTx(finalAccountTxs),
     });
 
     const hasChanges = initialStateSnapshot !== finalStateSnapshot;
