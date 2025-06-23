@@ -32,7 +32,6 @@ import {
 } from './types';
 
 export const initialState: IVaultState = {
-  isDirty: false,
   accounts: {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
@@ -106,7 +105,6 @@ const VaultState = createSlice({
     ) {
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
-      state.isDirty = true; // Account structure changes need immediate saving
     },
     setAccountsWithLabelEdited(
       state: IVaultState,
@@ -118,7 +116,6 @@ const VaultState = createSlice({
     ) {
       const { label, accountId, accountType } = action.payload;
       state.accounts[accountType][accountId].label = label;
-      state.isDirty = true; // Account label changes need immediate saving
     },
     setEditedEvmToken(
       state: IVaultState,
@@ -157,7 +154,6 @@ const VaultState = createSlice({
       state.activeChain = activeNetwork.kind;
       state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
       state.activeNetwork = activeNetwork;
-      state.isDirty = true; // Network changes need immediate saving
     },
     setAccountBalances(
       state: IVaultState,
@@ -199,8 +195,6 @@ const VaultState = createSlice({
         ethereum: {},
         syscoin: {},
       };
-
-      state.isDirty = true; // Creating accounts needs immediate saving
     },
     setIsLastTxConfirmed(
       state: IVaultState,
@@ -246,10 +240,6 @@ const VaultState = createSlice({
           state.networks.syscoin[network.chainId] = network;
         }
       }
-
-      if (!isFirstTime) {
-        state.isDirty = true; // Network changes need immediate saving
-      }
     },
     removeNetwork(
       state: IVaultState,
@@ -268,8 +258,6 @@ const VaultState = createSlice({
       } else {
         delete state.networks.syscoin[chainId];
       }
-
-      state.isDirty = true; // Removing networks needs immediate saving
     },
 
     setActiveAccount(
@@ -280,11 +268,9 @@ const VaultState = createSlice({
       }>
     ) {
       state.activeAccount = action.payload;
-      state.isDirty = true; // Active account changes need immediate saving
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
-      state.isDirty = true; // Active network changes need immediate saving
     },
     setNetworkType(state: IVaultState, action: PayloadAction<INetworkType>) {
       state.activeChain = action.payload;
@@ -301,7 +287,6 @@ const VaultState = createSlice({
           ...state.accounts,
           [accountType]: {},
         };
-        state.isDirty = true; // Account structure changes need immediate saving
       }
     },
 
@@ -366,7 +351,6 @@ const VaultState = createSlice({
 
       // Create TRULY clean state - NO accounts, assets, or transactions
       const cleanState: IVaultState = {
-        isDirty: true, // Mark as dirty since we're creating new vault state
         accounts: {
           [KeyringAccountType.HDAccount]: {}, // 🔥 EMPTY - no default accounts!
           [KeyringAccountType.Imported]: {},
@@ -455,8 +439,6 @@ const VaultState = createSlice({
       if (state.accountTransactions[type]) {
         delete state.accountTransactions[type][id];
       }
-
-      state.isDirty = true; // Removing accounts needs immediate saving
     },
     setAccountLabel(
       state: IVaultState,
@@ -472,16 +454,10 @@ const VaultState = createSlice({
         throw new Error('Unable to set label. Account not found');
 
       state.accounts[type][id].label = label;
-      state.isDirty = true; // Account label changes need immediate saving
     },
 
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
       state.isBitcoinBased = action.payload;
-    },
-
-    // 🔥 FIX: Action to mark vault as clean after saving
-    markVaultAsClean(state: IVaultState) {
-      state.isDirty = false;
     },
 
     setAccountAssets: (
@@ -916,7 +892,6 @@ export const {
   createAccount,
   setAccountLabel,
   setIsBitcoinBased,
-  markVaultAsClean,
   setAccountAssets,
   setSingleTransactionToState,
   setMultipleTransactionToState,

@@ -74,6 +74,7 @@ import {
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 
@@ -291,22 +292,10 @@ class MainController {
         `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
       );
 
-      // Save current vault state to cache and storage (background)
+      //TODO: move this to save after successful switch by taking in custom vault JSON
       const currentState = store.getState().vault;
       if (currentState && activeSlip44 !== null) {
-        vaultCache
-          .setSlip44Vault(activeSlip44, currentState)
-          .then(() => {
-            console.log(
-              `[MainController] Pre-switch: background save completed for slip44=${activeSlip44}`
-            );
-          })
-          .catch((error) => {
-            console.error(
-              `[MainController] Pre-switch: background save failed for slip44=${activeSlip44}:`,
-              error
-            );
-          });
+        await vaultCache.setSlip44Vault(activeSlip44, currentState);
       }
 
       // Load vault state for target slip44 (this also sets activeSlip44 and saves main state)
@@ -314,21 +303,6 @@ class MainController {
 
       // Update vault state with correct network info
       store.dispatch(setNetworkChange({ activeNetwork: network }));
-
-      // 🔥 Background save for network switching (don't block UI)
-      vaultCache
-        .setSlip44Vault(slip44, store.getState().vault)
-        .then(() => {
-          console.log(
-            `[MainController] Network switch: background save completed for slip44=${slip44}`
-          );
-        })
-        .catch((error) => {
-          console.error(
-            `[MainController] Network switch: background save failed for slip44=${slip44}:`,
-            error
-          );
-        });
     }
 
     // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
@@ -408,6 +382,7 @@ class MainController {
     // No need to set it again - that could trigger unnecessary state updates
 
     this.keyrings.set(slip44, targetKeyring);
+    this.saveWalletState('network-switch');
   }
 
   // Create a keyring on demand with storage access
@@ -811,6 +786,9 @@ class MainController {
     // Update Redux state
     store.dispatch(setAdvancedSettings({ advancedProperty, value }));
 
+    // Save wallet state after changing settings
+    this.saveWalletState('update-settings');
+
     // If this is the autolock setting, restart the timer
     if (advancedProperty === 'autolock' && typeof value === 'number') {
       // Validate timer range (5-120 minutes)
@@ -861,6 +839,12 @@ class MainController {
       this.autoLockResetTimeout = null;
     }
 
+    // Clear any pending save timeout
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+
     console.log('[MainController] Auto-lock timer stopped');
   }
 
@@ -904,6 +888,58 @@ class MainController {
     }
   }
 
+  // Centralized wallet state saving with debouncing and auto-lock timer reset
+  private saveWalletState(operation: string): void {
+    try {
+      // Clear any existing save timeout to debounce rapid calls
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+      }
+
+      // Reset auto-lock timer since this represents user activity
+      this.resetAutoLockTimer();
+
+      // Debounce the actual save by 100ms to prevent rapid consecutive saves
+      this.saveTimeout = setTimeout(async () => {
+        try {
+          const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+
+          if (activeSlip44 !== null) {
+            const currentVaultState = store.getState().vault;
+
+            // Save vault state to slip44-specific storage
+            await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+
+            // Save main state (global settings)
+            await saveMainState();
+
+            console.log(
+              `[MainController] Wallet state saved successfully for operation: ${operation}`
+            );
+          } else {
+            console.warn(
+              `[MainController] No active slip44 to save wallet state for operation: ${operation}`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `[MainController] Failed to save wallet state for operation ${operation}:`,
+            error
+          );
+          // Don't throw - the operation already succeeded, saving is just persistence
+        } finally {
+          this.saveTimeout = null;
+        }
+      }, 100); // 100ms debounce delay
+    } catch (error) {
+      console.error(
+        `[MainController] Error in saveWalletState for operation ${operation}:`,
+        error
+      );
+      // Fail silently - the main operation succeeded, saving is just persistence
+    }
+  }
+
   public async forgetWallet(pwd: string) {
     this.forgetMainWallet(pwd);
 
@@ -942,6 +978,33 @@ class MainController {
       console.log(
         '[MainController] Storage initialized, proceeding with unlock...'
       );
+
+      // DEFENSIVE CHECK: Ensure vault state is properly initialized before keyring operations
+      const currentVaultState = store.getState().vault;
+
+      if (!currentVaultState.activeNetwork) {
+        console.warn(
+          '[MainController] activeNetwork is undefined during unlock, initializing vault state'
+        );
+        store.dispatch(
+          setNetworkChange({
+            activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+          })
+        );
+      }
+
+      if (!currentVaultState.activeAccount) {
+        console.warn(
+          '[MainController] activeAccount is undefined during unlock, setting default'
+        );
+        store.dispatch(
+          setActiveAccount({
+            id: 0,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      }
+
       this.lockAllKeyrings();
       const { canLogin } = await this.unlock(pwd);
 
@@ -973,9 +1036,6 @@ class MainController {
       // through KeyringManager methods for security
       store.dispatch(setLastLogin());
 
-      // 🔥 FIX: Start periodic safety saves after successful unlock
-      vaultCache.startPeriodicSave();
-
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
         // Fetch fresh fiat prices immediately after successful unlock
@@ -1005,6 +1065,36 @@ class MainController {
   public async createWallet(password: string, phrase: string): Promise<void> {
     store.dispatch(setIsLoadingBalances(true));
     try {
+      // CRITICAL FIX: Ensure vault state is properly initialized before keyring operations
+      // The keyring manager expects activeNetwork and activeAccount to exist
+      const currentVaultState = store.getState().vault;
+
+      if (!currentVaultState.activeNetwork) {
+        console.warn(
+          '[MainController] activeNetwork is undefined, initializing vault state'
+        );
+        // Force initialization of vault state with defaults
+        // This ensures activeNetwork exists before keyring operations
+        store.dispatch(
+          setNetworkChange({
+            activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+          })
+        );
+      }
+
+      if (!currentVaultState.activeAccount) {
+        console.warn(
+          '[MainController] activeAccount is undefined, setting default'
+        );
+        // Ensure activeAccount exists
+        store.dispatch(
+          setActiveAccount({
+            id: 0,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      }
+
       const keyring = this.getActiveKeyring();
 
       // This now uses the separated approach internally:
@@ -1035,31 +1125,7 @@ class MainController {
       store.dispatch(setLastLogin());
 
       // Save vault state to persistent storage after creating the first account
-      const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-      const currentVaultState = store.getState().vault;
-
-      try {
-        // Save vault state to cache for the current slip44
-        await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-        console.log(
-          `[MainController] Vault state saved to cache for slip44=${activeSlip44}`
-        );
-
-        // Save main state to persist global settings
-        await saveMainState();
-        console.log('[MainController] Main state saved to storage');
-
-        // Start periodic safety saves to ensure data isn't lost
-        vaultCache.startPeriodicSave();
-        console.log('[MainController] Started periodic safety saves');
-      } catch (saveError) {
-        console.error(
-          '[MainController] Failed to save wallet state:',
-          saveError
-        );
-        // Don't throw here - wallet creation succeeded, but we should warn
-        // The periodic saves will retry in the background
-      }
+      this.saveWalletState('create-wallet');
 
       setTimeout(() => {
         this.setFiat();
@@ -1124,6 +1190,10 @@ class MainController {
         type: KeyringAccountType.HDAccount,
       })
     );
+
+    // Save wallet state after creating account
+    this.saveWalletState('create-account');
+
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
@@ -1184,9 +1254,6 @@ class MainController {
       // Set active account
       store.dispatch(setActiveAccount({ id, type }));
 
-      // Reset auto-lock timer for account switching activity
-      this.resetAutoLockTimer();
-
       // Defer heavy operations to prevent blocking the UI
       setTimeout(() => {
         this.performPostAccountSwitchOperations(
@@ -1226,7 +1293,8 @@ class MainController {
         );
         return;
       }
-
+      // Save wallet state after account switching (includes auto-lock timer reset)
+      this.saveWalletState('account-switch');
       // Notify all connected DApps about the account change
       const controller = getController();
       const { dapps } = store.getState().dapp;
@@ -1484,6 +1552,9 @@ class MainController {
 
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
+    // Save wallet state after adding custom network
+    this.saveWalletState('add-custom-network');
+
     const networksAfterDispatch =
       store.getState().vault.networks[networkWithCustomParams.kind];
 
@@ -1526,6 +1597,9 @@ class MainController {
       store.dispatch(setNetwork({ network: newNetwork, isEdit: true }));
       this.updateNetworkConfig(newNetwork);
 
+      // Save wallet state after editing network
+      this.saveWalletState('edit-network');
+
       return newNetwork;
     }
     throw new Error(
@@ -1555,6 +1629,9 @@ class MainController {
         accountType,
       })
     );
+
+    // Save wallet state after editing account label
+    this.saveWalletState('edit-account-label');
   }
 
   public removeAccount(accountId: number, accountType: KeyringAccountType) {
@@ -1591,6 +1668,9 @@ class MainController {
     // Remove from store
     store.dispatch(removeAccount({ id: accountId, type: accountType }));
 
+    // Save wallet state after removing account
+    this.saveWalletState('remove-account');
+
     // Notify connected DApps if needed
     const controller = getController();
     const { dapps } = store.getState().dapp;
@@ -1616,6 +1696,9 @@ class MainController {
     key?: string
   ) {
     store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
+
+    // Save wallet state after removing network
+    this.saveWalletState('remove-network');
   }
 
   public getRecommendedFee() {
@@ -1663,6 +1746,10 @@ class MainController {
         type: KeyringAccountType.Imported,
       })
     );
+
+    // Save wallet state after importing account from private key
+    this.saveWalletState('import-account-private-key');
+
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
@@ -1695,6 +1782,10 @@ class MainController {
         type: KeyringAccountType.Trezor,
       })
     );
+
+    // Save wallet state after importing Trezor account
+    this.saveWalletState('import-account-trezor');
+
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
@@ -1731,6 +1822,10 @@ class MainController {
         type: KeyringAccountType.Ledger,
       })
     );
+
+    // Save wallet state after importing Ledger account
+    this.saveWalletState('import-account-ledger');
+
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
@@ -2737,9 +2832,6 @@ class MainController {
   private async handleNetworkChangeSuccess(network: INetwork) {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
-    // Reset auto-lock timer for network switching activity
-    this.resetAutoLockTimer();
-
     const { activeAccount } = store.getState().vault;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
     console.log(
@@ -3027,22 +3119,8 @@ class MainController {
       result = await this.account.sys.saveTokenInfo(token);
     }
 
-    // Save vault state after adding token (non-blocking)
-    setTimeout(async () => {
-      try {
-        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-        const currentVaultState = store.getState().vault;
-        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-        console.log(
-          `[MainController] Vault state saved after adding token for slip44=${activeSlip44}`
-        );
-      } catch (saveError) {
-        console.error(
-          '[MainController] Failed to save vault state after adding token:',
-          saveError
-        );
-      }
-    }, 0);
+    // Save wallet state after adding token
+    this.saveWalletState('add-token');
 
     return result;
   }
@@ -3059,22 +3137,8 @@ class MainController {
       throw new Error('Edit token is not supported for Syscoin tokens');
     }
 
-    // Save vault state after editing token (non-blocking)
-    setTimeout(async () => {
-      try {
-        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-        const currentVaultState = store.getState().vault;
-        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-        console.log(
-          `[MainController] Vault state saved after editing token for slip44=${activeSlip44}`
-        );
-      } catch (saveError) {
-        console.error(
-          '[MainController] Failed to save vault state after editing token:',
-          saveError
-        );
-      }
-    }, 0);
+    // Save wallet state after editing token
+    this.saveWalletState('edit-token');
 
     return result;
   }
@@ -3094,22 +3158,8 @@ class MainController {
       result = await this.account.sys.deleteTokenInfo(tokenToDelete);
     }
 
-    // Save vault state after deleting token (non-blocking)
-    setTimeout(async () => {
-      try {
-        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-        const currentVaultState = store.getState().vault;
-        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-        console.log(
-          `[MainController] Vault state saved after deleting token for slip44=${activeSlip44}`
-        );
-      } catch (saveError) {
-        console.error(
-          '[MainController] Failed to save vault state after deleting token:',
-          saveError
-        );
-      }
-    }, 0);
+    // Save wallet state after deleting token
+    this.saveWalletState('delete-token');
 
     return result;
   }

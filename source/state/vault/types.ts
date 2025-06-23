@@ -87,8 +87,6 @@ export interface ISlip44State {
   // Network-specific states
   isBitcoinBased: boolean;
 
-  // Dirty flag for important changes that need immediate saving (account/network/settings)
-  isDirty?: boolean;
   isLastTxConfirmed: null | { [k: number]: boolean };
   networks: INetworksVault;
   prevBalances: IPrevBalances;

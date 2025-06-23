@@ -51,8 +51,6 @@ if (externalRootElement) {
         </Provider>
       </React.StrictMode>
     );
-
-    // Removed store subscription - now using periodic/emergency/strategic saves
   });
 } else {
   console.error("Failed to find the root element with ID 'external-root'.");

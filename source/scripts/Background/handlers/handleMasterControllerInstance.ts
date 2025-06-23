@@ -32,7 +32,6 @@ export const handleMasterControllerInstance = async () => {
     console.log(
       '[handleMasterControllerInstance] Wallet is unlocked, starting periodic saves'
     );
-    vaultCache.startPeriodicSave();
   }
 
   // Note: Window/tab shutdown detection needs to be in popup context, not background script

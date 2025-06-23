@@ -80,8 +80,6 @@ let lastPersistedState: any | null = null;
 })();
 
 // Manual state persistence for important operations
-// We rely on periodic saves (every 30s) and emergency saves (on close) instead of
-// subscribing to every Redux state change, which was causing excessive noise
 export async function saveMainState() {
   try {
     const state = store.getState();
@@ -112,23 +110,6 @@ export async function saveMainState() {
   }
 }
 
-// New function to force save active vault (for important changes)
-export async function forceSaveActiveVault() {
-  try {
-    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-    if (activeSlip44 !== null) {
-      const { default: vaultCache } = await import('./vaultCache');
-      await vaultCache.saveActiveVault(activeSlip44);
-      // Also save main state to ensure consistency
-      await saveMainState();
-    }
-    return true;
-  } catch (error) {
-    console.error('forceSaveActiveVault() failed', error);
-    return false;
-  }
-}
-
 // New centralized function to load and activate a slip44 vault
 export async function loadAndActivateSlip44Vault(
   slip44: number,
@@ -141,15 +122,6 @@ export async function loadAndActivateSlip44Vault(
     // This ensures the correct slip44 is active for network switching
     console.log(`[Store] Setting activeSlip44 to ${slip44}`);
     store.dispatch(setActiveSlip44(slip44));
-
-    // 🔥 CRITICAL: Save main state immediately when activeSlip44 changes (global setting)
-    // This ensures the new activeSlip44 is persisted to local storage for subsequent operations
-    saveMainState().catch((error) => {
-      console.error(
-        `[Store] Failed to save main state after activeSlip44 change in loadAndActivateSlip44Vault:`,
-        error
-      );
-    });
 
     const { default: vaultCache } = await import('./vaultCache');
     const slip44VaultState = await vaultCache.getSlip44Vault(slip44);
