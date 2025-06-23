@@ -1,7 +1,8 @@
 import { Dialog } from '@headlessui/react';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
@@ -20,6 +21,7 @@ interface IHeader {
 }
 
 export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
+  const location = useLocation();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const error = useSelector((state: RootState) => state.vaultGlobal.error);
@@ -34,6 +36,12 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   } = useSelector(
     (state: RootState) => state.vaultGlobal.changingConnectedAccount
   );
+
+  // Determine if menus should be enabled based on current route
+  const menusEnabled = useMemo(() => {
+    const homeRoutes = ['/home'];
+    return homeRoutes.includes(location.pathname);
+  }, [location.pathname]);
 
   const [networkErrorStatus, setNetworkErrorStatus] = useState({
     error: false,
@@ -80,11 +88,12 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
           <NetworkMenu
             setActiveAccountModalIsOpen={setIsOpen}
             setSelectedNetwork={setSelectedNetwork}
+            disabled={!menusEnabled}
           />
           <ConnectionStatusIndicator />
         </div>
 
-        <GeneralMenu />
+        <GeneralMenu disabled={!menusEnabled} />
         <SetActiveAccountModal
           showModal={isOpen}
           setIsOpen={setIsOpen}
