@@ -140,6 +140,7 @@ class MainController {
 
   // Auto-lock timer management
   private autoLockAlarmName = 'pali_auto_lock_timer';
+  private autoLockResetTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
@@ -850,26 +851,50 @@ class MainController {
   private async stopAutoLockTimer() {
     // Clear the Chrome alarm
     chrome.alarms.clear(this.autoLockAlarmName);
+
+    // Clear any pending reset timeout
+    if (this.autoLockResetTimeout) {
+      clearTimeout(this.autoLockResetTimeout);
+      this.autoLockResetTimeout = null;
+    }
+
     console.log('[MainController] Auto-lock timer stopped');
   }
 
-  // Reset auto-lock timer on user activity
+  // Reset auto-lock timer on user activity (debounced to prevent loops)
   public resetAutoLockTimer() {
     try {
-      const vaultGlobalState = store.getState().vaultGlobal;
+      // Clear any existing reset timeout to debounce rapid calls
+      if (this.autoLockResetTimeout) {
+        clearTimeout(this.autoLockResetTimeout);
+      }
 
-      // Auto-lock is always enabled, just get the timer value from advancedSettings
-      const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock;
+      // Debounce the actual timer reset by 500ms to prevent rapid consecutive calls
+      this.autoLockResetTimeout = setTimeout(() => {
+        try {
+          const vaultGlobalState = store.getState().vaultGlobal;
 
-      if (autoLockTimer && this.isUnlocked()) {
-        // Restart the timer
-        this.startAutoLockTimer().catch((error) => {
+          // Auto-lock is always enabled, just get the timer value from advancedSettings
+          const autoLockTimer = vaultGlobalState?.advancedSettings?.autolock;
+
+          if (autoLockTimer && this.isUnlocked()) {
+            // Restart the timer
+            this.startAutoLockTimer().catch((error) => {
+              console.error(
+                '[MainController] Failed to restart auto-lock timer:',
+                error
+              );
+            });
+          }
+        } catch (error) {
           console.error(
-            '[MainController] Failed to restart auto-lock timer:',
+            '[MainController] Error in debounced resetAutoLockTimer:',
             error
           );
-        });
-      }
+        } finally {
+          this.autoLockResetTimeout = null;
+        }
+      }, 500); // 500ms debounce delay
     } catch (error) {
       console.error('[MainController] Error in resetAutoLockTimer:', error);
       // Fail silently - auto-lock is a convenience feature, not critical
@@ -1001,6 +1026,33 @@ class MainController {
       store.dispatch(setHasEncryptedVault(true));
       store.dispatch(setIsLoadingBalances(false));
       store.dispatch(setLastLogin());
+
+      // Save vault state to persistent storage after creating the first account
+      const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+      const currentVaultState = store.getState().vault;
+
+      try {
+        // Save vault state to cache for the current slip44
+        await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+        console.log(
+          `[MainController] Vault state saved to cache for slip44=${activeSlip44}`
+        );
+
+        // Save main state to persist global settings
+        await saveMainState();
+        console.log('[MainController] Main state saved to storage');
+
+        // Start periodic safety saves to ensure data isn't lost
+        vaultCache.startPeriodicSave();
+        console.log('[MainController] Started periodic safety saves');
+      } catch (saveError) {
+        console.error(
+          '[MainController] Failed to save wallet state:',
+          saveError
+        );
+        // Don't throw here - wallet creation succeeded, but we should warn
+        // The periodic saves will retry in the background
+      }
 
       setTimeout(() => {
         this.setFiat();

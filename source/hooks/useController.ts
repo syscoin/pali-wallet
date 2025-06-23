@@ -106,34 +106,10 @@ export function useController() {
 
     const pollInterval = startPolling();
 
-    // Add user activity listeners to reset auto-lock timer
-    const activityEvents = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click',
-    ];
-
-    const handleUserActivity = () => {
-      resetAutoLockTimer();
-    };
-
-    // Add activity listeners
-    activityEvents.forEach((event) => {
-      document.addEventListener(event, handleUserActivity, true);
-    });
-
     // Cleanup
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
       clearInterval(pollInterval);
-
-      // Remove activity listeners
-      activityEvents.forEach((event) => {
-        document.removeEventListener(event, handleUserActivity, true);
-      });
     };
   }, [navigate]);
 

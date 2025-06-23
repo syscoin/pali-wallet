@@ -110,8 +110,8 @@ const MasterController = (
 
     const DEPRECATED_RPC_PATTERN = 'blockbook.elint.services';
     const isSysUtxoMainnetWithDeprecatedRpc =
-      activeNetwork.chainId === CHAIN_IDS.SYSCOIN_MAINNET &&
-      activeNetwork.url.includes(DEPRECATED_RPC_PATTERN);
+      activeNetwork?.chainId === CHAIN_IDS.SYSCOIN_MAINNET &&
+      activeNetwork?.url?.includes(DEPRECATED_RPC_PATTERN);
 
     if (isSysUtxoMainnetWithDeprecatedRpc) {
       externalStore.dispatch(
