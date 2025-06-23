@@ -169,7 +169,7 @@ export const SendEth = () => {
       }
     } catch (error) {
       alert.removeAll();
-      alert.error(t('send.internalError"'));
+      alert.error(t('send.internalError'));
     }
   }, [
     isValidAmount,

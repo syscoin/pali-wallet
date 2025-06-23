@@ -37,7 +37,8 @@
     "verify": "Verify",
     "retryConnect": "Retry connect",
     "delete": "Delete",
-    "remove": "Remove"
+    "remove": "Remove",
+    "errorDescription": "Error description"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -202,7 +203,6 @@
     "yes": "Yes",
     "no": "No",
     "asset": "asset",
-    "transaction": "transaction",
     "explorer": "Explorer?",
     "on": "on",
     "confirm": "CONFIRM",
@@ -444,7 +444,10 @@
     "removeAccount": "Remove Account",
     "removeAccountConfirmation": "Are you sure you want to remove the {{accountType}} account \"{{accountName}}\"? You can always recreate the account later if needed.",
     "accountRemovedSuccessfully": "Account removed successfully",
-    "failedToRemoveAccount": "Failed to remove account"
+    "failedToRemoveAccount": "Failed to remove account",
+    "hardwareWalletSuccess": "Hardware wallet connected successfully!",
+    "hardwareWalletInstructions": "Close this window and reopen Pali to use your hardware wallet for transactions. Your account is now saved and persistent.",
+    "optimalExperience": "For optimal hardware wallet experience, please use a larger screen or expand your browser window."
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
@@ -526,7 +529,18 @@
     "warningSignMessage": "Signing this message can be dangerous. This signature could potentially perform any operation on your account's behalf, including granting complete control of your account and all of its assets to the requesting site. Only sign this message if you know what you're doing or completely trust the requesting site.",
     "origin": "Origin",
     "transaction": "TRANSACTION",
-    "confirmToProceed": "Confirm to proceed the transaction!"
+    "confirmToProceed": "Confirm to proceed the transaction!",
+    "cancelNotAvailableUtxo": "Transaction cancellation is not available on UTXO networks",
+    "speedUpNotAvailableUtxo": "Transaction speed up is not available on UTXO networks",
+    "transactionNotFoundOrConfirmed": "Transaction not found or already confirmed, verify the transaction in the explorer!",
+    "transactionCanceledSuccessfully": "Your transaction was successfully canceled.",
+    "transactionCancelFailed": "Something went wrong when trying to cancel your Transaction, please try again later!",
+    "transactionAcceleratedSuccessfully": "Your transaction was successfully accelerated.",
+    "transactionSpeedUpFailed": "Something went wrong when trying to speed up your Transaction, please try again later!",
+    "transactionJsonCopied": "Transaction JSON copied to clipboard",
+    "pendingTransaction": "PENDING TRANSACTION",
+    "seeDetails": "See details",
+    "seeOnBlockExplorer": "See on the block explorer"
   },
   "switchNetworkPage": {
     "connectedOn": "You are connected on",

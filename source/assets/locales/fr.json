@@ -35,9 +35,10 @@
     "error": "Erreur",
     "reconnect": "Reconnecter",
     "verify": "Vérifier",
-    "retryConnect": "Réessayer la connexion",
+    "retryConnect": "Réessayer de se connecter",
     "delete": "Supprimer",
-    "remove": "Retirer"
+    "remove": "Retirer",
+    "errorDescription": "Description de l'erreur"
   },
   "header": {
     "accounts": "COMPTES",
@@ -250,7 +251,10 @@
     "removeAccount": "Supprimer le compte",
     "removeAccountConfirmation": "Êtes-vous sûr de vouloir supprimer le compte {{accountType}} \"{{accountName}}\" ? Vous pouvez toujours recréer le compte plus tard si nécessaire.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
-    "failedToRemoveAccount": "Échec de la suppression du compte"
+    "failedToRemoveAccount": "Échec de la suppression du compte",
+    "hardwareWalletSuccess": "Portefeuille matériel connecté avec succès !",
+    "hardwareWalletInstructions": "Fermez cette fenêtre et rouvrez Pali pour utiliser votre portefeuille matériel pour les transactions. Votre compte est maintenant sauvegardé et persistant.",
+    "optimalExperience": "Pour une expérience optimale avec le portefeuille matériel, veuillez utiliser un écran plus grand ou agrandir la fenêtre de votre navigateur."
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",
@@ -360,7 +364,6 @@
     "yes": "Oui",
     "no": "Non",
     "asset": "actif",
-    "transaction": "transaction",
     "explorer": "Explorateur ?",
     "on": "sur",
     "confirm": "CONFIRMER",
@@ -519,7 +522,6 @@
     "withCurrentNetwork": "Avec les conditions actuelles du réseau, nous recommandons un taux de frais ({{currency}} par octet) de",
     "withCurrentNetworkFeeRate": "Avec le réseau actuel: {{fee}} {{currency}}/octet.",
     "withCurrentNetworkGasPrice": "Avec le réseau actuel: {{fee}} gwei.",
-
     "signatureRequest": "DEMANDE DE SIGNATURE",
     "signatureRequestWasRequest": "SIGNATURE SOUMISE AVEC SUCCÈS !",
     "theDappHas": "La Dapp a votre psbt signé",
@@ -527,7 +529,18 @@
     "warningSignMessage": "Signer ce message peut être dangereux. Cette signature pourrait potentiellement effectuer toute opération au nom de votre compte, y compris accorder le contrôle complet de votre compte et de tous ses actifs au site demandeur. Signez ce message seulement si vous savez ce que vous faites ou si vous faites entièrement confiance au site demandeur.",
     "origin": "Origine",
     "transaction": "TRANSACTION",
-    "confirmToProceed": "Confirmez pour procéder à la transaction !"
+    "confirmToProceed": "Confirmez pour procéder à la transaction !",
+    "cancelNotAvailableUtxo": "L'annulation de transaction n'est pas disponible sur les réseaux UTXO",
+    "speedUpNotAvailableUtxo": "L'accélération de transaction n'est pas disponible sur les réseaux UTXO",
+    "transactionNotFoundOrConfirmed": "Transaction non trouvée ou déjà confirmée, vérifiez la transaction dans l'explorateur !",
+    "transactionCanceledSuccessfully": "Votre transaction a été annulée avec succès.",
+    "transactionCancelFailed": "Quelque chose s'est mal passé lors de la tentative d'annulation de votre transaction, veuillez réessayer plus tard !",
+    "transactionAcceleratedSuccessfully": "Votre transaction a été accélérée avec succès.",
+    "transactionSpeedUpFailed": "Quelque chose s'est mal passé lors de la tentative d'accélération de votre transaction, veuillez réessayer plus tard !",
+    "transactionJsonCopied": "JSON de transaction copié dans le presse-papiers",
+    "pendingTransaction": "TRANSACTION EN ATTENTE",
+    "seeDetails": "Voir les détails",
+    "seeOnBlockExplorer": "Voir sur l'explorateur de blocs"
   },
   "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",

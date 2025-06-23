@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
@@ -22,6 +23,8 @@ export const EvmTransactionsList = ({
 }: {
   userTransactions: ITransactionInfoEvm[];
 }) => {
+  const { t } = useTranslation();
+  const { alert } = useUtils();
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -81,7 +84,7 @@ export const EvmTransactionsList = ({
       }
       return null;
     },
-    [handleUpdateTransaction, alert, chainId, setIsOpenModal, setModalData]
+    [handleUpdateTransaction, alert, chainId, setIsOpenModal, setModalData, t]
   );
 
   const EvmTransactionsListComponent = useCallback(

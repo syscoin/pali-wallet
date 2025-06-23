@@ -37,7 +37,8 @@
     "verify": "Verificar",
     "retryConnect": "Tentar conectar novamente",
     "delete": "Excluir",
-    "remove": "Remover"
+    "remove": "Remover",
+    "errorDescription": "Descrição do erro"
   },
   "components": {
     "newPassword": "Nova senha (mín. 8 caracteres)",
@@ -261,7 +262,6 @@
     "yes": "Sim",
     "no": "Não",
     "asset": "ativo",
-    "transaction": "transação",
     "explorer": "Explorer?",
     "on": "em",
     "confirm": "CONFIRMAR",
@@ -431,7 +431,10 @@
     "accountRemovedSuccessfully": "Conta removida com sucesso",
     "failedToRemoveAccount": "Falha ao remover conta",
     "connectYourWalletAndClick": "CONECTE SUA {{hardwalletName}} E CLIQUE PARA CONECTAR!",
-    "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}."
+    "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}.",
+    "hardwareWalletSuccess": "Carteira de hardware conectada com sucesso!",
+    "hardwareWalletInstructions": "Feche esta janela e reabra o Pali para usar sua carteira de hardware nas transações. Sua conta agora está salva e persistente.",
+    "optimalExperience": "Para uma experiência ideal com carteira de hardware, use uma tela maior ou expanda a janela do seu navegador."
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",
@@ -514,14 +517,25 @@
     "warningSignMessage": "Assinar esta mensagem pode ser perigoso. Esta assinatura pode potencialmente executar qualquer operação em nome de sua conta, incluindo conceder controle completo de sua conta e todos os seus ativos ao site solicitante. Assine esta mensagem apenas se souber o que está fazendo ou confiar completamente no site solicitante.",
     "origin": "Origem",
     "transaction": "TRANSAÇÃO",
-    "confirmToProceed": "Confirme para continuar a transação!",
+    "confirmToProceed": "Confirme para prosseguir com a transação!",
     "insufficientFundsDetails": "Fundos insuficientes. Você precisa de mais {{shortfall}} {{currency}} para completar esta transação.",
     "subtractFeeFailedDetails": "Não é possível enviar o valor máximo. A taxa de transação é {{fee}} {{currency}}, mas apenas {{remainingFee}} {{currency}} está disponível após subtrair o valor.",
     "invalidFeeRate": "Taxa de comissão inválida. Por favor, insira uma taxa válida.",
     "invalidAmount": "Valor inválido. Por favor, insira um valor válido.",
     "invalidAssetAllocation": "Alocação de ativo inválida. Token GUID {{guid}} não encontrado ou inválido.",
     "transactionCreationFailedWithCode": "Falha na criação da transação ({{code}}): {{message}}",
-    "transactionSendFailed": "Falha no envio da transação: {{message}}"
+    "transactionSendFailed": "Falha no envio da transação: {{message}}",
+    "cancelNotAvailableUtxo": "O cancelamento de transações não está disponível em redes UTXO",
+    "speedUpNotAvailableUtxo": "A aceleração de transações não está disponível em redes UTXO",
+    "transactionNotFoundOrConfirmed": "Transação não encontrada ou já confirmada, verifique a transação no explorador!",
+    "transactionCanceledSuccessfully": "Sua transação foi cancelada com sucesso.",
+    "transactionCancelFailed": "Algo deu errado ao tentar cancelar sua transação, tente novamente mais tarde!",
+    "transactionAcceleratedSuccessfully": "Sua transação foi acelerada com sucesso.",
+    "transactionSpeedUpFailed": "Algo deu errado ao tentar acelerar sua transação, tente novamente mais tarde!",
+    "transactionJsonCopied": "JSON da transação copiado para a área de transferência",
+    "pendingTransaction": "TRANSAÇÃO PENDENTE",
+    "seeDetails": "Ver detalhes",
+    "seeOnBlockExplorer": "Ver no explorador de blocos"
   },
   "switchNetworkPage": {
     "connectedOn": "Você está conectado em",

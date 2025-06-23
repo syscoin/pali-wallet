@@ -35,9 +35,10 @@
     "error": "エラー",
     "reconnect": "再接続",
     "verify": "確認",
-    "retryConnect": "接続を再試行",
+    "retryConnect": "再接続",
     "delete": "削除",
-    "remove": "削除"
+    "remove": "削除",
+    "errorDescription": "エラー説明"
   },
   "header": {
     "accounts": "アカウント",
@@ -250,7 +251,10 @@
     "removeAccount": "アカウントを削除",
     "removeAccountConfirmation": "{{accountType}}アカウント \"{{accountName}}\" を削除してもよろしいですか？必要に応じて、いつでもアカウントを再作成できます。",
     "accountRemovedSuccessfully": "アカウントが正常に削除されました",
-    "failedToRemoveAccount": "アカウントの削除に失敗しました"
+    "failedToRemoveAccount": "アカウントの削除に失敗しました",
+    "hardwareWalletSuccess": "ハードウェアウォレットが正常に接続されました！",
+    "hardwareWalletInstructions": "このウィンドウを閉じてPaliを再度開き、取引でハードウェアウォレットを使用してください。あなたのアカウントは保存され、永続化されました。",
+    "optimalExperience": "最適なハードウェアウォレット体験のために、より大きな画面を使用するか、ブラウザウィンドウを拡張してください。"
   },
   "components": {
     "newPassword": "新しいパスワード（最低8文字）",
@@ -366,7 +370,6 @@
     "yes": "はい",
     "no": "いいえ",
     "asset": "アセット",
-    "transaction": "取引",
     "explorer": "エクスプローラー？",
     "on": "で",
     "confirm": "確認",
@@ -519,15 +522,25 @@
     "withCurrentNetwork": "現在のネットワーク状況では、手数料レート（{{currency}}バイト当たり）",
     "withCurrentNetworkFeeRate": "現在のネットワーク: {{fee}} {{currency}}/byte。",
     "withCurrentNetworkGasPrice": "現在のネットワーク: {{fee}} gwei。",
-
     "signatureRequest": "署名リクエスト",
     "signatureRequestWasRequest": "署名が正常に送信されました！",
     "theDappHas": "Dappにあなたのpsbtが署名されています",
     "youCanCheckYour": "ホーム画面のアクティビティでリクエストを確認できます。",
     "warningSignMessage": "このメッセージに署名することは危険な場合があります。この署名は、リクエストサイトにアカウントとすべての資産の完全な制御権を付与することを含め、アカウントに代わって潜在的にあらゆる操作を実行する可能性があります。何をしているかを知っているか、リクエストサイトを完全に信頼している場合にのみ、このメッセージに署名してください。",
-    "origin": "発信元",
+    "origin": "起源",
     "transaction": "取引",
-    "confirmToProceed": "取引を続行するには確認してください！"
+    "confirmToProceed": "取引を続行するには確認してください！",
+    "cancelNotAvailableUtxo": "UTXOネットワークでは取引のキャンセルは利用できません",
+    "speedUpNotAvailableUtxo": "UTXOネットワークでは取引の高速化は利用できません",
+    "transactionNotFoundOrConfirmed": "取引が見つからないか、すでに確認されています。エクスプローラーで取引を確認してください！",
+    "transactionCanceledSuccessfully": "あなたの取引は正常にキャンセルされました。",
+    "transactionCancelFailed": "取引のキャンセルを試行中に問題が発生しました。後でもう一度お試しください！",
+    "transactionAcceleratedSuccessfully": "あなたの取引は正常に加速されました。",
+    "transactionSpeedUpFailed": "取引の高速化を試行中に問題が発生しました。後でもう一度お試しください！",
+    "transactionJsonCopied": "取引JSONがクリップボードにコピーされました",
+    "pendingTransaction": "保留中の取引",
+    "seeDetails": "詳細を表示",
+    "seeOnBlockExplorer": "ブロックエクスプローラーで表示"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

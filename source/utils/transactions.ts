@@ -54,14 +54,15 @@ const cancelTransaction = async (
   txHash: string,
   isLegacy: boolean,
   chainId: number,
-  alert: any
+  alert: any,
+  t: (key: string) => string
 ) => {
   // Safety check: this function is only for EVM networks
   const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
     alert.removeAll();
-    alert.error('Transaction cancellation is not available on UTXO networks');
+    alert.error(t('transactions.cancelNotAvailableUtxo'));
     return;
   }
 
@@ -73,9 +74,7 @@ const cancelTransaction = async (
 
     if (!isCanceled && error) {
       alert.removeAll();
-      alert.warning(
-        'Transaction not found or already confirmed, verify the transaction in the explorer!'
-      );
+      alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
 
       return;
     }
@@ -87,13 +86,11 @@ const cancelTransaction = async (
           [txHash, chainId]
         );
         alert.removeAll();
-        alert.success('Your transaction was successfully canceled.');
+        alert.success(t('transactions.transactionCanceledSuccessfully'));
         break;
       case false:
         alert.removeAll();
-        alert.error(
-          'Something went wrong when trying to cancel your Transaction, please try again later!'
-        );
+        alert.error(t('transactions.transactionCancelFailed'));
         break;
     }
   });
@@ -103,14 +100,15 @@ const speedUpTransaction = async (
   txHash: string,
   isLegacy: boolean,
   chainId: number,
-  alert: any
+  alert: any,
+  t: (key: string) => string
 ) => {
   // Safety check: this function is only for EVM networks
   const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
     alert.removeAll();
-    alert.error('Transaction speed up is not available on UTXO networks');
+    alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
 
@@ -128,9 +126,7 @@ const speedUpTransaction = async (
 
       if (!isSpeedUp && error) {
         alert.removeAll();
-        alert.warning(
-          'Transaction not found or already confirmed, verify the transaction in the explorer!'
-        );
+        alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
 
         return;
       }
@@ -142,13 +138,11 @@ const speedUpTransaction = async (
             [txHash, chainId, transaction]
           );
           alert.removeAll();
-          alert.success('Your transaction was successfully accelerated.');
+          alert.success(t('transactions.transactionAcceleratedSuccessfully'));
           break;
         case false:
           alert.removeAll();
-          alert.error(
-            'Something went wrong when trying to speed up your Transaction, please try again later!'
-          );
+          alert.error(t('transactions.transactionSpeedUpFailed'));
           break;
       }
     }
@@ -157,7 +151,9 @@ const speedUpTransaction = async (
 
 export const handleUpdateTransaction = async ({
   updateData,
+  t,
 }: {
+  t: (key: string) => string;
   updateData: {
     alert: any;
     chainId: number;
@@ -170,9 +166,9 @@ export const handleUpdateTransaction = async ({
 
   switch (updateType) {
     case UpdateTxAction.Cancel:
-      return await cancelTransaction(txHash, isLegacy, chainId, alert);
+      return await cancelTransaction(txHash, isLegacy, chainId, alert, t);
     case UpdateTxAction.SpeedUp:
-      return await speedUpTransaction(txHash, isLegacy, chainId, alert);
+      return await speedUpTransaction(txHash, isLegacy, chainId, alert, t);
   }
 };
 

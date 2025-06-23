@@ -175,7 +175,9 @@ export const TransactionsList = ({
     if (!isCanceled && !isConfirmed) {
       return (
         <TransactionOptions
-          handleUpdateTransaction={handleUpdateTransaction}
+          handleUpdateTransaction={({ updateData }) =>
+            handleUpdateTransaction({ updateData, t })
+          }
           alert={alert}
           chainId={chainId}
           transaction={tx}

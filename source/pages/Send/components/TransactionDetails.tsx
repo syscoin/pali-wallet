@@ -61,11 +61,26 @@ export const TransactionDetailsComponent = (
     (state: RootState) => state.vault.activeNetwork
   );
 
-  useEffect(() => {
-    if (!copied) return;
+  // Helper function to get appropriate copy message based on field type
+  const getCopyMessage = (fieldType: 'address' | 'hash' | 'other') => {
+    switch (fieldType) {
+      case 'address':
+        return t('home.addressCopied');
+      case 'hash':
+        return t('home.hashCopied');
+      default:
+        return t('settings.successfullyCopied');
+    }
+  };
+
+  const handleCopyWithMessage = (
+    value: string,
+    fieldType: 'address' | 'hash' | 'other' = 'address'
+  ) => {
+    copy(value);
     alert.removeAll();
-    alert.info(t('home.addressCopied'));
-  }, [copied, alert, t]);
+    alert.info(getCopyMessage(fieldType));
+  };
 
   const finalFee =
     +removeScientificNotation(
@@ -89,7 +104,9 @@ export const TransactionDetailsComponent = (
           <Tooltip content={tx.from} childrenClassName="flex">
             {ellipsis(tx.from, 7, 15)}
             {
-              <IconButton onClick={() => copy(tx.from ?? '')}>
+              <IconButton
+                onClick={() => handleCopyWithMessage(tx.from ?? '', 'address')}
+              >
                 <CopyIcon />
               </IconButton>
             }
@@ -103,7 +120,9 @@ export const TransactionDetailsComponent = (
           <Tooltip content={tx.to} childrenClassName="flex">
             {ellipsis(tx.to, 7, 15)}
             {
-              <IconButton onClick={() => copy(tx.to ?? '')}>
+              <IconButton
+                onClick={() => handleCopyWithMessage(tx.to ?? '', 'address')}
+              >
                 <CopyIcon />
               </IconButton>
             }

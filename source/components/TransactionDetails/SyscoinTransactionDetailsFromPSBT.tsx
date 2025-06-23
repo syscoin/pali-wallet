@@ -282,7 +282,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
   useEffect(() => {
     if (copiedJson) {
       alert.removeAll();
-      alert.info('Transaction JSON copied to clipboard');
+      alert.info(t('transactions.transactionJsonCopied'));
     }
   }, [copiedJson, alert]);
 

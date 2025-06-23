@@ -33,11 +33,12 @@
     "switch": "Wechseln",
     "success": "Erfolg",
     "error": "Fehler",
-    "reconnect": "Neu verbinden",
+    "reconnect": "Erneut verbinden",
     "verify": "Überprüfen",
-    "retryConnect": "Verbindung erneut versuchen",
+    "retryConnect": "Erneut verbinden",
     "delete": "Löschen",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "errorDescription": "Fehlerbeschreibung"
   },
   "header": {
     "accounts": "Konten",
@@ -250,7 +251,10 @@
     "removeAccount": "Konto entfernen",
     "removeAccountConfirmation": "Sind Sie sicher, dass Sie das {{accountType}}-Konto \"{{accountName}}\" entfernen möchten? Sie können das Konto bei Bedarf jederzeit neu erstellen.",
     "accountRemovedSuccessfully": "Konto erfolgreich entfernt",
-    "failedToRemoveAccount": "Konto konnte nicht entfernt werden"
+    "failedToRemoveAccount": "Fehler beim Entfernen des Kontos",
+    "hardwareWalletSuccess": "Hardware-Wallet erfolgreich verbunden!",
+    "hardwareWalletInstructions": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um Ihre Hardware-Wallet für Transaktionen zu verwenden. Ihr Konto ist jetzt gespeichert und persistent.",
+    "optimalExperience": "Für eine optimale Hardware-Wallet-Erfahrung verwenden Sie bitte einen größeren Bildschirm oder erweitern Sie Ihr Browserfenster."
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",
@@ -366,7 +370,6 @@
     "yes": "Ja",
     "no": "Nein",
     "asset": "Asset",
-    "transaction": "Transaktion",
     "explorer": "Explorer?",
     "on": "auf",
     "confirm": "BESTÄTIGEN",
@@ -519,7 +522,6 @@
     "withCurrentNetwork": "Bei den aktuellen Netzwerkbedingungen empfehlen wir eine Gebührenrate ({{currency}} pro Byte) von",
     "withCurrentNetworkFeeRate": "Mit dem aktuellen Netzwerk: {{fee}} {{currency}}/Byte.",
     "withCurrentNetworkGasPrice": "Mit dem aktuellen Netzwerk: {{fee}} gwei.",
-
     "signatureRequest": "SIGNATURANFRAGE",
     "signatureRequestWasRequest": "SIGNATUR ERFOLGREICH ÜBERMITTELT!",
     "theDappHas": "Die Dapp hat Ihre signierte PSBT",
@@ -527,7 +529,18 @@
     "warningSignMessage": "Das Signieren dieser Nachricht kann gefährlich sein. Diese Signatur könnte potenziell jede Operation in Ihrem Namen durchführen, einschließlich der Gewährung vollständiger Kontrolle über Ihr Konto und alle Ihre Assets an die anfragende Seite. Signieren Sie diese Nachricht nur, wenn Sie wissen, was Sie tun, oder der anfragenden Seite vollständig vertrauen.",
     "origin": "Ursprung",
     "transaction": "TRANSAKTION",
-    "confirmToProceed": "Bestätigen Sie, um mit der Transaktion fortzufahren!"
+    "confirmToProceed": "Bestätigen Sie, um mit der Transaktion fortzufahren!",
+    "cancelNotAvailableUtxo": "Transaktionsabbruch ist in UTXO-Netzwerken nicht verfügbar",
+    "speedUpNotAvailableUtxo": "Transaktionsbeschleunigung ist in UTXO-Netzwerken nicht verfügbar",
+    "transactionNotFoundOrConfirmed": "Transaktion nicht gefunden oder bereits bestätigt, überprüfen Sie die Transaktion im Explorer!",
+    "transactionCanceledSuccessfully": "Ihre Transaktion wurde erfolgreich abgebrochen.",
+    "transactionCancelFailed": "Beim Versuch, Ihre Transaktion abzubrechen, ist etwas schief gelaufen. Bitte versuchen Sie es später noch einmal!",
+    "transactionAcceleratedSuccessfully": "Ihre Transaktion wurde erfolgreich beschleunigt.",
+    "transactionSpeedUpFailed": "Beim Versuch, Ihre Transaktion zu beschleunigen, ist etwas schief gelaufen. Bitte versuchen Sie es später noch einmal!",
+    "transactionJsonCopied": "Transaktions-JSON in die Zwischenablage kopiert",
+    "pendingTransaction": "AUSSTEHENDE TRANSAKTION",
+    "seeDetails": "Details anzeigen",
+    "seeOnBlockExplorer": "Im Block-Explorer anzeigen"
   },
   "switchNetworkPage": {
     "connectedOn": "Sie sind verbunden mit",

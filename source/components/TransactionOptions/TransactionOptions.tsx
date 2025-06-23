@@ -69,6 +69,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.Cancel,
               },
+              t,
             });
             setIsOpenModal(false);
           },
@@ -89,6 +90,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 txHash: transaction.hash,
                 updateType: UpdateTxAction.SpeedUp,
               },
+              t,
             });
             setIsOpenModal(false);
           },
@@ -141,7 +143,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 static
               >
                 <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
-                  PENDING TRANSACTION
+                  {t('transactions.pendingTransaction')}
                 </h1>
                 <Menu.Item>
                   {({ active }) => (
@@ -156,7 +158,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                         <ExternalLinkIcon />
                       </div>
                       <span className="text-sm text-brand-white">
-                        See details
+                        {t('transactions.seeDetails')}
                       </span>
                     </li>
                   )}
@@ -174,7 +176,7 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                         <ExternalLinkIcon />
                       </div>
                       <span className="text-sm text-brand-white">
-                        See on the block explorer
+                        {t('transactions.seeOnBlockExplorer')}
                       </span>
                     </li>
                   )}

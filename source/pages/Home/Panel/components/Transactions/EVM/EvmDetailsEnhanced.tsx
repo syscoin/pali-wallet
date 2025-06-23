@@ -65,12 +65,43 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   let txValue: number;
   let txSymbol: string;
 
-  useEffect(() => {
-    if (!copied) return;
+  // Helper function to get appropriate copy message based on field label
+  const getCopyMessage = (label: string) => {
+    switch (label.toLowerCase()) {
+      case 'from':
+      case 'to':
+        return t('home.addressCopied');
+      case 'hash':
+      case 'block hash':
+      case 'txid':
+      case 'transaction id':
+        return t('home.hashCopied');
+      case 'input': // Hex data
+        return t('send.hexDataCopied');
+      case 'method':
+      case 'function':
+      case 'action':
+      case 'revert reason':
+      case 'success':
+      case 'value':
+      case 'confirmations':
+      case 'timestamp':
+      case 'block time':
+      case 'gas used':
+      case 'gas price':
+      case 'max fee per gas':
+      case 'max priority fee per gas':
+      case 'nonce':
+      case 'fees':
+      case 'gas limit':
+      case 'block number':
+        return t('settings.successfullyCopied');
+      default:
+        return t('settings.successfullyCopied'); // Generic fallback
+    }
+  };
 
-    alert.removeAll();
-    alert.info(t('home.hashCopied'));
-  }, [copied, alert, t]);
+  // Copy message is now handled inline in the copy button onClick
 
   // Fetch enhanced transaction details from API with caching
   useEffect(() => {
@@ -256,7 +287,16 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
                         {ellipsis(String(value), 2, 4)}
                       </p>
                       {canCopy && (
-                        <IconButton onClick={() => copy(value ?? '')}>
+                        <IconButton
+                          onClick={() => {
+                            copy(value ?? '');
+                            // Show appropriate message immediately
+                            setTimeout(() => {
+                              alert.removeAll();
+                              alert.info(getCopyMessage(label));
+                            }, 100);
+                          }}
+                        >
                           <CopyIcon />
                         </IconButton>
                       )}

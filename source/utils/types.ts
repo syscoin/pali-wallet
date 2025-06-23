@@ -20,7 +20,9 @@ export interface ITransactionOptions {
   chainId: number;
   handleUpdateTransaction: ({
     updateData,
+    t,
   }: {
+    t: (key: string) => string;
     updateData: {
       alert: any;
       chainId: number;

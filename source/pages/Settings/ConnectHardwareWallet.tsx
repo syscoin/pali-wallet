@@ -245,16 +245,10 @@ const ConnectHardwareWalletView: FC = () => {
             </svg>
             <div>
               <p className="text-sm text-green-200 font-medium mb-1">
-                {t(
-                  'settings.hardwareWalletSuccess',
-                  'Hardware wallet connected successfully!'
-                )}
+                {t('settings.hardwareWalletSuccess')}
               </p>
               <p className="text-xs text-green-300">
-                {t(
-                  'settings.hardwareWalletInstructions',
-                  'Close this window and reopen Pali to use your hardware wallet for transactions. Your account is now saved and persistent.'
-                )}
+                {t('settings.hardwareWalletInstructions')}
               </p>
             </div>
           </div>
@@ -278,10 +272,7 @@ const ConnectHardwareWalletView: FC = () => {
               />
             </svg>
             <p className="text-sm text-yellow-200 font-medium">
-              {t(
-                'settings.optimalExperience',
-                'For optimal hardware wallet experience, please use a larger screen or expand your browser window.'
-              )}
+              {t('settings.optimalExperience')}
             </p>
           </div>
         </div>

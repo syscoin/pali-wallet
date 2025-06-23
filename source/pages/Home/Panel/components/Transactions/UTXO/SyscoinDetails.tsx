@@ -51,12 +51,38 @@ export const SyscoinTransactionDetails = ({
   const [rawTransaction, setRawTransaction] = useState<any>({});
   const [copied, copy] = useCopyClipboard();
 
-  useEffect(() => {
-    if (!copied) return;
+  // Helper function to get appropriate copy message based on field label
+  const getCopyMessage = (label: string) => {
+    switch (label.toLowerCase()) {
+      case 'from':
+      case 'to':
+        return t('home.addressCopied');
+      case 'txid':
+      case 'hash':
+      case 'transaction id':
+      case 'block hash':
+        return t('home.hashCopied');
+      case 'input': // Hex data
+        return t('send.hexDataCopied');
+      case 'method':
+      case 'function':
+      case 'action':
+      case 'confirmations':
+      case 'block time':
+      case 'fees':
+      case 'value':
+      case 'success':
+        return t('settings.successfullyCopied');
+      default:
+        return t('settings.successfullyCopied');
+    }
+  };
 
+  const handleCopyWithMessage = (value: string, label: string) => {
+    copy(value);
     alert.removeAll();
-    alert.info(t('home.addressCopied'));
-  }, [copied, alert, t]);
+    alert.info(getCopyMessage(label));
+  };
 
   const recipients: any = {};
   const senders: any = {};
@@ -219,7 +245,9 @@ export const SyscoinTransactionDetails = ({
                       {ellipsis(value, 2, 4)}
                     </p>
                     {canCopy && (
-                      <IconButton onClick={() => copy(value)}>
+                      <IconButton
+                        onClick={() => handleCopyWithMessage(value, label)}
+                      >
                         <CopyIcon />
                       </IconButton>
                     )}

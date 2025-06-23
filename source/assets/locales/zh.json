@@ -37,7 +37,8 @@
     "verify": "验证",
     "retryConnect": "重试连接",
     "delete": "删除",
-    "remove": "移除"
+    "remove": "移除",
+    "errorDescription": "错误描述"
   },
   "header": {
     "accounts": "账户",
@@ -249,8 +250,11 @@
     "maximumMinutes": "最大：120分钟。",
     "removeAccount": "移除账户",
     "removeAccountConfirmation": "您确定要移除{{accountType}}账户\"{{accountName}}\"吗？如有需要，您可以随时重新创建账户。",
-    "accountRemovedSuccessfully": "账户移除成功",
-    "failedToRemoveAccount": "移除账户失败"
+    "accountRemovedSuccessfully": "账户删除成功",
+    "failedToRemoveAccount": "删除账户失败",
+    "hardwareWalletSuccess": "硬件钱包连接成功！",
+    "hardwareWalletInstructions": "关闭此窗口并重新打开Pali以使用您的硬件钱包进行交易。您的账户现已保存并持久化。",
+    "optimalExperience": "为获得最佳硬件钱包体验，请使用更大的屏幕或展开浏览器窗口。"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",
@@ -426,7 +430,6 @@
     "withCurrentNetwork": "根据当前网络状况，我们建议费率（每字节{{currency}}）为",
     "withCurrentNetworkFeeRate": "当前网络：{{fee}} {{currency}}/byte。",
     "withCurrentNetworkGasPrice": "当前网络：{{fee}} gwei。",
-
     "signatureRequest": "签名请求",
     "signatureRequestWasRequest": "签名成功提交！",
     "theDappHas": "Dapp已获得您的签名psbt",
@@ -434,7 +437,18 @@
     "warningSignMessage": "签署此消息可能是危险的。此签名可能代表您的账户执行任何操作，包括将您账户及其所有资产的完全控制权授予请求网站。只有在您知道自己在做什么或完全信任请求网站时才签署此消息。",
     "origin": "来源",
     "transaction": "交易",
-    "confirmToProceed": "确认以继续交易！"
+    "confirmToProceed": "确认以继续交易！",
+    "cancelNotAvailableUtxo": "在UTXO网络上不可用取消交易功能",
+    "speedUpNotAvailableUtxo": "在UTXO网络上不可用加速交易功能",
+    "transactionNotFoundOrConfirmed": "交易未找到或已确认，请在浏览器中验证交易！",
+    "transactionCanceledSuccessfully": "您的交易已成功取消。",
+    "transactionCancelFailed": "尝试取消您的交易时出现了问题，请稍后重试！",
+    "transactionAcceleratedSuccessfully": "您的交易已成功加速。",
+    "transactionSpeedUpFailed": "加速交易时出现问题，请稍后重试！",
+    "transactionJsonCopied": "交易JSON已复制到剪贴板",
+    "pendingTransaction": "待处理交易",
+    "seeDetails": "查看详情",
+    "seeOnBlockExplorer": "在区块浏览器中查看"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",
@@ -501,7 +515,6 @@
     "yes": "是",
     "no": "否",
     "asset": "资产",
-    "transaction": "交易",
     "explorer": "浏览器？",
     "on": "在",
     "confirm": "确认",

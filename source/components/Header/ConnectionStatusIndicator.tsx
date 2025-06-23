@@ -176,10 +176,7 @@ export const ConnectionStatusIndicator = memo(
       // Green: Successfully completed
       statusColor = 'bg-green-500';
       pulseClass = 'animate-pulse';
-      tooltipContent = t(
-        'networkConnection.operationCompleted',
-        'Operation completed successfully'
-      );
+      tooltipContent = t('networkConnection.operationCompleted');
     } else if (showCriticalError) {
       // Red: Operation failing/about to timeout
       statusColor = 'bg-red-500';
