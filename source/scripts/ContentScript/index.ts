@@ -211,11 +211,7 @@ if (shouldInjectProvider()) {
   injectScriptFile('js/pali.bundle.js', 'pali');
 }
 
-// keeps the background active
-const port = chrome.runtime.connect({ name: 'keepAlive' });
-setInterval(() => {
-  port.postMessage({ ping: true });
-}, 120000); // Reduced frequency from 30s to 2 minutes to minimize overhead and prevent excessive RPC calls
+// Removed keep-alive - Chrome alarms handle critical functions
 
 start();
 startEventEmitter();

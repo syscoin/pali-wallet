@@ -100,10 +100,6 @@ export const handleListeners = (masterController: IMasterController) => {
     }
 
     switch (type) {
-      case 'ping':
-        // Health check ping - respond immediately to confirm the background script is alive
-        sendResponse({ pong: true, timestamp: Date.now() });
-        return true; // Keep message channel open for async response
       case 'pw-msg-background':
         if (action === 'isInjected') {
           masterController.dapp.setup(sender);

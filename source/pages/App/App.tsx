@@ -1,10 +1,10 @@
 import React, { FC, useEffect } from 'react';
 import { HashRouter, useNavigate } from 'react-router-dom';
 
-import { Container, KeepAliveContainer } from 'components/index';
+import { Container } from 'components/index';
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import { Router } from 'routers/index';
-import { vaultCache } from 'state/vaultCache';
+import vaultCache from 'state/vaultCache';
 
 // Wrapper component to provide navigate function to error boundary
 const AppWithErrorBoundary: FC = () => {
@@ -69,7 +69,6 @@ const App: FC = () => {
   // other logic
   return (
     <section className="mx-auto h-full min-w-popup min-h-popup md:max-w-2xl">
-      <KeepAliveContainer />
       <Container>
         <HashRouter>
           <AppWithErrorBoundary />
