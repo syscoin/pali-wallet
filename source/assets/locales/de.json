@@ -77,6 +77,8 @@
     "hashCopied": "Hash erfolgreich kopiert",
     "assetGuidCopied": "Asset-GUID erfolgreich kopiert",
     "contractCopied": "Vertrag erfolgreich kopiert",
+    "viewOnExplorer": "Im Explorer anzeigen",
+    "viewAccountOnExplorer": "Konto im Explorer anzeigen",
     "verifySysAddress": "Ihre {{currency}}-Adresse verifizieren",
     "verifySysAddressDescription": "Klicken Sie auf die Schaltfläche unten, um Ihre {{currency}}-Adresse zu verifizieren.",
     "addressVerified": "Adresse erfolgreich verifiziert",

@@ -15,6 +15,7 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
+import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
@@ -26,6 +27,7 @@ import {
   formatCurrency,
   ellipsis,
   MINIMUM_FEE,
+  adjustUrl,
 } from 'utils/index';
 
 export const SendSys = () => {
@@ -39,6 +41,11 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
+  const isBitcoinBased = useSelector(
+    (state: RootState) => state.vault.isBitcoinBased
+  );
+
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   const [RBF, setRBF] = useState<boolean>(true);
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
@@ -152,6 +159,27 @@ export const SendSys = () => {
     },
     [assets]
   );
+
+  const openAccountInExplorer = useCallback(() => {
+    const accountAddress = activeAccount?.address;
+    if (!accountAddress) return;
+
+    let explorerUrl;
+    if (isBitcoinBased) {
+      // For UTXO networks, use the network URL pattern
+      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
+    } else {
+      // For EVM networks, use the explorer pattern
+      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
+    }
+
+    window.open(explorerUrl, '_blank');
+  }, [
+    activeAccount?.address,
+    isBitcoinBased,
+    activeNetwork.url,
+    adjustedExplorer,
+  ]);
 
   const RBFOnChange = useCallback(
     (value: any) => {
@@ -425,12 +453,44 @@ export const SendSys = () => {
   return (
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
-        <div className="add-identicon ml-1 mr-2 my-2" />
+        <Tooltip content={t('home.viewOnExplorer')}>
+          <div
+            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
+            onClick={openAccountInExplorer}
+            title={t('home.viewAccountOnExplorer')}
+          />
+        </Tooltip>
         <div className="flex gap-1 justify-center items-center">
           <PaliWhiteSmallIconSvg />
-          <div className="flex text-white gap-1 text-xs font-normal w-max">
-            <p>{activeAccount?.label}</p>
-            <p>{ellipsis(activeAccount?.address, 4, 4)}</p>
+          <div className="flex text-white gap-1 text-xs font-normal w-max items-center">
+            <p className="font-medium">{activeAccount?.label}</p>
+            <div className="flex items-center gap-1">
+              <Tooltip content={t('buttons.copy')}>
+                <p
+                  className="cursor-pointer hover:text-brand-royalblue transition-colors duration-200 select-none"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeAccount?.address);
+                    alert.success(t('home.addressCopied'));
+                  }}
+                >
+                  {ellipsis(activeAccount?.address, 4, 4)}
+                </p>
+              </Tooltip>
+              <Tooltip content={t('buttons.copy')}>
+                <div
+                  className="cursor-pointer transition-colors duration-200 ml-1"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeAccount?.address);
+                    alert.success(t('home.addressCopied'));
+                  }}
+                >
+                  <Icon
+                    name="copy"
+                    className="text-xs hover:text-brand-royalblue"
+                  />
+                </div>
+              </Tooltip>
+            </div>
           </div>
           {isAccountImported && (
             <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">

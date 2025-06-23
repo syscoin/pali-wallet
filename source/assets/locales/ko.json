@@ -77,6 +77,8 @@
     "hashCopied": "해시가 성공적으로 복사되었습니다",
     "assetGuidCopied": "자산 GUID가 성공적으로 복사되었습니다",
     "contractCopied": "계약이 성공적으로 복사되었습니다",
+    "viewOnExplorer": "탐색기에서 보기",
+    "viewAccountOnExplorer": "탐색기에서 계정 보기",
     "verifySysAddress": "{{currency}} 주소 확인",
     "verifySysAddressDescription": "아래 버튼을 클릭하여 {{currency}} 주소를 확인하세요.",
     "addressVerified": "주소가 성공적으로 확인되었습니다",

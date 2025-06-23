@@ -77,6 +77,8 @@
     "hashCopied": "哈希复制成功",
     "assetGuidCopied": "资产GUID复制成功",
     "contractCopied": "合约复制成功",
+    "viewOnExplorer": "在浏览器中查看",
+    "viewAccountOnExplorer": "在浏览器中查看账户",
     "verifySysAddress": "验证您的{{currency}}地址",
     "verifySysAddressDescription": "点击下面的按钮验证您的{{currency}}地址。",
     "addressVerified": "地址验证成功",

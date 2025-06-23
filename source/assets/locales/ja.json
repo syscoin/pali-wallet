@@ -77,6 +77,8 @@
     "hashCopied": "ハッシュが正常にコピーされました",
     "assetGuidCopied": "アセットGUIDが正常にコピーされました",
     "contractCopied": "コントラクトが正常にコピーされました",
+    "viewOnExplorer": "エクスプローラーで表示",
+    "viewAccountOnExplorer": "エクスプローラーでアカウントを表示",
     "verifySysAddress": "{{currency}}アドレスを確認",
     "verifySysAddressDescription": "下のボタンをクリックして{{currency}}アドレスを確認してください。",
     "addressVerified": "アドレスが正常に確認されました",

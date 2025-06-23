@@ -77,6 +77,8 @@
     "hashCopied": "Хеш успешно скопирован",
     "assetGuidCopied": "GUID актива успешно скопирован",
     "contractCopied": "Контракт успешно скопирован",
+    "viewOnExplorer": "Посмотреть в Проводнике",
+    "viewAccountOnExplorer": "Посмотреть аккаунт в проводнике",
     "verifySysAddress": "Проверить ваш {{currency}} адрес",
     "verifySysAddressDescription": "Нажмите кнопку ниже, чтобы проверить ваш {{currency}} адрес.",
     "addressVerified": "Адрес успешно проверен",

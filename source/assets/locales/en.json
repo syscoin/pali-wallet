@@ -152,6 +152,8 @@
     "hashCopied": "Hash successfully copied",
     "assetGuidCopied": "Asset GUID successfully copied",
     "contractCopied": "Contract successfully copied",
+    "viewOnExplorer": "View on Explorer",
+    "viewAccountOnExplorer": "View account on explorer",
     "verifySysAddress": "Verify your {{currency}} address",
     "verifySysAddressDescription": "Click in button below to verify your {{currency}} address.",
     "addressVerified": "Address successfully verified",
