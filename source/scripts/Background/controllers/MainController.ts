@@ -142,6 +142,9 @@ class MainController {
   private autoLockAlarmName = 'pali_auto_lock_timer';
   private autoLockResetTimeout: NodeJS.Timeout | null = null;
 
+  // Centralized wallet state saving
+  private saveTimeout: NodeJS.Timeout | null = null;
+
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
@@ -970,11 +973,15 @@ class MainController {
       // through KeyringManager methods for security
       store.dispatch(setLastLogin());
 
-      // Fetch fresh fiat prices immediately after successful unlock
-      this.setFiat();
-
       // 🔥 FIX: Start periodic safety saves after successful unlock
       vaultCache.startPeriodicSave();
+
+      // Run full Pali update in background (non-blocking)
+      setTimeout(() => {
+        // Fetch fresh fiat prices immediately after successful unlock
+        this.setFiat();
+        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+      }, 10);
 
       // Start auto-lock timer (always enabled)
       const { advancedSettings } = store.getState().vaultGlobal;
@@ -1056,7 +1063,7 @@ class MainController {
 
       setTimeout(() => {
         this.setFiat();
-        this.getLatestUpdateForCurrentAccount(false);
+        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
       }, 10);
     } catch (error) {
       store.dispatch(setIsLoadingBalances(false));
@@ -1118,7 +1125,7 @@ class MainController {
       })
     );
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false);
+      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
     return newAccount;
   }
@@ -1176,6 +1183,10 @@ class MainController {
 
       // Set active account
       store.dispatch(setActiveAccount({ id, type }));
+
+      // Reset auto-lock timer for account switching activity
+      this.resetAutoLockTimer();
+
       // Defer heavy operations to prevent blocking the UI
       setTimeout(() => {
         this.performPostAccountSwitchOperations(
@@ -1205,7 +1216,7 @@ class MainController {
   ) {
     try {
       setTimeout(() => {
-        this.getLatestUpdateForCurrentAccount(false);
+        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
       }, 10);
 
       // Skip dapp notifications and updates during startup
@@ -1653,7 +1664,7 @@ class MainController {
       })
     );
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false);
+      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
 
     return importedAccount;
@@ -1685,7 +1696,7 @@ class MainController {
       })
     );
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false);
+      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
 
     return importedAccount;
@@ -1721,7 +1732,7 @@ class MainController {
       })
     );
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(false);
+      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
     }, 10);
 
     return importedAccount;
@@ -2726,6 +2737,9 @@ class MainController {
   private async handleNetworkChangeSuccess(network: INetwork) {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
+    // Reset auto-lock timer for network switching activity
+    this.resetAutoLockTimer();
+
     const { activeAccount } = store.getState().vault;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
     console.log(
@@ -3003,41 +3017,101 @@ class MainController {
 
   public async saveTokenInfo(token: any, tokenType?: string) {
     const { isBitcoinBased } = store.getState().vault;
+    let result;
 
     // Handle Ethereum tokens
     if (!isBitcoinBased || token.contractAddress) {
-      return this.account.eth.saveTokenInfo(token, tokenType);
+      result = await this.account.eth.saveTokenInfo(token, tokenType);
+    } else {
+      // Handle Syscoin tokens
+      result = await this.account.sys.saveTokenInfo(token);
     }
 
-    // Handle Syscoin tokens
-    return this.account.sys.saveTokenInfo(token);
+    // Save vault state after adding token (non-blocking)
+    setTimeout(async () => {
+      try {
+        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+        const currentVaultState = store.getState().vault;
+        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+        console.log(
+          `[MainController] Vault state saved after adding token for slip44=${activeSlip44}`
+        );
+      } catch (saveError) {
+        console.error(
+          '[MainController] Failed to save vault state after adding token:',
+          saveError
+        );
+      }
+    }, 0);
+
+    return result;
   }
 
   public async editTokenInfo(token: any) {
     const { isBitcoinBased } = store.getState().vault;
+    let result;
 
     // Handle Ethereum tokens
     if (!isBitcoinBased || token.contractAddress) {
-      return this.account.eth.editTokenInfo(token);
+      result = await this.account.eth.editTokenInfo(token);
+    } else {
+      // Syscoin tokens don't currently have edit functionality
+      throw new Error('Edit token is not supported for Syscoin tokens');
     }
 
-    // Syscoin tokens don't currently have edit functionality
-    throw new Error('Edit token is not supported for Syscoin tokens');
+    // Save vault state after editing token (non-blocking)
+    setTimeout(async () => {
+      try {
+        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+        const currentVaultState = store.getState().vault;
+        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+        console.log(
+          `[MainController] Vault state saved after editing token for slip44=${activeSlip44}`
+        );
+      } catch (saveError) {
+        console.error(
+          '[MainController] Failed to save vault state after editing token:',
+          saveError
+        );
+      }
+    }, 0);
+
+    return result;
   }
 
   public async deleteTokenInfo(tokenToDelete: any) {
     const { isBitcoinBased } = store.getState().vault;
+    let result;
 
     // Handle Ethereum tokens (tokenToDelete is contractAddress string)
     if (
       !isBitcoinBased ||
       (typeof tokenToDelete === 'string' && tokenToDelete.startsWith('0x'))
     ) {
-      return this.account.eth.deleteTokenInfo(tokenToDelete);
+      result = await this.account.eth.deleteTokenInfo(tokenToDelete);
+    } else {
+      // Handle Syscoin tokens (tokenToDelete is assetGuid string)
+      result = await this.account.sys.deleteTokenInfo(tokenToDelete);
     }
 
-    // Handle Syscoin tokens (tokenToDelete is assetGuid string)
-    return this.account.sys.deleteTokenInfo(tokenToDelete);
+    // Save vault state after deleting token (non-blocking)
+    setTimeout(async () => {
+      try {
+        const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+        const currentVaultState = store.getState().vault;
+        vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+        console.log(
+          `[MainController] Vault state saved after deleting token for slip44=${activeSlip44}`
+        );
+      } catch (saveError) {
+        console.error(
+          '[MainController] Failed to save vault state after deleting token:',
+          saveError
+        );
+      }
+    }, 0);
+
+    return result;
   }
 }
 
