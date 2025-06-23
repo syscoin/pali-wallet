@@ -487,8 +487,8 @@ class MainController {
     return this.getActiveKeyring().createNewSeed();
   }
 
-  private forgetMainWallet(pwd: string) {
-    return this.getActiveKeyring().forgetMainWallet(pwd);
+  private async forgetMainWallet(pwd: string) {
+    return await this.getActiveKeyring().forgetMainWallet(pwd);
   }
 
   public async unlock(pwd: string) {
@@ -941,13 +941,96 @@ class MainController {
   }
 
   public async forgetWallet(pwd: string) {
-    this.forgetMainWallet(pwd);
+    // FIRST: Validate password - throws if wrong password or wallet locked
+    // This prevents unnecessary cleanup if validation fails
+    await this.forgetMainWallet(pwd);
 
-    // Emergency save any dirty vaults before clearing
-    await vaultCache.emergencySave();
+    // Now proceed with cleanup since password is valid
+    // Lock all keyrings to clear session data from memory
+    this.lockAllKeyrings();
 
-    // Clear vault cache
+    // Clear all keyring instances from memory
+    this.keyrings.clear();
+
+    // Cancel any pending async operations
+    if (this.cancellablePromises.transactionPromise) {
+      this.cancellablePromises.transactionPromise.cancel();
+    }
+    if (this.cancellablePromises.assetsPromise) {
+      this.cancellablePromises.assetsPromise.cancel();
+    }
+    if (this.cancellablePromises.balancePromise) {
+      this.cancellablePromises.balancePromise.cancel();
+    }
+    if (this.cancellablePromises.nftsPromise) {
+      this.cancellablePromises.nftsPromise.cancel();
+    }
+    if (this.currentPromise) {
+      this.currentPromise.cancel();
+      this.currentPromise = null;
+    }
+
+    // Stop auto-lock timer
+    await this.stopAutoLockTimer();
+
+    // Reset internal state flags
+    this.justUnlocked = false;
+    this.isStartingUp = false;
+    this.isAccountSwitching = false;
+    this.isNetworkSwitching = false;
+
+    // Clear vault cache (no emergency save - we're forgetting the wallet!)
     vaultCache.clearCache();
+
+    // Clear all in-memory caches and session data
+    if (this.transactionsManager) {
+      this.transactionsManager.utils.clearCache();
+    }
+    clearProviderCache();
+    clearFetchBackendAccountCache();
+    clearRpcCaches();
+
+    // Clear all vault-related storage completely
+    // Remove vault from Chrome storage (both legacy and current keys)
+    try {
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.remove(
+          ['sysweb3-vault', 'sysweb3-vault-keys'],
+          () => {
+            resolve();
+          }
+        );
+      });
+    } catch (error) {
+      console.error('Error clearing vault storage:', error);
+    }
+
+    // Clear all slip44-specific vault states
+    try {
+      const allItems = await new Promise<{ [key: string]: any }>((resolve) => {
+        chrome.storage.local.get(null, (items) => {
+          resolve(items);
+        });
+      });
+
+      const keysToRemove = Object.keys(allItems).filter(
+        (key) =>
+          key.match(/^state-vault-\d+$/) ||
+          key.startsWith('sysweb3-vault-') ||
+          key === 'state' ||
+          key.startsWith('state-')
+      );
+
+      if (keysToRemove.length > 0) {
+        await new Promise<void>((resolve) => {
+          chrome.storage.local.remove(keysToRemove, () => {
+            resolve();
+          });
+        });
+      }
+    } catch (error) {
+      console.error('Error clearing slip44 vault states:', error);
+    }
 
     // Clear global settings via Redux
     store.dispatch(setHasEncryptedVault(false));
@@ -2366,8 +2449,27 @@ class MainController {
       }
 
       // Get the first transaction (should be latest due to desc sort)
-      // Return the full transaction object to detect content changes like confirmations, status, etc.
-      return chainTxs[0];
+      const latestTx = chainTxs[0];
+
+      if (!latestTx) return null;
+
+      // Create a normalized version that excludes confirmation changes after initial confirmation
+      // We want to detect all changes EXCEPT confirmation increases after first confirmation
+      // Shallow copy is safe since confirmations is a primitive number
+      const normalizedTx = { ...latestTx };
+
+      // If transaction has been confirmed (confirmations > 0), normalize confirmations to 1
+      // This prevents hasChanges from being triggered by confirmation count increases
+      // but still allows detection of 0 -> 1+ confirmation transitions
+      // Works for both UTXO (blockbook) and EVM (web3) transaction formats
+      if (
+        typeof normalizedTx.confirmations === 'number' &&
+        normalizedTx.confirmations > 0
+      ) {
+        normalizedTx.confirmations = 1; // Normalize to 1 to indicate "confirmed" (does not modify original)
+      }
+
+      return normalizedTx;
     };
 
     const initialStateSnapshot = JSON.stringify({
@@ -2432,21 +2534,6 @@ class MainController {
           hasChanges ? 'CHANGES FOUND' : 'No changes'
         }`
       );
-
-      if (hasChanges) {
-        console.log('[MainController] Initial state:', initialStateSnapshot);
-        console.log('[MainController] Final state:', finalStateSnapshot);
-
-        // Try to parse and show differences
-        try {
-          const initial = JSON.parse(initialStateSnapshot);
-          const final = JSON.parse(finalStateSnapshot);
-          console.log('[MainController] Initial parsed:', initial);
-          console.log('[MainController] Final parsed:', final);
-        } catch (parseError) {
-          console.error('[MainController] JSON parse error:', parseError);
-        }
-      }
     }
 
     // Clear caches if changes were detected (balance/transaction activity)
