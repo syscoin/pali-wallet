@@ -12,9 +12,6 @@ export const Receive = () => {
   const [isCopied, copyText] = useCopyClipboard();
   const { t } = useTranslation();
 
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );

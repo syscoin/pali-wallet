@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, memo } from 'react';
+import React, { Fragment, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -43,11 +43,10 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const accountTransactions = useSelector(selectActiveAccountTransactions);
 
   const { useCopyClipboard, alert } = useUtils();
+  const [, copy] = useCopyClipboard();
   const { t } = useTranslation();
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
     useTransactionsListConfig();
-
-  const [copied, copy] = useCopyClipboard();
 
   let isTxCanceled: boolean;
   let isConfirmed: boolean;

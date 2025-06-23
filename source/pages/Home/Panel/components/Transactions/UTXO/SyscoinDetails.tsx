@@ -49,7 +49,7 @@ export const SyscoinTransactionDetails = ({
   const { t } = useTranslation();
 
   const [rawTransaction, setRawTransaction] = useState<any>({});
-  const [copied, copy] = useCopyClipboard();
+  const [, copy] = useCopyClipboard();
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {

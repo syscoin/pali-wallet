@@ -1,5 +1,4 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -19,7 +18,6 @@ export const DetailsView = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const { t } = useTranslation();
 
   const {
     state: { id, hash, nftId, nftAddress },

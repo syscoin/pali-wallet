@@ -25,15 +25,12 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { networkStatus, isSwitchingAccount } = useSelector(
-    (state: RootState) => state.vaultGlobal
-  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
 
   // Use the new page loading state hook
-  const { isLoading, message, hasTimedOut } = usePageLoadingState();
+  const { isLoading, hasTimedOut } = usePageLoadingState();
 
   // Determine if we should show the account header based on route
   const shouldShowAccountHeader = useMemo(() => {

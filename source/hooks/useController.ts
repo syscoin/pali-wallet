@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { RootState } from 'state/store';
 
-export function useController() {
+export const useController = () => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
-  const activeNetwork = useSelector(
-    (state: RootState) => state.vault.activeNetwork
-  );
 
   // Function to check unlock status
   const checkUnlockStatus = async () => {
@@ -153,4 +148,4 @@ export function useController() {
     handleWalletLockedError,
     resetAutoLockTimer,
   };
-}
+};

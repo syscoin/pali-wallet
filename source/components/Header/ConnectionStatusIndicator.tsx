@@ -6,12 +6,12 @@ import { Tooltip } from 'components/Tooltip';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
-interface ConnectionStatusIndicatorProps {
+interface IConnectionStatusIndicatorProps {
   className?: string;
 }
 
 export const ConnectionStatusIndicator = memo(
-  ({ className = '' }: ConnectionStatusIndicatorProps) => {
+  ({ className = '' }: IConnectionStatusIndicatorProps) => {
     const { t } = useTranslation();
     const [showSlowWarning, setShowSlowWarning] = useState(false);
     const [showCriticalError, setShowCriticalError] = useState(false);

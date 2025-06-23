@@ -28,10 +28,6 @@ export const AddToken: FC = () => {
 
   const isEditToken = Boolean(state && state.contractAddress);
 
-  const validatedTitle = isEditToken
-    ? t('tokens.editToken')
-    : t('tokens.importToken');
-
   return (
     <>
       {isBitcoinBased ? (

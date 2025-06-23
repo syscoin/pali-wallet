@@ -54,7 +54,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
     useTransactionsListConfig();
 
-  const [copied, copy] = useCopyClipboard();
+  const [, copy] = useCopyClipboard();
   const [enhancedDetails, setEnhancedDetails] = useState<any>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 

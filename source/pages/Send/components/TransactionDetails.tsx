@@ -53,7 +53,7 @@ export const TransactionDetailsComponent = (
 ) => {
   const { tx, setCustomNonce, fee, customFee, setIsOpen } = props;
   const { alert, useCopyClipboard } = useUtils();
-  const [copied, copy] = useCopyClipboard();
+  const [, copy] = useCopyClipboard();
   const [currentTxValue, setCurrentTxValue] = useState<number>(0);
   const { t } = useTranslation();
 

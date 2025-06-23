@@ -12,7 +12,7 @@ interface IFee {
   title: string;
 }
 
-const Fee: React.FC<IFee> = ({ title, onFinish }) => {
+const Fee: React.FC<IFee> = ({ onFinish }) => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const { isBitcoinBased, activeNetwork } = useSelector(

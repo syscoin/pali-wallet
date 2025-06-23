@@ -1,6 +1,6 @@
 import { Switch } from '@headlessui/react';
 import { Form } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';

@@ -1,6 +1,5 @@
 import uniq from 'lodash/uniq';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Icon } from 'components/index';
@@ -39,7 +38,6 @@ const NOT_TRUSTED_WALLET_STYLE = {
 };
 
 const TrustedSitesView = () => {
-  const { t } = useTranslation();
   const [filteredSearch, setFilteredSearch] = useState<string[]>(trustedApps);
 
   const [status, setStatus] = useState(EMPTY_STATE);

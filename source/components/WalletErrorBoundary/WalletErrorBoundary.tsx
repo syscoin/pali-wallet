@@ -1,23 +1,23 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { NavigateFunction } from 'react-router-dom';
 
-interface Props {
+interface IProps {
   children: ReactNode;
   navigate: NavigateFunction;
 }
 
-interface State {
+interface IState {
   error: Error | null;
   hasError: boolean;
 }
 
-class WalletErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+class WalletErrorBoundary extends Component<IProps, IState> {
+  constructor(props: IProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): IState {
     // Update state so the next render will show the fallback UI
     return { hasError: true, error };
   }

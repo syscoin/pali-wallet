@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 
 import { RootState } from 'state/store';
 
-interface PageLoadingState {
+interface IPageLoadingState {
   hasTimedOut?: boolean;
   isLoading: boolean;
   message?: string;
@@ -14,7 +14,7 @@ const TEN_SECONDS = 10000;
 
 export const usePageLoadingState = (
   additionalLoadingConditions: boolean[] = []
-): PageLoadingState => {
+): IPageLoadingState => {
   const location = useLocation();
   const [navigationLoading, setNavigationLoading] = useState(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);

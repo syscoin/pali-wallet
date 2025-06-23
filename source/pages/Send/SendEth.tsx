@@ -211,17 +211,6 @@ export const SendEth = () => {
     return selectedAsset?.collectionName.toUpperCase();
   }, [selectedAsset, activeNetwork.currency]);
 
-  const getTitle = useCallback(() => {
-    if (selectedAsset?.is1155 === undefined) {
-      return `${t('send.send')} ${
-        selectedAsset && selectedAsset.tokenSymbol
-          ? selectedAsset.tokenSymbol
-          : activeNetwork.currency.toUpperCase()
-      }`;
-    }
-    return `${t('send.send')} NFT`;
-  }, [selectedAsset, activeNetwork.currency, t]);
-
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;

@@ -11,7 +11,6 @@ import loadingIcon from 'assets/all_assets/faucet-loading.svg';
 import successIcon from 'assets/all_assets/faucet-success.svg';
 import { NeutralButton } from 'components/Button';
 import { RootState } from 'state/store';
-import { faucetNetworkData } from 'utils/constants';
 import { ellipsis } from 'utils/format';
 
 import {
@@ -38,8 +37,6 @@ export const Faucet: React.FC = () => {
   const {
     activeNetwork: { chainId },
   } = useSelector((state: RootState) => state.vault);
-
-  const currentFaucetNetwork = faucetNetworkData?.[chainId];
 
   const renderFaucetContent = () => {
     switch (status) {

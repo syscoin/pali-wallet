@@ -2,7 +2,6 @@ import React, { FC, useEffect, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import packageJson from '../../../package.json';
-import copyIcon from 'assets/images/copy.svg';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import { Icon, SimpleCard, IconButton, Button } from 'components/index';
 import { useUtils } from 'hooks/index';

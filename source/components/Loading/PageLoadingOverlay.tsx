@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useState, useRef } from 'react';
 
-interface PageLoadingOverlayProps {
+interface IPageLoadingOverlayProps {
   hasBanner?: boolean;
   hasHeader?: boolean;
   hasTimedOut?: boolean;
@@ -13,7 +13,7 @@ export const PageLoadingOverlay = memo(
     hasHeader = true,
     hasBanner = false,
     hasTimedOut = false,
-  }: PageLoadingOverlayProps) => {
+  }: IPageLoadingOverlayProps) => {
     const [showOverlay, setShowOverlay] = useState(false);
     const [showSpinner, setShowSpinner] = useState(false);
     const overlayTimerRef = useRef<NodeJS.Timeout | null>(null);

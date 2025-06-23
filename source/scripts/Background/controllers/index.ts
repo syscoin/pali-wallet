@@ -129,7 +129,6 @@ const MasterController = (
         externalStore.dispatch(
           setNetwork({
             network: network,
-            isFirstTime: true,
           })
         );
       });
@@ -162,7 +161,6 @@ const MasterController = (
         setIsLastTxConfirmed({
           chainId: 0,
           wasConfirmed: false,
-          isFirstTime: true,
         })
       );
     }

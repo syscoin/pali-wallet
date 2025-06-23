@@ -200,26 +200,20 @@ const VaultState = createSlice({
       state: IVaultState,
       action: PayloadAction<{
         chainId: number;
-        isFirstTime?: boolean;
         wasConfirmed: boolean;
       }>
     ) {
-      const { chainId, wasConfirmed, isFirstTime } = action.payload;
-      if (isFirstTime) {
-        state.isLastTxConfirmed = {};
-        return;
-      }
+      const { chainId, wasConfirmed } = action.payload;
       state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
     setNetwork(
       state: IVaultState,
       action: PayloadAction<{
         isEdit?: boolean;
-        isFirstTime?: boolean;
         network: INetwork;
       }>
     ) {
-      const { network, isFirstTime, isEdit } = action.payload;
+      const { network, isEdit } = action.payload;
 
       if (isEdit) {
         // Find and update existing network
