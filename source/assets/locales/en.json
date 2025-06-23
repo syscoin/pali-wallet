@@ -574,7 +574,7 @@
   "forgetWalletPage": {
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",
     "stillHaveFunds": "You still have funds in you wallet!",
-    "saveProperly": "Save properly this seed phrase, so you can import this wallet in the future."
+    "saveProperly": "Save this seed phrase properly, so you can import this wallet in the future."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Keep your seed phrase secret!",

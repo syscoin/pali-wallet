@@ -574,7 +574,7 @@
   "forgetWalletPage": {
     "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",
     "stillHaveFunds": "Vous avez encore des fonds dans votre portefeuille !",
-    "saveProperly": "Sauvegardez correctement cette phrase de récupération pour pouvoir importer ce portefeuille à l'avenir."
+    "saveProperly": "Sauvegardez cette phrase de récupération correctement pour pouvoir importer ce portefeuille à l'avenir."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Gardez votre phrase de récupération secrète !",

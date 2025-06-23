@@ -574,7 +574,7 @@
   "forgetWalletPage": {
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",
     "stillHaveFunds": "Sie haben noch Guthaben in Ihrer Wallet!",
-    "saveProperly": "Speichern Sie diese Seed-Phrase sicher, damit Sie diese Wallet in Zukunft importieren können."
+    "saveProperly": "Speichern Sie diese Seed-Phrase ordnungsgemäß, damit Sie diese Wallet in Zukunft importieren können."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "Halten Sie Ihre Seed-Phrase geheim!",

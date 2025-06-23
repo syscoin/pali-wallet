@@ -574,7 +574,7 @@
   "forgetWalletPage": {
     "importedAccountsWont": "Las cuentas importadas no se vincularán a la Frase de Recuperación Secreta de tu cuenta Pali inicial.",
     "stillHaveFunds": "¡Todavía tienes fondos en tu billetera!",
-    "saveProperly": "Guarda correctamente esta frase semilla para que puedas importar esta billetera en el futuro."
+    "saveProperly": "Guarda esta frase semilla correctamente para que puedas importar esta billetera en el futuro."
   },
   "walletSeedPhrasePage": {
     "keepSeedPhrase": "¡Mantén en secreto tu seed frase!",
