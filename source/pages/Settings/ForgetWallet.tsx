@@ -45,7 +45,6 @@ const ForgetWalletView = () => {
   const [cachedSeed, setCachedSeed] = useState<string>('');
 
   // if account has no funds, no need to input the seed
-  const [isSeedValid, setIsSeedValid] = useState<boolean>(!hasAccountFunds);
   const [isPasswordValid, setIsPasswordValid] = useState<boolean>(false);
 
   const [form] = Form.useForm();
@@ -74,7 +73,6 @@ const ForgetWalletView = () => {
           // Auto-fill seed field so user can copy it when they have funds
           if (hasAccountFunds) {
             form.setFieldsValue({ seed: String(seed) });
-            setIsSeedValid(true); // Mark as valid since it's the correct seed
           }
 
           // Clear password field errors
@@ -132,7 +130,6 @@ const ForgetWalletView = () => {
     }
 
     // Reset seed state when password changes
-    setIsSeedValid(!hasAccountFunds); // Reset to default state
     setCachedSeed('');
 
     if (hasAccountFunds) {

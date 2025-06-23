@@ -27,10 +27,6 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
 
   const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
 
-  const titleValue = `${t(
-    'buttons.switch'
-  )} ${previousChain} -> ${newChainValue}`;
-
   const onSubmit = async () => {
     setLoading(true);
     try {
