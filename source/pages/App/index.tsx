@@ -22,7 +22,6 @@ import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import MigrationController from 'scripts/Background/controllers/MigrationController';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -186,16 +185,6 @@ if (window.__PALI_OFFSCREEN__) {
                         // Validate that we have valid state data
                         const stateObj = state as any;
                         if (stateObj.vault || stateObj.vaultGlobal) {
-                          // Run migrations on fresh state
-                          const migrationStart = performance.now();
-                          console.log('[App] Running MigrationController...');
-                          await MigrationController(state);
-                          console.log(
-                            `[App] Migrations completed in ${(
-                              performance.now() - migrationStart
-                            ).toFixed(2)}ms`
-                          );
-
                           // Update store with fresh state
                           const rehydrateStart = performance.now();
                           await rehydrateStore(store, state);
