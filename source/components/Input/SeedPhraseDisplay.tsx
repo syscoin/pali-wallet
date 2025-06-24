@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BiCopy } from 'react-icons/bi';
 
-interface SeedPhraseDisplayProps {
+interface ISeedPhraseDisplayProps {
   /**
    * Additional CSS classes
    */
@@ -45,7 +45,7 @@ interface SeedPhraseDisplayProps {
   showEyeToggle?: boolean;
 }
 
-export const SeedPhraseDisplay: React.FC<SeedPhraseDisplayProps> = ({
+export const SeedPhraseDisplay: React.FC<ISeedPhraseDisplayProps> = ({
   seedPhrase,
   isEnabled = true,
   showEyeToggle = true,

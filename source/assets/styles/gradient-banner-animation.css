@@ -30,7 +30,8 @@
   border-radius: 50%;
   filter: blur(3px);
   box-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
-  animation: bannerTwinkle1 12s ease-in-out infinite, bannerDrift1 20s ease-in-out infinite;
+  animation: bannerTwinkle1 12s ease-in-out infinite,
+    bannerDrift1 20s ease-in-out infinite;
   z-index: 3;
 }
 
@@ -44,7 +45,8 @@
   border-radius: 50%;
   filter: blur(2px);
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
-  animation: bannerTwinkle2 15s ease-in-out infinite, bannerDrift2 25s ease-in-out infinite;
+  animation: bannerTwinkle2 15s ease-in-out infinite,
+    bannerDrift2 25s ease-in-out infinite;
   z-index: 3;
 }
 
@@ -58,7 +60,8 @@
   border-radius: 50%;
   filter: blur(2px);
   box-shadow: 0 0 10px rgba(254, 0, 119, 0.6);
-  animation: bannerTwinkle3 18s ease-in-out infinite, bannerDrift3 30s ease-in-out infinite;
+  animation: bannerTwinkle3 18s ease-in-out infinite,
+    bannerDrift3 30s ease-in-out infinite;
   z-index: 3;
 }
 
@@ -72,7 +75,8 @@
   border-radius: 50%;
   filter: blur(3px);
   box-shadow: 0 0 14px rgba(40, 79, 148, 0.5);
-  animation: bannerTwinkle4 10s ease-in-out infinite, bannerDrift4 22s ease-in-out infinite;
+  animation: bannerTwinkle4 10s ease-in-out infinite,
+    bannerDrift4 22s ease-in-out infinite;
   z-index: 3;
 }
 
@@ -86,13 +90,15 @@
   border-radius: 50%;
   filter: blur(1px);
   box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
-  animation: bannerTwinkle5 14s ease-in-out infinite, bannerDrift5 28s ease-in-out infinite;
+  animation: bannerTwinkle5 14s ease-in-out infinite,
+    bannerDrift5 28s ease-in-out infinite;
   z-index: 3;
 }
 
 /* Twinkling animations */
 @keyframes bannerTwinkle1 {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
     transform: scale(1);
     box-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
@@ -105,7 +111,8 @@
 }
 
 @keyframes bannerTwinkle2 {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.4;
     transform: scale(1);
     box-shadow: 0 0 3px rgba(255, 255, 255, 0.4);
@@ -118,7 +125,8 @@
 }
 
 @keyframes bannerTwinkle3 {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.3;
     transform: scale(1);
     box-shadow: 0 0 3px rgba(254, 0, 119, 0.4);
@@ -131,7 +139,8 @@
 }
 
 @keyframes bannerTwinkle4 {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.2;
     transform: scale(1);
     box-shadow: 0 0 4px rgba(40, 79, 148, 0.3);
@@ -144,7 +153,8 @@
 }
 
 @keyframes bannerTwinkle5 {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.2;
     transform: scale(1);
     box-shadow: 0 0 2px rgba(255, 255, 255, 0.2);
@@ -158,7 +168,8 @@
 
 /* Subtle drift animations */
 @keyframes bannerDrift1 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px);
   }
   50% {
@@ -167,7 +178,8 @@
 }
 
 @keyframes bannerDrift2 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px);
   }
   50% {
@@ -176,7 +188,8 @@
 }
 
 @keyframes bannerDrift3 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px);
   }
   50% {
@@ -185,7 +198,8 @@
 }
 
 @keyframes bannerDrift4 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px);
   }
   50% {
@@ -194,7 +208,8 @@
 }
 
 @keyframes bannerDrift5 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px);
   }
   50% {
@@ -222,4 +237,4 @@
 .banner-particle-5 {
   will-change: transform, opacity;
   backface-visibility: hidden;
-} 
+}

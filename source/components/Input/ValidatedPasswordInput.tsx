@@ -3,7 +3,7 @@ import { debounce } from 'lodash';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
-interface ValidatedPasswordInputProps {
+interface IValidatedPasswordInputProps {
   /**
    * Additional CSS classes
    */
@@ -60,7 +60,7 @@ interface ValidatedPasswordInputProps {
   required?: boolean;
 }
 
-export const ValidatedPasswordInput: React.FC<ValidatedPasswordInputProps> = ({
+export const ValidatedPasswordInput: React.FC<IValidatedPasswordInputProps> = ({
   onValidate,
   onValidationSuccess,
   onValidationError,

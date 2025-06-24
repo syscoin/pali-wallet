@@ -90,7 +90,7 @@
 /* Optional: Add a subtle pulse effect to the dots on hover/interaction */
 .floating-dots-container:hover::before {
   animation-duration: 30s;
-  opacity: 0.10;
+  opacity: 0.1;
 }
 
 .floating-dots-container:hover::after {
@@ -113,4 +113,4 @@
   will-change: transform;
   backface-visibility: hidden;
   perspective: 1000px;
-} 
+}

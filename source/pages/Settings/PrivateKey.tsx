@@ -69,7 +69,7 @@ const PrivateKeyView = () => {
   };
 
   // Handle successful password validation
-  const handleValidationSuccess = (result: any, password: string) => {
+  const handleValidationSuccess = (result: any) => {
     setValid(true);
     setCurrentXprv(result.privateKey);
   };
