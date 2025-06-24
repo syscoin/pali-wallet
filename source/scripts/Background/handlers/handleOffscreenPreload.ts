@@ -4,47 +4,65 @@
 // Track if we have an active offscreen document
 let offscreenCreated = false;
 
+let offscreenCreating: Promise<void> | null = null;
+
 /**
  * Creates an offscreen document to preload the popup
  * This makes the popup appear instantly when the user clicks the extension icon
  */
-export const handleOffscreenPreload = async () => {
-  try {
-    // Check if chrome.offscreen API is available (Chrome 109+)
-    if (!chrome.offscreen) {
-      console.log('[OffscreenPreload] Offscreen API not available');
-      return;
-    }
+export async function ensureOffscreenDocument(): Promise<void> {
+  if (offscreenCreated) {
+    console.log('[Offscreen] Document already exists');
+    return;
+  }
 
-    // Check if we already have an offscreen document
-    const hasDocument = await chrome.offscreen.hasDocument();
+  if (offscreenCreating) {
+    console.log('[Offscreen] Creation already in progress');
+    return offscreenCreating;
+  }
 
-    if (!hasDocument) {
-      console.log(
-        '[OffscreenPreload] Creating offscreen document for popup preload...'
-      );
+  const createOffscreen = async () => {
+    try {
+      // Check if offscreen document already exists
+      const contexts = await chrome.runtime.getContexts({
+        contextTypes: ['OFFSCREEN_DOCUMENT' as any],
+      });
 
+      if (contexts.length > 0) {
+        console.log(
+          '[Offscreen] Document already exists (found via getContexts)'
+        );
+        offscreenCreated = true;
+        return;
+      }
+
+      console.log('[Offscreen] Creating offscreen document for preloading...');
       await chrome.offscreen.createDocument({
         url: 'offscreen.html',
-        reasons: [
-          chrome.offscreen.Reason.DOM_SCRAPING as chrome.offscreen.Reason,
-        ],
-        justification:
-          'Preload popup for faster load times when user clicks extension icon',
+        reasons: ['DOM_SCRAPING' as any], // Using DOM_SCRAPING as a valid reason
+        justification: 'Preloading extension bundles for instant popup display',
       });
 
       offscreenCreated = true;
-      console.log('[OffscreenPreload] Offscreen document created successfully');
-    } else {
-      console.log('[OffscreenPreload] Offscreen document already exists');
+      console.log('[Offscreen] Document created successfully');
+    } catch (error: any) {
+      if (error?.message?.includes('already exists')) {
+        console.log('[Offscreen] Document already exists (error caught)');
+        offscreenCreated = true;
+      } else {
+        console.error('[Offscreen] Failed to create document:', error);
+        throw error;
+      }
     }
-  } catch (error) {
-    console.error(
-      '[OffscreenPreload] Failed to create offscreen document:',
-      error
-    );
+  };
+
+  offscreenCreating = createOffscreen();
+  try {
+    await offscreenCreating;
+  } finally {
+    offscreenCreating = null;
   }
-};
+}
 
 /**
  * Closes the offscreen document if it exists
@@ -78,7 +96,7 @@ export const refreshOffscreenDocument = async () => {
     await closeOffscreenDocument();
     // Wait a bit before recreating
     setTimeout(() => {
-      handleOffscreenPreload();
+      ensureOffscreenDocument();
     }, 100);
   } catch (error) {
     console.error(
@@ -95,7 +113,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   );
   // Wait a bit for the extension to fully initialize
   setTimeout(() => {
-    handleOffscreenPreload();
+    ensureOffscreenDocument();
   }, 2000);
 });
 
@@ -104,12 +122,12 @@ chrome.runtime.onStartup.addListener(async () => {
   console.log('[OffscreenPreload] Browser started, preloading popup...');
   // Wait a bit for the extension to fully initialize
   setTimeout(() => {
-    handleOffscreenPreload();
+    ensureOffscreenDocument();
   }, 2000);
 });
 
 // Listen for when the popup is actually opened
-chrome.action.onClicked.addListener(() => {
+chrome.action.onClicked.addListener(async () => {
   // Note: This won't fire if default_popup is set in manifest
   // But we can use it as a signal to refresh the offscreen document
   if (offscreenCreated) {
@@ -117,6 +135,9 @@ chrome.action.onClicked.addListener(() => {
       '[OffscreenPreload] Popup clicked, refreshing offscreen document...'
     );
     refreshOffscreenDocument();
+  } else {
+    console.log('[Offscreen] Ensuring document before popup opens');
+    await ensureOffscreenDocument();
   }
 });
 
@@ -129,3 +150,32 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     refreshOffscreenDocument();
   }
 });
+
+// Initialize offscreen on extension startup
+export async function initializeOffscreenPreload(): Promise<void> {
+  try {
+    // Create offscreen document immediately on startup
+    await ensureOffscreenDocument();
+
+    // Also ensure it's ready before any popup is opened
+    chrome.action.onClicked.addListener(async () => {
+      console.log('[Offscreen] Ensuring document before popup opens');
+      await ensureOffscreenDocument();
+    });
+
+    // Recreate if extension is updated
+    chrome.runtime.onInstalled.addListener(async (details) => {
+      if (details.reason === 'update') {
+        console.log(
+          '[Offscreen] Extension updated, recreating offscreen document'
+        );
+        offscreenCreated = false;
+        await ensureOffscreenDocument();
+      }
+    });
+
+    console.log('[Offscreen] Preload handler initialized');
+  } catch (error) {
+    console.error('[Offscreen] Failed to initialize preload:', error);
+  }
+}

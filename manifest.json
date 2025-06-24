@@ -16,8 +16,8 @@
     "activeTab",
     "clipboardWrite",
     "unlimitedStorage",
-    "scripting",
-    "webRequest"
+    "offscreen",
+    "scripting"
   ],
   "host_permissions": [
     "http://*/*",
@@ -30,7 +30,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "author": "pollum labs",
-  "minimum_chrome_version": "88",
+  "minimum_chrome_version": "109",
   "action": {
     "default_popup": "app.html",
     "default_icon": {
@@ -47,9 +47,15 @@
   "content_scripts": [
     {
       "all_frames": true,
-      "matches": ["file://*/*", "http://*/*", "https://*/*"],
+      "matches": [
+        "file://*/*",
+        "http://*/*",
+        "https://*/*"
+      ],
       "run_at": "document_start",
-      "js": ["js/contentScript.bundle.js"]
+      "js": [
+        "js/contentScript.bundle.js"
+      ]
     }
   ],
   "web_accessible_resources": [
@@ -59,7 +65,9 @@
         "js/handleWindowProperties.bundle.js",
         "js/pali.bundle.js"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ],
   "commands": {
