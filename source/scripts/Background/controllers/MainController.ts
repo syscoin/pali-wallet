@@ -382,7 +382,7 @@ class MainController {
     if (needsSessionTransfer && anyUnlockedKeyring) {
       try {
         const sourceSlip44 = Array.from(this.keyrings.entries()).find(
-          ([slip44, kr]) => kr === anyUnlockedKeyring
+          ([, kr]) => kr === anyUnlockedKeyring
         )?.[0];
 
         // Double-check source keyring is still valid before transfer
