@@ -286,16 +286,21 @@ class MainController {
       kr.isUnlocked()
     );
 
-    // Save current vault state before switching if we're changing slip44
+    // Capture current vault state for deferred save (non-blocking)
+    let deferredSaveData: { slip44: number; vaultState: any } | null = null;
+
     if (slip44 !== activeSlip44) {
       console.log(
         `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
       );
 
-      //TODO: move this to save after successful switch by taking in custom vault JSON
+      // Create shallow copy of current state for deferred save (fast, relies on Redux immutability)
       const currentState = store.getState().vault;
       if (currentState && activeSlip44 !== null) {
-        await vaultCache.setSlip44Vault(activeSlip44, currentState);
+        // Shallow copy - safe because Redux state updates are immutable
+        // The old state tree remains unchanged after loadAndActivateSlip44Vault dispatches
+        const vaultStateCopy = { ...currentState };
+        deferredSaveData = { slip44: activeSlip44, vaultState: vaultStateCopy };
       }
 
       // Load vault state for target slip44 (this also sets activeSlip44 and saves main state)
@@ -385,6 +390,12 @@ class MainController {
     // No need to set it again - that could trigger unnecessary state updates
 
     this.keyrings.set(slip44, targetKeyring);
+
+    // Perform deferred save of previous vault state (non-blocking)
+    if (deferredSaveData) {
+      this.performDeferredVaultSave(deferredSaveData);
+    }
+
     this.saveWalletState('network-switch');
   }
 
@@ -969,6 +980,27 @@ class MainController {
     } catch (error) {
       console.error('[MainController] Error in resetAutoLockTimer:', error);
       // Fail silently - auto-lock is a convenience feature, not critical
+    }
+  }
+
+  // Perform deferred vault save in background (non-blocking)
+  private performDeferredVaultSave(deferredSaveData: {
+    slip44: number;
+    vaultState: any;
+  }) {
+    try {
+      setTimeout(() => {
+        vaultCache.setSlip44Vault(
+          deferredSaveData.slip44,
+          deferredSaveData.vaultState
+        );
+      }, 10);
+    } catch (error) {
+      console.error(
+        `[MainController] Deferred save failed for slip44 ${deferredSaveData.slip44}:`,
+        error
+      );
+      throw error; // Re-throw to allow caller to handle
     }
   }
 
