@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { RootState } from 'state/store';
 
 export const useController = () => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Get hasEncryptedVault from global state to distinguish between locked and forgotten states
+  const hasEncryptedVault = useSelector(
+    (state: RootState) => state.vaultGlobal.hasEncryptedVault
+  );
 
   // Function to check unlock status
   const checkUnlockStatus = async () => {
@@ -19,11 +26,19 @@ export const useController = () => {
       setIsUnlocked(nowUnlocked);
 
       // If wallet was unlocked but now locked, redirect to unlock screen
-      if (wasUnlocked && !nowUnlocked && !isLoading) {
+      // BUT only if there's still an encrypted vault (not forgotten)
+      if (wasUnlocked && !nowUnlocked && !isLoading && hasEncryptedVault) {
         console.log(
           '[useController] Wallet became locked, redirecting to unlock screen'
         );
         navigate('/', { replace: true });
+      }
+
+      // If there's no encrypted vault, don't force redirect - let routing logic handle it
+      if (wasUnlocked && !nowUnlocked && !isLoading && !hasEncryptedVault) {
+        console.log(
+          '[useController] Wallet was forgotten, allowing routing logic to handle navigation'
+        );
       }
 
       return nowUnlocked;
@@ -51,10 +66,25 @@ export const useController = () => {
       // Double-check unlock status to be safe
       checkUnlockStatus();
     } else if (message.type === 'logout') {
-      // Explicit logout message - immediately redirect
-      console.log('[useController] Logout message received, redirecting');
+      // Explicit logout message - only redirect if there's still an encrypted vault
+      console.log('[useController] Logout message received');
       setIsUnlocked(false);
-      navigate('/', { replace: true });
+      if (hasEncryptedVault) {
+        console.log(
+          '[useController] Redirecting to unlock screen after logout'
+        );
+        navigate('/', { replace: true });
+      } else {
+        console.log(
+          '[useController] No encrypted vault, letting routing logic handle navigation'
+        );
+      }
+    } else if (message.type === 'wallet_forgotten') {
+      // Wallet was explicitly forgotten - don't redirect, let routing logic handle it
+      console.log(
+        '[useController] Wallet forgotten message received, letting routing logic handle navigation'
+      );
+      setIsUnlocked(false);
     }
   };
 
@@ -106,7 +136,7 @@ export const useController = () => {
       chrome.runtime.onMessage.removeListener(messageListener);
       clearInterval(pollInterval);
     };
-  }, [navigate]);
+  }, [navigate]); // Only depend on navigate - hasEncryptedVault is accessed directly in scope
 
   // Reset auto-lock timer on route changes (user navigation activity)
   useEffect(() => {
@@ -130,7 +160,7 @@ export const useController = () => {
       pattern.test(errorMessage)
     );
 
-    if (isWalletLockedError) {
+    if (isWalletLockedError && hasEncryptedVault) {
       console.log(
         '[useController] Wallet locked error detected, redirecting to unlock screen'
       );

@@ -245,8 +245,8 @@ class MainController {
     let keyring = this.keyrings.get(activeSlip44);
 
     if (!keyring) {
-      console.warn(
-        `[MainController] No keyring found for slip44: ${activeSlip44}, creating on-demand`
+      console.log(
+        `[MainController] Creating new keyring for slip44: ${activeSlip44} (no existing keyring - likely after wallet forget/restart)`
       );
       // Create keyring on-demand to handle state rehydration edge cases
       keyring = this.initializeKeyring(activeSlip44);
@@ -329,7 +329,10 @@ class MainController {
           // No existing vault state - create first account
           // Session data was already transferred, so we can create the first account directly
           const account = await targetKeyring.createFirstAccount();
-          console.log('[MainController] Created new keyring account', account);
+          console.log(
+            '[MainController] Created new keyring account',
+            account.address
+          );
 
           store.dispatch(
             addAccountToStore({
@@ -400,9 +403,90 @@ class MainController {
 
   // Lock all keyrings - used when user explicitly locks wallet
   private lockAllKeyrings(): void {
-    this.keyrings.forEach((keyring) => {
-      if (keyring.isUnlocked()) {
-        keyring.lockWallet();
+    this.keyrings.forEach((keyring, slip44) => {
+      try {
+        if (keyring.isUnlocked()) {
+          keyring.lockWallet();
+        }
+
+        // Clean up some Web3 provider listeners during normal lock to prevent accumulation
+        // (but don't dispose of the entire provider - just remove listeners)
+        if (
+          keyring.ethereumTransaction &&
+          keyring.ethereumTransaction.web3Provider
+        ) {
+          try {
+            const provider = keyring.ethereumTransaction.web3Provider;
+            if (typeof provider.removeAllListeners === 'function') {
+              provider.removeAllListeners();
+            }
+          } catch (providerError) {
+            console.warn(
+              `[MainController] Error cleaning Web3 provider listeners for slip44 ${slip44}:`,
+              providerError
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          `[MainController] Error locking keyring for slip44 ${slip44}:`,
+          error
+        );
+        // Continue with other keyrings even if one fails
+      }
+    });
+  }
+
+  // Properly dispose of keyring instances to prevent memory leaks
+  private disposeAllKeyrings(): void {
+    this.keyrings.forEach((keyring, slip44) => {
+      try {
+        console.log(`[MainController] Disposing keyring for slip44: ${slip44}`);
+
+        // Lock the keyring first to clear session data
+        if (keyring.isUnlocked()) {
+          keyring.lockWallet();
+        }
+
+        // Dispose of Trezor resources
+        if (
+          keyring.trezorSigner &&
+          typeof keyring.trezorSigner.dispose === 'function'
+        ) {
+          keyring.trezorSigner.dispose();
+        }
+
+        // Clean up Web3 providers if they exist
+        if (
+          keyring.ethereumTransaction &&
+          keyring.ethereumTransaction.web3Provider
+        ) {
+          try {
+            // Remove all listeners from Web3 provider if it has removeAllListeners method
+            const provider = keyring.ethereumTransaction.web3Provider;
+            if (typeof provider.removeAllListeners === 'function') {
+              provider.removeAllListeners();
+            }
+            // Destroy provider if it has a destroy method
+            if (typeof provider.destroy === 'function') {
+              provider.destroy();
+            }
+          } catch (providerError) {
+            console.warn(
+              `[MainController] Error disposing Web3 provider for slip44 ${slip44}:`,
+              providerError
+            );
+          }
+        }
+
+        // If keyring has any other cleanup methods, call them here
+        // Note: KeyringManager doesn't have a dispose method, but we've cleaned up its major components
+      } catch (error) {
+        console.error(
+          `[MainController] Error disposing keyring for slip44 ${slip44}:`,
+          error
+        );
+        // Continue with other keyrings even if one fails
       }
     });
   }
@@ -946,8 +1030,8 @@ class MainController {
     await this.forgetMainWallet(pwd);
 
     // Now proceed with cleanup since password is valid
-    // Lock all keyrings to clear session data from memory
-    this.lockAllKeyrings();
+    // Properly dispose of all keyrings to prevent memory leaks
+    this.disposeAllKeyrings();
 
     // Clear all keyring instances from memory
     this.keyrings.clear();
@@ -1043,8 +1127,21 @@ class MainController {
     );
     store.dispatch(setCoinsList([]));
 
+    // Reset activeSlip44 to default after forgetting wallet
+    // This ensures clean state regardless of what the previous wallet supported
+
+    store.dispatch(setActiveSlip44(DEFAULT_UTXO_SLIP44));
+    console.log(
+      `[MainController] Reset activeSlip44 to default: ${DEFAULT_UTXO_SLIP44}`
+    );
+
     store.dispatch(forgetWallet());
     store.dispatch(setLastLogin());
+
+    // Send a specific message to indicate wallet was forgotten (not just locked)
+    chrome.runtime.sendMessage({ type: 'wallet_forgotten' }).catch(() => {
+      // Ignore errors - message handling is best effort
+    });
   }
 
   public async unlockFromController(pwd: string): Promise<boolean> {

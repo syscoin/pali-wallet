@@ -7,6 +7,7 @@ This document outlines the standardized loading state management strategy for th
 ## Key Components
 
 ### 1. PageLoadingOverlay Component
+
 - **Location**: `source/components/Loading/PageLoadingOverlay.tsx`
 - **Purpose**: Provides immediate visual feedback with minimal disruption
 - **Features**:
@@ -17,6 +18,7 @@ This document outlines the standardized loading state management strategy for th
   - Displays slow connection warning after 5 seconds
 
 ### 2. usePageLoadingState Hook
+
 - **Location**: `source/hooks/usePageLoadingState.tsx`
 - **Purpose**: Centralized loading state management
 - **Features**:
@@ -27,6 +29,7 @@ This document outlines the standardized loading state management strategy for th
   - All timing handled by PageLoadingOverlay component
 
 ### 3. AppLayout Integration
+
 - **Location**: `source/components/Layout/AppLayout.tsx`
 - **Purpose**: Connects loading state to overlay display
 - **Behavior**:
@@ -35,8 +38,9 @@ This document outlines the standardized loading state management strategy for th
   - Header and banner remain accessible above overlay
 
 ### 4. Suspense Boundaries
+
 - **Purpose**: Required by React for lazy-loaded components
-- **Implementation**: 
+- **Implementation**:
   - Use minimal transparent fallback: `<div style={{ opacity: 0 }}>Loading...</div>`
   - AppLayout handles the actual loading display
   - Prevents duplicate loading indicators
@@ -44,13 +48,17 @@ This document outlines the standardized loading state management strategy for th
 ## Loading States
 
 ### Global Loading States
+
 These are automatically tracked across the entire app:
+
 - Network switching (`networkStatus === 'switching'`)
 - Account switching (`isSwitchingAccount`)
 - Navigation changes (brief loading during route transitions)
 
 ### Page-Specific Loading States
+
 Individual pages can add their own loading conditions:
+
 ```typescript
 const { isLoading, message } = usePageLoadingState([
   isLoadingData,
@@ -62,12 +70,15 @@ const { isLoading, message } = usePageLoadingState([
 ## Implementation Guidelines
 
 ### 1. For Regular Pages
+
 Pages that are part of the main app navigation should:
+
 - Let AppLayout handle the loading overlay automatically
 - Continue rendering content (it will be darkened by overlay)
 - Use skeleton loaders for partial data loading within the page
 
 Example:
+
 ```typescript
 export const MyPage = () => {
   const { data, isLoading } = useData();
@@ -75,52 +86,56 @@ export const MyPage = () => {
 
   // No need to return null - overlay handles loading display
   return (
-    <div>
-      {isLoading ? (
-        <SkeletonLoader />
-      ) : (
-        <DataDisplay data={data} />
-      )}
-    </div>
+    <div>{isLoading ? <SkeletonLoader /> : <DataDisplay data={data} />}</div>
   );
 };
 ```
 
 ### 2. For External/Popup Pages
+
 External transaction pages (opened in popup windows) should:
+
 - Keep their existing `LoadingComponent` usage
 - Manage their own loading states
 - Not rely on AppLayout's overlay
 
 ### 3. For Skeleton Loaders
+
 Use skeleton loaders for:
+
 - List items loading (transactions, assets)
 - Balance displays during refresh
 - Any partial content that can load independently
 
 Example:
+
 ```typescript
-{isLoadingBalance ? (
-  <SkeletonLoader width="200px" height="48px" />
-) : (
-  <BalanceDisplay balance={balance} />
-)}
+{
+  isLoadingBalance ? (
+    <SkeletonLoader width="200px" height="48px" />
+  ) : (
+    <BalanceDisplay balance={balance} />
+  );
+}
 ```
 
 ### 4. For Lazy-Loaded Components
+
 When using React.lazy() for code splitting:
+
 - Wrap lazy components in Suspense boundaries
 - Use minimal transparent fallback
 - Let AppLayout handle the actual loading display
 
 Example:
+
 ```typescript
 const LazyComponent = lazy(() => import('./MyComponent'));
 
 // In router or parent component:
 <Suspense fallback={<div style={{ opacity: 0 }}>Loading...</div>}>
   <LazyComponent />
-</Suspense>
+</Suspense>;
 ```
 
 ## Loading UX Flow
@@ -157,27 +172,25 @@ When updating a component to use the new loading strategy:
 - **Single source of timing**: PageLoadingOverlay handles all delays and transitions
 - **Instant feedback**: Spinner appears immediately (50ms) without screen changes
 - **Progressive darkening**: Overlay only appears if loading takes longer (250ms)
-- **Header remains accessible**: Overlay only covers content area below header  
+- **Header remains accessible**: Overlay only covers content area below header
 - **Consistent background**: No jarring color changes during quick operations
 - **Non-intrusive**: Clean spinner with delayed screen interaction blocking
 
 ## Common Patterns
 
 ### Data Fetching Page
+
 ```typescript
 const { data, isLoading, error } = useFetch();
 const { isLoading: pageLoading } = usePageLoadingState([isLoading]);
 
 // Component renders normally - overlay handles loading
 if (error) return <ErrorComponent />;
-return (
-  <div>
-    {isLoading ? <DataSkeleton /> : <DataDisplay data={data} />}
-  </div>
-);
+return <div>{isLoading ? <DataSkeleton /> : <DataDisplay data={data} />}</div>;
 ```
 
 ### Form Submission Page
+
 ```typescript
 const [isSubmitting, setIsSubmitting] = useState(false);
 const { isLoading } = usePageLoadingState([isSubmitting]);
@@ -197,6 +210,7 @@ return <Form onSubmit={handleSubmit} />;
 ```
 
 ### List with Skeletons
+
 ```typescript
 const { items, isLoadingItems } = useItems();
 
@@ -205,7 +219,7 @@ return (
     {isLoadingItems ? (
       <ListSkeleton />
     ) : (
-      items.map(item => <ListItem key={item.id} {...item} />)
+      items.map((item) => <ListItem key={item.id} {...item} />)
     )}
   </div>
 );
