@@ -209,6 +209,12 @@ const VaultState = createSlice({
         state.isLastTxConfirmed = {};
         return;
       }
+
+      // Ensure isLastTxConfirmed is always an object before setting properties
+      if (!state.isLastTxConfirmed) {
+        state.isLastTxConfirmed = {};
+      }
+
       state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
     setNetwork(

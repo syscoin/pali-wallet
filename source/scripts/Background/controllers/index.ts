@@ -156,11 +156,12 @@ const MasterController = (
       );
     }
 
-    if (externalStore.getState().vault?.isLastTxConfirmed === undefined) {
+    if (!externalStore.getState().vault?.isLastTxConfirmed) {
       externalStore.dispatch(
         setIsLastTxConfirmed({
           chainId: 0,
           wasConfirmed: false,
+          isFirstTime: true,
         })
       );
     }
