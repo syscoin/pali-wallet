@@ -15,6 +15,19 @@ import 'assets/styles/custom-receive-input.css';
 import 'assets/styles/custom-import-token-input.css';
 import 'assets/styles/custom-send-utxo-input.css';
 
+// Import React and dependencies statically to enable webpack optimization
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { Provider } from 'react-redux';
+import { ToastContainer } from 'react-toastify';
+
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import MigrationController from 'scripts/Background/controllers/MigrationController';
+import { rehydrateStore } from 'state/rehydrate';
+import store from 'state/store';
+
+import App from './App';
+
 // Make this file a module to satisfy TypeScript's isolatedModules
 export {};
 
@@ -82,74 +95,35 @@ if (window.__PALI_OFFSCREEN__) {
       ).toFixed(2)}ms`
     );
 
-    // Now load React and everything else
+    // Now initialize the app
     const initializeApp = async () => {
       try {
-        const reactLoadStart = performance.now();
-        // First, load only React and ReactDOM
-        const [React, ReactDOM] = await Promise.all([
-          import('react'),
-          import('react-dom/client'),
-        ]);
-
-        console.log(
-          `[App] React loaded in ${(performance.now() - reactLoadStart).toFixed(
-            2
-          )}ms`
-        );
+        console.log('[App] Starting React app initialization...');
 
         // Create a wrapper component that manages the loading state
         const AppWrapper = () => {
           const [isReady, setIsReady] = React.useState(false);
-          const [App, setApp] = React.useState<any>(null);
-          const [store, setStore] = React.useState<any>(null);
-          const [Provider, setProvider] = React.useState<any>(null);
 
           React.useEffect(() => {
-            // Load dependencies in parallel
-            const loadDependencies = async () => {
+            // Initialize store and state
+            const initializeState = async () => {
               try {
-                const depsLoadStart = performance.now();
-                const [
-                  { default: AppComponent },
-                  { Provider: ReduxProvider },
-                  storeModule,
-                  { rehydrateStore },
-                  { controllerEmitter },
-                ] = await Promise.all([
-                  import('./App'),
-                  import('react-redux'),
-                  import('state/store'),
-                  import('state/rehydrate'),
-                  import('scripts/Background/controllers/controllerEmitter'),
-                ]);
-
-                console.log(
-                  `[App] Dependencies loaded in ${(
-                    performance.now() - depsLoadStart
-                  ).toFixed(2)}ms`
-                );
-
-                setApp(() => AppComponent);
-                setProvider(() => ReduxProvider);
+                const stateLoadStart = performance.now();
 
                 // FIRST: Try to load from cached state immediately
                 try {
-                  await rehydrateStore(storeModule.default);
-                  setStore(storeModule.default);
+                  await rehydrateStore(store);
                   setIsReady(true);
                   console.log('[App] Rendered with cached state');
                 } catch (cacheError) {
                   console.log('[App] No cached state available');
                   // Even without cached state, we can still render with defaults
-                  setStore(storeModule.default);
                   setIsReady(true);
                 }
 
                 // THEN: Try to fetch fresh state from background (non-blocking)
                 const fetchFreshState = async () => {
                   try {
-                    const stateLoadStart = performance.now();
                     console.log(
                       '[App] Fetching fresh state from background script...'
                     );
@@ -215,9 +189,6 @@ if (window.__PALI_OFFSCREEN__) {
                           // Run migrations on fresh state
                           const migrationStart = performance.now();
                           console.log('[App] Running MigrationController...');
-                          const { default: MigrationController } = await import(
-                            'scripts/Background/controllers/MigrationController'
-                          );
                           await MigrationController(state);
                           console.log(
                             `[App] Migrations completed in ${(
@@ -227,7 +198,7 @@ if (window.__PALI_OFFSCREEN__) {
 
                           // Update store with fresh state
                           const rehydrateStart = performance.now();
-                          await rehydrateStore(storeModule.default, state);
+                          await rehydrateStore(store, state);
                           console.log(
                             `[App] Store updated with fresh state in ${(
                               performance.now() - rehydrateStart
@@ -277,49 +248,19 @@ if (window.__PALI_OFFSCREEN__) {
                 // Fetch fresh state in the background (non-blocking)
                 setTimeout(() => fetchFreshState(), 100);
               } catch (error) {
-                console.error('[App] Failed to initialize:', error);
-                // Try minimal fallback
-                try {
-                  const [
-                    { default: AppComponent },
-                    { Provider: ReduxProvider },
-                    storeModule,
-                    { rehydrateStore },
-                  ] = await Promise.all([
-                    import('./App'),
-                    import('react-redux'),
-                    import('state/store'),
-                    import('state/rehydrate'),
-                  ]);
-
-                  setApp(() => AppComponent);
-                  setProvider(() => ReduxProvider);
-                  await rehydrateStore(storeModule.default);
-                  setStore(storeModule.default);
-                  setIsReady(true);
-                } catch (fallbackError) {
-                  console.error(
-                    '[App] Fallback initialization also failed:',
-                    fallbackError
-                  );
-                }
+                console.error('[App] Failed to initialize state:', error);
+                // Still render the app even if state initialization fails
+                setIsReady(true);
               }
             };
 
-            loadDependencies();
+            initializeState();
           }, []);
 
-          // Keep showing loading state while dependencies load
-          if (!isReady || !App || !Provider || !store) {
+          // Keep showing loading state while initializing
+          if (!isReady) {
             return null; // The vanilla JS loading screen is still visible
           }
-
-          // Lazy load ToastContainer
-          const ToastContainer = React.lazy(() =>
-            import('react-toastify').then((m) => ({
-              default: m.ToastContainer,
-            }))
-          );
 
           const toastOptions = {
             position: 'bottom-center' as const,
@@ -339,9 +280,7 @@ if (window.__PALI_OFFSCREEN__) {
           return (
             <Provider store={store}>
               <App />
-              <React.Suspense fallback={null}>
-                <ToastContainer {...toastOptions} />
-              </React.Suspense>
+              <ToastContainer {...toastOptions} />
             </Provider>
           );
         };
@@ -360,7 +299,7 @@ if (window.__PALI_OFFSCREEN__) {
           ).toFixed(2)}ms`
         );
       } catch (error) {
-        console.error('[App] Failed to load React:', error);
+        console.error('[App] Failed to initialize app:', error);
         appRootElement.innerHTML =
           '<div style="color: white; padding: 20px;">Failed to load wallet. Please refresh.</div>';
       }
