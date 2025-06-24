@@ -45,18 +45,58 @@ if (window.__PALI_OFFSCREEN__) {
     console.log('[App] Starting app initialization...');
     const initStartTime = performance.now();
 
-    // Log performance metrics to see if bundles were cached
-    if ('performance' in window && 'getEntriesByType' in window.performance) {
-      const resources = window.performance.getEntriesByType('resource');
-      const scripts = resources.filter((r) => r.name.includes('.bundle.js'));
-      console.log('[App] Script loading performance:');
-      scripts.forEach((script) => {
-        const fromCache = (script as any).transferSize === 0;
-        console.log(
-          `  ${script.name.split('/').pop()}: ${script.duration.toFixed(2)}ms ${
-            fromCache ? '(from cache)' : '(downloaded)'
-          }`
+    // Log performance metrics after window loads
+    const logPerformanceMetrics = () => {
+      if ('performance' in window && 'getEntriesByType' in window.performance) {
+        const resources = window.performance.getEntriesByType('resource');
+        const scripts = resources.filter(
+          (r) =>
+            r.name.includes('.js') &&
+            (r.name.includes('bundle') || r.name.includes('chunk'))
         );
+        console.log('[App] Script loading performance:');
+        console.log(`  Total resources: ${resources.length}`);
+        console.log(`  Script bundles found: ${scripts.length}`);
+        scripts.forEach((script) => {
+          const fromCache =
+            (script as any).transferSize === 0 ||
+            (script as any).transferSize === undefined;
+          const name = script.name.split('/').pop()?.split('?')[0] || 'unknown';
+          console.log(
+            `  ${name}: ${script.duration.toFixed(2)}ms ${
+              fromCache
+                ? '(from cache)'
+                : `(downloaded ${((script as any).transferSize / 1024).toFixed(
+                    1
+                  )}KB)`
+            }`
+          );
+        });
+
+        // Also log navigation timing
+        const navTiming = window.performance.timing;
+        const pageLoadTime = navTiming.loadEventEnd - navTiming.navigationStart;
+        console.log(`[App] Navigation timing:`);
+        console.log(`  - Total page load: ${pageLoadTime}ms`);
+        console.log(
+          `  - DOM ready: ${
+            navTiming.domContentLoadedEventEnd - navTiming.navigationStart
+          }ms`
+        );
+        console.log(
+          `  - Response time: ${
+            navTiming.responseEnd - navTiming.requestStart
+          }ms`
+        );
+      }
+    };
+
+    // Log metrics once the page is fully loaded
+    if (document.readyState === 'complete') {
+      setTimeout(logPerformanceMetrics, 100);
+    } else {
+      window.addEventListener('load', () => {
+        setTimeout(logPerformanceMetrics, 100);
       });
     }
 
