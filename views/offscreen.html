@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pali Wallet - Offscreen Preload</title>
+  </head>
+  <body>
+    <!-- This is an offscreen document used only for preloading resources -->
+    <!-- It loads the bundles but doesn't run the app to avoid communication errors -->
+    <div id="offscreen-status" style="color: white; padding: 20px; font-family: sans-serif;">
+      Preloading Pali Wallet resources...
+    </div>
+    
+    <script>
+      console.log('[Offscreen] Preloading Pali Wallet resources...');
+      
+      // Set a flag to indicate this is an offscreen document
+      window.__PALI_OFFSCREEN__ = true;
+      
+      // Update status when bundles are loaded
+      window.addEventListener('load', () => {
+        console.log('[Offscreen] All resources preloaded successfully');
+        document.getElementById('offscreen-status').textContent = 'Resources preloaded successfully';
+      });
+    </script>
+    
+    <!-- Load all the bundles that webpack generates for app.html -->
+    <!-- These will be cached by the browser for instant loading when the popup opens -->
+  </body>
+</html> 

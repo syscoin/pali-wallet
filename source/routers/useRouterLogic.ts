@@ -125,12 +125,24 @@ export const useRouterLogic = () => {
   }, []);
 
   useEffect(() => {
-    chrome.runtime.sendMessage({ type: 'getCurrentState' }, (message) => {
-      rehydrateStore(store, message.data);
+    // Try to get current state from background script
+    chrome.runtime.sendMessage({ type: 'getCurrentState' }, (response) => {
+      // Handle potential errors gracefully
+      if (chrome.runtime.lastError) {
+        // Service worker might not be ready yet - that's ok
+        console.log(
+          '[useRouterLogic] Service worker not ready, will receive state via message'
+        );
+        return;
+      }
+
+      if (response?.data) {
+        rehydrateStore(store, response.data);
+      }
     });
 
     function handleStateChange(message: any) {
-      if (message.type === 'CONTROLLER_STATE_CHANGE') {
+      if (message.type === 'CONTROLLER_STATE_CHANGE' && message.data) {
         rehydrateStore(store, message.data);
         return true;
       }

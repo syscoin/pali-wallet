@@ -30,8 +30,16 @@ export const Start = (props: any) => {
           'getActiveAccount',
         ]);
         setHasAccount(!!result.activeAccount.address);
-      } catch (error) {
-        console.error('Error checking vault/accounts:', error);
+      } catch (error: any) {
+        // Only log non-connection errors
+        if (
+          !error?.message?.includes('Could not establish connection') &&
+          !error?.message?.includes('Receiving end does not exist') &&
+          !error?.message?.includes('Service worker timeout')
+        ) {
+          console.error('Error checking vault/accounts:', error);
+        }
+        // For connection errors, we'll just use the default state (no account/vault)
       } finally {
         setIsInitialLoading(false);
       }

@@ -146,16 +146,26 @@ class VaultCache {
     this.emergencySaveInProgress = true;
 
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+    const liveVaultState = store.getState().vault;
 
     try {
       // Always save main state (vaultGlobal, dapp, price) - settings could have changed
       await saveMainState();
 
-      if (activeSlip44 !== null) {
-        const liveVaultState = store.getState().vault;
-        await this.setSlip44Vault(activeSlip44, liveVaultState);
+      if (activeSlip44 !== null && liveVaultState) {
+        // During emergency save, use the vault's actual network slip44
+        // This handles cases where network is switching and activeSlip44 doesn't match yet
+        const vaultNetworkSlip44 = liveVaultState.activeNetwork
+          ? getSlip44ForNetwork(liveVaultState.activeNetwork)
+          : activeSlip44;
+
+        // Save to the slip44 that matches the vault's current network
+        // This prevents slip44 mismatch errors during network switches
+        this.slip44Cache.set(vaultNetworkSlip44, liveVaultState);
+        await saveSlip44State(vaultNetworkSlip44, liveVaultState);
+
         console.log(
-          `[VaultCache] ✅ Emergency save completed for slip44: ${activeSlip44}`
+          `[VaultCache] ✅ Emergency save completed for slip44: ${vaultNetworkSlip44} (vault network slip44)`
         );
       } else {
         console.log(`[VaultCache] Emergency save: no active slip44 to save`);

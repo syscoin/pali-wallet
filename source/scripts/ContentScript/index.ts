@@ -27,10 +27,13 @@ const handleEthInjection = (message: any) => {
   }
 };
 
-sendToBackground(
-  { action: 'isInjected', type: 'pw-msg-background' },
-  handleEthInjection
-);
+// Defer background check to not block page load
+setTimeout(() => {
+  sendToBackground(
+    { action: 'isInjected', type: 'pw-msg-background' },
+    handleEthInjection
+  );
+}, 0);
 
 // Add listener for pali events
 const checkForPaliRegisterEvent = (id: any) => {
@@ -205,10 +208,13 @@ window.addEventListener('beforeunload', () => {
   chrome.runtime.onMessage.removeListener(backgroundMessageListener);
 });
 
-// Initial setup
+// Initial setup - make non-blocking
 if (shouldInjectProvider()) {
-  // inject window.pali property in browser
-  injectScriptFile('js/pali.bundle.js', 'pali');
+  // Defer injection to not block page load
+  setTimeout(() => {
+    // inject window.pali property in browser
+    injectScriptFile('js/pali.bundle.js', 'pali');
+  }, 0);
 }
 
 // Removed keep-alive - Chrome alarms handle critical functions

@@ -24,12 +24,11 @@ document.addEventListener('DOMContentLoaded', function () {
   console.log('[HTML] DOM Content Loaded at:', Date.now());
 });
 
-// Fallback: remove loader after 6 seconds if something goes wrong
-// Increased from 3s to 6s to handle slower browser-initiated loads
+// Fallback: remove loader after 3 seconds if something goes wrong
 setTimeout(function () {
   if (!document.body.classList.contains('app-loaded')) {
     const elapsedTime = Date.now() - initStartTime;
     console.log('[HTML] Fallback: hiding loader after', elapsedTime, 'ms');
     document.body.classList.add('app-loaded');
   }
-}, 6000);
+}, 3000);

@@ -281,15 +281,40 @@ class MainController {
     const slip44 = getSlip44ForNetwork(network);
     let hasExistingVaultState = false;
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-    // 🔥 FIX: Find ANY unlocked keyring to transfer session from (handles undefined state)
-    const anyUnlockedKeyring = Array.from(this.keyrings.values()).find((kr) =>
-      kr.isUnlocked()
-    );
+
+    // 🔥 FIX: Determine if we're switching slip44 BEFORE activeSlip44 gets updated
+    const isSwitchingSlip44 = slip44 !== activeSlip44;
+
+    // 🔥 FIX: Capture unlocked keyring reference BEFORE any state changes
+    // This ensures we have a valid keyring to transfer session from
+    const anyUnlockedKeyring = isSwitchingSlip44
+      ? Array.from(this.keyrings.values()).find((kr) => {
+          try {
+            return kr.isUnlocked();
+          } catch (error) {
+            console.warn(
+              `[MainController] Error checking keyring unlock status:`,
+              error
+            );
+            return false;
+          }
+        })
+      : null;
+
+    if (isSwitchingSlip44 && !anyUnlockedKeyring) {
+      console.warn(
+        `[MainController] WARNING: Switching slip44 but no unlocked keyring found! This will fail.`
+      );
+    }
 
     // Capture current vault state for deferred save (non-blocking)
     let deferredSaveData: { slip44: number; vaultState: any } | null = null;
 
-    if (slip44 !== activeSlip44) {
+    // CRITICAL: Defer activeSlip44 update if we need session transfer
+    // This prevents getActiveKeyring() from returning the wrong (locked) keyring
+    const shouldDeferActiveSlip44 = isSwitchingSlip44 && !!anyUnlockedKeyring;
+
+    if (isSwitchingSlip44) {
       console.log(
         `[MainController] Switching keyring from slip44 ${activeSlip44} to ${slip44}`
       );
@@ -303,22 +328,51 @@ class MainController {
         deferredSaveData = { slip44: activeSlip44, vaultState: vaultStateCopy };
       }
 
-      // Load vault state for target slip44 (this also sets activeSlip44 and saves main state)
-      hasExistingVaultState = await loadAndActivateSlip44Vault(slip44, network);
+      // Load vault state for target slip44
+
+      try {
+        hasExistingVaultState = await loadAndActivateSlip44Vault(
+          slip44,
+          network,
+          shouldDeferActiveSlip44 // Defer if session transfer needed
+        );
+      } catch (vaultLoadError) {
+        console.error(
+          `[MainController] Failed to load vault for slip44 ${slip44}:`,
+          vaultLoadError
+        );
+        // Continue anyway - we'll create a new vault
+        hasExistingVaultState = false;
+      }
 
       // Update vault state with correct network info
       store.dispatch(setNetworkChange({ activeNetwork: network }));
-    }
 
-    // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
-    const needsSessionTransfer = slip44 !== activeSlip44 && anyUnlockedKeyring;
+      // 🔥 FIX: Re-check if source keyring is still unlocked after state changes
+      if (anyUnlockedKeyring && !anyUnlockedKeyring.isUnlocked()) {
+        console.error(
+          `[MainController] ERROR: Source keyring became locked during state update! Session transfer will fail.`
+        );
+      }
+    }
 
     // Ensure the target keyring exists
     let targetKeyring = this.keyrings.get(slip44);
+    let keyringWasJustCreated = false;
     if (!targetKeyring) {
       console.log('[MainController] Creating new keyring on demand');
       targetKeyring = this.createKeyringOnDemand();
+      keyringWasJustCreated = true;
+      // Store the new keyring immediately so it's available for subsequent operations
+      this.keyrings.set(slip44, targetKeyring);
     }
+
+    // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
+    // BUT skip if keyring was just created (already has session from createKeyringOnDemand)
+    const needsSessionTransfer =
+      isSwitchingSlip44 &&
+      anyUnlockedKeyring &&
+      (!keyringWasJustCreated || !targetKeyring.isUnlocked());
 
     if (!targetKeyring) {
       throw new Error(`Failed to get keyring for slip44: ${slip44}`);
@@ -327,10 +381,36 @@ class MainController {
     // Handle session transfer if needed
     if (needsSessionTransfer && anyUnlockedKeyring) {
       try {
+        const sourceSlip44 = Array.from(this.keyrings.entries()).find(
+          ([slip44, kr]) => kr === anyUnlockedKeyring
+        )?.[0];
+
+        // Double-check source keyring is still valid before transfer
+        if (!anyUnlockedKeyring.isUnlocked()) {
+          throw new Error(
+            `Source keyring (slip44: ${sourceSlip44}) became locked before session transfer!`
+          );
+        }
+
         anyUnlockedKeyring.transferSessionTo(targetKeyring);
+
+        // NOW it's safe to update activeSlip44 after session transfer
+        if (shouldDeferActiveSlip44) {
+          console.log(
+            `[MainController] Setting activeSlip44 to ${slip44} after session transfer`
+          );
+          store.dispatch(setActiveSlip44(slip44));
+        }
 
         // Only create accounts if no existing vault state was rehydrated
         if (!hasExistingVaultState) {
+          // Ensure the keyring is properly unlocked before creating account
+          if (!targetKeyring.isUnlocked()) {
+            throw new Error(
+              `Target keyring is not unlocked after session transfer! This should not happen.`
+            );
+          }
+
           // No existing vault state - create first account
           // Session data was already transferred, so we can create the first account directly
           const account = await targetKeyring.createFirstAccount();
@@ -361,34 +441,27 @@ class MainController {
         );
       }
     } else if (!targetKeyring.isUnlocked()) {
-      // If target keyring is not unlocked and we didn't transfer session, fail
-      if (slip44 !== activeSlip44) {
+      // If target keyring is not unlocked and we didn't transfer session
+      if (isSwitchingSlip44) {
+        // This is a critical error - we're switching keyrings but can't unlock the target
         console.error(
           `[MainController] No unlocked keyring found to transfer session from. Available keyrings: ${Array.from(
             this.keyrings.keys()
           )}`
         );
+        throw new Error(
+          `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
+        );
       }
-      throw new Error(
-        `Target keyring for slip44 ${slip44} is locked. Please unlock the wallet first.`
-      );
+      // For same slip44, the keyring should already be unlocked from previous operations
     }
 
     await targetKeyring.setSignerNetwork(network as any);
 
-    // Lock all other keyrings for security (belt and suspenders approach)
-    this.keyrings.forEach((keyring, keyringSlip44) => {
-      if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
-        console.log(
-          `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
-        );
-        keyring.lockWallet();
-      }
-    });
-
     // activeSlip44 is already set correctly by loadAndActivateSlip44Vault
     // No need to set it again - that could trigger unnecessary state updates
 
+    // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
     this.keyrings.set(slip44, targetKeyring);
 
     // Perform deferred save of previous vault state (non-blocking)
@@ -397,6 +470,17 @@ class MainController {
     }
 
     this.saveWalletState('network-switch');
+
+    // Lock all other keyrings for security AFTER everything is complete
+    // This prevents interfering with the session transfer or state updates
+    this.keyrings.forEach((keyring, keyringSlip44) => {
+      if (keyringSlip44 !== slip44 && keyring.isUnlocked()) {
+        console.log(
+          `[MainController] Locking non-active keyring for slip44: ${keyringSlip44}`
+        );
+        keyring.lockWallet();
+      }
+    });
   }
 
   // Create a keyring on demand with storage access
@@ -408,8 +492,9 @@ class MainController {
     keyring.setStorage(chrome.storage.local);
     keyring.setVaultStateGetter(() => store.getState().vault);
 
+    // Note: Session transfer is handled in switchActiveKeyring method
+    // to avoid double transfers and ensure proper state management
     return keyring;
-    // Note: Session transfer is now handled in switchActiveKeyring method
   }
 
   // Lock all keyrings - used when user explicitly locks wallet

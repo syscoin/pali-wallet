@@ -21,6 +21,7 @@ import vault, {
   initializeCleanVaultForSlip44,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
+import vaultCache from './vaultCache';
 import vaultGlobal, { setActiveSlip44 } from './vaultGlobal';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
@@ -113,17 +114,23 @@ export async function saveMainState() {
 // New centralized function to load and activate a slip44 vault
 export async function loadAndActivateSlip44Vault(
   slip44: number,
-  targetNetwork?: INetwork
+  targetNetwork?: INetwork,
+  deferActiveSlip44Update = false
 ): Promise<boolean> {
   try {
     console.log(`[Store] Loading slip44 vault: ${slip44}`);
 
-    // CRITICAL: Always set activeSlip44 first, regardless of whether vault state exists
-    // This ensures the correct slip44 is active for network switching
-    console.log(`[Store] Setting activeSlip44 to ${slip44}`);
-    store.dispatch(setActiveSlip44(slip44));
+    // Only set activeSlip44 immediately if not deferred
+    // When deferred, the caller will set it after session transfer
+    if (!deferActiveSlip44Update) {
+      console.log(`[Store] Setting activeSlip44 to ${slip44}`);
+      store.dispatch(setActiveSlip44(slip44));
+    } else {
+      console.log(
+        `[Store] Deferring activeSlip44 update for slip44: ${slip44}`
+      );
+    }
 
-    const { default: vaultCache } = await import('./vaultCache');
     const slip44VaultState = await vaultCache.getSlip44Vault(slip44);
 
     if (slip44VaultState) {

@@ -89,6 +89,7 @@ const MV3_OPTIONS = {
     'activeTab',
     'clipboardWrite',
     'unlimitedStorage',
+    'offscreen',
     'scripting',
   ],
   host_permissions: [
@@ -102,7 +103,7 @@ const MV3_OPTIONS = {
     extension_pages: "script-src 'self'; object-src 'self'",
   },
   author: 'pollum labs',
-  minimum_chrome_version: '88',
+  minimum_chrome_version: '109',
   action: {
     default_popup: 'app.html',
     default_icon: {

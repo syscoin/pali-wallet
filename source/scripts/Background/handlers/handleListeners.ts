@@ -105,30 +105,33 @@ export const handleListeners = (masterController: IMasterController) => {
       case 'pw-msg-background':
         if (action === 'isInjected') {
           masterController.dapp.setup(sender);
-
           sendResponse({ isInjected: hasEthProperty });
+          return true; // Indicate async response
         }
         break;
       case 'lock_wallet':
         handleLogout(masterController);
-        break;
+        return false; // Synchronous, no response needed
       case 'changeNetwork':
         if (data) {
           masterController.wallet.setActiveNetwork(data.network);
         }
-        break;
+        return false; // Synchronous, no response needed
       case 'startPolling':
         startPolling().catch((error) =>
           console.error('Error in startPolling:', error)
         );
-        break;
+        return false; // Synchronous, no response needed
       case 'getCurrentState':
         sendResponse({ data: store.getState() });
-        break;
+        return true; // Indicate async response
       default:
         console.log('[Background] Unhandled message type:', type);
         return false; // Let other listeners handle this message
     }
+
+    // If we get here without returning, return false
+    return false;
   };
 
   // Add the message listener

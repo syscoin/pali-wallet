@@ -42,11 +42,18 @@ export const useController = () => {
       }
 
       return nowUnlocked;
-    } catch (error) {
-      console.error('[useController] Error checking unlock status:', error);
-      // If we can't check status, assume locked for security
-      setIsUnlocked(false);
-      return false;
+    } catch (error: any) {
+      // Don't spam console with connection errors during service worker lifecycle
+      if (
+        !error.message?.includes('Could not establish connection') &&
+        !error.message?.includes('Receiving end does not exist') &&
+        !error.message?.includes('Service worker timeout')
+      ) {
+        console.error('[useController] Error checking unlock status:', error);
+      }
+      // If we can't check status due to service worker issues, maintain current state
+      // This prevents flickering during service worker restarts
+      return isUnlocked;
     }
   };
 
@@ -54,8 +61,19 @@ export const useController = () => {
   const resetAutoLockTimer = async () => {
     try {
       await controllerEmitter(['wallet', 'resetAutoLockTimer'], []);
-    } catch (error) {
-      console.error('[useController] Error resetting auto-lock timer:', error);
+    } catch (error: any) {
+      // Don't spam console with connection errors during service worker lifecycle
+      if (
+        !error.message?.includes('Could not establish connection') &&
+        !error.message?.includes('Receiving end does not exist') &&
+        !error.message?.includes('Service worker timeout')
+      ) {
+        console.error(
+          '[useController] Error resetting auto-lock timer:',
+          error
+        );
+      }
+      // Silently ignore service worker connection errors - timer will be reset on next successful call
     }
   };
 
@@ -103,38 +121,64 @@ export const useController = () => {
 
     // Set up periodic polling as a fallback to catch missed lock events
     // Poll every 10 seconds when unlocked, more frequently when locked
+    let pollInterval: NodeJS.Timeout | null = null;
+    let lockedPollInterval: NodeJS.Timeout | null = null;
+
     const startPolling = () => {
-      const pollInterval = setInterval(async () => {
+      // Clear any existing intervals
+      if (pollInterval) clearInterval(pollInterval);
+      if (lockedPollInterval) clearInterval(lockedPollInterval);
+
+      pollInterval = setInterval(async () => {
         try {
           const currentlyUnlocked = await checkUnlockStatus();
 
           // If we're locked, check more frequently to detect unlock quickly
           if (!currentlyUnlocked) {
-            clearInterval(pollInterval);
+            clearInterval(pollInterval!);
+            pollInterval = null;
+
             // Start faster polling when locked (every 2 seconds)
-            const lockedPollInterval = setInterval(async () => {
-              const stillLocked = !(await checkUnlockStatus());
-              if (!stillLocked) {
-                // When unlocked, switch back to normal polling
-                clearInterval(lockedPollInterval);
-                startPolling();
+            lockedPollInterval = setInterval(async () => {
+              try {
+                const stillLocked = !(await checkUnlockStatus());
+                if (!stillLocked) {
+                  // When unlocked, switch back to normal polling
+                  clearInterval(lockedPollInterval!);
+                  lockedPollInterval = null;
+                  startPolling();
+                }
+              } catch (error: any) {
+                // Ignore connection errors during locked polling
               }
             }, 2000);
           }
-        } catch (error) {
-          console.error('[useController] Polling error:', error);
+        } catch (error: any) {
+          // Only log non-connection errors
+          if (
+            !error.message?.includes('Could not establish connection') &&
+            !error.message?.includes('Receiving end does not exist') &&
+            !error.message?.includes('Service worker timeout') &&
+            !error.message?.includes('Failed to connect to service worker')
+          ) {
+            console.error('[useController] Polling error:', error);
+          }
         }
       }, 10000); // 10 seconds for normal polling
 
       return pollInterval;
     };
 
-    const pollInterval = startPolling();
+    // Only start polling after initial load completes
+    if (!isLoading) {
+      startPolling();
+    }
 
     // Cleanup
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
-      clearInterval(pollInterval);
+      if (pollInterval) clearInterval(pollInterval);
+      if (lockedPollInterval) clearInterval(lockedPollInterval);
     };
   }, [navigate]); // Only depend on navigate - hasEncryptedVault is accessed directly in scope
 

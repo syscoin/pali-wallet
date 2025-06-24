@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=500" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" />
-    <link rel="stylesheet" href="./assets/fonts/index.css" />
+    <!-- Performance hints -->
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <title>Pali Wallet</title>
     <style>
       /* Initial loading screen styles */
@@ -72,14 +73,6 @@
         opacity: 1;
       }
     </style>
-    <!-- Preload critical resources for faster loading -->
-    <link
-      rel="preload"
-      href="./assets/fonts/Poppins-Regular.ttf"
-      as="font"
-      type="font/ttf"
-      crossorigin
-    />
   </head>
   <body class="remove-scrollbar h-popup bg-bkg-6 overflow-hidden sm:py-8">
     <!-- Initial loading screen that shows immediately -->

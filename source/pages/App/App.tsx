@@ -4,7 +4,6 @@ import { HashRouter, useNavigate } from 'react-router-dom';
 import { Container } from 'components/index';
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import { Router } from 'routers/index';
-import vaultCache from 'state/vaultCache';
 
 // Wrapper component to provide navigate function to error boundary
 const AppWithErrorBoundary: FC = () => {
@@ -25,11 +24,9 @@ const App: FC = () => {
     const port = chrome.runtime.connect({ name: 'popup-connection' });
     console.log('[App] 🔌 Connected to background script via port');
 
-    // Signal that the React app is ready after mounting
-    const timer = setTimeout(() => {
-      console.log('[App] Dispatching pali-app-ready event');
-      window.dispatchEvent(new CustomEvent('pali-app-ready'));
-    }, 100);
+    // Signal that the React app is ready immediately after mounting
+    console.log('[App] Dispatching pali-app-ready event');
+    window.dispatchEvent(new CustomEvent('pali-app-ready'));
 
     // Fallback timer - only runs if app wasn't already loaded
     const fallbackTimer = setTimeout(() => {
@@ -57,7 +54,6 @@ const App: FC = () => {
       chrome.runtime.onMessage.removeListener(messageListener);
       port.disconnect();
       console.log('[App] 🔌 Disconnected from background script');
-      clearTimeout(timer);
       clearTimeout(fallbackTimer);
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
