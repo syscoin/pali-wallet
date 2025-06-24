@@ -147,6 +147,18 @@ module.exports = {
       },
     }),
     new HtmlWebpackPlugin({
+      template: join(viewsPath, 'offscreen.html'),
+      inject: 'body',
+      chunks: ['vendor', 'sysweb3', 'pali', 'app'],
+      hash: true,
+      filename: 'offscreen.html',
+      minify: {
+        removeComments: true,
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+      },
+    }),
+    new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
       inject: 'body',
       chunks: ['vendor', 'sysweb3', 'pali', 'external'],
@@ -240,7 +252,6 @@ module.exports = {
         extractComments: false,
       }),
     ],
-    // Simple vendor splitting for app and external only
     splitChunks: {
       chunks(chunk) {
         // Only split chunks for app and external, NOT background
