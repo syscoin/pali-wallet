@@ -87,7 +87,8 @@ export const handleListeners = (masterController: IMasterController) => {
       type === 'CONTROLLER_ACTION' ||
       type === 'CONTROLLER_STATE_CHANGE' ||
       type === 'logout' ||
-      type === 'isPopupOpen'
+      type === 'isPopupOpen' ||
+      type === 'ping' // Handled in index.ts
     ) {
       return false; // Let other listeners handle these
     }
