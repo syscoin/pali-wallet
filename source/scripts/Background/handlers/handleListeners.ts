@@ -2,6 +2,7 @@ import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
+import vaultCache from 'state/vaultCache';
 
 import { checkForUpdates } from './handlePaliUpdates';
 
@@ -77,7 +78,8 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.alarms.onAlarm.addListener(alarmListener);
 
   // Create and store message listener
-  messageListener = ({ type, data, action }, sender, sendResponse) => {
+  messageListener = (message, sender, sendResponse) => {
+    const { type, data, action } = message;
     const { hasEthProperty } = store.getState().vaultGlobal;
 
     // Let specialized handlers handle their message types
@@ -131,4 +133,30 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // Add the message listener
   chrome.runtime.onMessage.addListener(messageListener);
+
+  // 🚀 NEW: Port connection approach for popup close detection (no permissions needed)
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === 'popup-connection') {
+      console.log('[Background] 🔌 Popup connected via port');
+      port.onDisconnect.addListener(() => {
+        console.log(
+          '[Background] 🔌 Popup disconnected, triggering emergency save...'
+        );
+        // Trigger emergency save when popup closes
+        vaultCache
+          .emergencySave()
+          .then(() => {
+            console.log(
+              '[Background] ✅ Emergency save completed after popup disconnect'
+            );
+          })
+          .catch((error) => {
+            console.error(
+              '[Background] ❌ Emergency save failed after popup disconnect:',
+              error
+            );
+          });
+      });
+    }
+  });
 };

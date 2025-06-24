@@ -13,8 +13,12 @@ export const saveSlip44State = async (slip44: number, vaultState: any) => {
   try {
     const serializedState = JSON.stringify(vaultState);
     await chromeStorage.setItem(`state-vault-${slip44}`, serializedState);
-  } catch (e) {
-    console.error(`<!> Error saving state for slip44 ${slip44}`, e);
+  } catch (error) {
+    console.error(
+      `[PaliStorage] ❌ Failed to save slip44 vault ${slip44}:`,
+      error
+    );
+    throw error;
   }
 };
 
@@ -36,12 +40,18 @@ export const loadSlip44State = async (slip44: number) => {
     const serializedState = await chromeStorage.getItem(
       `state-vault-${slip44}`
     );
-    if (serializedState === null) {
-      return undefined;
+
+    if (serializedState) {
+      const parsedState = JSON.parse(serializedState);
+      return parsedState;
+    } else {
+      return null;
     }
-    return JSON.parse(serializedState);
-  } catch (e) {
-    console.error(`<!> Error getting state for slip44 ${slip44}`, e);
+  } catch (error) {
+    console.error(
+      `[PaliStorage] ❌ Failed to load slip44 vault ${slip44}:`,
+      error
+    );
     return null;
   }
 };

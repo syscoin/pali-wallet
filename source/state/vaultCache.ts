@@ -134,29 +134,34 @@ class VaultCache {
    * Always saves everything regardless of dirty flags - better safe than sorry
    */
   async emergencySave(): Promise<void> {
+    console.log('[VaultCache] 🚨 Emergency save triggered');
+
     // 🔥 Simple flag check to prevent double execution
     if (this.emergencySaveInProgress) {
       console.log(
-        `[VaultCache] ⚡ Emergency save already in progress, skipping...`
+        '[VaultCache] ⚡ Emergency save already in progress, skipping...'
       );
       return;
     }
     this.emergencySaveInProgress = true;
+
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
+
     try {
       // Always save main state (vaultGlobal, dapp, price) - settings could have changed
       await saveMainState();
+
       if (activeSlip44 !== null) {
         const liveVaultState = store.getState().vault;
         await this.setSlip44Vault(activeSlip44, liveVaultState);
+        console.log(
+          `[VaultCache] ✅ Emergency save completed for slip44: ${activeSlip44}`
+        );
       } else {
         console.log(`[VaultCache] Emergency save: no active slip44 to save`);
       }
     } catch (error) {
-      console.error(
-        '[VaultCache] Failed to log emergency save completion:',
-        error
-      );
+      console.error('[VaultCache] ❌ Emergency save failed:', error);
     } finally {
       // Always reset flag so subsequent calls can work (in case of partial failure)
       this.emergencySaveInProgress = false;

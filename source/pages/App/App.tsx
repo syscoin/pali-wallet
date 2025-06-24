@@ -21,6 +21,10 @@ const AppWithErrorBoundary: FC = () => {
 
 const App: FC = () => {
   useEffect(() => {
+    // 🚀 Establish port connection to background script for popup close detection
+    const port = chrome.runtime.connect({ name: 'popup-connection' });
+    console.log('[App] 🔌 Connected to background script via port');
+
     // Signal that the React app is ready after mounting
     const timer = setTimeout(() => {
       console.log('[App] Dispatching pali-app-ready event');
@@ -48,21 +52,11 @@ const App: FC = () => {
     // Add the listener when the component mounts
     chrome.runtime.onMessage.addListener(messageListener);
 
-    // 🔥 Emergency save when popup closes
-    const performEmergencySave = () => {
-      console.log('[App] Popup closing, triggering emergency save...');
-      vaultCache.emergencySave().catch((error) => {
-        console.error('[App] Failed to emergency save on popup close:', error);
-      });
-    };
-
-    // unload only fires when popup is actually being closed/destroyed (not just hidden)
-    window.addEventListener('unload', performEmergencySave);
-
-    // Cleanup: remove all listeners when the component unmounts
+    // Cleanup: remove listeners and disconnect port when the component unmounts
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
-      window.removeEventListener('unload', performEmergencySave);
+      port.disconnect();
+      console.log('[App] 🔌 Disconnected from background script');
       clearTimeout(timer);
       clearTimeout(fallbackTimer);
     };
