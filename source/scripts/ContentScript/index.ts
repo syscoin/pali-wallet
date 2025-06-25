@@ -5,25 +5,6 @@ import {
   PaliSyscoinEvents,
 } from 'scripts/Background/controllers/message-handler/types';
 
-// Performance tracking
-const perfTimings = {
-  contentScriptStart: Date.now(),
-  injectionChecks: 0,
-  paliInjectionStart: 0,
-  paliInjectionEnd: 0,
-  inpageInjectionStart: 0,
-  inpageInjectionEnd: 0,
-  backgroundResponseTime: 0,
-};
-
-// Log performance data
-const logPerformance = (event: string, details?: any) => {
-  const elapsed = Date.now() - perfTimings.contentScriptStart;
-  console.log(`[Pali CS ${elapsed}ms] ${event}`, details || '');
-};
-
-logPerformance('Content script started', window.location.href);
-
 const emitter = new EventEmitter();
 
 const sendToBackground = (
@@ -35,11 +16,9 @@ const sendToBackground = (
 
 const handleEthInjection = (message: any) => {
   const isInjected = message?.isInjected;
-  logPerformance('handleEthInjection response', { isInjected });
 
   if (typeof isInjected !== 'undefined') {
     if (isInjected) {
-      perfTimings.inpageInjectionStart = Date.now();
       injectScriptFile('js/inpage.bundle.js', 'inpage');
     } else {
       injectScriptFile('js/handleWindowProperties.bundle.js', 'removeProperty');
@@ -50,15 +29,9 @@ const handleEthInjection = (message: any) => {
 
 // Use requestIdleCallback for truly non-blocking injection
 const checkInjectionStatus = () => {
-  const checkStart = Date.now();
-  logPerformance('Checking injection status with background');
   sendToBackground(
     { action: 'isInjected', type: 'pw-msg-background' },
     (response) => {
-      perfTimings.backgroundResponseTime = Date.now() - checkStart;
-      logPerformance('Background response received', {
-        responseTime: perfTimings.backgroundResponseTime,
-      });
       handleEthInjection(response);
     }
   );
@@ -188,7 +161,6 @@ export const shouldInjectProvider = () =>
 
 export const injectScriptFile = (file: string, id: string) => {
   const injectionStart = Date.now();
-  logPerformance(`Starting injection: ${id}`, { file });
 
   try {
     const inpage = document.getElementById('inpage');
@@ -214,42 +186,9 @@ export const injectScriptFile = (file: string, id: string) => {
 
     // Make script load async to prevent render blocking
     scriptTag.async = true;
-
-    // Track when script actually loads
-    scriptTag.onload = () => {
-      const loadTime = Date.now() - injectionStart;
-      logPerformance(`Script loaded: ${id}`, { loadTime });
-
-      if (id === 'pali') {
-        perfTimings.paliInjectionEnd = Date.now();
-        // Log bundle size estimate
-        if (
-          'performance' in window &&
-          'getEntriesByName' in window.performance
-        ) {
-          const entries = window.performance.getEntriesByName(scriptTag.src);
-          if (entries.length > 0) {
-            const entry = entries[0] as any;
-            logPerformance(`Script size info: ${id}`, {
-              transferSize: entry.transferSize,
-              encodedBodySize: entry.encodedBodySize,
-              decodedBodySize: entry.decodedBodySize,
-            });
-          }
-        }
-      } else if (id === 'inpage') {
-        perfTimings.inpageInjectionEnd = Date.now();
-      }
-    };
-
-    scriptTag.onerror = (error) => {
-      logPerformance(`Script failed to load: ${id}`, error);
-    };
-
     container.insertBefore(scriptTag, container.children[0]);
   } catch (error) {
     console.error('Pali Wallet: Provider injection failed.', error);
-    logPerformance('Injection error', { id, error: error.message });
   }
 };
 
@@ -285,16 +224,8 @@ window.addEventListener('beforeunload', () => {
 
 // Initial setup - make non-blocking
 if (shouldInjectProvider()) {
-  perfTimings.injectionChecks = Date.now() - perfTimings.contentScriptStart;
-  logPerformance('Injection checks completed', {
-    shouldInject: true,
-    checkTime: perfTimings.injectionChecks,
-  });
-
   // Use requestIdleCallback for truly non-blocking injection
   const injectPali = () => {
-    perfTimings.paliInjectionStart = Date.now();
-    logPerformance('Starting pali injection');
     // inject window.pali property in browser
     injectScriptFile('js/pali.bundle.js', 'pali');
   };
@@ -305,26 +236,7 @@ if (shouldInjectProvider()) {
   } else {
     setTimeout(injectPali, 0);
   }
-} else {
-  logPerformance('Skipping injection', {
-    url: window.location.href,
-    reason: 'Failed shouldInjectProvider checks',
-  });
 }
-
-// Log final timing summary after a delay
-setTimeout(() => {
-  logPerformance('=== Injection Performance Summary ===', {
-    totalTime: Date.now() - perfTimings.contentScriptStart,
-    paliInjectionTime:
-      perfTimings.paliInjectionEnd - perfTimings.paliInjectionStart ||
-      'Not completed',
-    inpageInjectionTime:
-      perfTimings.inpageInjectionEnd - perfTimings.inpageInjectionStart ||
-      'Not injected',
-    backgroundResponseTime: perfTimings.backgroundResponseTime || 'No response',
-  });
-}, 5000);
 
 start();
 startEventEmitter();
