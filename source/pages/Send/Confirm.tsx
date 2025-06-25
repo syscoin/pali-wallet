@@ -73,7 +73,13 @@ export const SendConfirm = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
-  const [fee, setFee] = useState<IFeeState>();
+  const [fee, setFee] = useState<IFeeState>({
+    gasLimit: 0,
+    maxFeePerGas: 0,
+    maxPriorityFeePerGas: 0,
+    baseFee: 0,
+    gasPrice: 0,
+  });
   const [gasPrice, setGasPrice] = useState<number>(0);
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
@@ -100,15 +106,25 @@ export const SendConfirm = () => {
     customFee.isCustom && customFee.gasLimit > 0
   );
 
-  const getFormattedFee = (currentFee: number | string) =>
-    `${removeScientificNotation(currentFee)} ${
+  const getFormattedFee = (currentFee: number | string | undefined) => {
+    if (
+      currentFee === undefined ||
+      currentFee === null ||
+      isNaN(Number(currentFee))
+    ) {
+      return 'Calculating...';
+    }
+    return `${removeScientificNotation(currentFee)} ${
       activeNetwork.currency
         ? activeNetwork.currency.toUpperCase()
         : activeNetwork.label
     }`;
+  };
 
-  const getFeeFiatAmount = (currentFee: number | string) => {
+  const getFeeFiatAmount = (currentFee: number | string | undefined) => {
     try {
+      if (currentFee === undefined || currentFee === null) return null;
+
       const feeAmount =
         typeof currentFee === 'string' ? parseFloat(currentFee) : currentFee;
       if (isNaN(feeAmount) || feeAmount <= 0) return null;
@@ -1159,13 +1175,19 @@ export const SendConfirm = () => {
       isBitcoinBased,
     ];
 
-    if (arrayValidation.some((validation) => validation === true)) return;
+    if (arrayValidation.some((validation) => validation === true)) return 0;
 
-    return (
-      (Number(customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas) *
-        Number(validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit)) /
-      10 ** 9
+    const feePerGas = Number(
+      customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas
     );
+    const gasLimit = Number(
+      validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit
+    );
+
+    // Ensure we don't return NaN
+    if (isNaN(feePerGas) || isNaN(gasLimit)) return 0;
+
+    return (feePerGas * gasLimit) / 10 ** 9;
   }, [fee?.gasLimit, fee?.maxFeePerGas, customFee, isBitcoinBased]);
 
   useEffect(() => {
@@ -1200,6 +1222,7 @@ export const SendConfirm = () => {
         setCustomFee={setCustomFee}
         setHaveError={setHaveError}
         fee={fee}
+        isSendLegacyTransaction={!isEIP1559Compatible}
       />
 
       <DefaultModal

@@ -32,9 +32,9 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const [priority, setPriority] = useState<number>(1);
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const maxFeePerGas = fee?.maxFeePerGas;
-  const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas;
-  const gasPrice = fee?.gasPrice;
+  const maxFeePerGas = fee?.maxFeePerGas || 0;
+  const maxPriorityFeePerGas = fee?.maxPriorityFeePerGas || 0;
+  const gasPrice = fee?.gasPrice || 0;
 
   const handleSubmit = () => {
     const gasLimitField = form.getFieldValue('gasLimit');
@@ -66,6 +66,23 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
 
   useEffect(() => {
     if (!showModal) return;
+
+    // Initialize form values when modal opens
+    if (!form.getFieldValue('gasLimit') && fee?.gasLimit) {
+      form.setFieldValue('gasLimit', fee.gasLimit);
+    }
+    if (
+      !form.getFieldValue('maxPriorityFeePerGas') &&
+      fee?.maxPriorityFeePerGas
+    ) {
+      form.setFieldValue('maxPriorityFeePerGas', fee.maxPriorityFeePerGas);
+    }
+    if (!form.getFieldValue('maxFeePerGas') && fee?.maxFeePerGas) {
+      form.setFieldValue('maxFeePerGas', fee.maxFeePerGas);
+    }
+    if (!form.getFieldValue('gasPrice') && fee?.gasPrice) {
+      form.setFieldValue('gasPrice', fee.gasPrice);
+    }
 
     switch (priority) {
       case 0:
@@ -254,13 +271,16 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     type="number"
                     placeholder={t('send.gasLimit')}
                     className="custom-gas-input"
-                    onChange={(e) =>
+                    value={form.getFieldValue('gasLimit') || ''}
+                    onChange={(e) => {
+                      const value = +e.target.value;
+                      form.setFieldValue('gasLimit', value);
                       setCustomFee((prevState) => ({
                         ...prevState,
                         isCustom: true,
-                        gasLimit: +e.target.value,
-                      }))
-                    }
+                        gasLimit: value,
+                      }));
+                    }}
                   />
                 </Form.Item>
               </div>
@@ -282,7 +302,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         },
                         () => ({
                           validator(_, value) {
-                            if (value < customFee.maxFeePerGas) {
+                            const maxFee = form.getFieldValue('maxFeePerGas');
+                            if (value > 0 && (!maxFee || value < maxFee)) {
                               return Promise.resolve();
                             }
 
@@ -295,13 +316,16 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         type="number"
                         placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                         className="custom-gas-input"
-                        onChange={(e) =>
+                        value={form.getFieldValue('maxPriorityFeePerGas') || ''}
+                        onChange={(e) => {
+                          const value = +e.target.value;
+                          form.setFieldValue('maxPriorityFeePerGas', value);
                           setCustomFee((prevState) => ({
                             ...prevState,
                             isCustom: true,
-                            maxPriorityFeePerGas: +e.target.value,
-                          }))
-                        }
+                            maxPriorityFeePerGas: value,
+                          }));
+                        }}
                       />
                     </Form.Item>
                   </div>
@@ -321,7 +345,11 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         },
                         () => ({
                           validator(_, value) {
-                            if (value <= 30 && value >= 1) {
+                            // Max fee must be greater than max priority fee
+                            const maxPriorityFee = form.getFieldValue(
+                              'maxPriorityFeePerGas'
+                            );
+                            if (value > maxPriorityFee && value > 0) {
                               return Promise.resolve();
                             }
 
@@ -330,18 +358,20 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                         }),
                       ]}
                     >
-                      {/* // base fee + priority fee */}
                       <input
                         type="number"
                         placeholder={`${t('send.maxFee')} (GWEI)`}
                         className="custom-gas-input"
-                        onChange={(e) =>
+                        value={form.getFieldValue('maxFeePerGas') || ''}
+                        onChange={(e) => {
+                          const value = +e.target.value;
+                          form.setFieldValue('maxFeePerGas', value);
                           setCustomFee((prevState) => ({
                             ...prevState,
                             isCustom: true,
-                            maxFeePerGas: +e.target.value,
-                          }))
-                        }
+                            maxFeePerGas: value,
+                          }));
+                        }}
                       />
                     </Form.Item>
                   </div>
@@ -362,7 +392,7 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                       },
                       () => ({
                         validator(_, value) {
-                          if (value < customFee.gasPrice) {
+                          if (value > 0) {
                             return Promise.resolve();
                           }
 
@@ -375,13 +405,16 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                       type="number"
                       placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                       className="custom-gas-input"
-                      onChange={(e) =>
+                      value={form.getFieldValue('gasPrice') || ''}
+                      onChange={(e) => {
+                        const value = +e.target.value;
+                        form.setFieldValue('gasPrice', value);
                         setCustomFee((prevState) => ({
                           ...prevState,
                           isCustom: true,
-                          gasPrice: +e.target.value,
-                        }))
-                      }
+                          gasPrice: value,
+                        }));
+                      }}
                     />
                   </Form.Item>
                 </div>
