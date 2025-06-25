@@ -69,7 +69,7 @@ const CustomRPCView = () => {
 
   const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
 
-  const modalMessageOnSuccessful = state
+  const modalMessageOnSuccessful = state?.isEditing
     ? t('settings.rpcSuccessfullyEdited')
     : t('settings.rpcSuccessfullyAdded');
 
@@ -405,7 +405,7 @@ const CustomRPCView = () => {
     };
 
     try {
-      if (!state) {
+      if (!state?.isEditing) {
         // Adding new network - save and show success modal
         await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]);
         setLoading(false);
@@ -482,7 +482,7 @@ const CustomRPCView = () => {
 
   // Simplified - no conditional save logic
 
-  const isInputDisableByEditMode = state ? state.isDefault : false;
+  const isInputDisableByEditMode = state?.isEditing ? state.isDefault : false;
 
   // Check if we're in edit mode but missing required state
   useEffect(() => {
