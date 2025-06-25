@@ -1705,9 +1705,14 @@ class MainController {
         ...formattedNetwork,
       } as INetwork;
     } catch (error) {
-      if (!data.isSyscoinRpc) {
-        throw cleanErrorStack(ethErrors.rpc.internal());
+      console.error('[MainController] getRpc error:', error);
+
+      // Pass through the actual error message
+      if (error instanceof Error) {
+        throw error;
       }
+
+      // Fallback for non-Error objects
       throw new Error(
         'Could not add your network, please try a different RPC endpoint'
       );
