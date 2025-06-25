@@ -3,9 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Button, DefaultModal, ErrorModal } from 'components/index';
-import { TokenSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
-import { useQueryData } from 'hooks/index';
+import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
@@ -19,6 +18,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
   const { controllerEmitter } = useController();
   const { host, eventName, ...data } = useQueryData();
   const { t } = useTranslation();
+  const { alert } = useUtils();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -59,6 +59,17 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       setConfirmed(true);
       setLoading(false);
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
+
+      // Show success toast
+      alert.removeAll();
+      alert.success(
+        signOnly
+          ? t('transactions.theDappHas')
+          : t('transactions.youCanCheckYour')
+      );
+
+      // Close window after a short delay
+      setTimeout(() => window.close(), 2000);
     } catch (error: any) {
       const isNecessaryReconnect = error.message?.includes(
         'read properties of undefined'
@@ -92,18 +103,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
 
   return (
     <>
-      <TokenSuccessfullyAdded
-        show={confirmed}
-        onClose={window.close}
-        title={t('transactions.signatureRequestWasRequest')}
-        phraseOne={
-          signOnly
-            ? t('transactions.theDappHas')
-            : t('transactions.youCanCheckYour')
-        }
-        buttonText={t('settings.gotIt')}
-      />
-
       <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}

@@ -244,21 +244,22 @@ export const SendTransaction = () => {
     setValueAndCurrency(formattedValueAndCurrency);
   }, [tx]);
 
+  // Navigate when transaction is confirmed
+  useEffect(() => {
+    if (confirmed) {
+      alert.removeAll();
+      alert.success(t('send.txSuccessfull'));
+
+      if (isExternal) {
+        window.close();
+      } else {
+        navigate('/home');
+      }
+    }
+  }, [confirmed, alert, t, navigate, isExternal]);
+
   return (
     <>
-      <DefaultModal
-        show={confirmed}
-        title={t('send.txSuccessfull')}
-        description={t('send.txSuccessfullMessage')}
-        onClose={() => {
-          if (isExternal) {
-            window.close();
-          } else {
-            navigate('/home');
-          }
-        }}
-      />
-
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={setIsOpen}

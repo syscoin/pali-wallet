@@ -22,7 +22,6 @@ import {
   Tooltip,
   IconButton,
 } from 'components/index';
-import { TxSuccessful } from 'components/Modal/WarningBaseModal';
 import { SyscoinTransactionDetailsFromPSBT } from 'components/TransactionDetails';
 import { useUtils, usePrice } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1175,25 +1174,25 @@ export const SendConfirm = () => {
     alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
-  // Don't render main content if transaction is confirmed (success modal will show)
+  // Navigate home when transaction is confirmed
+  useEffect(() => {
+    if (confirmed) {
+      alert.removeAll();
+      alert.success(t('send.txSuccessfull'));
+
+      // Navigate back to home with fromTransaction flag for adaptive polling
+      navigate('/home', {
+        state: { fromTransaction: true },
+      });
+    }
+  }, [confirmed, alert, t, navigate]);
+
+  // Don't render main content if transaction is confirmed (toast will show)
   // The overlay handles loading display, so we just check for confirmed state
   const shouldShowMainContent = !confirmed;
 
   return (
     <>
-      <TxSuccessful
-        show={confirmed}
-        title={t('send.txSuccessfull')}
-        phraseOne={t('send.txSuccessfullMessage')}
-        onClose={() => {
-          // Transaction is already saved during confirmation, no need to save again
-          // Just navigate back to home with fromTransaction flag for adaptive polling
-          navigate('/home', {
-            state: { fromTransaction: true },
-          });
-        }}
-      />
-
       <EditPriorityModal
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}

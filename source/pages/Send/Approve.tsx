@@ -328,17 +328,22 @@ export const ApproveTransactionComponent = () => {
     setFiatPrice();
   }, [fiatPrice, calculatedFeeValue]);
 
+  // Navigate when transaction is confirmed
+  useEffect(() => {
+    if (confirmedDefaultModal) {
+      alert.removeAll();
+      alert.success(t('send.approveSuccessful'));
+
+      if (isExternal) {
+        window.close();
+      } else {
+        navigate('/home');
+      }
+    }
+  }, [confirmedDefaultModal, alert, t, navigate, isExternal]);
+
   return (
     <>
-      <DefaultModal
-        show={confirmedDefaultModal}
-        title={t('send.approveSuccessful')}
-        description={t('send.approveSuccessfulMessage')}
-        onClose={() => {
-          if (isExternal) window.close();
-          else navigate('/home');
-        }}
-      />
       <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}

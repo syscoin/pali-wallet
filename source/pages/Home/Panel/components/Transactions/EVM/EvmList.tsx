@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
-import { StatusModal } from 'components/Modal/StatusModal';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { useController } from 'hooks/useController';
 import { usePrice } from 'hooks/usePrice';
@@ -59,7 +58,6 @@ export const EvmTransactionsList = ({
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
-  const [showModal, setShowModal] = useState(false);
   const [groupedTransactions, setGroupedTransactions] = useState<{
     [date: string]: ITransactionInfoEvm[];
   }>({});
@@ -192,28 +190,35 @@ export const EvmTransactionsList = ({
     }
     const lastIndex = currentAccountTransactions.ethereum[chainId].length - 1;
     const lastTx = currentAccountTransactions.ethereum[chainId][lastIndex];
+
+    // Check if isLastTxConfirmed exists for this chainId (to avoid showing on fresh pull)
+    const hasExistingState = isLastTxConfirmed?.[chainId] !== undefined;
+
     if (isLastTxConfirmed?.[chainId]) {
       return;
     }
+
     if (lastTx?.confirmations === 0) {
       controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, false]);
       return;
     }
-    if (lastTx?.confirmations > 0 && !isLastTxConfirmed?.[chainId]) {
-      setShowModal(true);
+
+    // Only show toast if we had a pending transaction that just confirmed
+    // (hasExistingState === true means this isn't a fresh pull)
+    if (
+      lastTx?.confirmations > 0 &&
+      hasExistingState &&
+      !isLastTxConfirmed?.[chainId]
+    ) {
+      // Show toast instead of modal
+      alert.removeAll();
+      alert.success(t('send.txSuccessfull'));
       controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, true]);
     }
-  }, [currentAccountTransactions]);
+  }, [currentAccountTransactions, alert, t, chainId, isLastTxConfirmed]);
 
   return (
     <>
-      <StatusModal
-        status="success"
-        title="Transaction concluded!"
-        description="Your transaction was successfully concluded, check on explorer!"
-        show={showModal}
-        onClose={() => setShowModal(false)}
-      />
       <ConfirmationModal show={isOpenModal} {...modalData} />
       {Object?.entries(groupedTransactions)?.map(
         ([date, transactions]: any) => (
