@@ -1,22 +1,10 @@
 import 'emoji-log';
 
-// Check if this is a restart
-const startTime = new Date().toISOString();
-const isRestart = globalThis.__PALI_BACKGROUND_INITIALIZED__ === true;
-globalThis.__PALI_BACKGROUND_INITIALIZED__ = true;
-
 // Log immediately to show background script is starting
 console.log(
-  isRestart
-    ? '[Background] Service worker RESTARTING at'
-    : '[Background] Service worker starting at',
-  startTime
+  '[Background] Service worker starting at',
+  new Date().toISOString()
 );
-if (isRestart) {
-  console.log(
-    '[Background] ⚠️ This is a service worker restart - Chrome terminated the previous instance'
-  );
-}
 
 import { handleFiatPrice } from 'scripts/Background/handlers/handleFiatPrice';
 import { handleListeners } from 'scripts/Background/handlers/handleListeners';

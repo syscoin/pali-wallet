@@ -45,21 +45,6 @@ if (window.__PALI_OFFSCREEN__) {
     console.log('[App] Starting app initialization...');
     const initStartTime = performance.now();
 
-    // Log performance metrics to see if bundles were cached
-    if ('performance' in window && 'getEntriesByType' in window.performance) {
-      const resources = window.performance.getEntriesByType('resource');
-      const scripts = resources.filter((r) => r.name.includes('.bundle.js'));
-      console.log('[App] Script loading performance:');
-      scripts.forEach((script) => {
-        const fromCache = (script as any).transferSize === 0;
-        console.log(
-          `  ${script.name.split('/').pop()}: ${script.duration.toFixed(2)}ms ${
-            fromCache ? '(from cache)' : '(downloaded)'
-          }`
-        );
-      });
-    }
-
     // Show loading screen immediately with vanilla JS
     appRootElement.innerHTML = `
       <div style="
@@ -113,18 +98,9 @@ if (window.__PALI_OFFSCREEN__) {
     const initializeApp = async () => {
       try {
         console.log('[App] Starting React app initialization...');
-        const phases = {
-          componentCreate: 0,
-          reactRender: 0,
-          stateInit: 0,
-          totalInit: performance.now() - initStartTime,
-        };
 
         // Create a wrapper component that manages the loading state
-        const componentCreateStart = performance.now();
         const AppWrapper = () => {
-          phases.componentCreate = performance.now() - componentCreateStart;
-
           const [isReady, setIsReady] = React.useState(false);
 
           React.useEffect(() => {
@@ -306,22 +282,10 @@ if (window.__PALI_OFFSCREEN__) {
             <AppWrapper />
           </React.StrictMode>
         );
-        phases.reactRender = performance.now() - renderStart;
-        phases.totalInit = performance.now() - initStartTime;
-
         console.log(
-          `[App] React app rendered in ${phases.reactRender.toFixed(2)}ms`
-        );
-        console.log('[App] Performance breakdown:');
-        console.log(
-          `  - Loading screen: ${(phases.totalInit * 0.01).toFixed(2)}ms`
-        );
-        console.log(
-          `  - Component creation: ${phases.componentCreate.toFixed(2)}ms`
-        );
-        console.log(`  - React render: ${phases.reactRender.toFixed(2)}ms`);
-        console.log(
-          `  - Total initialization: ${phases.totalInit.toFixed(2)}ms`
+          `[App] React app rendered in ${(
+            performance.now() - renderStart
+          ).toFixed(2)}ms`
         );
       } catch (error) {
         console.error('[App] Failed to initialize app:', error);
