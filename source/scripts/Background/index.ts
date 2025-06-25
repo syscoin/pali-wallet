@@ -22,6 +22,7 @@ import { handleFiatPrice } from 'scripts/Background/handlers/handleFiatPrice';
 import { handleListeners } from 'scripts/Background/handlers/handleListeners';
 import { handleMasterControllerInstance } from 'scripts/Background/handlers/handleMasterControllerInstance';
 import { handleMasterControllerResponses } from 'scripts/Background/handlers/handleMasterControllerResponses';
+import { initializeOffscreenPreload } from 'scripts/Background/handlers/handleOffscreenPreload';
 import { handleStartPolling } from 'scripts/Background/handlers/handleStartPolling';
 import { handleObserveStateChanges } from 'scripts/Background/handlers/handleStateChanges';
 
@@ -48,7 +49,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 console.log('[Background] Initializing controller...');
 
-// Removed offscreen preload - it doesn't share cache with popup
+// Start offscreen preload IMMEDIATELY - don't wait for controller
+// This ensures the popup loads instantly when clicked
+initializeOffscreenPreload().catch((error) => {
+  console.error('[Background] Failed to initialize offscreen preload:', error);
+});
 
 handleMasterControllerInstance()
   .then((controller) => {
