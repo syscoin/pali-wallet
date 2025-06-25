@@ -66,16 +66,26 @@ const cancelTransaction = async (
     return;
   }
 
-  await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
-    [txHash, isLegacy]
-  ).then((response: { error: boolean; isCanceled: boolean }) => {
-    const { isCanceled, error } = response;
+  try {
+    const response = await controllerEmitter(
+      ['wallet', 'ethereumTransaction', 'cancelSentTransaction'],
+      [txHash, isLegacy]
+    );
+
+    if (!response) {
+      alert.removeAll();
+      alert.error(t('transactions.transactionCancelFailed'));
+      return;
+    }
+
+    const { isCanceled, error } = response as {
+      error: boolean;
+      isCanceled: boolean;
+    };
 
     if (!isCanceled && error) {
       alert.removeAll();
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
-
       return;
     }
 
@@ -93,7 +103,11 @@ const cancelTransaction = async (
         alert.error(t('transactions.transactionCancelFailed'));
         break;
     }
-  });
+  } catch (error) {
+    console.error('Error cancelling transaction:', error);
+    alert.removeAll();
+    alert.error(t('transactions.transactionCancelFailed'));
+  }
 };
 
 const speedUpTransaction = async (
@@ -112,41 +126,49 @@ const speedUpTransaction = async (
     return;
   }
 
-  // ethers.providers.TransactionResponse
-  await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-    [txHash, isLegacy]
-  ).then(
-    (response: {
+  try {
+    const response = await controllerEmitter(
+      ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
+      [txHash, isLegacy]
+    );
+
+    if (!response) {
+      alert.removeAll();
+      alert.error(t('transactions.transactionSpeedUpFailed'));
+      return;
+    }
+
+    const { isSpeedUp, error, transaction } = response as {
       error: boolean;
       isSpeedUp: boolean;
       transaction: IEvmTransactionResponse;
-    }) => {
-      const { isSpeedUp, error, transaction } = response;
+    };
 
-      if (!isSpeedUp && error) {
-        alert.removeAll();
-        alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
-
-        return;
-      }
-
-      switch (isSpeedUp) {
-        case true:
-          controllerEmitter(
-            ['wallet', 'setEvmTransactionAsAccelerated'],
-            [txHash, chainId, transaction]
-          );
-          alert.removeAll();
-          alert.success(t('transactions.transactionAcceleratedSuccessfully'));
-          break;
-        case false:
-          alert.removeAll();
-          alert.error(t('transactions.transactionSpeedUpFailed'));
-          break;
-      }
+    if (!isSpeedUp && error) {
+      alert.removeAll();
+      alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
+      return;
     }
-  );
+
+    switch (isSpeedUp) {
+      case true:
+        controllerEmitter(
+          ['wallet', 'setEvmTransactionAsAccelerated'],
+          [txHash, chainId, transaction]
+        );
+        alert.removeAll();
+        alert.success(t('transactions.transactionAcceleratedSuccessfully'));
+        break;
+      case false:
+        alert.removeAll();
+        alert.error(t('transactions.transactionSpeedUpFailed'));
+        break;
+    }
+  } catch (error) {
+    console.error('Error speeding up transaction:', error);
+    alert.removeAll();
+    alert.error(t('transactions.transactionSpeedUpFailed'));
+  }
 };
 
 export const handleUpdateTransaction = async ({
