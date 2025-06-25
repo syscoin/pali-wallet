@@ -266,34 +266,60 @@ const CustomRPCView = () => {
         }
 
         // UTXO RPC validation - this will throw an error with specific message if validation fails
-        const { valid } = await validateSysRpc(rpcUrl);
+        const { valid, coin, chain } = await validateSysRpc(rpcUrl);
+
+        console.log('[CustomRPC] validateSysRpc returned:', {
+          valid,
+          coin,
+          chain,
+        });
 
         if (!valid) {
           throw new Error(t('settings.invalidUtxoRpcUrl'));
         }
 
         // If we get here, validation passed
+        // For UTXO networks, we might need to get chainId from coin data
+        // but for now, just return true
         return true;
       } else {
         // EVM RPC validation - this will throw an error with specific message if validation fails
-        const { valid, details, hexChainId } = await validateEthRpc(
+        const { valid, details, hexChainId, chainId } = await validateEthRpc(
           rpcUrl,
           false
         );
+
+        console.log('[CustomRPC] validateEthRpc returned:', {
+          valid,
+          details,
+          hexChainId,
+          chainId,
+          chainIdFromDetails: details?.chainId,
+          parsedChainId: Number(String(parseInt(hexChainId, 16))),
+        });
 
         if (!valid) {
           throw new Error(t('settings.invalidEthRpcUrl'));
         }
 
+        // Auto-fill chainId from RPC validation
+        const rpcChainId =
+          chainId ||
+          details?.chainId ||
+          Number(String(parseInt(hexChainId, 16)));
+
         // In edit mode, verify chainId matches
         if (state?.selected) {
           const stateChainId = state.selected.chainId;
-          const rpcChainId =
-            details?.chainId || Number(String(parseInt(hexChainId, 16)));
 
           if (stateChainId !== rpcChainId) {
             throw new Error(t('settings.networkMismatch'));
           }
+        } else {
+          // Not in edit mode, update the chainId field with the detected value
+          form.setFieldsValue({
+            chainId: rpcChainId.toString(),
+          });
         }
 
         // If we get here, validation passed
@@ -323,6 +349,19 @@ const CustomRPCView = () => {
 
   const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
+
+    // If editing, ensure we have valid network data
+    if (state?.isEditing) {
+      const networkToEdit = getCurrentNetworkData();
+      if (!networkToEdit) {
+        setLoading(false);
+        alert.removeAll();
+        alert.error(
+          'Cannot find network to edit. Please go back and try again.'
+        );
+        return;
+      }
+    }
 
     // Validate form fields before proceeding
     try {
@@ -375,9 +414,15 @@ const CustomRPCView = () => {
       }
 
       // Editing existing network - save and show success feedback
+      // Use fresh network data instead of potentially stale state.selected
+      const freshNetworkData = getCurrentNetworkData();
+      if (!freshNetworkData) {
+        throw new Error('Cannot find network to edit. Please try again.');
+      }
+
       await controllerEmitter(
         ['wallet', 'editCustomRpc'],
-        [customRpc, state.selected]
+        [customRpc, freshNetworkData]
       );
       setLoading(false);
 
@@ -398,13 +443,30 @@ const CustomRPCView = () => {
 
   // Get fresh network data from Redux store instead of stale route state
   const getCurrentNetworkData = () => {
-    if (!state?.selected || !state?.isEditing) return null;
+    if (!state?.isEditing) return null;
+
+    // If state.selected is missing, show error and navigate back
+    if (!state?.selected) {
+      console.error('[CustomRPC] No network selected for editing');
+      alert.error('No network selected. Please go back and try again.');
+      setTimeout(() => navigate(-1), 1500);
+      return null;
+    }
 
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
     const networkKey = state.selected.key || state.selected.chainId;
 
     // Use fresh data from Redux store
-    return networks[chain][networkKey] || state.selected;
+    const freshNetwork = networks[chain][networkKey];
+
+    if (!freshNetwork) {
+      console.warn(
+        '[CustomRPC] Network not found in Redux, using state.selected as fallback'
+      );
+      return state.selected;
+    }
+
+    return freshNetwork;
   };
 
   const currentNetwork = getCurrentNetworkData();
@@ -421,6 +483,15 @@ const CustomRPCView = () => {
   // Simplified - no conditional save logic
 
   const isInputDisableByEditMode = state ? state.isDefault : false;
+
+  // Check if we're in edit mode but missing required state
+  useEffect(() => {
+    if (state?.isEditing && !state?.selected) {
+      console.error('[CustomRPC] Edit mode but no network selected');
+      alert.error('No network selected for editing. Redirecting back...');
+      setTimeout(() => navigate('/settings/networks/edit'), 1000);
+    }
+  }, [state, navigate, alert]);
 
   // Load and cache chain data once on component mount
   useEffect(() => {
@@ -1013,6 +1084,13 @@ const CustomRPCView = () => {
             type="text"
             placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
             className="custom-input-normal relative"
+            onBlur={async (e) => {
+              const url = e.target.value?.trim();
+              if (url) {
+                // Validate RPC and auto-fill chainId
+                await validateRpcUrlAndShowError(url);
+              }
+            }}
           />
         </Form.Item>
 
@@ -1029,9 +1107,13 @@ const CustomRPCView = () => {
         >
           <Input
             type="text"
-            disabled={true}
-            placeholder="Chain ID (auto-filled from RPC)"
+            readOnly={true}
+            placeholder="Chain ID (auto-detected from RPC)"
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
+            style={{
+              cursor: 'not-allowed',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+            }}
           />
         </Form.Item>
         <Form.Item

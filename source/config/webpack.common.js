@@ -1,13 +1,11 @@
 /* eslint-disable @typescript-eslint/no-var-requires */
 
 const CopyWebpackPlugin = require('copy-webpack-plugin');
-const CssMinimizerPlugin = require('css-minimizer-webpack-plugin');
 const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const NodePolyfillPlugin = require('node-polyfill-webpack-plugin');
 const { join, resolve } = require('path');
-const TerserPlugin = require('terser-webpack-plugin');
 const { DefinePlugin, ProvidePlugin } = require('webpack');
 
 const viewsPath = join(__dirname, '../../views');
@@ -222,41 +220,6 @@ module.exports = {
     }),
   ],
   optimization: {
-    minimize: true,
-    minimizer: [
-      new CssMinimizerPlugin(),
-      new TerserPlugin({
-        parallel: true,
-        terserOptions: {
-          parse: {
-            ecma: 8,
-          },
-          compress: {
-            ecma: 5,
-            warnings: false,
-            comparisons: false,
-            inline: 2,
-            drop_console: true,
-            drop_debugger: true,
-            pure_funcs: [
-              'console.log',
-              'console.info',
-              'console.debug',
-              'console.warn',
-            ],
-          },
-          mangle: {
-            safari10: true,
-          },
-          output: {
-            ecma: 5,
-            comments: false,
-            ascii_only: true,
-          },
-        },
-        extractComments: false,
-      }),
-    ],
     splitChunks: {
       chunks(chunk) {
         // Only split chunks for app and external, NOT background

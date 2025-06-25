@@ -1698,12 +1698,20 @@ class MainController {
 
   public async getRpc(data: ICustomRpcParams): Promise<INetwork> {
     try {
-      const { formattedNetwork } = data.isSyscoinRpc
-        ? (await getSysRpc(data)).rpc
-        : await getEthRpc(data, false);
-      return {
-        ...formattedNetwork,
-      } as INetwork;
+      let result;
+      if (data.isSyscoinRpc) {
+        const sysRpcResult = await getSysRpc(data);
+        result = sysRpcResult?.rpc?.formattedNetwork;
+      } else {
+        const ethRpcResult = await getEthRpc(data, false);
+        result = ethRpcResult?.formattedNetwork;
+      }
+
+      if (!result) {
+        throw new Error('Failed to get network configuration from RPC');
+      }
+
+      return result as INetwork;
     } catch (error) {
       console.error('[MainController] getRpc error:', error);
 
@@ -1837,7 +1845,24 @@ class MainController {
 
   public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
     const { networks } = store.getState().vault;
-    const network = await this.getRpc(data);
+
+    let network: INetwork;
+    try {
+      network = await this.getRpc(data);
+    } catch (error) {
+      console.error('[MainController] Failed to validate RPC:', error);
+      // Re-throw with the original error message
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(
+        'Failed to validate RPC endpoint. Please check the URL and try again.'
+      );
+    }
+
+    if (!network) {
+      throw new Error('Failed to validate RPC endpoint');
+    }
 
     if (networks[data.isSyscoinRpc ? 'syscoin' : 'ethereum'][network.chainId]) {
       throw new Error('network already exists, remove or edit it');
@@ -1874,8 +1899,31 @@ class MainController {
     newRpc: ICustomRpcParams,
     oldRpc: INetwork
   ): Promise<INetwork> {
-    const changedChainId = oldRpc.chainId !== newRpc.chainId;
-    const network = await this.getRpc(newRpc);
+    // Validate oldRpc parameter
+    if (!oldRpc) {
+      throw new Error(
+        'Cannot edit RPC: original network configuration is missing'
+      );
+    }
+
+    let network: INetwork;
+
+    try {
+      network = await this.getRpc(newRpc);
+    } catch (error) {
+      console.error('[MainController] Failed to validate RPC:', error);
+      // Re-throw with a more user-friendly message
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error(
+        'Failed to validate RPC endpoint. Please check the URL and try again.'
+      );
+    }
+
+    if (!network) {
+      throw new Error('Failed to get network configuration from RPC');
+    }
 
     if (network.chainId === oldRpc.chainId) {
       const newNetwork = {
@@ -1885,16 +1933,11 @@ class MainController {
           newRpc.symbol === oldRpc.currency ? oldRpc.currency : newRpc.symbol,
         apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
         url: newRpc.url === oldRpc.url ? oldRpc.url : newRpc.url,
-        chainId:
-          newRpc.chainId === oldRpc.chainId ? oldRpc.chainId : newRpc.chainId,
+        chainId: network.chainId, // Always use the chainId from the RPC endpoint
         default: oldRpc.default,
         kind: oldRpc.kind,
         ...(oldRpc?.key && { key: oldRpc.key }),
       } as INetwork;
-
-      if (changedChainId) {
-        throw new Error('RPC from a different chainId');
-      }
 
       store.dispatch(setNetwork({ network: newNetwork, isEdit: true }));
       this.updateNetworkConfig(newNetwork);
