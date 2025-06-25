@@ -236,9 +236,14 @@ module.exports = {
             warnings: false,
             comparisons: false,
             inline: 2,
-            //drop_console: true,
-            //drop_debugger: true,
-            //pure_funcs: ['console.log', 'console.info', 'console.debug'],
+            drop_console: true,
+            drop_debugger: true,
+            pure_funcs: [
+              'console.log',
+              'console.info',
+              'console.debug',
+              'console.warn',
+            ],
           },
           mangle: {
             safari10: true,

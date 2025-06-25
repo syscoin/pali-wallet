@@ -24,11 +24,16 @@ document.addEventListener('DOMContentLoaded', function () {
   console.log('[HTML] DOM Content Loaded at:', Date.now());
 });
 
-// Fallback: remove loader after 3 seconds if something goes wrong
+// Fallback: hide loader after 3 seconds if something goes wrong
+// This should rarely trigger now that we wait for actual content to render
 setTimeout(function () {
   if (!document.body.classList.contains('app-loaded')) {
     const elapsedTime = Date.now() - initStartTime;
-    console.log('[HTML] Fallback: hiding loader after', elapsedTime, 'ms');
+    console.warn(
+      '[HTML] Fallback triggered: hiding loader after',
+      elapsedTime,
+      'ms'
+    );
     document.body.classList.add('app-loaded');
   }
 }, 3000);

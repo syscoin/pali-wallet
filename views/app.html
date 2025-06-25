@@ -8,6 +8,13 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <title>Pali Wallet</title>
     <style>
+      /* Ensure body has the correct background immediately */
+      body {
+        background-color: #061120; /* Same as bg-bkg-6 */
+        margin: 0;
+        padding: 0;
+      }
+
       /* Initial loading screen styles */
       #initial-loader {
         position: fixed;
@@ -15,19 +22,19 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: #07152b;
+        background-color: #061120; /* Match bg-bkg-6 */
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         z-index: 9999;
-        transition: opacity 0.3s ease-out;
+        transition: opacity 0.1s ease-out;
       }
 
       #initial-loader .logo-container {
         display: flex;
         gap: 12px;
-        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
       }
 
       #initial-loader h1 {
@@ -66,7 +73,7 @@
       /* Ensure the app root is hidden until ready */
       #app-root {
         opacity: 0;
-        transition: opacity 0.3s ease-in;
+        transition: opacity 0.1s ease-in;
       }
 
       body.app-loaded #app-root {

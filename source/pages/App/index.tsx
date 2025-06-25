@@ -16,7 +16,7 @@ import 'assets/styles/custom-import-token-input.css';
 import 'assets/styles/custom-send-utxo-input.css';
 
 // Import React and dependencies statically to enable webpack optimization
-import React from 'react';
+import React, { startTransition } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
@@ -43,56 +43,6 @@ if (window.__PALI_OFFSCREEN__) {
 
   if (appRootElement) {
     console.log('[App] Starting app initialization...');
-    const initStartTime = performance.now();
-
-    // Show loading screen immediately with vanilla JS
-    appRootElement.innerHTML = `
-      <div style="
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: #07152b;
-      ">
-        <div style="
-          display: flex;
-          gap: 12px;
-          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        ">
-          <h1 style="
-            font-size: 37.87px;
-            line-height: 37.87px;
-            letter-spacing: 0.379px;
-            color: #4da2cf;
-            font-weight: 700;
-            margin: 0;
-            font-family: 'Poppins', sans-serif;
-          ">Pali</h1>
-          <h1 style="
-            font-size: 37.87px;
-            line-height: 37.87px;
-            letter-spacing: 0.379px;
-            color: #4da2cf;
-            font-weight: 300;
-            margin: 0;
-            font-family: 'Poppins', sans-serif;
-          ">Wallet</h1>
-        </div>
-      </div>
-      <style>
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
-        }
-      </style>
-    `;
-
-    console.log(
-      `[App] Loading screen shown after ${(
-        performance.now() - initStartTime
-      ).toFixed(2)}ms`
-    );
 
     // Now initialize the app
     const initializeApp = async () => {
@@ -107,8 +57,6 @@ if (window.__PALI_OFFSCREEN__) {
             // Initialize store and state
             const initializeState = async () => {
               try {
-                const stateLoadStart = performance.now();
-
                 // FIRST: Try to load from cached state immediately
                 try {
                   await rehydrateStore(store);
@@ -175,24 +123,18 @@ if (window.__PALI_OFFSCREEN__) {
                         'wallet',
                         'getState',
                       ]);
-                      console.log(
-                        `[App] Fresh state fetched in ${(
-                          performance.now() - stateLoadStart
-                        ).toFixed(2)}ms`
-                      );
+                      console.log('[App] Fresh state fetched');
 
                       if (state && typeof state === 'object') {
                         // Validate that we have valid state data
                         const stateObj = state as any;
                         if (stateObj.vault || stateObj.vaultGlobal) {
-                          // Update store with fresh state
-                          const rehydrateStart = performance.now();
-                          await rehydrateStore(store, state);
-                          console.log(
-                            `[App] Store updated with fresh state in ${(
-                              performance.now() - rehydrateStart
-                            ).toFixed(2)}ms`
-                          );
+                          // Update store with fresh state using startTransition
+                          // This ensures UI remains responsive during state updates
+                          startTransition(() => {
+                            rehydrateStore(store, state);
+                            console.log('[App] Store updated with fresh state');
+                          });
                         } else {
                           console.log(
                             '[App] Invalid state structure received, skipping update'
@@ -223,12 +165,6 @@ if (window.__PALI_OFFSCREEN__) {
                         );
                       }
                     }
-
-                    console.log(
-                      `[App] Total initialization time: ${(
-                        performance.now() - initStartTime
-                      ).toFixed(2)}ms`
-                    );
                   } catch (error) {
                     // Silent fail - we already have UI loaded
                   }
@@ -275,18 +211,13 @@ if (window.__PALI_OFFSCREEN__) {
         };
 
         // Create root and render
-        const renderStart = performance.now();
         const root = ReactDOM.createRoot(appRootElement);
         root.render(
           <React.StrictMode>
             <AppWrapper />
           </React.StrictMode>
         );
-        console.log(
-          `[App] React app rendered in ${(
-            performance.now() - renderStart
-          ).toFixed(2)}ms`
-        );
+        console.log('[App] React app rendered');
       } catch (error) {
         console.error('[App] Failed to initialize app:', error);
         appRootElement.innerHTML =

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
 import Unlock from 'components/Start/Unlock';
+import { useAppReady } from 'hooks/useAppReady';
 import { useController } from 'hooks/useController';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -47,6 +48,9 @@ export const Start = (props: any) => {
 
     checkVaultAndAccounts();
   }, []);
+
+  // Signal app is ready when we have content to show
+  useAppReady(!isInitialLoading);
 
   // Don't render anything while loading - the HTML loader is showing
   if (isInitialLoading) {

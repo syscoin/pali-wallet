@@ -7,6 +7,7 @@ import dotsImage from 'assets/all_assets/dotsHeader.png';
 import { Header } from 'components/Header/Header';
 import { Icon, IconButton } from 'components/index';
 import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
+import { useAppReady } from 'hooks/useAppReady';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
 
@@ -31,6 +32,9 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
   // Use the new page loading state hook
   const { isLoading, hasTimedOut } = usePageLoadingState();
+
+  // Signal app is ready when this layout renders
+  useAppReady();
 
   // Determine if we should show the account header based on route
   const shouldShowAccountHeader = useMemo(() => {

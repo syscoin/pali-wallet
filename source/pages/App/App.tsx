@@ -24,20 +24,6 @@ const App: FC = () => {
     const port = chrome.runtime.connect({ name: 'popup-connection' });
     console.log('[App] 🔌 Connected to background script via port');
 
-    // Signal that the React app is ready immediately after mounting
-    console.log('[App] Dispatching pali-app-ready event');
-    window.dispatchEvent(new CustomEvent('pali-app-ready'));
-
-    // Fallback timer - only runs if app wasn't already loaded
-    const fallbackTimer = setTimeout(() => {
-      if (!document.body.classList.contains('app-loaded')) {
-        console.log(
-          '[App] Fallback: Dispatching pali-app-ready event after 3 seconds'
-        );
-        window.dispatchEvent(new CustomEvent('pali-app-ready'));
-      }
-    }, 1000);
-
     const messageListener = ({ type }) => {
       if (type === 'logout') {
         // Navigate to the home page after logout
@@ -54,7 +40,6 @@ const App: FC = () => {
       chrome.runtime.onMessage.removeListener(messageListener);
       port.disconnect();
       console.log('[App] 🔌 Disconnected from background script');
-      clearTimeout(fallbackTimer);
     };
   }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
 
