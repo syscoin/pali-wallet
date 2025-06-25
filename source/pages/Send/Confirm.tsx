@@ -1,7 +1,13 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import { BigNumber, ethers } from 'ethers';
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  startTransition,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -146,9 +152,11 @@ export const SendConfirm = () => {
 
     initialFee.gasPrice = correctGasPrice;
 
-    setFee({ ...initialFee, gasLimit });
-
-    setGasPrice(correctGasPrice);
+    // Use startTransition for non-critical fee updates
+    startTransition(() => {
+      setFee({ ...initialFee, gasLimit });
+      setGasPrice(correctGasPrice);
+    });
 
     return { gasLimit, gasPrice: correctGasPrice };
   };

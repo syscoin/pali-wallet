@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  memo,
+  startTransition,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -169,8 +176,10 @@ export const Home = () => {
           }
 
           if (pollCount < maxPolls) {
-            // Continue polling
-            pollForTransaction();
+            // Continue polling with startTransition for non-urgent updates
+            startTransition(() => {
+              pollForTransaction();
+            });
           } else {
             console.log(
               '[Post-TX Poll] Completed all polls. Transaction should be visible.'
@@ -216,10 +225,13 @@ export const Home = () => {
 
   const handleOnCloseFaucetModal = useCallback(() => {
     if (activeNetwork?.chainId) {
-      controllerEmitter(
-        ['wallet', 'setFaucetModalState'],
-        [{ chainId: activeNetwork.chainId, isOpen: false }]
-      );
+      // Use startTransition for non-urgent modal state updates
+      startTransition(() => {
+        controllerEmitter(
+          ['wallet', 'setFaucetModalState'],
+          [{ chainId: activeNetwork.chainId, isOpen: false }]
+        );
+      });
     }
   }, [activeNetwork?.chainId, controllerEmitter]);
 

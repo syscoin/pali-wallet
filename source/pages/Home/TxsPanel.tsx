@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FC, useState, useEffect } from 'react';
+import { FC, useState, useEffect, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
@@ -31,12 +31,27 @@ export const TxsPanel: FC = () => {
   // Update tab when URL parameters change
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam === 'assets') {
-      setActivity(false);
-    } else if (tabParam === 'activity') {
-      setActivity(true);
-    }
+    startTransition(() => {
+      if (tabParam === 'assets') {
+        setActivity(false);
+      } else if (tabParam === 'activity') {
+        setActivity(true);
+      }
+    });
   }, [searchParams]);
+
+  // Handlers for tab switching with transitions
+  const handleShowAssets = () => {
+    startTransition(() => {
+      setActivity(false);
+    });
+  };
+
+  const handleShowActivity = () => {
+    startTransition(() => {
+      setActivity(true);
+    });
+  };
 
   return (
     <div className="h-max relative bottom-[19px]  flex flex-col items-center w-full">
@@ -47,7 +62,7 @@ export const TxsPanel: FC = () => {
           }`}
           id="assets-btn"
           type="button"
-          onClick={() => setActivity(false)}
+          onClick={handleShowAssets}
         >
           {t('buttons.assets')}
         </Button>
@@ -58,7 +73,7 @@ export const TxsPanel: FC = () => {
           }`}
           id="activity-btn"
           type="button"
-          onClick={() => setActivity(true)}
+          onClick={handleShowActivity}
         >
           {t('buttons.activity')}
         </Button>

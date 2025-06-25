@@ -1,5 +1,11 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useState } from 'react';
+import React, {
+  Fragment,
+  useState,
+  useMemo,
+  useDeferredValue,
+  startTransition,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import {
@@ -221,6 +227,14 @@ export const EvmAssetsList = () => {
   const [searchValue, setSearchValue] = useState<string>('');
   const [sortByValue, setSortyByValue] = useState<string>('');
 
+  // Use deferred value for search to keep input responsive
+  const deferredSearchValue = useDeferredValue(searchValue);
+  const deferredSortByValue = useDeferredValue(sortByValue);
+
+  // Show subtle loading state when deferred values are behind
+  const isSearching = searchValue !== deferredSearchValue;
+  const isSorting = sortByValue !== deferredSortByValue;
+
   const { isLoadingAssets } = useSelector(
     (state: RootState) => state.vaultGlobal.loadingStates
   );
@@ -233,6 +247,13 @@ export const EvmAssetsList = () => {
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
+  // Handle tab switch with transition
+  const handleTabSwitch = (isCoin: boolean) => {
+    startTransition(() => {
+      setIsCoinSelected(isCoin);
+    });
+  };
+
   return (
     <>
       {loadingValidation ? (
@@ -243,19 +264,25 @@ export const EvmAssetsList = () => {
         <>
           <AssetsHeader
             isCoinSelected={isCoinSelected}
-            setIsCoinSelected={setIsCoinSelected}
+            setIsCoinSelected={handleTabSwitch}
             setSearchValue={setSearchValue}
             setSortyByValue={setSortyByValue}
           />
 
-          {isCoinSelected ? (
-            <DefaultEvmAssets
-              searchValue={searchValue}
-              sortByValue={sortByValue}
-            />
-          ) : (
-            <EvmNftsList />
-          )}
+          <div
+            className={`${
+              isSearching || isSorting ? 'opacity-75' : ''
+            } transition-opacity duration-150`}
+          >
+            {isCoinSelected ? (
+              <DefaultEvmAssets
+                searchValue={deferredSearchValue}
+                sortByValue={deferredSortByValue}
+              />
+            ) : (
+              <EvmNftsList />
+            )}
+          </div>
         </>
       )}
     </>

@@ -1,5 +1,11 @@
 import uniqueId from 'lodash/uniqueId';
-import React, { Fragment, useCallback, useMemo, useState } from 'react';
+import React, {
+  Fragment,
+  useCallback,
+  useMemo,
+  useState,
+  useDeferredValue,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -30,6 +36,11 @@ export const TransactionsList = ({
     title: string;
   }>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Use deferred value for search to keep input responsive
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const isSearching = searchQuery !== deferredSearchQuery;
 
   const { navigate, alert } = useUtils();
 
@@ -139,6 +150,16 @@ export const TransactionsList = ({
         }
         return item !== undefined && item !== null;
       })
+      .filter((tx: any) => {
+        // Apply search filter using deferred query
+        if (!deferredSearchQuery) return true;
+
+        const query = deferredSearchQuery.toLowerCase();
+        const txHash = (tx[txid] || '').toLowerCase();
+        const txType = getTxType(tx, tx.direction === 'sent').toLowerCase();
+
+        return txHash.includes(query) || txType.includes(query);
+      })
       .sort((a: any, b: any) => {
         if (a[blocktime] > b[blocktime]) {
           return -1;
@@ -148,7 +169,14 @@ export const TransactionsList = ({
         }
         return 0;
       });
-  }, [userTransactions, isBitcoinBased, chainId, blocktime]);
+  }, [
+    userTransactions,
+    isBitcoinBased,
+    chainId,
+    blocktime,
+    deferredSearchQuery,
+    txid,
+  ]);
 
   const getTxStatus = useCallback(
     (isCanceled: boolean, isConfirmed: boolean) => {
@@ -305,7 +333,51 @@ export const TransactionsList = ({
   return (
     <>
       <ConfirmationModal show={isOpenModal} {...modalData} />
-      <TransactionList />
+
+      {/* Progressive search input */}
+      {filteredTransactions.length > 0 && (
+        <div className="px-4 py-2">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t(
+                'transactions.searchPlaceholder',
+                'Search transactions...'
+              )}
+              className="w-full px-4 py-2 pr-10 bg-bkg-2 border border-bkg-4 rounded-lg focus:outline-none focus:border-brand-royalblue transition-colors"
+            />
+            {isSearching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin h-4 w-4 border-2 border-brand-royalblue border-t-transparent rounded-full" />
+              </div>
+            )}
+            {!isSearching && searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-brand-gray400 hover:text-brand-white transition-colors"
+              >
+                <Icon name="close" className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div
+        className={
+          isSearching ? 'opacity-60 transition-opacity' : 'transition-opacity'
+        }
+      >
+        <TransactionList />
+      </div>
+
+      {filteredTransactions.length === 0 && deferredSearchQuery && (
+        <div className="text-center py-8 text-brand-gray400">
+          {t('transactions.noResults', 'No transactions found')}
+        </div>
+      )}
     </>
   );
 };

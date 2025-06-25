@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, startTransition } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import {
@@ -43,12 +43,18 @@ export const ExternalRoute = () => {
 
   useEffect(() => {
     chrome.runtime.sendMessage({ type: 'getCurrentState' }, (message) => {
-      rehydrateStore(store, message.data);
+      // Use startTransition for non-critical state updates
+      startTransition(() => {
+        rehydrateStore(store, message.data);
+      });
     });
 
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE') {
-        rehydrateStore(store, message.data);
+        // Progressive state updates for better dApp responsiveness
+        startTransition(() => {
+          rehydrateStore(store, message.data);
+        });
         return true;
       }
       return false;
