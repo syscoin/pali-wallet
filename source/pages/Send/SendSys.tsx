@@ -126,7 +126,9 @@ export const SendSys = () => {
 
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
+    console.log('MAX button clicked, setting amount to:', balanceStr);
     form.setFieldValue('amount', balanceStr);
+    form.validateFields(['amount']); // Trigger validation after setting value
     setIsMaxSend(true); // Set the flag when max is clicked
   }, [balanceStr, form]);
 
@@ -528,36 +530,37 @@ export const SendSys = () => {
         autoComplete="off"
         className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
       >
-        <Form.Item
-          name="receiver"
-          className="md:w-full md:max-w-md"
-          hasFeedback
-          rules={[
-            {
-              required: true,
-              message: '',
-            },
-            () => ({
-              validator(_, value) {
-                if (
-                  !value ||
-                  isValidSYSAddress(value, activeNetwork.chainId, true)
-                ) {
-                  return Promise.resolve();
-                }
-
-                return Promise.reject();
+        <div className="sender-custom-input">
+          <Form.Item
+            name="receiver"
+            className="md:w-full md:max-w-md"
+            hasFeedback
+            rules={[
+              {
+                required: true,
+                message: '',
               },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder={t('send.receiver')}
-            className="sender-custom-input"
-            onChange={(e) => handleInputChange('receiver', e)}
-          />
-        </Form.Item>
+              () => ({
+                validator(_, value) {
+                  if (
+                    !value ||
+                    isValidSYSAddress(value, activeNetwork.chainId, true)
+                  ) {
+                    return Promise.resolve();
+                  }
+
+                  return Promise.reject();
+                },
+              }),
+            ]}
+          >
+            <Input
+              type="text"
+              placeholder={t('send.receiver')}
+              onChange={(e) => handleInputChange('receiver', e)}
+            />
+          </Form.Item>
+        </div>
         <div className="flex gap-2 w-full items-center">
           <div className="flex md:max-w-md">
             {
@@ -637,90 +640,89 @@ export const SendSys = () => {
           </div>
 
           <div className="flex md:w-96 relative">
-            <Form.Item
-              name="amount"
-              className="relative w-full"
-              hasFeedback
-              rules={[
-                {
-                  required: true,
-                  message: '',
-                },
-                () => ({
-                  async validator(_, value) {
-                    // Work with strings to avoid precision loss
-                    const inputAmount = value ? String(value).trim() : '';
+            <div className="value-custom-input w-full relative">
+              <span
+                onClick={handleMaxButton}
+                className="absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
+              >
+                MAX
+              </span>
+              <Form.Item
+                name="amount"
+                className="relative w-full"
+                hasFeedback
+                rules={[
+                  {
+                    required: true,
+                    message: '',
+                  },
+                  () => ({
+                    async validator(_, value) {
+                      // Work with strings to avoid precision loss
+                      const inputAmount = value ? String(value).trim() : '';
 
-                    // Check if empty or invalid
-                    if (!inputAmount || inputAmount === '') {
-                      return Promise.reject('');
-                    }
-
-                    // Check if it's a valid positive number
-                    const numValue = parseFloat(inputAmount);
-                    if (isNaN(numValue) || numValue <= 0) {
-                      return Promise.reject('');
-                    }
-
-                    // Get balance as string to preserve precision
-                    let validationBalanceStr: string;
-                    if (selectedAsset) {
-                      // For assets, the balance is already formatted
-                      validationBalanceStr = formattedAssetBalance
-                        ? String(formattedAssetBalance)
-                        : '0';
-                    } else {
-                      // For native SYS, balance is already in decimal format
-                      validationBalanceStr = activeAccount?.balances[
-                        INetworkType.Syscoin
-                      ]
-                        ? String(activeAccount.balances[INetworkType.Syscoin])
-                        : '0';
-                    }
-
-                    // Use currency.js with 8 decimal precision for safe comparison
-                    try {
-                      const inputCurrency = currency(inputAmount, {
-                        precision: 8,
-                      });
-                      const balanceCurrency = currency(validationBalanceStr, {
-                        precision: 8,
-                      });
-
-                      if (inputCurrency.value <= 0) {
+                      // Check if empty or invalid
+                      if (!inputAmount || inputAmount === '') {
                         return Promise.reject('');
                       }
 
-                      if (inputCurrency.value > balanceCurrency.value) {
-                        return Promise.reject(t('send.insufficientFunds'));
+                      // Check if it's a valid positive number
+                      const numValue = parseFloat(inputAmount);
+                      if (isNaN(numValue) || numValue <= 0) {
+                        return Promise.reject('');
                       }
 
-                      return Promise.resolve();
-                    } catch (error) {
-                      // If currency.js can't parse, it's an invalid amount
-                      return Promise.reject('');
-                    }
-                  },
-                }),
-              ]}
-            >
-              <div className="relative">
+                      // Get balance as string to preserve precision
+                      let validationBalanceStr: string;
+                      if (selectedAsset) {
+                        // For assets, the balance is already formatted
+                        validationBalanceStr = formattedAssetBalance
+                          ? String(formattedAssetBalance)
+                          : '0';
+                      } else {
+                        // For native SYS, balance is already in decimal format
+                        validationBalanceStr = activeAccount?.balances[
+                          INetworkType.Syscoin
+                        ]
+                          ? String(activeAccount.balances[INetworkType.Syscoin])
+                          : '0';
+                      }
+
+                      // Use currency.js with 8 decimal precision for safe comparison
+                      try {
+                        const inputCurrency = currency(inputAmount, {
+                          precision: 8,
+                        });
+                        const balanceCurrency = currency(validationBalanceStr, {
+                          precision: 8,
+                        });
+
+                        if (inputCurrency.value <= 0) {
+                          return Promise.reject('');
+                        }
+
+                        if (inputCurrency.value > balanceCurrency.value) {
+                          return Promise.reject(t('send.insufficientFunds'));
+                        }
+
+                        return Promise.resolve();
+                      } catch (error) {
+                        // If currency.js can't parse, it's an invalid amount
+                        return Promise.reject('');
+                      }
+                    },
+                  }),
+                ]}
+              >
                 <Input
                   name="amount"
                   id="with-max-button"
-                  className="value-custom-input"
                   type="number"
                   placeholder={t('send.amount')}
                   onChange={(e) => handleInputChange('amount', e)}
                 />
-                <span
-                  className="z-[9999] left-[6%] bottom-[11px] text-xs px-[6px] absolute inline-flex items-center w-[41px] h-[18px] bg-transparent border border-alpha-whiteAlpha300 rounded-[100px] cursor-pointer"
-                  onClick={handleMaxButton}
-                >
-                  MAX
-                </span>
-              </div>
-            </Form.Item>
+              </Form.Item>
+            </div>
           </div>
         </div>
 
