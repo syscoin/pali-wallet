@@ -17,8 +17,7 @@
     "clipboardWrite",
     "unlimitedStorage",
     "offscreen",
-    "scripting",
-    "webRequest"
+    "scripting"
   ],
   "host_permissions": [
     "http://*/*",

@@ -22,7 +22,6 @@ const MV2_OPTIONS = {
     'clipboardWrite',
     'unlimitedStorage',
     'http://localhost:8545/',
-    'webRequest',
   ],
   content_security_policy: "script-src 'self'; object-src 'self'",
   author: 'pollum labs',
