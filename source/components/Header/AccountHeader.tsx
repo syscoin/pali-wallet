@@ -34,9 +34,6 @@ export const AccountHeader: React.FC = () => {
   const networkStatus = useSelector(
     (state: RootState) => state.vaultGlobal.networkStatus
   );
-  const isSwitchingAccount = useSelector(
-    (state: RootState) => state.vaultGlobal.isSwitchingAccount
-  );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
@@ -199,7 +196,7 @@ export const AccountHeader: React.FC = () => {
         </Tooltip>
 
         <div className="items-center justify-center px-1 text-brand-white">
-          {isNetworkChanging || isSwitchingAccount ? (
+          {isNetworkChanging ? (
             <SkeletonLoader width="150px" height="20px" />
           ) : (
             <p
@@ -219,7 +216,7 @@ export const AccountHeader: React.FC = () => {
               </IconButton>
             </p>
           )}
-          {isNetworkChanging || isSwitchingAccount ? (
+          {isNetworkChanging ? (
             <SkeletonLoader width="200px" height="15px" margin="5px 0 0 0" />
           ) : (
             <div className="flex items-center">
