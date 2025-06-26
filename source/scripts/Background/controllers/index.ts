@@ -12,12 +12,15 @@ import {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsLastTxConfirmed,
-  setNetwork,
   setAccountAssets,
 } from 'state/vault';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { IVaultState, IGlobalState, TransactionsType } from 'state/vault/types';
-import { setAdvancedSettings } from 'state/vaultGlobal';
+import {
+  setAdvancedSettings,
+  setNetwork,
+  setNetworks,
+} from 'state/vaultGlobal';
 import { IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
@@ -60,6 +63,14 @@ const MasterController = (
 
   const initializeMainController = () => {
     const vaultState = externalStore.getState().vault;
+    const vaultGlobalState = externalStore.getState().vaultGlobal;
+
+    // Initialize networks in vaultGlobal if they don't exist
+    if (!vaultGlobalState.networks) {
+      console.log('[MasterController] Initializing networks in vaultGlobal');
+      // Initialize with all default networks at once
+      externalStore.dispatch(setNetworks(PALI_NETWORKS_STATE));
+    }
 
     // Check if NFTs structure exists in accountAssets
     const needsNftsInit = Object.entries(vaultState.accountAssets ?? {}).some(
@@ -85,18 +96,21 @@ const MasterController = (
       });
     }
 
+    // Now safely check for specific networks
+    const globalNetworks = externalStore.getState().vaultGlobal.networks;
+
     if (
-      !externalStore.getState().vault.networks[TransactionsType.Ethereum][
-        CHAIN_IDS.ROLLUX_MAINNET
-      ]
+      !globalNetworks ||
+      !globalNetworks[TransactionsType.Ethereum] ||
+      !globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ROLLUX_MAINNET]
     ) {
       externalStore.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
     }
 
     const currentRpcSysUtxoMainnet =
-      externalStore.getState().vault.networks[TransactionsType.Syscoin][
-        CHAIN_IDS.SYSCOIN_MAINNET
-      ];
+      globalNetworks &&
+      globalNetworks[TransactionsType.Syscoin] &&
+      globalNetworks[TransactionsType.Syscoin][CHAIN_IDS.SYSCOIN_MAINNET];
 
     const { activeNetwork } = externalStore.getState().vault;
 
@@ -120,9 +134,11 @@ const MasterController = (
     }
 
     const isNetworkOldState =
-      externalStore.getState()?.vault?.networks?.[TransactionsType.Ethereum][
-        CHAIN_IDS.ETHEREUM_MAINNET
-      ]?.default ?? false;
+      (globalNetworks &&
+        globalNetworks[TransactionsType.Ethereum] &&
+        globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ETHEREUM_MAINNET]
+          ?.default) ??
+      false;
 
     if (isNetworkOldState) {
       Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {

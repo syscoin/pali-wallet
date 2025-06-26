@@ -32,7 +32,7 @@ import {
   createAccount as addAccountToStore,
   forgetWallet,
   removeAccount,
-  removeNetwork,
+  setAccountLabel,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setTransactionStatusToAccelerated,
@@ -42,9 +42,7 @@ import {
   setMultipleTransactionToState,
   setNetworkChange,
   setSingleTransactionToState,
-  setNetwork,
   setAccountAssets,
-  setAccountsWithLabelEdited,
 } from 'state/vault';
 import { IOmmitedAccount, TransactionsType } from 'state/vault/types';
 import vaultCache, {
@@ -70,10 +68,13 @@ import {
   setIsLoadingBalances,
   setIsLoadingNfts,
   setIsLoadingTxs,
+  setNetwork,
+  removeNetwork,
+  setIsPollingUpdate,
+  startConnecting,
 } from 'state/vaultGlobal';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
-import cleanErrorStack from 'utils/cleanErrorStack';
 import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
@@ -894,7 +895,9 @@ class MainController {
 
             if (coinsList && Array.isArray(coinsList) && coinsList.length > 0) {
               const findCoinSymbolByNetwork = coinsList.find(
-                (coin: any) => coin.symbol === activeNetwork.currency
+                (coin: any) =>
+                  coin.symbol.toLowerCase() ===
+                  activeNetwork.currency.toLowerCase()
               )?.id;
 
               if (findCoinSymbolByNetwork) {
@@ -1333,11 +1336,14 @@ class MainController {
       // through KeyringManager methods for security
       store.dispatch(setLastLogin());
 
+      // Set connecting status for initial connection attempt
+      store.dispatch(startConnecting());
+
       // Run full Pali update in background (non-blocking)
       setTimeout(() => {
         // Fetch fresh fiat prices immediately after successful unlock
         this.setFiat();
-        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+        this.getLatestUpdateForCurrentAccount(false, true); // Force update after unlock
       }, 10);
 
       // Start auto-lock timer (always enabled)
@@ -1360,7 +1366,6 @@ class MainController {
   }
 
   public async createWallet(password: string, phrase: string): Promise<void> {
-    store.dispatch(setIsLoadingBalances(true));
     try {
       // CRITICAL FIX: Ensure vault state is properly initialized before keyring operations
       // The keyring manager expects activeNetwork and activeAccount to exist
@@ -1418,7 +1423,6 @@ class MainController {
 
       // Update global settings to mark that we now have an encrypted vault
       store.dispatch(setHasEncryptedVault(true));
-      store.dispatch(setIsLoadingBalances(false));
       store.dispatch(setLastLogin());
 
       // Save vault state to persistent storage after creating the first account
@@ -1426,10 +1430,9 @@ class MainController {
 
       setTimeout(() => {
         this.setFiat();
-        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+        this.getLatestUpdateForCurrentAccount(false, true); // Force update after wallet creation
       }, 10);
     } catch (error) {
-      store.dispatch(setIsLoadingBalances(false));
       console.error('[MainController] Failed to create wallet:', error);
       throw error;
     }
@@ -1492,7 +1495,7 @@ class MainController {
     this.saveWalletState('create-account');
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+      this.getLatestUpdateForCurrentAccount(false, true); // Force update after account creation
     }, 10);
     return newAccount;
   }
@@ -1580,7 +1583,7 @@ class MainController {
   ) {
     try {
       setTimeout(() => {
-        this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+        this.getLatestUpdateForCurrentAccount(false, true); // Force update after account switch
       }, 10);
 
       // Skip dapp notifications and updates during startup
@@ -1634,6 +1637,20 @@ class MainController {
       this.currentPromise = null;
     }
 
+    // Cancel any pending async operations upfront before switching networks
+    if (this.cancellablePromises.transactionPromise) {
+      this.cancellablePromises.transactionPromise.cancel();
+    }
+    if (this.cancellablePromises.assetsPromise) {
+      this.cancellablePromises.assetsPromise.cancel();
+    }
+    if (this.cancellablePromises.balancePromise) {
+      this.cancellablePromises.balancePromise.cancel();
+    }
+    if (this.cancellablePromises.nftsPromise) {
+      this.cancellablePromises.nftsPromise.cancel();
+    }
+
     // Ensure the network object has all required properties
     const completeNetwork: INetwork = {
       ...network,
@@ -1647,7 +1664,7 @@ class MainController {
       networkVersion: number;
     }>((resolve, reject) => {
       completeNetwork.kind;
-      this.setActiveNetworkLogic(completeNetwork, false, resolve, reject);
+      this.setActiveNetworkLogic(completeNetwork, resolve, reject);
     });
 
     this.currentPromise = promiseWrapper;
@@ -1696,7 +1713,13 @@ class MainController {
     );
   }
 
-  public async getRpc(data: ICustomRpcParams): Promise<INetwork> {
+  public async getRpc(
+    data: ICustomRpcParams,
+    retryCount = 0
+  ): Promise<INetwork> {
+    const MAX_RETRIES = 3;
+    const INITIAL_RETRY_DELAY = 1000; // 1 second
+
     try {
       let result;
       if (data.isSyscoinRpc) {
@@ -1712,8 +1735,28 @@ class MainController {
       }
 
       return result as INetwork;
-    } catch (error) {
-      console.error('[MainController] getRpc error:', error);
+    } catch (error: any) {
+      console.error(
+        `[MainController] getRpc error (attempt ${retryCount + 1}):`,
+        error
+      );
+
+      // Check for rate limiting
+      if (
+        retryCount < MAX_RETRIES &&
+        (error.message?.includes('429') ||
+          error.message?.includes('503') ||
+          error.message?.includes('Too many requests') ||
+          error.message?.includes('Service Unavailable') ||
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('NetworkError') ||
+          error.message?.includes('timeout'))
+      ) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        console.log(`[MainController] Retrying getRpc after ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.getRpc(data, retryCount + 1);
+      }
 
       // Pass through the actual error message
       if (error instanceof Error) {
@@ -1843,38 +1886,24 @@ class MainController {
     return web3Token;
   }
 
-  public async addCustomRpc(data: ICustomRpcParams): Promise<INetwork> {
-    const { networks } = store.getState().vault;
+  public async addCustomRpc(network: INetwork): Promise<INetwork> {
+    const { networks } = store.getState().vaultGlobal;
 
-    let network: INetwork;
-    try {
-      network = await this.getRpc(data);
-    } catch (error) {
-      console.error('[MainController] Failed to validate RPC:', error);
-      // Re-throw with the original error message
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error(
-        'Failed to validate RPC endpoint. Please check the URL and try again.'
-      );
+    // Validate required fields
+    if (!network.url || !network.chainId || !network.label) {
+      throw new Error('Missing required network configuration fields');
     }
 
-    if (!network) {
-      throw new Error('Failed to validate RPC endpoint');
-    }
-
-    if (networks[data.isSyscoinRpc ? 'syscoin' : 'ethereum'][network.chainId]) {
+    // Check if network already exists
+    const networkType =
+      network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
+    if (networks[networkType][network.chainId]) {
       throw new Error('network already exists, remove or edit it');
     }
 
     const networkWithCustomParams = {
       ...network,
       default: false,
-      apiUrl: data.apiUrl ? data.apiUrl : network.apiUrl,
-      explorer: data?.explorer ? data.explorer : network?.explorer || '',
-      currency: data.symbol ? data.symbol : network.currency,
-      kind: data.isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
     } as INetwork;
 
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
@@ -1883,20 +1912,20 @@ class MainController {
     this.saveWalletState('add-custom-network');
 
     const networksAfterDispatch =
-      store.getState().vault.networks[networkWithCustomParams.kind];
+      store.getState().vaultGlobal.networks[networkWithCustomParams.kind];
 
     const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
       (netValues) =>
         netValues.chainId === networkWithCustomParams.chainId &&
         netValues.url === networkWithCustomParams.url &&
         netValues.label === networkWithCustomParams.label
-    );
+    ) as INetwork;
 
     return findCorrectNetworkValue;
   }
 
   public async editCustomRpc(
-    newRpc: ICustomRpcParams,
+    network: INetwork,
     oldRpc: INetwork
   ): Promise<INetwork> {
     // Validate oldRpc parameter
@@ -1906,34 +1935,9 @@ class MainController {
       );
     }
 
-    let network: INetwork;
-
-    try {
-      network = await this.getRpc(newRpc);
-    } catch (error) {
-      console.error('[MainController] Failed to validate RPC:', error);
-      // Re-throw with a more user-friendly message
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error(
-        'Failed to validate RPC endpoint. Please check the URL and try again.'
-      );
-    }
-
-    if (!network) {
-      throw new Error('Failed to get network configuration from RPC');
-    }
-
     if (network.chainId === oldRpc.chainId) {
       const newNetwork = {
         ...network,
-        label: newRpc.label || oldRpc.label || network.label, // Preserve existing label if newRpc.label is undefined
-        currency:
-          newRpc.symbol === oldRpc.currency ? oldRpc.currency : newRpc.symbol,
-        apiUrl: newRpc.apiUrl === oldRpc.apiUrl ? oldRpc.apiUrl : newRpc.apiUrl,
-        url: newRpc.url === oldRpc.url ? oldRpc.url : newRpc.url,
-        chainId: network.chainId, // Always use the chainId from the RPC endpoint
         default: oldRpc.default,
         kind: oldRpc.kind,
         ...(oldRpc?.key && { key: oldRpc.key }),
@@ -1968,7 +1972,7 @@ class MainController {
     accountType: KeyringAccountType
   ) {
     store.dispatch(
-      setAccountsWithLabelEdited({
+      setAccountLabel({
         label,
         accountId,
         accountType,
@@ -2096,7 +2100,7 @@ class MainController {
     this.saveWalletState('import-account-private-key');
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing private key
     }, 10);
 
     return importedAccount;
@@ -2132,7 +2136,7 @@ class MainController {
     this.saveWalletState('import-account-trezor');
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Trezor account
     }, 10);
 
     return importedAccount;
@@ -2172,7 +2176,7 @@ class MainController {
     this.saveWalletState('import-account-ledger');
 
     setTimeout(() => {
-      this.getLatestUpdateForCurrentAccount(true); // Use isPolling=true to bypass justUnlocked guard
+      this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Ledger account
     }, 10);
 
     return importedAccount;
@@ -2242,7 +2246,6 @@ class MainController {
               validateIfIsSameLength;
 
             if (validateIfIsInvalidDispatch) {
-              store.dispatch(setIsLoadingNfts(false));
               resolve();
               return;
             }
@@ -2256,16 +2259,12 @@ class MainController {
               })
             );
 
-            store.dispatch(setIsLoadingNfts(false));
             resolve();
           } catch (error) {
-            if (
-              error &&
-              store.getState().vaultGlobal.loadingStates.isLoadingNfts
-            ) {
-              store.dispatch(setIsLoadingNfts(false));
-            }
             reject(error);
+          } finally {
+            // Always clear loading state
+            store.dispatch(setIsLoadingNfts(false));
           }
         }
       );
@@ -2313,13 +2312,11 @@ class MainController {
   }
 
   public updateUserTransactionsState({
-    isPolling,
     isBitcoinBased,
     activeNetwork,
   }: {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
-    isPolling: boolean;
   }) {
     // Check if wallet is unlocked first - skip if locked
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2340,10 +2337,8 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            // Set loading state for non-polling calls
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(true));
-            }
+            // Always set loading state to show activity
+            store.dispatch(setIsLoadingTxs(true));
 
             // Safe access to transaction objects with error handling
             let web3Provider = null;
@@ -2356,10 +2351,12 @@ class MainController {
                 '[MainController] Cannot access ethereumTransaction:',
                 error
               );
-              if (!isPolling) {
-                store.dispatch(setIsLoadingTxs(false));
-              }
-              resolve();
+              // Don't clear loading state on error - let it stay active
+              reject(
+                new Error(
+                  'Cannot access ethereumTransaction for transaction update'
+                )
+              );
               return;
             }
 
@@ -2383,14 +2380,13 @@ class MainController {
               );
             }
 
+            // Clear loading state on success
+            store.dispatch(setIsLoadingTxs(false));
             resolve();
           } catch (error) {
             console.error('Error fetching transactions:', error);
             reject(error);
-          } finally {
-            if (!isPolling) {
-              store.dispatch(setIsLoadingTxs(false));
-            }
+            // Don't clear loading state on error - let it stay until successful update
           }
         }
       );
@@ -2434,7 +2430,6 @@ class MainController {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
-    isPolling,
   }: {
     activeAccount: {
       id: number;
@@ -2442,7 +2437,6 @@ class MainController {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
-    isPolling?: boolean | null;
   }) {
     // Check if wallet is unlocked first - skip if locked
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2456,6 +2450,9 @@ class MainController {
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
     const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
+
+    // Always set loading state to show activity
+    store.dispatch(setIsLoadingAssets(true));
 
     const { currentPromise: assetsPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -2472,7 +2469,10 @@ class MainController {
                 '[MainController] Cannot access ethereumTransaction for asset update:',
                 error
               );
-              resolve();
+              // Don't clear loading state on error - let it stay active
+              reject(
+                new Error('Cannot access ethereumTransaction for asset update')
+              );
               return;
             }
 
@@ -2509,12 +2509,10 @@ class MainController {
               validateIfNotNullEthValues;
 
             if (validateIfIsInvalidDispatch) {
+              // Skip dispatch but still resolve - empty data might be valid
+              store.dispatch(setIsLoadingAssets(false));
               resolve();
               return;
-            }
-
-            if (!isPolling) {
-              store.dispatch(setIsLoadingAssets(true));
             }
 
             store.dispatch(
@@ -2525,12 +2523,12 @@ class MainController {
               })
             );
 
+            // Clear loading state on success
             store.dispatch(setIsLoadingAssets(false));
             resolve();
           } catch (error) {
-            // Ensure loading state is cleared on error
-            store.dispatch(setIsLoadingAssets(false));
             reject(error);
+            // Don't clear loading state on error - let it stay until successful update
           }
         }
       );
@@ -2570,6 +2568,9 @@ class MainController {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
+    // Set loading state at the beginning
+    store.dispatch(setIsLoadingBalances(true));
+
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
 
@@ -2588,7 +2589,12 @@ class MainController {
                 '[MainController] Cannot access ethereumTransaction for balance update:',
                 error
               );
-              resolve();
+              // Don't clear loading state on error - let it stay active
+              reject(
+                new Error(
+                  'Cannot access ethereumTransaction for balance update'
+                )
+              );
               return;
             }
 
@@ -2624,11 +2630,13 @@ class MainController {
               );
             }
 
+            // Clear loading state on success
+            store.dispatch(setIsLoadingBalances(false));
             resolve();
           } catch (error) {
             reject(error);
-          } finally {
-            store.dispatch(setIsLoadingBalances(false));
+            // Don't clear loading state on error - let it stay until successful update
+            // This keeps the status indicator visible when RPC is failing
           }
         }
       );
@@ -2644,7 +2652,8 @@ class MainController {
   }
 
   public async getLatestUpdateForCurrentAccount(
-    isPolling = false
+    isPolling = false,
+    forceUpdate = false // Force update even if just unlocked
   ): Promise<boolean> {
     // Check if wallet is unlocked first
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2653,6 +2662,17 @@ class MainController {
         '[MainController] Wallet is locked, skipping account updates'
       );
       return false;
+    }
+
+    // Set polling state so UI knows not to show skeleton loaders
+    store.dispatch(setIsPollingUpdate(isPolling));
+
+    // Set loading states at the beginning for non-polling updates
+    // This ensures the UI shows loading immediately
+    if (!isPolling) {
+      store.dispatch(setIsLoadingBalances(true));
+      store.dispatch(setIsLoadingTxs(true));
+      store.dispatch(setIsLoadingAssets(true));
     }
 
     const {
@@ -2676,9 +2696,9 @@ class MainController {
     const currentAccountTransactions =
       accountTransactions[activeAccount.type][activeAccount.id];
 
-    // Skip if we just unlocked and this is not a polling call
+    // Skip if we just unlocked and this is not a polling call or forced update
     // This prevents duplicate calls on startup - let polling handle it
-    if (this.justUnlocked && !isPolling) {
+    if (this.justUnlocked && !isPolling && !forceUpdate) {
       console.log(
         '[MainController] Skipping non-polling update right after unlock - polling will handle it'
       );
@@ -2746,10 +2766,8 @@ class MainController {
         isBitcoinBased,
         activeNetwork,
         activeAccount,
-        isPolling,
       }),
       this.updateUserTransactionsState({
-        isPolling,
         isBitcoinBased,
         activeNetwork,
       }),
@@ -2762,7 +2780,12 @@ class MainController {
 
     const results = await Promise.allSettled(updatePromises);
 
-    // Log any failures for debugging
+    // Log any failures for debugging and track which operations failed
+    let allFailed = true;
+    let balanceFailed = false;
+    let transactionsFailed = false;
+    let assetsFailed = false;
+
     results.forEach((result, index) => {
       if (result.status === 'rejected') {
         const updateNames = ['assets', 'transactions', 'balance'];
@@ -2770,10 +2793,45 @@ class MainController {
           `[MainController] Failed to update ${updateNames[index]}:`,
           result.reason
         );
+
+        // Track which specific operations failed
+        if (index === 0) assetsFailed = true;
+        if (index === 1) transactionsFailed = true;
+        if (index === 2) balanceFailed = true;
+      } else {
+        allFailed = false;
       }
     });
 
-    store.dispatch(switchNetworkSuccess());
+    // Clear loading states only for operations that succeeded
+    // Keep loading states active for failed operations to show error state
+    const loadingStates = store.getState().vaultGlobal.loadingStates;
+
+    if (!assetsFailed && loadingStates.isLoadingAssets) {
+      store.dispatch(setIsLoadingAssets(false));
+    }
+
+    if (!transactionsFailed && loadingStates.isLoadingTxs) {
+      store.dispatch(setIsLoadingTxs(false));
+    }
+
+    if (!balanceFailed && loadingStates.isLoadingBalances) {
+      store.dispatch(setIsLoadingBalances(false));
+    }
+
+    // If balance failed, set network status to error to prevent green success indicator
+    if (balanceFailed) {
+      console.error(
+        '[MainController] Balance update failed - keeping error state active'
+      );
+      store.dispatch(switchNetworkError());
+    } else {
+      // Only dispatch success if critical operations like balance succeeded
+      store.dispatch(switchNetworkSuccess());
+    }
+
+    // Always clear polling state when done
+    store.dispatch(setIsPollingUpdate(false));
 
     // Check if anything changed by comparing initial and final state
     const {
@@ -2847,6 +2905,17 @@ class MainController {
       });
     }
 
+    // Check if this is a cancellation error - if so, ignore it
+    if (
+      reason === 'Network change cancelled' ||
+      (reason && reason.message === 'Network change cancelled') ||
+      (reason && typeof reason === 'string' && reason.includes('cancelled'))
+    ) {
+      console.log('Network change was cancelled, ignoring error');
+      // Don't set error state or dispatch error action
+      return;
+    }
+
     let errorMessage = `Failed to switch to ${activeNetwork.label}`;
 
     // Try to extract the actual error message from various error structures
@@ -2899,167 +2968,28 @@ class MainController {
 
     store.dispatch(setStoreError(errorMessage));
     store.dispatch(switchNetworkError());
-    store.dispatch(setIsLoadingBalances(false));
-    // Ensure we don't leave the network in switching state
-    setTimeout(() => {
-      const currentStatus = store.getState().vaultGlobal.networkStatus;
-      if (currentStatus === 'switching' || currentStatus === 'error') {
-        console.log('switchNetwork: Forcing network status reset after error');
-        store.dispatch(resetNetworkStatus());
-      }
-    }, 1000);
+
+    // Don't automatically reset network status for polling errors
+    // Keep the error state so the status indicator stays red
+    // Users can click on it to go to the error page and retry manually
   };
 
   private async configureNetwork(network: INetwork): Promise<{
     error?: any;
     success: boolean;
   }> {
-    let networkCallError: any = null;
-    const MAX_RETRIES = 3;
-    const INITIAL_RETRY_DELAY = 1000; // 1 second
-
-    // Helper function to test network connectivity with retries
-    const testNetworkConnectivity = async (
-      url: string,
-      retryCount = 0
-    ): Promise<any> => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-        // Determine the appropriate endpoint and method based on network type
-        const isUtxo = network.kind === INetworkType.Syscoin;
-
-        let testUrl: string;
-        let requestConfig: RequestInit;
-
-        if (isUtxo) {
-          // For UTXO networks, use blockbook status endpoint
-          testUrl = `${url}/api/v2`;
-          requestConfig = {
-            method: 'GET',
-            headers: {
-              // Add Pali headers for this test request
-              ...getPaliHeaders(),
-            },
-            // Prevent browser authentication dialogs
-            credentials: 'omit',
-            // Add timeout using AbortController for compatibility
-            signal: controller.signal,
-          };
-        } else {
-          // For EVM networks, use RPC method
-          testUrl = url;
-          requestConfig = {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              // Add Pali headers for this test request
-              ...getPaliHeaders(),
-            },
-            body: JSON.stringify({
-              jsonrpc: '2.0',
-              method: 'eth_chainId',
-              params: [],
-              id: 1,
-            }),
-            // Prevent browser authentication dialogs
-            credentials: 'omit',
-            // Add timeout using AbortController for compatibility
-            signal: controller.signal,
-          };
-        }
-
-        const response = await fetch(testUrl, requestConfig);
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const responseText = await response.text();
-          console.error(
-            `Network test response (attempt ${retryCount + 1}):`,
-            response.status,
-            responseText
-          );
-
-          // Check for rate limiting
-          if (response.status === 429 || response.status === 503) {
-            const retryAfter = response.headers.get('Retry-After');
-            const delay = retryAfter
-              ? parseInt(retryAfter) * 1000
-              : INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-
-            if (retryCount < MAX_RETRIES) {
-              console.log(`Rate limited, retrying after ${delay}ms...`);
-              await new Promise((resolve) => setTimeout(resolve, delay));
-              return testNetworkConnectivity(url, retryCount + 1);
-            }
-          }
-
-          // Try to parse the error message
-          if (responseText) {
-            throw new Error(responseText);
-          } else {
-            throw new Error(
-              `Network returned ${response.status} ${response.statusText}`
-            );
-          }
-        }
-
-        return response;
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          throw new Error(
-            'Network request timed out - the network may be slow or unresponsive'
-          );
-        }
-
-        // For connection errors, retry with backoff
-        if (
-          retryCount < MAX_RETRIES &&
-          (error.message?.includes('Failed to fetch') ||
-            error.message?.includes('NetworkError'))
-        ) {
-          const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
-          console.log(`Connection error, retrying after ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          return testNetworkConnectivity(url, retryCount + 1);
-        }
-
-        throw error;
-      }
-    };
-
     try {
-      // Test network connectivity for both EVM and UTXO networks
-      try {
-        await testNetworkConnectivity(network.url);
-      } catch (testError) {
-        console.error('Network test error:', testError);
-        networkCallError = testError;
-        return {
-          success: false,
-          error: networkCallError || new Error('Failed to configure network'),
-        };
-      }
+      // setSignerNetwork will validate the network when setting up the provider
       const { success } = await this.setSignerNetwork(network);
 
       if (success) {
-        // Cancel any pending async operations before switching managers
-        if (this.cancellablePromises.transactionPromise) {
-          this.cancellablePromises.transactionPromise.cancel();
-        }
-        if (this.cancellablePromises.assetsPromise) {
-          this.cancellablePromises.assetsPromise.cancel();
-        }
-        if (this.cancellablePromises.balancePromise) {
-          this.cancellablePromises.balancePromise.cancel();
-        }
-        if (this.cancellablePromises.nftsPromise) {
-          this.cancellablePromises.nftsPromise.cancel();
-        }
-
-        return { success };
+        return { success, error: null };
       }
+
+      return {
+        success: false,
+        error: new Error('Failed to configure network'),
+      };
     } catch (error) {
       console.error('configureNetwork error:', error);
       return { success: false, error };
@@ -3132,7 +3062,6 @@ class MainController {
   }
   private setActiveNetworkLogic = async (
     network: INetwork,
-    cancelled: boolean,
     resolve: (value: {
       chainId: string;
       isBitcoinBased: boolean;
@@ -3141,14 +3070,8 @@ class MainController {
     }) => void,
     reject: (reason?: any) => void
   ) => {
-    if (
-      store.getState().vaultGlobal.networkStatus === 'switching' &&
-      !cancelled
-    ) {
-      return;
-    }
+    // Always dispatch startSwitchNetwork to ensure we're in the correct state
     store.dispatch(startSwitchNetwork(network));
-    store.dispatch(setIsLoadingBalances(true));
 
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {
@@ -3212,7 +3135,8 @@ class MainController {
       console.log(
         '[MainController] Skipping network change dapp notifications during startup'
       );
-      store.dispatch(switchNetworkSuccess());
+      // Don't dispatch success here - let getLatestUpdateForCurrentAccount handle it
+      // after verifying the network actually works
       return;
     }
     // Get latest updates for the newly active account
@@ -3259,7 +3183,8 @@ class MainController {
         },
       ]);
     }
-    store.dispatch(switchNetworkSuccess());
+    // Don't dispatch success here - let getLatestUpdateForCurrentAccount handle it
+    // after verifying the network actually works
   }
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();

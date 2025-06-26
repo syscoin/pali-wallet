@@ -33,7 +33,11 @@ const SyscoinBalanceController = (): ISysBalanceController => {
         ? verifyZerosInBalanceAndFormat(formattedBalance, 8)
         : '0';
     } catch (error) {
-      return String(currentAccount.balances[INetworkType.Syscoin]);
+      console.error(
+        '[SyscoinBalanceController] Failed to fetch balance:',
+        error
+      );
+      throw error; // Properly propagate the error instead of masking it
     }
   };
 

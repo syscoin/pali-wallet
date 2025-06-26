@@ -4,13 +4,16 @@ import { useSelector } from 'react-redux';
 
 import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
-import { Header } from 'components/Header';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import store from 'state/store';
-import { resetNetworkStatus } from 'state/vaultGlobal';
+import {
+  resetNetworkStatus,
+  startConnecting,
+  switchNetworkError,
+} from 'state/vaultGlobal';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -30,77 +33,79 @@ export const ChainErrorPage = () => {
   const displayNetwork = networkTarget || activeNetwork;
 
   const [isRetrying, setIsRetrying] = useState(false);
+  const [lastErrorTime, setLastErrorTime] = useState<number>(0);
 
-  // Auto-navigate back to home if we successfully switched to the target network
+  // Auto-navigate back to home only when connection truly succeeds
   useEffect(() => {
-    if (
-      networkStatus === 'idle' &&
-      !networkTarget &&
-      displayNetwork &&
-      activeNetwork.chainId === displayNetwork.chainId &&
-      activeNetwork.url === displayNetwork.url
-    ) {
-      // Network switch completed successfully to our target, go back to home
-      console.log(
-        'ChainErrorPage: Network switch to target completed, navigating to home'
-      );
+    // Navigate away only if status is idle (successful) and we're not retrying
+    if (networkStatus === 'idle' && !isRetrying) {
+      console.log('[ChainErrorPage] Connection succeeded, navigating to home');
       navigate('/home');
     }
-  }, [networkStatus, networkTarget, activeNetwork, displayNetwork, navigate]);
+  }, [networkStatus, isRetrying, navigate]);
 
   const handleRetryToConnect = async () => {
+    console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
+
+    // Always set connecting status to show loading states
+    store.dispatch(startConnecting());
+
     try {
-      // First, reset the network status to clear any stuck states
-      store.dispatch(resetNetworkStatus());
+      // Force a non-polling update which will show skeletons
+      await controllerEmitter(
+        ['wallet', 'getLatestUpdateForCurrentAccount'],
+        [false, true]
+      );
 
-      // Small delay to ensure state is cleared
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Now attempt to switch networks again
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [displayNetwork]);
-
-      // Success! Navigation will happen automatically via useEffect
-      // when the activeNetwork matches our displayNetwork target
+      // If we get here, it succeeded - navigation handled by Redux state changes
     } catch (error) {
-      console.error('Network retry failed:', error);
+      console.error('[ChainErrorPage] Retry failed:', error);
 
-      // Show the actual error message instead of generic one
+      // Set error status so user stays on error page
+      store.dispatch(switchNetworkError());
+
+      // Show error message
       const errorMessage = error?.message || t('chainError.connectionTooLong');
       alert.error(errorMessage);
-
-      // Reset network status on error to allow future retries
-      store.dispatch(resetNetworkStatus());
     } finally {
       setIsRetrying(false);
     }
   };
 
-  const handleCancelSwitch = async () => {
-    try {
-      // Reset network status to clear switching state
-      store.dispatch(resetNetworkStatus());
-
-      // Small delay to ensure state is cleared
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      navigate('/home');
-    } catch (error) {
-      console.error('Failed to cancel network switch:', error);
-      navigate('/home'); // Navigate anyway
-    }
-  };
-
   const handleConnectToAnotherRpc = () => {
-    // Reset network status before navigating
-    store.dispatch(resetNetworkStatus());
-
+    // Don't reset network status - it will trigger navigation to home
+    // The switch network page can handle the status itself
     navigate('/switch-network', {
       state: { switchingFromTimeError: true },
     });
   };
 
   const CurrentChains = () => {
+    // If we're not switching networks (just reconnecting), or if active and display are the same
+    const isSameNetwork =
+      !networkTarget ||
+      (activeNetwork.chainId === displayNetwork.chainId &&
+        activeNetwork.url === displayNetwork.url);
+
+    if (isSameNetwork) {
+      return (
+        <div className="flex text-center items-center justify-center w-full">
+          <div className="flex flex-col items-center gap-1">
+            <ChainIcon
+              chainId={Number(displayNetwork.chainId)}
+              size={45}
+              className=""
+              fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
+            />
+            <span className="text-xs text-gray-300 truncate max-w-[120px]">
+              {displayNetwork.label}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
     // Show current network on the left and target network on the right
     const fromChain = (
       <ChainIcon
@@ -131,7 +136,7 @@ export const ChainErrorPage = () => {
         </div>
 
         {/* Arrow */}
-        <Icon name="arrowright" size={20} className="mx-2" />
+        <Icon name="arrowright" size={20} isSvg className="mx-2" />
 
         {/* Target network */}
         <div className="flex flex-col items-center gap-1">
@@ -145,23 +150,22 @@ export const ChainErrorPage = () => {
   };
 
   return (
-    <>
-      <Header />
-      <div className="gap-4 mt-6 mb-7 w-full flex flex-col justify-center items-center">
-        <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]' flex items-center justify-center">
+    <div className="flex flex-col items-center justify-start min-h-full px-4 py-6 overflow-y-auto">
+      <div className="flex flex-col items-center gap-4 w-full max-w-[22rem]">
+        <div className="w-[65px] h-[65px] rounded-[100px] p-[15px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%] flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
         </div>
         <span className="text-sm font-normal text-white text-center">
           {t('chainError.connectionTooLong')}
         </span>
-        <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-[22rem]">
+        <div className="rounded-[20px] bg-brand-blue500 p-5 w-full">
           <div className="relative flex mb-4">
             <CurrentChains />
           </div>
 
           <div className="flex flex-col mb-2">
             <div
-              className={`bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center`}
+              className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
               onClick={() =>
                 navigate('/settings/networks/custom-rpc', {
                   state: {
@@ -180,31 +184,32 @@ export const ChainErrorPage = () => {
             {t('networkConnection.mayBeRateLimited')}
           </div>
         </div>
-        <div className="flex flex-col gap-2 mt-6">
+        <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
           <Button
-            type="submit"
-            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            type="button"
+            className="bg-white rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
             onClick={handleConnectToAnotherRpc}
+            disabled={isRetrying}
           >
             {t('chainError.goToAnotherNetwork')}
           </Button>
           <Button
-            loading={isRetrying}
-            type="submit"
-            className="bg-white rounded-[100px] w-[13.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+            type="button"
+            className="bg-white rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
             onClick={handleRetryToConnect}
+            disabled={isRetrying}
           >
-            {t('buttons.retryConnect')}
-          </Button>
-          <Button
-            type="submit"
-            className="bg-gray-500 rounded-[100px] w-[13.25rem] h-[40px] text-white text-base font-medium"
-            onClick={handleCancelSwitch}
-          >
-            {t('buttons.cancel')}
+            {isRetrying ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
+                <span>{t('buttons.retryConnect')}</span>
+              </div>
+            ) : (
+              t('buttons.retryConnect')
+            )}
           </Button>
         </div>
       </div>
-    </>
+    </div>
   );
 };

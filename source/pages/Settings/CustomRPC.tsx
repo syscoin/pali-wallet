@@ -9,15 +9,14 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import {
-  validateEthRpc,
-  validateSysRpc,
+  validateRpcBatch,
   INetworkType,
+  INetwork,
 } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Button, Tooltip, Icon } from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
-import { RPCSuccessfullyAdded } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import ChainListService, {
@@ -30,13 +29,12 @@ const CustomRPCView = () => {
   const { state }: { state: any } = useLocation();
   const { t } = useTranslation();
   const networks = useSelector(
-    (reduxState: RootState) => reduxState.vault.networks
+    (reduxState: RootState) => reduxState.vaultGlobal.networks
   );
   const isSyscoinSelected = state && state.chain && state.chain === 'syscoin';
   // When editing, determine network type from the selected network
   const [loading, setLoading] = useState(false);
 
-  const [addedRpc, setAddedRpc] = useState<boolean>(false);
   const [showModal, setShowModal] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState<string>('');
   const [isSyscoinRpc, setIsSyscoinRpc] = useState(() => {
@@ -68,10 +66,6 @@ const CustomRPCView = () => {
     : 'translate-x-1  bg-brand-blue200';
 
   const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
-
-  const modalMessageOnSuccessful = state?.isEditing
-    ? t('settings.rpcSuccessfullyEdited')
-    : t('settings.rpcSuccessfullyAdded');
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -201,7 +195,9 @@ const CustomRPCView = () => {
         ]);
 
         alert.removeAll();
-        alert.error(errorMessage);
+        alert.error(errorMessage, {
+          autoClose: 4000,
+        });
         return false;
       }
 
@@ -241,12 +237,17 @@ const CustomRPCView = () => {
       ]);
 
       alert.removeAll();
-      alert.error(errorMessage);
+      alert.error(errorMessage, {
+        autoClose: 4000,
+      });
       return false;
     }
   };
 
-  const validateRpcUrlAndShowError = async (rpcUrl?: string) => {
+  const validateRpcUrlAndShowError = async (
+    rpcUrl?: string,
+    formData?: ICustomRpcParams
+  ): Promise<INetwork | null> => {
     if (!rpcUrl || !rpcUrl.trim()) {
       // Clear any existing RPC URL field errors
       form.setFields([
@@ -255,76 +256,44 @@ const CustomRPCView = () => {
           errors: [],
         },
       ]);
-      return true; // Required field validation will handle empty case
+      return null; // Required field validation will handle empty case
     }
 
     try {
-      if (isSyscoinRpc) {
-        const trezorIoRegExp = /trezor\.io/;
-        if (trezorIoRegExp.test(rpcUrl)) {
-          throw new Error(t('settings.trezorSiteWarning'));
-        }
+      // Use getRpc from controller which handles all validation and returns the network
+      const rpcParams = {
+        url: rpcUrl,
+        label: formData?.label || '',
+        symbol: formData?.symbol || '',
+        explorer: formData?.explorer || '',
+        apiUrl: formData?.apiUrl || '',
+        chainId: formData?.chainId || '',
+        isSyscoinRpc,
+      };
 
-        // UTXO RPC validation - this will throw an error with specific message if validation fails
-        const { valid, coin, chain } = await validateSysRpc(rpcUrl);
+      const network = (await controllerEmitter(
+        ['wallet', 'getRpc'],
+        [rpcParams]
+      )) as INetwork;
 
-        console.log('[CustomRPC] validateSysRpc returned:', {
-          valid,
-          coin,
-          chain,
-        });
-
-        if (!valid) {
-          throw new Error(t('settings.invalidUtxoRpcUrl'));
-        }
-
-        // If we get here, validation passed
-        // For UTXO networks, we might need to get chainId from coin data
-        // but for now, just return true
-        return true;
-      } else {
-        // EVM RPC validation - this will throw an error with specific message if validation fails
-        const { valid, details, hexChainId, chainId } = await validateEthRpc(
-          rpcUrl,
-          false
-        );
-
-        console.log('[CustomRPC] validateEthRpc returned:', {
-          valid,
-          details,
-          hexChainId,
-          chainId,
-          chainIdFromDetails: details?.chainId,
-          parsedChainId: Number(String(parseInt(hexChainId, 16))),
-        });
-
-        if (!valid) {
-          throw new Error(t('settings.invalidEthRpcUrl'));
-        }
-
-        // Auto-fill chainId from RPC validation
-        const rpcChainId =
-          chainId ||
-          details?.chainId ||
-          Number(String(parseInt(hexChainId, 16)));
-
-        // In edit mode, verify chainId matches
-        if (state?.selected) {
-          const stateChainId = state.selected.chainId;
-
-          if (stateChainId !== rpcChainId) {
-            throw new Error(t('settings.networkMismatch'));
-          }
-        } else {
-          // Not in edit mode, update the chainId field with the detected value
-          form.setFieldsValue({
-            chainId: rpcChainId.toString(),
-          });
-        }
-
-        // If we get here, validation passed
-        return true;
+      if (!network) {
+        throw new Error('Failed to get network configuration from RPC');
       }
+
+      // Auto-fill chainId from RPC validation
+      if (network.chainId && !state?.selected) {
+        // Not in edit mode, update the chainId field with the detected value
+        form.setFieldsValue({
+          chainId: network.chainId.toString(),
+        });
+      }
+
+      // For edit mode, verify chainId matches
+      if (state?.selected && network.chainId !== state.selected.chainId) {
+        throw new Error(t('settings.networkMismatch'));
+      }
+
+      return network;
     } catch (error) {
       // Extract the actual error message from the thrown error
       let errorMessage = t('settings.failedValidateRpc');
@@ -342,26 +311,15 @@ const CustomRPCView = () => {
       ]);
 
       alert.removeAll();
-      alert.error(errorMessage);
-      return false;
+      alert.error(errorMessage, {
+        autoClose: 4000,
+      });
+      return null;
     }
   };
 
   const onSubmit = async (data: ICustomRpcParams) => {
     setLoading(true);
-
-    // If editing, ensure we have valid network data
-    if (state?.isEditing) {
-      const networkToEdit = getCurrentNetworkData();
-      if (!networkToEdit) {
-        setLoading(false);
-        alert.removeAll();
-        alert.error(
-          'Cannot find network to edit. Please go back and try again.'
-        );
-        return;
-      }
-    }
 
     // Validate form fields before proceeding
     try {
@@ -383,12 +341,15 @@ const CustomRPCView = () => {
       }
 
       alert.removeAll();
-      alert.error(errorMessage);
+      alert.error(errorMessage, {
+        autoClose: 4000,
+      });
       return;
     }
 
-    // Validate RPC URL and show toast error if invalid
-    if (!(await validateRpcUrlAndShowError(data.url))) {
+    // Validate RPC URL and get network configuration
+    const network = await validateRpcUrlAndShowError(data.url, data);
+    if (!network) {
       setLoading(false);
       return;
     }
@@ -399,42 +360,45 @@ const CustomRPCView = () => {
       return;
     }
 
-    const customRpc = {
-      ...data,
-      isSyscoinRpc,
-    };
-
     try {
-      if (!state?.isEditing) {
-        // Adding new network - save and show success modal
-        await controllerEmitter(['wallet', 'addCustomRpc'], [customRpc]);
+      // Check if network already exists
+      const existingNetworks =
+        networks[
+          network.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum'
+        ];
+      const existingNetwork = existingNetworks[network.chainId];
+
+      if (existingNetwork) {
+        // Network exists, update it
+        // Preserve key if it exists
+        const updatedNetwork: INetwork = {
+          ...network,
+          ...(existingNetwork.key && { key: existingNetwork.key }),
+        };
+
+        await controllerEmitter(
+          ['wallet', 'editCustomRpc'],
+          [updatedNetwork, existingNetwork]
+        );
         setLoading(false);
-        setAddedRpc(true);
-        return;
+
+        alert.removeAll();
+        alert.success(t('settings.rpcSuccessfullyEdited'), {
+          autoClose: 3000,
+        });
+      } else {
+        // New network, add it
+        await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
+        setLoading(false);
+
+        alert.removeAll();
+        alert.success(t('settings.rpcSuccessfullyAdded'), {
+          autoClose: 3000,
+        });
+        setTimeout(() => navigate(-1), 1800);
       }
-
-      // Editing existing network - save and show success feedback
-      // Use fresh network data instead of potentially stale state.selected
-      const freshNetworkData = getCurrentNetworkData();
-      if (!freshNetworkData) {
-        throw new Error('Cannot find network to edit. Please try again.');
-      }
-
-      await controllerEmitter(
-        ['wallet', 'editCustomRpc'],
-        [customRpc, freshNetworkData]
-      );
-      setLoading(false);
-
-      // Show success notification
-      alert.removeAll();
-      alert.success(modalMessageOnSuccessful);
-
-      // Navigate back after a brief delay to let user see the success message
-      setTimeout(() => navigate(-1), 1500);
     } catch (error: any) {
       alert.removeAll();
-      setAddedRpc(false);
       setShowModal(true);
       setLoading(false);
       setErrorModalMessage(error.message);
@@ -443,15 +407,7 @@ const CustomRPCView = () => {
 
   // Get fresh network data from Redux store instead of stale route state
   const getCurrentNetworkData = () => {
-    if (!state?.isEditing) return null;
-
-    // If state.selected is missing, show error and navigate back
-    if (!state?.selected) {
-      console.error('[CustomRPC] No network selected for editing');
-      alert.error('No network selected. Please go back and try again.');
-      setTimeout(() => navigate(-1), 1500);
-      return null;
-    }
+    if (!state?.isEditing || !state?.selected) return null;
 
     const chain = isSyscoinRpc ? 'syscoin' : 'ethereum';
     const networkKey = state.selected.key || state.selected.chainId;
@@ -483,15 +439,6 @@ const CustomRPCView = () => {
   // Simplified - no conditional save logic
 
   const isInputDisableByEditMode = state?.isEditing ? state.isDefault : false;
-
-  // Check if we're in edit mode but missing required state
-  useEffect(() => {
-    if (state?.isEditing && !state?.selected) {
-      console.error('[CustomRPC] Edit mode but no network selected');
-      alert.error('No network selected for editing. Redirecting back...');
-      setTimeout(() => navigate('/settings/networks/edit'), 1000);
-    }
-  }, [state, navigate, alert]);
 
   // Load and cache chain data once on component mount
   useEffect(() => {
@@ -691,34 +638,39 @@ const CustomRPCView = () => {
         // Add a small delay for UX
         await new Promise((resolve) => setTimeout(resolve, 300));
 
-        // Validate the RPC with timeout
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('RPC timeout')), 5000)
-        );
+        // Use the centralized batch validation from sysweb3
+        const result = await validateRpcBatch(rpc.url, chain.chainId, 5000);
 
-        const validationPromise = validateEthRpc(rpc.url, false);
-        const { valid } = (await Promise.race([
-          validationPromise,
-          timeoutPromise,
-        ])) as any;
-
-        if (valid) {
-          // Found a working RPC, set it and break
-          setTestingRpcs(false);
-          setCurrentRpcTest(null);
-
-          // Clear any existing toasts first to prevent conflicts
-          alert.removeAll();
-
-          // Create stable success message
-          const hostname = rpc.url ? new URL(rpc.url).hostname : 'RPC server';
-          const successMessage = `Connected to ${chain.name} via ${hostname}`;
-
-          // Success feedback with stable message
-          alert.success(successMessage);
-
-          return;
+        if (!result.success) {
+          // Log why this RPC failed for debugging
+          console.log(`RPC ${rpc.url} failed:`, result.error);
+          continue; // Try next RPC
         }
+
+        // This RPC works and is for the correct chain!
+        // Found a working RPC, set it and break
+        setTestingRpcs(false);
+        setCurrentRpcTest(null);
+
+        // Store the validated chainId to avoid re-validating
+        if (result.chainId) {
+          // Also update the form field
+          form.setFieldsValue({ chainId: result.chainId.toString() });
+        }
+
+        // Clear any existing toasts first to prevent conflicts
+        alert.removeAll();
+
+        // Create stable success message
+        const hostname = rpc.url ? new URL(rpc.url).hostname : 'RPC server';
+        const successMessage = `Connected to ${chain.name} via ${hostname}`;
+
+        // Success feedback with stable message
+        alert.success(successMessage, {
+          autoClose: 3000,
+        });
+
+        return;
       } catch (error) {
         // This RPC failed, continue to next one
         console.log(`RPC ${rpc.url} failed:`, error);
@@ -730,7 +682,10 @@ const CustomRPCView = () => {
     setTestingRpcs(false);
     setCurrentRpcTest(null);
     alert.error(
-      `Unable to connect to ${chain.name}. Please try a custom RPC URL.`
+      `Unable to connect to ${chain.name}. Please try a custom RPC URL.`,
+      {
+        autoClose: 5000,
+      }
     );
   };
 
@@ -833,12 +788,6 @@ const CustomRPCView = () => {
 
   return (
     <>
-      <RPCSuccessfullyAdded
-        show={addedRpc}
-        title={t('titles.congratulations')}
-        phraseOne={modalMessageOnSuccessful}
-        onClose={() => navigate('/settings/networks/edit')}
-      />
       <StatusModal
         status="error"
         title={t('buttons.error')}
@@ -1087,8 +1036,10 @@ const CustomRPCView = () => {
             onBlur={async (e) => {
               const url = e.target.value?.trim();
               if (url) {
+                // Get current form values for validation
+                const currentFormValues = form.getFieldsValue();
                 // Validate RPC and auto-fill chainId
-                await validateRpcUrlAndShowError(url);
+                await validateRpcUrlAndShowError(url, currentFormValues);
               }
             }}
           />
@@ -1228,19 +1179,33 @@ const CustomRPCView = () => {
               </Button>
               <Button
                 type="submit"
-                loading={loading}
-                className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium"
+                className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
+                disabled={loading}
               >
-                Save
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
+                    <span>{t('buttons.save')}</span>
+                  </div>
+                ) : (
+                  'Save'
+                )}
               </Button>
             </div>
           ) : (
             <Button
-              className="w-full h-[40px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300"
+              className="w-full h-[40px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 disabled:opacity-60"
               type="submit"
-              loading={loading}
+              disabled={loading}
             >
-              {t('buttons.save')}
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
+                  <span>{t('buttons.save')}</span>
+                </div>
+              ) : (
+                t('buttons.save')
+              )}
             </Button>
           )}
         </div>

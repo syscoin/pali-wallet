@@ -63,22 +63,52 @@ export const findUserTxsInProviderByBlocksRange = async (
   const endBlock = latestBlockNumber;
 
   const rangeBlocksToRun = range(startBlock, endBlock + 1); // +1 to include endBlock
-  const BATCH_SIZE = 10; // Maximum blocks per batch to avoid "Batch size too large" errors
+  const BATCH_SIZE = 10; // Start with 10, but we'll reduce if needed
   const allResponses = [];
 
   // Process blocks in chunks to avoid batch size limits
   for (let i = 0; i < rangeBlocksToRun.length; i += BATCH_SIZE) {
     const chunk = rangeBlocksToRun.slice(i, i + BATCH_SIZE);
 
-    const batchRequest = chunk.map((blockNumber) =>
-      provider.sendBatch('eth_getBlockByNumber', [
-        `0x${blockNumber.toString(16)}`,
-        true,
-      ])
-    );
+    try {
+      const batchRequest = chunk.map((blockNumber) =>
+        provider.sendBatch('eth_getBlockByNumber', [
+          `0x${blockNumber.toString(16)}`,
+          true,
+        ])
+      );
 
-    const responses = await Promise.all(batchRequest);
-    allResponses.push(...responses);
+      const responses = await Promise.all(batchRequest);
+      allResponses.push(...responses);
+    } catch (error: any) {
+      // If we get a batch size error, try with individual requests
+      if (error.message && error.message.includes('Batch size too large')) {
+        console.warn(
+          `Batch size ${BATCH_SIZE} too large, falling back to individual requests`
+        );
+
+        // Process each block individually
+        for (const blockNumber of chunk) {
+          try {
+            const response = await provider.send('eth_getBlockByNumber', [
+              `0x${blockNumber.toString(16)}`,
+              true,
+            ]);
+            allResponses.push(response);
+          } catch (individualError) {
+            console.error(
+              `Failed to fetch block ${blockNumber}:`,
+              individualError
+            );
+            // Continue with other blocks even if one fails
+          }
+        }
+      } else {
+        // For other errors, log and continue
+        console.error('Error fetching blocks:', error);
+        // Continue processing remaining chunks
+      }
+    }
   }
 
   return flatMap(

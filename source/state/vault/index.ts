@@ -31,7 +31,7 @@ import {
   IAccountTransactions,
 } from './types';
 
-export const initialState: IVaultState = {
+const initialState: IVaultState = {
   accounts: {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
@@ -73,7 +73,6 @@ export const initialState: IVaultState = {
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
   isBitcoinBased: true,
-  networks: PALI_NETWORKS_STATE,
   shouldShowFaucetModal: {
     57: true,
     570: true,
@@ -106,7 +105,7 @@ const VaultState = createSlice({
       // Just set the clean accounts - assets/transactions are managed separately
       state.accounts = action.payload;
     },
-    setAccountsWithLabelEdited(
+    setAccountLabel(
       state: IVaultState,
       action: PayloadAction<{
         accountId: number;
@@ -154,6 +153,16 @@ const VaultState = createSlice({
       state.activeChain = activeNetwork.kind;
       state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
       state.activeNetwork = activeNetwork;
+
+      // Clear active account balance when switching networks to prevent showing stale data
+      // The balance will be refreshed after the network switch completes
+      const { id, type } = state.activeAccount;
+      if (state.accounts[type] && state.accounts[type][id]) {
+        state.accounts[type][id].balances = {
+          [INetworkType.Syscoin]: 0,
+          [INetworkType.Ethereum]: 0,
+        };
+      }
     },
     setAccountBalances(
       state: IVaultState,
@@ -217,54 +226,6 @@ const VaultState = createSlice({
 
       state.isLastTxConfirmed[chainId] = wasConfirmed;
     },
-    setNetwork(
-      state: IVaultState,
-      action: PayloadAction<{
-        isEdit?: boolean;
-        network: INetwork;
-      }>
-    ) {
-      const { network, isEdit } = action.payload;
-
-      if (isEdit) {
-        // Find and update existing network
-        const chainType = network.kind;
-        const networks =
-          chainType === INetworkType.Ethereum
-            ? state.networks.ethereum
-            : state.networks.syscoin;
-
-        if (networks[network.chainId]) {
-          networks[network.chainId] = network;
-        }
-      } else {
-        // Add new network
-        if (network.kind === INetworkType.Ethereum) {
-          state.networks.ethereum[network.chainId] = network;
-        } else {
-          state.networks.syscoin[network.chainId] = network;
-        }
-      }
-    },
-    removeNetwork(
-      state: IVaultState,
-      action: PayloadAction<{
-        chain: INetworkType;
-        chainId: number;
-        key?: string;
-        label: string;
-        rpcUrl: string;
-      }>
-    ) {
-      const { chain, chainId } = action.payload;
-
-      if (chain === INetworkType.Ethereum) {
-        delete state.networks.ethereum[chainId];
-      } else {
-        delete state.networks.syscoin[chainId];
-      }
-    },
-
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<{
@@ -382,7 +343,6 @@ const VaultState = createSlice({
         activeChain: network.kind,
         activeNetwork: network,
         isBitcoinBased: network.kind === INetworkType.Syscoin,
-        networks: PALI_NETWORKS_STATE, // Keep default networks
         shouldShowFaucetModal: {
           57: true,
           570: true,
@@ -444,21 +404,6 @@ const VaultState = createSlice({
       if (state.accountTransactions[type]) {
         delete state.accountTransactions[type][id];
       }
-    },
-    setAccountLabel(
-      state: IVaultState,
-      action: PayloadAction<{
-        id: number;
-        label: string;
-        type: KeyringAccountType;
-      }>
-    ) {
-      const { label, id, type } = action.payload;
-
-      if (!state.accounts[type][id])
-        throw new Error('Unable to set label. Account not found');
-
-      state.accounts[type][id].label = label;
     },
 
     setIsBitcoinBased(state: IVaultState, action: PayloadAction<boolean>) {
@@ -877,7 +822,6 @@ const VaultState = createSlice({
 
 export const {
   rehydrate,
-  setAccountsWithLabelEdited,
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
@@ -888,12 +832,11 @@ export const {
   setActiveNetwork,
   setFaucetModalState,
   setAccountBalances,
-  setNetwork,
+  setIsLastTxConfirmed,
   forgetWallet,
   initializeCleanVaultForSlip44,
   removeAccount,
   removeAccounts,
-  removeNetwork,
   createAccount,
   setAccountLabel,
   setIsBitcoinBased,
@@ -902,7 +845,6 @@ export const {
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
-  setIsLastTxConfirmed,
   setPrevBalances,
   setAccounts,
 } = VaultState.actions;

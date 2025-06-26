@@ -52,14 +52,20 @@ export interface IGlobalState {
 
   hasEthProperty: boolean;
   isDappAskingToChangeNetwork: boolean;
+  // Track if current updates are from polling (background) vs user action
+  isPollingUpdate: boolean;
   isSwitchingAccount: boolean;
   // Authentication & security
   lastLogin: number;
   // Transient loading states - never persisted across app restarts
   loadingStates: ILoadingStates;
-  networkStatus: 'idle' | 'switching' | 'error';
+
+  networkStatus: 'idle' | 'switching' | 'error' | 'connecting';
 
   networkTarget?: INetwork;
+
+  // Global networks - shared across all vaults
+  networks: INetworksVault;
 }
 
 // Slip44-specific state (per network type) - this is what IVaultState represents
@@ -88,7 +94,6 @@ export interface ISlip44State {
   isBitcoinBased: boolean;
 
   isLastTxConfirmed: null | { [k: number]: boolean };
-  networks: INetworksVault;
   prevBalances: IPrevBalances;
 
   shouldShowFaucetModal: { [k: number]: boolean };

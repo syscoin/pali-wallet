@@ -398,13 +398,15 @@
     "learnAbout": "了解UTXO和EVM"
   },
   "chainError": {
+    "errorTitle": "网络连接错误",
     "connectionTooLong": "连接时间过长",
     "tryingToConnectOn": "尝试连接到：",
     "goToAnotherNetwork": "转到其他网络",
     "editCurrentRpc": "编辑当前网络RPC"
   },
   "networkConnection": {
-    "connecting": "连接到",
+    "networkError": "网络错误 - 点击查看选项",
+    "connecting": "正在连接到 {{network}}",
     "slowConnection": "连接比预期时间更长",
     "mayBeRateLimited": "网络可能较慢或正在限制请求",
     "operationInProgress": "网络操作进行中...",
@@ -415,7 +417,7 @@
     "loadingNfts": "加载NFT中...",
     "switchingAccount": "切换账户中...",
     "operationCompleted": "操作成功完成",
-    "operationFailing": "网络操作耗时过长 - 点击重试",
+    "operationFailing": "网络操作耗时过长",
     "operationSlow": "{{operation}} - 比预期慢"
   },
   "transactions": {

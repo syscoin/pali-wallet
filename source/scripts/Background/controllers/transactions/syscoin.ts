@@ -22,8 +22,8 @@ const SysTransactionController = (): ISysTransactionsController => {
       return Array.isArray(transactions) ? transactions : [];
     } catch (error) {
       console.error('Error fetching transactions by xpub:', error);
-      // Return empty array instead of error object to prevent iteration issues
-      return [];
+      // Re-throw the error so it propagates up and keeps loading state active
+      throw error;
     }
   };
 

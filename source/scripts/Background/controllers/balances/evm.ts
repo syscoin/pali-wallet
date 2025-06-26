@@ -35,7 +35,8 @@ const EvmBalanceController = (
         ? '0'
         : verifyZerosInBalanceAndFormat(parseFloat(formattedBalance), 4);
     } catch (error) {
-      return String(currentAccount.balances.ethereum);
+      console.error('[EvmBalanceController] Failed to fetch balance:', error);
+      throw error;
     }
   };
 

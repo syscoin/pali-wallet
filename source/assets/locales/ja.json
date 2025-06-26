@@ -551,13 +551,15 @@
     "learnAbout": "UTXOとEVMについて学ぶ"
   },
   "chainError": {
+    "errorTitle": "ネットワーク接続エラー",
     "connectionTooLong": "接続に時間がかかりすぎています",
     "tryingToConnectOn": "接続を試みています：",
     "goToAnotherNetwork": "別のネットワークに切り替える",
     "editCurrentRpc": "現在のネットワークのRPCを編集"
   },
   "networkConnection": {
-    "connecting": "接続中：",
+    "networkError": "ネットワークエラー - オプションをクリック",
+    "connecting": "{{network}}に接続中",
     "slowConnection": "接続が予想より時間がかかっています",
     "mayBeRateLimited": "ネットワークが遅いかリクエストを制限している可能性があります",
     "operationInProgress": "ネットワーク操作が進行中...",
@@ -568,7 +570,7 @@
     "loadingNfts": "NFTを読み込み中...",
     "switchingAccount": "アカウントを切り替え中...",
     "operationCompleted": "操作が正常に完了しました",
-    "operationFailing": "ネットワーク操作に時間がかかりすぎています - クリックして再試行",
+    "operationFailing": "ネットワーク操作に時間がかかりすぎています",
     "operationSlow": "{{operation}} - 予想より遅くなっています"
   },
   "forgetWalletPage": {

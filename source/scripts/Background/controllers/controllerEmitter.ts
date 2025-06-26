@@ -39,8 +39,8 @@ export async function controllerEmitter<
 
         // Use a timeout to detect unresponsive service workers
         const timeout = setTimeout(() => {
-          reject(new Error('Service worker timeout'));
-        }, 5000); // 5 second timeout
+          reject(new Error('Network request timed out'));
+        }, 10000); // 10 second timeout
 
         try {
           chrome.runtime.sendMessage(
@@ -110,11 +110,12 @@ export async function controllerEmitter<
       });
     } catch (error: any) {
       // If this is a connection error and we have retries left, wait and retry
+      // Don't retry on network timeouts - we already waited 10 seconds
       if (
         attempt < MAX_RETRIES - 1 &&
+        !error.message?.includes('Network request timed out') &&
         (error.message?.includes('Could not establish connection') ||
           error.message?.includes('Receiving end does not exist') ||
-          error.message?.includes('Service worker timeout') ||
           error.message?.includes('Extension context invalidated'))
       ) {
         const delay = RETRY_DELAY * Math.pow(2, attempt); // Exponential backoff

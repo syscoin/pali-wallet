@@ -59,7 +59,6 @@ const icons = {
   tag: AntIcons.TagFilled,
   import: AntIcons.ImportOutlined,
   'hamburger-menu': AntIcons.MenuOutlined,
-  arrowright: ArrowRight,
 };
 
 // SVG icons mapping will be defined after inline components
@@ -95,7 +94,9 @@ export const Icon: FC<IIcon> = ({
   // Check if svgUrl is a React component (function or memoized component)
   const isInlineSvgComponent =
     typeof svgUrl === 'function' ||
-    (svgUrl && typeof svgUrl === 'object' && svgUrl.compare !== undefined);
+    (svgUrl &&
+      typeof svgUrl === 'object' &&
+      svgUrl.$$typeof === Symbol.for('react.memo'));
 
   return (
     <div className={wrapperClassname} id={id}>

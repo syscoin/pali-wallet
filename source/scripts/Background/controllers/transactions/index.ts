@@ -100,8 +100,8 @@ const TransactionsManager = (): ITransactionsManager => {
       return result;
     } catch (error) {
       console.error('Transaction polling error:', error);
-      // Return empty array instead of error object to prevent iteration issues
-      return [];
+      // Re-throw the error so it propagates up and keeps loading state active
+      throw error;
     }
   };
   const clearCache = () => {

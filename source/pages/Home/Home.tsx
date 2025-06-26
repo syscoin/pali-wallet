@@ -123,6 +123,7 @@ export const Home = () => {
   const {
     lastLogin,
     loadingStates: { isLoadingBalances },
+    isPollingUpdate,
   } = useSelector((rootState: RootState) => rootState.vaultGlobal);
 
   // ALL useState hooks
@@ -196,11 +197,6 @@ export const Home = () => {
 
       // Start polling
       pollForTransaction();
-    } else {
-      // Normal navigation - update immediately with cache
-      controllerEmitter(['callGetLatestUpdateForAccount']).catch((error) => {
-        console.warn('Failed to fetch initial account data:', error);
-      });
     }
   }, [isUnlocked, lastLogin, controllerEmitter, state]);
 
@@ -296,7 +292,24 @@ export const Home = () => {
   // Safe computed values - AFTER all hooks
   const isWalletImported = state?.isWalletImported;
 
-  const isLoadingBalance = isLoadingBalances;
+  // Get network status to check for errors
+  const networkStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.networkStatus
+  );
+
+  // Show skeleton loader when:
+  // 1. Balance is loading (but not during polling updates)
+  // 2. We have no balance data yet (first load or after error)
+  // 3. Network is in error or connecting state
+  const hasNoBalanceData =
+    !currentAccount?.balances ||
+    Object.keys(currentAccount.balances).length === 0;
+
+  const isLoadingBalance =
+    (isLoadingBalances && !isPollingUpdate) ||
+    (hasNoBalanceData && isLoadingBalances) ||
+    networkStatus === 'error' ||
+    networkStatus === 'connecting';
 
   // Debounced faucet modal display to prevent flashing during network/account switches
   useEffect(() => {

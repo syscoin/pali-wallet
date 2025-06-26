@@ -1,23 +1,15 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
-import v3_0_1 from '../migration/v3_0_1';
-import v3_3_2 from '../migration/v3_3_2';
-import v3_4_1 from '../migration/v3_4_1';
-import v3_4_3 from '../migration/v3_4_3';
-import v3_5_0 from '../migration/v3_5_0';
 import { getIsMigratedVersion } from 'state/paliStorage';
 
 // Define migration entries in order
-const migrations = [
-  { version: '3.0.1', handler: v3_0_1, description: 'add faucet feature' },
-  { version: '3.3.2', handler: v3_3_2, description: 'add faucet feature' },
-  { version: '3.4.1', handler: v3_4_1, description: 'remove 80001 network' },
-  { version: '3.4.3', handler: v3_4_3, description: 'remove timer properties' },
-  {
-    version: '3.5.0',
-    handler: v3_5_0,
-    description: 'fix networks without kind properties',
-  },
+const migrations: Array<{
+  description: string;
+  handler: (state: any) => Promise<void>;
+  version: string;
+}> = [
+  // No migrations needed currently
+  // Add new migrations here as needed
 ];
 
 // Compare versions: returns 1 if a > b, -1 if a < b, 0 if equal

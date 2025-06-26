@@ -29,16 +29,27 @@ export const usePageLoadingState = (
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
+  const { isLoadingBalances } = useSelector(
+    (state: RootState) => state.vaultGlobal.loadingStates
+  );
+  const isPollingUpdate = useSelector(
+    (state: RootState) => state.vaultGlobal.isPollingUpdate
+  );
 
   // Determine if we're loading
   const isNetworkChanging = networkStatus === 'switching';
+  const isConnecting = networkStatus === 'connecting';
+  // Consider balance loading (non-polling) as a network operation that should timeout
+  const isNonPollingBalanceLoad = isLoadingBalances && !isPollingUpdate;
+
   const isLoading =
     navigationLoading ||
     isNetworkChanging ||
+    isConnecting ||
     isSwitchingAccount ||
     additionalLoadingConditions.some((condition) => condition);
 
-  // Handle network switching timeout
+  // Handle network operation timeout (switching or non-polling balance load)
   useEffect(() => {
     // Clear existing timeout
     if (timeoutRef.current) {
@@ -46,13 +57,14 @@ export const usePageLoadingState = (
       timeoutRef.current = null;
     }
 
-    if (isNetworkChanging) {
-      // Set 10-second timeout for network switching
+    // Timeout for network switching OR non-polling balance loads (like after unlock/retry) OR connecting
+    if (isNetworkChanging || isNonPollingBalanceLoad || isConnecting) {
+      // Set 10-second timeout for network operations
       timeoutRef.current = setTimeout(() => {
         setHasTimedOut(true);
       }, TEN_SECONDS);
     } else {
-      // Reset timeout state when not switching networks
+      // Reset timeout state when not in a network operation
       setHasTimedOut(false);
     }
 
@@ -62,7 +74,7 @@ export const usePageLoadingState = (
         timeoutRef.current = null;
       }
     };
-  }, [isNetworkChanging]);
+  }, [isNetworkChanging, isNonPollingBalanceLoad, isConnecting]);
 
   // Handle timeout redirect
   useEffect(() => {
@@ -72,7 +84,12 @@ export const usePageLoadingState = (
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      window.location.hash = '/chain-fail-to-connect';
+      // Small delay to ensure state is stable before redirecting
+      const redirectTimer = setTimeout(() => {
+        window.location.hash = '/chain-fail-to-connect';
+      }, 100);
+
+      return () => clearTimeout(redirectTimer);
     }
   }, [hasTimedOut]);
 
@@ -91,6 +108,8 @@ export const usePageLoadingState = (
   let message: string | undefined;
   if (isNetworkChanging && networkTarget) {
     message = `Connecting to ${networkTarget.label}...`;
+  } else if (isConnecting || isNonPollingBalanceLoad) {
+    message = 'Connecting to network...';
   } else if (isSwitchingAccount) {
     message = 'Switching account...';
   } else if (navigationLoading) {

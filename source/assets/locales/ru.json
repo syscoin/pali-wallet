@@ -551,13 +551,15 @@
     "learnAbout": "Узнать о UTXO и EVM"
   },
   "chainError": {
+    "errorTitle": "Ошибка сетевого подключения",
     "connectionTooLong": "ПОДКЛЮЧЕНИЕ ЗАНИМАЕТ СЛИШКОМ МНОГО ВРЕМЕНИ",
     "tryingToConnectOn": "Попытка подключения к:",
     "goToAnotherNetwork": "Перейти на другую сеть",
     "editCurrentRpc": "Редактировать RPC текущей сети"
   },
   "networkConnection": {
-    "connecting": "Подключение к",
+    "networkError": "Ошибка сети - нажмите для опций",
+    "connecting": "Подключение к {{network}}",
     "slowConnection": "Подключение занимает больше времени, чем ожидалось",
     "mayBeRateLimited": "Сеть может быть медленной или ограничивать запросы",
     "operationInProgress": "Сетевая операция в процессе...",
@@ -568,7 +570,7 @@
     "loadingNfts": "Загрузка NFT...",
     "switchingAccount": "Переключение аккаунта...",
     "operationCompleted": "Операция успешно завершена",
-    "operationFailing": "Сетевая операция занимает слишком много времени - нажмите для повтора",
+    "operationFailing": "Сетевая операция занимает слишком много времени",
     "operationSlow": "{{operation}} - медленнее, чем ожидалось"
   },
   "forgetWalletPage": {

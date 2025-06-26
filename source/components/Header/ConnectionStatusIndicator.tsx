@@ -45,6 +45,7 @@ export const ConnectionStatusIndicator = memo(
     // Comprehensive network activity check (same logic as isPollingRunNotValid)
     const isNetworkActivity =
       networkStatus === 'switching' ||
+      networkStatus === 'connecting' ||
       isLoadingTxs ||
       isLoadingBalances ||
       isLoadingAssets ||
@@ -119,17 +120,16 @@ export const ConnectionStatusIndicator = memo(
       };
     }, [isNetworkActivity]);
 
-    // Handle retry network connection
-    const handleRetryConnection = () => {
-      if (showCriticalError && (networkTarget || activeNetwork)) {
-        // Retry with the target network if we're switching, otherwise current network
-        const networkToRetry = networkTarget || activeNetwork;
-        controllerEmitter(['wallet', 'setActiveNetwork'], [networkToRetry]);
+    // Handle click - only for error state to go to error page
+    const handleClick = () => {
+      if (networkStatus === 'error') {
+        window.location.hash = '/chain-fail-to-connect';
       }
     };
 
     // Determine if indicator should be visible
-    const shouldShowIndicator = isNetworkActivity || showSuccessConfirmation;
+    const shouldShowIndicator =
+      isNetworkActivity || showSuccessConfirmation || networkStatus === 'error';
 
     // Determine status color and message based on state
     let statusColor = 'bg-brand-blue500'; // Default: network activity (blue)
@@ -140,12 +140,52 @@ export const ConnectionStatusIndicator = memo(
     );
     let isClickable = false;
 
-    // More specific titles based on what's loading
-    if (isNetworkActivity && !showCriticalError && !showSlowWarning) {
+    if (networkStatus === 'error') {
+      // Red: Network error - click to go to error page
+      statusColor = 'bg-red-600';
+      pulseClass = ''; // No pulsing for error state
+      tooltipContent = t(
+        'networkConnection.networkError',
+        'Network error - click for options'
+      );
+      isClickable = true;
+    } else if (showSuccessConfirmation) {
+      // Green: Successfully completed
+      statusColor = 'bg-green-500';
+      pulseClass = 'animate-pulse';
+      tooltipContent = t('networkConnection.operationCompleted');
+    } else if (showCriticalError) {
+      // Red: Operation failing/about to timeout
+      statusColor = 'bg-red-600';
+      pulseClass = 'animate-pulse-fast'; // Faster pulsing for urgency
+      tooltipContent = t(
+        'networkConnection.operationFailing',
+        'Network operation taking too long'
+      );
+    } else if (showSlowWarning) {
+      // Orange: Operation is slow
+      statusColor = 'bg-orange-500';
+      tooltipContent = t(
+        'networkConnection.operationSlow',
+        '{{operation}} - slower than expected',
+        {
+          operation: tooltipContent.replace('...', ''),
+        }
+      );
+    } else if (isNetworkActivity) {
+      // More specific titles based on what's loading
       if (networkStatus === 'switching') {
         tooltipContent = t(
           'networkConnection.switchingNetwork',
           'Switching network...'
+        );
+      } else if (networkStatus === 'connecting') {
+        const targetNetworkName =
+          networkTarget?.label || activeNetwork?.label || 'network';
+        tooltipContent = t(
+          'networkConnection.connecting',
+          'Connecting to {{network}}',
+          { network: targetNetworkName }
         );
       } else if (isLoadingBalances) {
         tooltipContent = t(
@@ -172,31 +212,6 @@ export const ConnectionStatusIndicator = memo(
       }
     }
 
-    if (showSuccessConfirmation) {
-      // Green: Successfully completed
-      statusColor = 'bg-green-500';
-      pulseClass = 'animate-pulse';
-      tooltipContent = t('networkConnection.operationCompleted');
-    } else if (showCriticalError) {
-      // Red: Operation failing/about to timeout
-      statusColor = 'bg-red-500';
-      tooltipContent = t(
-        'networkConnection.operationFailing',
-        'Network operation taking too long - click to retry'
-      );
-      isClickable = true;
-    } else if (showSlowWarning) {
-      // Orange: Operation is slow
-      statusColor = 'bg-orange-500';
-      tooltipContent = t(
-        'networkConnection.operationSlow',
-        '{{operation}} - slower than expected',
-        {
-          operation: tooltipContent.replace('...', ''),
-        }
-      );
-    }
-
     // Always render container with fixed dimensions to prevent layout shifts
     return (
       <div
@@ -218,7 +233,7 @@ export const ConnectionStatusIndicator = memo(
                 ? 'cursor-pointer hover:scale-110 transition-transform'
                 : ''
             }`}
-            onClick={isClickable ? handleRetryConnection : undefined}
+            onClick={isClickable ? handleClick : undefined}
           />
         </Tooltip>
       </div>

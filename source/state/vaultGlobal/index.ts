@@ -1,8 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { INetwork } from '@pollum-io/sysweb3-network';
+import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { IGlobalState, IChangingConnectedAccount } from '../vault/types';
+import { PALI_NETWORKS_STATE } from 'utils/constants';
 
 const initialState: IGlobalState = {
   activeSlip44: null,
@@ -33,6 +34,8 @@ const initialState: IGlobalState = {
     isLoadingAssets: false,
     isLoadingNfts: false,
   },
+  networks: PALI_NETWORKS_STATE,
+  isPollingUpdate: false,
 };
 
 const vaultGlobalSlice = createSlice({
@@ -40,16 +43,11 @@ const vaultGlobalSlice = createSlice({
   initialState,
   reducers: {
     rehydrate(state: IGlobalState, action: PayloadAction<IGlobalState>) {
-      // Complete replacement but ALWAYS reset loading states to false
-      const restoredState = action.payload;
+      // Use stored state as-is, but ensure networks always exists
       return {
-        ...restoredState,
-        loadingStates: {
-          isLoadingBalances: false,
-          isLoadingTxs: false,
-          isLoadingAssets: false,
-          isLoadingNfts: false,
-        },
+        ...action.payload,
+        // Ensure networks always exists, use default if not in restored state
+        networks: action.payload.networks || PALI_NETWORKS_STATE,
       };
     },
     resetLoadingStates(state: IGlobalState) {
@@ -100,7 +98,7 @@ const vaultGlobalSlice = createSlice({
     },
     setNetworkStatus(
       state: IGlobalState,
-      action: PayloadAction<'idle' | 'switching' | 'error'>
+      action: PayloadAction<'idle' | 'switching' | 'error' | 'connecting'>
     ) {
       state.networkStatus = action.payload;
     },
@@ -135,6 +133,10 @@ const vaultGlobalSlice = createSlice({
       state.networkStatus = 'switching';
       state.networkTarget = action.payload;
     },
+    startConnecting(state: IGlobalState) {
+      state.networkStatus = 'connecting';
+      state.networkTarget = undefined;
+    },
     switchNetworkSuccess(state: IGlobalState) {
       state.networkStatus = 'idle';
       state.networkTarget = undefined;
@@ -145,6 +147,82 @@ const vaultGlobalSlice = createSlice({
     resetNetworkStatus(state: IGlobalState) {
       state.networkStatus = 'idle';
       state.networkTarget = undefined;
+    },
+    setNetwork(
+      state: IGlobalState,
+      action: PayloadAction<{
+        isEdit?: boolean;
+        network: INetwork;
+      }>
+    ) {
+      const { network, isEdit } = action.payload;
+
+      // Ensure networks exists
+      if (!state.networks) {
+        state.networks = PALI_NETWORKS_STATE;
+      }
+
+      if (isEdit) {
+        // Find and update existing network
+        const chainType = network.kind;
+        const networks =
+          chainType === INetworkType.Ethereum
+            ? state.networks.ethereum
+            : state.networks.syscoin;
+
+        if (networks && networks[network.chainId]) {
+          networks[network.chainId] = network;
+        }
+      } else {
+        // Add new network
+        if (network.kind === INetworkType.Ethereum) {
+          if (!state.networks.ethereum) {
+            state.networks.ethereum = {};
+          }
+          state.networks.ethereum[network.chainId] = network;
+        } else {
+          if (!state.networks.syscoin) {
+            state.networks.syscoin = {};
+          }
+          state.networks.syscoin[network.chainId] = network;
+        }
+      }
+    },
+    setNetworks(
+      state: IGlobalState,
+      action: PayloadAction<{
+        ethereum: { [chainId: number]: INetwork };
+        syscoin: { [chainId: number]: INetwork };
+      }>
+    ) {
+      // Set all networks at once
+      state.networks = action.payload;
+    },
+    removeNetwork(
+      state: IGlobalState,
+      action: PayloadAction<{
+        chain: INetworkType;
+        chainId: number;
+        key?: string;
+        label: string;
+        rpcUrl: string;
+      }>
+    ) {
+      const { chain, chainId } = action.payload;
+
+      // Ensure networks exists
+      if (!state.networks) {
+        return;
+      }
+
+      if (chain === INetworkType.Ethereum && state.networks.ethereum) {
+        delete state.networks.ethereum[chainId];
+      } else if (chain === INetworkType.Syscoin && state.networks.syscoin) {
+        delete state.networks.syscoin[chainId];
+      }
+    },
+    setIsPollingUpdate(state: IGlobalState, action: PayloadAction<boolean>) {
+      state.isPollingUpdate = action.payload;
     },
   },
 });
@@ -168,9 +246,14 @@ export const {
   setCoinsList,
   setChangingConnectedAccount,
   startSwitchNetwork,
+  startConnecting,
   switchNetworkSuccess,
   switchNetworkError,
   resetNetworkStatus,
+  setNetwork,
+  setNetworks,
+  removeNetwork,
+  setIsPollingUpdate,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;

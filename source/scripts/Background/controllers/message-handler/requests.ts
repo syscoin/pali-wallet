@@ -166,8 +166,8 @@ export const methodRequest = async (
   //* Wallet methods
   if (prefix === 'wallet') {
     let tryingToAdd = false;
-    const { activeNetwork: currentNetwork, networks: chains } =
-      store.getState().vault;
+    const { activeNetwork: currentNetwork } = store.getState().vault;
+    const { networks: chains } = store.getState().vaultGlobal;
     switch (methodName) {
       case 'isLocked':
         return !wallet.isUnlocked();
@@ -395,7 +395,7 @@ export const methodRequest = async (
   if (validatePrefixAndCurrentChain && validateChangeUtxoEvmMethodName) {
     const { chainId: chain } = data.params[0];
 
-    const networks = store.getState().vault.networks;
+    const networks = store.getState().vaultGlobal.networks;
 
     const newChainValue = getNetworkChain(prefix?.toLowerCase() === 'sys');
     const findCorrectNetwork: INetwork =

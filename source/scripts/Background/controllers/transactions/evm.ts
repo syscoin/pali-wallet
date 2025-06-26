@@ -406,7 +406,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return flatMap(treatedTxs);
     } catch (error) {
       console.error('Error in pollingEvmTransactions:', error);
-      return [];
+      // Re-throw the error so it propagates up and keeps loading state active
+      throw error;
     }
   };
 

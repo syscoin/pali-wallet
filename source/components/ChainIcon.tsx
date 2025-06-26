@@ -113,57 +113,42 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     const [isLoading, setIsLoading] = useState(initial.loading);
 
     useEffect(() => {
-      // Skip if we already have the right icon from initial state
-      if (KNOWN_CHAIN_ICONS[chainId]) {
-        const icon = KNOWN_CHAIN_ICONS[chainId];
-        if (typeof icon === 'string' && iconUrl === icon) {
-          return;
-        }
-        if (typeof icon !== 'string' && iconComponent === icon) {
-          return;
-        }
-      }
-
-      // Skip if we already have a cached icon
-      if (
-        imageDataCache.has(chainId) &&
-        iconUrl === imageDataCache.get(chainId)
-      ) {
-        return;
-      }
-
       // Check if we have a known local icon first
       if (KNOWN_CHAIN_ICONS[chainId]) {
         const icon = KNOWN_CHAIN_ICONS[chainId];
         if (typeof icon === 'string') {
-          setIconUrl(icon);
-          setIconComponent(null);
+          if (iconUrl !== icon) {
+            setIconUrl(icon);
+            setIconComponent(null);
+            setError(false);
+            setIsLoading(false);
+          }
         } else {
-          setIconUrl(null);
-          setIconComponent(icon);
+          if (iconComponent !== icon) {
+            setIconUrl(null);
+            setIconComponent(icon);
+            setError(false);
+            setIsLoading(false);
+          }
         }
-        setError(false);
-        setIsLoading(false);
+        return;
+      }
+
+      // Check cache for existing icon
+      if (imageDataCache.has(chainId)) {
+        const cachedUrl = imageDataCache.get(chainId);
+        if (cachedUrl !== iconUrl) {
+          setIconUrl(cachedUrl);
+          setIconComponent(null);
+          setError(cachedUrl === null);
+          setIsLoading(false);
+        }
         return;
       }
 
       // For UTXO networks, skip ChainList fetching as they're not in ChainList
       if (networkKind === INetworkType.Syscoin) {
         if (!error) {
-          setError(true);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // Check cache first - synchronous for instant display
-      if (imageDataCache.has(chainId)) {
-        const cachedUrl = imageDataCache.get(chainId);
-        if (cachedUrl && cachedUrl !== iconUrl) {
-          setIconUrl(cachedUrl);
-          setError(false);
-          setIsLoading(false);
-        } else if (!cachedUrl && !error) {
           setError(true);
           setIsLoading(false);
         }

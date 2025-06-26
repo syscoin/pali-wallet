@@ -21,7 +21,9 @@ const SwitchChain: React.FC = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const networks = useSelector(
+    (state: RootState) => state.vaultGlobal.networks
+  );
   const network = networks.ethereum[chainId];
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -62,7 +64,7 @@ const SwitchChain: React.FC = () => {
 
     return (
       <div className="w-4/5 gap-4 flex items-center align-center flex-row">
-        {fromChain} <Icon name="arrowright" size={50} /> {toChain}
+        {fromChain} <Icon name="arrowright" isSvg size={50} /> {toChain}
       </div>
     );
   };

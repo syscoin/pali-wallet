@@ -33,6 +33,10 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   // Use the new page loading state hook
   const { isLoading, hasTimedOut } = usePageLoadingState();
 
+  const networkStatus = useSelector(
+    (state: RootState) => state.vaultGlobal.networkStatus
+  );
+
   // Signal app is ready when this layout renders
   useAppReady();
 
@@ -101,7 +105,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     if (path === '/send/confirm') return t('send.confirm');
     if (path === '/faucet') return activeNetwork?.label || 'Faucet';
     if (path === '/tokens/add') return t('buttons.addToken');
-    if (path === '/chain-fail-to-connect') return t('chain.errorTitle');
+    if (path === '/chain-fail-to-connect') return t('chainError.errorTitle');
     if (path === '/switch-network') return t('settings.switchChain');
     if (path === '/switch-utxo-evm') return t('settings.switchChain');
 
@@ -321,7 +325,16 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
           {showNavigationButtons ? (
             <IconButton
               className="z-40 cursor-pointer"
-              onClick={() => navigate('/home')}
+              onClick={() => {
+                if (
+                  networkStatus === 'error' ||
+                  networkStatus === 'connecting'
+                ) {
+                  navigate('/chain-fail-to-connect');
+                } else {
+                  navigate('/home');
+                }
+              }}
             >
               <CloseIcon />
             </IconButton>

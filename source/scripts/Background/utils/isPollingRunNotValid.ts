@@ -5,24 +5,16 @@ export const isPollingRunNotValid = () => {
     networkStatus,
     changingConnectedAccount: { isChangingConnectedAccount },
     lastLogin,
-    loadingStates: {
-      isLoadingTxs,
-      isLoadingBalances,
-      isLoadingAssets,
-      isLoadingNfts,
-    },
   } = store.getState().vaultGlobal;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;
 
   const isNetworkChanging = networkStatus === 'switching';
 
+  // Only block polling for critical operations, not loading states
+  // We want to show loading indicators during polling now
   if (
     isNetworkChanging ||
-    isLoadingTxs ||
-    isLoadingBalances ||
-    isLoadingAssets ||
-    isLoadingNfts ||
     verifyIfUserIsNotRegistered ||
     isChangingConnectedAccount
   ) {

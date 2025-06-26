@@ -17,34 +17,24 @@ const BalancesManager = (): IBalancesManager => {
   ) => {
     switch (isBitcoinBased) {
       case true:
-        try {
-          const getSysBalance =
-            await SyscoinBalanceController().getSysBalanceForAccount(
-              currentAccount,
-              networkUrl
-            );
-
-          return getSysBalance;
-        } catch (sysBalanceError) {
-          return sysBalanceError;
-        }
-      case false:
-        try {
-          if (!provider) {
-            console.error('No valid web3Provider for EVM balance fetching');
-            return '0';
-          }
-
-          // Create EVM controller fresh with current provider
-          const evmController = EvmBalanceController(provider);
-          const getEvmBalance = await evmController.getEvmBalanceForAccount(
-            currentAccount
+        const getSysBalance =
+          await SyscoinBalanceController().getSysBalanceForAccount(
+            currentAccount,
+            networkUrl
           );
+        return getSysBalance;
 
-          return getEvmBalance;
-        } catch (evmBalanceError) {
-          return evmBalanceError;
+      case false:
+        if (!provider) {
+          throw new Error('No valid web3Provider for EVM balance fetching');
         }
+
+        // Create EVM controller fresh with current provider
+        const evmController = EvmBalanceController(provider);
+        const getEvmBalance = await evmController.getEvmBalanceForAccount(
+          currentAccount
+        );
+        return getEvmBalance;
     }
   };
 

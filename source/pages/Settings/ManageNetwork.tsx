@@ -13,7 +13,9 @@ import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
 
 const ManageNetworkView = () => {
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const networks = useSelector(
+    (state: RootState) => state.vaultGlobal.networks
+  );
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );

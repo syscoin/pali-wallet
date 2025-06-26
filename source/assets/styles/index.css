@@ -35,6 +35,15 @@
   width: auto !important;
 }
 
+/* Ensure toast container doesn't block interaction */
+.Toastify__toast-container {
+  pointer-events: none !important;
+}
+
+.Toastify__toast {
+  pointer-events: auto !important;
+}
+
 /* Ensure toast body text is visible */
 .Toastify__toast.pali-toast-content .Toastify__toast-body {
   color: #ffffff !important;
@@ -416,4 +425,18 @@ input[type='number']::-webkit-inner-spin-button {
 .page-content {
   opacity: 1;
   /* Removed animation to prevent blip during route transitions */
+}
+
+/* Custom animation for critical network errors */
+@keyframes pulse-fast {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-fast {
+  animation: pulse-fast 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

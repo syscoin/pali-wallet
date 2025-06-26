@@ -546,13 +546,15 @@
     "learnAbout": "Saiba mais sobre UTXO e EVM"
   },
   "chainError": {
+    "errorTitle": "Erro de Conexão de Rede",
     "connectionTooLong": "CONEXÃO ESTÁ DEMORANDO MUITO PARA RESPONDER",
     "tryingToConnectOn": "Você está tentando se conectar em:",
     "goToAnotherNetwork": "Ir para outra rede",
     "editCurrentRpc": "Editar RPC da rede atual"
   },
   "networkConnection": {
-    "connecting": "Conectando a",
+    "networkError": "Erro de rede - clique para opções",
+    "connecting": "Conectando a {{network}}",
     "slowConnection": "A conexão está demorando mais do que o esperado",
     "mayBeRateLimited": "A rede pode estar lenta ou limitando as solicitações",
     "operationInProgress": "Operação de rede em andamento...",
@@ -563,7 +565,7 @@
     "loadingNfts": "Carregando NFTs...",
     "switchingAccount": "Mudando de conta...",
     "operationCompleted": "Operação concluída com sucesso",
-    "operationFailing": "Operação de rede está demorando muito - clique para tentar novamente",
+    "operationFailing": "Operação de rede está demorando muito",
     "operationSlow": "{{operation}} - mais lento que o esperado"
   },
   "forgetWalletPage": {

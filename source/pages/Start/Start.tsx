@@ -36,7 +36,7 @@ export const Start = (props: any) => {
         if (
           !error?.message?.includes('Could not establish connection') &&
           !error?.message?.includes('Receiving end does not exist') &&
-          !error?.message?.includes('Service worker timeout')
+          !error?.message?.includes('Network request timed out')
         ) {
           console.error('Error checking vault/accounts:', error);
         }

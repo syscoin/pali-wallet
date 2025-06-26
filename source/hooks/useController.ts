@@ -47,7 +47,7 @@ export const useController = () => {
       if (
         !error.message?.includes('Could not establish connection') &&
         !error.message?.includes('Receiving end does not exist') &&
-        !error.message?.includes('Service worker timeout')
+        !error.message?.includes('Network request timed out')
       ) {
         console.error('[useController] Error checking unlock status:', error);
       }
@@ -66,7 +66,7 @@ export const useController = () => {
       if (
         !error.message?.includes('Could not establish connection') &&
         !error.message?.includes('Receiving end does not exist') &&
-        !error.message?.includes('Service worker timeout')
+        !error.message?.includes('Network request timed out')
       ) {
         console.error(
           '[useController] Error resetting auto-lock timer:',
@@ -158,7 +158,7 @@ export const useController = () => {
           if (
             !error.message?.includes('Could not establish connection') &&
             !error.message?.includes('Receiving end does not exist') &&
-            !error.message?.includes('Service worker timeout') &&
+            !error.message?.includes('Network request timed out') &&
             !error.message?.includes('Failed to connect to service worker')
           ) {
             console.error('[useController] Polling error:', error);

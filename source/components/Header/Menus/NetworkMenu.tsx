@@ -63,7 +63,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   const { language } = i18n;
   const { navigate } = useUtils();
 
-  const networks = useSelector((state: RootState) => state.vault.networks);
+  const networks = useSelector(
+    (state: RootState) => state.vaultGlobal.networks
+  );
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
