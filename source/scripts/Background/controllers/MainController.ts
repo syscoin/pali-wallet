@@ -2749,14 +2749,6 @@ class MainController {
     // Set polling state so UI knows not to show skeleton loaders
     store.dispatch(setIsPollingUpdate(isPolling));
 
-    // Set loading states at the beginning for non-polling updates
-    // This ensures the UI shows loading immediately
-    if (!isPolling) {
-      store.dispatch(setIsLoadingBalances(true));
-      store.dispatch(setIsLoadingTxs(true));
-      store.dispatch(setIsLoadingAssets(true));
-    }
-
     const {
       accounts,
       activeAccount,
