@@ -1,6 +1,7 @@
 import flatMap from 'lodash/flatMap';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 
@@ -389,11 +390,44 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
 
       // Fallback to RPC scanning if API failed or no API configured
       if (!rpcForbiddenList.includes(currentNetworkChainId!)) {
-        console.log(
-          `[pollingEvmTransactions] Scanning up to the last 30 blocks`
-        );
+        // Smart block scanning based on account history
+        const { accountTransactions } = store.getState().vault;
+        const currentAccountTxs =
+          accountTransactions[activeAccount.type]?.[activeAccount.id];
+
+        // Check if account has any transaction history on current network
+        const hasTransactionHistory =
+          currentAccountTxs?.ethereum?.[currentNetworkChainId!]?.length > 0;
+
+        // Get current balance (native token) - balances are on the account object
+        const currentBalance =
+          currentAccount.balances?.[INetworkType.Ethereum] || 0;
+        const hasBalance = currentBalance !== 0;
+
+        // Determine how many blocks to scan:
+        // - New account with no balance: 10 blocks (just recent activity)
+        // - Account with balance but no tx history: 20 blocks (they got funds somehow)
+        // - Account with tx history: 30 blocks (normal scanning)
+        let blocksToScan = 30;
+
+        if (!hasTransactionHistory && !hasBalance) {
+          blocksToScan = 10; // Minimal scanning for truly empty accounts
+          console.log(
+            `[pollingEvmTransactions] Empty account detected, scanning only last ${blocksToScan} blocks`
+          );
+        } else if (!hasTransactionHistory && hasBalance) {
+          blocksToScan = 20; // Medium scanning - they have funds but we haven't found the tx yet
+          console.log(
+            `[pollingEvmTransactions] Account has balance but no tx history, scanning last ${blocksToScan} blocks`
+          );
+        } else {
+          console.log(
+            `[pollingEvmTransactions] Account has transaction history, scanning last ${blocksToScan} blocks`
+          );
+        }
+
         const providerTxs = await getUserTransactionByDefaultProvider(
-          30,
+          blocksToScan,
           web3Provider
         );
 
