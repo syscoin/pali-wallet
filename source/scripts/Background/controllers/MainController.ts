@@ -688,10 +688,6 @@ class MainController {
     return this.getActiveKeyring().logout();
   }
 
-  private updateNetworkConfig(network: any) {
-    return this.getActiveKeyring().updateNetworkConfig(network);
-  }
-
   private async setSignerNetwork(network: INetwork) {
     // Set network switching flag for UI/logging purposes only
     this.isNetworkSwitching = true;
@@ -1926,49 +1922,14 @@ class MainController {
     // Save wallet state after adding custom network
     this.saveWalletState('add-custom-network');
 
-    const networksAfterDispatch =
-      store.getState().vaultGlobal.networks[networkWithCustomParams.kind];
-
-    const findCorrectNetworkValue = Object.values(networksAfterDispatch).find(
-      (netValues) =>
-        netValues.chainId === networkWithCustomParams.chainId &&
-        netValues.url === networkWithCustomParams.url &&
-        netValues.label === networkWithCustomParams.label
-    ) as INetwork;
-
-    return findCorrectNetworkValue;
+    return networkWithCustomParams;
   }
 
-  public async editCustomRpc(
-    network: INetwork,
-    oldRpc: INetwork
-  ): Promise<INetwork> {
-    // Validate oldRpc parameter
-    if (!oldRpc) {
-      throw new Error(
-        'Cannot edit RPC: original network configuration is missing'
-      );
-    }
-
-    if (network.chainId === oldRpc.chainId) {
-      const newNetwork = {
-        ...network,
-        default: oldRpc.default,
-        kind: oldRpc.kind,
-        ...(oldRpc?.key && { key: oldRpc.key }),
-      } as INetwork;
-
-      store.dispatch(setNetwork({ network: newNetwork, isEdit: true }));
-      this.updateNetworkConfig(newNetwork);
-
-      // Save wallet state after editing network
-      this.saveWalletState('edit-network');
-
-      return newNetwork;
-    }
-    throw new Error(
-      'You are trying to set a different network RPC in current network. Please, verify it and try again'
-    );
+  public async editCustomRpc(network: INetwork): Promise<INetwork> {
+    store.dispatch(setNetwork({ network, isEdit: true }));
+    // Save wallet state after editing network
+    this.saveWalletState('edit-network');
+    return network;
   }
 
   public setIsLastTxConfirmed(

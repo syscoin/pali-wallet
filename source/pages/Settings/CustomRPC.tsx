@@ -376,10 +376,7 @@ const CustomRPCView = () => {
           ...(existingNetwork.key && { key: existingNetwork.key }),
         };
 
-        await controllerEmitter(
-          ['wallet', 'editCustomRpc'],
-          [updatedNetwork, existingNetwork]
-        );
+        await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
         setLoading(false);
 
         alert.removeAll();
