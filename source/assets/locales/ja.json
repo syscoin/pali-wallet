@@ -378,9 +378,6 @@
     "confirm": "確認",
     "cantCompleteApprove": "承認を完了できません。後でもう一度お試しください。",
     "approveSuccessful": "承認成功",
-    "approveSuccessfulMessage": "承認が正常に送信されました。ホームページのアクティビティセクションで詳細を確認できます。",
-    "verifyFields": "フィールドを検証",
-    "changeFields": "フィールド値を変更して再試行してください。",
     "grantAccess": "あなたのアクセスを許可します",
     "byGrantingPermission": "権限を付与することで、次のコントラクトがあなたの資金にアクセスすることを許可します",
     "editPermission": "権限を編集",
@@ -450,7 +447,11 @@
     "invalidAmount": "無効な金額です。有効な金額を入力してください。",
     "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
     "transactionCreationFailedWithCode": "取引の作成に失敗しました ({{code}}): {{message}}",
-    "transactionSendFailed": "取引の送信に失敗しました: {{message}}"
+    "transactionSendFailed": "取引の送信に失敗しました: {{message}}",
+    "gasLimitTooLow": "ガスリミットは1000より大きくする必要があります",
+    "priorityFeeTooHigh": "優先手数料は最大手数料より小さくする必要があります",
+    "maxFeeTooLow": "最大手数料は優先手数料より大きくする必要があります",
+    "gasPriceTooLow": "ガス価格は0より大きくする必要があります"
   },
   "start": {
     "paliDoesnt": "Paliはパスワードを保存しません。アクセスを回復するには、シークレットリカバリーフレーズでウォレットをリセットする必要があります。",

@@ -445,13 +445,6 @@ export const SendNTokenTransaction = () => {
         }}
       />
 
-      <DefaultModal
-        show={haveError}
-        title={t('send.verifyFields')}
-        description={t('send.changeFields')}
-        onClose={() => setHaveError(false)}
-      />
-
       <EditPriorityModal
         showModal={isOpen}
         setIsOpen={setIsOpen}

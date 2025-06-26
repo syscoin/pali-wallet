@@ -372,9 +372,6 @@
     "confirm": "CONFIRMER",
     "cantCompleteApprove": "Impossible de terminer l'approbation. Réessayez plus tard.",
     "approveSuccessful": "Approbation réussie",
-    "approveSuccessfulMessage": "Votre approbation a été soumise avec succès. Vous pouvez voir plus de détails sous l'activité sur votre page d'accueil.",
-    "verifyFields": "Vérifier les champs",
-    "changeFields": "Modifiez les valeurs des champs et réessayez.",
     "grantAccess": "Vous accordez l'accès à votre",
     "byGrantingPermission": "En accordant la permission, vous autorisez le contrat suivant à accéder à vos fonds",
     "editPermission": "Modifier la permission",
@@ -444,7 +441,11 @@
     "invalidAmount": "Montant invalide. Veuillez entrer un montant valide.",
     "invalidAssetAllocation": "Allocation d'actifs invalide. Token GUID {{guid}} introuvable ou invalide.",
     "transactionCreationFailedWithCode": "Échec de la création de la transaction ({{code}}): {{message}}",
-    "transactionSendFailed": "Échec de l'envoi de la transaction: {{message}}"
+    "transactionSendFailed": "Échec de l'envoi de la transaction: {{message}}",
+    "gasLimitTooLow": "La limite de gaz doit être supérieure à 1000",
+    "priorityFeeTooHigh": "Les frais de priorité doivent être inférieurs aux frais max",
+    "maxFeeTooLow": "Les frais max doivent être supérieurs aux frais de priorité",
+    "gasPriceTooLow": "Le prix du gaz doit être supérieur à 0"
   },
   "titles": {
     "assetDetails": "Détails de l'actif",

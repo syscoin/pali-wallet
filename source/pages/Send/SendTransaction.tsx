@@ -270,13 +270,6 @@ export const SendTransaction = () => {
       />
 
       <DefaultModal
-        show={haveError}
-        title={t('send.verifyFields')}
-        description={t('send.changeFields')}
-        onClose={() => setHaveError(false)}
-      />
-
-      <DefaultModal
         show={isReconectModalOpen}
         title={t('settings.ledgerReconnection')}
         buttonText={t('buttons.reconnect')}

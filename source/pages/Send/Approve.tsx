@@ -364,12 +364,6 @@ export const ApproveTransactionComponent = () => {
         fee={fee}
       />
 
-      <DefaultModal
-        show={haveError}
-        title={t('send.verifyFields')}
-        description={t('send.changeFields')}
-        onClose={() => setHaveError(false)}
-      />
       <EditApprovedAllowanceValueModal
         showModal={openEditFeeModal}
         host={host}

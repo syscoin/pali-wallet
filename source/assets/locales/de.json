@@ -378,9 +378,6 @@
     "confirm": "BESTÄTIGEN",
     "cantCompleteApprove": "Genehmigung kann nicht abgeschlossen werden. Versuchen Sie es später erneut.",
     "approveSuccessful": "Genehmigung erfolgreich",
-    "approveSuccessfulMessage": "Ihre Genehmigung wurde erfolgreich übermittelt. Weitere Details finden Sie unter Aktivitäten auf Ihrer Startseite.",
-    "verifyFields": "Felder überprüfen",
-    "changeFields": "Ändern Sie die Feldwerte und versuchen Sie es erneut.",
     "grantAccess": "Sie gewähren Zugriff auf Ihr",
     "byGrantingPermission": "Durch die Erteilung der Erlaubnis autorisieren Sie den folgenden Vertrag, auf Ihre Gelder zuzugreifen",
     "editPermission": "Berechtigung bearbeiten",
@@ -450,7 +447,11 @@
     "invalidAmount": "Ungültiger Betrag. Bitte geben Sie einen gültigen Betrag ein.",
     "invalidAssetAllocation": "Ungültige Asset-Zuteilung. Token GUID {{guid}} wurde nicht gefunden oder ist ungültig.",
     "transactionCreationFailedWithCode": "Transaktionserstellung fehlgeschlagen ({{code}}): {{message}}",
-    "transactionSendFailed": "Transaktionsversendung fehlgeschlagen: {{message}}"
+    "transactionSendFailed": "Transaktionsversendung fehlgeschlagen: {{message}}",
+    "gasLimitTooLow": "Das Gaslimit muss größer als 1000 sein",
+    "priorityFeeTooHigh": "Die Prioritätsgebühr muss kleiner als die Maximalgebühr sein",
+    "maxFeeTooLow": "Die Maximalgebühr muss größer als die Prioritätsgebühr sein",
+    "gasPriceTooLow": "Der Gaspreis muss größer als 0 sein"
   },
   "start": {
     "paliDoesnt": "Pali speichert Ihr Passwort nicht. Die Wiederherstellung des Zugriffs erfordert ein Zurücksetzen der Wallet mit Ihrer geheimen Wiederherstellungsphrase.",

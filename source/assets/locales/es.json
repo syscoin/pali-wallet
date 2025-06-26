@@ -207,9 +207,6 @@
     "on": "en",
     "cantCompleteApprove": "No se puede completar la aprobación. Inténtalo de nuevo más tarde.",
     "approveSuccessful": "Aprobación exitosa",
-    "approveSuccessfulMessage": "Tu aprobación se ha enviado con éxito. Puedes ver más detalles en la sección de actividad de tu página de inicio.",
-    "verifyFields": "Verificar Campos",
-    "changeFields": "Cambia los valores de los campos y vuelve a intentarlo.",
     "grantAccess": "Concedes acceso a tu",
     "byGrantingPermission": "Al otorgar permiso, estás autorizando al siguiente contrato a acceder a tus fondos",
     "editPermission": "Editar permiso",
@@ -280,7 +277,11 @@
     "invalidAmount": "Cantidad inválida. Por favor ingresa una cantidad válida.",
     "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
     "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}",
-    "transactionSendFailed": "Error al enviar la transacción: {{message}}"
+    "transactionSendFailed": "Error al enviar la transacción: {{message}}",
+    "gasLimitTooLow": "El límite de gas debe ser mayor a 1000",
+    "priorityFeeTooHigh": "La tarifa de prioridad debe ser menor que la tarifa máxima",
+    "maxFeeTooLow": "La tarifa máxima debe ser mayor que la tarifa de prioridad",
+    "gasPriceTooLow": "El precio del gas debe ser mayor que 0"
   },
   "settings": {
     "bgError": "Error de Fondo",

@@ -1236,12 +1236,6 @@ export const SendConfirm = () => {
         }}
       />
 
-      <DefaultModal
-        show={haveError}
-        title={t('send.verifyFields')}
-        description={t('send.changeFields')}
-        onClose={() => setHaveError(false)}
-      />
       {/* Render main content only when appropriate - prevents blank screen during transaction completion */}
       {shouldShowMainContent && basicTxValues ? (
         <div className="flex flex-col items-center justify-center w-full">

@@ -190,9 +190,6 @@
     "paliVerifies": "Pali verifica seu endereço para verificar se é um endereço {{currency}} válido. É útil desabilitar esta verificação se você quiser enviar para tipos específicos de endereços, como legacy. Desabilite esta verificação apenas se estiver totalmente ciente do que está fazendo.",
     "cantCompleteApprove": "Não foi possível completar a aprovação. Tente novamente mais tarde.",
     "approveSuccessful": "Aprovação bem-sucedida",
-    "approveSuccessfulMessage": "Sua aprovação foi enviada com sucesso. Você pode ver mais detalhes na seção de atividade na sua página inicial.",
-    "verifyFields": "Verificar Campos",
-    "changeFields": "Altere os valores dos campos e tente novamente.",
     "grantAccess": "Você concede acesso ao seu",
     "byGrantingPermission": "Ao conceder permissão, você está autorizando o seguinte contrato a acessar seus fundos",
     "editPermission": "Editar permissão",
@@ -267,7 +264,11 @@
     "confirm": "CONFIRMAR",
     "reduceFee": "Por favor, reduza as taxas para enviar a transação.",
     "insufficientFunds": "Fundos insuficientes",
-    "hex": "Hex"
+    "hex": "Hex",
+    "gasLimitTooLow": "O limite de gas deve ser maior que 1000",
+    "priorityFeeTooHigh": "A taxa de prioridade deve ser menor que a taxa máxima",
+    "maxFeeTooLow": "A taxa máxima deve ser maior que a taxa de prioridade",
+    "gasPriceTooLow": "O preço do gas deve ser maior que 0"
   },
   "settings": {
     "bgError": "Erro em segundo plano",

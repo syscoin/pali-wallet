@@ -525,9 +525,6 @@
     "confirm": "确认",
     "cantCompleteApprove": "无法完成批准。请稍后再试。",
     "approveSuccessful": "批准成功",
-    "approveSuccessfulMessage": "您的批准已成功提交。您可以在主页的活动部分查看更多详细信息。",
-    "verifyFields": "验证字段",
-    "changeFields": "更改字段值并重试。",
     "grantAccess": "您授予对您的访问权限",
     "byGrantingPermission": "通过授予权限，您正在授权以下合约访问您的资金",
     "editPermission": "编辑权限",
@@ -597,6 +594,10 @@
     "invalidAmount": "无效的金额。请输入有效的金额。",
     "invalidAssetAllocation": "无效的资产分配。代币 GUID {{guid}} 未找到或无效。",
     "transactionCreationFailedWithCode": "交易创建失败 ({{code}}): {{message}}",
-    "transactionSendFailed": "交易发送失败: {{message}}"
+    "transactionSendFailed": "交易发送失败: {{message}}",
+    "gasLimitTooLow": "燃气限制必须大于1000",
+    "priorityFeeTooHigh": "优先费必须小于最大费用",
+    "maxFeeTooLow": "最大费用必须大于优先费",
+    "gasPriceTooLow": "燃气价格必须大于0"
   }
 }

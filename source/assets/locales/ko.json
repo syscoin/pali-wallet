@@ -378,9 +378,6 @@
     "confirm": "확인",
     "cantCompleteApprove": "승인을 완료할 수 없습니다. 나중에 다시 시도하세요.",
     "approveSuccessful": "승인 성공",
-    "approveSuccessfulMessage": "승인이 성공적으로 제출되었습니다. 홈페이지의 활동 섹션에서 자세한 내용을 볼 수 있습니다.",
-    "verifyFields": "필드 확인",
-    "changeFields": "필드 값을 변경하고 다시 시도하세요.",
     "grantAccess": "귀하의 액세스 권한을 부여합니다",
     "byGrantingPermission": "권한을 부여함으로써 다음 계약이 귀하의 자금에 액세스하는 것을 승인합니다",
     "editPermission": "권한 편집",
@@ -450,7 +447,11 @@
     "invalidAmount": "잘못된 금액입니다. 유효한 금액을 입력하세요.",
     "invalidAssetAllocation": "잘못된 자산 할당입니다. 토큰 GUID {{guid}}를 찾을 수 없거나 유효하지 않습니다.",
     "transactionCreationFailedWithCode": "거래 생성 실패 ({{code}}): {{message}}",
-    "transactionSendFailed": "거래 전송 실패: {{message}}"
+    "transactionSendFailed": "거래 전송 실패: {{message}}",
+    "gasLimitTooLow": "가스 한도는 1000보다 커야 합니다",
+    "priorityFeeTooHigh": "우선 수수료는 최대 수수료보다 작아야 합니다",
+    "maxFeeTooLow": "최대 수수료는 우선 수수료보다 커야 합니다",
+    "gasPriceTooLow": "가스 가격은 0보다 커야 합니다"
   },
   "start": {
     "paliDoesnt": "Pali는 비밀번호를 저장하지 않습니다. 액세스를 복구하려면 비밀 복구 구문으로 지갑을 재설정해야 합니다.",
