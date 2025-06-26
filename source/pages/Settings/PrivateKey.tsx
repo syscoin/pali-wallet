@@ -48,8 +48,10 @@ const PrivateKeyView = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.info(t('settings.successfullyCopied'));
+    setTimeout(() => {
+      alert.removeAll();
+      alert.info(t('settings.successfullyCopied'));
+    }, 0);
   }, [copied, alert, t]);
 
   // Password validation function for ValidatedPasswordInput

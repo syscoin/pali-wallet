@@ -227,8 +227,10 @@ export const SendTransaction = () => {
         setCustomNonce(nonce);
       } catch (e) {
         logError('error getting fees', 'Transaction', e);
-        alert.removeAll();
-        alert.error(t('send.txWillFail'), e);
+        setTimeout(() => {
+          alert.removeAll();
+          alert.error(t('send.txWillFail'), e);
+        }, 0);
         setTimeout(window.close, 3000);
       }
     };
@@ -247,9 +249,6 @@ export const SendTransaction = () => {
   // Navigate when transaction is confirmed
   useEffect(() => {
     if (confirmed) {
-      alert.removeAll();
-      alert.success(t('send.txSuccessfull'));
-
       if (isExternal) {
         window.close();
       } else {

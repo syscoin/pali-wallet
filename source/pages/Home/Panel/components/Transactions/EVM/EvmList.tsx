@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -6,7 +6,6 @@ import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
 import { TransactionOptions } from 'components/TransactionOptions';
-import { useController } from 'hooks/useController';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
@@ -31,9 +30,6 @@ export const EvmTransactionsList = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isLastTxConfirmed = useSelector(
-    (state: RootState) => state.vault.isLastTxConfirmed
-  );
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
@@ -54,13 +50,16 @@ export const EvmTransactionsList = ({
   } = useTransactionsListConfig(userTransactions);
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
-  const { controllerEmitter } = useController();
 
   const [modalData, setModalData] = useState<modalDataType>();
   const [isOpenModal, setIsOpenModal] = useState<boolean>(false);
   const [groupedTransactions, setGroupedTransactions] = useState<{
     [date: string]: ITransactionInfoEvm[];
   }>({});
+  // Track the previous confirmation state locally
+  const prevConfirmationState = useRef<{ [txHash: string]: number }>({});
+  const isFirstRender = useRef(true);
+  const lastToastTime = useRef<number>(0);
 
   const currentAccountTransactions =
     accountTransactions[activeAccount.type]?.[activeAccount.id];
@@ -184,38 +183,70 @@ export const EvmTransactionsList = ({
     setGroupedTransactions(grouped);
   }, [filteredTransactions]);
 
+  // Create a stable dependency by tracking only transaction count and confirmation sum
+  const ethereumTxs = currentAccountTransactions?.ethereum?.[chainId] || [];
+  const txCount = ethereumTxs.length;
+  const confirmationSum = ethereumTxs.reduce(
+    (sum: number, tx: any) => sum + (tx.confirmations || 0),
+    0
+  );
+
   useEffect(() => {
-    if (!currentAccountTransactions?.ethereum?.[chainId]) {
-      return;
-    }
-    const lastIndex = currentAccountTransactions.ethereum[chainId].length - 1;
-    const lastTx = currentAccountTransactions.ethereum[chainId][lastIndex];
+    // Get the specific transactions for this chain
+    const ethereumTransactions =
+      currentAccountTransactions?.ethereum?.[chainId];
 
-    // Check if isLastTxConfirmed exists for this chainId (to avoid showing on fresh pull)
-    const hasExistingState = isLastTxConfirmed?.[chainId] !== undefined;
-
-    if (isLastTxConfirmed?.[chainId]) {
+    if (!ethereumTransactions || !Array.isArray(ethereumTransactions)) {
       return;
     }
 
-    if (lastTx?.confirmations === 0) {
-      controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, false]);
-      return;
+    // Track confirmation changes for all transactions
+    const newConfirmationStates: { [txHash: string]: number } = {};
+    let hasNewlyConfirmedTx = false;
+
+    // Skip showing toast on first render
+    const shouldCheckForNewConfirmations = !isFirstRender.current;
+
+    ethereumTransactions.forEach((tx: any) => {
+      const txHash = tx.hash;
+      const currentConfirmations = tx.confirmations || 0;
+
+      newConfirmationStates[txHash] = currentConfirmations;
+
+      // Check if this transaction just went from pending (0) to confirmed (>0)
+      if (
+        shouldCheckForNewConfirmations &&
+        prevConfirmationState.current[txHash] === 0 &&
+        currentConfirmations > 0
+      ) {
+        hasNewlyConfirmedTx = true;
+      }
+    });
+
+    // Show toast if we detected a newly confirmed transaction
+    if (hasNewlyConfirmedTx) {
+      const now = Date.now();
+      // Prevent showing multiple toasts within 3 seconds
+      if (now - lastToastTime.current > 3000) {
+        // Defer toast to next tick to avoid conflicts with re-renders
+        setTimeout(() => {
+          alert.removeAll();
+          alert.success(t('send.txSuccessfull'), {
+            autoClose: 5000, // Show for 5 seconds
+          });
+        }, 0);
+        lastToastTime.current = now;
+      }
     }
 
-    // Only show toast if we had a pending transaction that just confirmed
-    // (hasExistingState === true means this isn't a fresh pull)
-    if (
-      lastTx?.confirmations > 0 &&
-      hasExistingState &&
-      !isLastTxConfirmed?.[chainId]
-    ) {
-      // Show toast instead of modal
-      alert.removeAll();
-      alert.success(t('send.txSuccessfull'));
-      controllerEmitter(['wallet', 'setIsLastTxConfirmed'], [chainId, true]);
+    // Update the previous state for next comparison
+    prevConfirmationState.current = newConfirmationStates;
+
+    // Mark that first render is complete
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
     }
-  }, [currentAccountTransactions, alert, t, chainId, isLastTxConfirmed]);
+  }, [txCount, confirmationSum, chainId, alert, t]);
 
   return (
     <>

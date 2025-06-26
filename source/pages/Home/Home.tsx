@@ -159,9 +159,11 @@ export const Home = () => {
           );
 
           // Clear cache and get fresh data - check if changes were detected
-          const hasChanges = await controllerEmitter([
-            'callGetLatestUpdateForAccount',
-          ]);
+          // Pass true for isPolling to avoid showing skeleton loader during these background updates
+          const hasChanges = await controllerEmitter(
+            ['callGetLatestUpdateForAccount'],
+            [true]
+          );
 
           console.log(`[Post-TX Poll] Changes detected: ${hasChanges}`);
 

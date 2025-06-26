@@ -22,8 +22,10 @@ const AboutView: FC = () => {
 
   useEffect(() => {
     if (copied) {
-      alert.removeAll();
-      alert.info(t('settings.linkCopied'));
+      setTimeout(() => {
+        alert.removeAll();
+        alert.info(t('settings.linkCopied'));
+      }, 0);
     }
   }, [copied, alert, t]);
 

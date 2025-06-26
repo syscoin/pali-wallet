@@ -45,8 +45,10 @@ const Decrypt: React.FC<ISign> = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.info(t('transactions.messageCopied'));
+    setTimeout(() => {
+      alert.removeAll();
+      alert.info(t('transactions.messageCopied'));
+    }, 0);
   }, [copied, alert, t]);
 
   const onSubmit = async () => {

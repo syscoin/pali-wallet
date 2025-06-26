@@ -2246,6 +2246,8 @@ class MainController {
               validateIfIsSameLength;
 
             if (validateIfIsInvalidDispatch) {
+              // Skip dispatch but still resolve - empty data might be valid
+              store.dispatch(setIsLoadingNfts(false));
               resolve();
               return;
             }
@@ -2314,9 +2316,11 @@ class MainController {
   public updateUserTransactionsState({
     isBitcoinBased,
     activeNetwork,
+    isPolling = false,
   }: {
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) {
     // Check if wallet is unlocked first - skip if locked
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2337,8 +2341,10 @@ class MainController {
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
           try {
-            // Always set loading state to show activity
-            store.dispatch(setIsLoadingTxs(true));
+            // Only set loading state for non-polling updates
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(true));
+            }
 
             // Safe access to transaction objects with error handling
             let web3Provider = null;
@@ -2380,8 +2386,10 @@ class MainController {
               );
             }
 
-            // Clear loading state on success
-            store.dispatch(setIsLoadingTxs(false));
+            // Clear loading state on success only if we set it
+            if (!isPolling) {
+              store.dispatch(setIsLoadingTxs(false));
+            }
             resolve();
           } catch (error) {
             console.error('Error fetching transactions:', error);
@@ -2430,6 +2438,7 @@ class MainController {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling = false,
   }: {
     activeAccount: {
       id: number;
@@ -2437,6 +2446,7 @@ class MainController {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) {
     // Check if wallet is unlocked first - skip if locked
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2451,8 +2461,13 @@ class MainController {
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
     const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
 
-    // Always set loading state to show activity
-    store.dispatch(setIsLoadingAssets(true));
+    // Only set loading state for non-polling updates
+    if (!isPolling) {
+      store.dispatch(setIsLoadingAssets(true));
+    }
+
+    // Capture isPolling for use in the inner async function
+    const isPollingUpdate = isPolling;
 
     const { currentPromise: assetsPromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -2510,7 +2525,10 @@ class MainController {
 
             if (validateIfIsInvalidDispatch) {
               // Skip dispatch but still resolve - empty data might be valid
-              store.dispatch(setIsLoadingAssets(false));
+              // Only clear loading state if we set it
+              if (!isPollingUpdate) {
+                store.dispatch(setIsLoadingAssets(false));
+              }
               resolve();
               return;
             }
@@ -2523,8 +2541,10 @@ class MainController {
               })
             );
 
-            // Clear loading state on success
-            store.dispatch(setIsLoadingAssets(false));
+            // Clear loading state on success only if we set it
+            if (!isPollingUpdate) {
+              store.dispatch(setIsLoadingAssets(false));
+            }
             resolve();
           } catch (error) {
             reject(error);
@@ -2547,6 +2567,7 @@ class MainController {
     isBitcoinBased,
     activeNetwork,
     activeAccount,
+    isPolling = false,
   }: {
     activeAccount: {
       id: number;
@@ -2554,6 +2575,7 @@ class MainController {
     };
     activeNetwork: INetwork;
     isBitcoinBased: boolean;
+    isPolling?: boolean;
   }) {
     // Check if wallet is unlocked first - skip if locked
     const keyring = this.getActiveKeyringIfUnlocked();
@@ -2568,8 +2590,13 @@ class MainController {
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
-    // Set loading state at the beginning
-    store.dispatch(setIsLoadingBalances(true));
+    // Only set loading state for non-polling updates
+    if (!isPolling) {
+      store.dispatch(setIsLoadingBalances(true));
+    }
+
+    // Capture isPolling for use in the inner async function
+    const isPollingUpdate = isPolling;
 
     // No need to create a new provider - let the BalancesManager use its own provider
     // The BalancesManager already handles EVM vs UTXO networks correctly
@@ -2630,8 +2657,10 @@ class MainController {
               );
             }
 
-            // Clear loading state on success
-            store.dispatch(setIsLoadingBalances(false));
+            // Clear loading state on success only if we set it
+            if (!isPollingUpdate) {
+              store.dispatch(setIsLoadingBalances(false));
+            }
             resolve();
           } catch (error) {
             reject(error);
@@ -2766,15 +2795,18 @@ class MainController {
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
       this.updateUserTransactionsState({
         isBitcoinBased,
         activeNetwork,
+        isPolling,
       }),
       this.updateUserNativeBalance({
         isBitcoinBased,
         activeNetwork,
         activeAccount,
+        isPolling,
       }),
     ];
 
@@ -2805,18 +2837,21 @@ class MainController {
 
     // Clear loading states only for operations that succeeded
     // Keep loading states active for failed operations to show error state
-    const loadingStates = store.getState().vaultGlobal.loadingStates;
+    // Only clear if we set them in the first place (not polling)
+    if (!isPolling) {
+      const loadingStates = store.getState().vaultGlobal.loadingStates;
 
-    if (!assetsFailed && loadingStates.isLoadingAssets) {
-      store.dispatch(setIsLoadingAssets(false));
-    }
+      if (!assetsFailed && loadingStates.isLoadingAssets) {
+        store.dispatch(setIsLoadingAssets(false));
+      }
 
-    if (!transactionsFailed && loadingStates.isLoadingTxs) {
-      store.dispatch(setIsLoadingTxs(false));
-    }
+      if (!transactionsFailed && loadingStates.isLoadingTxs) {
+        store.dispatch(setIsLoadingTxs(false));
+      }
 
-    if (!balanceFailed && loadingStates.isLoadingBalances) {
-      store.dispatch(setIsLoadingBalances(false));
+      if (!balanceFailed && loadingStates.isLoadingBalances) {
+        store.dispatch(setIsLoadingBalances(false));
+      }
     }
 
     // If balance failed, set network status to error to prevent green success indicator

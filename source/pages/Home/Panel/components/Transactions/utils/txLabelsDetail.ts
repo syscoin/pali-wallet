@@ -28,7 +28,6 @@ export const EnhancedEvmTxDetailsLabelsToKeep = [
   'Hash',
   'From',
   'To',
-  'Value',
   'Block Number',
   'Block Hash',
   'Confirmations',

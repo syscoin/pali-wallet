@@ -285,8 +285,10 @@ export const ApproveTransactionComponent = () => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.success(t('home.addressCopied'));
+    setTimeout(() => {
+      alert.removeAll();
+      alert.success(t('home.addressCopied'));
+    }, 0);
   }, [copied, alert, t]);
 
   useMemo(() => {
@@ -331,8 +333,10 @@ export const ApproveTransactionComponent = () => {
   // Navigate when transaction is confirmed
   useEffect(() => {
     if (confirmedDefaultModal) {
-      alert.removeAll();
-      alert.success(t('send.approveSuccessful'));
+      setTimeout(() => {
+        alert.removeAll();
+        alert.success(t('send.approveSuccessful'));
+      }, 0);
 
       if (isExternal) {
         window.close();

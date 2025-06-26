@@ -34,7 +34,7 @@ import MainController from './MainController';
 
 export interface IMasterController {
   appRoute: (newRoute?: string, external?: boolean) => string;
-  callGetLatestUpdateForAccount: () => Promise<boolean>;
+  callGetLatestUpdateForAccount: (isPolling?: boolean) => Promise<boolean>;
   createPopup: (
     route?: string,
     data?: object
@@ -188,8 +188,8 @@ const MasterController = (
     wallet.initializeStartupState();
   };
 
-  const callGetLatestUpdateForAccount = () =>
-    wallet.getLatestUpdateForCurrentAccount();
+  const callGetLatestUpdateForAccount = async (isPolling?: boolean) =>
+    wallet.getLatestUpdateForCurrentAccount(isPolling);
 
   const refresh = () => {
     const vaultState = externalStore.getState().vault;

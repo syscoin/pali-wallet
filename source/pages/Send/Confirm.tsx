@@ -1192,17 +1192,15 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (!copied) return;
-    alert.removeAll();
-    alert.info(t('home.addressCopied'));
+    setTimeout(() => {
+      alert.removeAll();
+      alert.info(t('home.addressCopied'));
+    }, 0);
   }, [copied, alert, t]);
 
   // Navigate home when transaction is confirmed
   useEffect(() => {
     if (confirmed) {
-      alert.removeAll();
-      alert.success(t('send.txSuccessfull'));
-
-      // Navigate back to home with fromTransaction flag for adaptive polling
       navigate('/home', {
         state: { fromTransaction: true },
       });

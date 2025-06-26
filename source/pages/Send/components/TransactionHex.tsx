@@ -19,8 +19,10 @@ export const TransactionHexComponent = (props: ITransactionHexProps) => {
   useEffect(() => {
     if (!copied) return;
 
-    alert.removeAll();
-    alert.info(t('send.hexDataCopied'));
+    setTimeout(() => {
+      alert.removeAll();
+      alert.info(t('send.hexDataCopied'));
+    }, 0);
   }, [copied, alert, t]);
 
   return (
