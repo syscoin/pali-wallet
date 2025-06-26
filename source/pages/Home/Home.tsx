@@ -179,12 +179,18 @@ export const Home = () => {
     return accounts[activeAccount.type]?.[activeAccount.id] || null;
   }, [accounts, activeAccount]);
 
-  const actualBalance = useMemo(() => {
-    if (!currentAccount?.balances) return 0;
+  const rawBalance = useMemo(() => {
+    if (!currentAccount?.balances) return -1;
     return isBitcoinBased
-      ? currentAccount.balances[INetworkType.Syscoin] || 0
-      : currentAccount.balances[INetworkType.Ethereum] || 0;
+      ? currentAccount.balances[INetworkType.Syscoin] || -1
+      : currentAccount.balances[INetworkType.Ethereum] || -1;
   }, [currentAccount?.balances, isBitcoinBased]);
+
+  // Actual balance for display (convert -1 to 0)
+  const actualBalance = useMemo(
+    () => (rawBalance === -1 ? 0 : rawBalance),
+    [rawBalance]
+  );
 
   const moreThanMillion = useMemo(
     () => actualBalance >= ONE_MILLION,
@@ -226,18 +232,16 @@ export const Home = () => {
   );
 
   // Show skeleton loader when:
-  // 1. Balance is loading (but not during polling updates)
-  // 2. We have no balance data yet (first load or after error)
-  // 3. Network is in error or connecting state
-  const hasNoBalanceData =
-    !currentAccount?.balances ||
-    Object.keys(currentAccount.balances).length === 0;
-
+  // 1. Balance is -1 (no data) AND we're loading
+  // 2. Network is in error, connecting, or switching state
+  // 3. Balance is 0 AND we're loading (to prevent 0 blip during switches)
   const isLoadingBalance =
-    (isLoadingBalances && !isPollingUpdate) ||
-    (hasNoBalanceData && isLoadingBalances) ||
+    (isLoadingBalances &&
+      !isPollingUpdate &&
+      (rawBalance === -1 || rawBalance === 0)) ||
     networkStatus === 'error' ||
-    networkStatus === 'connecting';
+    networkStatus === 'connecting' ||
+    networkStatus === 'switching';
 
   // Debounced faucet modal display to prevent flashing during network/account switches
   useEffect(() => {

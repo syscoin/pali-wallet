@@ -33,6 +33,10 @@ const initialState: IVaultState = {
     [KeyringAccountType.HDAccount]: {
       [initialActiveHdAccountState.id]: {
         ...initialActiveHdAccountState,
+        balances: {
+          ethereum: -1,
+          syscoin: -1,
+        },
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -147,19 +151,28 @@ const VaultState = createSlice({
       }>
     ) {
       const { activeNetwork } = action.payload;
+
       state.activeChain = activeNetwork.kind;
       state.isBitcoinBased = activeNetwork.kind === INetworkType.Syscoin;
-      state.activeNetwork = activeNetwork;
 
-      // Clear active account balance when switching networks to prevent showing stale data
-      // The balance will be refreshed after the network switch completes
-      const { id, type } = state.activeAccount;
-      if (state.accounts[type] && state.accounts[type][id]) {
-        state.accounts[type][id].balances = {
-          [INetworkType.Syscoin]: 0,
-          [INetworkType.Ethereum]: 0,
-        };
-      }
+      // Clear ALL accounts' balances when switching networks
+      // Use -1 to indicate "no data" - will show skeleton loader
+      Object.keys(KeyringAccountType).forEach((accountType) => {
+        const accounts = state.accounts[accountType as KeyringAccountType];
+        if (accounts) {
+          Object.keys(accounts).forEach((accountId) => {
+            const id = Number(accountId);
+            if (state.accounts[accountType as KeyringAccountType][id]) {
+              state.accounts[accountType as KeyringAccountType][id].balances = {
+                [INetworkType.Syscoin]: -1,
+                [INetworkType.Ethereum]: -1,
+              };
+            }
+          });
+        }
+      });
+
+      state.activeNetwork = activeNetwork;
     },
     setAccountBalances(
       state: IVaultState,
@@ -180,8 +193,17 @@ const VaultState = createSlice({
     ) {
       const { account, accountType, assets, transactions } = action.payload;
 
+      // Override the initial balances to -1 (indicating "no data")
+      const accountWithInitialBalances = {
+        ...account,
+        balances: {
+          [INetworkType.Syscoin]: -1,
+          [INetworkType.Ethereum]: -1,
+        },
+      };
+
       // Set the clean account data
-      state.accounts[accountType][account.id] = account;
+      state.accounts[accountType][account.id] = accountWithInitialBalances;
 
       // Set up accountAssets
       if (!state.accountAssets[accountType]) {
@@ -356,6 +378,10 @@ const VaultState = createSlice({
         [KeyringAccountType.HDAccount]: {
           [initialActiveHdAccountState.id]: {
             ...initialActiveHdAccountState,
+            balances: {
+              ethereum: -1,
+              syscoin: -1,
+            },
           },
         },
         [KeyringAccountType.Imported]: {},
