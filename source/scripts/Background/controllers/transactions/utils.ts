@@ -63,12 +63,18 @@ export const findUserTxsInProviderByBlocksRange = async (
   const endBlock = latestBlockNumber;
 
   const rangeBlocksToRun = range(startBlock, endBlock + 1); // +1 to include endBlock
-  const BATCH_SIZE = 10; // Start with 10, but we'll reduce if needed
+
+  // Start with a conservative batch size and let it adapt based on provider limits
+  let currentBatchSize = 5; // Conservative starting point
   const allResponses = [];
 
-  // Process blocks in chunks to avoid batch size limits
-  for (let i = 0; i < rangeBlocksToRun.length; i += BATCH_SIZE) {
-    const chunk = rangeBlocksToRun.slice(i, i + BATCH_SIZE);
+  // Process blocks in chunks with dynamic batch size
+  let i = 0;
+  let chunkCount = 0;
+  let consecutiveErrors = 0;
+
+  while (i < rangeBlocksToRun.length) {
+    const chunk = rangeBlocksToRun.slice(i, i + currentBatchSize);
 
     try {
       const batchRequest = chunk.map((blockNumber) =>
@@ -80,33 +86,100 @@ export const findUserTxsInProviderByBlocksRange = async (
 
       const responses = await Promise.all(batchRequest);
       allResponses.push(...responses);
-    } catch (error: any) {
-      // If we get a batch size error, try with individual requests
-      if (error.message && error.message.includes('Batch size too large')) {
-        console.warn(
-          `Batch size ${BATCH_SIZE} too large, falling back to individual requests`
-        );
 
-        // Process each block individually
-        for (const blockNumber of chunk) {
-          try {
-            const response = await provider.send('eth_getBlockByNumber', [
-              `0x${blockNumber.toString(16)}`,
-              true,
-            ]);
-            allResponses.push(response);
-          } catch (individualError) {
-            console.error(
-              `Failed to fetch block ${blockNumber}:`,
-              individualError
-            );
-            // Continue with other blocks even if one fails
-          }
+      // Reset consecutive errors on success
+      consecutiveErrors = 0;
+
+      // Move to next chunk
+      i += currentBatchSize;
+      chunkCount++;
+
+      // Add progressive delay between chunks to avoid rate limiting
+      if (i < rangeBlocksToRun.length) {
+        // Base delay: 100ms, increases by 50ms every 10 chunks
+        const baseDelay = 100;
+        const progressiveDelay = Math.floor(chunkCount / 10) * 50;
+        const delay = Math.min(baseDelay + progressiveDelay, 500); // Cap at 500ms
+
+        if (chunkCount % 10 === 0) {
+          console.log(
+            `Processed ${chunkCount} chunks, current delay: ${delay}ms`
+          );
         }
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    } catch (error: any) {
+      console.error('Error fetching blocks:', error);
+      consecutiveErrors++;
+
+      // Check for rate limiting errors
+      const isRateLimitError =
+        (error.message &&
+          (error.message.includes('rate limit') ||
+            error.message.includes('Too many requests') ||
+            error.message.includes('429'))) ||
+        error.status === 429 ||
+        error.code === 429;
+
+      if (isRateLimitError) {
+        // Exponential backoff for rate limiting
+        const backoffDelay = Math.min(
+          1000 * Math.pow(2, consecutiveErrors),
+          10000
+        ); // Max 10 seconds
+        console.warn(`Rate limit hit, waiting ${backoffDelay}ms before retry`);
+        await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+        continue; // Retry the same chunk
+      }
+
+      // Check for various batch size limit errors
+      const isBatchSizeError =
+        (error.message &&
+          (error.message.includes('Batch size too large') ||
+            error.message.includes('Batch of more than') ||
+            (error.message.includes('batch') &&
+              error.message.includes('not allowed')))) ||
+        (error.body &&
+          typeof error.body === 'string' &&
+          error.body.includes('Batch of more than'));
+
+      if (isBatchSizeError) {
+        // Extract batch limit from error message if possible
+        const batchLimitMatch =
+          error.message?.match(/Batch of more than (\d+)/) ||
+          error.body?.match(/Batch of more than (\d+)/);
+
+        if (batchLimitMatch && batchLimitMatch[1]) {
+          const maxAllowed = parseInt(batchLimitMatch[1]);
+          currentBatchSize = Math.min(currentBatchSize, maxAllowed);
+          console.warn(
+            `Batch size limit detected: max ${maxAllowed} allowed. Reducing batch size to ${currentBatchSize}`
+          );
+        } else if (currentBatchSize > 1) {
+          // If we can't parse the limit, reduce by half
+          currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+          console.warn(
+            `Batch size error detected. Reducing batch size to ${currentBatchSize}`
+          );
+        }
+
+        // Retry the same chunk with smaller batch size
+        continue;
+      } else if (currentBatchSize > 1) {
+        // For other errors, try reducing batch size anyway
+        currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+        console.warn(
+          `Unknown error, reducing batch size to ${currentBatchSize} and retrying`
+        );
+        continue;
       } else {
-        // For other errors, log and continue
-        console.error('Error fetching blocks:', error);
-        // Continue processing remaining chunks
+        // If we're already at batch size 1, skip this block
+        console.error(
+          `Failed to fetch block ${chunk[0]} even with batch size 1:`,
+          error
+        );
+        i += 1; // Move to next block
       }
     }
   }
