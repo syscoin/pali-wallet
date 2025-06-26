@@ -17,10 +17,7 @@ import {
   TransactionValueType,
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps } from 'types/tokens';
-import {
-  PALI_NETWORKS_STATE,
-  SYSCOIN_MAINNET_DEFAULT_NETWORK,
-} from 'utils/constants';
+import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 import { isTokenTransfer } from 'utils/transactions';
 import { convertTransactionValueToCompare } from 'utils/transactionValue';
 

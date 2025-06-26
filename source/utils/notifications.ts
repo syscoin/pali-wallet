@@ -1,6 +1,6 @@
 import { i18next } from 'utils/i18n';
 
-export interface NotificationOptions {
+export interface INotificationOptions {
   buttons?: Array<{
     title: string;
   }>;
@@ -18,7 +18,7 @@ export interface NotificationOptions {
   type?: 'basic' | 'image' | 'list' | 'progress';
 }
 
-export interface TransactionNotification {
+export interface ITransactionNotification {
   chainId: number;
   from: string;
   // e.g., "SPT Transfer", "SYS → SYSX", "Bridge to NEVM"
@@ -33,7 +33,7 @@ export interface TransactionNotification {
 }
 
 // Track notification IDs to their metadata
-const notificationMap = new Map<string, NotificationOptions>();
+const notificationMap = new Map<string, INotificationOptions>();
 
 // Check if browser supports notifications
 export const isNotificationSupported = (): boolean =>
@@ -55,7 +55,7 @@ export const isPopupOpen = async (): Promise<boolean> =>
 
 // Create a notification
 export const createNotification = async (
-  options: NotificationOptions
+  options: INotificationOptions
 ): Promise<string | null> => {
   if (!isNotificationSupported()) {
     console.warn('Notifications not supported');
@@ -127,7 +127,7 @@ export const clearAllNotifications = async (): Promise<void> =>
 
 // Transaction-specific notifications
 export const showTransactionNotification = async (
-  notification: TransactionNotification
+  notification: ITransactionNotification
 ): Promise<string | null> => {
   // Ensure i18next is initialized
   if (!i18next.isInitialized) {
@@ -151,9 +151,11 @@ export const showTransactionNotification = async (
         type: 'basic',
         priority: notification.type === 'failed' ? 2 : 1,
         isClickable: true,
-        clickAction: () => {
-          chrome.action.openPopup();
-        },
+        buttons: [
+          {
+            title: i18next.t('notifications.clickToView'),
+          },
+        ],
       });
     }
   }
@@ -330,18 +332,16 @@ export const setupNotificationListeners = (): void => {
   });
 
   // Handle button clicks
-  chrome.notifications.onButtonClicked.addListener(
-    (notificationId, buttonIndex) => {
-      const notification = notificationMap.get(notificationId);
+  chrome.notifications.onButtonClicked.addListener((notificationId) => {
+    const notification = notificationMap.get(notificationId);
 
-      if (notification && notification.buttons) {
-        // Handle button action based on buttonIndex
-        chrome.action.openPopup();
-      }
-
-      clearNotification(notificationId);
+    if (notification && notification.buttons) {
+      // Handle button action - for now, just open the popup
+      chrome.action.openPopup();
     }
-  );
+
+    clearNotification(notificationId);
+  });
 
   // Clean up closed notifications from our map
   chrome.notifications.onClosed.addListener((notificationId) => {

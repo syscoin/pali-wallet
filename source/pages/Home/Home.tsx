@@ -222,7 +222,7 @@ export const Home = () => {
 
   // Get network status to check for errors
   const networkStatus = useSelector(
-    (state: RootState) => state.vaultGlobal.networkStatus
+    (rootState: RootState) => rootState.vaultGlobal.networkStatus
   );
 
   // Show skeleton loader when:

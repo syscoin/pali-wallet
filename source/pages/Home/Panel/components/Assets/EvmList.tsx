@@ -2,7 +2,6 @@ import { uniqueId } from 'lodash';
 import React, {
   Fragment,
   useState,
-  useMemo,
   useDeferredValue,
   startTransition,
 } from 'react';

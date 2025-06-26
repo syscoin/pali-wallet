@@ -49,7 +49,7 @@ export const SendNTokenTransaction = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [fee, setFee] = useState<IFeeState>();
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [haveError, setHaveError] = useState<boolean>(false);
+  // Removed unused haveError state
   const [customFee, setCustomFee] = useState<ICustomFeeParams>({
     isCustom: false,
     gasLimit: 0,
@@ -452,7 +452,9 @@ export const SendNTokenTransaction = () => {
         setIsOpen={setIsOpen}
         customFee={customFee}
         setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
+        setHaveError={() => {
+          // No-op function since haveError is not used
+        }}
         fee={fee}
         isSendLegacyTransaction={isLegacyTransaction}
       />

@@ -1,5 +1,5 @@
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+// Removed unused import: INetworkType
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';

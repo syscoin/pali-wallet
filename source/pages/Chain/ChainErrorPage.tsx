@@ -9,11 +9,7 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import store from 'state/store';
-import {
-  resetNetworkStatus,
-  startConnecting,
-  switchNetworkError,
-} from 'state/vaultGlobal';
+import { startConnecting, switchNetworkError } from 'state/vaultGlobal';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -33,7 +29,6 @@ export const ChainErrorPage = () => {
   const displayNetwork = networkTarget || activeNetwork;
 
   const [isRetrying, setIsRetrying] = useState(false);
-  const [lastErrorTime, setLastErrorTime] = useState<number>(0);
 
   // Auto-navigate back to home only when connection truly succeeds
   useEffect(() => {

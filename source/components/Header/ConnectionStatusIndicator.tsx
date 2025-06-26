@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { Tooltip } from 'components/Tooltip';
-import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 
 interface IConnectionStatusIndicatorProps {
@@ -21,8 +20,6 @@ export const ConnectionStatusIndicator = memo(
     const criticalTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const previousNetworkActivityRef = useRef<boolean>(false);
-
-    const { controllerEmitter } = useController();
 
     // Get all network-related loading states from vaultGlobal
     const {

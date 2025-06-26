@@ -60,7 +60,6 @@ export const ApproveTransactionComponent = () => {
   const [isOpenPriority, setIsOpenPriority] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [detailsOpened, setDetailsOpened] = useState<boolean>(false);
-  const [haveError, setHaveError] = useState<boolean>(false);
 
   const [customApprovedAllowanceAmount, setCustomApprovedAllowanceAmount] =
     useState<ICustomApprovedAllowanceAmount>({
@@ -364,7 +363,9 @@ export const ApproveTransactionComponent = () => {
         setIsOpen={setIsOpenPriority}
         customFee={customFee}
         setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
+        setHaveError={() => {
+          // No-op function since haveError is not used
+        }}
         fee={fee}
       />
 

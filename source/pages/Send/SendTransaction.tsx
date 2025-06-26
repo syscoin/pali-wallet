@@ -73,7 +73,7 @@ export const SendTransaction = () => {
   const [fee, setFee] = useState<IFeeState>();
   const [customNonce, setCustomNonce] = useState<number>();
   const [tabSelected, setTabSelected] = useState<string>(tabElements[0].id);
-  const [haveError, setHaveError] = useState<boolean>(false);
+  // Removed unused haveError state
   const [hasTxDataError, setHasTxDataError] = useState<boolean>(false);
   const [hasGasError, setHasGasError] = useState<boolean>(false);
   const [isOpen, setIsOpen] = useState<boolean>(false);
@@ -264,7 +264,9 @@ export const SendTransaction = () => {
         setIsOpen={setIsOpen}
         customFee={customFee}
         setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
+        setHaveError={() => {
+          // No-op function since haveError is not used
+        }}
         fee={fee}
       />
 
@@ -359,7 +361,9 @@ export const SendTransaction = () => {
                     decodedTx={decodedTxData}
                     setCustomNonce={setCustomNonce}
                     setCustomFee={setCustomFee}
-                    setHaveError={setHaveError}
+                    setHaveError={() => {
+                      // No-op function since haveError is not used
+                    }}
                     setFee={setFee}
                     fee={fee}
                     setIsOpen={setIsOpen}

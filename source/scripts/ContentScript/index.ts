@@ -160,8 +160,6 @@ export const shouldInjectProvider = () =>
   !blockedDomainCheck();
 
 export const injectScriptFile = (file: string, id: string) => {
-  const injectionStart = Date.now();
-
   try {
     const inpage = document.getElementById('inpage');
     const removeProperty = document.getElementById('removeProperty');

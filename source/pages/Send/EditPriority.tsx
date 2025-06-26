@@ -23,7 +23,6 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
   const {
     showModal,
     setIsOpen,
-    customFee,
     setCustomFee,
     fee,
     setHaveError,
@@ -141,31 +140,33 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
     // Add a small delay to ensure form values are properly set
     const timer = setTimeout(() => {
       // Validate current form values
-      const gasLimit = form.getFieldValue('gasLimit');
-      const maxPriorityFeePerGas = form.getFieldValue('maxPriorityFeePerGas');
-      const maxFeePerGas = form.getFieldValue('maxFeePerGas');
-      const gasPrice = form.getFieldValue('gasPrice');
+      const currentGasLimit = form.getFieldValue('gasLimit');
+      const currentMaxPriorityFeePerGas = form.getFieldValue(
+        'maxPriorityFeePerGas'
+      );
+      const currentMaxFeePerGas = form.getFieldValue('maxFeePerGas');
+      const currentGasPrice = form.getFieldValue('gasPrice');
 
-      if (gasLimit !== undefined && gasLimit !== null)
-        validateGasLimit(gasLimit);
+      if (currentGasLimit !== undefined && currentGasLimit !== null)
+        validateGasLimit(currentGasLimit);
       if (
-        maxPriorityFeePerGas !== undefined &&
-        maxPriorityFeePerGas !== null &&
+        currentMaxPriorityFeePerGas !== undefined &&
+        currentMaxPriorityFeePerGas !== null &&
         !isSendLegacyTransaction
       )
-        validatePriorityFee(maxPriorityFeePerGas);
+        validatePriorityFee(currentMaxPriorityFeePerGas);
       if (
-        maxFeePerGas !== undefined &&
-        maxFeePerGas !== null &&
+        currentMaxFeePerGas !== undefined &&
+        currentMaxFeePerGas !== null &&
         !isSendLegacyTransaction
       )
-        validateMaxFee(maxFeePerGas);
+        validateMaxFee(currentMaxFeePerGas);
       if (
-        gasPrice !== undefined &&
-        gasPrice !== null &&
+        currentGasPrice !== undefined &&
+        currentGasPrice !== null &&
         isSendLegacyTransaction
       )
-        validateGasPrice(gasPrice);
+        validateGasPrice(currentGasPrice);
     }, 100);
 
     return () => clearTimeout(timer);

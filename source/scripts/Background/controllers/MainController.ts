@@ -1,4 +1,4 @@
-import { ethErrors } from 'helpers/errors';
+// Removed unused import: ethErrors
 import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
@@ -94,10 +94,7 @@ import {
   CancellablePromises,
   PromiseTargets,
 } from './promises/cancellablesPromises';
-import {
-  patchFetchWithPaliHeaders,
-  getPaliHeaders,
-} from './providers/patchFetchWithPaliHeaders';
+import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
 import { StorageManager } from './storageManager';
 import TransactionsManager from './transactions';
 import EvmTransactionsController from './transactions/evm';
@@ -2908,7 +2905,6 @@ class MainController {
     const results = await Promise.allSettled(updatePromises);
 
     // Log any failures for debugging and track which operations failed
-    let allFailed = true;
     let balanceFailed = false;
     let transactionsFailed = false;
     let assetsFailed = false;
@@ -2925,8 +2921,6 @@ class MainController {
         if (index === 0) assetsFailed = true;
         if (index === 1) transactionsFailed = true;
         if (index === 2) balanceFailed = true;
-      } else {
-        allFailed = false;
       }
     });
 

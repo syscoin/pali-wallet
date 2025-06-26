@@ -83,7 +83,7 @@ export const SendConfirm = () => {
   const [gasPrice, setGasPrice] = useState<number>(0);
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
-  const [haveError, setHaveError] = useState<boolean>(false);
+  // Removed unused haveError state
 
   const { isEIP1559Compatible } = useEIP1559();
   const [copied, copy] = useCopyClipboard();
@@ -1218,7 +1218,9 @@ export const SendConfirm = () => {
         setIsOpen={setIsOpenEditFeeModal}
         customFee={customFee}
         setCustomFee={setCustomFee}
-        setHaveError={setHaveError}
+        setHaveError={() => {
+          // No-op function since haveError is not used
+        }}
         fee={fee}
         isSendLegacyTransaction={!isEIP1559Compatible}
       />

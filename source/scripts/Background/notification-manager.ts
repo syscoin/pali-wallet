@@ -9,17 +9,17 @@ import {
   showDappConnectionNotification,
   showErrorNotification,
   updatePendingTransactionBadge,
-  TransactionNotification,
+  ITransactionNotification,
 } from 'utils/notifications';
 import { isERC20Transfer, getERC20TransferValue } from 'utils/transactions';
 
-interface NotificationState {
+interface INotificationState {
   // Last known account
   lastAccount: { address: string; label?: string } | null;
   // Last known network
   lastNetwork: { chainId: number; name: string } | null;
   // Track pending transactions
-  pendingTransactions: Map<string, TransactionNotification>;
+  pendingTransactions: Map<string, ITransactionNotification>;
   // Track notifications we've already shown
   shownTransactionNotifications: Set<string>;
   // Cache for token lookups to avoid repeated API calls
@@ -27,7 +27,7 @@ interface NotificationState {
 }
 
 class NotificationManager {
-  private state: NotificationState = {
+  private state: INotificationState = {
     shownTransactionNotifications: new Set(),
     pendingTransactions: new Map(),
     lastNetwork: null,
@@ -194,7 +194,6 @@ class NotificationManager {
     network: any
   ) {
     // Create maps for easier lookup
-    const currentTxMap = new Map(currentTxs.map((tx) => [tx.hash, tx]));
     const previousTxMap = new Map(previousTxs.map((tx) => [tx.hash, tx]));
 
     // Check for new transactions and confirmation changes
@@ -323,7 +322,7 @@ class NotificationManager {
       value = tx.value ? this.formatValue(tx.value.toString(), 18) : undefined;
     }
 
-    const notification: TransactionNotification = {
+    const notification: ITransactionNotification = {
       txHash: tx.hash,
       type,
       from: tx.from || account.address,
@@ -559,7 +558,7 @@ class NotificationManager {
       decimals = tx.decimals;
     }
 
-    const notification: TransactionNotification = {
+    const notification: ITransactionNotification = {
       txHash: tx.txid,
       type,
       from: account.address,
@@ -572,7 +571,7 @@ class NotificationManager {
       // Include transaction type in the notification
       transactionType: transactionTypeLabel || undefined,
       metadata, // Include metadata for SPT color/visual info
-    } as TransactionNotification;
+    } as ITransactionNotification;
 
     showTransactionNotification(notification);
 
