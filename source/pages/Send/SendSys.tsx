@@ -126,7 +126,6 @@ export const SendSys = () => {
 
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
-    console.log('MAX button clicked, setting amount to:', balanceStr);
     form.setFieldValue('amount', balanceStr);
     form.validateFields(['amount']); // Trigger validation after setting value
     setIsMaxSend(true); // Set the flag when max is clicked
