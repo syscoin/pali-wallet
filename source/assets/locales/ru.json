@@ -583,6 +583,25 @@
     "keepSeedPhrase": "Держите вашу сид-фразу в секрете!",
     "anyoneWithThisInfo": "Любой, у кого есть эта информация, может украсть ваши средства."
   },
+  "notifications": {
+    "transactionSubmitted": "Транзакция Отправлена",
+    "transactionPending": "Транзакция ожидает в {{network}}",
+    "transactionConfirmed": "Транзакция Подтверждена",
+    "transactionConfirmedValue": "Транзакция подтверждена в {{network}}: {{value}}",
+    "transactionFailed": "Транзакция Не Удалась",
+    "transactionFailedOn": "Транзакция не удалась в {{network}}",
+    "networkChanged": "Сеть Изменена",
+    "switchedNetwork": "Переключено с {{fromNetwork}} на {{toNetwork}}",
+    "accountChanged": "Аккаунт Изменен",
+    "activeAccount": "Активный аккаунт: {{account}}",
+    "siteConnected": "Сайт Подключен",
+    "connectedTo": "{{dappUrl}} теперь подключен к Pali Wallet",
+    "connectionRejected": "Подключение Отклонено",
+    "rejectedFrom": "Запрос на подключение от {{dappUrl}} отклонен",
+    "error": "Ошибка",
+    "errorOccurred": "Произошла ошибка: {{message}}",
+    "clickToView": "Нажмите для просмотра деталей"
+  },
   "faucet": {
     "grabTextTwo": "Получите ${{token}} с помощью нашего крана",
     "pleaseWait": "Пожалуйста, подождите, пока мы творим магию...",

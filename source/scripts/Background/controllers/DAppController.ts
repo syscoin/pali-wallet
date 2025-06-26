@@ -1,6 +1,7 @@
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
+import { notificationManager } from '../notification-manager';
 import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
 import { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -52,6 +53,9 @@ const DAppController = (): IDAppController => {
     _dapps[dapp.host].activeAddress = isBitcoinBased
       ? accounts[dapp.accountType][dapp.accountId].xpub
       : accounts[dapp.accountType][dapp.accountId].address;
+
+    // Trigger connection notification
+    notificationManager.notifyDappConnection(dapp.host, true);
 
     isBitcoinBased
       ? _dispatchPaliEvent(
@@ -144,6 +148,10 @@ const DAppController = (): IDAppController => {
       case true:
         _dapps[host].activeAddress = null;
         store.dispatch(removeDApp(host));
+
+        // Trigger disconnection notification
+        notificationManager.notifyDappConnection(host, false);
+
         _dispatchPaliEvent(
           host,
           {
@@ -164,6 +172,10 @@ const DAppController = (): IDAppController => {
       case false:
         if (previousConnectedDapps[host]) {
           store.dispatch(removeDApp(host));
+
+          // Trigger disconnection notification
+          notificationManager.notifyDappConnection(host, false);
+
           _dispatchPaliEvent(
             host,
             {

@@ -147,6 +147,9 @@ class MainController {
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
 
+  // Track active rapid polls to avoid duplicates
+  private activeRapidPolls = new Map<string, NodeJS.Timeout>();
+
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
@@ -1461,6 +1464,21 @@ class MainController {
     // Clear vault cache on lock
     vaultCache.clearCache();
 
+    // Stop all rapid polling when wallet is locked
+    this.stopAllRapidPolling();
+
+    // Clear notification state when wallet is locked
+    import('../notification-manager')
+      .then(({ notificationManager }) => {
+        notificationManager.clearState();
+      })
+      .catch((error) => {
+        console.error(
+          '[MainController] Failed to clear notification state:',
+          error
+        );
+      });
+
     store.dispatch(setLastLogin());
 
     controller.dapp
@@ -2408,8 +2426,13 @@ class MainController {
     return transactionPromise;
   }
 
-  public sendAndSaveTransaction(tx: IEvmTransactionResponse | ISysTransaction) {
-    const { isBitcoinBased, activeNetwork } = store.getState().vault;
+  public async sendAndSaveTransaction(
+    tx: IEvmTransactionResponse | ISysTransaction
+  ) {
+    const { isBitcoinBased, activeNetwork, accounts, activeAccount } =
+      store.getState().vault;
+
+    const account = accounts[activeAccount.type][activeAccount.id];
 
     const txWithTimestamp = {
       ...tx,
@@ -2427,6 +2450,78 @@ class MainController {
         transaction: txWithTimestamp,
       })
     );
+
+    // Trigger notification for new pending transaction
+    // The notification manager will check if the popup is open and only show
+    // browser notifications when the popup is closed (like MetaMask)
+    try {
+      const { showTransactionNotification } = await import(
+        'utils/notifications'
+      );
+
+      if (isBitcoinBased) {
+        // UTXO transaction
+        const utxoTx = tx as ISysTransaction;
+        const tokenSymbol =
+          'symbol' in utxoTx && typeof utxoTx.symbol === 'string'
+            ? utxoTx.symbol
+            : activeNetwork.currency.toUpperCase();
+
+        showTransactionNotification({
+          txHash: utxoTx.txid,
+          type: 'pending',
+          from: account.address,
+          to: undefined, // UTXO doesn't have simple to/from
+          value: utxoTx.value || undefined,
+          tokenSymbol,
+          network: activeNetwork.label,
+          chainId: activeNetwork.chainId,
+        });
+      } else {
+        // EVM transaction
+        const evmTx = tx as IEvmTransactionResponse;
+        const value = evmTx.value?.toString() || undefined;
+
+        showTransactionNotification({
+          txHash: evmTx.hash,
+          type: 'pending',
+          from: evmTx.from || account.address,
+          to: evmTx.to,
+          value,
+          tokenSymbol: activeNetwork.currency.toUpperCase(),
+          network: activeNetwork.label,
+          chainId: activeNetwork.chainId,
+        });
+      }
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to show transaction notification:',
+        error
+      );
+    }
+
+    // Start rapid polling for this transaction to detect confirmation quickly
+    try {
+      const txHash = isBitcoinBased
+        ? (tx as ISysTransaction).txid
+        : (tx as IEvmTransactionResponse).hash;
+
+      console.log(
+        `[MainController] Starting rapid polling for transaction ${txHash}`
+      );
+
+      // Start rapid polling inline to avoid import issues
+      this.startRapidTransactionPolling(
+        txHash,
+        activeNetwork.chainId,
+        isBitcoinBased
+      );
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to start rapid transaction polling:',
+        error
+      );
+    }
   }
 
   public async getState() {
@@ -2914,6 +3009,108 @@ class MainController {
     isOpen: boolean;
   }) {
     store.dispatch(setFaucetModalState({ chainId, isOpen }));
+  }
+
+  // Rapid transaction polling methods
+  private startRapidTransactionPolling(
+    txHash: string,
+    chainId: number,
+    isBitcoinBased: boolean
+  ) {
+    const pollKey = `${txHash}_${chainId}`;
+    const maxPolls = 4;
+    const pollInterval = 4000; // 4 seconds
+
+    // Cancel any existing poll for this transaction
+    if (this.activeRapidPolls.has(pollKey)) {
+      clearTimeout(this.activeRapidPolls.get(pollKey)!);
+      this.activeRapidPolls.delete(pollKey);
+    }
+
+    console.log(
+      `[RapidPoll] Starting rapid polling for transaction ${txHash} on chain ${chainId}`
+    );
+
+    let pollCount = 0;
+
+    const poll = async () => {
+      pollCount++;
+      console.log(
+        `[RapidPoll] Poll ${pollCount}/${maxPolls} for transaction ${txHash}`
+      );
+
+      try {
+        // Check current transaction state before polling
+        const { accountTransactions, activeAccount, activeNetwork } =
+          store.getState().vault;
+
+        if (!activeAccount || activeNetwork.chainId !== chainId) {
+          console.log(
+            '[RapidPoll] Network or account changed, stopping rapid poll'
+          );
+          this.activeRapidPolls.delete(pollKey);
+          return;
+        }
+
+        const txs = accountTransactions[activeAccount.type]?.[activeAccount.id];
+        const networkType = isBitcoinBased ? 'syscoin' : 'ethereum';
+        const chainTxs = txs?.[networkType]?.[chainId];
+
+        // Check if we have transactions array
+        if (Array.isArray(chainTxs)) {
+          // Find the specific transaction
+          const tx = isBitcoinBased
+            ? (chainTxs as ISysTransaction[]).find((t) => t.txid === txHash)
+            : (chainTxs as IEvmTransactionResponse[]).find(
+                (t) => t.hash === txHash
+              );
+
+          // Check if transaction is already confirmed
+          if (tx && tx.confirmations && tx.confirmations > 0) {
+            console.log(
+              `[RapidPoll] Transaction ${txHash} confirmed with ${tx.confirmations} confirmations! Stopping rapid poll.`
+            );
+            this.activeRapidPolls.delete(pollKey);
+            return;
+          }
+        }
+
+        // Trigger the regular update check
+        // Use the checkForUpdates function directly
+        const { checkForUpdates } = await import(
+          '../handlers/handlePaliUpdates'
+        );
+        await checkForUpdates();
+
+        // Continue polling if not confirmed and haven't reached max polls
+        if (pollCount < maxPolls) {
+          console.log(
+            `[RapidPoll] Transaction ${txHash} still pending, scheduling next poll...`
+          );
+          const timeoutId = setTimeout(poll, pollInterval);
+          this.activeRapidPolls.set(pollKey, timeoutId);
+        } else {
+          console.log(
+            `[RapidPoll] Reached max polls (${maxPolls}) for transaction ${txHash}. Regular background polling will continue.`
+          );
+          this.activeRapidPolls.delete(pollKey);
+        }
+      } catch (error) {
+        console.error('[RapidPoll] Error during rapid polling:', error);
+        this.activeRapidPolls.delete(pollKey);
+      }
+    };
+
+    // Start the first poll after a delay
+    const timeoutId = setTimeout(poll, pollInterval);
+    this.activeRapidPolls.set(pollKey, timeoutId);
+  }
+
+  // Clean up all active polls (called when wallet locks)
+  private stopAllRapidPolling() {
+    this.activeRapidPolls.forEach((timeoutId) => clearTimeout(timeoutId));
+    this.activeRapidPolls.clear();
+    console.log('[RapidPoll] Stopped all rapid polling');
   }
 
   private handleStateChange(

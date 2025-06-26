@@ -19,6 +19,9 @@ let messageListener:
     ) => void)
   | null = null;
 
+// Store popup state
+let isPopupCurrentlyOpen = false;
+
 // Export for testing
 export const resetListenersFlag = () => {
   listenersInitialized = false;
@@ -87,10 +90,28 @@ export const handleListeners = (masterController: IMasterController) => {
       type === 'CONTROLLER_ACTION' ||
       type === 'CONTROLLER_STATE_CHANGE' ||
       type === 'logout' ||
-      type === 'isPopupOpen' ||
       type === 'ping' // Handled in index.ts
     ) {
       return false; // Let other listeners handle these
+    }
+
+    // Handle isPopupOpen check
+    if (type === 'isPopupOpen') {
+      // For MV3, we'll use the port connection state or chrome.runtime.getContexts if available
+      if (
+        'getContexts' in chrome.runtime &&
+        typeof chrome.runtime.getContexts === 'function'
+      ) {
+        // Chrome 116+ - use the new API
+        (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
+          const popupOpen = contexts.some((ctx) => ctx.contextType === 'POPUP');
+          sendResponse(popupOpen);
+        });
+      } else {
+        // Fallback to port-based tracking
+        sendResponse(isPopupCurrentlyOpen);
+      }
+      return true; // Indicate async response was sent
     }
 
     // Handle malformed messages
@@ -142,10 +163,14 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name === 'popup-connection') {
       console.log('[Background] 🔌 Popup connected via port');
+      isPopupCurrentlyOpen = true;
+
       port.onDisconnect.addListener(() => {
         console.log(
           '[Background] 🔌 Popup disconnected, triggering emergency save...'
         );
+        isPopupCurrentlyOpen = false;
+
         // Trigger emergency save when popup closes
         vaultCache
           .emergencySave()

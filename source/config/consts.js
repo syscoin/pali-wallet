@@ -90,6 +90,7 @@ const MV3_OPTIONS = {
     'unlimitedStorage',
     'offscreen',
     'scripting',
+    'notifications',
   ],
   host_permissions: [
     'http://*/*',

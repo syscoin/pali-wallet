@@ -583,6 +583,25 @@
     "keepSeedPhrase": "シードフレーズは秘密にしてください！",
     "anyoneWithThisInfo": "この情報を持っている人は誰でもあなたの資金を盗むことができます。"
   },
+  "notifications": {
+    "transactionSubmitted": "取引を送信しました",
+    "transactionPending": "{{network}}で取引が保留中です",
+    "transactionConfirmed": "取引が確認されました",
+    "transactionConfirmedValue": "{{network}}で取引が確認されました：{{value}}",
+    "transactionFailed": "取引が失敗しました",
+    "transactionFailedOn": "{{network}}で取引が失敗しました",
+    "networkChanged": "ネットワークが変更されました",
+    "switchedNetwork": "{{fromNetwork}}から{{toNetwork}}に切り替えました",
+    "accountChanged": "アカウントが変更されました",
+    "activeAccount": "アクティブアカウント：{{account}}",
+    "siteConnected": "サイトが接続されました",
+    "connectedTo": "{{dappUrl}}がPaliウォレットに接続されました",
+    "connectionRejected": "接続が拒否されました",
+    "rejectedFrom": "{{dappUrl}}からの接続リクエストが拒否されました",
+    "error": "エラー",
+    "errorOccurred": "エラーが発生しました：{{message}}",
+    "clickToView": "クリックして詳細を表示"
+  },
   "faucet": {
     "grabTextTwo": "フォーセットで ${{token}} を取得",
     "pleaseWait": "魔法をかけている間、お待ちください...",

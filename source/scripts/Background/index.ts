@@ -15,6 +15,7 @@ import { handleStartPolling } from 'scripts/Background/handlers/handleStartPolli
 import { handleObserveStateChanges } from 'scripts/Background/handlers/handleStateChanges';
 
 import { IMasterController } from './controllers';
+import { notificationManager } from './notification-manager';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -57,11 +58,16 @@ handleMasterControllerInstance()
     handleObserveStateChanges();
     handleStartPolling();
     handleFiatPrice();
+
+    // Initialize notification manager after controller is ready
+    console.log('[Background] Notification manager initialized');
+    // The notification manager self-initializes and subscribes to state changes
   })
   .catch((error) => {
     console.error('[Background] Failed to initialize controller:', error);
   });
 
 export const getController = () => MasterControllerInstance;
+export { notificationManager };
 
 // Removed keep-alive port listener - Chrome alarms handle critical functions

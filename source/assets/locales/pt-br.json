@@ -584,6 +584,25 @@
     "importWallet": "Importar carteira",
     "congratulations": "Parabéns!"
   },
+  "notifications": {
+    "transactionSubmitted": "Transação Enviada",
+    "transactionPending": "Transação pendente em {{network}}",
+    "transactionConfirmed": "Transação Confirmada",
+    "transactionConfirmedValue": "Transação confirmada em {{network}}: {{value}}",
+    "transactionFailed": "Transação Falhou",
+    "transactionFailedOn": "Transação falhou em {{network}}",
+    "networkChanged": "Rede Alterada",
+    "switchedNetwork": "Mudou de {{fromNetwork}} para {{toNetwork}}",
+    "accountChanged": "Conta Alterada",
+    "activeAccount": "Conta ativa: {{account}}",
+    "siteConnected": "Site Conectado",
+    "connectedTo": "{{dappUrl}} agora está conectado à Pali Wallet",
+    "connectionRejected": "Conexão Rejeitada",
+    "rejectedFrom": "Solicitação de conexão de {{dappUrl}} foi rejeitada",
+    "error": "Erro",
+    "errorOccurred": "Ocorreu um erro: {{message}}",
+    "clickToView": "Clique para ver detalhes"
+  },
   "faucet": {
     "grabTextTwo": "Pegue ${{token}} com nossa torneira",
     "pleaseWait": "Por favor aguarde enquanto fazemos nossa mágica...",

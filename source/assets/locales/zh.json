@@ -464,6 +464,25 @@
     "keepSeedPhrase": "请保密您的助记词！",
     "anyoneWithThisInfo": "任何拥有此信息的人都能够盗取您的资金。"
   },
+  "notifications": {
+    "transactionSubmitted": "交易已提交",
+    "transactionPending": "交易在{{network}}上待处理",
+    "transactionConfirmed": "交易已确认",
+    "transactionConfirmedValue": "交易在{{network}}上已确认：{{value}}",
+    "transactionFailed": "交易失败",
+    "transactionFailedOn": "交易在{{network}}上失败",
+    "networkChanged": "网络已切换",
+    "switchedNetwork": "从{{fromNetwork}}切换到{{toNetwork}}",
+    "accountChanged": "账户已切换",
+    "activeAccount": "当前账户：{{account}}",
+    "siteConnected": "网站已连接",
+    "connectedTo": "{{dappUrl}}已连接到Pali钱包",
+    "connectionRejected": "连接被拒绝",
+    "rejectedFrom": "来自{{dappUrl}}的连接请求被拒绝",
+    "error": "错误",
+    "errorOccurred": "发生错误：{{message}}",
+    "clickToView": "点击查看详情"
+  },
   "faucet": {
     "grabTextTwo": "在我们的水龙头获取 ${{token}}",
     "pleaseWait": "请稍等，我们正在施展魔法...",

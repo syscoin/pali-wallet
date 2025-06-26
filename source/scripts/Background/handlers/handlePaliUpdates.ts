@@ -1,7 +1,6 @@
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { getController } from '..';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
 import { saveState } from 'state/paliStorage';
 import store from 'state/store';
@@ -147,19 +146,16 @@ export async function checkForUpdates() {
 
     console.log('✅ checkForUpdates: Proceeding with update');
 
-    controllerEmitter(
-      ['wallet', 'getLatestUpdateForCurrentAccount'],
-      [true]
-    ).catch((error) => {
-      // save current state to localstorage if pali is not open
-      if (
-        error?.message ===
-        'Could not establish connection. Receiving end does not exist.'
-      ) {
-        getController().wallet.getLatestUpdateForCurrentAccount(true);
-        saveState(store.getState());
-      }
-    });
+    // Always use direct controller call since we're already in the background
+    // This avoids unnecessary errors when popup is closed
+    try {
+      await getController().wallet.getLatestUpdateForCurrentAccount(true);
+
+      // Save state after successful update
+      saveState(store.getState());
+    } catch (error) {
+      console.error('Error updating account in checkForUpdates:', error);
+    }
   } catch (error) {
     console.error('Error in checkForUpdates:', error);
   } finally {

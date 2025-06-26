@@ -148,7 +148,13 @@ export const popupPromise = async ({
 function checkIfPopupIsOpen() {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'isPopupOpen' }, (response) => {
-      resolve(response === true);
+      // Handle the case where popup is closed
+      if (chrome.runtime.lastError) {
+        // Popup is closed, so return false
+        resolve(false);
+      } else {
+        resolve(response === true);
+      }
     });
   });
 }

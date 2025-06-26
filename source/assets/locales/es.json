@@ -583,6 +583,25 @@
     "keepSeedPhrase": "¡Mantén en secreto tu seed frase!",
     "anyoneWithThisInfo": "Cualquier persona con esta información puede robar tus fondos."
   },
+  "notifications": {
+    "transactionSubmitted": "Transacción Enviada",
+    "transactionPending": "Transacción pendiente en {{network}}",
+    "transactionConfirmed": "Transacción Confirmada",
+    "transactionConfirmedValue": "Transacción confirmada en {{network}}: {{value}}",
+    "transactionFailed": "Transacción Fallida",
+    "transactionFailedOn": "Transacción falló en {{network}}",
+    "networkChanged": "Red Cambiada",
+    "switchedNetwork": "Cambió de {{fromNetwork}} a {{toNetwork}}",
+    "accountChanged": "Cuenta Cambiada",
+    "activeAccount": "Cuenta activa: {{account}}",
+    "siteConnected": "Sitio Conectado",
+    "connectedTo": "{{dappUrl}} ahora está conectado a Pali Wallet",
+    "connectionRejected": "Conexión Rechazada",
+    "rejectedFrom": "Solicitud de conexión de {{dappUrl}} fue rechazada",
+    "error": "Error",
+    "errorOccurred": "Ocurrió un error: {{message}}",
+    "clickToView": "Haz clic para ver detalles"
+  },
   "faucet": {
     "grabTextTwo": "Obtén ${{token}} con nuestra llave",
     "pleaseWait": "Por favor, espere mientras hacemos nuestra magia...",

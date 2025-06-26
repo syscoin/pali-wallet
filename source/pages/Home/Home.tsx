@@ -1,11 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  memo,
-  startTransition,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -137,71 +130,6 @@ export const Home = () => {
 
   // ALL useEffect hooks
 
-  useEffect(() => {
-    if (!isUnlocked || !lastLogin) return;
-
-    // Check if coming from transaction confirmation (via navigation state)
-    const isFromTransaction = state?.fromTransaction;
-
-    if (isFromTransaction) {
-      // Post-transaction polling: keep refreshing cache every 4 seconds for adaptive timing
-      let pollCount = 0;
-      const maxPolls = 4; // Poll 4 times (16 seconds total) to adapt to explorer speed
-
-      const pollForTransaction = async () => {
-        try {
-          // Wait 4 seconds before each poll (including poll 1)
-          await new Promise((resolve) => setTimeout(resolve, 4000));
-
-          pollCount++;
-          console.log(
-            `[Post-TX Poll ${pollCount}/${maxPolls}] Checking for transaction changes...`
-          );
-
-          // Clear cache and get fresh data - check if changes were detected
-          // Pass true for isPolling to avoid showing skeleton loader during these background updates
-          const hasChanges = await controllerEmitter(
-            ['callGetLatestUpdateForAccount'],
-            [true]
-          );
-
-          console.log(`[Post-TX Poll] Changes detected: ${hasChanges}`);
-
-          if (hasChanges) {
-            console.log(
-              '[Post-TX Poll] Changes detected! Transaction found, stopping poll.'
-            );
-            return; // Stop polling early - transaction was detected!
-          } else {
-            console.log(
-              '[Post-TX Poll] No changes detected, continuing polling...'
-            );
-          }
-
-          if (pollCount < maxPolls) {
-            // Continue polling with startTransition for non-urgent updates
-            startTransition(() => {
-              pollForTransaction();
-            });
-          } else {
-            console.log(
-              '[Post-TX Poll] Completed all polls. Transaction should be visible.'
-            );
-          }
-        } catch (error) {
-          console.warn('Failed to poll for post-transaction data:', error);
-          if (pollCount < maxPolls) {
-            // Continue even on error
-            pollForTransaction();
-          }
-        }
-      };
-
-      // Start polling
-      pollForTransaction();
-    }
-  }, [isUnlocked, lastLogin, controllerEmitter, state]);
-
   // ALL useCallback hooks
   const closeModal = useCallback(() => {
     // Remember that user dismissed the congratulations modal
@@ -223,13 +151,11 @@ export const Home = () => {
 
   const handleOnCloseFaucetModal = useCallback(() => {
     if (activeNetwork?.chainId) {
-      // Use startTransition for non-urgent modal state updates
-      startTransition(() => {
-        controllerEmitter(
-          ['wallet', 'setFaucetModalState'],
-          [{ chainId: activeNetwork.chainId, isOpen: false }]
-        );
-      });
+      // Update modal state
+      controllerEmitter(
+        ['wallet', 'setFaucetModalState'],
+        [{ chainId: activeNetwork.chainId, isOpen: false }]
+      );
     }
   }, [activeNetwork?.chainId, controllerEmitter]);
 
