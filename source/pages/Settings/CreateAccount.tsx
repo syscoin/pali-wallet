@@ -87,12 +87,18 @@ const CreateAccount = () => {
           <div className="w-full px-4 absolute bottom-12 md:static">
             <NeutralButton
               type="submit"
-              loading={loading}
               disabled={loading}
               id="create-btn"
               fullWidth
             >
-              {t('buttons.create')}
+              {loading ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-royalblue border-t-transparent"></div>
+                  <span>{t('buttons.create')}</span>
+                </div>
+              ) : (
+                t('buttons.create')
+              )}
             </NeutralButton>
           </div>
         </Form>
