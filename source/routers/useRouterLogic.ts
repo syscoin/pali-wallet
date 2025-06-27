@@ -20,7 +20,7 @@ export const useRouterLogic = () => {
   const lastNavigationRef = useRef<string>('');
   const navigationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const { alert, navigate } = useUtils();
+  const { navigate } = useUtils();
   const { pathname } = useLocation();
   const { t } = useTranslation();
   const { isBitcoinBased, activeNetwork } = useSelector(

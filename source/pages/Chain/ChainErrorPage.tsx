@@ -22,9 +22,6 @@ export const ChainErrorPage = () => {
   const networkTarget = useSelector(
     (state: RootState) => state.vaultGlobal.networkTarget
   );
-  const networkStatus = useSelector(
-    (state: RootState) => state.vaultGlobal.networkStatus
-  );
 
   // Use the target network if we're trying to switch, otherwise use active network
   const displayNetwork = networkTarget || activeNetwork;
