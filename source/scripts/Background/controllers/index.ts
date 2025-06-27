@@ -104,7 +104,11 @@ const MasterController = (
       !globalNetworks[TransactionsType.Ethereum] ||
       !globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ROLLUX_MAINNET]
     ) {
-      externalStore.dispatch(setNetwork(ROLLUX_DEFAULT_NETWORK));
+      externalStore.dispatch(
+        setNetwork({
+          network: ROLLUX_DEFAULT_NETWORK.network,
+        })
+      );
     }
 
     const currentRpcSysUtxoMainnet =
@@ -119,7 +123,11 @@ const MasterController = (
       currentRpcSysUtxoMainnet.url !==
         SYSCOIN_MAINNET_DEFAULT_NETWORK.network.url
     ) {
-      externalStore.dispatch(setNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK));
+      externalStore.dispatch(
+        setNetwork({
+          network: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+        })
+      );
     }
 
     const DEPRECATED_RPC_PATTERN = 'blockbook.elint.services';
