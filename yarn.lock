@@ -7592,13 +7592,6 @@ eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
   dependencies:
     eth-util-lite "^1.0.1"
 
-"eth-object@git+https://github.com/syscoin/eth-object.git":
-  version "1.0.3"
-  uid b5ff300f57c136138b31d6e570c816a147e0f1c9
-  resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
-  dependencies:
-    eth-util-lite "^1.0.1"
-
 eth-proof@^2.1.6:
   version "2.1.6"
   resolved "https://registry.yarnpkg.com/eth-proof/-/eth-proof-2.1.6.tgz#6c8a468f82334d9c79347324e6eb237f1ecc965f"

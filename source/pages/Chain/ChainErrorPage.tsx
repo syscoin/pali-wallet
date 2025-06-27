@@ -76,11 +76,13 @@ export const ChainErrorPage = () => {
           '[ChainErrorPage] Network is still in error state, not navigating'
         );
         setIsRetrying(false);
-        // The error message will be updated by the background operations
+        // Show error alert to user
+        alert.error(t('chainError.connectionError'));
         return;
       }
 
       // If we get here, everything succeeded - navigate to home
+      alert.success(t('networkConnection.operationCompleted'));
       setIsRetrying(false);
       navigate('/home');
     } catch (error) {

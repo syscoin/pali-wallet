@@ -575,7 +575,11 @@
     "switchingAccount": "Konto wechseln...",
     "operationCompleted": "Operation erfolgreich abgeschlossen",
     "operationFailing": "Netzwerkoperation dauert zu lange",
-    "operationSlow": "{{operation}} - langsamer als erwartet"
+    "operationSlow": "{{operation}} - langsamer als erwartet",
+    "networkQualitySlow": "Netzwerk-Antwortzeit ist langsam ({{latency}})",
+    "operationCompletedSlow": "Vorgang abgeschlossen, aber langsam ({{latency}})",
+    "networkCriticalError": "Netzwerk antwortet nicht ordnungsgemäß ({{latency}})",
+    "operationCompletedCritical": "Vorgang mit kritischen Verzögerungen abgeschlossen ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Importierte Konten werden nicht mit Ihrer ursprünglichen Pali-Konto-Wiederherstellungsphrase verknüpft",

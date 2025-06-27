@@ -575,7 +575,11 @@
     "switchingAccount": "Switching account...",
     "operationCompleted": "Operation completed successfully",
     "operationFailing": "Network operation taking too long",
-    "operationSlow": "{{operation}} - slower than expected"
+    "operationSlow": "{{operation}} - slower than expected",
+    "networkQualitySlow": "Network response time is slow ({{latency}})",
+    "operationCompletedSlow": "Operation completed but was slow ({{latency}})",
+    "networkCriticalError": "Network is not responding properly ({{latency}})",
+    "operationCompletedCritical": "Operation completed with critical delays ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Imported accounts won't link to your initial Pali account Secret Recovery Phrase",

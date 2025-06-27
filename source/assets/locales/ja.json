@@ -575,7 +575,11 @@
     "switchingAccount": "アカウントを切り替え中...",
     "operationCompleted": "操作が正常に完了しました",
     "operationFailing": "ネットワーク操作に時間がかかりすぎています",
-    "operationSlow": "{{operation}} - 予想より遅くなっています"
+    "operationSlow": "{{operation}} - 予想より遅くなっています",
+    "networkQualitySlow": "ネットワークの応答時間が遅いです ({{latency}})",
+    "operationCompletedSlow": "操作は完了しましたが遅かったです ({{latency}})",
+    "networkCriticalError": "ネットワークが正しく応答していません ({{latency}})",
+    "operationCompletedCritical": "操作は重大な遅延で完了しました ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "インポートされたアカウントは、初期のPaliアカウントのシークレットリカバリーフレーズにリンクされません",

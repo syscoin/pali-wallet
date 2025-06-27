@@ -628,12 +628,24 @@ const CustomRPCView = () => {
         // Add a small delay for UX
         await new Promise((resolve) => setTimeout(resolve, 300));
 
-        // Use the centralized batch validation from sysweb3
-        const result = await validateRpcBatch(rpc.url, chain.chainId, 5000);
+        // Use the centralized batch validation from sysweb3 with minimum latency of 500ms
+        const result = await validateRpcBatch(
+          rpc.url,
+          chain.chainId,
+          5000,
+          500
+        );
 
         if (!result.success) {
           // Log why this RPC failed for debugging
           console.log(`RPC ${rpc.url} failed:`, result.error);
+
+          // If it requires authentication, skip to next without showing error
+          if ('requiresAuth' in result && result.requiresAuth) {
+            console.log(`RPC ${rpc.url} requires authentication, skipping...`);
+            continue;
+          }
+
           continue; // Try next RPC
         }
 
@@ -650,9 +662,11 @@ const CustomRPCView = () => {
 
         // Clear any existing toasts first to prevent conflicts
 
-        // Create stable success message
+        // Create stable success message with latency info
         const hostname = rpc.url ? new URL(rpc.url).hostname : 'RPC server';
-        const successMessage = `Connected to ${chain.name} via ${hostname}`;
+        const latencyInfo =
+          'latency' in result && result.latency ? ` (${result.latency}ms)` : '';
+        const successMessage = `Connected to ${chain.name} via ${hostname}${latencyInfo}`;
 
         // Success feedback with stable message
         alert.success(successMessage, {
@@ -671,7 +685,7 @@ const CustomRPCView = () => {
     setTestingRpcs(false);
     setCurrentRpcTest(null);
     alert.error(
-      `Unable to connect to ${chain.name}. Please try a custom RPC URL.`,
+      `Unable to connect to ${chain.name}. All tested RPCs either require authentication or failed quality checks. Please try a custom RPC URL.`,
       {
         autoClose: 5000,
       }

@@ -575,7 +575,11 @@
     "switchingAccount": "Changement de compte...",
     "operationCompleted": "Opération terminée avec succès",
     "operationFailing": "L'opération réseau prend trop de temps",
-    "operationSlow": "{{operation}} - plus lent que prévu"
+    "operationSlow": "{{operation}} - plus lent que prévu",
+    "networkQualitySlow": "Le temps de réponse du réseau est lent ({{latency}})",
+    "operationCompletedSlow": "Opération terminée mais lente ({{latency}})",
+    "networkCriticalError": "Le réseau ne répond pas correctement ({{latency}})",
+    "operationCompletedCritical": "Opération terminée avec des retards critiques ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Les comptes importés ne seront pas liés à votre phrase de récupération secrète initiale",

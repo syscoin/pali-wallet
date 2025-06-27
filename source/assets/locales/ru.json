@@ -575,7 +575,11 @@
     "switchingAccount": "Переключение аккаунта...",
     "operationCompleted": "Операция успешно завершена",
     "operationFailing": "Сетевая операция занимает слишком много времени",
-    "operationSlow": "{{operation}} - медленнее, чем ожидалось"
+    "operationSlow": "{{operation}} - медленнее, чем ожидалось",
+    "networkQualitySlow": "Время отклика сети медленное ({{latency}})",
+    "operationCompletedSlow": "Операция завершена, но была медленной ({{latency}})",
+    "networkCriticalError": "Сеть не отвечает должным образом ({{latency}})",
+    "operationCompletedCritical": "Операция завершена с критическими задержками ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "Импортированные аккаунты не будут связаны с вашей исходной секретной фразой восстановления аккаунта Pali",

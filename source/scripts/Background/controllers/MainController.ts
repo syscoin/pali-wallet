@@ -72,6 +72,10 @@ import {
   removeNetwork,
   setIsPollingUpdate,
   startConnecting,
+  updateNetworkQualityLatency,
+  setNetworkQuality,
+  clearNetworkQualityIfStale,
+  resetNetworkQualityForNewNetwork,
 } from 'state/vaultGlobal';
 import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -1352,6 +1356,9 @@ class MainController {
       setTimeout(() => {
         this.justUnlocked = false;
         this.isStartingUp = false;
+
+        // Also clean up stale network quality data after startup
+        store.dispatch(clearNetworkQualityIfStale());
       }, 2000); // 2 seconds - enough time for all initialization
 
       return canLogin;
@@ -1784,7 +1791,27 @@ class MainController {
         error
       );
 
-      // Check for rate limiting
+      // Check for authentication errors - don't retry these
+      if (
+        error.message?.includes('Authentication required') ||
+        error.message?.includes('API key') ||
+        error.message?.includes('unauthorized') ||
+        error.message?.includes('forbidden')
+      ) {
+        throw new Error(
+          'This RPC endpoint requires authentication. Please use an RPC URL that includes your API key or choose a different provider.'
+        );
+      }
+
+      // Check for quality issues - don't retry these
+      if (
+        error.message?.includes('RPC response too fast') ||
+        error.message?.includes('quality assurance')
+      ) {
+        throw error; // Pass through the quality error message
+      }
+
+      // Check for rate limiting and other retryable errors
       if (
         retryCount < MAX_RETRIES &&
         (error.message?.includes('429') ||
@@ -2689,6 +2716,9 @@ class MainController {
     const { currentPromise: balancePromise, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
         async (resolve, reject) => {
+          // Track start time for latency measurement
+          const startTime = Date.now();
+
           try {
             // Safe access to transaction objects with error handling
             let web3Provider = null;
@@ -2719,6 +2749,33 @@ class MainController {
                 // No need to pass a provider - let the manager use its own
               );
 
+            // Calculate latency
+            const latency = Date.now() - startTime;
+
+            // Update network quality state with latency info
+            // The state will persist until the next balance update naturally occurs
+            store.dispatch(
+              updateNetworkQualityLatency({
+                latency,
+                minAcceptableLatency: 1000,
+                criticalThreshold: 10000,
+              })
+            );
+
+            if (latency > 1000) {
+              console.warn(
+                `[MainController] Balance update took ${latency}ms - network quality is poor`
+              );
+            } else if (latency > 500) {
+              console.log(
+                `[MainController] Balance update took ${latency}ms - exceeds minimum quality threshold`
+              );
+            } else {
+              console.log(
+                `[MainController] Balance update took ${latency}ms - network quality is good`
+              );
+            }
+
             const actualUserBalance = isBitcoinBased
               ? currentAccount.balances[INetworkType.Syscoin]
               : currentAccount.balances[INetworkType.Ethereum];
@@ -2748,6 +2805,21 @@ class MainController {
             }
             resolve();
           } catch (error) {
+            // Mark network quality as slow/poor on error
+            const latency = Date.now() - startTime;
+            store.dispatch(
+              updateNetworkQualityLatency({
+                latency: latency > 0 ? latency : 10000, // Use actual latency or 10s if immediate failure
+                minAcceptableLatency: 1000,
+                criticalThreshold: 10000,
+              })
+            );
+
+            console.error(
+              `[MainController] Balance update failed after ${latency}ms:`,
+              error
+            );
+
             reject(error);
             // Don't clear loading state on error - let it stay until successful update
             // This keeps the status indicator visible when RPC is failing
@@ -2937,6 +3009,9 @@ class MainController {
     } else {
       // Only dispatch success if critical operations like balance succeeded
       store.dispatch(switchNetworkSuccess());
+
+      // Don't clear network quality state here - let it persist to show the actual network quality
+      // It will be cleared when switching to a different network or if it becomes stale
     }
 
     // Always clear polling state when done
@@ -3286,6 +3361,16 @@ class MainController {
   ) => {
     // Always dispatch startSwitchNetwork to ensure we're in the correct state
     store.dispatch(startSwitchNetwork(network));
+
+    // Only reset network quality when switching to a different network
+    const currentNetwork = store.getState().vault.activeNetwork;
+    if (currentNetwork && currentNetwork.chainId !== network.chainId) {
+      // Switching to a different network - reset quality tracking
+      store.dispatch(resetNetworkQualityForNewNetwork());
+    } else {
+      // Same network - preserve quality state but clear stale data
+      store.dispatch(clearNetworkQualityIfStale());
+    }
 
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
     try {

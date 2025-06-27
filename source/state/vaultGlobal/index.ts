@@ -36,6 +36,7 @@ const initialState: IGlobalState = {
   },
   networks: PALI_NETWORKS_STATE,
   isPollingUpdate: false,
+  networkQuality: undefined,
 };
 
 const vaultGlobalSlice = createSlice({
@@ -224,6 +225,66 @@ const vaultGlobalSlice = createSlice({
     setIsPollingUpdate(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isPollingUpdate = action.payload;
     },
+    setNetworkQuality(
+      state: IGlobalState,
+      action: PayloadAction<
+        | {
+            hasCriticalErrors?: boolean;
+            hasSlowOperations?: boolean;
+            lastBalanceLatency?: number;
+            timestamp?: number;
+          }
+        | undefined
+      >
+    ) {
+      state.networkQuality = action.payload;
+    },
+    updateNetworkQualityLatency(
+      state: IGlobalState,
+      action: PayloadAction<{
+        criticalThreshold?: number;
+        latency: number;
+        minAcceptableLatency?: number;
+      }>
+    ) {
+      const {
+        latency,
+        minAcceptableLatency = 500,
+        criticalThreshold = 10000,
+      } = action.payload;
+
+      if (!state.networkQuality) {
+        state.networkQuality = {};
+      }
+
+      // Update network quality state
+      // This persists until the next operation naturally updates it
+      // The UI will show:
+      // - Orange indicator if hasSlowOperations is true
+      // - Red indicator if hasCriticalErrors is true (timeouts/failures)
+      state.networkQuality.lastBalanceLatency = latency;
+      state.networkQuality.hasSlowOperations = latency > minAcceptableLatency;
+      state.networkQuality.hasCriticalErrors = latency >= criticalThreshold;
+      state.networkQuality.timestamp = Date.now();
+    },
+    clearNetworkQualityIfStale(state: IGlobalState) {
+      // Only clear network quality if it's older than 5 minutes
+      // This prevents clearing fresh quality data during network switches
+      if (state.networkQuality && state.networkQuality.timestamp) {
+        const ageInMs = Date.now() - state.networkQuality.timestamp;
+        const fiveMinutesInMs = 5 * 60 * 1000;
+
+        if (ageInMs > fiveMinutesInMs) {
+          state.networkQuality = undefined;
+        }
+      }
+    },
+    resetNetworkQualityForNewNetwork(state: IGlobalState) {
+      // When switching to a new network, we want to reset quality tracking
+      // but preserve it if we're on the same network
+      // This is called when actually changing networks, not just reconnecting
+      state.networkQuality = undefined;
+    },
   },
 });
 
@@ -254,6 +315,10 @@ export const {
   setNetworks,
   removeNetwork,
   setIsPollingUpdate,
+  setNetworkQuality,
+  updateNetworkQualityLatency,
+  clearNetworkQualityIfStale,
+  resetNetworkQualityForNewNetwork,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;

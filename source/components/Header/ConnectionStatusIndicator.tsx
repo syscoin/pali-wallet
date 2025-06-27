@@ -31,6 +31,7 @@ export const ConnectionStatusIndicator = memo(
         isLoadingAssets,
         isLoadingNfts,
       },
+      networkQuality,
     } = useSelector((state: RootState) => state.vaultGlobal);
     const networkTarget = useSelector(
       (state: RootState) => state.vaultGlobal.networkTarget
@@ -117,16 +118,28 @@ export const ConnectionStatusIndicator = memo(
       };
     }, [isNetworkActivity]);
 
-    // Handle click - only for error state to go to error page
+    // Handle click - for error state or critical errors to go to error page
     const handleClick = () => {
-      if (networkStatus === 'error') {
+      if (
+        networkStatus === 'error' ||
+        (hasCriticalErrors && !isNetworkActivity)
+      ) {
         window.location.hash = '/chain-fail-to-connect';
       }
     };
 
+    // Check if we have slow operations or critical errors from network quality tracking
+    // This persists until the next operation naturally updates it
+    const hasSlowOperations = networkQuality?.hasSlowOperations;
+    const hasCriticalErrors = networkQuality?.hasCriticalErrors;
+
     // Determine if indicator should be visible
     const shouldShowIndicator =
-      isNetworkActivity || showSuccessConfirmation || networkStatus === 'error';
+      isNetworkActivity ||
+      showSuccessConfirmation ||
+      networkStatus === 'error' ||
+      hasSlowOperations ||
+      hasCriticalErrors;
 
     // Determine status color and message based on state
     let statusColor = 'bg-brand-blue500'; // Default: network activity (blue)
@@ -137,14 +150,28 @@ export const ConnectionStatusIndicator = memo(
     );
     let isClickable = false;
 
-    if (networkStatus === 'error') {
-      // Red: Network error - click to go to error page
+    if (
+      networkStatus === 'error' ||
+      (hasCriticalErrors && !isNetworkActivity)
+    ) {
+      // Red: Network error or persistent critical errors - click to go to error page
       statusColor = 'bg-red-600';
       pulseClass = ''; // No pulsing for error state
-      tooltipContent = t('networkConnection.networkError');
+      if (hasCriticalErrors && !isNetworkActivity) {
+        const latencyMs = networkQuality?.lastBalanceLatency || 0;
+        tooltipContent = t('networkConnection.networkCriticalError', {
+          latency: latencyMs >= 10000 ? 'timeout' : `${latencyMs}ms`,
+        });
+      } else {
+        tooltipContent = t('networkConnection.networkError');
+      }
       isClickable = true;
-    } else if (showSuccessConfirmation) {
-      // Green: Successfully completed
+    } else if (
+      showSuccessConfirmation &&
+      !hasSlowOperations &&
+      !hasCriticalErrors
+    ) {
+      // Only show green if operations completed successfully AND were not slow
       statusColor = 'bg-green-500';
       pulseClass = 'animate-pulse';
       tooltipContent = t('networkConnection.operationCompleted');
@@ -156,12 +183,40 @@ export const ConnectionStatusIndicator = memo(
         'networkConnection.operationFailing',
         'Network operation taking too long'
       );
-    } else if (showSlowWarning) {
-      // Orange: Operation is slow
+    } else if ((showSlowWarning || hasSlowOperations) && !hasCriticalErrors) {
+      // Orange: Operation is slow or network quality is poor (but not critical)
       statusColor = 'bg-orange-500';
-      tooltipContent = t('networkConnection.operationSlow', {
-        operation: tooltipContent.replace('...', ''),
-      });
+      if (hasSlowOperations && !isNetworkActivity) {
+        // Show specific message about slow network quality
+        const latencyMs = networkQuality?.lastBalanceLatency || 0;
+        tooltipContent = t('networkConnection.networkQualitySlow', {
+          latency: `${latencyMs}ms`,
+        });
+        pulseClass = ''; // No pulsing when just showing slow quality warning
+      } else {
+        tooltipContent = t('networkConnection.operationSlow', {
+          operation: tooltipContent.replace('...', ''),
+        });
+      }
+    } else if (
+      showSuccessConfirmation &&
+      (hasSlowOperations || hasCriticalErrors)
+    ) {
+      // Orange/Red instead of green if network quality is poor
+      if (hasCriticalErrors) {
+        statusColor = 'bg-red-600';
+        const latencyMs = networkQuality?.lastBalanceLatency || 0;
+        tooltipContent = t('networkConnection.operationCompletedCritical', {
+          latency: latencyMs >= 10000 ? 'timeout' : `${latencyMs}ms`,
+        });
+      } else {
+        statusColor = 'bg-orange-500';
+        const latencyMs = networkQuality?.lastBalanceLatency || 0;
+        tooltipContent = t('networkConnection.operationCompletedSlow', {
+          latency: `${latencyMs}ms`,
+        });
+      }
+      pulseClass = 'animate-pulse';
     } else if (isNetworkActivity) {
       // More specific titles based on what's loading
       if (networkStatus === 'switching') {

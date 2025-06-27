@@ -60,6 +60,14 @@ export interface IGlobalState {
   // Transient loading states - never persisted across app restarts
   loadingStates: ILoadingStates;
 
+  // Network quality tracking
+  networkQuality?: {
+    hasCriticalErrors?: boolean;
+    hasSlowOperations?: boolean;
+    lastBalanceLatency?: number; // For timeouts/failures
+    timestamp?: number;
+  };
+
   networkStatus: 'idle' | 'switching' | 'error' | 'connecting';
 
   networkTarget?: INetwork;

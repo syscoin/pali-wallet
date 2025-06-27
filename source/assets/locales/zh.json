@@ -421,7 +421,11 @@
     "switchingAccount": "切换账户中...",
     "operationCompleted": "操作成功完成",
     "operationFailing": "网络操作耗时过长",
-    "operationSlow": "{{operation}} - 比预期慢"
+    "operationSlow": "{{operation}} - 比预期慢",
+    "networkQualitySlow": "网络响应时间缓慢 ({{latency}})",
+    "operationCompletedSlow": "操作已完成但速度缓慢 ({{latency}})",
+    "networkCriticalError": "网络响应不正常 ({{latency}})",
+    "operationCompletedCritical": "操作以严重延迟完成 ({{latency}})"
   },
   "transactions": {
     "messageCopied": "消息复制成功",

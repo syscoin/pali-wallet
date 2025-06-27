@@ -570,7 +570,11 @@
     "switchingAccount": "Mudando de conta...",
     "operationCompleted": "Operação concluída com sucesso",
     "operationFailing": "Operação de rede está demorando muito",
-    "operationSlow": "{{operation}} - mais lento que o esperado"
+    "operationSlow": "{{operation}} - mais lento que o esperado",
+    "networkQualitySlow": "O tempo de resposta da rede está lento ({{latency}})",
+    "operationCompletedSlow": "Operação concluída mas foi lenta ({{latency}})",
+    "networkCriticalError": "A rede não está respondendo adequadamente ({{latency}})",
+    "operationCompletedCritical": "Operação concluída com atrasos críticos ({{latency}})"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "As contas importadas não se vincularão à Frase de Recuperação Secreta da sua conta Pali inicial.",

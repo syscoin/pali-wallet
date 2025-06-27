@@ -77,14 +77,16 @@ export const findUserTxsInProviderByBlocksRange = async (
     const chunk = rangeBlocksToRun.slice(i, i + currentBatchSize);
 
     try {
-      const batchRequest = chunk.map((blockNumber) =>
-        provider.sendBatch('eth_getBlockByNumber', [
-          `0x${blockNumber.toString(16)}`,
-          true,
-        ])
-      );
+      // Use sendBatch to send all block requests in a single batch
+      const batchParams = chunk.map((blockNumber) => [
+        `0x${blockNumber.toString(16)}`,
+        true,
+      ]);
 
-      const responses = await Promise.all(batchRequest);
+      const responses = await provider.sendBatch(
+        'eth_getBlockByNumber',
+        batchParams
+      );
       allResponses.push(...responses);
 
       // Reset consecutive errors on success
