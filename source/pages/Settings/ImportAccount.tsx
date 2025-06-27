@@ -1,7 +1,7 @@
 import { Input, Form } from 'antd';
 import { useForm } from 'antd/es/form/Form';
-import { t } from 'i18next';
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { NeutralButton } from 'components/index';
@@ -14,6 +14,7 @@ import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 const ImportAccountView = () => {
   const { controllerEmitter, handleWalletLockedError } = useController();
   const { navigate, alert } = useUtils();
+  const { t } = useTranslation();
   const [form] = useForm();
   const [validPrivateKey, setValidPrivateKey] = useState(false);
 
