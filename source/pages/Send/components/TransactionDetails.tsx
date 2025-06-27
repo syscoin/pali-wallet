@@ -78,7 +78,7 @@ export const TransactionDetailsComponent = (
     fieldType: 'address' | 'hash' | 'other' = 'address'
   ) => {
     copy(value);
-    alert.removeAll();
+
     alert.info(getCopyMessage(fieldType));
   };
 

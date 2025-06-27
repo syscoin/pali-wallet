@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "네트워크 연결 오류",
-    "connectionTooLong": "연결 시간이 너무 오래 걸립니다",
-    "tryingToConnectOn": "연결 시도 중:",
-    "goToAnotherNetwork": "다른 네트워크로 전환",
-    "editCurrentRpc": "현재 네트워크 RPC 편집"
+    "connectionTooLong": "연결 응답이 너무 오래 걸립니다",
+    "tryingToConnectOn": "연결을 시도하고 있습니다:",
+    "goToAnotherNetwork": "다른 네트워크로 이동",
+    "editCurrentRpc": "현재 네트워크의 RPC 편집",
+    "networkTimeout": "네트워크 연결이 10초 후 시간 초과되었습니다",
+    "invalidResponse": "RPC가 잘못된 응답을 반환했습니다",
+    "connectionError": "RPC 엔드포인트에 연결할 수 없습니다"
   },
   "networkConnection": {
     "networkError": "네트워크 오류 - 옵션을 보려면 클릭",

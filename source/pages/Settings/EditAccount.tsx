@@ -63,7 +63,6 @@ const EditAccountView = () => {
 
       navigate('/home');
     } catch (error) {
-      alert.removeAll();
       alert.error(error.message);
     } finally {
       setLoading(false);

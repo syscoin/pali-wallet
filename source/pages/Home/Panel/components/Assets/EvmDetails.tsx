@@ -27,7 +27,6 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
   useEffect(() => {
     if (!isCopied) return;
 
-    alert.removeAll();
     alert.info(t('home.contractCopied'));
   }, [isCopied, alert, t]);
 

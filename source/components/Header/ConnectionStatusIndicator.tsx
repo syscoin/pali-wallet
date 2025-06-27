@@ -141,10 +141,7 @@ export const ConnectionStatusIndicator = memo(
       // Red: Network error - click to go to error page
       statusColor = 'bg-red-600';
       pulseClass = ''; // No pulsing for error state
-      tooltipContent = t(
-        'networkConnection.networkError',
-        'Network error - click for options'
-      );
+      tooltipContent = t('networkConnection.networkError');
       isClickable = true;
     } else if (showSuccessConfirmation) {
       // Green: Successfully completed
@@ -162,50 +159,29 @@ export const ConnectionStatusIndicator = memo(
     } else if (showSlowWarning) {
       // Orange: Operation is slow
       statusColor = 'bg-orange-500';
-      tooltipContent = t(
-        'networkConnection.operationSlow',
-        '{{operation}} - slower than expected',
-        {
-          operation: tooltipContent.replace('...', ''),
-        }
-      );
+      tooltipContent = t('networkConnection.operationSlow', {
+        operation: tooltipContent.replace('...', ''),
+      });
     } else if (isNetworkActivity) {
       // More specific titles based on what's loading
       if (networkStatus === 'switching') {
-        tooltipContent = t(
-          'networkConnection.switchingNetwork',
-          'Switching network...'
-        );
+        tooltipContent = t('networkConnection.switchingNetwork');
       } else if (networkStatus === 'connecting') {
         const targetNetworkName =
           networkTarget?.label || activeNetwork?.label || 'network';
-        tooltipContent = t(
-          'networkConnection.connecting',
-          'Connecting to {{network}}',
-          { network: targetNetworkName }
-        );
+        tooltipContent = t('networkConnection.connecting', {
+          network: targetNetworkName,
+        });
       } else if (isLoadingBalances) {
-        tooltipContent = t(
-          'networkConnection.updatingBalances',
-          'Updating balances...'
-        );
+        tooltipContent = t('networkConnection.updatingBalances');
       } else if (isLoadingAssets) {
-        tooltipContent = t(
-          'networkConnection.loadingAssets',
-          'Loading assets...'
-        );
+        tooltipContent = t('networkConnection.loadingAssets');
       } else if (isLoadingTxs) {
-        tooltipContent = t(
-          'networkConnection.loadingTransactions',
-          'Loading transactions...'
-        );
+        tooltipContent = t('networkConnection.loadingTransactions');
       } else if (isLoadingNfts) {
-        tooltipContent = t('networkConnection.loadingNfts', 'Loading NFTs...');
+        tooltipContent = t('networkConnection.loadingNfts');
       } else if (isChangingConnectedAccount) {
-        tooltipContent = t(
-          'networkConnection.switchingAccount',
-          'Switching account...'
-        );
+        tooltipContent = t('networkConnection.switchingAccount');
       }
     }
 

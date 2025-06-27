@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "Erreur de connexion réseau",
-    "connectionTooLong": "LA CONNEXION PREND TROP DE TEMPS À RÉPONDRE",
+    "connectionTooLong": "LA CONNEXION PREND TROP DE TEMPS POUR RÉPONDRE",
     "tryingToConnectOn": "Vous essayez de vous connecter sur :",
-    "goToAnotherNetwork": "Aller sur un autre réseau",
-    "editCurrentRpc": "Modifier le RPC du réseau actuel"
+    "goToAnotherNetwork": "Aller à un autre réseau",
+    "editCurrentRpc": "Modifier le RPC du réseau actuel",
+    "networkTimeout": "La connexion réseau a expiré après 10 secondes",
+    "invalidResponse": "Le RPC a renvoyé une réponse invalide",
+    "connectionError": "Impossible de se connecter au point de terminaison RPC"
   },
   "networkConnection": {
     "networkError": "Erreur réseau - cliquez pour les options",

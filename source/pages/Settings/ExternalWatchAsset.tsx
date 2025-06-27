@@ -55,7 +55,6 @@ const ExternalWatchAsset = () => {
 
       setLoading(false);
     } catch (error: any) {
-      alert.removeAll();
       alert.error(error.message);
 
       setLoading(false);

@@ -185,7 +185,6 @@ export const SendTransaction = () => {
           'Please enable Blind signing'
         );
         if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-          alert.removeAll();
           alert.warning(t('settings.ledgerBlindSigning'));
           setLoading(false);
           return;
@@ -197,7 +196,6 @@ export const SendTransaction = () => {
         }
         logError('error', 'Transaction', error);
 
-        alert.removeAll();
         alert.error(t('send.cantCompleteTxs'));
 
         if (isExternal) setTimeout(window.close, 4000);
@@ -205,7 +203,6 @@ export const SendTransaction = () => {
         return error;
       }
     } else {
-      alert.removeAll();
       alert.error(t('send.enoughFunds'));
       if (isExternal) setTimeout(window.close, 2000);
     }
@@ -227,10 +224,7 @@ export const SendTransaction = () => {
         setCustomNonce(nonce);
       } catch (e) {
         logError('error getting fees', 'Transaction', e);
-        setTimeout(() => {
-          alert.removeAll();
-          alert.error(t('send.txWillFail'), e);
-        }, 0);
+        alert.error(t('send.txWillFail'), e);
         setTimeout(window.close, 3000);
       }
     };

@@ -166,7 +166,6 @@ export const SendNTokenTransaction = () => {
             'Please enable Blind signing'
           );
           if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-            alert.removeAll();
             alert.warning(t('settings.ledgerBlindSigning'));
             setLoading(false);
             return;
@@ -178,7 +177,6 @@ export const SendNTokenTransaction = () => {
           }
           logError('error', 'Transaction', legacyError);
 
-          alert.removeAll();
           alert.error(t('send.cantCompleteTxs'));
 
           if (isExternal) setTimeout(window.close, 4000);
@@ -240,7 +238,6 @@ export const SendNTokenTransaction = () => {
             'Please enable Blind signing'
           );
           if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-            alert.removeAll();
             alert.warning(t('settings.ledgerBlindSigning'));
             setLoading(false);
             return;
@@ -252,7 +249,6 @@ export const SendNTokenTransaction = () => {
           }
           logError('error', 'Transaction', notLegacyError);
 
-          alert.removeAll();
           alert.error(t('send.cantCompleteTxs'));
 
           if (isExternal) setTimeout(window.close, 4000);
@@ -425,10 +421,7 @@ export const SendNTokenTransaction = () => {
 
   useEffect(() => {
     if (!copied) return;
-    setTimeout(() => {
-      alert.removeAll();
-      alert.info(t('home.addressCopied'));
-    }, 0);
+    alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
   return (

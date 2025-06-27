@@ -229,10 +229,6 @@ export const useRouterLogic = () => {
   // Removed unused development-only useEffect that was calling non-existent functions
 
   useEffect(() => {
-    alert.removeAll();
-  }, [pathname, alert]);
-
-  useEffect(() => {
     if (
       serverHasAnError &&
       isUnlocked &&

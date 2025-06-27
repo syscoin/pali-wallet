@@ -20,10 +20,7 @@ export const Receive = () => {
   useEffect(() => {
     if (!isCopied) return;
 
-    setTimeout(() => {
-      alert.removeAll();
-      alert.info(t('home.addressCopied'));
-    }, 0);
+    alert.info(t('home.addressCopied'));
   }, [isCopied, alert, t]);
 
   return (

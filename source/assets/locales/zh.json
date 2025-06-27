@@ -399,10 +399,13 @@
   },
   "chainError": {
     "errorTitle": "网络连接错误",
-    "connectionTooLong": "连接时间过长",
-    "tryingToConnectOn": "尝试连接到：",
-    "goToAnotherNetwork": "转到其他网络",
-    "editCurrentRpc": "编辑当前网络RPC"
+    "connectionTooLong": "连接响应时间过长",
+    "tryingToConnectOn": "您正在尝试连接：",
+    "goToAnotherNetwork": "切换到其他网络",
+    "editCurrentRpc": "编辑当前网络的RPC",
+    "networkTimeout": "网络连接在10秒后超时",
+    "invalidResponse": "RPC返回了无效的响应",
+    "connectionError": "无法连接到RPC端点"
   },
   "networkConnection": {
     "networkError": "网络错误 - 点击查看选项",

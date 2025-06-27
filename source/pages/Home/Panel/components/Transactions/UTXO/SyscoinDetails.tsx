@@ -80,7 +80,7 @@ export const SyscoinTransactionDetails = ({
 
   const handleCopyWithMessage = (value: string, label: string) => {
     copy(value);
-    alert.removeAll();
+
     alert.info(getCopyMessage(label));
   };
 

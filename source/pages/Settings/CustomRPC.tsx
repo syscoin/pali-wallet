@@ -194,7 +194,6 @@ const CustomRPCView = () => {
           },
         ]);
 
-        alert.removeAll();
         alert.error(errorMessage, {
           autoClose: 4000,
         });
@@ -236,7 +235,6 @@ const CustomRPCView = () => {
         },
       ]);
 
-      alert.removeAll();
       alert.error(errorMessage, {
         autoClose: 4000,
       });
@@ -310,7 +308,6 @@ const CustomRPCView = () => {
         },
       ]);
 
-      alert.removeAll();
       alert.error(errorMessage, {
         autoClose: 4000,
       });
@@ -340,7 +337,6 @@ const CustomRPCView = () => {
         errorMessage = `${firstError.name[0]}: ${firstError.errors[0]}`;
       }
 
-      alert.removeAll();
       alert.error(errorMessage, {
         autoClose: 4000,
       });
@@ -379,7 +375,6 @@ const CustomRPCView = () => {
         await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
         setLoading(false);
 
-        alert.removeAll();
         alert.success(t('settings.rpcSuccessfullyEdited'), {
           autoClose: 3000,
         });
@@ -388,14 +383,12 @@ const CustomRPCView = () => {
         await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
         setLoading(false);
 
-        alert.removeAll();
         alert.success(t('settings.rpcSuccessfullyAdded'), {
           autoClose: 3000,
         });
         setTimeout(() => navigate(-1), 1800);
       }
     } catch (error: any) {
-      alert.removeAll();
       setShowModal(true);
       setLoading(false);
       setErrorModalMessage(error.message);
@@ -656,7 +649,6 @@ const CustomRPCView = () => {
         }
 
         // Clear any existing toasts first to prevent conflicts
-        alert.removeAll();
 
         // Create stable success message
         const hostname = rpc.url ? new URL(rpc.url).hostname : 'RPC server';

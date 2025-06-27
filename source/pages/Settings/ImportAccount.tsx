@@ -51,7 +51,7 @@ const ImportAccountView = () => {
         const wasHandled = handleWalletLockedError(error);
         if (!wasHandled) {
           // If not a wallet locked error, show the original error message
-          alert.removeAll();
+
           alert.error(String(error.message));
         }
       }

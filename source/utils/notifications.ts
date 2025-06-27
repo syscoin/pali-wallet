@@ -129,35 +129,30 @@ export const clearAllNotifications = async (): Promise<void> =>
 export const showTransactionNotification = async (
   notification: ITransactionNotification
 ): Promise<string | null> => {
-  // Ensure i18next is initialized
+  // Check if i18next is initialized, but don't wait
   if (!i18next.isInitialized) {
-    console.warn('[Notifications] i18next not initialized, waiting...');
-    // Wait a bit for i18next to initialize
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (!i18next.isInitialized) {
-      console.error(
-        '[Notifications] i18next still not initialized, using fallback text'
-      );
-      // Use fallback English text if i18next is still not ready
-      return createNotification({
-        title:
-          notification.type === 'pending'
-            ? 'Transaction Submitted'
-            : notification.type === 'confirmed'
-            ? 'Transaction Confirmed'
-            : 'Transaction Failed',
-        message: `Transaction ${notification.type} on ${notification.network}`,
-        iconUrl: chrome.runtime.getURL('assets/all_assets/favicon-48.png'),
-        type: 'basic',
-        priority: notification.type === 'failed' ? 2 : 1,
-        isClickable: true,
-        buttons: [
-          {
-            title: i18next.t('notifications.clickToView'),
-          },
-        ],
-      });
-    }
+    console.warn(
+      '[Notifications] i18next not initialized, using fallback text'
+    );
+    // Use fallback English text immediately
+    return createNotification({
+      title:
+        notification.type === 'pending'
+          ? 'Transaction Submitted'
+          : notification.type === 'confirmed'
+          ? 'Transaction Confirmed'
+          : 'Transaction Failed',
+      message: `Transaction ${notification.type} on ${notification.network}`,
+      iconUrl: chrome.runtime.getURL('assets/all_assets/favicon-48.png'),
+      type: 'basic',
+      priority: notification.type === 'failed' ? 2 : 1,
+      isClickable: true,
+      buttons: [
+        {
+          title: 'Click to view details',
+        },
+      ],
+    });
   }
 
   let title: string;
@@ -237,8 +232,21 @@ export const showTransactionNotification = async (
 export const showNetworkChangeNotification = async (
   fromNetwork: string,
   toNetwork: string
-): Promise<string | null> =>
-  createNotification({
+): Promise<string | null> => {
+  // Check if i18next is initialized, but don't wait
+  if (!i18next.isInitialized) {
+    console.warn(
+      '[Notifications] i18next not initialized for network change, using fallback text'
+    );
+    return createNotification({
+      title: 'Network Changed',
+      message: `Switched from ${fromNetwork} to ${toNetwork}`,
+      type: 'basic',
+      priority: 0,
+    });
+  }
+
+  return createNotification({
     title: i18next.t('notifications.networkChanged'),
     message: i18next.t('notifications.switchedNetwork', {
       fromNetwork,
@@ -247,6 +255,7 @@ export const showNetworkChangeNotification = async (
     type: 'basic',
     priority: 0,
   });
+};
 
 // Account change notification
 export const showAccountChangeNotification = async (
@@ -255,6 +264,19 @@ export const showAccountChangeNotification = async (
 ): Promise<string | null> => {
   const shortenAddress = (addr: string) =>
     `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+
+  // Check if i18next is initialized, but don't wait
+  if (!i18next.isInitialized) {
+    console.warn(
+      '[Notifications] i18next not initialized for account change, using fallback text'
+    );
+    return createNotification({
+      title: 'Account Changed',
+      message: `Active account: ${accountLabel || shortenAddress(newAccount)}`,
+      type: 'basic',
+      priority: 0,
+    });
+  }
 
   return createNotification({
     title: i18next.t('notifications.accountChanged'),
@@ -270,8 +292,24 @@ export const showAccountChangeNotification = async (
 export const showDappConnectionNotification = async (
   dappUrl: string,
   approved: boolean
-): Promise<string | null> =>
-  createNotification({
+): Promise<string | null> => {
+  // Check if i18next is initialized, but don't wait
+  if (!i18next.isInitialized) {
+    console.warn(
+      '[Notifications] i18next not initialized for dapp connection, using fallback text'
+    );
+    const hostname = new URL(dappUrl).hostname;
+    return createNotification({
+      title: approved ? 'Site Connected' : 'Connection Rejected',
+      message: approved
+        ? `${hostname} is now connected to Pali Wallet`
+        : `Connection request from ${hostname} was rejected`,
+      type: 'basic',
+      priority: 1,
+    });
+  }
+
+  return createNotification({
     title: approved
       ? i18next.t('notifications.siteConnected')
       : i18next.t('notifications.connectionRejected'),
@@ -285,13 +323,35 @@ export const showDappConnectionNotification = async (
     type: 'basic',
     priority: 1,
   });
+};
 
 // Error notification
 export const showErrorNotification = async (
   error: string,
   context?: string
-): Promise<string | null> =>
-  createNotification({
+): Promise<string | null> => {
+  // Check if i18next is initialized, but don't wait
+  if (!i18next.isInitialized) {
+    console.warn(
+      '[Notifications] i18next not initialized for error notification, using fallback text'
+    );
+    return createNotification({
+      title: 'Error',
+      message: context
+        ? `An error occurred: ${error}: ${context}`
+        : `An error occurred: ${error}`,
+      type: 'basic',
+      priority: 2,
+      requireInteraction: true,
+      buttons: [
+        {
+          title: 'Click to view details',
+        },
+      ],
+    });
+  }
+
+  return createNotification({
     title: i18next.t('notifications.error'),
     message: context
       ? i18next.t('notifications.errorOccurred', {
@@ -307,6 +367,7 @@ export const showErrorNotification = async (
       },
     ],
   });
+};
 
 // Set up notification click handler (call this in background script)
 export const setupNotificationListeners = (): void => {

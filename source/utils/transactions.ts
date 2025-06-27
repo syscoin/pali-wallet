@@ -61,7 +61,6 @@ const cancelTransaction = async (
   const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
-    alert.removeAll();
     alert.error(t('transactions.cancelNotAvailableUtxo'));
     return;
   }
@@ -73,7 +72,6 @@ const cancelTransaction = async (
     );
 
     if (!response) {
-      alert.removeAll();
       alert.error(t('transactions.transactionCancelFailed'));
       return;
     }
@@ -84,7 +82,6 @@ const cancelTransaction = async (
     };
 
     if (!isCanceled && error) {
-      alert.removeAll();
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -95,17 +92,16 @@ const cancelTransaction = async (
           ['wallet', 'setEvmTransactionAsCanceled'],
           [txHash, chainId]
         );
-        alert.removeAll();
+
         alert.success(t('transactions.transactionCanceledSuccessfully'));
         break;
       case false:
-        alert.removeAll();
         alert.error(t('transactions.transactionCancelFailed'));
         break;
     }
   } catch (error) {
     console.error('Error cancelling transaction:', error);
-    alert.removeAll();
+
     alert.error(t('transactions.transactionCancelFailed'));
   }
 };
@@ -121,7 +117,6 @@ const speedUpTransaction = async (
   const { default: store } = await import('../state/store');
   const { isBitcoinBased } = store.getState().vault;
   if (isBitcoinBased) {
-    alert.removeAll();
     alert.error(t('transactions.speedUpNotAvailableUtxo'));
     return;
   }
@@ -133,7 +128,6 @@ const speedUpTransaction = async (
     );
 
     if (!response) {
-      alert.removeAll();
       alert.error(t('transactions.transactionSpeedUpFailed'));
       return;
     }
@@ -145,7 +139,6 @@ const speedUpTransaction = async (
     };
 
     if (!isSpeedUp && error) {
-      alert.removeAll();
       alert.warning(t('transactions.transactionNotFoundOrConfirmed'));
       return;
     }
@@ -156,17 +149,16 @@ const speedUpTransaction = async (
           ['wallet', 'setEvmTransactionAsAccelerated'],
           [txHash, chainId, transaction]
         );
-        alert.removeAll();
+
         alert.success(t('transactions.transactionAcceleratedSuccessfully'));
         break;
       case false:
-        alert.removeAll();
         alert.error(t('transactions.transactionSpeedUpFailed'));
         break;
     }
   } catch (error) {
     console.error('Error speeding up transaction:', error);
-    alert.removeAll();
+
     alert.error(t('transactions.transactionSpeedUpFailed'));
   }
 };

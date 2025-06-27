@@ -556,7 +556,10 @@
     "connectionTooLong": "CONNECTION IS TAKING TOO LONG TO REPLY",
     "tryingToConnectOn": "You are trying to connect on:",
     "goToAnotherNetwork": "Go to another network",
-    "editCurrentRpc": "Edit RPC of current network"
+    "editCurrentRpc": "Edit RPC of current network",
+    "networkTimeout": "Network connection timed out after 10 seconds",
+    "invalidResponse": "The RPC returned an invalid response",
+    "connectionError": "Unable to connect to the RPC endpoint"
   },
   "networkConnection": {
     "connecting": "Connecting to {{network}}",

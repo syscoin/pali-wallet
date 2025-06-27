@@ -34,12 +34,26 @@ export const useUtils = () => {
   return {
     useCopyClipboard,
     alert: {
-      show: toast,
-      success: toast.success,
-      error: toast.error,
-      info: toast.info,
-      warning: toast.warn,
-      removeAll: toast.dismiss,
+      show: (message: string, options?: any) => {
+        toast.dismiss();
+        setTimeout(() => toast(message, options), 0);
+      },
+      success: (message: string, options?: any) => {
+        toast.dismiss();
+        setTimeout(() => toast.success(message, options), 0);
+      },
+      error: (message: string, options?: any) => {
+        toast.dismiss();
+        setTimeout(() => toast.error(message, options), 0);
+      },
+      info: (message: string, options?: any) => {
+        toast.dismiss();
+        setTimeout(() => toast.info(message, options), 0);
+      },
+      warning: (message: string, options?: any) => {
+        toast.dismiss();
+        setTimeout(() => toast.warn(message, options), 0);
+      },
     },
     navigate,
   };

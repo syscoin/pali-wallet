@@ -236,7 +236,6 @@ export const SendSys = () => {
           }
         } catch (error: any) {
           setIsLoading(false);
-          alert.removeAll();
 
           // Handle structured errors from syscoinjs-lib
           if (error.error && error.code) {
@@ -294,7 +293,7 @@ export const SendSys = () => {
 
           if (totalNeeded.value > balanceCurrency.value) {
             setIsLoading(false);
-            alert.removeAll();
+
             alert.error(t('send.insufficientFunds'));
             return;
           }
@@ -351,7 +350,6 @@ export const SendSys = () => {
           }
         } catch (error: any) {
           setIsLoading(false);
-          alert.removeAll();
 
           // Handle structured errors from syscoinjs-lib
           if (error.error && error.code) {
@@ -433,7 +431,7 @@ export const SendSys = () => {
       }
     } catch (error) {
       setIsLoading(false);
-      alert.removeAll();
+
       alert.error(t('send.internalError'));
     }
   };

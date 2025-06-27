@@ -125,12 +125,11 @@ const ConnectHardwareWalletView: FC = () => {
         return;
       }
       if (isDeviceLocked) {
-        alert.removeAll();
         alert.warning(t('settings.lockedDevice'));
         setIsLoading(false);
         return;
       }
-      alert.removeAll();
+
       alert.error(t('settings.errorCreatingHardWallet'));
     }
   };

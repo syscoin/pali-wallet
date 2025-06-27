@@ -203,7 +203,6 @@ export const ApproveTransactionComponent = () => {
           'Please enable Blind signing'
         );
         if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-          alert.removeAll();
           alert.error(t('settings.ledgerBlindSigning'));
           setLoading(false);
           return;
@@ -215,7 +214,6 @@ export const ApproveTransactionComponent = () => {
         }
         logError('error', 'Transaction', error);
 
-        alert.removeAll();
         alert.error(t('send.cantCompleteApprove'));
 
         if (isExternal)
@@ -284,10 +282,7 @@ export const ApproveTransactionComponent = () => {
   useEffect(() => {
     if (!copied) return;
 
-    setTimeout(() => {
-      alert.removeAll();
-      alert.success(t('home.addressCopied'));
-    }, 0);
+    alert.success(t('home.addressCopied'));
   }, [copied, alert, t]);
 
   useMemo(() => {
@@ -332,10 +327,7 @@ export const ApproveTransactionComponent = () => {
   // Navigate when transaction is confirmed
   useEffect(() => {
     if (confirmedDefaultModal) {
-      setTimeout(() => {
-        alert.removeAll();
-        alert.success(t('send.approveSuccessful'));
-      }, 0);
+      alert.success(t('send.approveSuccessful'));
 
       if (isExternal) {
         window.close();

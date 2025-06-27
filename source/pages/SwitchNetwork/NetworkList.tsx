@@ -96,12 +96,10 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
       // If it's a timeout, suggest retrying
       if (errorMessage.includes('timed out')) {
-        alert.removeAll();
         alert.error(
           `${errorMessage} The network might be slow or unresponsive.`
         );
       } else {
-        alert.removeAll();
         alert.error(errorMessage);
       }
 

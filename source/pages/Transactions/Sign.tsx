@@ -61,7 +61,7 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
 
       // Show success toast
-      alert.removeAll();
+
       alert.success(
         signOnly
           ? t('transactions.theDappHas')

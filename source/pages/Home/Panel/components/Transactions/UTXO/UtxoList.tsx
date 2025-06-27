@@ -128,12 +128,9 @@ export const UtxoTransactionsList = ({
       // Prevent showing multiple toasts within 3 seconds
       if (now - lastToastTime.current > 3000) {
         // Defer toast to next tick to avoid conflicts with re-renders
-        setTimeout(() => {
-          alert.removeAll();
-          alert.success(t('send.txSuccessfull'), {
-            autoClose: 5000, // Show for 5 seconds
-          });
-        }, 0);
+        alert.success(t('send.txSuccessfull'), {
+          autoClose: 5000, // Show for 5 seconds
+        });
         lastToastTime.current = now;
       }
     }

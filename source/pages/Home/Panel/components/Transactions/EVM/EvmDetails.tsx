@@ -173,10 +173,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
                         onClick={() => {
                           copy(value ?? '');
                           // Show appropriate message immediately
-                          setTimeout(() => {
-                            alert.removeAll();
-                            alert.info(getCopyMessage(label));
-                          }, 100);
+                          alert.info(getCopyMessage(label));
                         }}
                       >
                         <CopyIcon />

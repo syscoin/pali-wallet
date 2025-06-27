@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "Ошибка сетевого подключения",
-    "connectionTooLong": "ПОДКЛЮЧЕНИЕ ЗАНИМАЕТ СЛИШКОМ МНОГО ВРЕМЕНИ",
-    "tryingToConnectOn": "Попытка подключения к:",
-    "goToAnotherNetwork": "Перейти на другую сеть",
-    "editCurrentRpc": "Редактировать RPC текущей сети"
+    "connectionTooLong": "ПОДКЛЮЧЕНИЕ СЛИШКОМ ДОЛГО ОТВЕЧАЕТ",
+    "tryingToConnectOn": "Вы пытаетесь подключиться к:",
+    "goToAnotherNetwork": "Перейти к другой сети",
+    "editCurrentRpc": "Редактировать RPC текущей сети",
+    "networkTimeout": "Время ожидания сетевого подключения истекло через 10 секунд",
+    "invalidResponse": "RPC вернул недействительный ответ",
+    "connectionError": "Невозможно подключиться к конечной точке RPC"
   },
   "networkConnection": {
     "networkError": "Ошибка сети - нажмите для опций",

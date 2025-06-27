@@ -259,7 +259,6 @@ export const SendConfirm = () => {
                   error?.message?.includes('Locked device');
 
                 if (isDeviceLocked) {
-                  alert.removeAll();
                   alert.warning(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
@@ -268,7 +267,6 @@ export const SendConfirm = () => {
                 // Handle structured errors from syscoinjs-lib sendTransaction
                 if (error.error && error.code) {
                   const sysError = error as ISyscoinTransactionError;
-                  alert.removeAll();
 
                   switch (sysError.code) {
                     case 'TRANSACTION_SEND_FAILED':
@@ -302,7 +300,6 @@ export const SendConfirm = () => {
             // Handle structured errors from syscoinjs-lib
             if (error.error && error.code) {
               const sysError = error as ISyscoinTransactionError;
-              alert.removeAll();
 
               switch (sysError.code) {
                 case 'INSUFFICIENT_FUNDS':
@@ -359,14 +356,12 @@ export const SendConfirm = () => {
             } else {
               // Fallback for non-structured errors
               if (error && basicTxValues.fee > 0.00001) {
-                alert.removeAll();
                 alert.error(
                   `${truncate(String(error.message), 166)} ${t(
                     'send.reduceFee'
                   )}`
                 );
               } else {
-                alert.removeAll();
                 alert.error(t('send.cantCompleteTxs'));
               }
             }
@@ -439,7 +434,6 @@ export const SendConfirm = () => {
                       activeAccount.isLedgerWallet &&
                       isNecessaryBlindSigning
                     ) {
-                      alert.removeAll();
                       alert.warning(t('settings.ledgerBlindSigning'));
                       setLoading(false);
                       return;
@@ -453,7 +447,6 @@ export const SendConfirm = () => {
                       error?.message.includes('Locked device');
 
                     if (isDeviceLocked) {
-                      alert.removeAll();
                       alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
@@ -466,7 +459,7 @@ export const SendConfirm = () => {
                 return;
               } catch (legacyError: any) {
                 logError('error', 'Transaction', legacyError);
-                alert.removeAll();
+
                 alert.error(t('send.cantCompleteTxs'));
 
                 setLoading(false);
@@ -533,7 +526,6 @@ export const SendConfirm = () => {
                   'Please enable Blind signing'
                 );
                 if (activeAccount.isLedgerWallet && isNecessaryBlindSigning) {
-                  alert.removeAll();
                   alert.warning(t('settings.ledgerBlindSigning'));
                   setLoading(false);
                   return;
@@ -546,7 +538,6 @@ export const SendConfirm = () => {
                 const isDeviceLocked = error?.message.includes('Locked device');
 
                 if (isDeviceLocked) {
-                  alert.removeAll();
                   alert.warning(t('settings.lockedDevice'));
                   setLoading(false);
                   return;
@@ -560,7 +551,6 @@ export const SendConfirm = () => {
           } catch (error: any) {
             logError('error ETH', 'Transaction', error);
 
-            alert.removeAll();
             alert.error(t('send.cantCompleteTxs'));
 
             setLoading(false);
@@ -632,7 +622,6 @@ export const SendConfirm = () => {
                         activeAccount.isLedgerWallet &&
                         isNecessaryBlindSigning
                       ) {
-                        alert.removeAll();
                         alert.warning(t('settings.ledgerBlindSigning'));
                         setLoading(false);
                         return;
@@ -649,14 +638,12 @@ export const SendConfirm = () => {
                         error?.message.includes('Locked device');
 
                       if (isDeviceLocked) {
-                        alert.removeAll();
                         alert.warning(t('settings.lockedDevice'));
                         setLoading(false);
                         return;
                       }
                       logError('error send ERC20', 'Transaction', error);
 
-                      alert.removeAll();
                       alert.error(t('send.cantCompleteTxs'));
                       setLoading(false);
                     });
@@ -665,7 +652,6 @@ export const SendConfirm = () => {
                 } catch (_erc20Error) {
                   logError('error send ERC20', 'Transaction', _erc20Error);
 
-                  alert.removeAll();
                   alert.error(t('send.cantCompleteTxs'));
 
                   setLoading(false);
@@ -744,7 +730,6 @@ export const SendConfirm = () => {
                       activeAccount.isLedgerWallet &&
                       isNecessaryBlindSigning
                     ) {
-                      alert.removeAll();
                       alert.warning(t('settings.ledgerBlindSigning'));
                       setLoading(false);
                       return;
@@ -759,13 +744,12 @@ export const SendConfirm = () => {
                       error?.message.includes('Locked device');
 
                     if (isDeviceLocked) {
-                      alert.removeAll();
                       alert.warning(t('settings.lockedDevice'));
                       setLoading(false);
                       return;
                     }
                     logError('error send ERC20', 'Transaction', error);
-                    alert.removeAll();
+
                     alert.error(t('send.cantCompleteTxs'));
                     setLoading(false);
                   });
@@ -774,7 +758,6 @@ export const SendConfirm = () => {
               } catch (_erc20Error) {
                 logError('error send ERC20', 'Transaction', _erc20Error);
 
-                alert.removeAll();
                 alert.error(t('send.cantCompleteTxs'));
 
                 setLoading(false);
@@ -846,7 +829,6 @@ export const SendConfirm = () => {
                           activeAccount.isLedgerWallet &&
                           isNecessaryBlindSigning
                         ) {
-                          alert.removeAll();
                           alert.warning(t('settings.ledgerBlindSigning'));
                           setLoading(false);
                           return;
@@ -864,14 +846,12 @@ export const SendConfirm = () => {
                           error?.message.includes('Locked device');
 
                         if (isDeviceLocked) {
-                          alert.removeAll();
                           alert.warning(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
                         logError('error send ERC721', 'Transaction', error);
 
-                        alert.removeAll();
                         alert.error(t('send.cantCompleteTxs'));
                         setLoading(false);
                       });
@@ -880,7 +860,6 @@ export const SendConfirm = () => {
                   } catch (_erc721Error) {
                     logError('error send ERC721', 'Transaction', _erc721Error);
 
-                    alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
 
                     setLoading(false);
@@ -954,7 +933,6 @@ export const SendConfirm = () => {
                           activeAccount.isLedgerWallet &&
                           isNecessaryBlindSigning
                         ) {
-                          alert.removeAll();
                           alert.warning(t('settings.ledgerBlindSigning'));
                           setLoading(false);
                           return;
@@ -971,14 +949,12 @@ export const SendConfirm = () => {
                           error?.message.includes('Locked device');
 
                         if (isDeviceLocked) {
-                          alert.removeAll();
                           alert.warning(t('settings.lockedDevice'));
                           setLoading(false);
                           return;
                         }
                         logError('error send ERC1155', 'Transaction', error);
 
-                        alert.removeAll();
                         alert.error(t('send.cantCompleteTxs'));
                         setLoading(false);
                       });
@@ -991,7 +967,6 @@ export const SendConfirm = () => {
                       _erc1155Error
                     );
 
-                    alert.removeAll();
                     alert.error(t('send.cantCompleteTxs'));
 
                     setLoading(false);
@@ -1192,10 +1167,7 @@ export const SendConfirm = () => {
 
   useEffect(() => {
     if (!copied) return;
-    setTimeout(() => {
-      alert.removeAll();
-      alert.info(t('home.addressCopied'));
-    }, 0);
+    alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
   // Navigate home when transaction is confirmed

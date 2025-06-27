@@ -42,7 +42,6 @@ export const SetActiveAccountModal = (props: ISetActiveAccountModalProps) => {
 
   const handleChangeAccount = async () => {
     if (accountId === activeAccount.id && accountType === activeAccount.type) {
-      alert.removeAll();
       alert.warning(t('header.pleaseSelect'));
       return;
     }

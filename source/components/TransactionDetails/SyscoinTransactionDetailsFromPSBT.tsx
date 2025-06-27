@@ -127,10 +127,7 @@ const CopyableField: React.FC<{
 
   useEffect(() => {
     if (copied) {
-      setTimeout(() => {
-        alert.removeAll();
-        alert.info(copyMessage || `${label} copied to clipboard`);
-      }, 0);
+      alert.info(copyMessage || `${label} copied to clipboard`);
     }
   }, [copied, alert, copyMessage, label]);
 
@@ -283,19 +280,13 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
 
   useEffect(() => {
     if (copiedJson) {
-      setTimeout(() => {
-        alert.removeAll();
-        alert.info(t('transactions.transactionJsonCopied'));
-      }, 0);
+      alert.info(t('transactions.transactionJsonCopied'));
     }
   }, [copiedJson, alert]);
 
   useEffect(() => {
     if (copiedAddress) {
-      setTimeout(() => {
-        alert.removeAll();
-        alert.info(t('home.addressCopied'));
-      }, 0);
+      alert.info(t('home.addressCopied'));
     }
   }, [copiedAddress, alert, t]);
 

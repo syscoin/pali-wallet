@@ -1640,7 +1640,8 @@ class MainController {
   }
 
   public async setActiveNetwork(
-    network: INetwork
+    network: INetwork,
+    syncUpdates = false
   ): Promise<{ chainId: string; networkVersion: number }> {
     // Cancel the current promise if it exists
     if (this.currentPromise) {
@@ -1680,13 +1681,44 @@ class MainController {
 
     this.currentPromise = promiseWrapper;
 
-    promiseWrapper.promise
+    // Return the promise chain with error handling attached
+    return promiseWrapper.promise
       .then(async () => {
-        await this.handleNetworkChangeSuccess(completeNetwork);
-      })
-      .catch(this.handleNetworkChangeError);
+        await this.handleNetworkChangeSuccess(completeNetwork, syncUpdates);
 
-    return promiseWrapper.promise;
+        // Return the success result
+        const isBitcoinBased = completeNetwork.kind === INetworkType.Syscoin;
+        return {
+          chainId: `0x${completeNetwork.chainId.toString(16)}`,
+          networkVersion: completeNetwork.chainId,
+          isBitcoinBased,
+          network: completeNetwork,
+        };
+      })
+      .catch((error) => {
+        // Handle the error
+        this.handleNetworkChangeError(error);
+
+        // Don't re-throw cancellation errors
+        if (
+          error === 'Network change cancelled' ||
+          (error && error.message === 'Network change cancelled') ||
+          (error && typeof error === 'string' && error.includes('cancelled')) ||
+          (error &&
+            error.message &&
+            error.message.includes('Cancel by network changing'))
+        ) {
+          // Return a success-like result for cancellations to prevent navigation issues
+          return {
+            chainId: `0x${completeNetwork.chainId.toString(16)}`,
+            networkVersion: completeNetwork.chainId,
+            cancelled: true,
+          };
+        }
+
+        // Re-throw other errors so ChainErrorPage sees them
+        throw error;
+      });
   }
 
   public removeWindowEthProperty() {
@@ -3088,7 +3120,10 @@ class MainController {
     if (
       reason === 'Network change cancelled' ||
       (reason && reason.message === 'Network change cancelled') ||
-      (reason && typeof reason === 'string' && reason.includes('cancelled'))
+      (reason && typeof reason === 'string' && reason.includes('cancelled')) ||
+      (reason &&
+        reason.message &&
+        reason.message.includes('Cancel by network changing'))
     ) {
       console.log('Network change was cancelled, ignoring error');
       // Don't set error state or dispatch error action
@@ -3279,7 +3314,10 @@ class MainController {
       reject(error);
     }
   };
-  private async handleNetworkChangeSuccess(network: INetwork) {
+  private async handleNetworkChangeSuccess(
+    network: INetwork,
+    syncUpdates = false
+  ) {
     const isBitcoinBased = network.kind === INetworkType.Syscoin;
 
     const { activeAccount } = store.getState().vault;
@@ -3304,10 +3342,17 @@ class MainController {
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
 
-    setTimeout(() => {
-      this.setFiat();
-      this.getLatestUpdateForCurrentAccount(false);
-    }, 10);
+    // Execute updates synchronously if requested, otherwise with a small delay
+    if (syncUpdates) {
+      await this.setFiat();
+      await this.getLatestUpdateForCurrentAccount(false);
+      // Don't throw error here - let the UI handle the network status
+    } else {
+      setTimeout(() => {
+        this.setFiat();
+        this.getLatestUpdateForCurrentAccount(false);
+      }, 10);
+    }
 
     // Skip dapp notifications during startup
     if (this.isStartingUp) {

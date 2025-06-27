@@ -158,10 +158,7 @@ export const AccountHeader: React.FC = () => {
   useEffect(() => {
     if (!copied) return;
 
-    setTimeout(() => {
-      alert.removeAll();
-      alert.info(t('home.addressCopied'));
-    }, 0);
+    alert.info(t('home.addressCopied'));
   }, [copied, alert, t]);
 
   return (

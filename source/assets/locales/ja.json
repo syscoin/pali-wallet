@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "ネットワーク接続エラー",
-    "connectionTooLong": "接続に時間がかかりすぎています",
+    "connectionTooLong": "接続の応答に時間がかかりすぎています",
     "tryingToConnectOn": "接続を試みています：",
-    "goToAnotherNetwork": "別のネットワークに切り替える",
-    "editCurrentRpc": "現在のネットワークのRPCを編集"
+    "goToAnotherNetwork": "別のネットワークに移動",
+    "editCurrentRpc": "現在のネットワークのRPCを編集",
+    "networkTimeout": "ネットワーク接続が10秒後にタイムアウトしました",
+    "invalidResponse": "RPCが無効な応答を返しました",
+    "connectionError": "RPCエンドポイントに接続できません"
   },
   "networkConnection": {
     "networkError": "ネットワークエラー - オプションをクリック",

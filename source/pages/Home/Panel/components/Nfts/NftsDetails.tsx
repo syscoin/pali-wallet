@@ -58,10 +58,7 @@ export const NftsDetails = ({
   useEffect(() => {
     if (!copied) return;
 
-    setTimeout(() => {
-      alert.removeAll();
-      alert.info(t('home.contractCopied'));
-    }, 0);
+    alert.info(t('home.contractCopied'));
   }, [copied, alert, t]);
 
   return (

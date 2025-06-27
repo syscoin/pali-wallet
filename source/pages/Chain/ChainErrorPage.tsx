@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { Button } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import { RootState } from 'state/store';
-import store from 'state/store';
-import { startConnecting, switchNetworkError } from 'state/vaultGlobal';
+import store, { RootState } from 'state/store';
+import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -30,40 +31,96 @@ export const ChainErrorPage = () => {
 
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Auto-navigate back to home only when connection truly succeeds
+  // Always set error state when this page mounts
   useEffect(() => {
-    // Navigate away only if status is idle (successful) and we're not retrying
-    if (networkStatus === 'idle' && !isRetrying) {
-      console.log('[ChainErrorPage] Connection succeeded, navigating to home');
-      navigate('/home');
-    }
-  }, [networkStatus, isRetrying, navigate]);
+    console.log('[ChainErrorPage] Setting network status to error');
+    store.dispatch(switchNetworkError());
+  }, []); // Empty deps - only run on mount
 
   const handleRetryToConnect = async () => {
     console.log('[ChainErrorPage] Retry clicked');
     setIsRetrying(true);
 
-    // Always set connecting status to show loading states
-    store.dispatch(startConnecting());
+    // Clear any previous error state to ensure a fresh retry
+    store.dispatch(resetNetworkStatus());
 
     try {
-      // Force a non-polling update which will show skeletons
-      await controllerEmitter(
-        ['wallet', 'getLatestUpdateForCurrentAccount'],
-        [false, true]
+      const networkToUse = displayNetwork;
+
+      // Get the RPC from global state in case it was edited
+      const globalNetworks = store.getState().vaultGlobal.networks;
+      const networkType =
+        networkToUse.kind === INetworkType.Syscoin ? 'syscoin' : 'ethereum';
+      const networkFromGlobal =
+        globalNetworks[networkType][networkToUse.chainId];
+
+      // Use the RPC from global state if it exists (could have been edited)
+      const selectedRpc = networkFromGlobal || networkToUse;
+
+      console.log('[ChainErrorPage] Switching to network:', selectedRpc.label);
+
+      // Call setActiveNetwork and wait for it to fully complete
+      // This method handles all validation internally and resolves when done
+      // Pass true for syncUpdates to ensure all updates complete before returning
+      const result = await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [selectedRpc, true]
       );
 
-      // If we get here, it succeeded - navigation handled by Redux state changes
+      console.log(
+        '[ChainErrorPage] Network switch completed successfully:',
+        result
+      );
+
+      // Check if the network is actually working by checking the status
+      const finalNetworkStatus = store.getState().vaultGlobal.networkStatus;
+      if (finalNetworkStatus === 'error') {
+        console.log(
+          '[ChainErrorPage] Network is still in error state, not navigating'
+        );
+        setIsRetrying(false);
+        // The error message will be updated by the background operations
+        return;
+      }
+
+      // If we get here, everything succeeded - navigate to home
+      setIsRetrying(false);
+      navigate('/home');
     } catch (error) {
       console.error('[ChainErrorPage] Retry failed:', error);
 
       // Set error status so user stays on error page
       store.dispatch(switchNetworkError());
 
-      // Show error message
-      const errorMessage = error?.message || t('chainError.connectionTooLong');
+      // Show error message with specific handling for timeouts
+      let errorMessage = t('chainError.connectionTooLong');
+
+      if (error?.message) {
+        if (
+          error.message.includes('Network request timed out') ||
+          error.message.includes('RPC request timeout') ||
+          error.message.includes('timeout')
+        ) {
+          errorMessage = t('chainError.networkTimeout');
+        } else if (
+          error.message.includes('parse error') ||
+          error.message.includes('JSON') ||
+          error.message.includes('Unexpected end of JSON input')
+        ) {
+          errorMessage = t('chainError.invalidResponse');
+        } else if (
+          error.message.includes('Failed to fetch') ||
+          error.message.includes('Network error')
+        ) {
+          errorMessage = t('chainError.connectionError');
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
       alert.error(errorMessage);
-    } finally {
+
+      // Reset retry state so user can try again
       setIsRetrying(false);
     }
   };
@@ -77,13 +134,12 @@ export const ChainErrorPage = () => {
   };
 
   const CurrentChains = () => {
-    // If we're not switching networks (just reconnecting), or if active and display are the same
-    const isSameNetwork =
-      !networkTarget ||
-      (activeNetwork.chainId === displayNetwork.chainId &&
-        activeNetwork.url === displayNetwork.url);
+    // If we're not switching networks (just reconnecting), or if we're switching to the same chain
+    // Only show two icons if we're actually switching to a different chain
+    const isSameChain =
+      !networkTarget || activeNetwork.chainId === displayNetwork.chainId;
 
-    if (isSameNetwork) {
+    if (isSameChain) {
       return (
         <div className="flex text-center items-center justify-center w-full">
           <div className="flex flex-col items-center gap-1">

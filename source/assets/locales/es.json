@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "Error de conexión de red",
-    "connectionTooLong": "LA CONEXIÓN ESTÁ TOMANDO DEMASIADO TIEMPO EN RESPONDER",
+    "connectionTooLong": "LA CONEXIÓN ESTÁ TARDANDO DEMASIADO EN RESPONDER",
     "tryingToConnectOn": "Estás intentando conectarte en:",
     "goToAnotherNetwork": "Ir a otra red",
-    "editCurrentRpc": "Editar RPC de la red actual"
+    "editCurrentRpc": "Editar RPC de la red actual",
+    "networkTimeout": "La conexión de red expiró después de 10 segundos",
+    "invalidResponse": "El RPC devolvió una respuesta inválida",
+    "connectionError": "No se puede conectar al endpoint RPC"
   },
   "networkConnection": {
     "networkError": "Error de red - haz clic para opciones",

@@ -553,10 +553,13 @@
   },
   "chainError": {
     "errorTitle": "Netzwerkverbindungsfehler",
-    "connectionTooLong": "VERBINDUNG DAUERT ZU LANGE",
+    "connectionTooLong": "DIE VERBINDUNG BRAUCHT ZU LANGE ZUM ANTWORTEN",
     "tryingToConnectOn": "Sie versuchen sich zu verbinden mit:",
     "goToAnotherNetwork": "Zu einem anderen Netzwerk wechseln",
-    "editCurrentRpc": "RPC des aktuellen Netzwerks bearbeiten"
+    "editCurrentRpc": "RPC des aktuellen Netzwerks bearbeiten",
+    "networkTimeout": "Netzwerkverbindung nach 10 Sekunden abgelaufen",
+    "invalidResponse": "Der RPC hat eine ungültige Antwort zurückgegeben",
+    "connectionError": "Verbindung zum RPC-Endpunkt nicht möglich"
   },
   "networkConnection": {
     "networkError": "Netzwerkfehler - Klicken für Optionen",
