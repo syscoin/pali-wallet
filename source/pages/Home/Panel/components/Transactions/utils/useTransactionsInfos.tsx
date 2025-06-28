@@ -53,36 +53,39 @@ export const useTransactionsListConfig = (
   const txId = isBitcoinBased ? 'txId' : 'hash';
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
-  const getTxType = useCallback((tx: any, isTxSent: boolean) => {
-    if (isBitcoinBased) {
-      // Syscoin 5 transaction types
-      if (tx.tokenType === 'assetallocationsend') {
-        return 'SPT Transfer';
+  const getTxType = useCallback(
+    (tx: any, isTxSent: boolean) => {
+      if (isBitcoinBased) {
+        // Syscoin 5 transaction types
+        if (tx.tokenType === 'assetallocationsend') {
+          return 'SPT Transfer';
+        }
+
+        if (tx.tokenType === 'syscoinburntoallocation') {
+          return 'SYS → SYSX';
+        }
+
+        if (tx.tokenType === 'assetallocationburntosyscoin') {
+          return 'SYSX → SYS';
+        }
+
+        if (tx.tokenType === 'assetallocationburntoethereum') {
+          return 'SPT → NEVM';
+        }
+
+        if (tx.tokenType === 'assetallocationmint') {
+          return 'SPT Mint';
+        }
+
+        return 'Transaction';
       }
 
-      if (tx.tokenType === 'syscoinburntoallocation') {
-        return 'SYS → SYSX';
-      }
+      const txLabel = isTxSent ? 'Sent' : 'Received';
 
-      if (tx.tokenType === 'assetallocationburntosyscoin') {
-        return 'SYSX → SYS';
-      }
-
-      if (tx.tokenType === 'assetallocationburntoethereum') {
-        return 'SPT → NEVM';
-      }
-
-      if (tx.tokenType === 'assetallocationmint') {
-        return 'SPT Mint';
-      }
-
-      return 'Transaction';
-    }
-
-    const txLabel = isTxSent ? 'Sent' : 'Received';
-
-    return `${txLabel}`;
-  }, [isBitcoinBased]);
+      return `${txLabel}`;
+    },
+    [isBitcoinBased]
+  );
 
   const getTxStatusIcons = useCallback((txLabel: string, isDetail: boolean) => {
     switch (txLabel) {
@@ -153,15 +156,17 @@ export const useTransactionsListConfig = (
   const formatTimeStamp = useCallback((timestamp: number) => {
     // Validate timestamp - should be in seconds, not too far in past or future
     const currentTime = Math.floor(Date.now() / 1000);
-    const oneYearFromNow = currentTime + (365 * 24 * 60 * 60);
-    const tenYearsAgo = currentTime - (10 * 365 * 24 * 60 * 60);
-    
+    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
     // If timestamp is invalid, use current time
     if (!timestamp || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
-      console.warn(`Invalid timestamp detected: ${timestamp}, using current time`);
+      console.warn(
+        `Invalid timestamp detected: ${timestamp}, using current time`
+      );
       timestamp = currentTime;
     }
-    
+
     const data = new Date(timestamp * 1000);
 
     const options: Intl.DateTimeFormatOptions = {
@@ -178,23 +183,29 @@ export const useTransactionsListConfig = (
   const formatTimeStampUtxo = useCallback((timestamp: number) => {
     // Validate timestamp for UTXO as well
     const currentTime = Math.floor(Date.now() / 1000);
-    const oneYearFromNow = currentTime + (365 * 24 * 60 * 60);
-    const tenYearsAgo = currentTime - (10 * 365 * 24 * 60 * 60);
-    
+    const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+    const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
     // For UTXO, timestamp might already be in milliseconds
     let timestampMs = timestamp;
     if (timestamp < 10000000000) {
       // If timestamp appears to be in seconds, convert to milliseconds
       timestampMs = timestamp * 1000;
     }
-    
+
     // Validate the millisecond timestamp
     const timestampSec = Math.floor(timestampMs / 1000);
-    if (!timestampSec || timestampSec < tenYearsAgo || timestampSec > oneYearFromNow) {
-      console.warn(`Invalid UTXO timestamp detected: ${timestamp}, using current time`);
+    if (
+      !timestampSec ||
+      timestampSec < tenYearsAgo ||
+      timestampSec > oneYearFromNow
+    ) {
+      console.warn(
+        `Invalid UTXO timestamp detected: ${timestamp}, using current time`
+      );
       timestampMs = Date.now();
     }
-    
+
     const date = new Date(timestampMs);
 
     const dateFormatOptions: Intl.DateTimeFormatOptions = {
@@ -229,28 +240,26 @@ export const useTransactionsListConfig = (
     );
   }, []);
 
-  const getTokenSymbol = useCallback((
-    isErc20Tx: boolean,
-    coinsList: any[],
-    tx: any,
-    currency: string
-  ) => {
-    if (isErc20Tx) {
-      const token = coinsList.find((coin) =>
-        Object.values(coin?.platforms || {})
-          ?.map((item) => `${item}`.toLocaleLowerCase())
-          ?.includes(`${tx?.to}`.toLocaleLowerCase())
-      );
+  const getTokenSymbol = useCallback(
+    (isErc20Tx: boolean, coinsList: any[], tx: any, currency: string) => {
+      if (isErc20Tx) {
+        const token = coinsList.find((coin) =>
+          Object.values(coin?.platforms || {})
+            ?.map((item) => `${item}`.toLocaleLowerCase())
+            ?.includes(`${tx?.to}`.toLocaleLowerCase())
+        );
 
-      if (token) {
-        return `${token?.symbol}`.toUpperCase();
+        if (token) {
+          return `${token?.symbol}`.toUpperCase();
+        }
+
+        return `${currency}`.toUpperCase();
       }
 
       return `${currency}`.toUpperCase();
-    }
-
-    return `${currency}`.toUpperCase();
-  }, []);
+    },
+    []
+  );
 
   return useMemo(
     () => ({

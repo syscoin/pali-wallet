@@ -7,7 +7,6 @@ import range from 'lodash/range';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
@@ -206,7 +205,9 @@ export const findUserTxsInProviderByBlocksRange = async (
             ...txWithConfirmations,
             chainId: Number(txWithConfirmations.chainId),
             confirmations,
-            timestamp: response.timestamp ? Number(response.timestamp) : Math.floor(Date.now() / 1000),
+            timestamp: response.timestamp
+              ? Number(response.timestamp)
+              : Math.floor(Date.now() / 1000),
           };
         });
 
@@ -215,82 +216,92 @@ export const findUserTxsInProviderByBlocksRange = async (
   );
 };
 
-export const treatDuplicatedTxs = (transactions: UnifiedTransaction[]) => {
-  // Group transactions by their ID (hash or txid)
-  const txGroups = new Map<
-    string,
-    (IEvmTransactionResponse | ISysTransaction)[]
-  >();
+// Optimized function that deduplicates, sorts, and limits in one go
+export const treatAndSortTransactions = (
+  transactions: UnifiedTransaction[],
+  limit = 30
+): UnifiedTransaction[] => {
+  // Single pass: Group transactions by their ID and keep the best version
+  const txMap = new Map<string, UnifiedTransaction>();
 
   for (const tx of transactions) {
     const id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
-    if (!txGroups.has(id)) {
-      txGroups.set(id, []);
-    }
-    txGroups.get(id)!.push(tx);
-  }
+    const existing = txMap.get(id);
 
-  // For each group, select the best transaction and merge properties
-  const deduplicatedTxs = [];
+    if (!existing || tx.confirmations > existing.confirmations) {
+      // If this is a new tx or has more confirmations, it becomes our candidate
+      const mergedTx = existing ? { ...tx } : tx;
 
-  for (const [, txGroup] of txGroups) {
-    if (txGroup.length === 1) {
-      deduplicatedTxs.push(txGroup[0]);
-      continue;
-    }
+      // If we had an existing tx, preserve earliest timestamps
+      if (existing) {
+        const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
+        const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
-    // Find the transaction with the highest confirmations
-    let bestTx = txGroup[0];
-    for (let i = 1; i < txGroup.length; i++) {
-      const currentTx = txGroup[i];
-      if (currentTx.confirmations > bestTx.confirmations) {
-        bestTx = currentTx;
+        if (
+          existing[TSTAMP_PROP] &&
+          (!mergedTx[TSTAMP_PROP] ||
+            existing[TSTAMP_PROP] < mergedTx[TSTAMP_PROP])
+        ) {
+          (mergedTx as any)[TSTAMP_PROP] = existing[TSTAMP_PROP];
+        }
+
+        if (
+          existing[BLOCKTIME_PROP] &&
+          (!mergedTx[BLOCKTIME_PROP] ||
+            existing[BLOCKTIME_PROP] < mergedTx[BLOCKTIME_PROP])
+        ) {
+          (mergedTx as any)[BLOCKTIME_PROP] = existing[BLOCKTIME_PROP];
+        }
       }
-    }
 
-    // Create a merged transaction preserving the best properties from all duplicates
-    const mergedTx = { ...bestTx };
+      txMap.set(id, mergedTx);
+    } else if (existing) {
+      // The existing tx has more confirmations, but check if new tx has earlier timestamps
+      const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
+      const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 
-    // Preserve the earliest valid timestamp
-    const TSTAMP_PROP = 'timestamp';
-    const BLOCKTIME_PROP = 'blockTime';
+      let updated = false;
+      const mergedTx = { ...existing };
 
-    for (const tx of txGroup) {
-      // Preserve earliest timestamp if available and valid
       if (
         tx[TSTAMP_PROP] &&
-        (!mergedTx[TSTAMP_PROP] || tx[TSTAMP_PROP] < mergedTx[TSTAMP_PROP])
+        (!existing[TSTAMP_PROP] || tx[TSTAMP_PROP] < existing[TSTAMP_PROP])
       ) {
-        mergedTx[TSTAMP_PROP] = tx[TSTAMP_PROP];
+        (mergedTx as any)[TSTAMP_PROP] = tx[TSTAMP_PROP];
+        updated = true;
       }
 
-      // Preserve earliest blockTime if available and valid
       if (
         tx[BLOCKTIME_PROP] &&
-        (!mergedTx[BLOCKTIME_PROP] ||
-          tx[BLOCKTIME_PROP] < mergedTx[BLOCKTIME_PROP])
+        (!existing[BLOCKTIME_PROP] ||
+          tx[BLOCKTIME_PROP] < existing[BLOCKTIME_PROP])
       ) {
-        mergedTx[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
+        (mergedTx as any)[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
+        updated = true;
       }
 
-      // IMPORTANT: Preserve isReplaced flag if any version has it
-      if ((tx as any).isReplaced) {
-        (mergedTx as any).isReplaced = true;
-      }
-      
-      // Preserve other metadata flags
-      if ((tx as any).isSpeedUp) {
-        (mergedTx as any).isSpeedUp = true;
-      }
-      if ((tx as any).replacesHash) {
-        (mergedTx as any).replacesHash = (tx as any).replacesHash;
+      if (updated) {
+        txMap.set(id, mergedTx);
       }
     }
-
-    deduplicatedTxs.push(mergedTx);
   }
 
-  return deduplicatedTxs;
+  // Convert to array and sort
+  const deduplicatedTxs = Array.from(txMap.values());
+
+  // Sort by confirmations ascending (pending first), then by timestamp descending
+  deduplicatedTxs.sort((a, b) => {
+    if (a.confirmations !== b.confirmations) {
+      return a.confirmations - b.confirmations; // pending (0) first
+    }
+    // If confirmations are equal, sort by timestamp descending
+    const aTime = (a as any).timestamp || (a as any).blockTime || 0;
+    const bTime = (b as any).timestamp || (b as any).blockTime || 0;
+    return bTime - aTime;
+  });
+
+  // Return limited array
+  return deduplicatedTxs.slice(0, limit);
 };
 
 export const validateAndManageUserTransactions = (
@@ -359,107 +370,9 @@ export const validateAndManageUserTransactions = (
     ? (compact(clone(accountTransactions)) as UnifiedTransaction[])
     : [];
 
-  // Check for newly confirmed transactions BEFORE merging
-  const newlyConfirmedTxHashes: string[] = [];
-  
-  // Create a map of existing transaction confirmations
-  const existingTxInfo = new Map<string, { confirmations: number }>();
-  updatedTxs.forEach((tx) => {
-    if ('hash' in tx) {
-      existingTxInfo.set(tx.hash.toLowerCase(), { 
-        confirmations: tx.confirmations || 0
-      });
-    }
-  });
-
-  // Check each incoming transaction for new confirmations
-  filteredTxs.forEach((tx) => {
-    const txHash = tx.hash.toLowerCase();
-    const existingInfo = existingTxInfo.get(txHash);
-    const previousConfirmations = existingInfo?.confirmations || 0;
-    const currentConfirmations = tx.confirmations || 0;
-    
-    // Detect if this transaction just went from pending to confirmed
-    if (previousConfirmations === 0 && currentConfirmations > 0) {
-      newlyConfirmedTxHashes.push(tx.hash);
-      console.log(`[validateAndManageUserTransactions] Transaction ${tx.hash} newly confirmed with ${currentConfirmations} confirmations`);
-    }
-  });
-
   // When merging transactions, use the union type
   const mergedTxs: UnifiedTransaction[] = [...updatedTxs, ...filteredTxs];
 
-  // After deduplication, sort by confirmations ascending (pending first), then by timestamp descending
-  const deduplicatedTxs = treatDuplicatedTxs(mergedTxs);
-  const sortedTxs = deduplicatedTxs.sort((a, b) => {
-    if (a.confirmations !== b.confirmations) {
-      return a.confirmations - b.confirmations; // pending (0) first
-    }
-    // If confirmations are equal, sort by timestamp descending
-    const aTime = 'timestamp' in a ? ((a as IEvmTransactionResponse).timestamp || 0) : ((a as ISysTransaction).blockTime || 0);
-    const bTime = 'timestamp' in b ? ((b as IEvmTransactionResponse).timestamp || 0) : ((b as ISysTransaction).blockTime || 0);
-    return bTime - aTime;
-  });
-
-  // Simple cleanup: Group by nonce, if any confirmed, keep only that one
-  const txsByNonce = new Map<number, UnifiedTransaction[]>();
-  
-  sortedTxs.forEach((tx) => {
-    if ('nonce' in tx && tx.nonce !== undefined) {
-      const nonce = typeof tx.nonce === 'string' ? parseInt(tx.nonce, 10) : tx.nonce;
-      if (!isNaN(nonce)) {
-        if (!txsByNonce.has(nonce)) {
-          txsByNonce.set(nonce, []);
-        }
-        txsByNonce.get(nonce)!.push(tx);
-      }
-    }
-  });
-
-  // For each nonce: if confirmed exists, keep only that. Otherwise keep all.
-  const cleanedTxs: UnifiedTransaction[] = [];
-  
-  txsByNonce.forEach((txsForNonce, nonce) => {
-    const confirmedTx = txsForNonce.find(tx => tx.confirmations > 0);
-    
-    if (confirmedTx) {
-      // Keep only the confirmed one
-      cleanedTxs.push(confirmedTx);
-    } else {
-      // None confirmed yet - keep all
-      cleanedTxs.push(...txsForNonce);
-    }
-  });
-
-  // Include any non-EVM transactions that don't have nonces
-  sortedTxs.forEach((tx) => {
-    if (!('nonce' in tx)) {
-      cleanedTxs.push(tx);
-    }
-  });
-
-  // Sort the cleaned transactions
-  const finalSortedTxs = cleanedTxs.sort((a, b) => {
-    if (a.confirmations !== b.confirmations) {
-      return a.confirmations - b.confirmations; // pending (0) first
-    }
-    // If confirmations are equal, sort by timestamp descending
-    const aTime = 'timestamp' in a ? ((a as IEvmTransactionResponse).timestamp || 0) : ((a as ISysTransaction).blockTime || 0);
-    const bTime = 'timestamp' in b ? ((b as IEvmTransactionResponse).timestamp || 0) : ((b as ISysTransaction).blockTime || 0);
-    return bTime - aTime;
-  });
-
-  if (filteredTxs.length > 0 || finalSortedTxs.length !== sortedTxs.length) {
-    store.dispatch(
-      setMultipleTransactionToState({
-        chainId: activeNetwork.chainId,
-        networkType: TransactionsType.Ethereum,
-        transactions: finalSortedTxs,
-        accountId: activeAccount.id,
-        accountType: activeAccount.type,
-      })
-    );
-  }
-
-  return finalSortedTxs;
+  // Deduplicate, sort, and limit to 30 transactions in one optimized pass
+  return treatAndSortTransactions(mergedTxs, 30);
 };

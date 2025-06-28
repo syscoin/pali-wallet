@@ -225,20 +225,6 @@ const vaultGlobalSlice = createSlice({
     setIsPollingUpdate(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isPollingUpdate = action.payload;
     },
-    setNetworkQuality(
-      state: IGlobalState,
-      action: PayloadAction<
-        | {
-            hasCriticalErrors?: boolean;
-            hasSlowOperations?: boolean;
-            lastBalanceLatency?: number;
-            timestamp?: number;
-          }
-        | undefined
-      >
-    ) {
-      state.networkQuality = action.payload;
-    },
     updateNetworkQualityLatency(
       state: IGlobalState,
       action: PayloadAction<{
@@ -315,7 +301,6 @@ export const {
   setNetworks,
   removeNetwork,
   setIsPollingUpdate,
-  setNetworkQuality,
   updateNetworkQualityLatency,
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,

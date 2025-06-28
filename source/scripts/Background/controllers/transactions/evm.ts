@@ -1,5 +1,3 @@
-import flatMap from 'lodash/flatMap';
-
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -20,9 +18,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       numBlocks
     );
 
-    const treatedTxs = validateAndManageUserTransactions(providerUserTxs);
-
-    return treatedTxs as IEvmTransactionResponse[];
+    // Just return the raw transactions - let the caller handle processing
+    return providerUserTxs;
   };
 
   /**
@@ -234,14 +231,21 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           // Validate timestamp
           let timestamp = parseInt(tx.timeStamp, 10);
           const currentTime = Math.floor(Date.now() / 1000);
-          const oneYearFromNow = currentTime + (365 * 24 * 60 * 60);
-          const tenYearsAgo = currentTime - (10 * 365 * 24 * 60 * 60);
-          
-          if (!timestamp || isNaN(timestamp) || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
-            console.warn(`Invalid timestamp from API for tx ${tx.hash}: ${tx.timeStamp}, using current time`);
+          const oneYearFromNow = currentTime + 365 * 24 * 60 * 60;
+          const tenYearsAgo = currentTime - 10 * 365 * 24 * 60 * 60;
+
+          if (
+            !timestamp ||
+            isNaN(timestamp) ||
+            timestamp < tenYearsAgo ||
+            timestamp > oneYearFromNow
+          ) {
+            console.warn(
+              `Invalid timestamp from API for tx ${tx.hash}: ${tx.timeStamp}, using current time`
+            );
             timestamp = currentTime;
           }
-          
+
           return {
             hash: tx.hash,
             from: tx.from,
@@ -360,7 +364,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       const currentNetworkChainId = activeNetwork?.chainId;
       const rpcForbiddenList = [10];
 
-      let allTransactions: IEvmTransactionResponse[] = [];
+      let rawTransactions: IEvmTransactionResponse[] = [];
 
       // Try to fetch from external API first (more efficient)
       if (activeNetwork?.apiUrl) {
@@ -378,12 +382,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           console.log(
             `[pollingEvmTransactions] Found ${apiResult.transactions.length} transactions from API`
           );
-          // If API is working and returning transactions (even if empty), we don't need to scan blocks
-          // The API already gives us confirmed transactions + pending ones
-          const treatedTxs = validateAndManageUserTransactions(
-            apiResult.transactions
-          );
-          return flatMap(treatedTxs);
+          rawTransactions = apiResult.transactions;
         } else if (apiResult.error) {
           // Show API error to user via store dispatch that will trigger toast
           console.warn(
@@ -402,7 +401,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       }
 
       // Fallback to RPC scanning if API failed or no API configured
-      if (!rpcForbiddenList.includes(currentNetworkChainId!)) {
+      if (
+        rawTransactions.length === 0 &&
+        !rpcForbiddenList.includes(currentNetworkChainId!)
+      ) {
         // Smart block scanning based on account history
         const { accountTransactions } = store.getState().vault;
         const currentAccountTxs =
@@ -439,18 +441,16 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           );
         }
 
-        const providerTxs = await getUserTransactionByDefaultProvider(
+        rawTransactions = await getUserTransactionByDefaultProvider(
           blocksToScan,
           web3Provider
         );
-
-        // Ensure providerTxs is an array
-        allTransactions = Array.isArray(providerTxs) ? providerTxs : [];
       }
 
-      // Always ensure we pass an array to validateAndManageUserTransactions
-      const treatedTxs = validateAndManageUserTransactions(allTransactions);
-      return flatMap(treatedTxs);
+      // Process all transactions consistently, regardless of source (API or RPC)
+      const processedTransactions =
+        validateAndManageUserTransactions(rawTransactions);
+      return processedTransactions as IEvmTransactionResponse[];
     } catch (error) {
       console.error('Error in pollingEvmTransactions:', error);
       // Re-throw the error so it propagates up and keeps loading state active

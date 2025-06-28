@@ -29,7 +29,7 @@ import { setPrices, setCoins } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
 import {
-  createAccount as addAccountToStore,
+  createAccount,
   forgetWallet,
   removeAccount,
   setAccountLabel,
@@ -39,10 +39,10 @@ import {
   setTransactionStatusToCanceled,
   setFaucetModalState,
   setIsLastTxConfirmed,
-  setMultipleTransactionToState,
   setNetworkChange,
   setSingleTransactionToState,
   setAccountAssets,
+  setAccountTransactions,
 } from 'state/vault';
 import { IOmmitedAccount, TransactionsType } from 'state/vault/types';
 import vaultCache, {
@@ -73,7 +73,6 @@ import {
   setIsPollingUpdate,
   startConnecting,
   updateNetworkQualityLatency,
-  setNetworkQuality,
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
 } from 'state/vaultGlobal';
@@ -435,7 +434,7 @@ class MainController {
           );
 
           store.dispatch(
-            addAccountToStore({
+            createAccount({
               account: account,
               accountType: KeyringAccountType.HDAccount,
             })
@@ -1422,7 +1421,7 @@ class MainController {
 
       // Add account to Redux state FIRST (before signer setup)
       store.dispatch(
-        addAccountToStore({
+        createAccount({
           account: account,
           accountType: KeyringAccountType.HDAccount,
         })
@@ -1510,7 +1509,7 @@ class MainController {
     const newAccount = await this.getActiveKeyring().addNewAccount(label);
 
     store.dispatch(
-      addAccountToStore({
+      createAccount({
         account: newAccount,
         accountType: KeyringAccountType.HDAccount,
       })
@@ -2132,7 +2131,7 @@ class MainController {
       label
     );
     store.dispatch(
-      addAccountToStore({
+      createAccount({
         account: importedAccount,
         accountType: KeyringAccountType.Imported,
       })
@@ -2168,7 +2167,7 @@ class MainController {
     }
 
     store.dispatch(
-      addAccountToStore({
+      createAccount({
         account: importedAccount,
         accountType: KeyringAccountType.Trezor,
       })
@@ -2208,7 +2207,7 @@ class MainController {
     }
 
     store.dispatch(
-      addAccountToStore({
+      createAccount({
         account: importedAccount,
         accountType: KeyringAccountType.Ledger,
       })
@@ -2441,12 +2440,14 @@ class MainController {
                 currentAccountTxs
               );
 
-            // For UTXO, handle dispatch (EVM handles it internally)
-            if (isBitcoinBased && txs && !isEmpty(txs)) {
+            // Dispatch transactions for both UTXO and EVM
+            if (txs && !isEmpty(txs)) {
               store.dispatch(
-                setMultipleTransactionToState({
+                setAccountTransactions({
                   chainId: activeNetwork.chainId,
-                  networkType: TransactionsType.Syscoin,
+                  networkType: isBitcoinBased
+                    ? TransactionsType.Syscoin
+                    : TransactionsType.Ethereum,
                   transactions: txs,
                 })
               );
@@ -2477,10 +2478,7 @@ class MainController {
   public async sendAndSaveTransaction(
     tx: IEvmTransactionResponse | ISysTransaction
   ) {
-    const { isBitcoinBased, activeNetwork, accounts, activeAccount } =
-      store.getState().vault;
-
-    const account = accounts[activeAccount.type][activeAccount.id];
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
     const txWithTimestamp = {
       ...tx,
@@ -2547,7 +2545,9 @@ class MainController {
     if (!isPolling) {
       const keyring = this.getActiveKeyringIfUnlocked();
       if (!keyring) {
-        console.log('[MainController] Wallet is locked, skipping non-polling asset updates');
+        console.log(
+          '[MainController] Wallet is locked, skipping non-polling asset updates'
+        );
         // Return a resolved promise to maintain API consistency
         return Promise.resolve();
       }
@@ -2592,7 +2592,9 @@ class MainController {
                 );
                 // Don't clear loading state on error - let it stay active
                 reject(
-                  new Error('Cannot access ethereumTransaction for asset update')
+                  new Error(
+                    'Cannot access ethereumTransaction for asset update'
+                  )
                 );
                 return;
               }
@@ -2902,10 +2904,11 @@ class MainController {
     try {
       if (!isBitcoinBased) {
         // Try to access the provider, but don't fail if locked during polling
-        const provider = isPolling && !this.isUnlocked() 
-          ? null // Will be handled by the transaction/balance managers
-          : this.ethereumTransaction?.web3Provider;
-          
+        const provider =
+          isPolling && !this.isUnlocked()
+            ? null // Will be handled by the transaction/balance managers
+            : this.ethereumTransaction?.web3Provider;
+
         if (!provider && !isPolling) {
           console.log(
             '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
@@ -3151,8 +3154,7 @@ class MainController {
               `[RapidPoll] Transaction ${txHash} confirmed with ${tx.confirmations} confirmations! Stopping rapid poll.`
             );
             this.activeRapidPolls.delete(pollKey);
-            
-            
+
             return;
           }
         }
@@ -3775,41 +3777,48 @@ class MainController {
   }
 
   // Get or create a persistent provider for a network
-  private getPersistentProvider(networkUrl: string): CustomJsonRpcProvider | null {
+  private getPersistentProvider(
+    networkUrl: string
+  ): CustomJsonRpcProvider | null {
     // Use network URL as the key for provider caching
     const providerKey = networkUrl;
-    
+
     // Check if we already have a provider for this network
     let provider = this.persistentProviders.get(providerKey);
-    
+
     if (!provider) {
       try {
-        console.log(`[MainController] Creating persistent provider for ${networkUrl}`);
-        
+        console.log(
+          `[MainController] Creating persistent provider for ${networkUrl}`
+        );
+
         // Create a simple abort controller for the provider
         const abortController = new AbortController();
-        
+
         // Create provider without needing keyring access
         provider = new CustomJsonRpcProvider(
           abortController.signal,
           networkUrl
         );
-        
+
         // Store the provider for future use
         this.persistentProviders.set(providerKey, provider);
       } catch (error) {
-        console.error('[MainController] Failed to create persistent provider:', error);
+        console.error(
+          '[MainController] Failed to create persistent provider:',
+          error
+        );
         return null;
       }
     }
-    
+
     return provider;
   }
 
   // Clean up persistent providers
   private cleanupPersistentProviders(): void {
     console.log('[MainController] Cleaning up persistent providers');
-    
+
     this.persistentProviders.forEach((provider, url) => {
       try {
         // Remove all listeners if the provider has that method
@@ -3817,10 +3826,13 @@ class MainController {
           provider.removeAllListeners();
         }
       } catch (error) {
-        console.warn(`[MainController] Error cleaning up provider for ${url}:`, error);
+        console.warn(
+          `[MainController] Error cleaning up provider for ${url}:`,
+          error
+        );
       }
     });
-    
+
     // Clear the map
     this.persistentProviders.clear();
   }

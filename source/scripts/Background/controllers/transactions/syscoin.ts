@@ -5,7 +5,7 @@ import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, ISysTransactionsController } from './types';
-import { treatDuplicatedTxs } from './utils';
+import { treatAndSortTransactions } from './utils';
 
 const SysTransactionController = (): ISysTransactionsController => {
   const getInitialUserTransactionsByXpub = async (
@@ -51,7 +51,8 @@ const SysTransactionController = (): ISysTransactionsController => {
 
     const mergedArrays = [...validGetSysTxs, ...validSyscoinUserTransactions];
 
-    return treatDuplicatedTxs(mergedArrays) as ISysTransaction[];
+    // Use the optimized function that deduplicates, sorts, and limits in one go
+    return treatAndSortTransactions(mergedArrays, 30) as ISysTransaction[];
   };
 
   return {

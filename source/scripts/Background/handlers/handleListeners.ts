@@ -64,8 +64,8 @@ export const handleListeners = (masterController: IMasterController) => {
           // Only call startPolling if this instance acquired the lock
           // This ensures only one instance manages the alarm lifecycle
           if (acquiredLock) {
-            startPolling().catch((error) =>
-              console.error('Error in startPolling:', error)
+            startPolling().catch((pollError) =>
+              console.error('Error in startPolling:', pollError)
             );
           }
         })
@@ -74,10 +74,10 @@ export const handleListeners = (masterController: IMasterController) => {
           console.error('Error in checkForUpdates:', error);
           // Even on error, if no other instance is handling it, ensure polling continues
           // by calling startPolling (it has its own lock to prevent duplicates)
-          startPolling().catch((error) =>
+          startPolling().catch((pollError) =>
             console.error(
               'Error in startPolling after checkForUpdates error:',
-              error
+              pollError
             )
           );
         });
@@ -164,8 +164,8 @@ export const handleListeners = (masterController: IMasterController) => {
         }
         return false; // Synchronous, no response needed
       case 'startPolling':
-        startPolling().catch((error) =>
-          console.error('Error in startPolling:', error)
+        startPolling().catch((pollError) =>
+          console.error('Error in startPolling:', pollError)
         );
         return false; // Synchronous, no response needed
       case 'getCurrentState':
@@ -203,10 +203,10 @@ export const handleListeners = (masterController: IMasterController) => {
               '[Background] ✅ Emergency save completed after popup disconnect'
             );
           })
-          .catch((error) => {
+          .catch((saveError) => {
             console.error(
               '[Background] ❌ Emergency save failed after popup disconnect:',
-              error
+              saveError
             );
           });
       });

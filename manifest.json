@@ -18,8 +18,7 @@
     "unlimitedStorage",
     "offscreen",
     "scripting",
-    "notifications",
-    "webRequest"
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -49,15 +48,9 @@
   "content_scripts": [
     {
       "all_frames": true,
-      "matches": [
-        "file://*/*",
-        "http://*/*",
-        "https://*/*"
-      ],
+      "matches": ["file://*/*", "http://*/*", "https://*/*"],
       "run_at": "document_start",
-      "js": [
-        "js/contentScript.bundle.js"
-      ]
+      "js": ["js/contentScript.bundle.js"]
     }
   ],
   "web_accessible_resources": [
@@ -67,9 +60,7 @@
         "js/handleWindowProperties.bundle.js",
         "js/pali.bundle.js"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
     }
   ],
   "commands": {

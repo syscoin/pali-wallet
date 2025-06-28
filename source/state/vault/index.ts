@@ -1,5 +1,4 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import cloneDeep from 'lodash/cloneDeep';
 import take from 'lodash/take';
 
 import {
@@ -14,12 +13,9 @@ import {
   IEvmTransaction,
   IEvmTransactionResponse,
   ISysTransaction,
-  TransactionValueType,
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps } from 'types/tokens';
 import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
-import { isTokenTransfer } from 'utils/transactions';
-import { convertTransactionValueToCompare } from 'utils/transactionValue';
 
 import {
   IVaultState,
@@ -555,8 +551,8 @@ const VaultState = createSlice({
         }
       }
     },
-
-    setMultipleTransactionToState(
+    // Simple setter for transactions - no processing, just set the array
+    setAccountTransactions(
       state: IVaultState,
       action: PayloadAction<{
         accountId?: number;
@@ -566,7 +562,7 @@ const VaultState = createSlice({
         transactions: Array<IEvmTransaction | ISysTransaction>;
       }>
     ) {
-      const { activeAccount, isBitcoinBased } = state;
+      const { activeAccount } = state;
       const { networkType, chainId, transactions, accountId, accountType } =
         action.payload;
 
@@ -588,69 +584,13 @@ const VaultState = createSlice({
       const currentAccountTransactions =
         state.accountTransactions[targetAccountType][targetAccountId];
 
-      const uniqueTxs: {
-        [key: string]: IEvmTransactionResponse | ISysTransaction;
-      } = {};
-
-      const clonedUserTxs =
-        cloneDeep(currentAccountTransactions[networkType]?.[chainId]) || [];
-
-      const transactionsToVerify = [...transactions, ...clonedUserTxs];
-
-      transactionsToVerify.forEach(
-        (tx: IEvmTransactionResponse | ISysTransaction) => {
-          const hash = 'hash' in tx ? tx.hash : tx.txid;
-          if (
-            !uniqueTxs[hash] ||
-            uniqueTxs[hash].confirmations < tx.confirmations
-          ) {
-            uniqueTxs[hash] = tx;
-          }
-        }
-      );
-
-      const treatedTxs = Object.values(uniqueTxs);
-
-      // Check if the networkType exists in the current account's transactions
+      // Simply set the transactions array - all processing is done before dispatch
       if (!currentAccountTransactions[networkType]) {
-        let chainTransactions = treatedTxs;
-        // Cast the array to the correct type based on the networkType and value bigger than 0
-        // For EVM, show all transactions including 0-value ones to match explorers
-        // This allows proper cleanup of replacement chains during sync
-
         currentAccountTransactions[networkType] = {
-          [chainId]:
-            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
-              ? IEvmTransaction
-              : ISysTransaction)[],
-        } as any;
+          [chainId]: transactions as any,
+        };
       } else {
-        // Check if the chainId exists in the current networkType's transactions
-        if (!currentAccountTransactions[networkType][chainId]) {
-          let chainTransactions = treatedTxs;
-          // Create a new array with the correct type based on the networkType and value bigger than 0
-          // For EVM, show all transactions including 0-value ones to match explorers
-          // This allows proper cleanup of replacement chains during sync
-
-          currentAccountTransactions[networkType][chainId] =
-            chainTransactions as (typeof networkType extends TransactionsType.Ethereum
-              ? IEvmTransaction
-              : ISysTransaction)[];
-        } else {
-          let castedTransactions = treatedTxs;
-          // Filter and push the transactions based on the networkType and value bigger than 0
-          // For EVM, show all transactions including 0-value ones to match explorers
-          // This allows proper cleanup of replacement chains during sync
-
-          currentAccountTransactions[networkType][chainId] =
-            //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
-            take(
-              castedTransactions,
-              30
-            ) as (typeof networkType extends TransactionsType.Ethereum
-              ? IEvmTransaction
-              : ISysTransaction)[];
-        }
+        currentAccountTransactions[networkType][chainId] = transactions as any;
       }
     },
 
@@ -659,10 +599,9 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chainID: number;
         txHash: string;
-        cancelTransaction?: IEvmTransaction;
       }>
     ) {
-      const { txHash, chainID, cancelTransaction } = action.payload;
+      const { txHash, chainID } = action.payload;
 
       const { isBitcoinBased, activeAccount } = state;
 
@@ -702,20 +641,14 @@ const VaultState = createSlice({
       );
 
       if (findTxIndex !== -1) {
-        if (cancelTransaction) {
-          // Replace with the cancel transaction
-          currentUserTransactions[findTxIndex] = cancelTransaction as IEvmTransactionResponse;
-        } else {
-          // Legacy behavior - just mark as canceled
-          state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
-            findTxIndex
-          ] = {
-            ...state.accountTransactions[type][id][TransactionsType.Ethereum][
-              chainID
-            ][findTxIndex],
-            isCanceled: true,
-          } as IEvmTransactionResponse;
-        }
+        state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
+          findTxIndex
+        ] = {
+          ...state.accountTransactions[type][id][TransactionsType.Ethereum][
+            chainID
+          ][findTxIndex],
+          isCanceled: true,
+        } as IEvmTransactionResponse;
       }
     },
 
@@ -770,21 +703,21 @@ const VaultState = createSlice({
       ][chainID] as IEvmTransaction[];
 
       if (userTransactions) {
-        // Mark the old transaction as replaced
+        // Mark the old transaction as replaced (but don't remove it yet)
         const txIndex = userTransactions.findIndex(
           (tx) => tx.hash.toLowerCase() === oldTxHash.toLowerCase()
         );
-        
+
         if (txIndex !== -1) {
-          // Mark as replaced - will be cleaned up when one confirms
+          // Mark the old transaction as replaced/superseded
           userTransactions[txIndex] = {
             ...userTransactions[txIndex],
             isReplaced: true,
+            status: 'replaced',
           } as IEvmTransaction;
         }
       }
     },
-
   },
 });
 
@@ -810,7 +743,7 @@ export const {
   setIsBitcoinBased,
   setAccountAssets,
   setSingleTransactionToState,
-  setMultipleTransactionToState,
+  setAccountTransactions,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setAccounts,

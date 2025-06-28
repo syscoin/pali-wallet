@@ -39,27 +39,27 @@ export interface IEvmTransaction {
   gasPrice?: ethers.BigNumber;
 
   hash?: string;
+  // Transaction replacement tracking
+  isReplaced?: boolean;
+  isSpeedUp?: boolean;
+
   maxFeePerGas?: ethers.BigNumber;
   // EIP-1559; Type 2
   maxPriorityFeePerGas?: ethers.BigNumber;
-
   nonce: number;
+
   r?: string;
+
+  replacesHash?: string;
+
   s?: string;
+  status?: string;
 
   to?: string;
-
   // Typed-Transaction features
   type?: number | null;
-
   v?: number;
   value: ethers.BigNumber;
-  
-  // Transaction replacement tracking
-  isReplaced?: boolean;
-  status?: string;
-  isSpeedUp?: boolean;
-  replacesHash?: string;
 }
 
 interface ITransactionReceipt {
