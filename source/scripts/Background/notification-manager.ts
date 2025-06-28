@@ -36,6 +36,8 @@ class NotificationManager {
   };
 
   constructor() {
+    console.log('[NotificationManager] Constructor called - initializing');
+    
     // Initialize state with current values to prevent false notifications on startup
     const currentState = store.getState();
     if (currentState.vault) {
@@ -47,6 +49,7 @@ class NotificationManager {
           chainId: activeNetwork.chainId,
           name: activeNetwork.label,
         };
+        console.log(`[NotificationManager] Initialized with network: ${activeNetwork.label} (chainId: ${activeNetwork.chainId})`);
       }
 
       // Initialize last account
@@ -57,6 +60,7 @@ class NotificationManager {
             address: account.address,
             label: account.label,
           };
+          console.log(`[NotificationManager] Initialized with account: ${account.address}`);
         }
       }
     }
@@ -69,12 +73,16 @@ class NotificationManager {
 
     // Check for pending transactions periodically
     this.startPendingTransactionCheck();
+    
+    console.log('[NotificationManager] Initialization complete');
   }
 
   private subscribeToStateChanges() {
     let previousState = store.getState();
+    console.log('[NotificationManager] Store subscription initialized');
 
     store.subscribe(() => {
+      console.log('[NotificationManager] Store subscription fired');
       const currentState = store.getState();
       const { vault } = currentState;
 
@@ -84,6 +92,7 @@ class NotificationManager {
           vault.activeNetwork.chainId !==
           previousState.vault.activeNetwork.chainId
         ) {
+          console.log('[NotificationManager] Network change detected');
           this.handleNetworkChange(
             previousState.vault.activeNetwork,
             vault.activeNetwork
@@ -105,6 +114,7 @@ class NotificationManager {
           previousAccount &&
           currentAccount.address !== previousAccount.address
         ) {
+          console.log('[NotificationManager] Account change detected');
           this.handleAccountChange(currentAccount);
         }
       }
@@ -113,6 +123,7 @@ class NotificationManager {
       if (
         vault.accountTransactions !== previousState.vault.accountTransactions
       ) {
+        console.log('[NotificationManager] Transaction update detected - checking for confirmations');
         this.checkTransactionUpdates(vault, previousState.vault);
       }
 
@@ -193,6 +204,8 @@ class NotificationManager {
     account: any,
     network: any
   ) {
+    console.log(`[NotificationManager] Checking ${currentTxs.length} current vs ${previousTxs.length} previous transactions`);
+    
     // Create maps for easier lookup
     const previousTxMap = new Map(previousTxs.map((tx) => [tx.hash, tx]));
 
@@ -207,6 +220,7 @@ class NotificationManager {
         tx.confirmations === 0 &&
         !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
       ) {
+        console.log(`[NotificationManager] New pending transaction detected: ${tx.hash}`);
         this.showEvmTransactionNotification(tx, 'pending', account, network);
         this.state.shownTransactionNotifications.add(`${txKey}_pending`);
       }
@@ -218,6 +232,7 @@ class NotificationManager {
         tx.confirmations > 0 &&
         !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
       ) {
+        console.log(`[NotificationManager] Transaction confirmed: ${tx.hash} (${tx.confirmations} confirmations)`);
         this.showEvmTransactionNotification(tx, 'confirmed', account, network);
         this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
         this.state.pendingTransactions.delete(txKey);
@@ -228,6 +243,7 @@ class NotificationManager {
         tx.txreceipt_status === '0' &&
         !this.state.shownTransactionNotifications.has(`${txKey}_failed`)
       ) {
+        console.log(`[NotificationManager] Transaction failed: ${tx.hash}`);
         this.showEvmTransactionNotification(tx, 'failed', account, network);
         this.state.shownTransactionNotifications.add(`${txKey}_failed`);
         this.state.pendingTransactions.delete(txKey);
@@ -760,4 +776,5 @@ class NotificationManager {
 }
 
 // Export singleton instance
+console.log('[NotificationManager] Creating singleton instance');
 export const notificationManager = new NotificationManager();

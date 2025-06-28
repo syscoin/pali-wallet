@@ -544,7 +544,10 @@
     "transactionJsonCopied": "JSON транзакции скопирован в буфер обмена",
     "pendingTransaction": "ОЖИДАЮЩАЯ ТРАНЗАКЦИЯ",
     "seeDetails": "Посмотреть детали",
-    "seeOnBlockExplorer": "Посмотреть в блок-проводнике"
+    "seeOnBlockExplorer": "Посмотреть в блок-проводнике",
+    "replaced": "Заменена",
+    "replacedBy": "Заменена на",
+    "replaces": "Заменяет"
   },
   "switchNetworkPage": {
     "connectedOn": "Вы подключены к",

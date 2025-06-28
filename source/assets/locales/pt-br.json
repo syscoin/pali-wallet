@@ -539,7 +539,10 @@
     "transactionJsonCopied": "JSON da transação copiado para a área de transferência",
     "pendingTransaction": "TRANSAÇÃO PENDENTE",
     "seeDetails": "Ver detalhes",
-    "seeOnBlockExplorer": "Ver no explorador de blocos"
+    "seeOnBlockExplorer": "Ver no explorador de blocos",
+    "replaced": "Substituída",
+    "replacedBy": "Substituída por",
+    "replaces": "Substitui"
   },
   "switchNetworkPage": {
     "connectedOn": "Você está conectado em",

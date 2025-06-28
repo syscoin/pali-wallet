@@ -544,7 +544,10 @@
     "transactionJsonCopied": "거래 JSON이 클립보드에 복사되었습니다",
     "pendingTransaction": "보류 중인 거래",
     "seeDetails": "세부 정보 보기",
-    "seeOnBlockExplorer": "블록 탐색기에서 보기"
+    "seeOnBlockExplorer": "블록 탐색기에서 보기",
+    "replaced": "대체됨",
+    "replacedBy": "다음으로 대체됨",
+    "replaces": "대체"
   },
   "switchNetworkPage": {
     "connectedOn": "연결됨:",

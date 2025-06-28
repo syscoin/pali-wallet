@@ -110,7 +110,11 @@ export const handleListeners = (masterController: IMasterController) => {
       type === 'CONTROLLER_ACTION' ||
       type === 'CONTROLLER_STATE_CHANGE' ||
       type === 'logout' ||
-      type === 'ping' // Handled in index.ts
+      type === 'ping' || // Handled in index.ts
+      type === 'METHOD_REQUEST' || // Handled by DApp controller
+      type === 'ENABLE' ||
+      type === 'DISABLE' ||
+      type === 'IS_UNLOCKED'
     ) {
       return false; // Let other listeners handle these
     }

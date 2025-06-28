@@ -544,7 +544,10 @@
     "transactionJsonCopied": "JSON de transaction copié dans le presse-papiers",
     "pendingTransaction": "TRANSACTION EN ATTENTE",
     "seeDetails": "Voir les détails",
-    "seeOnBlockExplorer": "Voir sur l'explorateur de blocs"
+    "seeOnBlockExplorer": "Voir sur l'explorateur de blocs",
+    "replaced": "Remplacée",
+    "replacedBy": "Remplacée par",
+    "replaces": "Remplace"
   },
   "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",

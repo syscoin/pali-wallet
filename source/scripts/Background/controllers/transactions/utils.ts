@@ -7,7 +7,7 @@ import range from 'lodash/range';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setMultipleTransactionToState } from 'state/vault';
+import { setMultipleTransactionToState, updateReplacementChainOnConfirmation } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
@@ -206,7 +206,7 @@ export const findUserTxsInProviderByBlocksRange = async (
             ...txWithConfirmations,
             chainId: Number(txWithConfirmations.chainId),
             confirmations,
-            timestamp: Number(response.timestamp),
+            timestamp: response.timestamp ? Number(response.timestamp) : Math.floor(Date.now() / 1000),
           };
         });
 
@@ -346,6 +346,30 @@ export const validateAndManageUserTransactions = (
     ? (compact(clone(accountTransactions)) as UnifiedTransaction[])
     : [];
 
+  // Check for newly confirmed transactions BEFORE merging
+  const newlyConfirmedTxHashes: string[] = [];
+  
+  // Create a map of existing transaction confirmations
+  const existingTxConfirmations = new Map<string, number>();
+  updatedTxs.forEach((tx) => {
+    if ('hash' in tx) {
+      existingTxConfirmations.set(tx.hash.toLowerCase(), tx.confirmations || 0);
+    }
+  });
+
+  // Check each incoming transaction for new confirmations
+  filteredTxs.forEach((tx) => {
+    const txHash = tx.hash.toLowerCase();
+    const previousConfirmations = existingTxConfirmations.get(txHash) || 0;
+    const currentConfirmations = tx.confirmations || 0;
+    
+    // Detect if this transaction just went from pending to confirmed
+    if (previousConfirmations === 0 && currentConfirmations > 0) {
+      newlyConfirmedTxHashes.push(tx.hash);
+      console.log(`[validateAndManageUserTransactions] Transaction ${tx.hash} newly confirmed with ${currentConfirmations} confirmations`);
+    }
+  });
+
   // When merging transactions, use the union type
   const mergedTxs: UnifiedTransaction[] = [...updatedTxs, ...filteredTxs];
 
@@ -369,6 +393,20 @@ export const validateAndManageUserTransactions = (
         accountType: activeAccount.type,
       })
     );
+  }
+
+  // Clean up replacement chains for newly confirmed transactions
+  if (newlyConfirmedTxHashes.length > 0) {
+    console.log(`[validateAndManageUserTransactions] Cleaning up replacement chains for ${newlyConfirmedTxHashes.length} newly confirmed transactions`);
+    
+    // Dispatch cleanup for each newly confirmed transaction
+    newlyConfirmedTxHashes.forEach(txHash => {
+      store.dispatch(updateReplacementChainOnConfirmation({
+        confirmedTxHash: txHash,
+        chainID: activeNetwork.chainId,
+      }));
+    });
+
   }
 
   return sortedTxs;

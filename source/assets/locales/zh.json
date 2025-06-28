@@ -460,7 +460,10 @@
     "transactionJsonCopied": "交易JSON已复制到剪贴板",
     "pendingTransaction": "待处理交易",
     "seeDetails": "查看详情",
-    "seeOnBlockExplorer": "在区块浏览器中查看"
+    "seeOnBlockExplorer": "在区块浏览器中查看",
+    "replaced": "已替换",
+    "replacedBy": "被替换为",
+    "replaces": "替换"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",

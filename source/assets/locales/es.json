@@ -544,7 +544,10 @@
     "transactionJsonCopied": "JSON de transacción copiado al portapapeles",
     "pendingTransaction": "TRANSACCIÓN PENDIENTE",
     "seeDetails": "Ver detalles",
-    "seeOnBlockExplorer": "Ver en el explorador de bloques"
+    "seeOnBlockExplorer": "Ver en el explorador de bloques",
+    "replaced": "Reemplazada",
+    "replacedBy": "Reemplazada por",
+    "replaces": "Reemplaza"
   },
   "switchNetworkPage": {
     "connectedOn": "Estás conectado en",

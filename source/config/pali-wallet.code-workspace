@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../../sysweb3"
+		},
+		{
+			"path": "../../../syscoinjs-lib"
 		}
 	],
 	"settings": {}

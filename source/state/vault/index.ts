@@ -617,6 +617,12 @@ const VaultState = createSlice({
         // Cast the array to the correct type based on the networkType and value bigger than 0
         if (!isBitcoinBased) {
           chainTransactions = treatedTxs.filter((tx) => {
+            // Allow cancelled/replaced transactions through even if they have 0 value
+            const evmTx = tx as IEvmTransactionResponse;
+            if (evmTx.isCanceled || evmTx.isReplaced) {
+              return true;
+            }
+            
             const shouldNotBeAdded =
               convertTransactionValueToCompare(
                 tx.value as TransactionValueType
@@ -644,6 +650,12 @@ const VaultState = createSlice({
           // Create a new array with the correct type based on the networkType and value bigger than 0
           if (!isBitcoinBased) {
             chainTransactions = treatedTxs.filter((tx) => {
+              // Allow cancelled/replaced transactions through even if they have 0 value
+              const evmTx = tx as IEvmTransactionResponse;
+              if (evmTx.isCanceled || evmTx.isReplaced) {
+                return true;
+              }
+              
               const shouldNotBeAdded =
                 convertTransactionValueToCompare(
                   tx.value as TransactionValueType
@@ -667,6 +679,12 @@ const VaultState = createSlice({
           // Filter and push the transactions based on the networkType and value bigger than 0
           if (!isBitcoinBased) {
             castedTransactions = treatedTxs.filter((tx) => {
+              // Allow cancelled/replaced transactions through even if they have 0 value
+              const evmTx = tx as IEvmTransactionResponse;
+              if (evmTx.isCanceled || evmTx.isReplaced) {
+                return true;
+              }
+              
               const shouldNotBeAdded =
                 convertTransactionValueToCompare(
                   tx.value as TransactionValueType
@@ -802,12 +820,58 @@ const VaultState = createSlice({
       ][chainID] as IEvmTransaction[];
 
       if (userTransactions) {
-        state.accountTransactions[type][id][TransactionsType.Ethereum][
-          chainID
-        ] = userTransactions.filter(
-          (tx) => tx.hash !== oldTxHash
-        ) as IEvmTransaction[];
+        // Mark the old transaction as replaced (but don't remove it yet)
+        const txIndex = userTransactions.findIndex(
+          (tx) => tx.hash.toLowerCase() === oldTxHash.toLowerCase()
+        );
+        
+        if (txIndex !== -1) {
+          // Mark the old transaction as replaced/superseded
+          userTransactions[txIndex] = {
+            ...userTransactions[txIndex],
+            isReplaced: true,
+            status: 'replaced',
+          } as IEvmTransaction;
+        }
       }
+    },
+    
+    updateReplacementChainOnConfirmation(
+      state: IVaultState,
+      action: PayloadAction<{
+        confirmedTxHash: string;
+        chainID: number;
+      }>
+    ) {
+      const { confirmedTxHash, chainID } = action.payload;
+      const { isBitcoinBased, activeAccount } = state;
+      const { id, type } = activeAccount;
+
+      if (isBitcoinBased || !state.accountTransactions[type]?.[id]) {
+        return;
+      }
+
+      const userTransactions = state.accountTransactions[type][id][
+        TransactionsType.Ethereum
+      ][chainID] as IEvmTransaction[];
+
+      if (!userTransactions) return;
+
+      // Find the confirmed transaction
+      const confirmedTx = userTransactions.find(
+        (t) => t.hash?.toLowerCase() === confirmedTxHash.toLowerCase()
+      );
+      
+      if (!confirmedTx) return;
+
+      // Get the nonce of the confirmed transaction
+      const confirmedNonce = confirmedTx.nonce;
+      
+      // Remove all other transactions with the same nonce
+      state.accountTransactions[type][id][TransactionsType.Ethereum][chainID] = 
+        userTransactions.filter(
+          (tx) => tx.nonce !== confirmedNonce || tx.hash?.toLowerCase() === confirmedTxHash.toLowerCase()
+        );
     },
   },
 });
@@ -838,6 +902,7 @@ export const {
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setAccounts,
+  updateReplacementChainOnConfirmation,
 } = VaultState.actions;
 
 export default VaultState.reducer;

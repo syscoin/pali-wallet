@@ -544,7 +544,10 @@
     "transactionJsonCopied": "Transaktions-JSON in die Zwischenablage kopiert",
     "pendingTransaction": "AUSSTEHENDE TRANSAKTION",
     "seeDetails": "Details anzeigen",
-    "seeOnBlockExplorer": "Im Block-Explorer anzeigen"
+    "seeOnBlockExplorer": "Im Block-Explorer anzeigen",
+    "replaced": "Ersetzt",
+    "replacedBy": "Ersetzt durch",
+    "replaces": "Ersetzt"
   },
   "switchNetworkPage": {
     "connectedOn": "Sie sind verbunden mit",

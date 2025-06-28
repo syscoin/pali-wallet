@@ -230,21 +230,34 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         // Note: txlist returns transactions that are in blocks (including those with 0 confirmations)
         // It does NOT return transactions that are only in the mempool (truly pending)
         // For mempool transactions, use pendingtxlist action
-        const transactions = data.result.map((tx: any) => ({
-          hash: tx.hash,
-          from: tx.from,
-          to: tx.to,
-          value: tx.value,
-          blockNumber: parseInt(tx.blockNumber),
-          blockHash: tx.blockHash,
-          timestamp: parseInt(tx.timeStamp),
-          confirmations: parseInt(tx.confirmations),
-          chainId: chainId,
-          input: tx.input,
-          gasPrice: tx.gasPrice,
-          gas: tx.gas || tx.gasLimit, // Blockscout may use 'gas' or 'gasLimit'
-          nonce: parseInt(tx.nonce),
-        }));
+        const transactions = data.result.map((tx: any) => {
+          // Validate timestamp
+          let timestamp = parseInt(tx.timeStamp, 10);
+          const currentTime = Math.floor(Date.now() / 1000);
+          const oneYearFromNow = currentTime + (365 * 24 * 60 * 60);
+          const tenYearsAgo = currentTime - (10 * 365 * 24 * 60 * 60);
+          
+          if (!timestamp || isNaN(timestamp) || timestamp < tenYearsAgo || timestamp > oneYearFromNow) {
+            console.warn(`Invalid timestamp from API for tx ${tx.hash}: ${tx.timeStamp}, using current time`);
+            timestamp = currentTime;
+          }
+          
+          return {
+            hash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            value: tx.value,
+            blockNumber: parseInt(tx.blockNumber),
+            blockHash: tx.blockHash,
+            timestamp: timestamp,
+            confirmations: parseInt(tx.confirmations),
+            chainId: chainId,
+            input: tx.input,
+            gasPrice: tx.gasPrice,
+            gas: tx.gas || tx.gasLimit, // Blockscout may use 'gas' or 'gasLimit'
+            nonce: parseInt(tx.nonce),
+          };
+        });
 
         allTransactions = transactions;
       }
@@ -267,7 +280,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
               blockNumber: null, // Pending transactions don't have a block number
               blockHash: null,
               timestamp: tx.timeStamp
-                ? parseInt(tx.timeStamp)
+                ? parseInt(tx.timeStamp, 10)
                 : Math.floor(Date.now() / 1000),
               confirmations: 0,
               chainId: chainId,

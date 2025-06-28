@@ -133,8 +133,8 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
             <div className="absolute right-0 z-10 h-[15rem]">
               <Menu.Items
                 as="div"
-                className={`p-6 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
-                font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out cursor-pointer
+                className={`p-4 absolute right-0 z-10 w-[23rem] origin-top-right rounded-lg bg-brand-blue500 shadow-2xl ring-1 
+                font-poppins ring-black ring-opacity-5 focus:outline-none transition-all duration-100 ease-out
                 transform ${
                   open
                     ? 'opacity-100 scale-100 pointer-events-auto'
@@ -142,15 +142,16 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                 }`}
                 static
               >
-                <h1 className="text-sm font-semibold text-brand-gray200 pb-4">
+                <h1 className="text-sm font-semibold text-brand-gray200 pb-2 px-2">
                   {t('transactions.pendingTransaction')}
                 </h1>
                 <Menu.Item>
                   {({ active }) => (
                     <li
                       className={`
-                    ${active ? 'font-semibold' : 'font-normal'}
-                    flex items-center justify-start text-brand-white mb-4 w-full
+                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
+                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
                       onClick={handleGoTxDetails}
                     >
@@ -167,8 +168,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   {({ active }) => (
                     <li
                       className={`
-                    ${active ? 'font-semibold' : 'font-normal'}
-                    flex items-center justify-start text-brand-white mb-4 w-full
+                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
+                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
                       onClick={openTransactionOnExplorer}
                     >
@@ -185,8 +187,9 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   {({ active }) => (
                     <li
                       className={`
-                    ${active ? 'font-semibold' : 'font-normal'}
-                    flex items-center justify-start text-brand-white mb-4 w-full
+                    ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                    flex items-center justify-start text-brand-white mb-2 w-full p-2 rounded-md
+                    transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
                     `}
                       onClick={() => handleOnClick(UpdateTxAction.SpeedUp)}
                     >
@@ -203,8 +206,10 @@ export const TransactionOptions: React.FC<ITransactionOptions> = ({
                   {({ active }) => (
                     <li
                       className={`
-                  ${active ? 'font-semibold ' : 'font-normal'}
-                  flex items-center justify-start w-full `}
+                  ${active ? 'bg-brand-blue400 bg-opacity-50' : ''}
+                  flex items-center justify-start text-brand-white w-full p-2 rounded-md
+                  transition-all duration-150 cursor-pointer hover:bg-brand-blue400 hover:bg-opacity-30
+                  `}
                       onClick={() => handleOnClick(UpdateTxAction.Cancel)}
                     >
                       <div className="w-5 mr-3">

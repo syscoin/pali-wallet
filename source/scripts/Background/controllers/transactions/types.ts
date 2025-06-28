@@ -54,6 +54,12 @@ export interface IEvmTransaction {
 
   v?: number;
   value: ethers.BigNumber;
+  
+  // Transaction replacement tracking
+  isReplaced?: boolean;
+  status?: string;
+  isSpeedUp?: boolean;
+  replacesHash?: string;
 }
 
 interface ITransactionReceipt {

@@ -544,7 +544,10 @@
     "transactionJsonCopied": "Transaction JSON copied to clipboard",
     "pendingTransaction": "PENDING TRANSACTION",
     "seeDetails": "See details",
-    "seeOnBlockExplorer": "See on the block explorer"
+    "seeOnBlockExplorer": "See on the block explorer",
+    "replaced": "Replaced",
+    "replacedBy": "Replaced by",
+    "replaces": "Replaces"
   },
   "switchNetworkPage": {
     "connectedOn": "You are connected on",

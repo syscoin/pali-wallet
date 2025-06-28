@@ -544,7 +544,10 @@
     "transactionJsonCopied": "取引JSONがクリップボードにコピーされました",
     "pendingTransaction": "保留中の取引",
     "seeDetails": "詳細を表示",
-    "seeOnBlockExplorer": "ブロックエクスプローラーで表示"
+    "seeOnBlockExplorer": "ブロックエクスプローラーで表示",
+    "replaced": "置き換えられました",
+    "replacedBy": "次に置き換えられました",
+    "replaces": "置き換え"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

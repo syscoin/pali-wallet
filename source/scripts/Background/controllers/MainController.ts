@@ -2334,6 +2334,7 @@ class MainController {
     chainID: number,
     newTxValue: IEvmTransactionResponse
   ) {
+    // Mark the old transaction as accelerated/replaced
     store.dispatch(
       setTransactionStatusToAccelerated({
         oldTxHash,
@@ -2341,16 +2342,20 @@ class MainController {
       })
     );
 
-    const transactionWithTimestamp = {
+    // Add metadata to the new transaction to indicate it's a speed-up
+    const transactionWithMetadata = {
       ...newTxValue,
-      timestamp: Date.now(),
+      timestamp: Math.floor(Date.now() / 1000), // Convert to seconds
+      isSpeedUp: true,
+      replacesHash: oldTxHash,
     };
 
+    // Add the new transaction
     store.dispatch(
       setSingleTransactionToState({
         chainId: chainID,
         networkType: TransactionsType.Ethereum,
-        transaction: transactionWithTimestamp,
+        transaction: transactionWithMetadata,
       })
     );
   }
@@ -2364,14 +2369,17 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
-    // Check if wallet is unlocked first - skip if locked
-    const keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      console.log(
-        '[MainController] Wallet is locked, skipping transaction updates'
-      );
-      // Return a resolved promise to maintain API consistency
-      return Promise.resolve();
+    // For polling, we don't need keyring access - we're just fetching public transaction data
+    // Only check if unlocked for non-polling operations
+    if (!isPolling) {
+      const keyring = this.getActiveKeyringIfUnlocked();
+      if (!keyring) {
+        console.log(
+          '[MainController] Wallet is locked, skipping non-polling transaction updates'
+        );
+        // Return a resolved promise to maintain API consistency
+        return Promise.resolve();
+      }
     }
 
     const { accounts, activeAccount, accountTransactions } =
@@ -2391,21 +2399,31 @@ class MainController {
             // Safe access to transaction objects with error handling
             let web3Provider = null;
             try {
-              web3Provider = isBitcoinBased
-                ? null
-                : this.ethereumTransaction.web3Provider;
+              if (!isBitcoinBased) {
+                // During polling when locked, create a provider directly
+                if (isPolling && !this.isUnlocked()) {
+                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                } else {
+                  web3Provider = this.ethereumTransaction.web3Provider;
+                }
+              }
             } catch (error) {
-              console.warn(
-                '[MainController] Cannot access ethereumTransaction:',
-                error
-              );
-              // Don't clear loading state on error - let it stay active
-              reject(
-                new Error(
-                  'Cannot access ethereumTransaction for transaction update'
-                )
-              );
-              return;
+              // During polling when locked, try to create a provider directly
+              if (isPolling && !isBitcoinBased) {
+                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              } else {
+                console.warn(
+                  '[MainController] Cannot access ethereumTransaction:',
+                  error
+                );
+                // Don't clear loading state on error - let it stay active
+                reject(
+                  new Error(
+                    'Cannot access ethereumTransaction for transaction update'
+                  )
+                );
+                return;
+              }
             }
 
             const txs =
@@ -2475,55 +2493,6 @@ class MainController {
       })
     );
 
-    // Trigger notification for new pending transaction
-    // The notification manager will check if the popup is open and only show
-    // browser notifications when the popup is closed (like MetaMask)
-    try {
-      const { showTransactionNotification } = await import(
-        'utils/notifications'
-      );
-
-      if (isBitcoinBased) {
-        // UTXO transaction
-        const utxoTx = tx as ISysTransaction;
-        const tokenSymbol =
-          'symbol' in utxoTx && typeof utxoTx.symbol === 'string'
-            ? utxoTx.symbol
-            : activeNetwork.currency.toUpperCase();
-
-        showTransactionNotification({
-          txHash: utxoTx.txid,
-          type: 'pending',
-          from: account.address,
-          to: undefined, // UTXO doesn't have simple to/from
-          value: utxoTx.value || undefined,
-          tokenSymbol,
-          network: activeNetwork.label,
-          chainId: activeNetwork.chainId,
-        });
-      } else {
-        // EVM transaction
-        const evmTx = tx as IEvmTransactionResponse;
-        const value = evmTx.value?.toString() || undefined;
-
-        showTransactionNotification({
-          txHash: evmTx.hash,
-          type: 'pending',
-          from: evmTx.from || account.address,
-          to: evmTx.to,
-          value,
-          tokenSymbol: activeNetwork.currency.toUpperCase(),
-          network: activeNetwork.label,
-          chainId: activeNetwork.chainId,
-        });
-      }
-    } catch (error) {
-      console.error(
-        '[MainController] Failed to show transaction notification:',
-        error
-      );
-    }
-
     // Start rapid polling for this transaction to detect confirmation quickly
     try {
       const txHash = isBitcoinBased
@@ -2567,12 +2536,15 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
-    // Check if wallet is unlocked first - skip if locked
-    const keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      console.log('[MainController] Wallet is locked, skipping asset updates');
-      // Return a resolved promise to maintain API consistency
-      return Promise.resolve();
+    // For polling, we don't need keyring access - we're just fetching public asset balances
+    // Only check if unlocked for non-polling operations
+    if (!isPolling) {
+      const keyring = this.getActiveKeyringIfUnlocked();
+      if (!keyring) {
+        console.log('[MainController] Wallet is locked, skipping non-polling asset updates');
+        // Return a resolved promise to maintain API consistency
+        return Promise.resolve();
+      }
     }
 
     const { accounts, accountAssets } = store.getState().vault;
@@ -2595,19 +2567,29 @@ class MainController {
             // Safe access to transaction objects with error handling
             let web3Provider = null;
             try {
-              web3Provider = isBitcoinBased
-                ? null
-                : this.ethereumTransaction.web3Provider;
+              if (!isBitcoinBased) {
+                // During polling when locked, create a provider directly
+                if (isPollingUpdate && !this.isUnlocked()) {
+                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                } else {
+                  web3Provider = this.ethereumTransaction.web3Provider;
+                }
+              }
             } catch (error) {
-              console.warn(
-                '[MainController] Cannot access ethereumTransaction for asset update:',
-                error
-              );
-              // Don't clear loading state on error - let it stay active
-              reject(
-                new Error('Cannot access ethereumTransaction for asset update')
-              );
-              return;
+              // During polling when locked, try to create a provider directly
+              if (isPollingUpdate && !isBitcoinBased) {
+                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              } else {
+                console.warn(
+                  '[MainController] Cannot access ethereumTransaction for asset update:',
+                  error
+                );
+                // Don't clear loading state on error - let it stay active
+                reject(
+                  new Error('Cannot access ethereumTransaction for asset update')
+                );
+                return;
+              }
             }
 
             const updatedAssets =
@@ -2696,14 +2678,17 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
-    // Check if wallet is unlocked first - skip if locked
-    const keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      console.log(
-        '[MainController] Wallet is locked, skipping balance updates'
-      );
-      // Return a resolved promise to maintain API consistency
-      return Promise.resolve();
+    // For polling, we don't need keyring access - we're just fetching public balance data
+    // Only check if unlocked for non-polling operations
+    if (!isPolling) {
+      const keyring = this.getActiveKeyringIfUnlocked();
+      if (!keyring) {
+        console.log(
+          '[MainController] Wallet is locked, skipping non-polling balance updates'
+        );
+        // Return a resolved promise to maintain API consistency
+        return Promise.resolve();
+      }
     }
 
     const { accounts } = store.getState().vault;
@@ -2730,21 +2715,31 @@ class MainController {
             // Safe access to transaction objects with error handling
             let web3Provider = null;
             try {
-              web3Provider = isBitcoinBased
-                ? null
-                : this.ethereumTransaction.web3Provider;
+              if (!isBitcoinBased) {
+                // During polling when locked, create a provider directly
+                if (isPollingUpdate && !this.isUnlocked()) {
+                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                } else {
+                  web3Provider = this.ethereumTransaction.web3Provider;
+                }
+              }
             } catch (error) {
-              console.warn(
-                '[MainController] Cannot access ethereumTransaction for balance update:',
-                error
-              );
-              // Don't clear loading state on error - let it stay active
-              reject(
-                new Error(
-                  'Cannot access ethereumTransaction for balance update'
-                )
-              );
-              return;
+              // During polling when locked, try to create a provider directly
+              if (isPollingUpdate && !isBitcoinBased) {
+                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              } else {
+                console.warn(
+                  '[MainController] Cannot access ethereumTransaction for balance update:',
+                  error
+                );
+                // Don't clear loading state on error - let it stay active
+                reject(
+                  new Error(
+                    'Cannot access ethereumTransaction for balance update'
+                  )
+                );
+                return;
+              }
             }
 
             const updatedBalance =
@@ -2851,27 +2846,13 @@ class MainController {
     // Set polling state early so getActiveKeyringIfUnlocked knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
 
-    // Check if wallet is unlocked first
-    let keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      // During polling, try harder to get the keyring - it might be a false positive
-      if (isPolling) {
-        const activeKeyring = this.getActiveKeyring();
-        if (activeKeyring && activeKeyring.isUnlocked()) {
-          // It was a false positive - the keyring is actually unlocked
-          console.log(
-            '[MainController] Keyring appeared locked during polling but is actually unlocked, proceeding'
-          );
-          keyring = activeKeyring; // Use the unlocked keyring
-        } else {
-          // Really is locked - skip silently during polling
-          store.dispatch(setIsPollingUpdate(false)); // Clear polling state
-          return false;
-        }
-      } else {
-        // Not polling - log the warning
+    // For polling, we don't need the wallet to be unlocked - we're just fetching public data
+    // Only check if unlocked for non-polling operations that might need private keys
+    if (!isPolling) {
+      const keyring = this.getActiveKeyringIfUnlocked();
+      if (!keyring) {
         console.log(
-          '[MainController] Wallet is locked, skipping account updates'
+          '[MainController] Wallet is locked, skipping non-polling account updates'
         );
         store.dispatch(setIsPollingUpdate(false)); // Clear polling state
         return false;
@@ -2911,20 +2892,24 @@ class MainController {
     }
 
     // Guard: Skip EVM operations if web3Provider isn't ready (during keyring switches)
-    // Note: we now use try-catch for transaction access since we check unlock status above
+    // For polling when locked, we might not have access to ethereumTransaction
     try {
-      if (!isBitcoinBased && !this.ethereumTransaction?.web3Provider) {
-        // During polling, don't log warnings about provider not being ready
-        if (!isPolling) {
+      if (!isBitcoinBased) {
+        // Try to access the provider, but don't fail if locked during polling
+        const provider = isPolling && !this.isUnlocked() 
+          ? null // Will be handled by the transaction/balance managers
+          : this.ethereumTransaction?.web3Provider;
+          
+        if (!provider && !isPolling) {
           console.log(
             '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
           );
+          store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+          return false;
         }
-        store.dispatch(setIsPollingUpdate(false)); // Clear polling state
-        return false;
       }
     } catch (error) {
-      // During polling, this error is often a false positive - suppress it
+      // During polling, this error is expected if wallet is locked
       if (!isPolling) {
         console.log(
           '[MainController] Cannot access ethereumTransaction - wallet may be locked or keyring switching'
@@ -3160,6 +3145,8 @@ class MainController {
               `[RapidPoll] Transaction ${txHash} confirmed with ${tx.confirmations} confirmations! Stopping rapid poll.`
             );
             this.activeRapidPolls.delete(pollKey);
+            
+            
             return;
           }
         }
@@ -3779,6 +3766,23 @@ class MainController {
     this.saveWalletState('delete-token');
 
     return result;
+  }
+
+  // Add this new method after the isUnlocked method (around line 694)
+  private createProviderForPolling(networkUrl: string): CustomJsonRpcProvider | null {
+    try {
+      // Create a simple abort controller for the provider
+      const abortController = new AbortController();
+      
+      // Create provider without needing keyring access
+      return new CustomJsonRpcProvider(
+        abortController.signal,
+        networkUrl
+      );
+    } catch (error) {
+      console.error('[MainController] Failed to create provider for polling:', error);
+      return null;
+    }
   }
 }
 
