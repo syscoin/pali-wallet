@@ -53,6 +53,7 @@ export const SendEth = () => {
   // State management
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
   const [isCalculatingFee, setIsCalculatingFee] = useState(false);
+  const [isCalculatingGas, setIsCalculatingGas] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<{
     gasLimit: string;
     maxFeePerGas: string;
@@ -106,7 +107,9 @@ export const SendEth = () => {
       // Clear cached fee when switching assets
       setCachedFeeData(null);
 
-      if (activeAccountAssets?.ethereum?.length > 0) {
+      if (item === '-1') {
+        setSelectedAsset(null);
+      } else if (activeAccountAssets?.ethereum?.length > 0) {
         const getAsset = activeAccountAssets.ethereum.find(
           (asset) => asset.contractAddress === item
         );
@@ -163,6 +166,8 @@ export const SendEth = () => {
                     symbol: finalSymbolToNextStep,
                   }
                 : null,
+              // Pass cached gas data to avoid recalculation on confirm screen
+              cachedGasData: !selectedAsset ? cachedFeeData : null,
             },
           },
         });
@@ -180,6 +185,7 @@ export const SendEth = () => {
     finalSymbolToNextStep,
     alert,
     t,
+    cachedFeeData,
   ]);
 
   const finalBalance = useCallback(() => {
@@ -231,6 +237,66 @@ export const SendEth = () => {
     adjustedExplorer,
   ]);
 
+  const calculateGasFees = useCallback(async () => {
+    // Only calculate for native ETH transactions
+    if (selectedAsset) {
+      return;
+    }
+
+    // Don't recalculate if already calculating
+    if (isCalculatingGas) {
+      return;
+    }
+
+    const receiver =
+      form.getFieldValue('receiver') ||
+      '0x0000000000000000000000000000000000000000';
+
+    setIsCalculatingGas(true);
+
+    try {
+      // Get fee data for EIP-1559 transaction
+      const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter([
+        'wallet',
+        'ethereumTransaction',
+        'getFeeDataWithDynamicMaxPriorityFeePerGas',
+      ])) as any;
+
+      // Estimate gas limit for a simple transfer
+      const testAmount = '1';
+
+      const txObject = {
+        from: activeAccount.address,
+        to: receiver,
+        value: testAmount,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      };
+
+      const gasLimit = await controllerEmitter(
+        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+        [txObject]
+      ).then((gas) => BigNumber.from(gas));
+
+      // Calculate total fee in ETH
+      const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
+      const totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
+
+      // Cache the fee data
+      setCachedFeeData({
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+        gasLimit: gasLimit.toString(),
+        totalFeeEth,
+      });
+    } catch (error) {
+      console.error('Error calculating gas fees:', error);
+      // Don't cache on error, but don't block the UI either
+    } finally {
+      setIsCalculatingGas(false);
+    }
+  }, [selectedAsset, activeAccount.address, controllerEmitter, form]); // isCalculatingGas excluded to prevent loops
+
   const calculateMaxAmount = useCallback(async () => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
@@ -240,6 +306,8 @@ export const SendEth = () => {
     // Only show calculating if we don't have cached data
     if (!cachedFeeData) {
       setIsCalculatingFee(true);
+      // Calculate gas fees first
+      await calculateGasFees();
     }
 
     try {
@@ -249,46 +317,10 @@ export const SendEth = () => {
       if (cachedFeeData) {
         totalFeeEth = cachedFeeData.totalFeeEth;
       } else {
-        // Get fee data for EIP-1559 transaction
-        const { maxFeePerGas, maxPriorityFeePerGas } = (await controllerEmitter(
-          [
-            'wallet',
-            'ethereumTransaction',
-            'getFeeDataWithDynamicMaxPriorityFeePerGas',
-          ]
-        )) as any;
-
-        // Estimate gas limit for a simple transfer
-        const receiver =
-          form.getFieldValue('receiver') ||
-          '0x0000000000000000000000000000000000000000';
-        // Use a minimal amount for gas estimation (1 wei)
-        const testAmount = '1';
-
-        const txObject = {
-          from: activeAccount.address,
-          to: receiver,
-          value: testAmount,
-          maxFeePerGas,
-          maxPriorityFeePerGas,
-        };
-
-        const gasLimit = await controllerEmitter(
-          ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-          [txObject]
-        ).then((gas) => BigNumber.from(gas));
-
-        // Calculate total fee in ETH
-        const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
-        totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
-
-        // Cache the fee data
-        setCachedFeeData({
-          maxFeePerGas,
-          maxPriorityFeePerGas,
-          gasLimit: gasLimit.toString(),
-          totalFeeEth,
-        });
+        // If still no cached data after calculation, use conservative estimate
+        const conservativeFee =
+          activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
+        totalFeeEth = conservativeFee;
       }
 
       // Calculate max amount (balance - fee)
@@ -313,9 +345,8 @@ export const SendEth = () => {
   }, [
     selectedAsset,
     cachedFeeData,
-    controllerEmitter,
-    form,
-    activeAccount,
+    calculateGasFees,
+    activeAccount.balances.ethereum,
     activeNetwork.chainId,
   ]);
 
@@ -329,6 +360,34 @@ export const SendEth = () => {
       padding: 1,
     });
   }, [activeAccount?.address, activeAccount?.xpub]);
+
+  // Calculate gas fees when component mounts or asset changes
+  useEffect(() => {
+    // Only calculate for native ETH (not tokens)
+    if (!selectedAsset && activeAccount?.address && !cachedFeeData) {
+      calculateGasFees();
+    }
+  }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
+
+  // Recalculate gas when receiver address changes
+  useEffect(() => {
+    if (
+      !selectedAsset &&
+      isValidAddress &&
+      activeAccount?.address &&
+      inputValue.address
+    ) {
+      // Clear cache to force recalculation with new receiver
+      setCachedFeeData(null);
+      calculateGasFees();
+    }
+  }, [
+    inputValue.address,
+    isValidAddress,
+    selectedAsset,
+    activeAccount?.address,
+    calculateGasFees,
+  ]);
 
   return (
     <>
@@ -619,6 +678,11 @@ export const SendEth = () => {
               <div className="relative">
                 <span
                   onClick={async () => {
+                    // First ensure gas is calculated for native ETH
+                    if (!selectedAsset && !cachedFeeData) {
+                      setIsCalculatingFee(true);
+                    }
+
                     const maxAmount = await calculateMaxAmount();
                     form.setFieldValue('amount', maxAmount);
                     setInputValue((prev) => ({
@@ -678,12 +742,30 @@ export const SendEth = () => {
           <div className="absolute bottom-12 md:static md:mt-3">
             <Button
               className={`${
-                isValidAmount && isValidAddress ? 'opacity-100' : 'opacity-60'
+                isValidAmount &&
+                isValidAddress &&
+                (selectedAsset || cachedFeeData) &&
+                !isCalculatingGas
+                  ? 'opacity-100'
+                  : 'opacity-60'
               }xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
               type="submit"
               onClick={nextStep}
+              disabled={
+                !isValidAmount ||
+                !isValidAddress ||
+                (!selectedAsset && !cachedFeeData) ||
+                isCalculatingGas
+              }
             >
-              {t('buttons.next')}
+              {!selectedAsset && (isCalculatingGas || !cachedFeeData) ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin h-4 w-4 border-2 border-brand-blue400 border-t-transparent rounded-full" />
+                  Calculating fees...
+                </span>
+              ) : (
+                t('buttons.next')
+              )}
             </Button>
           </div>
         </Form>

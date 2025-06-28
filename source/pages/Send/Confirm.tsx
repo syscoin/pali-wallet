@@ -97,6 +97,7 @@ export const SendConfirm = () => {
   const [isCalculatingFees, setIsCalculatingFees] = useState(false);
 
   const basicTxValues = state.tx;
+  const cachedGasData = basicTxValues?.cachedGasData;
 
   // The confirmation screen displays the fee and total as calculated by SendSys.
   // When the user changes fee rate in SendSys and clicks "Next", SendSys recalculates
@@ -1047,6 +1048,40 @@ export const SendConfirm = () => {
       return;
     }
 
+    // If we have cached gas data from SendEth, use it immediately
+    if (cachedGasData && !customFee.isCustom) {
+      const { maxFeePerGas, maxPriorityFeePerGas, gasLimit } = cachedGasData;
+
+      const initialFeeDetails = {
+        maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
+        baseFee:
+          (BigNumber.from(maxFeePerGas).toNumber() -
+            BigNumber.from(maxPriorityFeePerGas).toNumber()) /
+          10 ** 9,
+        maxPriorityFeePerGas:
+          BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
+        gasLimit: BigNumber.from(gasLimit).toNumber(),
+      };
+
+      const formattedTxObject = {
+        from: basicTxValues.sender,
+        to: basicTxValues.receivingAddress,
+        chainId: activeNetwork.chainId,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      };
+
+      setTxObjectState(formattedTxObject);
+      setFee(initialFeeDetails as any);
+
+      // Cache the result
+      setFeeCalculationCache(
+        (prev) => new Map(prev.set(cacheKey, initialFeeDetails))
+      );
+
+      return; // Skip recalculation
+    }
+
     // Debounce fee calculation to prevent rapid successive calls
     const timeoutId = setTimeout(async () => {
       setIsCalculatingFees(true);
@@ -1140,6 +1175,7 @@ export const SendConfirm = () => {
     activeNetwork.chainId,
     customFee.isCustom,
     isCalculatingFees,
+    cachedGasData,
     // Removed unstable dependencies: controllerEmitter, navigate, alert, t, getLegacyGasPrice
   ]);
 
