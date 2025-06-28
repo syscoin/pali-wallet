@@ -80,12 +80,6 @@ const initialState: IVaultState = {
     5700: true,
     57000: true,
   },
-  prevBalances: {
-    [0]: {
-      [INetworkType.Ethereum]: {},
-      [INetworkType.Syscoin]: {},
-    },
-  },
 };
 
 const VaultState = createSlice({
@@ -368,7 +362,6 @@ const VaultState = createSlice({
           5700: true,
           57000: true,
         },
-        prevBalances: {}, // 🔥 EMPTY - no previous balances for fresh slip44
       };
 
       return cleanState;
@@ -816,30 +809,6 @@ const VaultState = createSlice({
         ) as IEvmTransaction[];
       }
     },
-    setPrevBalances(
-      state: IVaultState,
-      action: PayloadAction<{
-        activeAccountId: number;
-        balance: number;
-        chain: INetworkType;
-        chainId: number;
-      }>
-    ) {
-      const { activeAccountId, chain, chainId, balance } = action.payload;
-
-      if (!state.prevBalances[activeAccountId]) {
-        state.prevBalances[activeAccountId] = {
-          [INetworkType.Ethereum]: {},
-          [INetworkType.Syscoin]: {},
-        };
-      }
-
-      if (!state.prevBalances[activeAccountId][chain]) {
-        state.prevBalances[activeAccountId][chain] = {};
-      }
-
-      state.prevBalances[activeAccountId][chain][chainId] = balance;
-    },
   },
 });
 
@@ -868,7 +837,6 @@ export const {
   setMultipleTransactionToState,
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
-  setPrevBalances,
   setAccounts,
 } = VaultState.actions;
 

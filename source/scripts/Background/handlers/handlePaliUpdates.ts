@@ -1,71 +1,7 @@
-import { INetworkType } from '@pollum-io/sysweb3-network';
-
 import { getController } from '..';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
 import { saveState } from 'state/paliStorage';
 import store from 'state/store';
-import { setPrevBalances } from 'state/vault';
-import { IVaultState } from 'state/vault/types';
-
-function shouldUpdate() {
-  const vault = store.getState().vault as unknown as IVaultState;
-
-  if (!vault) {
-    return false;
-  }
-
-  const {
-    accounts,
-    activeAccount,
-    isBitcoinBased,
-    activeNetwork,
-    prevBalances,
-    accountTransactions,
-  } = vault;
-
-  const chain = isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
-  const chainId = activeNetwork.chainId;
-
-  const currentBalance = isBitcoinBased
-    ? accounts[activeAccount.type][activeAccount.id].balances[
-        INetworkType.Syscoin
-      ]
-    : accounts[activeAccount.type][activeAccount.id].balances[
-        INetworkType.Ethereum
-      ];
-
-  const previousBalance = prevBalances[activeAccount.id]?.[chain]?.[chainId];
-  const currentAccountTransactions = accountTransactions[activeAccount.type][
-    activeAccount.id
-  ][chain]?.[chainId] as any[];
-
-  // Check if there are any pending transactions (confirmations === 0)
-  const hasPendingTransactions = Array.isArray(currentAccountTransactions)
-    ? currentAccountTransactions.some((tx) => tx.confirmations === 0)
-    : false;
-
-  // Always update if:
-  // 1. Balance has changed
-  // 2. There are pending transactions (need to check confirmations)
-  // 3. First time checking (no previous balance)
-  const shouldPerformUpdate =
-    currentBalance !== previousBalance ||
-    hasPendingTransactions ||
-    previousBalance === undefined;
-
-  if (shouldPerformUpdate && currentBalance !== undefined) {
-    store.dispatch(
-      setPrevBalances({
-        activeAccountId: activeAccount.id,
-        balance: currentBalance,
-        chain: isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum,
-        chainId: activeNetwork.chainId,
-      })
-    );
-  }
-
-  return shouldPerformUpdate;
-}
 
 // Cross-context deduplication using Chrome storage
 const UPDATE_LOCK_KEY = 'checkForUpdates_lock';
@@ -128,20 +64,18 @@ const releaseUpdateLock = () => {
   chrome.storage.local.remove([UPDATE_LOCK_KEY]);
 };
 
-export async function checkForUpdates() {
+export async function checkForUpdates(): Promise<boolean> {
   // Try to acquire cross-context lock
   const hasLock = await acquireUpdateLock();
   if (!hasLock) {
-    return;
+    console.log('⏸️ checkForUpdates: Another instance is checking, skipping');
+    return false; // Return false to indicate we didn't acquire the lock
   }
 
   try {
     if (isPollingRunNotValid()) {
-      return;
-    }
-
-    if (!shouldUpdate()) {
-      return;
+      console.log('⏸️ checkForUpdates: Polling run not valid, skipping');
+      return true; // Return true since we acquired the lock (for startPolling responsibility)
     }
 
     console.log('✅ checkForUpdates: Proceeding with update');
@@ -162,4 +96,6 @@ export async function checkForUpdates() {
     // Always release the lock
     releaseUpdateLock();
   }
+
+  return true; // Return true to indicate we acquired the lock
 }

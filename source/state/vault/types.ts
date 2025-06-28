@@ -102,7 +102,6 @@ export interface ISlip44State {
   isBitcoinBased: boolean;
 
   isLastTxConfirmed: null | { [k: number]: boolean };
-  prevBalances: IPrevBalances;
 
   shouldShowFaucetModal: { [k: number]: boolean };
 }
@@ -117,17 +116,6 @@ export interface INetworksVault {
   };
   [INetworkType.Syscoin]: {
     [chainId: number]: INetwork;
-  };
-}
-
-export interface IPrevBalances {
-  [accountId: number]: {
-    [INetworkType.Ethereum]: {
-      [chainId: number]: number;
-    };
-    [INetworkType.Syscoin]: {
-      [chainId: number]: number;
-    };
   };
 }
 

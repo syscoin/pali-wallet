@@ -274,6 +274,13 @@ class MainController {
         return keyring; // Return the keyring anyway during network switching
       }
 
+      // During polling, this might be a false positive - reduce log level
+      const { isPollingUpdate } = store.getState().vaultGlobal;
+      if (isPollingUpdate) {
+        // Don't warn during polling - this is often a false positive
+        return null;
+      }
+
       console.warn('[MainController] Wallet is locked, skipping operation');
       return null;
     }
@@ -2841,17 +2848,35 @@ class MainController {
     isPolling = false,
     forceUpdate = false // Force update even if just unlocked
   ): Promise<boolean> {
-    // Check if wallet is unlocked first
-    const keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      console.log(
-        '[MainController] Wallet is locked, skipping account updates'
-      );
-      return false;
-    }
-
-    // Set polling state so UI knows not to show skeleton loaders
+    // Set polling state early so getActiveKeyringIfUnlocked knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
+
+    // Check if wallet is unlocked first
+    let keyring = this.getActiveKeyringIfUnlocked();
+    if (!keyring) {
+      // During polling, try harder to get the keyring - it might be a false positive
+      if (isPolling) {
+        const activeKeyring = this.getActiveKeyring();
+        if (activeKeyring && activeKeyring.isUnlocked()) {
+          // It was a false positive - the keyring is actually unlocked
+          console.log(
+            '[MainController] Keyring appeared locked during polling but is actually unlocked, proceeding'
+          );
+          keyring = activeKeyring; // Use the unlocked keyring
+        } else {
+          // Really is locked - skip silently during polling
+          store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+          return false;
+        }
+      } else {
+        // Not polling - log the warning
+        console.log(
+          '[MainController] Wallet is locked, skipping account updates'
+        );
+        store.dispatch(setIsPollingUpdate(false)); // Clear polling state
+        return false;
+      }
+    }
 
     const {
       accounts,
@@ -2869,6 +2894,7 @@ class MainController {
         '[getLatestUpdateForCurrentAccount] Active account not found in accounts map',
         activeAccount
       );
+      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
       return false;
     }
     const currentAccountTransactions =
@@ -2880,6 +2906,7 @@ class MainController {
       console.log(
         '[MainController] Skipping non-polling update right after unlock - polling will handle it'
       );
+      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
       return false;
     }
 
@@ -2887,15 +2914,23 @@ class MainController {
     // Note: we now use try-catch for transaction access since we check unlock status above
     try {
       if (!isBitcoinBased && !this.ethereumTransaction?.web3Provider) {
-        console.log(
-          '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
-        );
+        // During polling, don't log warnings about provider not being ready
+        if (!isPolling) {
+          console.log(
+            '[MainController] Skipping EVM update - web3Provider not ready (keyring may be switching)'
+          );
+        }
+        store.dispatch(setIsPollingUpdate(false)); // Clear polling state
         return false;
       }
     } catch (error) {
-      console.log(
-        '[MainController] Cannot access ethereumTransaction - wallet may be locked or keyring switching'
-      );
+      // During polling, this error is often a false positive - suppress it
+      if (!isPolling) {
+        console.log(
+          '[MainController] Cannot access ethereumTransaction - wallet may be locked or keyring switching'
+        );
+      }
+      store.dispatch(setIsPollingUpdate(false)); // Clear polling state
       return false;
     }
 

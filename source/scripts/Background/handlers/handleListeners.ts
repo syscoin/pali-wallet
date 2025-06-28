@@ -53,14 +53,34 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // Create and store alarm listener
   alarmListener = (alarm) => {
-    console.log('Alarm triggered:', alarm.name);
+    console.log(`Alarm triggered: ${alarm.name}`);
+
     if (alarm.name === 'check_for_updates') {
-      console.log('🎯 handleListeners: Processing check_for_updates alarm');
-      checkForUpdates();
-      // Just restart polling to adjust the alarm interval based on current state
-      startPolling().catch((error) =>
-        console.error('Error in startPolling:', error)
-      );
+      console.log(`🎯 handleListeners: Processing check_for_updates alarm`);
+      // Only the instance that acquired the checkForUpdates lock should call startPolling
+      // This prevents duplicate alarm creation from multiple service worker instances
+      checkForUpdates()
+        .then((acquiredLock) => {
+          // Only call startPolling if this instance acquired the lock
+          // This ensures only one instance manages the alarm lifecycle
+          if (acquiredLock) {
+            startPolling().catch((error) =>
+              console.error('Error in startPolling:', error)
+            );
+          }
+        })
+        .catch((error) => {
+          // Log the error but don't stop - the alarm will continue
+          console.error('Error in checkForUpdates:', error);
+          // Even on error, if no other instance is handling it, ensure polling continues
+          // by calling startPolling (it has its own lock to prevent duplicates)
+          startPolling().catch((error) =>
+            console.error(
+              'Error in startPolling after checkForUpdates error:',
+              error
+            )
+          );
+        });
     }
 
     // Handle fiat price updates - only the initial update since unlock/create wallet handle immediate updates
