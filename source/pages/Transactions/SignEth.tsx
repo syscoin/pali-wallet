@@ -2,7 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { DefaultModal, ErrorModal, Button } from 'components/index';
+import {
+  DefaultModal,
+  ErrorModal,
+  PrimaryButton,
+  SecondaryButton,
+} from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -290,23 +295,18 @@ const EthSign: React.FC<ISign> = () => {
               state === 'Details' ? 'mt-12' : 'my-8'
             } gap-6 flex items-center justify-between w-full md:max-w-2xl`}
           >
-            <Button
-              type="button"
-              onClick={window.close}
-              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
-            >
+            <SecondaryButton type="button" onClick={window.close}>
               {t('buttons.cancel')}
-            </Button>
+            </SecondaryButton>
 
-            <Button
+            <PrimaryButton
               type="submit"
               disabled={confirmed}
               loading={loading}
               onClick={onSubmit}
-              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300"
             >
               {t('buttons.confirm')}
-            </Button>
+            </PrimaryButton>
           </div>
         </div>
       )}

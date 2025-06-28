@@ -15,7 +15,13 @@ import {
 } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
-import { Button, Tooltip, Icon } from 'components/index';
+import { Icon } from 'components/Icon';
+import {
+  Tooltip,
+  NeutralButton,
+  PrimaryButton,
+  SecondaryButton,
+} from 'components/index';
 import { StatusModal } from 'components/Modal/StatusModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -1173,43 +1179,22 @@ const CustomRPCView = () => {
         <div className="w-full px-4 absolute bottom-12 md:static">
           {state?.isEditing ? (
             <div className="flex gap-6 justify-center">
-              <Button
-                type="button"
-                className="bg-transparent rounded-[100px] w-[10.25rem] h-[40px] text-white text-base font-medium border border-white"
-                onClick={() => navigate(-1)}
-              >
+              <SecondaryButton type="button" onClick={() => navigate(-1)}>
                 Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="bg-white rounded-[100px] w-[10.25rem] h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
-                disabled={loading}
-              >
-                {loading ? (
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
-                    <span>{t('buttons.save')}</span>
-                  </div>
-                ) : (
-                  'Save'
-                )}
-              </Button>
+              </SecondaryButton>
+              <PrimaryButton type="submit" disabled={loading} loading={loading}>
+                {t('buttons.save')}
+              </PrimaryButton>
             </div>
           ) : (
-            <Button
-              className="w-full h-[40px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 disabled:opacity-60"
+            <NeutralButton
               type="submit"
               disabled={loading}
+              loading={loading}
+              fullWidth
             >
-              {loading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
-                  <span>{t('buttons.save')}</span>
-                </div>
-              ) : (
-                t('buttons.save')
-              )}
-            </Button>
+              {t('buttons.save')}
+            </NeutralButton>
           )}
         </div>
       </Form>

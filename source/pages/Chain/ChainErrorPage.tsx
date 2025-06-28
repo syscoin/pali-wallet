@@ -4,7 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
-import { Button } from 'components/Button';
+import { NeutralButton } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { useController } from 'hooks/useController';
@@ -235,29 +235,23 @@ export const ChainErrorPage = () => {
           </div>
         </div>
         <div className="flex flex-col gap-2 mt-4 mb-4 w-full">
-          <Button
+          <NeutralButton
             type="button"
-            className="bg-white rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
             onClick={handleConnectToAnotherRpc}
             disabled={isRetrying}
+            fullWidth
           >
             {t('chainError.goToAnotherNetwork')}
-          </Button>
-          <Button
+          </NeutralButton>
+          <NeutralButton
             type="button"
-            className="bg-white rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
             onClick={handleRetryToConnect}
             disabled={isRetrying}
+            loading={isRetrying}
+            fullWidth
           >
-            {isRetrying ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
-                <span>{t('buttons.retryConnect')}</span>
-              </div>
-            ) : (
-              t('buttons.retryConnect')
-            )}
-          </Button>
+            {t('buttons.retryConnect')}
+          </NeutralButton>
         </div>
       </div>
     </div>

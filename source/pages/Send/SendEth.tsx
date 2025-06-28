@@ -1,6 +1,5 @@
 import { Menu } from '@headlessui/react';
-import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import { Form } from 'antd';
+import { Form, Input } from 'antd';
 import { BigNumber, ethers } from 'ethers';
 import { toSvg } from 'jdenticon';
 import { uniqueId } from 'lodash';
@@ -10,17 +9,20 @@ import { useSelector } from 'react-redux';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
-import errorIcon from 'assets/all_assets/errorIcon.svg';
-import successIcon from 'assets/all_assets/successIcon.svg';
-import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
-import { Button, Tooltip, Icon } from 'components/index';
+import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
+import { NeutralButton, Tooltip, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
 import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
-import { getAssetBalance, ellipsis, adjustUrl } from 'utils/index';
+import {
+  getAssetBalance,
+  ellipsis,
+  adjustUrl,
+  formatFullPrecisionBalance,
+} from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
@@ -52,60 +54,23 @@ export const SendEth = () => {
 
   // State management
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [isCalculatingFee, setIsCalculatingFee] = useState(false);
   const [isCalculatingGas, setIsCalculatingGas] = useState(false);
+  const [isMaxSend, setIsMaxSend] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<{
     gasLimit: string;
     maxFeePerGas: string;
     maxPriorityFeePerGas: string;
     totalFeeEth: number;
   } | null>(null);
-  const [inputValue, setInputValue] = useState({ address: '', amount: 0 });
-  const [isValidAddress, setIsValidAddress] = useState(null);
-  const [isValidAmount, setIsValidAmount] = useState(null);
-
   const [form] = Form.useForm();
 
   // ✅ MEMOIZED: Handlers
-  const handleInputChange = useCallback(
-    (e) => {
-      const { name, value } = e.target;
-
-      setInputValue((prevState) => ({ ...prevState, [name]: value }));
-
-      if (name === 'address' && value.trim() !== '') {
-        const validAddress = isValidEthereumAddress(value);
-        setIsValidAddress(validAddress);
-      } else if (name === 'amount') {
-        // Don't clear cache on every keystroke - let validation handle it
-
-        const balance = selectedAsset
-          ? selectedAsset.balance
-          : Number(activeAccount?.balances.ethereum);
-
-        const validAmount =
-          Number(value) > 0 && parseFloat(value) <= parseFloat(balance);
-
-        const isValidForSelectedAsset = selectedAsset
-          ? selectedAsset.isNft || (!selectedAsset.isNft && validAmount)
-          : validAmount;
-
-        if (isValidForSelectedAsset) {
-          setIsValidAmount(true);
-        } else {
-          setIsValidAmount(false);
-        }
-      } else {
-        setIsValidAddress(null);
-      }
-    },
-    [selectedAsset, activeAccount?.balances.ethereum]
-  );
-
   const handleSelectedAsset = useCallback(
     (item: string) => {
       // Clear cached fee when switching assets
       setCachedFeeData(null);
+      // Clear max send flag when switching assets
+      setIsMaxSend(false);
 
       if (item === '-1') {
         setSelectedAsset(null);
@@ -148,18 +113,29 @@ export const SendEth = () => {
     ]
   );
 
-  const nextStep = useCallback(() => {
-    const receiver = form.getFieldValue('receiver');
-    const amount = form.getFieldValue('amount');
+  const nextStep = useCallback(
+    (values: { amount: string; receiver: string }) => {
+      try {
+        // Check if this is a MAX send by comparing amount to balance
+        let isMax = false;
+        if (!selectedAsset) {
+          try {
+            const balanceEth = String(activeAccount?.balances?.ethereum || '0');
+            const amountBN = ethers.utils.parseEther(values.amount);
+            const balanceBN = ethers.utils.parseEther(balanceEth);
+            isMax = amountBN.eq(balanceBN);
+          } catch {
+            // If parsing fails, it's not a MAX send
+            isMax = false;
+          }
+        }
 
-    try {
-      if (isValidAmount && isValidAddress) {
         navigate('/send/confirm', {
           state: {
             tx: {
               sender: activeAccount.address,
-              receivingAddress: receiver,
-              amount,
+              receivingAddress: values.receiver,
+              amount: values.amount,
               token: selectedAsset
                 ? {
                     ...selectedAsset,
@@ -168,42 +144,51 @@ export const SendEth = () => {
                 : null,
               // Pass cached gas data to avoid recalculation on confirm screen
               cachedGasData: !selectedAsset ? cachedFeeData : null,
+              // Pass isMax flag for proper fee handling
+              isMax: !selectedAsset ? isMax : false,
             },
           },
         });
+      } catch (error) {
+        alert.error(t('send.internalError'));
       }
-    } catch (error) {
-      alert.error(t('send.internalError'));
-    }
-  }, [
-    isValidAmount,
-    isValidAddress,
-    form,
-    navigate,
-    activeAccount.address,
-    selectedAsset,
-    finalSymbolToNextStep,
-    alert,
-    t,
-    cachedFeeData,
-  ]);
+    },
+    [
+      navigate,
+      activeAccount.address,
+      activeAccount?.balances?.ethereum,
+      selectedAsset,
+      finalSymbolToNextStep,
+      alert,
+      t,
+      cachedFeeData,
+    ]
+  );
 
   const finalBalance = useCallback(() => {
-    if (selectedAsset?.is1155 === undefined) {
-      const balance = selectedAsset
-        ? getAssetBalance(selectedAsset, activeAccount, false, activeNetwork)
-        : `${
-            activeAccount.balances.ethereum
-          } ${activeNetwork.currency.toUpperCase()}`;
-      return balance;
+    if (selectedAsset?.is1155) {
+      return selectedAsset.collection.map(
+        (nft: IERC1155Collection, index: number, arr: IERC1155Collection[]) =>
+          `${nft.balance} ${nft.tokenSymbol} ${
+            index === arr.length - 1 ? '' : '- '
+          }`
+      );
     }
 
-    return selectedAsset.collection.map(
-      (nft: IERC1155Collection, index: number, arr: IERC1155Collection[]) =>
-        `${nft.balance} ${nft.tokenSymbol} ${
-          index === arr.length - 1 ? '' : '- '
-        }`
-    );
+    if (selectedAsset) {
+      return getAssetBalance(
+        selectedAsset,
+        activeAccount,
+        false,
+        activeNetwork
+      );
+    }
+
+    // For native currency, format the balance for display (4 decimals)
+    const fullBalance = String(activeAccount?.balances?.ethereum || '0');
+    const displayBalance = formatFullPrecisionBalance(fullBalance, 4);
+
+    return `${displayBalance} ${activeNetwork.currency.toUpperCase()}`;
   }, [selectedAsset, activeAccount, activeNetwork]);
 
   const getLabel = useCallback(() => {
@@ -297,58 +282,131 @@ export const SendEth = () => {
     }
   }, [selectedAsset, activeAccount.address, controllerEmitter, form]); // isCalculatingGas excluded to prevent loops
 
-  const calculateMaxAmount = useCallback(async () => {
+  const calculateMaxAmount = useCallback(async (): Promise<string> => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
-      return selectedAsset.balance;
-    }
-
-    // Only show calculating if we don't have cached data
-    if (!cachedFeeData) {
-      setIsCalculatingFee(true);
-      // Calculate gas fees first
-      await calculateGasFees();
+      return String(selectedAsset.balance);
     }
 
     try {
-      let totalFeeEth;
+      // Get balance in wei using the full precision stored balance
+      const balanceEth = activeAccount?.balances?.ethereum || '0';
+      const balanceWei = ethers.utils.parseEther(String(balanceEth));
 
-      // Use cached fee data if available
-      if (cachedFeeData) {
-        totalFeeEth = cachedFeeData.totalFeeEth;
+      // Try to get fresh fee data or use cached data
+      let totalFeeWei = BigNumber.from(0);
+
+      if (!cachedFeeData) {
+        // Try to calculate fresh fee data
+        try {
+          const receiver =
+            form.getFieldValue('receiver') || activeAccount.address;
+
+          const { maxFeePerGas, maxPriorityFeePerGas } =
+            (await controllerEmitter([
+              'wallet',
+              'ethereumTransaction',
+              'getFeeDataWithDynamicMaxPriorityFeePerGas',
+            ])) as any;
+
+          // Estimate gas limit for a simple transfer
+          const gasLimit = await controllerEmitter(
+            ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
+            [
+              {
+                from: activeAccount.address,
+                to: receiver,
+                value: '0x1', // Small test value
+                maxFeePerGas,
+                maxPriorityFeePerGas,
+              },
+            ]
+          ).then((gas) => BigNumber.from(gas));
+
+          // Calculate total fee in wei
+          totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
+
+          // Cache the fee data for future use
+          const totalFeeEth = Number(ethers.utils.formatEther(totalFeeWei));
+          setCachedFeeData({
+            maxFeePerGas: maxFeePerGas.toString(),
+            maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
+            gasLimit: gasLimit.toString(),
+            totalFeeEth,
+          });
+        } catch (error) {
+          console.error('Error calculating fresh fee data:', error);
+          // Use conservative estimate based on network
+          const conservativeFeeEth =
+            activeNetwork.chainId === 570 ? '0.00001' : '0.001';
+          totalFeeWei = ethers.utils.parseEther(conservativeFeeEth);
+        }
       } else {
-        // If still no cached data after calculation, use conservative estimate
-        const conservativeFee =
-          activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
-        totalFeeEth = conservativeFee;
+        // Use cached fee data - reconstruct wei value from components
+        const gasLimit = BigNumber.from(cachedFeeData.gasLimit);
+        const maxFeePerGas = BigNumber.from(cachedFeeData.maxFeePerGas);
+        totalFeeWei = gasLimit.mul(maxFeePerGas);
       }
 
-      // Calculate max amount (balance - fee)
-      const maxAmount = Math.max(
-        0,
-        Number(activeAccount.balances.ethereum) - totalFeeEth
-      );
+      // Calculate max amount in wei (no buffer needed when using BigNumber)
+      const maxAmountWei = balanceWei.sub(totalFeeWei);
 
-      setIsCalculatingFee(false);
-      return maxAmount;
+      // If result would be negative, return 0
+      if (maxAmountWei.lt(0)) {
+        return '0';
+      }
+
+      // Convert back to ETH as a string to preserve precision
+      const maxAmountEth = ethers.utils.formatEther(maxAmountWei);
+
+      // Return as string to preserve full precision
+      return maxAmountEth;
     } catch (error) {
       console.error('Error calculating max amount:', error);
-      setIsCalculatingFee(false);
-      // Fallback: use a conservative fee estimate based on network
-      // For Rollux/Syscoin NEVM, fees are typically much lower
-      const conservativeFee = activeNetwork.chainId === 570 ? 0.00001 : 0.0001; // Much lower for Rollux
-      return Math.max(
-        0,
-        Number(activeAccount.balances.ethereum) - conservativeFee
-      );
+      // Fallback: return balance minus conservative fee using BigNumber
+      try {
+        const balanceEth = activeAccount?.balances?.ethereum || '0';
+        const balanceWei = ethers.utils.parseEther(String(balanceEth));
+        const conservativeFee =
+          activeNetwork.chainId === 570 ? '0.00001' : '0.001';
+        const conservativeFeeWei = ethers.utils.parseEther(conservativeFee);
+        const maxAmountWei = balanceWei.sub(conservativeFeeWei);
+
+        if (maxAmountWei.lt(0)) {
+          return '0';
+        }
+
+        return ethers.utils.formatEther(maxAmountWei);
+      } catch (fallbackError) {
+        console.error('Error in fallback calculation:', fallbackError);
+        return '0';
+      }
     }
   }, [
     selectedAsset,
     cachedFeeData,
-    calculateGasFees,
-    activeAccount.balances.ethereum,
+    activeAccount?.balances?.ethereum,
+    activeAccount?.address,
     activeNetwork.chainId,
+    controllerEmitter,
+    form,
   ]);
+
+  const handleMaxButton = useCallback(() => {
+    // Fill in the full balance - either token or native ETH
+    let fullBalance: string;
+
+    if (selectedAsset) {
+      // For tokens, use the token balance
+      fullBalance = String(selectedAsset.balance || '0');
+    } else {
+      // For native ETH, use ETH balance
+      fullBalance = String(activeAccount?.balances?.ethereum || '0');
+    }
+
+    form.setFieldValue('amount', fullBalance);
+    setIsMaxSend(true);
+  }, [activeAccount?.balances?.ethereum, selectedAsset, form]);
 
   // ✅ OPTIMIZED: Effect with proper dependencies
   useEffect(() => {
@@ -369,89 +427,70 @@ export const SendEth = () => {
     }
   }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
 
-  // Recalculate gas when receiver address changes
-  useEffect(() => {
-    if (
-      !selectedAsset &&
-      isValidAddress &&
-      activeAccount?.address &&
-      inputValue.address
-    ) {
-      // Clear cache to force recalculation with new receiver
-      setCachedFeeData(null);
-      calculateGasFees();
-    }
-  }, [
-    inputValue.address,
-    isValidAddress,
-    selectedAsset,
-    activeAccount?.address,
-    calculateGasFees,
-  ]);
-
   return (
-    <>
-      <div className="w-full md:max-w-sm">
-        <div className="flex flex-col items-center justify-center">
-          <Tooltip content={t('home.viewOnExplorer')}>
-            <div
-              className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
-              onClick={openAccountInExplorer}
-              title={t('home.viewAccountOnExplorer')}
-            />
-          </Tooltip>
-          <div className="flex gap-1 justify-center items-center">
-            <PaliWhiteSmallIconSvg />
-            <div className="flex text-white gap-1 text-xs font-normal w-max items-center">
-              <p className="font-medium">{activeAccount?.label}</p>
-              <div className="flex items-center gap-1">
-                <Tooltip content={t('buttons.copy')}>
-                  <p
-                    className="cursor-pointer hover:text-brand-royalblue transition-colors duration-200 select-none"
-                    onClick={() => {
-                      navigator.clipboard.writeText(activeAccount?.address);
-                      alert.success(t('home.addressCopied'));
-                    }}
-                  >
-                    {ellipsis(activeAccount?.address, 4, 4)}
-                  </p>
-                </Tooltip>
-                <Tooltip content={t('buttons.copy')}>
-                  <div
-                    className="cursor-pointer transition-colors duration-200 ml-1"
-                    onClick={() => {
-                      navigator.clipboard.writeText(activeAccount?.address);
-                      alert.success(t('home.addressCopied'));
-                    }}
-                  >
-                    <Icon
-                      name="copy"
-                      className="text-xs hover:text-brand-royalblue"
-                    />
-                  </div>
-                </Tooltip>
-              </div>
+    <div className="w-full md:max-w-sm">
+      <div className="flex flex-col items-center justify-center">
+        <Tooltip content={t('home.viewOnExplorer')}>
+          <div
+            className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
+            onClick={openAccountInExplorer}
+            title={t('home.viewAccountOnExplorer')}
+          />
+        </Tooltip>
+        <div className="flex gap-1 justify-center items-center">
+          <PaliWhiteSmallIconSvg />
+          <div className="flex text-white gap-1 text-xs font-normal w-max items-center">
+            <p className="font-medium">{activeAccount?.label}</p>
+            <div className="flex items-center gap-1">
+              <Tooltip content={t('buttons.copy')}>
+                <p
+                  className="cursor-pointer hover:text-brand-royalblue transition-colors duration-200 select-none"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeAccount?.address);
+                    alert.success(t('home.addressCopied'));
+                  }}
+                >
+                  {ellipsis(activeAccount?.address, 4, 4)}
+                </p>
+              </Tooltip>
+              <Tooltip content={t('buttons.copy')}>
+                <div
+                  className="cursor-pointer transition-colors duration-200 ml-1"
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeAccount?.address);
+                    alert.success(t('home.addressCopied'));
+                  }}
+                >
+                  <Icon
+                    name="copy"
+                    className="text-xs hover:text-brand-royalblue"
+                  />
+                </div>
+              </Tooltip>
             </div>
-            {isAccountImported && (
-              <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
-                Imported
-              </div>
-            )}
           </div>
-          <div className="flex gap-1 mt-[6px]">
-            <p className="text-brand-gray200 text-xs">Your balance:</p>
-            <p className="text-white text-xs font-semibold">{finalBalance()}</p>
-          </div>
+          {isAccountImported && (
+            <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
+              Imported
+            </div>
+          )}
         </div>
-        <Form
-          validateMessages={{ default: '' }}
-          form={form}
-          id="send-form"
-          labelCol={{ span: 8 }}
-          wrapperCol={{ span: 8 }}
-          autoComplete="off"
-          className="flex flex-col gap-3 items-center justify-center mt-4 text-center md:w-full"
-        >
+        <div className="flex gap-1 mt-[6px]">
+          <p className="text-brand-gray200 text-xs">Your balance:</p>
+          <p className="text-white text-xs font-semibold">{finalBalance()}</p>
+        </div>
+      </div>
+      <Form
+        validateMessages={{ default: '' }}
+        form={form}
+        id="send-form"
+        labelCol={{ span: 8 }}
+        wrapperCol={{ span: 8 }}
+        onFinish={nextStep}
+        autoComplete="off"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
+      >
+        <div className="sender-custom-input">
           <Form.Item
             name="receiver"
             className="md:w-full md:max-w-md"
@@ -463,6 +502,10 @@ export const SendEth = () => {
               },
               () => ({
                 async validator(_, value) {
+                  if (!value) {
+                    return Promise.resolve();
+                  }
+
                   if (isValidEthereumAddress(value)) {
                     return Promise.resolve();
                   }
@@ -472,304 +515,279 @@ export const SendEth = () => {
               }),
             ]}
           >
-            <div className="relative">
-              <input
-                type="text"
-                name="address"
-                placeholder={t('send.receiver')}
-                className="custom-receive-input"
-                value={inputValue.address}
-                onChange={handleInputChange}
-              />
-              {isValidAddress !== null && (
-                <img
-                  src={isValidAddress ? successIcon : errorIcon}
-                  alt={isValidAddress ? 'Success' : 'Error'}
-                  className={`absolute right-8 ${
-                    isValidAmount ? 'top-[12.5px]' : 'top-[11.5px]'
-                  }`}
-                />
-              )}
-            </div>
+            <Input type="text" placeholder={t('send.receiver')} />
           </Form.Item>
+        </div>
 
-          <div className="flex">
-            <span
-              className={`${
-                hasAccountAssets ? 'flex' : 'hidden'
-              } items-center absolute left-[71%] z-[99] h-[40px] justify-center px-5 bg-transparent hover:bg-opacity-30`}
-            >
-              {hasAccountAssets ? (
-                <Form.Item
-                  name="asset"
-                  className=""
-                  rules={[
-                    {
-                      required: false,
-                      message: '',
-                    },
-                  ]}
-                >
-                  <Menu>
-                    {({ open }) => (
-                      <div className="relative inline-block text-left">
-                        <Menu.Button
-                          disabled={!hasAccountAssets}
-                          className="inline-flex justify-center items-center py-3 w-full text-white text-xs font-normal"
-                        >
-                          {String(getLabel())}
-
-                          <ChevronDoubleDownIcon
-                            className="text-white hover:text-violet-100 -mr-1 ml-2 w-5 h-5"
-                            aria-hidden="true"
-                          />
-                        </Menu.Button>
-
-                        {hasAccountAssets ? (
-                          <Menu.Items
-                            as="div"
-                            className={`scrollbar-styled absolute z-10 left-[-103px] mt-[1px] py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-alpha-whiteAlpha300 rounded-2xl shadow-2xl overflow-auto origin-top-right
-                            transform transition-all duration-100 ease-out ${
-                              open
-                                ? 'opacity-100 scale-100 pointer-events-auto'
-                                : 'opacity-0 scale-95 pointer-events-none'
-                            }`}
-                            static
-                          >
-                            <Menu.Item>
-                              <button
-                                onClick={() => handleSelectedAsset('-1')}
-                                className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                              >
-                                <p>
-                                  {activeNetwork?.currency.toUpperCase() ||
-                                    'SYS'}
-                                </p>
-                                <small>{t('send.receiver')}</small>
-                              </button>
-                            </Menu.Item>
-
-                            {hasAccountAssets &&
-                              Object.values(activeAccountAssets.ethereum).map(
-                                (item: ITokenEthProps) => (
-                                  <div key={uniqueId()}>
-                                    {item.chainId === activeNetwork.chainId ? (
-                                      <Menu.Item as="div">
-                                        <Menu.Item>
-                                          <button
-                                            onClick={() =>
-                                              handleSelectedAsset(
-                                                item.contractAddress
-                                              )
-                                            }
-                                            className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
-                                          >
-                                            <p>
-                                              {item.isNft && item?.is1155
-                                                ? item.collectionName
-                                                : item.tokenSymbol}
-                                            </p>
-                                            <small>
-                                              {item.isNft ? 'NFT' : 'Token'}
-                                            </small>
-                                          </button>
-                                        </Menu.Item>
-                                      </Menu.Item>
-                                    ) : null}
-                                  </div>
-                                )
-                              )}
-                          </Menu.Items>
-                        ) : null}
-                      </div>
-                    )}
-                  </Menu>
-                </Form.Item>
-              ) : null}
-            </span>
+        <div className="flex gap-2 w-full items-center">
+          <div className="flex md:max-w-md">
             <Form.Item
-              name="amount"
-              className="w-full"
-              hasFeedback
-              help={form.getFieldError('amount')[0]}
-              validateStatus={
-                form.getFieldError('amount').length > 0 ? 'error' : ''
-              }
+              name="asset"
+              className=""
               rules={[
                 {
-                  required: true,
-                  message: t('send.amountRequired'),
+                  required: false,
+                  message: '',
                 },
-                () => ({
-                  async validator(_, value) {
-                    if (!value || Number(value) <= 0) {
-                      return Promise.reject('');
-                    }
+              ]}
+            >
+              <Menu>
+                {({ open }) => (
+                  <div className="relative inline-block text-left">
+                    <Menu.Button className="inline-flex items-center w-[100px] gap-4 justify-center border border-alpha-whiteAlpha300 px-5 py-[7px] bg-brand-blue800 hover:bg-opacity-30 rounded-[100px] focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75">
+                      <p className="w-full uppercase text-white text-xs font-normal">
+                        {String(getLabel())}
+                      </p>
+                      <ArrowDownSvg />
+                    </Menu.Button>
 
-                    const isToken = !!selectedAsset;
-                    const isNFT = selectedAsset?.isNft;
+                    <Menu.Items
+                      as="div"
+                      className={`scrollbar-styled absolute z-10 left-0 mt-2 py-3 w-44 h-56 text-brand-white font-poppins bg-brand-blue800 border border-fields-input-border focus:border-fields-input-borderfocus rounded-2xl shadow-2xl overflow-auto origin-top-right
+                          transform transition-all duration-100 ease-out ${
+                            open
+                              ? 'opacity-100 scale-100 pointer-events-auto'
+                              : 'opacity-0 scale-95 pointer-events-none'
+                          }`}
+                      static
+                    >
+                      <Menu.Item>
+                        <button
+                          onClick={() => handleSelectedAsset('-1')}
+                          className="group flex items-center justify-between p-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                        >
+                          <p>
+                            {activeNetwork?.currency.toUpperCase() || 'SYS'}
+                          </p>
+                          <small>{t('send.native')}</small>
+                        </button>
+                      </Menu.Item>
 
-                    // For tokens and NFTs
-                    if (isToken) {
-                      const balance = selectedAsset.balance;
-                      const isValueLowerThanBalance =
-                        parseFloat(value) <= parseFloat(balance);
+                      {hasAccountAssets &&
+                        Object.values(activeAccountAssets.ethereum).map(
+                          (item: ITokenEthProps) => (
+                            <div key={uniqueId()}>
+                              {item.chainId === activeNetwork.chainId ? (
+                                <Menu.Item as="div">
+                                  <Menu.Item>
+                                    <button
+                                      onClick={() =>
+                                        handleSelectedAsset(
+                                          item.contractAddress
+                                        )
+                                      }
+                                      className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
+                                    >
+                                      <p>
+                                        {item.isNft && item?.is1155
+                                          ? item.collectionName
+                                          : item.tokenSymbol}
+                                      </p>
+                                      <small>
+                                        {item.isNft ? 'NFT' : 'Token'}
+                                      </small>
+                                    </button>
+                                  </Menu.Item>
+                                </Menu.Item>
+                              ) : null}
+                            </div>
+                          )
+                        )}
+                    </Menu.Items>
+                  </div>
+                )}
+              </Menu>
+            </Form.Item>
+          </div>
 
-                      if (isNFT) {
-                        return Promise.resolve(); // NFTs don't need balance check for tokenId
+          <div className="flex md:w-96 relative">
+            <div className="value-custom-input w-full relative">
+              <span
+                onClick={handleMaxButton}
+                className="absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
+              >
+                MAX
+              </span>
+              <Form.Item
+                name="amount"
+                className="relative w-full"
+                hasFeedback
+                rules={[
+                  {
+                    required: true,
+                    message: '',
+                  },
+                  () => ({
+                    async validator(_, value) {
+                      // Check if value is empty
+                      if (!value || value === '') {
+                        return Promise.reject('');
                       }
 
-                      if (isValueLowerThanBalance) {
+                      // Convert to BigNumber for precise validation
+                      let valueBN: BigNumber;
+                      try {
+                        // Parse the input value to wei for comparison
+                        valueBN = ethers.utils.parseEther(String(value));
+                      } catch (e) {
+                        // Invalid number format
+                        return Promise.reject('');
+                      }
+
+                      // Check if it's positive
+                      if (valueBN.lte(0)) {
+                        return Promise.reject('');
+                      }
+
+                      // If MAX is clicked for native ETH, check if value equals full balance
+                      if (isMaxSend && !selectedAsset) {
+                        const balanceEth = String(
+                          activeAccount?.balances?.ethereum || '0'
+                        );
+                        const balanceBN = ethers.utils.parseEther(balanceEth);
+
+                        // If the amount equals the full balance, it's valid
+                        if (valueBN.eq(balanceBN)) {
+                          return Promise.resolve();
+                        }
+                      }
+
+                      const isToken = !!selectedAsset;
+                      const isNFT = selectedAsset?.isNft;
+
+                      // For tokens and NFTs
+                      if (isToken) {
+                        if (isNFT) {
+                          return Promise.resolve(); // NFTs don't need balance check for tokenId
+                        }
+
+                        try {
+                          const tokenBalanceBN = ethers.utils.parseUnits(
+                            selectedAsset.balance || '0',
+                            selectedAsset.decimals || 18
+                          );
+                          const tokenValueBN = ethers.utils.parseUnits(
+                            String(value),
+                            selectedAsset.decimals || 18
+                          );
+
+                          if (tokenValueBN.gt(tokenBalanceBN)) {
+                            return Promise.reject(t('send.insufficientFunds'));
+                          }
+                        } catch (e) {
+                          // Fallback to regular comparison if parsing fails
+                          const balance = parseFloat(
+                            selectedAsset.balance || '0'
+                          );
+                          const numValue = parseFloat(value);
+                          if (numValue > balance) {
+                            return Promise.reject(t('send.insufficientFunds'));
+                          }
+                        }
+
                         return Promise.resolve();
                       }
 
-                      return Promise.reject(t('send.insufficientFunds'));
-                    }
+                      // For native currency, use BigNumber comparison
+                      try {
+                        const balanceEth = String(
+                          activeAccount?.balances?.ethereum || '0'
+                        );
+                        const balanceBN = ethers.utils.parseEther(balanceEth);
 
-                    // For native currency, we need to check amount + fee
-                    const balanceStr = String(
-                      activeAccount?.balances.ethereum || '0'
-                    );
+                        // First check if amount exceeds total balance
+                        if (valueBN.gt(balanceBN)) {
+                          return Promise.reject(t('send.insufficientFunds'));
+                        }
 
-                    // Quick check if amount alone exceeds balance using string comparison
-                    try {
-                      const amountBN = ethers.utils.parseEther(value);
-                      const balanceBN = ethers.utils.parseEther(balanceStr);
+                        // For native ETH, also validate against max amount (balance - gas)
+                        try {
+                          // Calculate max sendable amount
+                          const maxAmountStr = await calculateMaxAmount();
+                          const maxAmountBN =
+                            ethers.utils.parseEther(maxAmountStr);
 
-                      if (amountBN.gt(balanceBN)) {
-                        return Promise.reject(t('send.insufficientFunds'));
-                      }
-                    } catch (e) {
-                      // Invalid amount format
-                      return Promise.reject('');
-                    }
-
-                    try {
-                      let totalFeeEth;
-
-                      // Use cached fee data if available
-                      if (cachedFeeData) {
-                        totalFeeEth = cachedFeeData.totalFeeEth;
-                      } else {
-                        // Use a conservative fee estimate for initial validation
-                        // Don't fetch on every keystroke during typing
-                        totalFeeEth =
-                          activeNetwork.chainId === 570 ? 0.00001 : 0.0001;
-                      }
-
-                      const amountBN = ethers.utils.parseEther(value);
-                      const feeBN = ethers.utils.parseEther(
-                        totalFeeEth.toString()
-                      );
-                      const balanceBN = ethers.utils.parseEther(balanceStr);
-
-                      if (amountBN.add(feeBN).gt(balanceBN)) {
-                        return Promise.reject(t('send.insufficientFunds'));
+                          // If amount exceeds max (balance - gas), show specific error
+                          if (valueBN.gt(maxAmountBN)) {
+                            // Check if it's just slightly over (within gas fee range)
+                            if (valueBN.lte(balanceBN)) {
+                              return Promise.reject(
+                                t('send.insufficientFundsForGas') ||
+                                  'Insufficient funds for gas'
+                              );
+                            }
+                          }
+                        } catch (error) {
+                          console.error('Error validating max amount:', error);
+                          // If we can't calculate gas, just check against balance
+                          // The actual transaction will fail if gas is insufficient
+                        }
+                      } catch (e) {
+                        console.error('Error in BigNumber validation:', e);
+                        // Ultimate fallback - just check balance
+                        const balance = parseFloat(
+                          String(activeAccount?.balances?.ethereum || '0')
+                        );
+                        const numValue = parseFloat(value);
+                        if (numValue > balance) {
+                          return Promise.reject(t('send.insufficientFunds'));
+                        }
                       }
 
                       return Promise.resolve();
-                    } catch (e) {
-                      return Promise.reject('');
-                    }
-                  },
-                }),
-              ]}
-            >
-              <div className="relative">
-                <span
-                  onClick={async () => {
-                    // First ensure gas is calculated for native ETH
-                    if (!selectedAsset && !cachedFeeData) {
-                      setIsCalculatingFee(true);
-                    }
-
-                    const maxAmount = await calculateMaxAmount();
-                    form.setFieldValue('amount', maxAmount);
-                    setInputValue((prev) => ({
-                      ...prev,
-                      amount: maxAmount,
-                    }));
-                    // Manually trigger validation and set the field as valid
-                    setIsValidAmount(true);
-                    // Validate the form field to enable the Next button
-                    form.validateFields(['amount']);
-                  }}
-                  className="absolute bottom-[11px] left-[22px] text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200"
-                >
-                  {isCalculatingFee ? (
-                    <span className="animate-pulse">...</span>
-                  ) : (
-                    'MAX'
-                  )}
-                </span>
-                <input
+                    },
+                  }),
+                ]}
+              >
+                <Input
+                  id="with-max-button"
                   type="number"
-                  name="amount"
+                  step="any"
                   placeholder={`${
                     selectedAsset && selectedAsset?.isNft
                       ? 'Token ID'
                       : t('send.amount')
                   }`}
-                  className="custom-autolock-input"
-                  value={inputValue.amount}
-                  onChange={handleInputChange}
-                />
-                <div className="relative">
-                  {isValidAmount !== null && (
-                    <img
-                      src={
-                        isValidAmount === true
-                          ? '/assets/all_assets/successIcon.svg'
-                          : '/assets/all_assets/errorIcon.svg'
-                      }
-                      alt={isValidAmount === true ? 'Success' : 'Error'}
-                      className={`absolute`}
-                      style={
-                        hasAccountAssets
-                          ? {
-                              right: `5rem`,
-                              top: `-28.5px`,
-                            }
-                          : { right: `2rem`, top: `-26.5px` }
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-            </Form.Item>
-          </div>
+                  onChange={(e) => {
+                    const inputValue = e.target.value;
 
-          <div className="absolute bottom-12 md:static md:mt-3">
-            <Button
-              className={`${
-                isValidAmount &&
-                isValidAddress &&
-                (selectedAsset || cachedFeeData) &&
-                !isCalculatingGas
-                  ? 'opacity-100'
-                  : 'opacity-60'
-              }xl:p-18 h-[40px] w-[21rem] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none`}
-              type="submit"
-              onClick={nextStep}
-              disabled={
-                !isValidAmount ||
-                !isValidAddress ||
-                (!selectedAsset && !cachedFeeData) ||
-                isCalculatingGas
-              }
-            >
-              {!selectedAsset && (isCalculatingGas || !cachedFeeData) ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin h-4 w-4 border-2 border-brand-blue400 border-t-transparent rounded-full" />
-                  Calculating fees...
-                </span>
-              ) : (
-                t('buttons.next')
-              )}
-            </Button>
+                    if (!selectedAsset && inputValue) {
+                      // Check if the entered value equals the full balance
+                      const balanceEth = String(
+                        activeAccount?.balances?.ethereum || '0'
+                      );
+
+                      try {
+                        const inputBN = ethers.utils.parseEther(inputValue);
+                        const balanceBN = ethers.utils.parseEther(balanceEth);
+
+                        // Set isMaxSend based on whether value equals balance
+                        setIsMaxSend(inputBN.eq(balanceBN));
+                      } catch {
+                        // If parsing fails, it's not a MAX send
+                        setIsMaxSend(false);
+                      }
+                    } else {
+                      // For tokens or empty input, clear MAX flag
+                      setIsMaxSend(false);
+                    }
+                  }}
+                />
+              </Form.Item>
+            </div>
           </div>
-        </Form>
-      </div>
-    </>
+        </div>
+
+        <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
+          <NeutralButton
+            type="submit"
+            fullWidth
+            loading={!selectedAsset && isCalculatingGas}
+          >
+            {t('buttons.next')}
+          </NeutralButton>
+        </div>
+      </Form>
+    </div>
   );
 };

@@ -1,10 +1,11 @@
 import { uniqueId } from 'lodash';
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
-import { Button } from 'components/Button';
+import { NeutralButton } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
@@ -22,6 +23,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+  const { t } = useTranslation();
   const { networks } = useSelector((state: RootState) => state.vaultGlobal);
   const { isDappAskingToChangeNetwork } = useSelector(
     (state: RootState) => state.vaultGlobal
@@ -218,22 +220,15 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
           })}
         </div>
         <div className="mt-4">
-          <Button
+          <NeutralButton
             type="submit"
             disabled={!selectCurrentNetwork?.current || isLoading}
             onClick={() => handleChangeNetwork(selectCurrentNetwork?.current)}
-            className="bg-white rounded-[100px] w-full h-[40px] text-brand-blue400 text-base font-medium disabled:opacity-60"
-            useDefaultWidth={false}
+            loading={isLoading}
+            fullWidth
           >
-            {isLoading ? (
-              <div className="flex items-center justify-center gap-2">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-brand-blue400 border-t-transparent"></div>
-                <span>Connect</span>
-              </div>
-            ) : (
-              'Connect'
-            )}
-          </Button>
+            {t('buttons.connect')}
+          </NeutralButton>
         </div>
       </div>
     </div>

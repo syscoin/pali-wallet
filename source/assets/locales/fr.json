@@ -415,6 +415,7 @@
     "feeRateNormal": "Le taux de frais {{value}} {{currency}}/byte est plus élevé que la normale.",
     "send": "ENVOYER",
     "insufficientFunds": "Fonds insuffisants",
+    "insufficientFundsForGas": "Fonds insuffisants pour couvrir les frais de gaz",
     "balance": "Solde",
     "receiver": "Destinataire",
     "native": "Natif",

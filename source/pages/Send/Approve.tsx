@@ -7,7 +7,13 @@ import { useLocation } from 'react-router-dom';
 
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
-import { DefaultModal, Button, Icon, IconButton } from 'components/index';
+import {
+  DefaultModal,
+  Icon,
+  IconButton,
+  PrimaryButton,
+  SecondaryButton,
+} from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
 import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
@@ -574,38 +580,23 @@ export const ApproveTransactionComponent = () => {
               </div>
 
               <div className="flex items-center justify-around py-4 w-full">
-                <Button
+                <SecondaryButton
                   type="button"
-                  className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
-                  id="send-btn"
                   onClick={() => {
                     if (isExternal) window.close();
                     else navigate('/home');
                   }}
                 >
-                  <Icon
-                    name="arrow-up"
-                    className="w-4"
-                    wrapperClassname="mb-2 mr-2"
-                    rotate={45}
-                  />
                   {t('buttons.cancel')}
-                </Button>
+                </SecondaryButton>
 
-                <Button
+                <PrimaryButton
                   type="submit"
-                  className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none"
-                  id="receive-btn"
                   loading={loading}
                   onClick={async () => await handleConfirmApprove()}
                 >
-                  <Icon
-                    name="arrow-down"
-                    className="w-4"
-                    wrapperClassname="mb-2 mr-2"
-                  />
                   {t('buttons.confirm')}
-                </Button>
+                </PrimaryButton>
               </div>
             </Form>
           </div>

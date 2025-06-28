@@ -20,8 +20,8 @@ import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import {
-  formatBalanceDecimals,
   formatMillionNumber,
+  formatFullPrecisionBalance,
   ONE_MILLION,
 } from 'utils/index';
 
@@ -31,14 +31,12 @@ import { TxsPanel } from './TxsPanel';
 const BalanceDisplay = memo(
   ({
     actualBalance,
-    moreThanMillion,
     isLoadingBalance,
     currency,
   }: {
-    actualBalance: number;
+    actualBalance: number | string;
     currency: string;
     isLoadingBalance: boolean;
-    moreThanMillion: boolean;
   }) => {
     if (isLoadingBalance) {
       return (
@@ -52,9 +50,7 @@ const BalanceDisplay = memo(
     return (
       <div className="balance-account flex gap-x-0.5 items-center justify-center">
         <p id="home-balance" className="font-rubik text-5xl font-medium">
-          {moreThanMillion
-            ? formatMillionNumber(actualBalance)
-            : formatBalanceDecimals(actualBalance || 0, false)}
+          {formatFullPrecisionBalance(actualBalance, 4)}
         </p>
         <p className="mt-4 font-poppins">{currency.toUpperCase()}</p>
       </div>
@@ -180,27 +176,29 @@ export const Home = () => {
   }, [accounts, activeAccount]);
 
   const rawBalance = useMemo(() => {
-    if (!currentAccount?.balances) return -1;
-    return isBitcoinBased
-      ? currentAccount.balances[INetworkType.Syscoin] || -1
-      : currentAccount.balances[INetworkType.Ethereum] || -1;
+    if (!currentAccount?.balances) return '-1';
+    const balance = isBitcoinBased
+      ? currentAccount.balances[INetworkType.Syscoin]
+      : currentAccount.balances[INetworkType.Ethereum];
+    return balance === undefined || balance === null ? '-1' : String(balance);
   }, [currentAccount?.balances, isBitcoinBased]);
 
   // Actual balance for display (convert -1 to 0)
   const actualBalance = useMemo(
-    () => (rawBalance === -1 ? 0 : rawBalance),
+    () => (rawBalance === '-1' ? '0' : rawBalance),
     [rawBalance]
   );
 
   const moreThanMillion = useMemo(
-    () => actualBalance >= ONE_MILLION,
+    () => parseFloat(actualBalance) >= ONE_MILLION,
     [actualBalance]
   );
 
   const fiatPriceValue = useMemo(() => {
-    if (!actualBalance) return '';
+    const numBalance = parseFloat(actualBalance);
+    if (!numBalance) return '';
     return getFiatAmount(
-      actualBalance > 0 ? actualBalance : 0,
+      numBalance > 0 ? numBalance : 0,
       4,
       String(fiatAsset).toUpperCase(),
       true,
@@ -238,7 +236,7 @@ export const Home = () => {
   const isLoadingBalance =
     (isLoadingBalances &&
       !isPollingUpdate &&
-      (rawBalance === -1 || rawBalance === 0)) ||
+      (rawBalance === '-1' || rawBalance === '0')) ||
     networkStatus === 'error' ||
     networkStatus === 'connecting' ||
     networkStatus === 'switching';
@@ -247,7 +245,7 @@ export const Home = () => {
   useEffect(() => {
     const canShowFaucet =
       isFaucetAvailable &&
-      actualBalance === 0 &&
+      actualBalance === '0' &&
       !isLoadingBalance &&
       currentAccount;
 
@@ -292,7 +290,6 @@ export const Home = () => {
               <div className="flex flex-col items-center justify-center text-center floating-dots-content">
                 <BalanceDisplay
                   actualBalance={actualBalance}
-                  moreThanMillion={moreThanMillion}
                   isLoadingBalance={isLoadingBalance}
                   currency={activeNetwork.currency}
                 />

@@ -242,9 +242,6 @@ class NotificationManager {
 
     return {
       previousTx: byHashResult || byNonceResult,
-      foundByHash: !!byHashResult,
-      foundByNonce: !!byNonceResult,
-      isReplacement: !!byNonceResult && !byHashResult,
     };
   }
 
@@ -296,8 +293,7 @@ class NotificationManager {
     // Check each current transaction
     currentTxs.forEach((tx) => {
       const txKey = `${tx.hash}_${network.chainId}`;
-      const { previousTx, foundByHash, foundByNonce, isReplacement } =
-        this.findPreviousTransaction(tx, previousMaps);
+      const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
 
       // New pending transaction
       if (

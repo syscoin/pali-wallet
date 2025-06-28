@@ -387,10 +387,46 @@ export const SendConfirm = () => {
               'maxPriorityFeePerGas',
             ]) as ITxState;
 
-            const value = ethers.utils.parseUnits(
+            let value = ethers.utils.parseUnits(
               String(basicTxValues.amount),
               'ether'
             );
+
+            // For MAX sends, deduct gas fees from the value
+            // This is required because ethers.js validates balance >= value + gas
+            if (basicTxValues.isMax) {
+              const gasLimit = BigNumber.from(
+                validateCustomGasLimit
+                  ? customFee.gasLimit * 10 ** 9
+                  : fee.gasLimit
+              );
+
+              if (isEIP1559Compatible) {
+                // EIP-1559 transaction
+                const maxFeePerGasWei = ethers.utils.parseUnits(
+                  String(
+                    Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
+                      ? customFee.maxFeePerGas.toFixed(9)
+                      : fee.maxFeePerGas.toFixed(9)
+                  ),
+                  9
+                );
+                const maxGasFeeWei = gasLimit.mul(maxFeePerGasWei);
+                value = value.sub(maxGasFeeWei);
+              } else {
+                // Legacy transaction
+                const gasPriceWei = BigNumber.from(gasPrice);
+                const gasFeeWei = gasLimit.mul(gasPriceWei);
+                value = value.sub(gasFeeWei);
+              }
+
+              // Ensure value doesn't go negative
+              if (value.lt(0)) {
+                alert.error(t('send.insufficientFundsForGas'));
+                setLoading(false);
+                return;
+              }
+            }
 
             if (isEIP1559Compatible === false) {
               try {
@@ -424,7 +460,7 @@ export const SendConfirm = () => {
                     // Balance will be updated when user navigates back to Home
                     // This prevents redundant API calls and timing issues
                   })
-                  .catch((error) => {
+                  .catch((error: any) => {
                     const isNecessaryReconnect = error.message.includes(
                       'read properties of undefined'
                     );
@@ -543,6 +579,75 @@ export const SendConfirm = () => {
                   setLoading(false);
                   return;
                 }
+
+                // For MAX sends, if we get insufficient funds error, retry with slightly less
+                if (
+                  basicTxValues.isMax &&
+                  error.message?.includes('insufficient funds')
+                ) {
+                  const reducedValue = value.sub(BigNumber.from('10000'));
+
+                  if (reducedValue.gt(0)) {
+                    const retryTxObject = {
+                      ...restTx,
+                      value: reducedValue,
+                      maxPriorityFeePerGas: ethers.utils.parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom &&
+                              customFee.maxPriorityFeePerGas > 0
+                          )
+                            ? customFee.maxPriorityFeePerGas.toFixed(9)
+                            : fee.maxPriorityFeePerGas.toFixed(9)
+                        ),
+                        9
+                      ),
+                      maxFeePerGas: ethers.utils.parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom && customFee.maxFeePerGas > 0
+                          )
+                            ? customFee.maxFeePerGas.toFixed(9)
+                            : fee.maxFeePerGas.toFixed(9)
+                        ),
+                        9
+                      ),
+                      gasLimit: BigNumber.from(
+                        validateCustomGasLimit
+                          ? customFee.gasLimit * 10 ** 9
+                          : fee.gasLimit
+                      ),
+                    };
+
+                    controllerEmitter(
+                      [
+                        'wallet',
+                        'ethereumTransaction',
+                        'sendFormattedTransaction',
+                      ],
+                      [retryTxObject, !isEIP1559Compatible]
+                    )
+                      .then((response) => {
+                        // Save transaction to local state for immediate visibility
+                        controllerEmitter(
+                          ['wallet', 'sendAndSaveTransaction'],
+                          [response]
+                        );
+
+                        setConfirmed(true);
+                        setLoading(false);
+                      })
+                      .catch((retryError) => {
+                        // If retry also fails, show error
+                        alert.error(t('send.cantCompleteTxs'));
+                        setLoading(false);
+                        throw retryError;
+                      });
+
+                    return; // Exit early, don't show error yet
+                  }
+                }
+
                 alert.error(t('send.cantCompleteTxs'));
                 setLoading(false);
                 throw error;
@@ -1434,19 +1539,35 @@ export const SendConfirm = () => {
                         isEIP1559Compatible === false
                       ) {
                         const gasPriceEther = gasPrice / 10 ** 18;
-                        const total = currency(gasPriceEther, {
-                          precision: 8,
-                        }).add(basicTxValues.amount);
-                        totalAmount = total.value;
-                        totalCrypto = total.format({ symbol: '' });
-                      } else {
-                        const calculatedFeeEther = getCalculatedFee;
-                        if (calculatedFeeEther !== undefined) {
-                          const total = currency(calculatedFeeEther, {
+                        if (basicTxValues.isMax) {
+                          // For MAX sends, fee is already deducted from amount
+                          totalAmount = basicTxValues.amount;
+                          totalCrypto = currency(basicTxValues.amount, {
+                            precision: 8,
+                          }).format({ symbol: '' });
+                        } else {
+                          const total = currency(gasPriceEther, {
                             precision: 8,
                           }).add(basicTxValues.amount);
                           totalAmount = total.value;
                           totalCrypto = total.format({ symbol: '' });
+                        }
+                      } else {
+                        const calculatedFeeEther = getCalculatedFee;
+                        if (calculatedFeeEther !== undefined) {
+                          if (basicTxValues.isMax) {
+                            // For MAX sends, fee is already deducted from amount
+                            totalAmount = basicTxValues.amount;
+                            totalCrypto = currency(basicTxValues.amount, {
+                              precision: 8,
+                            }).format({ symbol: '' });
+                          } else {
+                            const total = currency(calculatedFeeEther, {
+                              precision: 8,
+                            }).add(basicTxValues.amount);
+                            totalAmount = total.value;
+                            totalCrypto = total.format({ symbol: '' });
+                          }
                         } else {
                           // If fee calculation is pending, just show the amount
                           totalAmount = basicTxValues.amount;

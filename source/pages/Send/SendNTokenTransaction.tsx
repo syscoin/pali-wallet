@@ -4,9 +4,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { LoadingSvg } from 'components/Icon/Icon';
-import { IconButton } from 'components/IconButton';
-import { DefaultModal, Button, Icon } from 'components/index';
+import {
+  DefaultModal,
+  Icon,
+  IconButton,
+  PrimaryButton,
+  SecondaryButton,
+} from 'components/index';
 import { Tooltip } from 'components/Tooltip';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -583,51 +587,23 @@ export const SendNTokenTransaction = () => {
           </div>
 
           <div className="flex items-center justify-around py-8 w-full">
-            <Button
+            <SecondaryButton
               type="button"
-              className="xl:p-18 flex items-center justify-center text-brand-white text-base bg-button-secondary hover:bg-button-secondaryhover border border-button-secondary rounded-full transition-all duration-300 xl:flex-none"
-              id="send-btn"
               onClick={() => {
                 if (isExternal) window.close();
                 else navigate('/home');
               }}
             >
-              <Icon
-                name="arrow-up"
-                className="w-4"
-                wrapperClassname="mb-2 mr-2"
-                rotate={45}
-              />
               {t('buttons.cancel')}
-            </Button>
+            </SecondaryButton>
 
-            <Button
+            <PrimaryButton
               type="button"
-              className={`${
-                loading
-                  ? 'opacity-60 cursor-not-allowed'
-                  : 'opacity-100 hover:opacity-90'
-              } xl:p-18 h-8 flex items-center justify-center text-brand-white text-base bg-button-primary hover:bg-button-primaryhover border border-button-primary rounded-full transition-all duration-300 xl:flex-none`}
-              id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
-              {!loading ? (
-                <Icon
-                  name="arrow-down"
-                  className="w-5"
-                  wrapperClassname="flex items-center mr-2"
-                />
-              ) : (
-                <div className="mr-2 flex items-center">
-                  <LoadingSvg
-                    className="w-5 animate-spin-slow"
-                    style={{ color: '#fff' }}
-                  />
-                </div>
-              )}
               {t('buttons.confirm')}
-            </Button>
+            </PrimaryButton>
           </div>
         </div>
       ) : null}

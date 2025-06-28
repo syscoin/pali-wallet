@@ -6,7 +6,8 @@ import { useSelector } from 'react-redux';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
-  Button,
+  PrimaryButton,
+  SecondaryButton,
   Card,
   ValidatedPasswordInput,
   SeedPhraseDisplay,
@@ -198,30 +199,22 @@ const ForgetWalletView = () => {
       {/* Buttons container - pushed to bottom */}
       <div className="w-full px-4 absolute bottom-12 md:static">
         <div className="flex gap-x-8 justify-between md:gap-x-40">
-          <Button
+          <SecondaryButton
             type="button"
             onClick={handleCancel}
-            className="w-[164px] h-10 flex items-center justify-center rounded-[100px] border-2 border-white text-base font-medium text-white"
             disabled={isSubmitting}
           >
             {t('buttons.cancel')}
-          </Button>
+          </SecondaryButton>
 
-          <Button
+          <PrimaryButton
             type="button"
             onClick={handleSubmit}
-            className={`${
-              !isPasswordValid || isSubmitting ? 'opacity-60' : 'opacity-100'
-            } w-[164px] h-10 flex items-center justify-center rounded-[100px] bg-white border-white text-base font-medium text-brand-blue400`}
             disabled={!isPasswordValid || isSubmitting}
-            id="forget-btn"
+            loading={isSubmitting}
           >
-            {isSubmitting ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-brand-blue400"></div>
-            ) : (
-              t('buttons.forget')
-            )}
-          </Button>
+            {t('buttons.forget')}
+          </PrimaryButton>
         </div>
       </div>
     </>

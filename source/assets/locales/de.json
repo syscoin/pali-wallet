@@ -421,6 +421,7 @@
     "feeRateNormal": "Die Gebührenrate {{value}} {{currency}}/Byte ist höher als normal.",
     "send": "SENDEN",
     "insufficientFunds": "Unzureichende Mittel",
+    "insufficientFundsForGas": "Unzureichende Mittel zur Deckung der Gasgebühren",
     "balance": "Guthaben",
     "receiver": "Empfänger",
     "native": "Nativ",

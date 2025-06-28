@@ -6,11 +6,7 @@ import {
   IKeyringAccountState,
 } from '@pollum-io/sysweb3-keyring';
 
-import { ONE_MILLION } from 'utils/constants';
-import { verifyZerosInBalanceAndFormat } from 'utils/verifyZerosInValueAndFormat';
-
 import { IEvmBalanceController } from './types';
-import { zerosRepeatingAtStartOfEvmBalance } from './utils';
 
 const EvmBalanceController = (
   web3Provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
@@ -19,21 +15,15 @@ const EvmBalanceController = (
     currentAccount: IKeyringAccountState
   ) => {
     try {
-      //LATER CHANGE THIS TO USE NEW PROVIDER FROM SYSWEB3
       const provider = web3Provider;
 
       const getBalance = await provider.getBalance(currentAccount.address);
 
-      const formattedBalance = ethers.utils.formatEther(getBalance);
+      // Always return the full precision balance as a string
+      // Formatting for display should happen in the UI components
+      const fullPrecisionBalance = ethers.utils.formatEther(getBalance);
 
-      if (+formattedBalance >= ONE_MILLION) {
-        return formattedBalance;
-      }
-
-      //Validate quantity of zeros in the start of balance to don't how a big 0 decimal number
-      return zerosRepeatingAtStartOfEvmBalance(formattedBalance)
-        ? '0'
-        : verifyZerosInBalanceAndFormat(parseFloat(formattedBalance), 4);
+      return fullPrecisionBalance;
     } catch (error) {
       console.error('[EvmBalanceController] Failed to fetch balance:', error);
       throw error;

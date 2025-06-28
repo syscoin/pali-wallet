@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { DefaultModal, Button } from 'components/index';
+import { DefaultModal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -379,10 +379,8 @@ export const SendTransaction = () => {
             id="buttons"
             className="flex items-center justify-around py-8 w-full"
           >
-            <Button
+            <SecondaryButton
               type="button"
-              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
-              id="send-btn"
               onClick={() => {
                 if (isExternal) {
                   window.close();
@@ -392,17 +390,15 @@ export const SendTransaction = () => {
               }}
             >
               {t('buttons.cancel')}
-            </Button>
+            </SecondaryButton>
 
-            <Button
+            <PrimaryButton
               type="button"
-              className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-blue400 text-base bg-white hover:opacity-60 rounded-[100px] transition-all duration-300 xl:flex-none"
-              id="receive-btn"
               loading={loading}
               onClick={handleConfirm}
             >
               {t('buttons.confirm')}
-            </Button>
+            </PrimaryButton>
           </div>
         </div>
       ) : null}

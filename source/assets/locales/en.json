@@ -255,6 +255,7 @@
     "feeRateNormal": "Fee rate {{value}} {{currency}}/byte is higher than normal.",
     "send": "SEND",
     "insufficientFunds": "Insufficient funds",
+    "insufficientFundsForGas": "Insufficient funds to cover gas fees",
     "balance": "Balance",
     "receiver": "Receiver",
     "native": "Native",

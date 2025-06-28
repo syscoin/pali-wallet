@@ -421,6 +421,7 @@
     "feeRateNormal": "Размер комиссии {{value}} {{currency}}/байт выше нормального.",
     "send": "ОТПРАВИТЬ",
     "insufficientFunds": "Недостаточно средств",
+    "insufficientFundsForGas": "Недостаточно средств для оплаты комиссии за газ",
     "balance": "Баланс",
     "receiver": "Получатель",
     "native": "Нативный",

@@ -14,6 +14,11 @@ const LoadingIconWhite = memo(() => (
 ));
 LoadingIconWhite.displayName = 'LoadingIconWhite';
 
+const LoadingIconDark = memo(() => (
+  <LoadingSvg className="w-5 animate-spin" style={{ color: '#1f2937' }} />
+));
+LoadingIconDark.displayName = 'LoadingIconDark';
+
 interface IPrimaryButton {
   action?: boolean;
   children?: React.ReactNode;

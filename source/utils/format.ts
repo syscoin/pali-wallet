@@ -1,6 +1,8 @@
 import currency from 'currency.js';
 import format from 'date-fns/format';
 
+import { ONE_MILLION } from './constants';
+
 /**
  * Add `...` to shorten a string. Keeps chars at the beginning and end
  */
@@ -98,6 +100,78 @@ export const formatBalanceDecimals = (
       : integerDigits;
 
   return hasSymbol ? `${formattedNumber} ${symbol}` : formattedNumber;
+};
+
+/**
+ * Format a full precision balance for display
+ * @param balance The full precision balance string
+ * @param decimals Number of decimals to show (default 4)
+ * @returns Formatted balance string
+ */
+export const formatFullPrecisionBalance = (
+  balance: string | number,
+  decimals = 4
+): string => {
+  const numBalance =
+    typeof balance === 'string' ? parseFloat(balance) : balance;
+
+  // Handle special cases
+  if (numBalance === 0 || isNaN(numBalance)) {
+    return '0';
+  }
+
+  // For very small balances, show with < prefix like MetaMask
+  const threshold = Math.pow(10, -decimals);
+  if (numBalance > 0 && numBalance < threshold) {
+    return `< ${threshold.toFixed(decimals)}`;
+  }
+
+  // For large balances, use millions formatting
+  if (numBalance >= ONE_MILLION) {
+    return formatMillionNumber(numBalance);
+  }
+
+  // For normal balances, show up to 6 decimals but remove trailing zeros
+  const maxDecimals = Math.min(decimals + 2, 6); // Show up to 6 decimals like MetaMask
+  let formatted = numBalance.toFixed(maxDecimals);
+
+  // Remove trailing zeros after decimal point
+  formatted = formatted.replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1');
+
+  // If still too long, truncate to requested decimals
+  if (formatted.includes('.')) {
+    const parts = formatted.split('.');
+    if (parts[1] && parts[1].length > decimals) {
+      formatted = numBalance.toFixed(decimals).replace(/\.?0+$/, '');
+    }
+  }
+
+  return formatted;
+};
+
+/**
+ * Format transaction amounts preserving full precision when needed
+ * @param amount The amount to format
+ * @param showFullPrecision Whether to show full precision for small amounts
+ * @returns Formatted amount string
+ */
+export const formatTransactionAmount = (
+  amount: string | number,
+  showFullPrecision = true
+): string => {
+  const strAmount = String(amount);
+
+  // If it's already a string with many decimals and we want full precision, return as is
+  if (showFullPrecision && typeof amount === 'string' && amount.includes('.')) {
+    const decimals = amount.split('.')[1];
+    if (decimals && decimals.length > 6) {
+      // Remove trailing zeros but keep significant digits
+      return strAmount.replace(/(\.\d*?[1-9])0+$/, '$1');
+    }
+  }
+
+  // Otherwise use standard formatting
+  return formatFullPrecisionBalance(amount, 18);
 };
 
 /**
