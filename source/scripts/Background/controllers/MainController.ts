@@ -151,6 +151,9 @@ class MainController {
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
 
+  // Persistent providers for reading blockchain data (survives lock/unlock)
+  private persistentProviders = new Map<string, CustomJsonRpcProvider>();
+
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
     patchFetchWithPaliHeaders();
@@ -1162,6 +1165,9 @@ class MainController {
 
     // Clear all keyring instances from memory
     this.keyrings.clear();
+
+    // Clean up persistent providers
+    this.cleanupPersistentProviders();
 
     // Cancel any pending async operations
     if (this.cancellablePromises.transactionPromise) {
@@ -2400,17 +2406,17 @@ class MainController {
             let web3Provider = null;
             try {
               if (!isBitcoinBased) {
-                // During polling when locked, create a provider directly
-                if (isPolling && !this.isUnlocked()) {
-                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                // Use persistent provider for polling or when locked
+                if (isPolling || !this.isUnlocked()) {
+                  web3Provider = this.getPersistentProvider(activeNetwork.url);
                 } else {
                   web3Provider = this.ethereumTransaction.web3Provider;
                 }
               }
             } catch (error) {
-              // During polling when locked, try to create a provider directly
-              if (isPolling && !isBitcoinBased) {
-                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              // Fallback to persistent provider for EVM networks
+              if (!isBitcoinBased) {
+                web3Provider = this.getPersistentProvider(activeNetwork.url);
               } else {
                 console.warn(
                   '[MainController] Cannot access ethereumTransaction:',
@@ -2568,17 +2574,17 @@ class MainController {
             let web3Provider = null;
             try {
               if (!isBitcoinBased) {
-                // During polling when locked, create a provider directly
-                if (isPollingUpdate && !this.isUnlocked()) {
-                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                // Use persistent provider for polling or when locked
+                if (isPollingUpdate || !this.isUnlocked()) {
+                  web3Provider = this.getPersistentProvider(activeNetwork.url);
                 } else {
                   web3Provider = this.ethereumTransaction.web3Provider;
                 }
               }
             } catch (error) {
-              // During polling when locked, try to create a provider directly
-              if (isPollingUpdate && !isBitcoinBased) {
-                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              // Fallback to persistent provider for EVM networks
+              if (!isBitcoinBased) {
+                web3Provider = this.getPersistentProvider(activeNetwork.url);
               } else {
                 console.warn(
                   '[MainController] Cannot access ethereumTransaction for asset update:',
@@ -2716,17 +2722,17 @@ class MainController {
             let web3Provider = null;
             try {
               if (!isBitcoinBased) {
-                // During polling when locked, create a provider directly
-                if (isPollingUpdate && !this.isUnlocked()) {
-                  web3Provider = this.createProviderForPolling(activeNetwork.url);
+                // Use persistent provider for polling or when locked
+                if (isPollingUpdate || !this.isUnlocked()) {
+                  web3Provider = this.getPersistentProvider(activeNetwork.url);
                 } else {
                   web3Provider = this.ethereumTransaction.web3Provider;
                 }
               }
             } catch (error) {
-              // During polling when locked, try to create a provider directly
-              if (isPollingUpdate && !isBitcoinBased) {
-                web3Provider = this.createProviderForPolling(activeNetwork.url);
+              // Fallback to persistent provider for EVM networks
+              if (!isBitcoinBased) {
+                web3Provider = this.getPersistentProvider(activeNetwork.url);
               } else {
                 console.warn(
                   '[MainController] Cannot access ethereumTransaction for balance update:',
@@ -3768,21 +3774,55 @@ class MainController {
     return result;
   }
 
-  // Add this new method after the isUnlocked method (around line 694)
-  private createProviderForPolling(networkUrl: string): CustomJsonRpcProvider | null {
-    try {
-      // Create a simple abort controller for the provider
-      const abortController = new AbortController();
-      
-      // Create provider without needing keyring access
-      return new CustomJsonRpcProvider(
-        abortController.signal,
-        networkUrl
-      );
-    } catch (error) {
-      console.error('[MainController] Failed to create provider for polling:', error);
-      return null;
+  // Get or create a persistent provider for a network
+  private getPersistentProvider(networkUrl: string): CustomJsonRpcProvider | null {
+    // Use network URL as the key for provider caching
+    const providerKey = networkUrl;
+    
+    // Check if we already have a provider for this network
+    let provider = this.persistentProviders.get(providerKey);
+    
+    if (!provider) {
+      try {
+        console.log(`[MainController] Creating persistent provider for ${networkUrl}`);
+        
+        // Create a simple abort controller for the provider
+        const abortController = new AbortController();
+        
+        // Create provider without needing keyring access
+        provider = new CustomJsonRpcProvider(
+          abortController.signal,
+          networkUrl
+        );
+        
+        // Store the provider for future use
+        this.persistentProviders.set(providerKey, provider);
+      } catch (error) {
+        console.error('[MainController] Failed to create persistent provider:', error);
+        return null;
+      }
     }
+    
+    return provider;
+  }
+
+  // Clean up persistent providers
+  private cleanupPersistentProviders(): void {
+    console.log('[MainController] Cleaning up persistent providers');
+    
+    this.persistentProviders.forEach((provider, url) => {
+      try {
+        // Remove all listeners if the provider has that method
+        if (typeof provider.removeAllListeners === 'function') {
+          provider.removeAllListeners();
+        }
+      } catch (error) {
+        console.warn(`[MainController] Error cleaning up provider for ${url}:`, error);
+      }
+    });
+    
+    // Clear the map
+    this.persistentProviders.clear();
   }
 }
 
