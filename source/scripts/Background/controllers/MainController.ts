@@ -2340,14 +2340,6 @@ class MainController {
     chainID: number,
     newTxValue: IEvmTransactionResponse
   ) {
-    // Mark the old transaction as accelerated/replaced
-    store.dispatch(
-      setTransactionStatusToAccelerated({
-        oldTxHash,
-        chainID,
-      })
-    );
-
     // Add metadata to the new transaction to indicate it's a speed-up
     const transactionWithMetadata = {
       ...newTxValue,
@@ -2356,12 +2348,12 @@ class MainController {
       replacesHash: oldTxHash,
     };
 
-    // Add the new transaction
+    // Replace the old transaction with the new one immediately
     store.dispatch(
-      setSingleTransactionToState({
-        chainId: chainID,
-        networkType: TransactionsType.Ethereum,
-        transaction: transactionWithMetadata,
+      setTransactionStatusToAccelerated({
+        oldTxHash,
+        chainID,
+        newTransaction: transactionWithMetadata,
       })
     );
   }

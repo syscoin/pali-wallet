@@ -716,9 +716,10 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chainID: number;
         txHash: string;
+        cancelTransaction?: IEvmTransaction;
       }>
     ) {
-      const { txHash, chainID } = action.payload;
+      const { txHash, chainID, cancelTransaction } = action.payload;
 
       const { isBitcoinBased, activeAccount } = state;
 
@@ -758,14 +759,20 @@ const VaultState = createSlice({
       );
 
       if (findTxIndex !== -1) {
-        state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
-          findTxIndex
-        ] = {
-          ...state.accountTransactions[type][id][TransactionsType.Ethereum][
-            chainID
-          ][findTxIndex],
-          isCanceled: true,
-        } as IEvmTransactionResponse;
+        if (cancelTransaction) {
+          // Replace with the cancel transaction
+          currentUserTransactions[findTxIndex] = cancelTransaction as IEvmTransactionResponse;
+        } else {
+          // Legacy behavior - just mark as canceled
+          state.accountTransactions[type][id][TransactionsType.Ethereum][chainID][
+            findTxIndex
+          ] = {
+            ...state.accountTransactions[type][id][TransactionsType.Ethereum][
+              chainID
+            ][findTxIndex],
+            isCanceled: true,
+          } as IEvmTransactionResponse;
+        }
       }
     },
 
@@ -786,9 +793,10 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chainID: number;
         oldTxHash: string;
+        newTransaction: IEvmTransaction;
       }>
     ) {
-      const { oldTxHash, chainID } = action.payload;
+      const { oldTxHash, chainID, newTransaction } = action.payload;
 
       const { isBitcoinBased, activeAccount } = state;
 
@@ -820,59 +828,18 @@ const VaultState = createSlice({
       ][chainID] as IEvmTransaction[];
 
       if (userTransactions) {
-        // Mark the old transaction as replaced (but don't remove it yet)
+        // Find and replace the old transaction with the new one
         const txIndex = userTransactions.findIndex(
           (tx) => tx.hash.toLowerCase() === oldTxHash.toLowerCase()
         );
         
         if (txIndex !== -1) {
-          // Mark the old transaction as replaced/superseded
-          userTransactions[txIndex] = {
-            ...userTransactions[txIndex],
-            isReplaced: true,
-            status: 'replaced',
-          } as IEvmTransaction;
+          // Replace the old transaction with the new one
+          userTransactions[txIndex] = newTransaction;
         }
       }
     },
-    
-    updateReplacementChainOnConfirmation(
-      state: IVaultState,
-      action: PayloadAction<{
-        confirmedTxHash: string;
-        chainID: number;
-      }>
-    ) {
-      const { confirmedTxHash, chainID } = action.payload;
-      const { isBitcoinBased, activeAccount } = state;
-      const { id, type } = activeAccount;
 
-      if (isBitcoinBased || !state.accountTransactions[type]?.[id]) {
-        return;
-      }
-
-      const userTransactions = state.accountTransactions[type][id][
-        TransactionsType.Ethereum
-      ][chainID] as IEvmTransaction[];
-
-      if (!userTransactions) return;
-
-      // Find the confirmed transaction
-      const confirmedTx = userTransactions.find(
-        (t) => t.hash?.toLowerCase() === confirmedTxHash.toLowerCase()
-      );
-      
-      if (!confirmedTx) return;
-
-      // Get the nonce of the confirmed transaction
-      const confirmedNonce = confirmedTx.nonce;
-      
-      // Remove all other transactions with the same nonce
-      state.accountTransactions[type][id][TransactionsType.Ethereum][chainID] = 
-        userTransactions.filter(
-          (tx) => tx.nonce !== confirmedNonce || tx.hash?.toLowerCase() === confirmedTxHash.toLowerCase()
-        );
-    },
   },
 });
 
@@ -902,7 +869,6 @@ export const {
   setTransactionStatusToCanceled,
   setTransactionStatusToAccelerated,
   setAccounts,
-  updateReplacementChainOnConfirmation,
 } = VaultState.actions;
 
 export default VaultState.reducer;

@@ -7,7 +7,7 @@ import range from 'lodash/range';
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
-import { setMultipleTransactionToState, updateReplacementChainOnConfirmation } from 'state/vault';
+import { setMultipleTransactionToState } from 'state/vault';
 import { TransactionsType } from 'state/vault/types';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
@@ -349,18 +349,22 @@ export const validateAndManageUserTransactions = (
   // Check for newly confirmed transactions BEFORE merging
   const newlyConfirmedTxHashes: string[] = [];
   
-  // Create a map of existing transaction confirmations
-  const existingTxConfirmations = new Map<string, number>();
+  // Create a map of existing transaction confirmations and replacement status
+  const existingTxInfo = new Map<string, { confirmations: number; isReplaced?: boolean }>();
   updatedTxs.forEach((tx) => {
     if ('hash' in tx) {
-      existingTxConfirmations.set(tx.hash.toLowerCase(), tx.confirmations || 0);
+      existingTxInfo.set(tx.hash.toLowerCase(), { 
+        confirmations: tx.confirmations || 0,
+        isReplaced: (tx as any).isReplaced 
+      });
     }
   });
 
   // Check each incoming transaction for new confirmations
   filteredTxs.forEach((tx) => {
     const txHash = tx.hash.toLowerCase();
-    const previousConfirmations = existingTxConfirmations.get(txHash) || 0;
+    const existingInfo = existingTxInfo.get(txHash);
+    const previousConfirmations = existingInfo?.confirmations || 0;
     const currentConfirmations = tx.confirmations || 0;
     
     // Detect if this transaction just went from pending to confirmed
@@ -395,19 +399,7 @@ export const validateAndManageUserTransactions = (
     );
   }
 
-  // Clean up replacement chains for newly confirmed transactions
-  if (newlyConfirmedTxHashes.length > 0) {
-    console.log(`[validateAndManageUserTransactions] Cleaning up replacement chains for ${newlyConfirmedTxHashes.length} newly confirmed transactions`);
-    
-    // Dispatch cleanup for each newly confirmed transaction
-    newlyConfirmedTxHashes.forEach(txHash => {
-      store.dispatch(updateReplacementChainOnConfirmation({
-        confirmedTxHash: txHash,
-        chainID: activeNetwork.chainId,
-      }));
-    });
-
-  }
+  // No cleanup needed - transactions are now replaced immediately on speed-up/cancel
 
   return sortedTxs;
 };
