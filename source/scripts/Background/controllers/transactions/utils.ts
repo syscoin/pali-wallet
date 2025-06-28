@@ -225,7 +225,15 @@ export const treatAndSortTransactions = (
   const txMap = new Map<string, UnifiedTransaction>();
 
   for (const tx of transactions) {
-    const id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
+    // For EVM transactions with nonce, use nonce to detect replacements
+    // For UTXO or transactions without nonce, use hash/txid
+    let id: string;
+    if ('nonce' in tx && typeof tx.nonce === 'number') {
+      id = tx.nonce.toString();
+    } else {
+      id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
+    }
+
     const existing = txMap.get(id);
 
     if (!existing || tx.confirmations > existing.confirmations) {
