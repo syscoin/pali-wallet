@@ -5,5 +5,5 @@
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Now tsc should be available
-tsc --pretty --noEmit
+# Use npx to run the local tsc
+npx tsc --pretty --noEmit
