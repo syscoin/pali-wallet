@@ -615,27 +615,8 @@ const VaultState = createSlice({
       if (!currentAccountTransactions[networkType]) {
         let chainTransactions = treatedTxs;
         // Cast the array to the correct type based on the networkType and value bigger than 0
-        if (!isBitcoinBased) {
-          chainTransactions = treatedTxs.filter((tx) => {
-            // Allow cancelled/replaced transactions through even if they have 0 value
-            const evmTx = tx as IEvmTransactionResponse;
-            if (evmTx.isCanceled || evmTx.isReplaced) {
-              return true;
-            }
-            
-            const shouldNotBeAdded =
-              convertTransactionValueToCompare(
-                tx.value as TransactionValueType
-              ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
-
-            if (shouldNotBeAdded) {
-              return false;
-            }
-            return networkType === TransactionsType.Ethereum
-              ? (tx as IEvmTransaction)
-              : (tx as ISysTransaction);
-          });
-        }
+        // For EVM, show all transactions including 0-value ones to match explorers
+        // This allows proper cleanup of replacement chains during sync
 
         currentAccountTransactions[networkType] = {
           [chainId]:
@@ -648,27 +629,8 @@ const VaultState = createSlice({
         if (!currentAccountTransactions[networkType][chainId]) {
           let chainTransactions = treatedTxs;
           // Create a new array with the correct type based on the networkType and value bigger than 0
-          if (!isBitcoinBased) {
-            chainTransactions = treatedTxs.filter((tx) => {
-              // Allow cancelled/replaced transactions through even if they have 0 value
-              const evmTx = tx as IEvmTransactionResponse;
-              if (evmTx.isCanceled || evmTx.isReplaced) {
-                return true;
-              }
-              
-              const shouldNotBeAdded =
-                convertTransactionValueToCompare(
-                  tx.value as TransactionValueType
-                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
-
-              if (shouldNotBeAdded) {
-                return false;
-              }
-              return networkType === TransactionsType.Ethereum
-                ? (tx as IEvmTransaction)
-                : (tx as ISysTransaction);
-            });
-          }
+          // For EVM, show all transactions including 0-value ones to match explorers
+          // This allows proper cleanup of replacement chains during sync
 
           currentAccountTransactions[networkType][chainId] =
             chainTransactions as (typeof networkType extends TransactionsType.Ethereum
@@ -677,27 +639,8 @@ const VaultState = createSlice({
         } else {
           let castedTransactions = treatedTxs;
           // Filter and push the transactions based on the networkType and value bigger than 0
-          if (!isBitcoinBased) {
-            castedTransactions = treatedTxs.filter((tx) => {
-              // Allow cancelled/replaced transactions through even if they have 0 value
-              const evmTx = tx as IEvmTransactionResponse;
-              if (evmTx.isCanceled || evmTx.isReplaced) {
-                return true;
-              }
-              
-              const shouldNotBeAdded =
-                convertTransactionValueToCompare(
-                  tx.value as TransactionValueType
-                ) === 0 && !isTokenTransfer(tx as IEvmTransactionResponse);
-
-              if (shouldNotBeAdded) {
-                return false;
-              }
-              return networkType === TransactionsType.Ethereum
-                ? (tx as IEvmTransaction)
-                : (tx as ISysTransaction);
-            });
-          }
+          // For EVM, show all transactions including 0-value ones to match explorers
+          // This allows proper cleanup of replacement chains during sync
 
           currentAccountTransactions[networkType][chainId] =
             //Using take method from lodash to set TXs limit at each state to 30 and only remove the last values and keep the newests
@@ -793,10 +736,9 @@ const VaultState = createSlice({
       action: PayloadAction<{
         chainID: number;
         oldTxHash: string;
-        newTransaction: IEvmTransaction;
       }>
     ) {
-      const { oldTxHash, chainID, newTransaction } = action.payload;
+      const { oldTxHash, chainID } = action.payload;
 
       const { isBitcoinBased, activeAccount } = state;
 
@@ -828,14 +770,17 @@ const VaultState = createSlice({
       ][chainID] as IEvmTransaction[];
 
       if (userTransactions) {
-        // Find and replace the old transaction with the new one
+        // Mark the old transaction as replaced
         const txIndex = userTransactions.findIndex(
           (tx) => tx.hash.toLowerCase() === oldTxHash.toLowerCase()
         );
         
         if (txIndex !== -1) {
-          // Replace the old transaction with the new one
-          userTransactions[txIndex] = newTransaction;
+          // Mark as replaced - will be cleaned up when one confirms
+          userTransactions[txIndex] = {
+            ...userTransactions[txIndex],
+            isReplaced: true,
+          } as IEvmTransaction;
         }
       }
     },

@@ -272,6 +272,19 @@ export const treatDuplicatedTxs = (transactions: UnifiedTransaction[]) => {
       ) {
         mergedTx[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
       }
+
+      // IMPORTANT: Preserve isReplaced flag if any version has it
+      if ((tx as any).isReplaced) {
+        (mergedTx as any).isReplaced = true;
+      }
+      
+      // Preserve other metadata flags
+      if ((tx as any).isSpeedUp) {
+        (mergedTx as any).isSpeedUp = true;
+      }
+      if ((tx as any).replacesHash) {
+        (mergedTx as any).replacesHash = (tx as any).replacesHash;
+      }
     }
 
     deduplicatedTxs.push(mergedTx);
@@ -349,13 +362,12 @@ export const validateAndManageUserTransactions = (
   // Check for newly confirmed transactions BEFORE merging
   const newlyConfirmedTxHashes: string[] = [];
   
-  // Create a map of existing transaction confirmations and replacement status
-  const existingTxInfo = new Map<string, { confirmations: number; isReplaced?: boolean }>();
+  // Create a map of existing transaction confirmations
+  const existingTxInfo = new Map<string, { confirmations: number }>();
   updatedTxs.forEach((tx) => {
     if ('hash' in tx) {
       existingTxInfo.set(tx.hash.toLowerCase(), { 
-        confirmations: tx.confirmations || 0,
-        isReplaced: (tx as any).isReplaced 
+        confirmations: tx.confirmations || 0
       });
     }
   });
@@ -384,22 +396,70 @@ export const validateAndManageUserTransactions = (
       return a.confirmations - b.confirmations; // pending (0) first
     }
     // If confirmations are equal, sort by timestamp descending
-    return (b.timestamp || 0) - (a.timestamp || 0);
+    const aTime = 'timestamp' in a ? ((a as IEvmTransactionResponse).timestamp || 0) : ((a as ISysTransaction).blockTime || 0);
+    const bTime = 'timestamp' in b ? ((b as IEvmTransactionResponse).timestamp || 0) : ((b as ISysTransaction).blockTime || 0);
+    return bTime - aTime;
   });
 
-  if (filteredTxs.length > 0) {
+  // Simple cleanup: Group by nonce, if any confirmed, keep only that one
+  const txsByNonce = new Map<number, UnifiedTransaction[]>();
+  
+  sortedTxs.forEach((tx) => {
+    if ('nonce' in tx && tx.nonce !== undefined) {
+      const nonce = typeof tx.nonce === 'string' ? parseInt(tx.nonce, 10) : tx.nonce;
+      if (!isNaN(nonce)) {
+        if (!txsByNonce.has(nonce)) {
+          txsByNonce.set(nonce, []);
+        }
+        txsByNonce.get(nonce)!.push(tx);
+      }
+    }
+  });
+
+  // For each nonce: if confirmed exists, keep only that. Otherwise keep all.
+  const cleanedTxs: UnifiedTransaction[] = [];
+  
+  txsByNonce.forEach((txsForNonce, nonce) => {
+    const confirmedTx = txsForNonce.find(tx => tx.confirmations > 0);
+    
+    if (confirmedTx) {
+      // Keep only the confirmed one
+      cleanedTxs.push(confirmedTx);
+    } else {
+      // None confirmed yet - keep all
+      cleanedTxs.push(...txsForNonce);
+    }
+  });
+
+  // Include any non-EVM transactions that don't have nonces
+  sortedTxs.forEach((tx) => {
+    if (!('nonce' in tx)) {
+      cleanedTxs.push(tx);
+    }
+  });
+
+  // Sort the cleaned transactions
+  const finalSortedTxs = cleanedTxs.sort((a, b) => {
+    if (a.confirmations !== b.confirmations) {
+      return a.confirmations - b.confirmations; // pending (0) first
+    }
+    // If confirmations are equal, sort by timestamp descending
+    const aTime = 'timestamp' in a ? ((a as IEvmTransactionResponse).timestamp || 0) : ((a as ISysTransaction).blockTime || 0);
+    const bTime = 'timestamp' in b ? ((b as IEvmTransactionResponse).timestamp || 0) : ((b as ISysTransaction).blockTime || 0);
+    return bTime - aTime;
+  });
+
+  if (filteredTxs.length > 0 || finalSortedTxs.length !== sortedTxs.length) {
     store.dispatch(
       setMultipleTransactionToState({
         chainId: activeNetwork.chainId,
         networkType: TransactionsType.Ethereum,
-        transactions: sortedTxs,
+        transactions: finalSortedTxs,
         accountId: activeAccount.id,
         accountType: activeAccount.type,
       })
     );
   }
 
-  // No cleanup needed - transactions are now replaced immediately on speed-up/cancel
-
-  return sortedTxs;
+  return finalSortedTxs;
 };
