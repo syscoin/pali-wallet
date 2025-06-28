@@ -5,5 +5,5 @@
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Use npx to run the local tsc
-npx tsc --pretty --noEmit
+# Use yarn to run tsc
+yarn tsc --pretty --noEmit
