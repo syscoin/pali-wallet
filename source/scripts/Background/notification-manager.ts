@@ -38,6 +38,7 @@ class NotificationManager {
   constructor() {
     // Initialize state with current values to prevent false notifications on startup
     const currentState = store.getState();
+
     if (currentState.vault) {
       const { activeAccount, activeNetwork, accounts } = currentState.vault;
 
@@ -158,52 +159,149 @@ class NotificationManager {
     const { activeAccount, activeNetwork, accounts, isBitcoinBased } =
       currentVault;
 
-    if (!activeAccount || !activeNetwork) return;
+    if (!activeAccount || !activeNetwork) {
+      return;
+    }
 
     const account = accounts[activeAccount.type]?.[activeAccount.id];
-    if (!account) return;
+    if (!account) {
+      return;
+    }
 
     const currentTxs =
       currentVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
     const previousTxs =
       previousVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
 
-    if (!currentTxs) return;
+    if (!currentTxs) {
+      return;
+    }
 
     if (isBitcoinBased) {
+      const currentUtxoTxs = currentTxs.syscoin?.[activeNetwork.chainId] || [];
+      const previousUtxoTxs =
+        previousTxs?.syscoin?.[activeNetwork.chainId] || [];
       this.checkUtxoTransactions(
-        currentTxs.syscoin?.[activeNetwork.chainId] || [],
-        previousTxs?.syscoin?.[activeNetwork.chainId] || [],
+        currentUtxoTxs,
+        previousUtxoTxs,
         account,
         activeNetwork
       );
     } else {
+      const currentEvmTxs = currentTxs.ethereum?.[activeNetwork.chainId] || [];
+      const previousEvmTxs =
+        previousTxs?.ethereum?.[activeNetwork.chainId] || [];
       this.checkEvmTransactions(
-        currentTxs.ethereum?.[activeNetwork.chainId] || [],
-        previousTxs?.ethereum?.[activeNetwork.chainId] || [],
+        currentEvmTxs,
+        previousEvmTxs,
         account,
         activeNetwork
       );
     }
   }
 
+  // Helper method to create transaction lookup maps
+  private createTransactionMaps(transactions: any[]) {
+    const byHash = new Map();
+    const byNonce = new Map();
+
+    transactions.forEach((tx) => {
+      // Map by hash (works for both EVM and UTXO)
+      const txId = tx.hash || tx.txid;
+      if (txId) {
+        byHash.set(txId, tx);
+      }
+
+      // Map by nonce (EVM only)
+      if (tx.from && typeof tx.nonce === 'number') {
+        const nonceKey = `${tx.from.toLowerCase()}_${tx.nonce}`;
+        byNonce.set(nonceKey, tx);
+      }
+    });
+
+    return { byHash, byNonce };
+  }
+
+  // Helper method to find previous transaction
+  private findPreviousTransaction(
+    tx: any,
+    previousMaps: { byHash: Map<string, any>; byNonce: Map<string, any> }
+  ) {
+    const { byHash, byNonce } = previousMaps;
+
+    // First try to find by hash/txid
+    const txId = tx.hash || tx.txid;
+    const byHashResult = txId ? byHash.get(txId) : null;
+
+    // For EVM transactions, also try to find by nonce (for replacements)
+    let byNonceResult = null;
+    if (!byHashResult && tx.from && typeof tx.nonce === 'number') {
+      const nonceKey = `${tx.from.toLowerCase()}_${tx.nonce}`;
+      byNonceResult = byNonce.get(nonceKey);
+    }
+
+    return {
+      previousTx: byHashResult || byNonceResult,
+      foundByHash: !!byHashResult,
+      foundByNonce: !!byNonceResult,
+      isReplacement: !!byNonceResult && !byHashResult,
+    };
+  }
+
+  // Helper method to handle confirmed transactions
+  private handleConfirmedTransaction(
+    tx: any,
+    previousTx: any,
+    account: any,
+    network: any,
+    isEvm: boolean
+  ) {
+    const txId = isEvm ? tx.hash : tx.txid;
+    const txKey = `${txId}_${network.chainId}`;
+
+    // Check if we've already shown a notification for this transaction
+    if (this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)) {
+      return;
+    }
+
+    // Show the appropriate notification
+    if (isEvm) {
+      this.showEvmTransactionNotification(tx, 'confirmed', account, network);
+    } else {
+      this.showUtxoTransactionNotification(tx, 'confirmed', account, network);
+    }
+
+    // Mark as shown
+    this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
+    this.state.pendingTransactions.delete(txKey);
+
+    // If this was a replacement, also mark the old tx as notified
+    const previousTxId = isEvm ? previousTx.hash : previousTx.txid;
+    if (previousTxId !== txId) {
+      const oldTxKey = `${previousTxId}_${network.chainId}`;
+      this.state.shownTransactionNotifications.add(`${oldTxKey}_confirmed`);
+      this.state.pendingTransactions.delete(oldTxKey);
+    }
+  }
+
   private checkEvmTransactions(
-    currentTxs: any[], // Extended EVM transactions with additional fields
+    currentTxs: any[],
     previousTxs: any[],
     account: any,
     network: any
   ) {
-    // Create maps for easier lookup
-    const previousTxMap = new Map(previousTxs.map((tx) => [tx.hash, tx]));
+    // Create lookup maps for previous transactions
+    const previousMaps = this.createTransactionMaps(previousTxs);
 
-    // Check for new transactions and confirmation changes
+    // Check each current transaction
     currentTxs.forEach((tx) => {
-      const prevTx = previousTxMap.get(tx.hash);
       const txKey = `${tx.hash}_${network.chainId}`;
+      const { previousTx, foundByHash, foundByNonce, isReplacement } =
+        this.findPreviousTransaction(tx, previousMaps);
 
-      // New transaction (pending)
+      // New pending transaction
       if (
-        !prevTx &&
+        !previousTx &&
         tx.confirmations === 0 &&
         !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
       ) {
@@ -211,16 +309,13 @@ class NotificationManager {
         this.state.shownTransactionNotifications.add(`${txKey}_pending`);
       }
 
-      // Transaction just confirmed
+      // Transaction just confirmed (including replacements)
       if (
-        prevTx &&
-        prevTx.confirmations === 0 &&
-        tx.confirmations > 0 &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
+        previousTx &&
+        previousTx.confirmations === 0 &&
+        tx.confirmations > 0
       ) {
-        this.showEvmTransactionNotification(tx, 'confirmed', account, network);
-        this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
-        this.state.pendingTransactions.delete(txKey);
+        this.handleConfirmedTransaction(tx, previousTx, account, network, true);
       }
 
       // Failed transaction
@@ -239,22 +334,22 @@ class NotificationManager {
   }
 
   private checkUtxoTransactions(
-    currentTxs: any[], // Extended UTXO transactions with SPT fields
+    currentTxs: any[],
     previousTxs: any[],
     account: any,
     network: any
   ) {
-    // Create maps for easier lookup
-    const previousTxMap = new Map(previousTxs.map((tx) => [tx.txid, tx]));
+    // Create lookup maps for previous transactions (UTXO only uses hash)
+    const previousMaps = this.createTransactionMaps(previousTxs);
 
-    // Check for new transactions and confirmation changes
+    // Check each current transaction
     currentTxs.forEach((tx) => {
-      const prevTx = previousTxMap.get(tx.txid);
       const txKey = `${tx.txid}_${network.chainId}`;
+      const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
 
-      // New transaction (pending)
+      // New pending transaction
       if (
-        !prevTx &&
+        !previousTx &&
         tx.confirmations === 0 &&
         !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
       ) {
@@ -264,14 +359,17 @@ class NotificationManager {
 
       // Transaction just confirmed
       if (
-        prevTx &&
-        prevTx.confirmations === 0 &&
-        tx.confirmations > 0 &&
-        !this.state.shownTransactionNotifications.has(`${txKey}_confirmed`)
+        previousTx &&
+        previousTx.confirmations === 0 &&
+        tx.confirmations > 0
       ) {
-        this.showUtxoTransactionNotification(tx, 'confirmed', account, network);
-        this.state.shownTransactionNotifications.add(`${txKey}_confirmed`);
-        this.state.pendingTransactions.delete(txKey);
+        this.handleConfirmedTransaction(
+          tx,
+          previousTx,
+          account,
+          network,
+          false
+        );
       }
     });
 
