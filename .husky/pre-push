@@ -5,5 +5,5 @@
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 
-# Use yarn to run tsc
-yarn tsc --pretty --noEmit
+# Use the type-check script from package.json
+yarn type-check
