@@ -5,24 +5,37 @@
  * This is more reliable than checking confirmations field which can be buggy
  * (some APIs return confirmations: 0 even for confirmed transactions)
  */
-export const isTransactionInBlock = (tx: any): boolean =>
-  (tx?.blockNumber !== null && tx?.blockNumber !== undefined) ||
-  (tx?.blockHeight !== null && tx?.blockHeight !== undefined) ||
-  (tx?.height !== null && tx?.height !== undefined);
+export const isTransactionInBlock = (tx: any): boolean => {
+  const blockNumber = tx?.blockNumber;
+  const blockHeight = tx?.blockHeight;
+  const height = tx?.height;
+
+  // Check if any block field exists and is a valid positive number
+  return (
+    (blockNumber !== null && blockNumber !== undefined && blockNumber > 0) ||
+    (blockHeight !== null && blockHeight !== undefined && blockHeight > 0) ||
+    (height !== null && height !== undefined && height > 0)
+  );
+};
 
 /**
  * Get the block identifier from a transaction
  * Returns the block number/height or null if not in a block
  */
 export const getTransactionBlockInfo = (tx: any): number | null => {
-  if (tx?.blockNumber !== null && tx?.blockNumber !== undefined) {
-    return tx.blockNumber;
+  const blockNumber = tx?.blockNumber;
+  const blockHeight = tx?.blockHeight;
+  const height = tx?.height;
+
+  // Return the block number only if it's a valid positive number
+  if (blockNumber !== null && blockNumber !== undefined && blockNumber > 0) {
+    return blockNumber;
   }
-  if (tx?.blockHeight !== null && tx?.blockHeight !== undefined) {
-    return tx.blockHeight;
+  if (blockHeight !== null && blockHeight !== undefined && blockHeight > 0) {
+    return blockHeight;
   }
-  if (tx?.height !== null && tx?.height !== undefined) {
-    return tx.height;
+  if (height !== null && height !== undefined && height > 0) {
+    return height;
   }
   return null;
 };

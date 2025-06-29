@@ -1,4 +1,5 @@
 import { getAsset } from '@pollum-io/sysweb3-utils';
+import { txUtils } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
 import {
@@ -454,6 +455,7 @@ class NotificationManager {
     let metadata: any = {};
     let transactionTypeLabel = '';
     let decodedTx: any = null;
+    let detectedTokenType: string | null = null;
 
     // Try to decode the transaction to get full SPT details
     if (tx.hex || tx.txid) {
@@ -466,7 +468,6 @@ class NotificationManager {
         }
         // Otherwise, fetch the raw transaction first
         else if (tx.txid && network.url) {
-          const { txUtils } = await import('@pollum-io/sysweb3-utils');
           const { getRawTransaction } = txUtils();
           const rawTx = await getRawTransaction(network.url, tx.txid);
           if (rawTx && typeof rawTx === 'string') {
@@ -479,26 +480,10 @@ class NotificationManager {
           const { getController } = await import('./index');
           const controller = getController();
 
-          if (controller && controller.wallet.isUnlocked()) {
+          if (controller) {
             try {
-              // We need to parse the hex into a transaction object first
-              // The syscoinjs-lib decodeRawTransaction expects a transaction object with .ins and .outs
-              // We can access bitcoinjs through syscoinjs utils
-              const syscoinjs = await import('syscoinjs-lib');
-
-              if (syscoinjs.utils && syscoinjs.utils.bitcoinjs) {
-                // Parse hex to transaction object using bitcoinjs
-                const bitcoinTx =
-                  syscoinjs.utils.bitcoinjs.Transaction.fromHex(rawHex);
-
-                // Now decode using MainController's decodeRawTransaction which uses syscoinjs
-                decodedTx = controller.wallet.decodeRawTransaction(bitcoinTx);
-              } else {
-                // Fallback: try with just the raw hex and let it handle parsing
-                decodedTx = controller.wallet.decodeRawTransaction({
-                  hex: rawHex,
-                });
-              }
+              // Use the enhanced decodeRawTransaction method with isRawHex=true
+              decodedTx = controller.wallet.decodeRawTransaction(rawHex, true);
             } catch (err) {
               console.error(
                 '[NotificationManager] Failed to decode transaction:',
@@ -511,31 +496,38 @@ class NotificationManager {
 
         // Extract SPT asset information from decoded transaction
         if (decodedTx?.syscoin) {
-          // Get transaction type
+          // Get transaction type directly from decoded transaction
           if (decodedTx.syscoin.txtype) {
-            tx.tokenType = decodedTx.syscoin.txtype;
+            detectedTokenType = decodedTx.syscoin.txtype;
           }
 
-          // Extract asset allocations
-          if (decodedTx.syscoin.allocations?.length > 0) {
-            const allocation = decodedTx.syscoin.allocations[0];
+          // Handle asset allocations (for SPT transfers)
+          if (decodedTx.syscoin.allocations?.assets) {
+            const assets = decodedTx.syscoin.allocations.assets;
+            if (assets.length > 0) {
+              const asset = assets[0];
 
-            // For asset allocation send
-            if (allocation.assets && allocation.assets.length > 0) {
-              const asset = allocation.assets[0];
-
-              // Calculate total value from all outputs
-              let totalValue = 0;
+              // Use the formatted value if available, otherwise calculate from values array
               if (asset.values && asset.values.length > 0) {
-                // Alternative structure
-                totalValue = asset.values.reduce(
-                  (sum: number, val: any) => sum + (val.value || val || 0),
+                const totalValue = asset.values.reduce(
+                  (sum: number, val: any) => {
+                    // Use valueFormatted if available (already in correct decimal format)
+                    if (val.valueFormatted) {
+                      return sum + parseFloat(val.valueFormatted);
+                    }
+                    // Otherwise convert from satoshis
+                    return sum + (val.value || 0);
+                  },
                   0
                 );
-              }
 
-              if (totalValue > 0) {
-                value = totalValue.toString();
+                // If we got formatted values, use them directly
+                if (asset.values[0].valueFormatted) {
+                  value = totalValue.toString();
+                } else {
+                  // Convert from satoshis to token units
+                  value = totalValue.toString();
+                }
               }
 
               // Fetch asset metadata
@@ -556,51 +548,32 @@ class NotificationManager {
             }
           }
 
-          // Handle specific syscoin transaction types
-          if (decodedTx.syscoin.burns?.length > 0) {
-            const burn = decodedTx.syscoin.burns[0];
-            if (burn.assetGuid && burn.amount) {
-              value = burn.amount.toString();
+          // Handle burns (SYS → SYSX, SYSX → SYS, Bridge to NEVM)
+          if (decodedTx.syscoin.burn) {
+            const burn = decodedTx.syscoin.burn;
 
-              // Check if it's SYSX (assetGuid 123456)
-              const sysxGuid = '123456';
-              if (burn.assetGuid.toString() === sysxGuid) {
-                tokenSymbol = 'SYSX';
-              } else if (network.url) {
-                // Fetch other asset info
-                const assetData = await this.getSPTMetadata(
-                  burn.assetGuid.toString(),
-                  network.url
-                );
-                if (assetData) {
-                  tokenSymbol = assetData.symbol;
-                  decimals = assetData.decimals;
-                }
-              }
+            // For burns, the amount might be in the burn object or we need to calculate from outputs
+            if (burn.amount) {
+              value = burn.amount.toString();
+            }
+
+            // Check if burning to Ethereum (bridge transaction)
+            if (burn.ethaddress) {
+              // This is a bridge transaction to NEVM
+              detectedTokenType = 'assetallocationburntoethereum';
             }
           }
 
-          // Handle mints
-          if (decodedTx.syscoin.mints?.length > 0) {
-            const mint = decodedTx.syscoin.mints[0];
-            if (mint.assetGuid && mint.amount) {
-              value = mint.amount.toString();
+          // Handle mints (from NEVM)
+          if (decodedTx.syscoin.mint) {
+            const mint = decodedTx.syscoin.mint;
 
-              const sysxGuid = '123456';
-              if (mint.assetGuid.toString() === sysxGuid) {
-                tokenSymbol = 'SYSX';
-              } else if (network.url) {
-                // Fetch other asset info
-                const assetData = await this.getSPTMetadata(
-                  mint.assetGuid.toString(),
-                  network.url
-                );
-                if (assetData) {
-                  tokenSymbol = assetData.symbol;
-                  decimals = assetData.decimals;
-                }
-              }
+            if (mint.amount) {
+              value = mint.amount.toString();
             }
+
+            // This is a mint from NEVM transaction
+            detectedTokenType = 'assetallocationmint';
           }
         }
       } catch (error) {
@@ -613,8 +586,9 @@ class NotificationManager {
     }
 
     // Determine transaction type label
-    if (tx.tokenType) {
-      switch (tx.tokenType) {
+    const finalTokenType = detectedTokenType || tx.tokenType;
+    if (finalTokenType) {
+      switch (finalTokenType) {
         case 'assetallocationsend':
           transactionTypeLabel = 'SPT Transfer';
           break;

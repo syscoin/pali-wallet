@@ -2107,18 +2107,6 @@ class MainController {
   public getRecommendedFee() {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
 
-    // Check if wallet is unlocked first
-    const keyring = this.getActiveKeyringIfUnlocked();
-    if (!keyring) {
-      console.warn(
-        '[MainController] Wallet is locked, cannot get recommended fee'
-      );
-      // Return a default/fallback fee structure
-      return isBitcoinBased
-        ? { fastestFee: 1, halfHourFee: 1, hourFee: 1 }
-        : '20000000000'; // 20 gwei
-    }
-
     try {
       if (isBitcoinBased) {
         return this.syscoinTransaction.getRecommendedFee(activeNetwork.url);
@@ -3534,17 +3522,18 @@ class MainController {
   public getRawTransaction = this.txUtils.getRawTransaction;
 
   // Add decodeRawTransaction method for PSBT/transaction details display
-  public decodeRawTransaction = (psbt: any) => {
-    // Check if wallet is unlocked first
-    const keyring = this.getActiveKeyringIfUnlocked();
+  public decodeRawTransaction = (psbtOrHex: any, isRawHex = false) => {
+    const keyring = this.getActiveKeyring();
     if (!keyring) {
       throw new Error(
         'Wallet is locked. Please unlock to decode transactions.'
       );
     }
-
     try {
-      return this.syscoinTransaction.decodeRawTransaction(psbt);
+      return keyring.syscoinTransaction.decodeRawTransaction(
+        psbtOrHex,
+        isRawHex
+      );
     } catch (error) {
       console.error('Error decoding raw transaction:', error);
       throw new Error(`Failed to decode raw transaction: ${error.message}`);
