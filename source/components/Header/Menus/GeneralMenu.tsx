@@ -137,7 +137,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
           {!disabled && (
             <Menu.Items
               as="div"
-              className={`absolute z-50 top-6 right-[-16px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl overflow-hidden ring-1 ring-black ring-opacity-5 
+              className={`absolute overflow-x-hidden z-50 top-6 right-[-16px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5 
               transform transition-all duration-100 ease-out ${
                 open
                   ? 'opacity-100 scale-100 pointer-events-auto'

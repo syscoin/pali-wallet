@@ -81,7 +81,7 @@
       }
     </style>
   </head>
-  <body class="remove-scrollbar h-popup bg-bkg-6 overflow-hidden sm:py-8">
+  <body class="remove-scrollbar h-popup bg-bkg-6 overflow-x-hidden overflow-y-hidden sm:py-8">
     <!-- Initial loading screen that shows immediately -->
     <div id="initial-loader">
       <div class="logo-container">
@@ -90,7 +90,7 @@
       </div>
     </div>
 
-    <div id="app-root" class="w-full min-w-popup h-full min-h-popup" />
+    <div id="app-root" class="w-full min-w-popup max-w-popup h-full min-h-popup overflow-x-hidden" />
 
     <script src="assets/js/appLoader.js"></script>
   </body>

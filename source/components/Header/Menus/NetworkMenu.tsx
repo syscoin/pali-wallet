@@ -288,7 +288,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           {!disabled && (
             <Menu.Items
               as="div"
-              className={`absolute overflow-hidden z-50 top-[10px] left-[-17px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
+              className={`absolute overflow-x-hidden z-50 top-[10px] left-[-17px] w-screen h-screen text-center text-brand-white font-poppins bg-brand-blue600 rounded-2xl focus:outline-none shadow-2xl ring-1 ring-black ring-opacity-5
               transform transition-all duration-100 ease-out ${
                 menuprops.open
                   ? 'opacity-100 scale-100 pointer-events-auto'
@@ -372,9 +372,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                   (currentNetwork: INetwork) => (
                                     <li
                                       key={uniqueId()}
-                                      className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                                      className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                                   font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
+                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"
                                       onClick={() => {
                                         handleChangeNetwork(
                                           currentNetwork,
@@ -386,7 +386,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
 
                                       {/* Left side: Icon + Network name */}
-                                      <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
+                                      <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
                                         <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
                                           <ChainIcon
                                             chainId={currentNetwork.chainId}
@@ -471,9 +471,9 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 .map((currentNetwork: any) => (
                                   <li
                                     key={uniqueId()}
-                                    className="group relative ml-4 py-1.5 px-5 w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
+                                    className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                                   font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
-                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20"
+                                   transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"
                                     onClick={() => {
                                       handleChangeNetwork(
                                         currentNetwork,
@@ -485,7 +485,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-brand-blue600/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-lg"></div>
 
                                     {/* Left side: Icon + Network name */}
-                                    <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10 ml-4">
+                                    <div className="flex items-center gap-3 flex-1 min-w-0 relative z-10">
                                       <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
                                         <ChainIcon
                                           chainId={currentNetwork.chainId}
