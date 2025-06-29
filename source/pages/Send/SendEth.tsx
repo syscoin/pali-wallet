@@ -406,6 +406,9 @@ export const SendEth = () => {
 
     form.setFieldValue('amount', fullBalance);
     setIsMaxSend(true);
+
+    // Force validation to run after setting the value
+    form.validateFields(['amount']);
   }, [activeAccount?.balances?.ethereum, selectedAsset, form]);
 
   // ✅ OPTIMIZED: Effect with proper dependencies
@@ -639,19 +642,6 @@ export const SendEth = () => {
                         return Promise.reject('');
                       }
 
-                      // If MAX is clicked for native ETH, check if value equals full balance
-                      if (isMaxSend && !selectedAsset) {
-                        const balanceEth = String(
-                          activeAccount?.balances?.ethereum || '0'
-                        );
-                        const balanceBN = ethers.utils.parseEther(balanceEth);
-
-                        // If the amount equals the full balance, it's valid
-                        if (valueBN.eq(balanceBN)) {
-                          return Promise.resolve();
-                        }
-                      }
-
                       const isToken = !!selectedAsset;
                       const isNFT = selectedAsset?.isNft;
 
@@ -698,6 +688,11 @@ export const SendEth = () => {
                         // First check if amount exceeds total balance
                         if (valueBN.gt(balanceBN)) {
                           return Promise.reject(t('send.insufficientFunds'));
+                        }
+
+                        // If MAX is clicked for native ETH, allow full balance (fees will be deducted automatically)
+                        if (isMaxSend && valueBN.eq(balanceBN)) {
+                          return Promise.resolve();
                         }
 
                         // For native ETH, also validate against max amount (balance - gas)

@@ -53,8 +53,6 @@ export const SendSys = () => {
   );
   const [isLoading, setIsLoading] = useState(false);
 
-  const [isMaxSend, setIsMaxSend] = useState(false);
-
   const [form] = Form.useForm();
 
   // Fee rate will be managed by the Fee component
@@ -128,18 +126,7 @@ export const SendSys = () => {
     // Simply fill in the full balance
     form.setFieldValue('amount', balanceStr);
     form.validateFields(['amount']); // Trigger validation after setting value
-    setIsMaxSend(true); // Set the flag when max is clicked
   }, [balanceStr, form]);
-
-  const handleInputChange = useCallback(
-    (type: 'receiver' | 'amount', e: any) => {
-      // Clear isMaxSend flag if amount is manually changed
-      if (type === 'amount' && e.target.value !== balanceStr) {
-        setIsMaxSend(false);
-      }
-    },
-    [balanceStr]
-  );
 
   const handleSelectedAsset = useCallback(
     (item: number) => {
@@ -148,14 +135,10 @@ export const SendSys = () => {
 
         if (getAsset) {
           setSelectedAsset(getAsset);
-          // Clear cached fee when switching assets
-          setIsMaxSend(false);
           return;
         }
 
         setSelectedAsset(null);
-        // Clear cached fee when switching to native
-        setIsMaxSend(false);
       }
     },
     [assets]
@@ -208,6 +191,9 @@ export const SendSys = () => {
           }
         );
 
+        // Determine if this is a MAX send by comparing amount to balance
+        const isMaxTransaction = amountCurrency.value === balanceCurrency.value;
+
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
         let psbt = null;
@@ -221,7 +207,7 @@ export const SendSys = () => {
                   receivingAddress: receiver,
                   feeRate,
                   txOptions: { rbf: RBF },
-                  isMax: isMaxSend,
+                  isMax: isMaxTransaction,
                   token: null, // Explicitly pass null for native transactions
                 },
               ]
@@ -288,7 +274,7 @@ export const SendSys = () => {
         }
 
         // For non-max sends, validate amount + fee doesn't exceed balance
-        if (!isMaxSend) {
+        if (!isMaxTransaction) {
           const totalNeeded = amountCurrency.add(estimatedTotalFee);
 
           if (totalNeeded.value > balanceCurrency.value) {
@@ -312,7 +298,7 @@ export const SendSys = () => {
           rbf: RBF, // RBF state for transaction details display
           token: null,
           psbt: psbt,
-          isMax: isMaxSend, // Pass isMax flag for correct total calculation
+          isMax: isMaxTransaction, // Pass isMax flag for correct total calculation
         };
 
         navigate('/send/confirm', {
@@ -424,7 +410,7 @@ export const SendSys = () => {
                 symbol: selectedAsset.symbol,
                 guid: selectedAsset.assetGuid,
               },
-              isMax: isMaxSend, // Pass isMax flag for correct total calculation
+              isMax: false, // Tokens don't support max send functionality
             },
           },
         });
@@ -551,11 +537,7 @@ export const SendSys = () => {
               }),
             ]}
           >
-            <Input
-              type="text"
-              placeholder={t('send.receiver')}
-              onChange={(e) => handleInputChange('receiver', e)}
-            />
+            <Input type="text" placeholder={t('send.receiver')} />
           </Form.Item>
         </div>
         <div className="flex gap-2 w-full items-center">
@@ -716,7 +698,6 @@ export const SendSys = () => {
                   id="with-max-button"
                   type="number"
                   placeholder={t('send.amount')}
-                  onChange={(e) => handleInputChange('amount', e)}
                 />
               </Form.Item>
             </div>
