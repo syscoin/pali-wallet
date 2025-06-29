@@ -8,6 +8,7 @@ import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -236,8 +237,14 @@ export const treatAndSortTransactions = (
 
     const existing = txMap.get(id);
 
-    if (!existing || tx.confirmations > existing.confirmations) {
-      // If this is a new tx or has more confirmations, it becomes our candidate
+    // Update if: no existing tx, more confirmations, or transaction just got into a block
+    const shouldUpdate =
+      !existing ||
+      tx.confirmations > existing.confirmations ||
+      (existing && !isTransactionInBlock(existing) && isTransactionInBlock(tx));
+
+    if (shouldUpdate) {
+      // If this is a new tx or has better status, it becomes our candidate
       const mergedTx = existing ? { ...tx } : tx;
 
       // If we had an existing tx, preserve earliest timestamps
@@ -264,7 +271,7 @@ export const treatAndSortTransactions = (
 
       txMap.set(id, mergedTx);
     } else if (existing) {
-      // The existing tx has more confirmations, but check if new tx has earlier timestamps
+      // The existing tx has same or more confirmations, but check if new tx has earlier timestamps
       const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
       const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
 

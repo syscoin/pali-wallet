@@ -8,6 +8,7 @@ import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
 import { ellipsis } from 'utils/index';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 export const UtxoTransactionsListComponent = ({
   userTransactions,
@@ -21,7 +22,7 @@ export const UtxoTransactionsListComponent = ({
     useTransactionsListConfig(userTransactions);
 
   const isTxCanceled = tx?.isCanceled === true;
-  const isConfirmed = tx.confirmations > 0;
+  const isConfirmed = isTransactionInBlock(tx);
 
   const handleGoTxDetails = () => {
     navigate('/home/details', {

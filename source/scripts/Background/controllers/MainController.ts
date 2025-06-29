@@ -23,6 +23,7 @@ import {
 } from '@pollum-io/sysweb3-utils';
 
 import { getController } from '..';
+import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
 import { setPrices, setCoins } from 'state/price';
@@ -81,6 +82,10 @@ import { ICustomRpcParams } from 'types/transactions';
 import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
+import {
+  isTransactionInBlock,
+  getTransactionBlockInfo,
+} from 'utils/transactionUtils';
 
 import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
@@ -1482,7 +1487,9 @@ class MainController {
     // Clear notification state when wallet is locked
     import('../notification-manager')
       .then(({ notificationManager }) => {
-        notificationManager.clearState();
+        // Preserve pending transaction tracking when wallet is locked
+        // This allows notifications to still show when transactions confirm
+        notificationManager.clearState(true);
       })
       .catch((error) => {
         console.error(
@@ -3123,6 +3130,7 @@ class MainController {
       );
 
       try {
+        await checkForUpdates();
         // Check current transaction state before polling
         const { accountTransactions, activeAccount, activeNetwork } =
           store.getState().vault;
@@ -3149,22 +3157,16 @@ class MainController {
               );
 
           // Check if transaction is already confirmed
-          if (tx && tx.confirmations && tx.confirmations > 0) {
+          if (tx && isTransactionInBlock(tx)) {
+            const blockInfo = getTransactionBlockInfo(tx);
             console.log(
-              `[RapidPoll] Transaction ${txHash} confirmed with ${tx.confirmations} confirmations! Stopping rapid poll.`
+              `[RapidPoll] Transaction ${txHash} confirmed! In block: ${blockInfo}. Stopping rapid poll.`
             );
             this.activeRapidPolls.delete(pollKey);
 
             return;
           }
         }
-
-        // Trigger the regular update check
-        // Use the checkForUpdates function directly
-        const { checkForUpdates } = await import(
-          '../handlers/handlePaliUpdates'
-        );
-        await checkForUpdates();
 
         // Continue polling if not confirmed and haven't reached max polls
         if (pollCount < maxPolls) {

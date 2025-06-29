@@ -15,6 +15,7 @@ import {
   handleUpdateTransaction,
   isERC20Transfer,
 } from 'utils/transactions';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Memoized transaction item component to prevent re-renders when other transactions update
 const EvmTransactionItem = React.memo(
@@ -54,7 +55,7 @@ const EvmTransactionItem = React.memo(
     const isTxCanceled = tx?.isCanceled === true;
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
-    const isConfirmed = tx?.confirmations > 0;
+    const isConfirmed = isTransactionInBlock(tx);
     const isErc20Tx = isERC20Transfer(tx as any);
     const isTxSent =
       tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();

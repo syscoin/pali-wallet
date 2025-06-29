@@ -5,6 +5,7 @@ import {
 
 import store from 'state/store';
 import { IAccountTransactions } from 'state/vault/types';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import EvmTransactionsController from './evm';
 import SysTransactionController from './syscoin';
@@ -36,7 +37,7 @@ const TransactionsManager = (): ITransactionsManager => {
     const transactions = accountTransactions?.[chain]?.[chainId] || [];
     return (
       Array.isArray(transactions) &&
-      transactions.some((tx: any) => tx.confirmations === 0)
+      transactions.some((tx: any) => !isTransactionInBlock(tx))
     );
   };
   const updateTransactionsFromCurrentAccount = async (

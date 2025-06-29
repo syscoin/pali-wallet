@@ -115,6 +115,15 @@ export interface IEvmTransactionsController {
     hash: string,
     apiUrl: string
   ) => Promise<any>;
+  fetchTransactionsFromAPI: (
+    address: string,
+    chainId: number,
+    apiUrl?: string,
+    includePending?: boolean
+  ) => Promise<{
+    error?: string;
+    transactions: IEvmTransactionResponse[] | null;
+  }>;
   getUserTransactionByDefaultProvider: (
     numBlocks: number,
     web3Provider: CustomJsonRpcProvider

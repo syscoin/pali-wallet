@@ -461,6 +461,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   return {
     getUserTransactionByDefaultProvider,
     pollingEvmTransactions,
+    fetchTransactionsFromAPI,
     fetchTransactionDetailsFromAPI,
     testExplorerApi, // Export the test function
   };

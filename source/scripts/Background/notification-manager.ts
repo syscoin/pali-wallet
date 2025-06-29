@@ -12,6 +12,7 @@ import {
   ITransactionNotification,
 } from 'utils/notifications';
 import { isERC20Transfer, getERC20TransferValue } from 'utils/transactions';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 interface INotificationState {
   // Last known account
@@ -295,10 +296,15 @@ class NotificationManager {
       const txKey = `${tx.hash}_${network.chainId}`;
       const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
 
+      // Generic check: A transaction is confirmed if it's in a block
+      const isCurrentTxConfirmed = isTransactionInBlock(tx);
+      const isPreviousTxConfirmed =
+        previousTx && isTransactionInBlock(previousTx);
+
       // New pending transaction
       if (
         !previousTx &&
-        tx.confirmations === 0 &&
+        !isCurrentTxConfirmed &&
         !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
       ) {
         this.showEvmTransactionNotification(tx, 'pending', account, network);
@@ -306,11 +312,8 @@ class NotificationManager {
       }
 
       // Transaction just confirmed (including replacements)
-      if (
-        previousTx &&
-        previousTx.confirmations === 0 &&
-        tx.confirmations > 0
-      ) {
+      // Check if previous was unconfirmed (no blockNumber) and current is confirmed (has blockNumber)
+      if (previousTx && !isPreviousTxConfirmed && isCurrentTxConfirmed) {
         this.handleConfirmedTransaction(tx, previousTx, account, network, true);
       }
 
@@ -343,10 +346,15 @@ class NotificationManager {
       const txKey = `${tx.txid}_${network.chainId}`;
       const { previousTx } = this.findPreviousTransaction(tx, previousMaps);
 
+      // Generic check: A transaction is confirmed if it's in a block
+      const isCurrentTxConfirmed = isTransactionInBlock(tx);
+      const isPreviousTxConfirmed =
+        previousTx && isTransactionInBlock(previousTx);
+
       // New pending transaction
       if (
         !previousTx &&
-        tx.confirmations === 0 &&
+        !isCurrentTxConfirmed &&
         !this.state.shownTransactionNotifications.has(`${txKey}_pending`)
       ) {
         this.showUtxoTransactionNotification(tx, 'pending', account, network);
@@ -354,11 +362,7 @@ class NotificationManager {
       }
 
       // Transaction just confirmed
-      if (
-        previousTx &&
-        previousTx.confirmations === 0 &&
-        tx.confirmations > 0
-      ) {
+      if (previousTx && !isPreviousTxConfirmed && isCurrentTxConfirmed) {
         this.handleConfirmedTransaction(
           tx,
           previousTx,
@@ -689,9 +693,7 @@ class NotificationManager {
 
   private updatePendingBadge(transactions: any[]) {
     const pendingCount = transactions.filter(
-      (tx) =>
-        tx.confirmations === 0 ||
-        (tx.blockNumber === null && tx.blockHash === null)
+      (tx) => !isTransactionInBlock(tx)
     ).length;
 
     updatePendingTransactionBadge(pendingCount);
@@ -723,10 +725,18 @@ class NotificationManager {
   }
 
   // Clear all notification state (useful for wallet lock/reset)
-  public clearState() {
+  public clearState(preservePendingTransactions = false) {
     this.state.shownTransactionNotifications.clear();
-    this.state.pendingTransactions.clear();
-    updatePendingTransactionBadge(0);
+
+    // Only clear pending transactions if explicitly requested
+    // This allows us to keep tracking pending transactions when wallet is locked
+    if (!preservePendingTransactions) {
+      this.state.pendingTransactions.clear();
+      updatePendingTransactionBadge(0);
+    } else {
+      // Keep the badge count updated with current pending transactions
+      updatePendingTransactionBadge(this.state.pendingTransactions.size);
+    }
   }
 
   // Get token info from user's token list or cache

@@ -1,4 +1,5 @@
 import store from 'state/store';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Export the function so it can be imported elsewhere
 export function getPollingInterval() {
@@ -20,7 +21,7 @@ export function getPollingInterval() {
       ] || [];
     const hasPendingTransactions =
       Array.isArray(transactions) &&
-      transactions.some((tx: any) => tx.confirmations === 0);
+      transactions.some((tx: any) => !isTransactionInBlock(tx));
 
     // Use original fast polling when there are pending transactions
     if (hasPendingTransactions) {
