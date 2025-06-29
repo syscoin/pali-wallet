@@ -141,9 +141,9 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       if (path === '/settings/about')
         return t('generalMenu.infoHelp').toUpperCase();
       if (path === '/settings/advanced') return t('settings.advancedTitle');
-      if (path === '/settings/languages') return t('settings.languages');
+      if (path === '/settings/languages') return 'Languages';
       if (path === '/settings/currency') return t('settings.fiatCurrency');
-      if (path === '/settings/forget-wallet') return t('menus.forget');
+      if (path === '/settings/forget-wallet') return t('generalMenu.forget');
       if (path === '/settings/seed') return t('settings.walletSeedPhrase');
       if (path === '/settings/manage-accounts')
         return t('settings.manageAccounts');

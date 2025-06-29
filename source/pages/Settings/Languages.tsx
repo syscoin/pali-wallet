@@ -238,7 +238,7 @@ const Languages = () => {
 
         <div className="w-full px-4 absolute bottom-12 md:static">
           <NeutralButton type="submit" fullWidth disabled={!hasUnsavedChanges}>
-            {t('buttons.save')}
+            Save
           </NeutralButton>
         </div>
       </Form>

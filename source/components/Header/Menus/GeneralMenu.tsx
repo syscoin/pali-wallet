@@ -204,7 +204,7 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                         />
                       </div>
 
-                      <span>{t('generalMenu.languages')}</span>
+                      <span>Languages</span>
                     </li>
                   </Menu.Item>
 
