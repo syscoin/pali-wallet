@@ -95,7 +95,7 @@
     "redux-logger": "^3.0.6",
     "redux-thunk": "^3.1.0",
     "sass": "^1.80.7",
-    "syscoinjs-lib": "1.0.238",
+    "syscoinjs-lib": "1.0.239",
     "tailwindcss": "^3.4.15",
     "tippy.js": "^6.3.7",
     "uuid": "^9.0.1",
