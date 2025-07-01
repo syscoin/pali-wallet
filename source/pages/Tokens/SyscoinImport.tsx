@@ -6,12 +6,11 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import * as syscoinjs from 'syscoinjs-lib';
 
-import { getAsset } from '@pollum-io/sysweb3-utils';
-
 import { DefaultModal, ErrorModal, NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { ISysAssetMetadata } from 'types/tokens';
 
 export const SyscoinImport = () => {
   const { t } = useTranslation();
@@ -74,9 +73,12 @@ export const SyscoinImport = () => {
       setLookupStatus('');
 
       try {
-        const assetData = await getAsset(activeNetwork.url, assetGuid);
+        const assetData = (await controllerEmitter(
+          ['wallet', 'getSysAssetMetadata'],
+          [assetGuid, activeNetwork.url]
+        )) as ISysAssetMetadata | null;
 
-        // getAsset returns undefined for invalid/unknown assets (doesn't throw)
+        // getSysAssetMetadata returns undefined for invalid/unknown assets (doesn't throw)
         if (assetData && assetData.symbol) {
           // Auto-fill the form with the found asset data
           form.setFieldsValue({
@@ -97,7 +99,7 @@ export const SyscoinImport = () => {
           // Visual feedback is provided by the form validation checkmark
           // No need for persistent message that shows on other pages
         } else {
-          // Asset not found or invalid (getAsset returned undefined)
+          // Asset not found or invalid (getSysAssetMetadata returned undefined)
 
           // Set error state with visual X
           form.setFields([
@@ -118,7 +120,7 @@ export const SyscoinImport = () => {
       } catch (lookupError) {
         console.error('Asset lookup error:', lookupError);
 
-        // This should rarely happen since getAsset catches errors internally
+        // This should rarely happen since getSysAssetMetadata catches errors internally
         const lookupErrorMessage = t('tokens.assetNotFound');
 
         // Set error state with visual X

@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, memo } from 'react';
+import React, { Fragment, memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -35,8 +35,9 @@ CopyIcon.displayName = 'CopyIcon';
 export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const {
     activeNetwork: { chainId, currency },
+    activeAccount,
+    accountAssets,
   } = useSelector((state: RootState) => state.vault);
-  const { coinsList } = useSelector((state: RootState) => state.vaultGlobal);
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
@@ -45,6 +46,23 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const { t } = useTranslation();
+  // Create token symbol cache from user's assets
+  const tokenSymbolCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    const currentAccountAssets =
+      accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    if (currentAccountAssets?.ethereum) {
+      currentAccountAssets.ethereum.forEach((token) => {
+        if (token.contractAddress && token.tokenSymbol) {
+          cache.set(token.contractAddress.toLowerCase(), token.tokenSymbol);
+        }
+      });
+    }
+
+    return cache;
+  }, [accountAssets, activeAccount.type, activeAccount.id]);
+
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
     useTransactionsListConfig();
 
@@ -110,7 +128,7 @@ export const EvmTransactionDetails = ({ hash }: { hash: string }) => {
     txValue = isErc20Tx
       ? Number(getERC20TransferValue(tx as any)) / 1e18
       : parseInt(tx.value, 16) / 1e18;
-    txSymbol = getTokenSymbol(isErc20Tx, coinsList, tx, currency);
+    txSymbol = getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = tx.direction

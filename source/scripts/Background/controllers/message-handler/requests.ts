@@ -379,6 +379,15 @@ export const methodRequest = async (
         };
 
         return sysProviderStateValue;
+      case 'getSysAssetMetadata':
+        if (!data.params || data.params.length < 2) {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams(
+              'getSysAssetMetadata requires assetGuid and networkUrl parameters'
+            )
+          );
+        }
+        return wallet.getSysAssetMetadata(data.params[0], data.params[1]);
       default:
         throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }

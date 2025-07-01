@@ -28,7 +28,76 @@ const CurrencyView = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
   const fiat = useSelector((state: RootState) => state.price.fiat);
-  const coins = useSelector((state: RootState) => state.price.coins);
+  // Currencies supported by both CoinGecko and Blockbook (from actual Blockbook API response)
+  // This list matches exactly what Blockbook's /api/v2/tickers/currency endpoint returns
+  const coins = [
+    'aed',
+    'ars',
+    'aud',
+    'bch',
+    'bdt',
+    'bhd',
+    'bits',
+    'bmd',
+    'bnb',
+    'brl',
+    'btc',
+    'cad',
+    'chf',
+    'clp',
+    'cny',
+    'czk',
+    'dkk',
+    'dot',
+    'eos',
+    'eth',
+    'eur',
+    'gbp',
+    'gel',
+    'hkd',
+    'huf',
+    'idr',
+    'ils',
+    'inr',
+    'jpy',
+    'krw',
+    'kwd',
+    'link',
+    'lkr',
+    'ltc',
+    'mmk',
+    'mxn',
+    'myr',
+    'ngn',
+    'nok',
+    'nzd',
+    'php',
+    'pkr',
+    'pln',
+    'rub',
+    'sar',
+    'sats',
+    'sek',
+    'sgd',
+    'sol',
+    'thb',
+    'try',
+    'twd',
+    'uah',
+    'usd',
+    'vef',
+    'vnd',
+    'xag',
+    'xau',
+    'xdr',
+    'xlm',
+    'xrp',
+    'yfi',
+    'zar',
+  ].reduce((acc: any, curr: string) => {
+    acc[curr] = 1; // Convert to object format to match existing code
+    return acc;
+  }, {});
 
   if (!activeAccount) throw new Error('No account');
 
@@ -58,8 +127,9 @@ const CurrencyView = () => {
   const [confirmed, setConfirmed] = useState(false);
   const [inputValue, setInputValue] = useState<string>('');
 
-  // Currency to flag mapping (most common currencies)
+  // Currency to flag mapping for all supported currencies
   const currencyFlags = {
+    // Fiat currencies
     usd: '🇺🇸',
     eur: '🇪🇺',
     gbp: '🇬🇧',
@@ -87,9 +157,34 @@ const CurrencyView = () => {
     twd: '🇹🇼',
     thb: '🇹🇭',
     php: '🇵🇭',
-    cop: '🇨🇴',
-    pen: '🇵🇪',
     clp: '🇨🇱',
+    aed: '🇦🇪',
+    ars: '🇦🇷',
+    bdt: '🇧🇩',
+    bhd: '🇧🇭',
+    bmd: '🇧🇲',
+    gel: '🇬🇪',
+    huf: '🇭🇺',
+    idr: '🇮🇩',
+    kwd: '🇰🇼',
+    lkr: '🇱🇰',
+    mmk: '🇲🇲',
+    myr: '🇲🇾',
+    ngn: '🇳🇬',
+    pkr: '🇵🇰',
+    sar: '🇸🇦',
+    uah: '🇺🇦',
+    vef: '🇻🇪',
+    vnd: '🇻🇳',
+    // Cryptocurrencies (only official symbols)
+    btc: '₿',
+    ltc: 'Ł',
+    bits: '₿',
+    // Others will use the default 💰 fallback
+    // Precious metals & special
+    xag: '🥈',
+    xau: '🥇',
+    xdr: '🏦',
   };
 
   const filteredCoins = Object.keys(coins).filter((code) =>

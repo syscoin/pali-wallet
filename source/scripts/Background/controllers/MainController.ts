@@ -1,5 +1,4 @@
 // Removed unused import: ethErrors
-import floor from 'lodash/floor';
 import isEmpty from 'lodash/isEmpty';
 import isNil from 'lodash/isNil';
 
@@ -16,17 +15,13 @@ import {
   INetworkType,
   clearRpcCaches,
 } from '@pollum-io/sysweb3-network';
-import {
-  getSearch,
-  getTokenStandardMetadata,
-  txUtils,
-} from '@pollum-io/sysweb3-utils';
+import { txUtils } from '@pollum-io/sysweb3-utils';
 
 import { getController } from '..';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
-import { setPrices, setCoins } from 'state/price';
+import { setPrices } from 'state/price';
 import store from 'state/store';
 import { loadAndActivateSlip44Vault, saveMainState } from 'state/store';
 import {
@@ -54,7 +49,6 @@ import vaultCache, {
 import {
   setActiveSlip44,
   setAdvancedSettings,
-  setCoinsList,
   setHasEthProperty,
   setHasEncryptedVault,
   setLastLogin,
@@ -77,7 +71,13 @@ import {
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
 } from 'state/vaultGlobal';
-import { ITokenEthProps, IWatchAssetTokenProps } from 'types/tokens';
+import {
+  ITokenEthProps,
+  IWatchAssetTokenProps,
+  ISysAssetMetadata,
+  IAssetPreview,
+  ITokenDetails,
+} from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
 import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
@@ -112,10 +112,6 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
-
-// Constants for fiat price functionality
-const COINS_LIST_CACHE_KEY = 'pali_coinsListCache';
-const COINS_LIST_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Default slip44 values for fallback cases
 
@@ -157,6 +153,17 @@ class MainController {
 
   // Persistent providers for reading blockchain data (survives lock/unlock)
   private persistentProviders = new Map<string, CustomJsonRpcProvider>();
+
+  // Cache for UTXO network price data (same pattern as EVM)
+  private utxoPriceDataCache = new Map<
+    string,
+    {
+      data: { price: number; priceChange24h?: number };
+      timestamp: number;
+    }
+  >();
+
+  private readonly UTXO_PRICE_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache for price data
 
   constructor() {
     // Patch fetch to add Pali headers to all RPC requests
@@ -818,85 +825,29 @@ class MainController {
       const { activeNetwork, isBitcoinBased } = store.getState().vault;
       const id = getNetworkChain(isBitcoinBased);
 
-      let coinsList = null;
-      try {
-        const cachedData = await new Promise((resolve) => {
-          chrome.storage.local.get(COINS_LIST_CACHE_KEY, (result) =>
-            resolve(result[COINS_LIST_CACHE_KEY])
-          );
-        });
-
-        if (
-          cachedData &&
-          (cachedData as any).timestamp &&
-          Date.now() - (cachedData as any).timestamp < COINS_LIST_CACHE_DURATION
-        ) {
-          coinsList = (cachedData as any).list;
-          console.log('Using cached coinsList');
-        } else {
-          console.log('Fetching new coinsList from CoinGecko');
-          const response = await fetch(
-            'https://api.coingecko.com/api/v3/coins/list?include_platform=true'
-          );
-          if (!response.ok) {
-            throw new Error(
-              `CoinGecko API request failed with status ${response.status}`
-            );
-          }
-          coinsList = await response.json();
-          if (coinsList && Array.isArray(coinsList)) {
-            chrome.storage.local.set({
-              [COINS_LIST_CACHE_KEY]: {
-                list: coinsList,
-                timestamp: Date.now(),
-              },
-            });
-            store.dispatch(setCoinsList(coinsList));
-          } else {
-            coinsList = null;
-            console.error('Fetched coinsList is not in expected format');
-          }
-        }
-      } catch (fetchError) {
-        console.error('Failed to fetch or cache coinsList:', fetchError);
-        const coinsListState = store.getState().vaultGlobal.coinsList;
-        if (coinsListState?.length > 0) {
-          coinsList = coinsListState;
-          console.log(
-            'Using potentially stale coinsList from Redux store after fetch failure'
-          );
-        }
-      }
-
-      if (!coinsList) {
-        coinsList = store.getState().vaultGlobal.coinsList;
-        if (!coinsList || coinsList.length === 0) {
-          logError('setFiat: coinsList is empty and could not be fetched.', '');
-        }
-      }
+      // Use optimized price fetching instead of large coinsList
+      console.log(
+        'Using optimized price fetching for network:',
+        activeNetwork.chainId
+      );
 
       switch (id) {
         case INetworkType.Syscoin:
           try {
-            const activeNetworkURL = ensureTrailingSlash(activeNetwork.url);
-            // Try to fetch prices for all networks - no testnet differentiation
-            const currencies = await (
-              await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
-            ).json();
-            if (currencies && currencies.rates) {
-              store.dispatch(setCoins(currencies.rates));
-              if (currencies.rates[currency]) {
-                store.dispatch(
-                  setPrices({
-                    asset: currency,
-                    price: currencies.rates[currency],
-                  })
-                );
-                return;
-              }
-            }
+            // Use cached UTXO price fetching (same pattern as EVM)
+            const priceData = await this.getUtxoPriceData(
+              activeNetwork.url,
+              currency
+            );
 
-            store.dispatch(setPrices({ asset: currency, price: 0 }));
+            store.dispatch(
+              setPrices({
+                asset: currency,
+                price: priceData.price,
+                priceChange24h: priceData.priceChange24h,
+              })
+            );
+            return;
           } catch (error) {
             // If price API is not available (e.g., on testnets), just set price to 0
             store.dispatch(setPrices({ asset: currency, price: 0 }));
@@ -905,58 +856,19 @@ class MainController {
 
         case INetworkType.Ethereum:
           try {
-            // Try to fetch prices for all networks - no testnet differentiation
+            // Use optimized price fetching for EVM networks
+            const priceData = await this.getTokenPriceData(
+              activeNetwork.chainId,
+              currency
+            );
 
-            if (coinsList && Array.isArray(coinsList) && coinsList.length > 0) {
-              const findCoinSymbolByNetwork = coinsList.find(
-                (coin: any) =>
-                  coin.symbol.toLowerCase() ===
-                  activeNetwork.currency.toLowerCase()
-              )?.id;
-
-              if (findCoinSymbolByNetwork) {
-                const coinPriceResponse = await fetch(
-                  `https://api.coingecko.com/api/v3/simple/price?ids=${findCoinSymbolByNetwork}&vs_currencies=${currency}`
-                );
-                const coinPriceData = await coinPriceResponse.json();
-                const currentNetworkCoinMarket =
-                  coinPriceData[findCoinSymbolByNetwork]?.[
-                    currency.toLowerCase()
-                  ];
-
-                store.dispatch(
-                  setPrices({
-                    asset: currency,
-                    price: currentNetworkCoinMarket
-                      ? currentNetworkCoinMarket
-                      : 0,
-                  })
-                );
-              } else {
-                logError(
-                  `Could not find ID for currency symbol: ${activeNetwork.currency} in CoinGecko list`,
-                  ''
-                );
-                store.dispatch(setPrices({ asset: currency, price: 0 }));
-              }
-            } else {
-              logError(
-                'setFiat EVM: coinsList not available, attempting to use stale price or default to 0.',
-                ''
-              );
-              const lastCoinsPrices = store.getState().price.coins;
-              const findLastCurrencyValue =
-                lastCoinsPrices[currency.toLowerCase()];
-              store.dispatch(
-                setPrices({
-                  asset: currency,
-                  price:
-                    findLastCurrencyValue !== undefined
-                      ? findLastCurrencyValue
-                      : 0,
-                })
-              );
-            }
+            store.dispatch(
+              setPrices({
+                asset: currency,
+                price: priceData.price,
+                priceChange24h: priceData.priceChange24h,
+              })
+            );
             return;
           } catch (error) {
             logError('Failed to retrieve asset price - EVM', '', error);
@@ -1262,7 +1174,6 @@ class MainController {
         isFirstTime: true,
       })
     );
-    store.dispatch(setCoinsList([]));
 
     // Reset activeSlip44 to default after forgetting wallet
     // This ensures clean state regardless of what the previous wallet supported
@@ -1861,52 +1772,61 @@ class MainController {
 
   public async handleWatchAsset(
     type: string,
-    asset: IWatchAssetTokenProps
+    asset: IWatchAssetTokenProps,
+    assetPreview: IAssetPreview
   ): Promise<boolean> {
-    const {
-      activeAccount: activeAccountInfo,
-      accounts,
-      isBitcoinBased,
-    } = store.getState().vault;
+    const { isBitcoinBased } = store.getState().vault;
 
     if (isBitcoinBased) {
       throw new Error('Watch asset is not supported on Bitcoin networks');
     }
 
-    const activeAccount =
-      accounts[activeAccountInfo.type][activeAccountInfo.id];
-    if (type !== 'ERC20') {
-      throw new Error(`Asset of type ${type} not supported`);
+    // Support all Blockscout token standards for external dApps
+    const supportedTypes = ['ERC20', 'ERC777', 'ERC4626'];
+    if (!supportedTypes.includes(type)) {
+      throw new Error(
+        `Asset of type ${type} not supported. Supported types: ${supportedTypes.join(
+          ', '
+        )}`
+      );
     }
 
-    const metadata = await getTokenStandardMetadata(
-      asset.address,
-      activeAccount.address,
-      this.ethereumTransaction.web3Provider
-    );
-
-    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-    const formattedBalance = floor(parseFloat(balance), 4);
-
     try {
-      const assetToAdd = {
-        tokenSymbol: asset.symbol,
-        contractAddress: asset.address,
-        decimals: Number(asset.decimals),
-        isNft: false,
-        balance: formattedBalance ?? 0,
-        logo: asset?.image,
-      } as ITokenEthProps;
+      // Use the provided asset preview (already fetched by getAssetInfo) and convert to vault format
+      const assetToAdd: ITokenEthProps = {
+        tokenSymbol: assetPreview.tokenSymbol,
+        contractAddress: assetPreview.contractAddress,
+        decimals: assetPreview.decimals,
+        isNft: assetPreview.isNft,
+        balance: assetPreview.balance,
+        logo: assetPreview.logo,
+        chainId: assetPreview.chainId,
+        name: assetPreview.name,
+        id: assetPreview.id,
+      };
+      console.log(
+        `[MainController] Using provided asset preview for ${assetPreview.tokenSymbol}`
+      );
 
       await this.account.eth.saveTokenInfo(assetToAdd);
 
+      console.log(
+        `[MainController] Successfully added token ${assetToAdd.tokenSymbol} via dApp request`
+      );
       return true;
     } catch (error) {
-      throw new Error(error);
+      console.error(
+        '[MainController] Error handling dApp watch asset request:',
+        error
+      );
+      throw new Error(error.message || 'Failed to add token');
     }
   }
 
-  public async getAssetInfo(type: string, asset: IWatchAssetTokenProps) {
+  public async getAssetInfo(
+    type: string,
+    asset: IWatchAssetTokenProps
+  ): Promise<IAssetPreview> {
     const {
       activeAccount: activeAccountInfo,
       accounts,
@@ -1920,59 +1840,71 @@ class MainController {
 
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
-    if (type !== 'ERC20') {
-      throw new Error(`Asset of type ${type} not supported`);
+
+    // Support all Blockscout token standards for external dApps
+    const supportedTypes = ['ERC20', 'ERC777', 'ERC4626'];
+    if (!supportedTypes.includes(type)) {
+      throw new Error(
+        `Asset of type ${type} not supported. Supported types: ${supportedTypes.join(
+          ', '
+        )}`
+      );
     }
 
-    const metadata = await getTokenStandardMetadata(
-      asset.address,
-      activeAccount.address,
-      this.ethereumTransaction.web3Provider
-    );
+    try {
+      // Use market data validation to get enhanced token info including logos
+      const tokenDetails = await this.getTokenDetailsWithMarketData(
+        asset.address,
+        activeAccount.address
+      );
 
-    const balance = `${metadata.balance / 10 ** metadata.decimals}`;
-    const formattedBalance = floor(parseFloat(balance), 4);
+      if (!tokenDetails) {
+        throw new Error('Invalid token contract or token not found');
+      }
 
-    let web3Token: ITokenEthProps;
+      // Use CoinGecko image if available, otherwise fall back to provided image or Pali logo
+      const tokenLogo =
+        tokenDetails.image?.large ||
+        tokenDetails.image?.small ||
+        tokenDetails.image?.thumb ||
+        asset?.image ||
+        PaliLogo;
 
-    const assetToAdd = {
-      tokenSymbol: asset.symbol,
-      contractAddress: asset.address,
-      decimals: Number(asset.decimals),
-      isNft: false,
-      balance: formattedBalance ?? 0,
-      logo: asset?.image,
-    } as ITokenEthProps;
-
-    const { coins } = await getSearch(assetToAdd.tokenSymbol);
-
-    if (coins && coins[0]) {
-      const { name, thumb } = coins[0];
-
-      web3Token = {
-        ...assetToAdd,
-        tokenSymbol: assetToAdd.tokenSymbol,
-        balance: assetToAdd.balance,
-        name,
-        id: assetToAdd.contractAddress,
-        logo: assetToAdd?.logo ? assetToAdd.logo : thumb,
-        isNft: assetToAdd.isNft,
+      // Return enhanced token info for preview
+      const assetPreview: IAssetPreview = {
+        tokenSymbol: asset.symbol || tokenDetails.symbol,
+        contractAddress: asset.address,
+        decimals: Number(asset.decimals || tokenDetails.decimals),
+        isNft: false,
+        balance: tokenDetails.balance,
+        logo: tokenLogo,
         chainId: activeNetwork.chainId,
+        name: tokenDetails.name || asset.symbol || tokenDetails.symbol,
+        id: asset.address,
+        tokenStandard: tokenDetails.tokenStandard,
+        // Add market data if available
+        ...(tokenDetails.isVerified && {
+          isVerified: tokenDetails.isVerified,
+          currentPrice: tokenDetails.market_data?.current_price?.usd,
+          priceChange24h: tokenDetails.market_data?.price_change_percentage_24h,
+          marketCap: tokenDetails.market_data?.market_cap?.usd,
+        }),
       };
-    } else {
-      web3Token = {
-        ...assetToAdd,
-        tokenSymbol: assetToAdd.tokenSymbol,
-        balance: assetToAdd.balance,
-        name: assetToAdd.tokenSymbol,
-        id: assetToAdd.contractAddress,
-        logo: assetToAdd?.logo ? assetToAdd.logo : PaliLogo,
-        isNft: assetToAdd.isNft,
-        chainId: activeNetwork.chainId,
-      };
+
+      console.log(
+        `[MainController] Retrieved enhanced asset info for ${tokenDetails.tokenStandard} token ${tokenDetails.symbol}`,
+        {
+          hasLogo: !!tokenLogo && tokenLogo !== PaliLogo,
+          isVerified: tokenDetails.isVerified,
+          hasMarketData: !!tokenDetails.market_data?.current_price?.usd,
+        }
+      );
+
+      return assetPreview;
+    } catch (error) {
+      console.error('[MainController] Error getting asset info:', error);
+      throw new Error(error.message || 'Failed to get token information');
     }
-
-    return web3Token;
   }
 
   public async addCustomRpc(network: INetwork): Promise<INetwork> {
@@ -1990,10 +1922,52 @@ class MainController {
       throw new Error('network already exists, remove or edit it');
     }
 
-    const networkWithCustomParams = {
+    let networkWithCustomParams = {
       ...network,
       default: false,
     } as INetwork;
+
+    // Auto-detect CoinGecko IDs for EVM networks
+    if (network.kind === INetworkType.Ethereum) {
+      try {
+        console.log(
+          `[MainController] Auto-detecting CoinGecko IDs for chainId ${network.chainId}`
+        );
+        const coinGeckoIds = await this.evmAssetsController.detectCoinGeckoIds(
+          network.chainId
+        );
+
+        if (coinGeckoIds) {
+          networkWithCustomParams = {
+            ...networkWithCustomParams,
+            ...(coinGeckoIds.coingeckoId && {
+              coingeckoId: coinGeckoIds.coingeckoId,
+            }),
+            ...(coinGeckoIds.coingeckoPlatformId && {
+              coingeckoPlatformId: coinGeckoIds.coingeckoPlatformId,
+            }),
+          };
+
+          console.log(
+            `[MainController] Successfully detected CoinGecko IDs for ${network.label}:`,
+            {
+              coingeckoId: coinGeckoIds.coingeckoId,
+              coingeckoPlatformId: coinGeckoIds.coingeckoPlatformId,
+            }
+          );
+        } else {
+          console.log(
+            `[MainController] No CoinGecko IDs found for ${network.label} (chainId: ${network.chainId})`
+          );
+        }
+      } catch (error) {
+        console.warn(
+          `[MainController] Failed to auto-detect CoinGecko IDs for ${network.label}:`,
+          error
+        );
+        // Continue without CoinGecko IDs - network will still work for basic functionality
+      }
+    }
 
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
@@ -2252,7 +2226,10 @@ class MainController {
   }) {
     const { accounts, accountAssets } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
-    const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
+    const currentAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    // Ensure currentAssets and nfts array exist
+    const currentNfts = currentAssets?.nfts || [];
 
     const { currentPromise: nftsPromises, cancel } =
       this.cancellablePromises.createCancellablePromise<void>(
@@ -2267,10 +2244,10 @@ class MainController {
             );
 
             const validateUpdatedAndPreviousNftsLength =
-              updatedNfts.length < currentAssets.nfts.length;
+              updatedNfts.length < currentNfts.length;
 
             const validateIfUpdatedNftsStayEmpty =
-              currentAssets.nfts.length > 0 && isEmpty(updatedNfts);
+              currentNfts.length > 0 && isEmpty(updatedNfts);
 
             const validateIfNftsUpdatedIsEmpty = isEmpty(updatedNfts);
 
@@ -2278,7 +2255,7 @@ class MainController {
               isNil(value)
             );
             const validateIfIsSameLength =
-              updatedNfts.length === currentAssets.nfts.length;
+              updatedNfts.length === currentNfts.length;
 
             const validateIfIsInvalidDispatch =
               validateUpdatedAndPreviousNftsLength ||
@@ -3599,34 +3576,6 @@ class MainController {
   private evmTransactionsController = EvmTransactionsController();
 
   // Direct EVM methods for cleaner UI access
-  public async addCustomTokenByType(
-    walletAddress: string,
-    contractAddress: string,
-    symbol: string,
-    decimals: number
-  ) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-    return this.evmAssetsController.addCustomTokenByType(
-      walletAddress,
-      contractAddress,
-      symbol,
-      decimals,
-      this.ethereumTransaction.web3Provider
-    );
-  }
-
-  public async addEvmDefaultToken(token: any, accountAddress: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-    return this.evmAssetsController.addEvmDefaultToken(
-      token,
-      accountAddress,
-      this.ethereumTransaction.web3Provider
-    );
-  }
 
   public async checkContractType(contractAddress: string) {
     if (!this.ethereumTransaction?.web3Provider) {
@@ -3646,30 +3595,6 @@ class MainController {
       throw new Error('No valid web3Provider available');
     }
     return this.evmAssetsController.getERC20TokenInfo(
-      contractAddress,
-      accountAddress,
-      this.ethereumTransaction.web3Provider
-    );
-  }
-
-  public async getNftMetadata(contractAddress: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-    return this.evmAssetsController.getNftMetadata(
-      contractAddress,
-      this.ethereumTransaction.web3Provider
-    );
-  }
-
-  public async getTokenMetadata(
-    contractAddress: string,
-    accountAddress: string
-  ) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-    return this.evmAssetsController.getTokenMetadata(
       contractAddress,
       accountAddress,
       this.ethereumTransaction.web3Provider
@@ -3708,6 +3633,13 @@ class MainController {
 
   public async addSysDefaultToken(assetGuid: string, networkUrl: string) {
     return this.assetsManager.sys.addSysDefaultToken(assetGuid, networkUrl);
+  }
+
+  public async getSysAssetMetadata(
+    assetGuid: string,
+    networkUrl: string
+  ): Promise<ISysAssetMetadata | null> {
+    return this.assetsManager.sys.getAssetCached(networkUrl, assetGuid);
   }
 
   public async saveTokenInfo(token: any, tokenType?: string) {
@@ -3826,6 +3758,148 @@ class MainController {
 
     // Clear the map
     this.persistentProviders.clear();
+  }
+  /**
+   * Get current network platform - delegates to EvmAssetsController
+   */
+  public getCurrentNetworkPlatform(): string | null {
+    return this.evmAssetsController.getCurrentNetworkPlatform();
+  }
+
+  /**
+   * Get fiat price data for network native token - delegates to EvmAssetsController
+   */
+  public async getTokenPriceData(chainId: number, currency?: string) {
+    return await this.evmAssetsController.getTokenPriceData(chainId, currency);
+  }
+
+  /**
+   * Cached UTXO price data fetching (same pattern as EVM)
+   */
+  private async getUtxoPriceData(
+    networkUrl: string,
+    currency = 'usd'
+  ): Promise<{
+    price: number;
+    priceChange24h?: number;
+  }> {
+    // Check cache first
+    const cacheKey = `${networkUrl}-${currency}`;
+    const cached = this.utxoPriceDataCache.get(cacheKey);
+    const now = Date.now();
+
+    if (cached && now - cached.timestamp < this.UTXO_PRICE_CACHE_DURATION) {
+      console.log(
+        `[MainController] Using cached UTXO price data for ${networkUrl}`
+      );
+      return cached.data;
+    }
+
+    try {
+      const activeNetworkURL = ensureTrailingSlash(networkUrl);
+      const currencies = await (
+        await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
+      ).json();
+
+      if (currencies && currencies.rates && currencies.rates[currency]) {
+        const result = {
+          price: currencies.rates[currency],
+          priceChange24h: undefined, // Backend doesn't provide 24h change for UTXO yet
+        };
+
+        // Cache the result
+        this.utxoPriceDataCache.set(cacheKey, {
+          data: result,
+          timestamp: now,
+        });
+
+        console.log(
+          `[MainController] Fetched and cached UTXO price data for ${networkUrl}`
+        );
+        return result;
+      }
+
+      console.warn(
+        `[MainController] Failed to fetch UTXO price for currency ${currency} from ${networkUrl}`
+      );
+      return { price: 0 };
+    } catch (error) {
+      console.error(
+        `[MainController] Error fetching UTXO price from ${networkUrl}:`,
+        error
+      );
+      return { price: 0 };
+    }
+  }
+
+  /**
+   * Get basic token details from blockchain - delegates to EvmAssetsController
+   */
+  public async getTokenDetails(contractAddress: string, walletAddress: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.getTokenDetails(
+      contractAddress,
+      walletAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  /**
+   * PATH 1: Get tokens user actually owns via Blockscout API - delegates to EvmAssetsController
+   */
+  public async getUserOwnedTokens(
+    walletAddress: string,
+    explorerApiUrl?: string
+  ) {
+    return this.evmAssetsController.getUserOwnedTokens(
+      walletAddress,
+      explorerApiUrl
+    );
+  }
+
+  /**
+   * PATH 2: Validate and get basic fungible token info (for import forms) - delegates to EvmAssetsController
+   */
+
+  public async validateERC20Only(
+    contractAddress: string,
+    walletAddress: string
+  ): Promise<ITokenDetails | null> {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+
+    return this.evmAssetsController.validateERC20Only(
+      contractAddress,
+      walletAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  /**
+   * Get full token details with market data (for details screens) - delegates to EvmAssetsController
+   */
+  public async getTokenDetailsWithMarketData(
+    contractAddress: string,
+    walletAddress: string
+  ) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.getTokenDetailsWithMarketData(
+      contractAddress,
+      walletAddress,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  /**
+   * Get only market data from CoinGecko without any blockchain calls - delegates to EvmAssetsController
+   */
+  public async getOnlyMarketData(contractAddress: string) {
+    return this.evmAssetsController.getOnlyMarketData(contractAddress);
   }
 }
 

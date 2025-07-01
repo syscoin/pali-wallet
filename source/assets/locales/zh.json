@@ -38,7 +38,8 @@
     "retryConnect": "重试连接",
     "delete": "删除",
     "remove": "移除",
-    "errorDescription": "错误描述"
+    "errorDescription": "错误描述",
+    "importToken": "导入代币"
   },
   "header": {
     "accounts": "账户",
@@ -80,6 +81,7 @@
     "contractCopied": "合约复制成功",
     "viewOnExplorer": "在浏览器中查看",
     "viewAccountOnExplorer": "在浏览器中查看账户",
+    "viewCollectionOnExplorer": "在浏览器中查看收藏",
     "verifySysAddress": "验证您的{{currency}}地址",
     "verifySysAddressDescription": "点击下面的按钮验证您的{{currency}}地址。",
     "addressVerified": "地址验证成功",
@@ -283,7 +285,17 @@
   "tooltip": {
     "editAsset": "编辑资产",
     "assetDetails": "资产详情",
-    "deleteAsset": "删除资产"
+    "deleteAsset": "删除资产",
+    "closeSortOptions": "关闭排序选项",
+    "sortAssets": "排序资产",
+    "searchAssets": "搜索资产",
+    "viewTokens": "查看代币",
+    "viewNFTs": "查看 NFTs"
+  },
+  "assetsHeader": {
+    "sortBy": "排序方式：",
+    "name": "名称",
+    "tokenOrContractAddress": "代币或合约地址"
   },
   "networkMenu": {
     "viewConnected": "查看已连接的网站",
@@ -342,21 +354,6 @@
     "tokenDecimals": "代币小数位数",
     "tokenSuccessfullyAdded": "代币添加成功！",
     "wasSuccessfullyAdded": "已成功添加到您的钱包。",
-    "verifyTheCurrentNetwork": "验证当前网络",
-    "verifyTheCurrentNetworkMessage": "此代币可能在当前网络中不可用。请验证代币网络并重试。",
-    "verifyTheCurrentNetworkLog": "合约地址无效。请验证当前合约地址。",
-    "invalidContractAddressTitle": "合约地址无效",
-    "invalidContractAddressMessage": "此合约地址不是代币合约。",
-    "invalidContractAddressLog1": "此合约不是来自有效代币的",
-    "invalidContractAddressLog2": "请进一步验证，如果您确信这是代币合约，请通过我们的支持渠道联系我们",
-    "tokenAlreadyExist": "代币已存在",
-    "verifyTheTokenContract": "验证代币合约地址。",
-    "thisTokenContract": "此代币合约已添加到您的代币列表中。请尝试使用其他代币地址！",
-    "searchBySymbol": "按符号搜索",
-    "notAvailableInCurrentNetwork": "此代币可能在当前网络中不可用。请验证代币网络并重试。",
-    "tokenNetworkProbably": "代币网络可能与当前网络不同。",
-    "couldNotAddTokenToYour": "无法将代币添加到您的钱包。请检查网络和资产guid，稍后重试。",
-    "tokenNotFoundIn": "在您的XPUB中未找到代币或代币已导入。",
     "tokenNotAdded": "代币未添加。",
     "tokenGuid": "资产GUID",
     "assetGuidRequired": "资产GUID是必需的",
@@ -371,7 +368,22 @@
     "confirmDeleteTokenEvm": "确定要从钱包中移除{{symbol}}吗？您可以随时使用合约地址重新添加。",
     "confirmDeleteTokenSpt": "确定要从钱包中移除{{symbol}}吗？您可以随时使用资产GUID重新添加。",
     "noSptAssetsFound": "未找到SPT资产",
-    "importTokensToGetStarted": "导入代币以开始"
+    "importTokensToGetStarted": "导入代币以开始",
+    "verifiedByCoinGecko": "由 CoinGecko 验证",
+    "unverifiedToken": "未验证的代币",
+    "standardContract": "标准合约",
+    "noTokensFound": "未找到代币",
+    "youDontHaveTokensYet": "您的钱包中还没有任何代币",
+    "enterContractAddress": "输入合约地址 (0x...)",
+    "supportsERC20Tokens": "支持 ERC-20、ERC-777 和 ERC-4626 代币",
+    "addCustomToken": "添加自定义代币",
+    "enterContractToImport": "在上方输入合约地址以导入代币",
+    "importing": "导入中...",
+    "tokenImported": "代币已导入",
+    "individualTokensShownBelow": "此收藏中的单个代币显示在下方",
+    "yourTokens": "您的代币",
+    "addCustomTab": "添加自定义",
+    "loadingYourTokens": "正在加载您的代币..."
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

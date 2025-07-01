@@ -38,7 +38,8 @@
     "retryConnect": "Erneut verbinden",
     "delete": "Löschen",
     "remove": "Entfernen",
-    "errorDescription": "Fehlerbeschreibung"
+    "errorDescription": "Fehlerbeschreibung",
+    "importToken": "Token importieren"
   },
   "header": {
     "accounts": "Konten",
@@ -80,6 +81,7 @@
     "contractCopied": "Vertrag erfolgreich kopiert",
     "viewOnExplorer": "Im Explorer anzeigen",
     "viewAccountOnExplorer": "Konto im Explorer anzeigen",
+    "viewCollectionOnExplorer": "Sammlung im Explorer anzeigen",
     "verifySysAddress": "Ihre {{currency}}-Adresse verifizieren",
     "verifySysAddressDescription": "Klicken Sie auf die Schaltfläche unten, um Ihre {{currency}}-Adresse zu verifizieren.",
     "addressVerified": "Adresse erfolgreich verifiziert",
@@ -283,7 +285,17 @@
   "tooltip": {
     "editAsset": "Asset bearbeiten",
     "assetDetails": "Asset-Details",
-    "deleteAsset": "Asset löschen"
+    "deleteAsset": "Asset löschen",
+    "closeSortOptions": "Sortieroptionen schließen",
+    "sortAssets": "Assets sortieren",
+    "searchAssets": "Assets suchen",
+    "viewTokens": "Token anzeigen",
+    "viewNFTs": "NFTs anzeigen"
+  },
+  "assetsHeader": {
+    "sortBy": "SORTIEREN NACH:",
+    "name": "Name",
+    "tokenOrContractAddress": "Token oder Vertragsadresse"
   },
   "networkMenu": {
     "viewConnected": "Verbundene Websites anzeigen",
@@ -462,21 +474,6 @@
     "tokenDecimals": "Token-Dezimalstellen",
     "tokenSuccessfullyAdded": "Token erfolgreich hinzugefügt!",
     "wasSuccessfullyAdded": "wurde erfolgreich zu Ihrer Wallet hinzugefügt.",
-    "verifyTheCurrentNetwork": "Aktuelles Netzwerk überprüfen",
-    "verifyTheCurrentNetworkMessage": "Dieser Token ist wahrscheinlich nicht im aktuellen Netzwerk verfügbar. Überprüfen Sie das Token-Netzwerk und versuchen Sie es erneut.",
-    "verifyTheCurrentNetworkLog": "Ungültige Vertragsadresse. Überprüfen Sie die aktuelle Vertragsadresse.",
-    "invalidContractAddressTitle": "Ungültige Vertragsadresse",
-    "invalidContractAddressMessage": "Diese Vertragsadresse ist kein Token-Vertrag.",
-    "invalidContractAddressLog1": "Dieser Vertrag stammt nicht von einem gültigen Token auf",
-    "invalidContractAddressLog2": "überprüfen Sie es weiter und falls Sie sicher sind, dass es sich um einen Token handelt, kontaktieren Sie uns über unsere Support-Kanäle",
-    "tokenAlreadyExist": "Token existiert bereits",
-    "verifyTheTokenContract": "Token-Vertragsadresse überprüfen.",
-    "thisTokenContract": "Dieser Token-Vertrag ist bereits in Ihrer Token-Liste hinzugefügt. Versuchen Sie es mit einer anderen Token-Adresse!",
-    "searchBySymbol": "Nach Symbol suchen",
-    "notAvailableInCurrentNetwork": "Dieser Token ist wahrscheinlich nicht im aktuellen Netzwerk verfügbar. Überprüfen Sie das Token-Netzwerk und versuchen Sie es erneut.",
-    "tokenNetworkProbably": "Token-Netzwerk unterscheidet sich wahrscheinlich vom aktuellen Netzwerk.",
-    "couldNotAddTokenToYour": "Token konnte nicht zu Ihrer Wallet hinzugefügt werden. Überprüfen Sie das Netzwerk und die Asset-GUID und versuchen Sie es später erneut.",
-    "tokenNotFoundIn": "Token nicht in Ihrem XPUB gefunden oder Token ist bereits importiert.",
     "tokenNotAdded": "Token nicht hinzugefügt.",
     "tokenGuid": "Asset GUID",
     "assetGuidRequired": "Asset GUID ist erforderlich",
@@ -491,7 +488,22 @@
     "confirmDeleteTokenEvm": "Sind Sie sicher, dass Sie {{symbol}} aus Ihrer Wallet entfernen möchten? Sie können es jederzeit mit der Kontraktadresse wieder hinzufügen.",
     "confirmDeleteTokenSpt": "Sind Sie sicher, dass Sie {{symbol}} aus Ihrer Wallet entfernen möchten? Sie können es jederzeit mit der Asset-GUID wieder hinzufügen.",
     "noSptAssetsFound": "Keine SPT-Assets gefunden",
-    "importTokensToGetStarted": "Importieren Sie Token, um zu beginnen"
+    "importTokensToGetStarted": "Importieren Sie Token, um zu beginnen",
+    "verifiedByCoinGecko": "Von CoinGecko verifiziert",
+    "unverifiedToken": "Unverifizierter Token",
+    "standardContract": "Standardvertrag",
+    "noTokensFound": "Keine Token gefunden",
+    "youDontHaveTokensYet": "Sie haben noch keine Token in Ihrer Wallet",
+    "enterContractAddress": "Vertragsadresse eingeben (0x...)",
+    "supportsERC20Tokens": "Unterstützt ERC-20, ERC-777 und ERC-4626 Token",
+    "addCustomToken": "Benutzerdefinierten Token hinzufügen",
+    "enterContractToImport": "Geben Sie oben eine Vertragsadresse ein, um einen Token zu importieren",
+    "importing": "Importiere...",
+    "tokenImported": "Token importiert",
+    "individualTokensShownBelow": "Einzelne Token dieser Sammlung werden unten angezeigt",
+    "yourTokens": "Ihre Token",
+    "addCustomTab": "Benutzerdefiniert hinzufügen",
+    "loadingYourTokens": "Lade Ihre Token..."
   },
   "transactions": {
     "messageCopied": "Nachricht erfolgreich kopiert",

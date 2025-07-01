@@ -441,3 +441,11 @@ input[type='number']::-webkit-inner-spin-button {
 .animate-pulse-fast {
   animation: pulse-fast 0.75s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* Line clamp utility for token descriptions */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

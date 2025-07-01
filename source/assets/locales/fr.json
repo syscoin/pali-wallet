@@ -38,7 +38,8 @@
     "retryConnect": "Réessayer de se connecter",
     "delete": "Supprimer",
     "remove": "Retirer",
-    "errorDescription": "Description de l'erreur"
+    "errorDescription": "Description de l'erreur",
+    "importToken": "Importer un token"
   },
   "header": {
     "accounts": "COMPTES",
@@ -82,6 +83,7 @@
     "contractCopied": "Contrat copié avec succès",
     "viewOnExplorer": "Voir sur l'Explorateur",
     "viewAccountOnExplorer": "Voir le compte sur l'explorateur",
+    "viewCollectionOnExplorer": "Voir la collection sur l'Explorateur",
     "verifySysAddress": "Vérifiez votre adresse {{currency}}",
     "verifySysAddressDescription": "Cliquez sur le bouton ci-dessous pour vérifier votre adresse {{currency}}.",
     "addressVerified": "Adresse vérifiée avec succès",
@@ -283,7 +285,17 @@
   "tooltip": {
     "editAsset": "Modifier l'actif",
     "assetDetails": "Détails de l'actif",
-    "deleteAsset": "Supprimer l'actif"
+    "deleteAsset": "Supprimer l'actif",
+    "closeSortOptions": "Fermer les options de tri",
+    "sortAssets": "Trier les actifs",
+    "searchAssets": "Rechercher des actifs",
+    "viewTokens": "Voir les tokens",
+    "viewNFTs": "Voir les NFTs"
+  },
+  "assetsHeader": {
+    "sortBy": "TRIER PAR:",
+    "name": "Nom",
+    "tokenOrContractAddress": "Token ou adresse de contrat"
   },
   "networkMenu": {
     "viewConnected": "Voir les sites web connectés",
@@ -462,21 +474,6 @@
     "tokenDecimals": "Décimales du jeton",
     "tokenSuccessfullyAdded": "Jeton ajouté avec succès !",
     "wasSuccessfullyAdded": "a été ajouté avec succès à votre portefeuille.",
-    "verifyTheCurrentNetwork": "Vérifier le réseau actuel",
-    "verifyTheCurrentNetworkMessage": "Ce jeton n'est probablement pas disponible sur le réseau actuel. Vérifiez le réseau du jeton et réessayez.",
-    "verifyTheCurrentNetworkLog": "Adresse de contrat invalide. Vérifiez l'adresse du contrat actuel.",
-    "invalidContractAddressTitle": "Adresse de contrat invalide",
-    "invalidContractAddressMessage": "Cette adresse de contrat n'est pas un contrat de jeton.",
-    "invalidContractAddressLog1": "Ce contrat ne provient pas d'un jeton valide sur",
-    "invalidContractAddressLog2": "vérifiez-le davantage et si vous êtes sûr qu'il s'agit d'un jeton, contactez-nous via nos canaux d'assistance",
-    "tokenAlreadyExist": "Le jeton existe déjà",
-    "verifyTheTokenContract": "Vérifier l'adresse du contrat du jeton.",
-    "thisTokenContract": "Ce contrat de jeton est déjà ajouté dans votre liste de jetons. Réessayez avec une autre adresse de jeton !",
-    "searchBySymbol": "Rechercher par symbole",
-    "notAvailableInCurrentNetwork": "Ce jeton n'est probablement pas disponible sur le réseau actuel. Vérifiez le réseau du jeton et réessayez.",
-    "tokenNetworkProbably": "Le réseau du jeton est probablement différent du réseau actuel.",
-    "couldNotAddTokenToYour": "Impossible d'ajouter le jeton à votre portefeuille. Vérifiez le réseau et l'identifiant de l'actif et réessayez plus tard.",
-    "tokenNotFoundIn": "Jeton non trouvé dans votre XPUB ou le jeton est déjà importé.",
     "tokenNotAdded": "Jeton non ajouté.",
     "tokenGuid": "GUID de l'Actif",
     "assetGuidRequired": "GUID de l'actif requis",
@@ -491,7 +488,22 @@
     "confirmDeleteTokenEvm": "Êtes-vous sûr de vouloir supprimer {{symbol}} de votre portefeuille ? Vous pouvez le rajouter à tout moment en utilisant l'adresse du contrat.",
     "confirmDeleteTokenSpt": "Êtes-vous sûr de vouloir supprimer {{symbol}} de votre portefeuille ? Vous pouvez le rajouter à tout moment en utilisant le GUID de l'actif.",
     "noSptAssetsFound": "Aucun actif SPT trouvé",
-    "importTokensToGetStarted": "Importez des tokens pour commencer"
+    "importTokensToGetStarted": "Importez des tokens pour commencer",
+    "verifiedByCoinGecko": "Vérifié par CoinGecko",
+    "unverifiedToken": "Token non vérifié",
+    "standardContract": "Contrat standard",
+    "noTokensFound": "Aucun token trouvé",
+    "youDontHaveTokensYet": "Vous n'avez pas encore de tokens dans votre portefeuille",
+    "enterContractAddress": "Entrez l'adresse du contrat (0x...)",
+    "supportsERC20Tokens": "Prend en charge les tokens ERC-20, ERC-777 et ERC-4626",
+    "addCustomToken": "Ajouter un token personnalisé",
+    "enterContractToImport": "Entrez une adresse de contrat ci-dessus pour importer un token",
+    "importing": "Importation...",
+    "tokenImported": "Token importé",
+    "individualTokensShownBelow": "Les tokens individuels de cette collection sont affichés ci-dessous",
+    "yourTokens": "Vos Tokens",
+    "addCustomTab": "Ajouter Personnalisé",
+    "loadingYourTokens": "Chargement de vos tokens..."
   },
   "transactions": {
     "messageCopied": "Message copié avec succès",

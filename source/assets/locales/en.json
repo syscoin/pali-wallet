@@ -38,7 +38,8 @@
     "retryConnect": "Retry connect",
     "delete": "Delete",
     "remove": "Remove",
-    "errorDescription": "Error description"
+    "errorDescription": "Error description",
+    "importToken": "Import Token"
   },
   "components": {
     "newPassword": "New password (min 8 chars)",
@@ -85,7 +86,17 @@
   "tooltip": {
     "editAsset": "Edit Asset",
     "assetDetails": "Asset Details",
-    "deleteAsset": "Delete Asset"
+    "deleteAsset": "Delete Asset",
+    "closeSortOptions": "Close sort options",
+    "sortAssets": "Sort assets",
+    "searchAssets": "Search assets",
+    "viewTokens": "View tokens",
+    "viewNFTs": "View NFTs"
+  },
+  "assetsHeader": {
+    "sortBy": "SORT BY:",
+    "name": "Name",
+    "tokenOrContractAddress": "Token or contract address"
   },
   "header": {
     "accounts": "ACCOUNTS",
@@ -137,6 +148,7 @@
     "contractCopied": "Contract successfully copied",
     "viewOnExplorer": "View on Explorer",
     "viewAccountOnExplorer": "View account on explorer",
+    "viewCollectionOnExplorer": "View Collection on Explorer",
     "verifySysAddress": "Verify your {{currency}} address",
     "verifySysAddressDescription": "Click in button below to verify your {{currency}} address.",
     "addressVerified": "Address successfully verified",
@@ -462,21 +474,6 @@
     "tokenDecimals": "Token Decimals",
     "tokenSuccessfullyAdded": "Token successfully added!",
     "wasSuccessfullyAdded": "was successfully added to your wallet.",
-    "verifyTheCurrentNetwork": "Verify the current network",
-    "verifyTheCurrentNetworkMessage": "This token probably is not available in the current network. Verify the token network and try again.",
-    "verifyTheCurrentNetworkLog": "Invalid contract address. Verify the current contract address.",
-    "invalidContractAddressTitle": "Invalid Contract Address",
-    "invalidContractAddressMessage": "This contract address is not a token contract.",
-    "invalidContractAddressLog1": "This contract is not from a  valid token on",
-    "invalidContractAddressLog2": "verify it further and in case you sure is a token contact us through our support channels",
-    "tokenAlreadyExist": "Token Already Exists",
-    "verifyTheTokenContract": "Verify the token contract address.",
-    "thisTokenContract": "This token contract is already added in your token list. Try again using another token address!",
-    "searchBySymbol": "Search by symbol",
-    "notAvailableInCurrentNetwork": "This token probably is not available in the current network. Verify the token network and try again.",
-    "tokenNetworkProbably": "Token network probably is different from current network.",
-    "couldNotAddTokenToYour": "Could not add token to your wallet. Check the network and the asset guid and try again later.",
-    "tokenNotFoundIn": "Token not found in your XPUB or token is already imported.",
     "tokenNotAdded": "Token not added.",
     "tokenGuid": "Asset GUID",
     "assetGuidRequired": "Asset GUID is required",
@@ -491,7 +488,22 @@
     "confirmDeleteTokenEvm": "Are you sure you want to remove {{symbol}} from your wallet? You can re-add it anytime using the contract address.",
     "confirmDeleteTokenSpt": "Are you sure you want to remove {{symbol}} from your wallet? You can re-add it anytime using the Asset GUID.",
     "noSptAssetsFound": "No SPT assets found",
-    "importTokensToGetStarted": "Import tokens to get started"
+    "importTokensToGetStarted": "Import tokens to get started",
+    "verifiedByCoinGecko": "Verified by CoinGecko",
+    "unverifiedToken": "Unverified Token",
+    "standardContract": "Standard Contract",
+    "noTokensFound": "No tokens found",
+    "youDontHaveTokensYet": "You don't have any tokens in your wallet yet",
+    "enterContractAddress": "Enter contract address (0x...)",
+    "supportsERC20Tokens": "Supports ERC-20, ERC-777, and ERC-4626 tokens",
+    "addCustomToken": "Add Custom Token",
+    "enterContractToImport": "Enter a contract address above to import a token",
+    "importing": "Importing...",
+    "tokenImported": "Token Imported",
+    "individualTokensShownBelow": "Individual tokens in this collection are shown below",
+    "yourTokens": "Your Tokens",
+    "addCustomTab": "Add Custom",
+    "loadingYourTokens": "Loading your tokens..."
   },
   "transactions": {
     "messageCopied": "Message successfully copied",

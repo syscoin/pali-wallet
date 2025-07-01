@@ -70,6 +70,8 @@ export const ROLLUX_DEFAULT_NETWORK = {
     explorer: 'https://explorer.rollux.com',
     kind: INetworkType.Ethereum,
     slip44: 60, // EVM networks use Ethereum's slip44
+    coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
+    coingeckoPlatformId: 'rollux', // Platform ID for token searches
   } as INetwork,
   isEdit: false,
 };
@@ -84,6 +86,7 @@ export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.tanenbaum.io/api',
   explorer: 'https://explorer.tanenbaum.io/',
+  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
 } as INetwork;
 
 export const SYSCOIN_MAINNET_NETWORK = {
@@ -96,6 +99,8 @@ export const SYSCOIN_MAINNET_NETWORK = {
   slip44: 60, // EVM networks use Ethereum's slip44
   apiUrl: 'https://explorer.syscoin.org/api',
   explorer: 'https://explorer.syscoin.org',
+  coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
+  coingeckoPlatformId: 'syscoin-nevm', // Platform ID for token searches
 } as INetwork;
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = {
@@ -106,6 +111,8 @@ export const SYSCOIN_UTXO_MAINNET_NETWORK = {
   currency: 'sys',
   slip44: 57,
   kind: INetworkType.Syscoin,
+  coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
+  // No platform ID needed for UTXO networks
 } as INetwork;
 
 export const SYSCOIN_UTXO_TESTNET_NETWORK = {
@@ -116,6 +123,8 @@ export const SYSCOIN_UTXO_TESTNET_NETWORK = {
   currency: 'tsys',
   slip44: 1, // Standard testnet slip44
   kind: INetworkType.Syscoin,
+  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
+  // No platform ID needed for UTXO networks
 } as INetwork;
 
 export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
@@ -205,6 +214,8 @@ export const PALI_NETWORKS_STATE = {
       apiUrl: 'https://api.etherscan.io/api',
       kind: INetworkType.Ethereum,
       slip44: 60, // Ethereum
+      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
+      coingeckoPlatformId: 'ethereum', // Platform ID for token searches
     } as INetwork,
     [CHAIN_IDS.POLYGON_MAINNET]: {
       chainId: CHAIN_IDS.POLYGON_MAINNET,
@@ -216,6 +227,8 @@ export const PALI_NETWORKS_STATE = {
       explorer: 'https://polygonscan.com',
       kind: INetworkType.Ethereum,
       slip44: 60, // EVM networks use Ethereum's slip44
+      coingeckoId: 'matic-network', // Native token (MATIC) CoinGecko ID
+      coingeckoPlatformId: 'polygon-pos', // Platform ID for token searches
     } as INetwork,
   },
   syscoin: {

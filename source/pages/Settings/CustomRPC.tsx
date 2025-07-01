@@ -1180,7 +1180,7 @@ const CustomRPCView = () => {
           {state?.isEditing ? (
             <div className="flex gap-6 justify-center">
               <SecondaryButton type="button" onClick={() => navigate(-1)}>
-                Cancel
+                {t('buttons.cancel')}
               </SecondaryButton>
               <PrimaryButton type="submit" disabled={loading} loading={loading}>
                 {t('buttons.save')}

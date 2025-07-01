@@ -7,10 +7,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
-import {
-  RiEditLine as EditIcon,
-  RiShareForward2Line as DetailsIcon,
-} from 'react-icons/ri';
+import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
@@ -51,18 +48,21 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   const currentChainAssets =
     assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
 
-  const assetsSorted = (sortBy: string) => {
+  const assetsSorted = (tokens: ITokenEthProps[], sortBy: string) => {
+    const sortedAssets = [...tokens]; // Create a copy to avoid mutating original array
+
     switch (sortBy) {
       case 'Name':
-        return currentChainAssets.sort(
+        return sortedAssets.sort(
           (a, b) =>
-            a.name.localeCompare(b.name) ||
+            a.name?.localeCompare(b.name) ||
             a.tokenSymbol.localeCompare(b.tokenSymbol)
         );
       case 'Balance':
-        return currentChainAssets.sort((a, b) => a.balance - b.balance);
+        // Sort by balance in descending order (highest balance first)
+        return sortedAssets.sort((a, b) => b.balance - a.balance);
       default:
-        return currentChainAssets;
+        return sortedAssets;
     }
   };
 
@@ -72,7 +72,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
     const isHexSearch = searchValue.startsWith('0x');
 
     if (is1155) {
-      const lowercaseCollectionName = token.collectionName.toLowerCase();
+      const lowercaseCollectionName = token.collectionName?.toLowerCase() || '';
       const lowercaseContractAddress = token.contractAddress.toLowerCase();
       if (isHexSearch) {
         return lowercaseContractAddress.includes(lowercaseSearchValue);
@@ -80,7 +80,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
       return lowercaseCollectionName.includes(lowercaseSearchValue);
     }
 
-    const lowercaseTokenName = token.name.toLowerCase();
+    const lowercaseTokenName = token.name?.toLowerCase() || '';
     const lowercaseTokenSymbol = token.tokenSymbol.toLowerCase();
     const lowercaseContractAddress = token.contractAddress.toLowerCase();
 
@@ -94,14 +94,17 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
     }
   });
 
-  const assetsSortedBy = assetsSorted(sortByValue);
-
+  // Apply filters and sorting in the correct order
   let filteredAssets = currentChainAssets;
 
+  // First apply search filter if there's a search value
   if (searchValue?.length > 0) {
     filteredAssets = assetsFilteredBySearch;
-  } else if (sortByValue?.length > 0) {
-    filteredAssets = assetsSortedBy;
+  }
+
+  // Then apply sorting to the filtered results
+  if (sortByValue?.length > 0) {
+    filteredAssets = assetsSorted(filteredAssets, sortByValue);
   }
 
   // Delete confirmation handlers
@@ -129,16 +132,48 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   return (
     <>
       {filteredAssets?.map((token: ITokenEthProps) => {
-        const btnContainerWidth = token?.is1155 === undefined ? 'w-16' : 'w-10';
+        const btnContainerWidth = token?.is1155 === undefined ? 'w-12' : 'w-10';
         return (
           <Fragment key={uniqueId(token.id)}>
             <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
               <div className="flex gap-3 items-center justify-start">
-                {!token.isNft && token.logo && (
-                  <div style={{ maxWidth: '25px', maxHeight: '25px' }}>
-                    <img src={`${token.logo}`} alt={`${token.name} Logo`} />
-                  </div>
-                )}
+                {!token.isNft &&
+                  (token.logo ? (
+                    <div
+                      className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
+                                    hover:shadow-md hover:scale-110 transition-all duration-200"
+                    >
+                      <img
+                        src={`${token.logo}`}
+                        alt={`${token.name} Logo`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.nextElementSibling?.classList.remove(
+                            'hidden'
+                          );
+                        }}
+                      />
+                      <div
+                        className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                                      flex items-center justify-center"
+                      >
+                        <span className="text-white text-xs font-bold">
+                          {token.tokenSymbol.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                                    flex items-center justify-center hover:shadow-md hover:scale-110 
+                                    transition-all duration-200"
+                    >
+                      <span className="text-white text-xs font-bold">
+                        {token.tokenSymbol.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  ))}
                 {token.isNft && token?.is1155 && (
                   <p className="font-rubik">
                     <span className="text-button-primary font-poppins">
@@ -163,8 +198,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
               >
                 <Tooltip content={t('tooltip.assetDetails')}>
                   <DetailsIcon
-                    className="cursor-pointer hover:text-fields-input-borderfocus"
-                    color="text-brand-white"
+                    className="cursor-pointer hover:text-fields-input-borderfocus text-brand-white"
                     size={16}
                     onClick={() =>
                       navigate('/home/details', {
@@ -173,21 +207,6 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
                     }
                   />
                 </Tooltip>
-
-                {token?.is1155 === undefined && (
-                  <Tooltip content={t('tooltip.editAsset')}>
-                    <EditIcon
-                      className="cursor-pointer hover:text-fields-input-borderfocus"
-                      color="text-brand-white"
-                      size={16}
-                      onClick={() =>
-                        navigate('/tokens/add', {
-                          state: token,
-                        })
-                      }
-                    />
-                  </Tooltip>
-                )}
 
                 <Tooltip content={t('tooltip.deleteAsset')}>
                   <DeleteIcon

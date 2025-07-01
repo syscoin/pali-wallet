@@ -65,9 +65,11 @@ const FiatDisplay = memo(
   ({
     isLoadingBalance,
     formatFiatAmount,
+    priceChange24h,
   }: {
     formatFiatAmount: string | null;
     isLoadingBalance: boolean;
+    priceChange24h?: number;
   }) => {
     if (isLoadingBalance) {
       return <SkeletonLoader width="100px" height="20px" margin="10px 0 0 0" />;
@@ -75,7 +77,21 @@ const FiatDisplay = memo(
 
     if (!formatFiatAmount) return null;
 
-    return <p className="text-sm text-brand-graylight">{formatFiatAmount}</p>;
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <p className="text-sm text-brand-graylight">{formatFiatAmount}</p>
+        {priceChange24h !== undefined && (
+          <div
+            className={`text-xs ${
+              priceChange24h >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}
+          >
+            {priceChange24h >= 0 ? '+' : ''}
+            {priceChange24h.toFixed(2)}% (24h)
+          </div>
+        )}
+      </div>
+    );
   }
 );
 
@@ -98,7 +114,7 @@ export const Home = () => {
   const { state } = useLocation();
   const { controllerEmitter, isUnlocked } = useController();
 
-  const { asset: fiatAsset } = useSelector(
+  const { asset: fiatAsset, priceChange24h } = useSelector(
     (priceState: RootState) => priceState.price.fiat
   );
 
@@ -296,6 +312,7 @@ export const Home = () => {
                 <FiatDisplay
                   isLoadingBalance={isLoadingBalance}
                   formatFiatAmount={formatFiatAmount}
+                  priceChange24h={priceChange24h}
                 />
               </div>
 

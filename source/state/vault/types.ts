@@ -43,8 +43,6 @@ export interface IGlobalState {
   };
 
   changingConnectedAccount: IChangingConnectedAccount;
-  // Global data that doesn't vary by slip44
-  coinsList: any[];
   // Global UI states
   error: string | null;
 

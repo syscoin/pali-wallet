@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState, memo } from 'react';
+import React, { Fragment, useEffect, useState, memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -42,8 +42,9 @@ CopyIcon.displayName = 'CopyIcon';
 export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const {
     activeNetwork: { chainId, currency, apiUrl },
+    activeAccount,
+    accountAssets,
   } = useSelector((state: RootState) => state.vault);
-  const { coinsList } = useSelector((state: RootState) => state.vaultGlobal);
 
   // Use proper selectors
   const currentAccount = useSelector(selectActiveAccount);
@@ -51,6 +52,23 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   const { useCopyClipboard, alert } = useUtils();
   const { t } = useTranslation();
+  // Create token symbol cache from user's assets
+  const tokenSymbolCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    const currentAccountAssets =
+      accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    if (currentAccountAssets?.ethereum) {
+      currentAccountAssets.ethereum.forEach((token) => {
+        if (token.contractAddress && token.tokenSymbol) {
+          cache.set(token.contractAddress.toLowerCase(), token.tokenSymbol);
+        }
+      });
+    }
+
+    return cache;
+  }, [accountAssets, activeAccount.type, activeAccount.id]);
+
   const { getTxStatusIcons, getTxStatus, getTxType, getTokenSymbol } =
     useTransactionsListConfig();
 
@@ -182,7 +200,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       txValue = Number(rawValue) / 1e18;
     }
 
-    txSymbol = getTokenSymbol(isErc20Tx, coinsList, tx, currency);
+    txSymbol = getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache);
     isTxCanceled = tx?.isCanceled === true;
     isConfirmed = tx.confirmations > 0;
     isTxSent = tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();

@@ -1,7 +1,5 @@
 import cloneDeep from 'lodash/cloneDeep';
 
-import { getTokenInfoBasedOnNetwork } from '@pollum-io/sysweb3-utils';
-
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
 import { setEditedEvmToken, setAccountAssets } from 'state/vault';
@@ -71,9 +69,15 @@ const EthAccountController = (): IEthAccountController | any => {
 
       if (tokenExists) throw new Error('Token already exists');
 
-      let web3Token = await getTokenInfoBasedOnNetwork(token, chainId);
+      // Use token data as-is
+      let web3Token = {
+        ...token,
+        id: token.contractAddress,
+        chainId,
+      };
 
-      if (web3Token.logo === '') {
+      // Only add fallback logo if no logo is provided
+      if (!web3Token.logo || web3Token.logo === '') {
         web3Token = {
           ...web3Token,
           logo: PaliLogo,

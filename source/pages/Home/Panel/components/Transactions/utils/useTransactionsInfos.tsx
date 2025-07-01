@@ -241,18 +241,22 @@ export const useTransactionsListConfig = (
   }, []);
 
   const getTokenSymbol = useCallback(
-    (isErc20Tx: boolean, coinsList: any[], tx: any, currency: string) => {
-      if (isErc20Tx) {
-        const token = coinsList.find((coin) =>
-          Object.values(coin?.platforms || {})
-            ?.map((item) => `${item}`.toLocaleLowerCase())
-            ?.includes(`${tx?.to}`.toLocaleLowerCase())
-        );
-
-        if (token) {
-          return `${token?.symbol}`.toUpperCase();
+    (
+      isErc20Tx: boolean,
+      tx: any,
+      currency: string,
+      tokenSymbolCache?: Map<string, string>
+    ) => {
+      if (isErc20Tx && tx?.to) {
+        // First check cache for this contract address
+        const cachedSymbol = tokenSymbolCache?.get(tx.to.toLowerCase());
+        if (cachedSymbol) {
+          return cachedSymbol.toUpperCase();
         }
 
+        // For transactions, we don't want to make API calls in the render loop
+        // Instead, we'll fall back to showing the contract address or currency
+        // The cache should be populated elsewhere for known tokens
         return `${currency}`.toUpperCase();
       }
 

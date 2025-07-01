@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -26,15 +26,14 @@ const EvmTransactionItem = React.memo(
     getTxType,
     getTxStatus,
     getTokenSymbol,
-    coinsList,
     currency,
     getFiatAmount,
     navigate,
     txId,
     getTxOptions,
     t,
+    tokenSymbolCache,
   }: {
-    coinsList: any;
     currency: string;
     currentAccount: any;
     getFiatAmount: any;
@@ -45,6 +44,7 @@ const EvmTransactionItem = React.memo(
     getTxType: any;
     navigate: any;
     t: any;
+    tokenSymbolCache: Map<string, string>;
     tx: ITransactionInfoEvm & {
       isReplaced?: boolean;
       isSpeedUp?: boolean;
@@ -107,7 +107,7 @@ const EvmTransactionItem = React.memo(
                 {isNaN(Number(finalTxValue))
                   ? '0.0000'
                   : Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, coinsList, tx, currency)}
+                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {getFiatAmount(Number(finalTxValue), 6)}
@@ -145,7 +145,7 @@ const EvmTransactionItem = React.memo(
                 {isNaN(Number(finalTxValue))
                   ? '0.0000'
                   : Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, coinsList, tx, currency)}
+                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal line-through">
                 {getFiatAmount(Number(finalTxValue), 6)}
@@ -183,7 +183,7 @@ const EvmTransactionItem = React.memo(
             <div className="flex flex-col justify-end items-end">
               <div className="text-white text-xs font-normal">
                 {Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, coinsList, tx, currency)}
+                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal">
                 {getFiatAmount(finalTxValue, 6)}
@@ -236,11 +236,28 @@ export const EvmTransactionsList = ({
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const coinsList = useSelector(
-    (state: RootState) => state.vaultGlobal.coinsList
+  const accountAssets = useSelector(
+    (state: RootState) => state.vault.accountAssets
   );
 
   const { chainId, currency } = activeNetwork;
+
+  // Create token symbol cache from user's assets
+  const tokenSymbolCache = useMemo(() => {
+    const cache = new Map<string, string>();
+    const currentAccountAssets =
+      accountAssets[activeAccount.type]?.[activeAccount.id];
+
+    if (currentAccountAssets?.ethereum) {
+      currentAccountAssets.ethereum.forEach((token) => {
+        if (token.contractAddress && token.tokenSymbol) {
+          cache.set(token.contractAddress.toLowerCase(), token.tokenSymbol);
+        }
+      });
+    }
+
+    return cache;
+  }, [accountAssets, activeAccount.type, activeAccount.id]);
 
   const {
     filteredTransactions,
@@ -311,13 +328,13 @@ export const EvmTransactionsList = ({
                 getTxType={getTxType}
                 getTxStatus={getTxStatus}
                 getTokenSymbol={getTokenSymbol}
-                coinsList={coinsList}
                 currency={currency}
                 getFiatAmount={getFiatAmount}
                 navigate={navigate}
                 txId={txId}
                 getTxOptions={getTxOptions}
                 t={t}
+                tokenSymbolCache={tokenSymbolCache}
               />
             ))}
           </div>

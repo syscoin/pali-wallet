@@ -184,11 +184,11 @@ export const AccountHeader: React.FC = () => {
         onClose={handleCloseReconnectModal}
       />
       <div className="flex ml-[15px] items-center w-full text-brand-white">
-        <Tooltip content="View on Explorer">
+        <Tooltip content={t('home.viewOnExplorer')}>
           <div
             className="add-identicon ml-1 mr-2 my-2 cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80 rounded-full"
             onClick={openAccountInExplorer}
-            title="View account on explorer"
+            title={t('home.viewAccountOnExplorer')}
           />
         </Tooltip>
 

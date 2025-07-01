@@ -77,9 +77,9 @@ export interface ITransactionsListConfig {
   formatTimeStampUtxo: (timestamp: number) => JSX.Element;
   getTokenSymbol: (
     isErc20Tx: boolean,
-    coinsList: any[],
     tx: any,
-    currency: string
+    currency: string,
+    tokenSymbolCache?: Map<string, string>
   ) => string;
   getTxStatus: (isCanceled: boolean, isConfirmed: boolean) => JSX.Element;
   getTxStatusIcons: (txLabel: string, isDetail: boolean) => JSX.Element;

@@ -3,7 +3,13 @@ import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
 import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IAccountAssets } from 'state/vault/types';
-import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
+import {
+  ITokenEthProps,
+  ITokenSysProps,
+  ITokenDetails,
+  ITokenSearchResult,
+  ISysAssetMetadata,
+} from 'types/tokens';
 
 // SYS TYPES
 
@@ -45,6 +51,10 @@ export interface ISysAssetsController {
     assetGuid: string,
     networkUrl: string
   ) => Promise<boolean | ITokenSysProps>;
+  getAssetCached: (
+    networkUrl: string,
+    assetGuid: string
+  ) => Promise<ISysAssetMetadata | null>;
   getSysAssetsByXpub: (
     xpub: string,
     networkUrl: string,
@@ -75,22 +85,18 @@ export interface IAddCustomTokenResponse {
 }
 
 export interface IEvmAssetsController {
-  addCustomTokenByType: (
-    walletAddress: string,
-    contractAddress: string,
-    symbol: string,
-    decimals: number,
-    w3Provider: CustomJsonRpcProvider
-  ) => Promise<IAddCustomTokenResponse>;
-  addEvmDefaultToken: (
-    token: ITokenEthProps,
-    accountAddress: string,
-    w3Provider: CustomJsonRpcProvider
-  ) => Promise<ITokenEthProps | boolean>;
   checkContractType: (
     contractAddress: string,
     w3Provider: CustomJsonRpcProvider
   ) => Promise<any>;
+  // Auto-detect CoinGecko IDs for a chainId
+  detectCoinGeckoIds: (chainId: number) => Promise<{
+    coingeckoId?: string;
+    coingeckoPlatformId?: string;
+  } | null>;
+
+  getCurrentNetworkPlatform: () => string | null;
+
   getERC20TokenInfo: (
     contractAddress: string,
     accountAddress: string,
@@ -101,19 +107,56 @@ export interface IEvmAssetsController {
     name: string;
     symbol: string;
   }>;
-  getNftMetadata: (
+  // Get only market data from CoinGecko without any blockchain calls
+  getOnlyMarketData: (contractAddress: string) => Promise<any | null>;
+
+  // Get basic token details (cached, no balance, no market data) - for notification manager
+  getTokenDetails: (
     contractAddress: string,
+    walletAddress: string,
     w3Provider: CustomJsonRpcProvider
-  ) => Promise<any>;
-  getTokenMetadata: (
+  ) => Promise<ITokenDetails | null>;
+
+  // Get token details with balance (for import forms)
+  getTokenDetailsWithBalance: (
     contractAddress: string,
-    accountAddress: string,
+    walletAddress: string,
     w3Provider: CustomJsonRpcProvider
-  ) => Promise<any>;
+  ) => Promise<ITokenDetails | null>;
+
+  // Get token details with full market data (for details screens, enhanced with CoinGecko data)
+  getTokenDetailsWithMarketData: (
+    contractAddress: string,
+    walletAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<ITokenDetails | null>;
+
+  // CoinGecko-based token functionality
+  getTokenPriceData: (
+    chainId: number,
+    currency?: string
+  ) => Promise<{
+    price: number;
+    priceChange24h?: number;
+  }>;
+
+  // PATH 1: Show what user owns (Blockscout API)
+  getUserOwnedTokens: (
+    walletAddress: string,
+    explorerApiUrl?: string
+  ) => Promise<ITokenSearchResult[]>;
+
   updateAllEvmTokens: (
     account: IKeyringAccountState,
     currentNetworkChainId: number,
     w3Provider: CustomJsonRpcProvider,
     accountAssets: ITokenEthProps[]
   ) => Promise<ITokenEthProps[]>;
+
+  // Simplified ERC-20 validation with minimal ETH calls
+  validateERC20Only: (
+    contractAddress: string,
+    walletAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<ITokenDetails | null>;
 }

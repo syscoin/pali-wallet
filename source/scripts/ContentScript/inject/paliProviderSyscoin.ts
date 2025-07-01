@@ -1,7 +1,9 @@
 import { ethers } from 'ethers';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
-import { isNFT as _isNFT, getAsset } from '@pollum-io/sysweb3-utils';
+import { isNFT as _isNFT } from '@pollum-io/sysweb3-utils';
+
+import { ISysAssetMetadata } from 'types/tokens';
 
 import { BaseProvider, Maybe, RequestArguments } from './BaseProvider';
 import messages from './messages';
@@ -363,10 +365,10 @@ export class PaliInpageProviderSys extends BaseProvider {
 
             const txs = await Promise.all(
               allTokens.map(async (t: any) => {
-                const assetInfo = await getAsset(
-                  this._sysState.blockExplorerURL,
-                  t.token
-                );
+                const assetInfo = (await this.request({
+                  method: 'wallet_getSysAssetMetadata',
+                  params: [t.token, this._sysState.blockExplorerURL],
+                })) as ISysAssetMetadata | null;
 
                 // Return the asset info with the symbol as-is (Syscoin 5 uses plain text)
                 if (assetInfo && assetInfo.assetGuid) {
@@ -417,7 +419,10 @@ export class PaliInpageProviderSys extends BaseProvider {
               this.on('_sysInitialized', () => resolve());
             });
           }
-          return getAsset(this._sysState.blockExplorerURL, assetGuid);
+          return this.request({
+            method: 'wallet_getSysAssetMetadata',
+            params: [assetGuid, this._sysState.blockExplorerURL],
+          });
         },
       },
       {

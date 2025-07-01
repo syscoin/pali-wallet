@@ -38,7 +38,8 @@
     "retryConnect": "Повторить подключение",
     "delete": "Удалить",
     "remove": "Удалить",
-    "errorDescription": "Описание ошибки"
+    "errorDescription": "Описание ошибки",
+    "importToken": "Импортировать токен"
   },
   "header": {
     "accounts": "Аккаунты",
@@ -80,6 +81,7 @@
     "contractCopied": "Контракт успешно скопирован",
     "viewOnExplorer": "Посмотреть в Проводнике",
     "viewAccountOnExplorer": "Посмотреть аккаунт в проводнике",
+    "viewCollectionOnExplorer": "Посмотреть коллекцию в Проводнике",
     "verifySysAddress": "Проверить ваш {{currency}} адрес",
     "verifySysAddressDescription": "Нажмите кнопку ниже, чтобы проверить ваш {{currency}} адрес.",
     "addressVerified": "Адрес успешно проверен",
@@ -283,7 +285,17 @@
   "tooltip": {
     "editAsset": "Редактировать актив",
     "assetDetails": "Детали актива",
-    "deleteAsset": "Удалить актив"
+    "deleteAsset": "Удалить актив",
+    "closeSortOptions": "Закрыть опции сортировки",
+    "sortAssets": "Сортировать активы",
+    "searchAssets": "Поиск активов",
+    "viewTokens": "Показать токены",
+    "viewNFTs": "Показать NFT"
+  },
+  "assetsHeader": {
+    "sortBy": "СОРТИРОВАТЬ ПО:",
+    "name": "Имя",
+    "tokenOrContractAddress": "Токен или адрес контракта"
   },
   "networkMenu": {
     "viewConnected": "Просмотр подключенных сайтов",
@@ -462,21 +474,6 @@
     "tokenDecimals": "Десятичные знаки токена",
     "tokenSuccessfullyAdded": "Токен успешно добавлен!",
     "wasSuccessfullyAdded": "был успешно добавлен в ваш кошелек.",
-    "verifyTheCurrentNetwork": "Проверить текущую сеть",
-    "verifyTheCurrentNetworkMessage": "Этот токен, вероятно, недоступен в текущей сети. Проверьте сеть токена и попробуйте снова.",
-    "verifyTheCurrentNetworkLog": "Неверный адрес контракта. Проверьте текущий адрес контракта.",
-    "invalidContractAddressTitle": "Неверный адрес контракта",
-    "invalidContractAddressMessage": "Этот адрес контракта не является контрактом токена.",
-    "invalidContractAddressLog1": "Этот контракт не от валидного токена на",
-    "invalidContractAddressLog2": "проверьте его дополнительно и, если вы уверены, что это токен, свяжитесь с нами через каналы поддержки",
-    "tokenAlreadyExist": "Токен уже существует",
-    "verifyTheTokenContract": "Проверить адрес контракта токена.",
-    "thisTokenContract": "Этот контракт токена уже добавлен в ваш список токенов. Попробуйте снова, используя другой адрес токена!",
-    "searchBySymbol": "Поиск по символу",
-    "notAvailableInCurrentNetwork": "Этот токен, вероятно, недоступен в текущей сети. Проверьте сеть токена и попробуйте снова.",
-    "tokenNetworkProbably": "Сеть токена, вероятно, отличается от текущей сети.",
-    "couldNotAddTokenToYour": "Не удалось добавить токен в ваш кошелек. Проверьте сеть и guid актива и попробуйте позже.",
-    "tokenNotFoundIn": "Токен не найден в вашем XPUB или токен уже импортирован.",
     "tokenNotAdded": "Токен не добавлен.",
     "tokenGuid": "GUID актива",
     "assetGuidRequired": "GUID актива обязателен",
@@ -491,7 +488,22 @@
     "confirmDeleteTokenEvm": "Вы уверены, что хотите удалить {{symbol}} из вашего кошелька? Вы можете добавить его обратно в любое время, используя адрес контракта.",
     "confirmDeleteTokenSpt": "Вы уверены, что хотите удалить {{symbol}} из вашего кошелька? Вы можете добавить его обратно в любое время, используя GUID актива.",
     "noSptAssetsFound": "SPT активы не найдены",
-    "importTokensToGetStarted": "Импортируйте токены для начала работы"
+    "importTokensToGetStarted": "Импортируйте токены для начала работы",
+    "verifiedByCoinGecko": "Подтверждено CoinGecko",
+    "unverifiedToken": "Непроверенный токен",
+    "standardContract": "Стандартный контракт",
+    "noTokensFound": "Токены не найдены",
+    "youDontHaveTokensYet": "У вас еще нет токенов в кошельке",
+    "enterContractAddress": "Введите адрес контракта (0x...)",
+    "supportsERC20Tokens": "Поддерживает токены ERC-20, ERC-777 и ERC-4626",
+    "addCustomToken": "Добавить пользовательский токен",
+    "enterContractToImport": "Введите адрес контракта выше для импорта токена",
+    "importing": "Импортируется...",
+    "tokenImported": "Токен импортирован",
+    "individualTokensShownBelow": "Отдельные токены этой коллекции показаны ниже",
+    "yourTokens": "Ваши токены",
+    "addCustomTab": "Добавить пользовательский",
+    "loadingYourTokens": "Загрузка ваших токенов..."
   },
   "transactions": {
     "messageCopied": "Сообщение успешно скопировано",

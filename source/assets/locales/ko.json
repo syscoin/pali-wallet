@@ -38,7 +38,8 @@
     "retryConnect": "다시 연결",
     "delete": "삭제",
     "remove": "제거",
-    "errorDescription": "오류 설명"
+    "errorDescription": "오류 설명",
+    "importToken": "토큰 가져오기"
   },
   "header": {
     "accounts": "계정",
@@ -80,6 +81,7 @@
     "contractCopied": "계약이 성공적으로 복사되었습니다",
     "viewOnExplorer": "탐색기에서 보기",
     "viewAccountOnExplorer": "탐색기에서 계정 보기",
+    "viewCollectionOnExplorer": "탐색기에서 컬렉션 보기",
     "verifySysAddress": "{{currency}} 주소 확인",
     "verifySysAddressDescription": "아래 버튼을 클릭하여 {{currency}} 주소를 확인하세요.",
     "addressVerified": "주소가 성공적으로 확인되었습니다",
@@ -283,7 +285,17 @@
   "tooltip": {
     "editAsset": "자산 편집",
     "assetDetails": "자산 상세",
-    "deleteAsset": "자산 삭제"
+    "deleteAsset": "자산 삭제",
+    "closeSortOptions": "정렬 옵션 닫기",
+    "sortAssets": "자산 정렬",
+    "searchAssets": "자산 검색",
+    "viewTokens": "토큰 보기",
+    "viewNFTs": "NFT 보기"
+  },
+  "assetsHeader": {
+    "sortBy": "정렬 기준:",
+    "name": "이름",
+    "tokenOrContractAddress": "토큰 또는 계약 주소"
   },
   "networkMenu": {
     "viewConnected": "연결된 웹사이트 보기",
@@ -462,21 +474,6 @@
     "tokenDecimals": "토큰 소수점 자릿수",
     "tokenSuccessfullyAdded": "토큰이 성공적으로 추가되었습니다!",
     "wasSuccessfullyAdded": "이 지갑에 성공적으로 추가되었습니다.",
-    "verifyTheCurrentNetwork": "현재 네트워크 확인",
-    "verifyTheCurrentNetworkMessage": "이 토큰은 현재 네트워크에서 사용할 수 없을 수 있습니다. 토큰 네트워크를 확인하고 다시 시도하세요.",
-    "verifyTheCurrentNetworkLog": "잘못된 컨트랙트 주소입니다. 현재 컨트랙트 주소를 확인하세요.",
-    "invalidContractAddressTitle": "잘못된 컨트랙트 주소",
-    "invalidContractAddressMessage": "이 컨트랙트 주소는 토큰 컨트랙트가 아닙니다.",
-    "invalidContractAddressLog1": "이 컨트랙트는 유효한 토큰의 것이 아닙니다",
-    "invalidContractAddressLog2": "더 자세히 확인하고 토큰이라고 확신하는 경우 지원 채널을 통해 문의하세요",
-    "tokenAlreadyExist": "토큰이 이미 존재합니다",
-    "verifyTheTokenContract": "토큰 컨트랙트 주소를 확인하세요.",
-    "thisTokenContract": "이 토큰 컨트랙트는 이미 토큰 목록에 추가되었습니다. 다른 토큰 주소를 사용하여 다시 시도하세요!",
-    "searchBySymbol": "심볼로 검색",
-    "notAvailableInCurrentNetwork": "이 토큰은 현재 네트워크에서 사용할 수 없을 수 있습니다. 토큰 네트워크를 확인하고 다시 시도하세요.",
-    "tokenNetworkProbably": "토큰 네트워크는 현재 네트워크와 다를 수 있습니다.",
-    "couldNotAddTokenToYour": "지갑에 토큰을 추가할 수 없습니다. 네트워크와 자산 guid를 확인하고 나중에 다시 시도하세요.",
-    "tokenNotFoundIn": "XPUB에서 토큰을 찾을 수 없거나 토큰이 이미 가져왔습니다.",
     "tokenNotAdded": "토큰이 추가되지 않았습니다.",
     "tokenGuid": "자산 GUID",
     "assetGuidRequired": "자산 GUID가 필요합니다",
@@ -491,7 +488,22 @@
     "confirmDeleteTokenEvm": "정말로 지갑에서 {{symbol}}을(를) 제거하시겠습니까? 계약 주소를 사용하여 언제든지 다시 추가할 수 있습니다.",
     "confirmDeleteTokenSpt": "정말로 지갑에서 {{symbol}}을(를) 제거하시겠습니까? 자산 GUID를 사용하여 언제든지 다시 추가할 수 있습니다.",
     "noSptAssetsFound": "SPT 자산을 찾을 수 없습니다",
-    "importTokensToGetStarted": "시작하려면 토큰을 가져오세요"
+    "importTokensToGetStarted": "시작하려면 토큰을 가져오세요",
+    "verifiedByCoinGecko": "CoinGecko 인증됨",
+    "unverifiedToken": "확인되지 않은 토큰",
+    "standardContract": "표준 계약",
+    "noTokensFound": "토큰을 찾을 수 없습니다",
+    "youDontHaveTokensYet": "지갑에 아직 토큰이 없습니다",
+    "enterContractAddress": "계약 주소 입력 (0x...)",
+    "supportsERC20Tokens": "ERC-20, ERC-777 및 ERC-4626 토큰 지원",
+    "addCustomToken": "사용자 정의 토큰 추가",
+    "enterContractToImport": "토큰을 가져오려면 위에 계약 주소를 입력하세요",
+    "importing": "가져오는 중...",
+    "tokenImported": "토큰을 가져왔습니다",
+    "individualTokensShownBelow": "이 컬렉션의 개별 토큰이 아래에 표시됩니다",
+    "yourTokens": "내 토큰",
+    "addCustomTab": "사용자 정의 추가",
+    "loadingYourTokens": "토큰을 불러오는 중..."
   },
   "transactions": {
     "messageCopied": "메시지가 성공적으로 복사되었습니다",

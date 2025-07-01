@@ -1,4 +1,3 @@
-import { getAsset } from '@pollum-io/sysweb3-utils';
 import { txUtils } from '@pollum-io/sysweb3-utils';
 
 import store from 'state/store';
@@ -24,8 +23,6 @@ interface INotificationState {
   pendingTransactions: Map<string, ITransactionNotification>;
   // Track notifications we've already shown
   shownTransactionNotifications: Set<string>;
-  // Cache for token lookups to avoid repeated API calls
-  tokenCache: Map<string, { decimals: number; metadata?: any; symbol: string }>;
 }
 
 class NotificationManager {
@@ -34,7 +31,6 @@ class NotificationManager {
     pendingTransactions: new Map(),
     lastNetwork: null,
     lastAccount: null,
-    tokenCache: new Map(),
   };
 
   constructor() {
@@ -398,16 +394,22 @@ class NotificationManager {
 
       if (tokenValue && tokenAddress) {
         // Try to get token info from cache or user's token list
-        const tokenInfo = await this.getTokenInfo(
-          tokenAddress,
-          account,
-          network
-        );
+        const tokenInfo = await this.getTokenInfo(tokenAddress, account);
 
         if (tokenInfo) {
           tokenSymbol = tokenInfo.symbol;
           tokenDecimals = tokenInfo.decimals;
-          value = this.formatValue(tokenValue.toString(), tokenDecimals);
+
+          // Handle NFT transfers differently
+          if (tokenInfo.isNft) {
+            // For NFTs, show count instead of formatted value
+            value = `${tokenValue.toString()} NFT${
+              tokenValue.toString() !== '1' ? 's' : ''
+            }`;
+          } else {
+            // Regular ERC-20 token
+            value = this.formatValue(tokenValue.toString(), tokenDecimals);
+          }
         } else {
           // Fallback: show raw value with contract address
           value = this.formatValue(tokenValue.toString(), 18);
@@ -713,20 +715,18 @@ class NotificationManager {
     }
   }
 
-  // Get token info from user's token list or cache
+  // Get token info from user's token list or fetch from controller
   private async getTokenInfo(
     contractAddress: string,
-    account: any,
-    network: any
-  ): Promise<{ decimals: number; symbol: string } | null> {
-    // Check cache first
-    const cacheKey = `${contractAddress}_${network.chainId}`;
-    if (this.state.tokenCache.has(cacheKey)) {
-      return this.state.tokenCache.get(cacheKey)!;
-    }
-
+    account: any
+  ): Promise<{
+    decimals: number;
+    isNft?: boolean;
+    nftType?: string;
+    symbol: string;
+  } | null> {
     try {
-      // Check user's account assets
+      // Check user's account assets first (fastest)
       const { accountAssets } = store.getState().vault;
       const userAssets = accountAssets[account.type]?.[account.id];
 
@@ -740,31 +740,56 @@ class NotificationManager {
         if (token) {
           const tokenInfo = {
             symbol: token.tokenSymbol,
-            decimals: Number(token.decimals) || 18,
+            decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
+            isNft: token.isNft || false,
+            nftType: token.is1155
+              ? 'ERC-1155'
+              : token.isNft
+              ? 'ERC-721'
+              : undefined,
           };
-          this.state.tokenCache.set(cacheKey, tokenInfo);
           return tokenInfo;
         }
       }
 
-      // Check global coin list
-      const { coins } = store.getState().price;
-      const globalToken =
-        coins && Array.isArray(coins)
-          ? coins.find((coin: any) =>
-              Object.values(coin?.platforms || {})
-                ?.map((addr) => `${addr}`.toLowerCase())
-                ?.includes(contractAddress.toLowerCase())
-            )
-          : null;
+      // If not in user's assets, try to fetch from controller
+      try {
+        const { getController } = await import('./index');
+        const controller = getController();
 
-      if (globalToken) {
-        const tokenInfo = {
-          symbol: globalToken.symbol.toUpperCase(),
-          decimals: 18, // Default, as coingecko doesn't provide decimals
-        };
-        this.state.tokenCache.set(cacheKey, tokenInfo);
-        return tokenInfo;
+        if (controller?.wallet) {
+          const tokenDetails = await controller.wallet.getTokenDetails(
+            contractAddress,
+            account.address
+          );
+
+          if (tokenDetails) {
+            // Handle NFTs differently - they don't have traditional decimals
+            if (tokenDetails.isNft) {
+              const tokenInfo = {
+                symbol: tokenDetails.symbol,
+                decimals: 0, // NFTs don't use decimals
+                isNft: true,
+                nftType: tokenDetails.nftType,
+              };
+              return tokenInfo;
+            } else {
+              // Regular ERC-20 token
+              const tokenInfo = {
+                symbol: tokenDetails.symbol,
+                decimals: tokenDetails.decimals,
+                isNft: false,
+              };
+              return tokenInfo;
+            }
+          }
+        }
+      } catch (controllerError) {
+        console.warn(
+          '[NotificationManager] Controller token lookup failed:',
+          controllerError
+        );
+        // Continue to fallback
       }
     } catch (error) {
       console.error('[NotificationManager] Error getting token info:', error);
@@ -809,21 +834,27 @@ class NotificationManager {
     assetGuid: string,
     networkUrl: string
   ): Promise<any | null> {
-    // Check cache first
-    const cacheKey = `spt_${assetGuid}`;
-    if (this.state.tokenCache.has(cacheKey)) {
-      return this.state.tokenCache.get(cacheKey)!;
-    }
-
     try {
-      const assetData = await getAsset(networkUrl, assetGuid);
+      const { getController } = await import('./index');
+      const controller = getController();
+
+      if (!controller?.wallet?.getSysAssetMetadata) {
+        console.error(
+          '[NotificationManager] Controller or getSysAssetMetadata method not available'
+        );
+        return null;
+      }
+
+      const assetData = await controller.wallet.getSysAssetMetadata(
+        assetGuid,
+        networkUrl
+      );
       if (assetData) {
         const metadata = {
           symbol: assetData.symbol,
           decimals: assetData.decimals,
           metaData: assetData.metaData, // This could contain color or other visual info
         };
-        this.state.tokenCache.set(cacheKey, metadata);
         return metadata;
       }
     } catch (error) {

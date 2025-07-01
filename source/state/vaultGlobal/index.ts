@@ -26,7 +26,6 @@ const initialState: IGlobalState = {
     newConnectedAccount: undefined,
     connectedAccountType: undefined,
   },
-  coinsList: [],
   // Transient loading states - always start as false
   loadingStates: {
     isLoadingBalances: false,
@@ -120,9 +119,6 @@ const vaultGlobalSlice = createSlice({
     },
     setHasEthProperty(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
-    },
-    setCoinsList(state: IGlobalState, action: PayloadAction<Array<any>>) {
-      state.coinsList = action.payload;
     },
     setChangingConnectedAccount(
       state: IGlobalState,
@@ -290,7 +286,6 @@ export const {
   setLastLogin,
   setHasEncryptedVault,
   setHasEthProperty,
-  setCoinsList,
   setChangingConnectedAccount,
   startSwitchNetwork,
   startConnecting,

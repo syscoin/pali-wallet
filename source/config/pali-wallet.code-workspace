@@ -8,6 +8,12 @@
 		},
 		{
 			"path": "../../../syscoinjs-lib"
+		},
+		{
+			"path": "../../../syscointx-js"
+		},
+		{
+			"path": "../../../coinselectsyscoin"
 		}
 	],
 	"settings": {}

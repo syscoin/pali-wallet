@@ -9,14 +9,14 @@ import {
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { ITokenEthProps } from 'types/tokens';
+import { IAssetPreview } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [assetInfo, setAssetInfo] = useState<ITokenEthProps>();
+  const [assetInfo, setAssetInfo] = useState<IAssetPreview>();
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
@@ -42,9 +42,11 @@ const ExternalWatchAsset = () => {
 
     try {
       const { type: assetType, options: assetOptions } = receivedAsset;
+
+      // Pass the already-fetched assetInfo to avoid duplicate API calls
       await controllerEmitter(
         ['wallet', 'handleWatchAsset'],
-        [assetType, assetOptions]
+        [assetType, assetOptions, assetInfo]
       );
 
       const type = data.eventName;
@@ -67,7 +69,7 @@ const ExternalWatchAsset = () => {
       const currentAsset = (await controllerEmitter(
         ['wallet', 'getAssetInfo'],
         [assetType, assetOptions]
-      )) as any;
+      )) as IAssetPreview;
 
       setAssetInfo(currentAsset);
     };
@@ -97,6 +99,29 @@ const ExternalWatchAsset = () => {
               </span>
             </div>
             <div className="flex flex-col items-center justify-center w-full">
+              {/* Token Logo Display */}
+              {assetInfo.logo && (
+                <div className="flex items-center justify-center mt-4 mb-2">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 shadow-lg">
+                    <img
+                      src={assetInfo.logo}
+                      alt={assetInfo.tokenSymbol}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                  {assetInfo.isVerified && (
+                    <div className="ml-2 px-2 py-1 bg-green-500/20 border border-green-500 rounded-full">
+                      <span className="text-green-400 text-xs font-medium">
+                        ✓ {t('settings.verifiedByCoinGecko')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex flex-col gap-3 items-start justify-center mt-4 px-4 py-2 w-full text-left text-sm divide-bkg-3 divide-dashed divide-y">
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                   {t('settings.tokenName')}
@@ -132,6 +157,37 @@ const ExternalWatchAsset = () => {
                     {assetInfo.tokenSymbol}
                   </span>
                 </p>
+
+                {/* Market Data Display */}
+                {assetInfo.currentPrice && (
+                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                    Current Price
+                    <span className="text-brand-royalblue text-xs">
+                      ${assetInfo.currentPrice.toFixed(6)}
+                      {assetInfo.priceChange24h && (
+                        <span
+                          className={`ml-2 ${
+                            assetInfo.priceChange24h >= 0
+                              ? 'text-green-400'
+                              : 'text-red-400'
+                          }`}
+                        >
+                          {assetInfo.priceChange24h >= 0 ? '+' : ''}
+                          {assetInfo.priceChange24h.toFixed(2)}%
+                        </span>
+                      )}
+                    </span>
+                  </p>
+                )}
+
+                {assetInfo.marketCap && (
+                  <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
+                    Market Cap
+                    <span className="text-brand-royalblue text-xs">
+                      ${(assetInfo.marketCap / 1000000).toFixed(2)}M
+                    </span>
+                  </p>
+                )}
               </div>
             </div>
           </div>
