@@ -68,11 +68,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string
   ): Promise<ITokenSearchResult[]> => {
     const { activeNetwork } = store.getState().vault;
-    const apiUrl = activeNetwork.explorer;
+    const apiUrl = activeNetwork.apiUrl || activeNetwork.explorer;
 
     if (!apiUrl) {
       console.warn(
-        `[EvmAssetsController] No explorer API URL found for network: ${activeNetwork.label}`
+        `[EvmAssetsController] No API URL found for network: ${activeNetwork.label}`
       );
       return [];
     }
@@ -445,9 +445,140 @@ const EvmAssetsController = (): IEvmAssetsController => {
     accountAssets: ITokenEthProps[]
   ): Promise<ITokenEthProps[]> => {
     if (isEmpty(accountAssets)) return [];
-    const queue = new Queue(3);
 
     try {
+      const { activeNetwork } = store.getState().vault;
+
+      // Filter assets for current network
+      const currentNetworkAssets = accountAssets.filter(
+        (asset) => asset.chainId === currentNetworkChainId
+      );
+      const otherNetworkAssets = accountAssets.filter(
+        (asset) => asset.chainId !== currentNetworkChainId
+      );
+
+      // If API is available, use it for efficient batch updates
+      const apiUrl = activeNetwork.apiUrl || activeNetwork.explorer;
+      if (apiUrl) {
+        console.log(`[EvmAssetsController] Using API for batch token update`);
+
+        try {
+          // Get all tokens from API in one call
+          const ownedTokens = await getUserOwnedTokens(account.address);
+
+          // Create a map of owned tokens for quick lookup
+          const ownedTokensMap = new Map(
+            ownedTokens.map((token) => [
+              token.contractAddress.toLowerCase(),
+              token,
+            ])
+          );
+
+          // Update existing assets with API data
+          const updatedAssets = await Promise.all(
+            currentNetworkAssets.map(async (asset) => {
+              const apiToken = ownedTokensMap.get(
+                asset.contractAddress.toLowerCase()
+              );
+
+              if (apiToken) {
+                // Token found in API - update balance
+                console.log(
+                  `[EvmAssetsController] Updating ${asset.tokenSymbol} balance from API: ${apiToken.balance}`
+                );
+
+                // Handle ERC-1155 NFTs which need special treatment for collection data
+                if (asset.isNft && asset.is1155 && asset.collection) {
+                  // ERC-1155 requires individual tokenId balance checks
+                  // API only gives total balance, so we need to fall back to contract calls for collection details
+                  console.log(
+                    `[EvmAssetsController] ERC-1155 token detected, falling back to contract calls for collection details`
+                  );
+
+                  const erc1155Abi = getErc55Abi();
+                  const contract = new ethers.Contract(
+                    asset.contractAddress,
+                    erc1155Abi,
+                    w3Provider
+                  );
+
+                  const newCollection = await Promise.all(
+                    asset.collection.map(async (nft) => {
+                      const balanceCallMethod = await contract.balanceOf(
+                        account.address,
+                        nft.tokenId
+                      );
+                      const balance = Number(balanceCallMethod);
+                      return { ...nft, balance };
+                    })
+                  );
+
+                  return {
+                    ...asset,
+                    collection: newCollection,
+                    balance: newCollection.reduce(
+                      (sum, nft) => sum + nft.balance,
+                      0
+                    ), // Total balance
+                  };
+                }
+
+                // For regular tokens and simple NFTs
+                return {
+                  ...asset,
+                  balance: asset.isNft
+                    ? Math.floor(apiToken.balance) // NFTs need integer balances
+                    : floor(apiToken.balance, 4),
+                };
+              } else {
+                // Token not in API response - set balance to 0
+                console.log(
+                  `[EvmAssetsController] Token ${asset.tokenSymbol} not found in API - setting balance to 0`
+                );
+
+                // For ERC-1155, also clear collection balances
+                if (asset.isNft && asset.is1155 && asset.collection) {
+                  return {
+                    ...asset,
+                    balance: 0,
+                    collection: asset.collection.map((nft) => ({
+                      ...nft,
+                      balance: 0,
+                    })),
+                  };
+                }
+
+                return {
+                  ...asset,
+                  balance: 0,
+                };
+              }
+            })
+          );
+
+          // Combine updated current network assets with other network assets
+          const allAssets = [...updatedAssets, ...otherNetworkAssets];
+
+          return validateAndManageUserAssets(
+            true,
+            allAssets
+          ) as ITokenEthProps[];
+        } catch (apiError) {
+          console.warn(
+            `[EvmAssetsController] API failed, falling back to individual calls:`,
+            apiError
+          );
+          // Fall through to individual call approach
+        }
+      }
+
+      // Fallback: Use individual contract calls (for networks without API)
+      console.log(
+        `[EvmAssetsController] No API available, using individual contract calls`
+      );
+
+      const queue = new Queue(3);
+
       queue.execute(
         async () =>
           await Promise.all(
