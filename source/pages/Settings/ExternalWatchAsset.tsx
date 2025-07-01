@@ -115,7 +115,7 @@ const ExternalWatchAsset = () => {
                   {assetInfo.isVerified && (
                     <div className="ml-2 px-2 py-1 bg-green-500/20 border border-green-500 rounded-full">
                       <span className="text-green-400 text-xs font-medium">
-                        ✓ {t('settings.verifiedByCoinGecko')}
+                        ✓ {t('tokens.verifiedByCoinGecko')}
                       </span>
                     </div>
                   )}

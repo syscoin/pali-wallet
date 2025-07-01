@@ -191,21 +191,41 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
     return (
       <div className="mt-4 mb-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
-        <h4 className="text-white font-medium mb-3 text-sm">
-          Market Information
+        <h4 className="text-white font-medium mb-3 text-sm flex items-center justify-between">
+          {t('tokens.marketInformation')}
+          {/* CoinGecko Logo Link */}
+          {tokenData.id && (
+            <a
+              href="https://www.coingecko.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-400 hover:text-brand-royalblue transition-colors duration-200"
+            >
+              <span className="flex items-center gap-1">
+                <img
+                  src="https://www.coingecko.com/favicon-96x96.png"
+                  alt="CoinGecko"
+                  className="w-4 h-4"
+                />
+                CoinGecko
+              </span>
+            </a>
+          )}
         </h4>
 
-        {/* Price and Change */}
+        {/* Price and Change - Full Width */}
         {tokenData.currentPrice && (
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-400 text-xs">Current Price</span>
-            <div className="text-right">
-              <div className="text-white font-medium">
+          <div className="mb-4">
+            <span className="text-gray-400 text-xs block mb-1">
+              {t('tokens.currentPrice')}
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-white font-medium text-lg">
                 ${formatCurrency(tokenData.currentPrice.toString(), 6)}
-              </div>
+              </span>
               {tokenData.priceChange24h !== undefined && (
-                <div
-                  className={`text-xs ${
+                <span
+                  className={`text-sm ${
                     tokenData.priceChange24h >= 0
                       ? 'text-green-500'
                       : 'text-red-500'
@@ -213,48 +233,66 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
                 >
                   {tokenData.priceChange24h >= 0 ? '+' : ''}
                   {tokenData.priceChange24h.toFixed(2)}% (24h)
-                </div>
+                </span>
               )}
             </div>
           </div>
         )}
 
-        {/* Market Cap and Rank */}
-        <div className="grid grid-cols-2 gap-4 mb-3">
+        {/* Market Cap and Rank - Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
           {tokenData.marketCapRank && (
             <div>
-              <span className="text-gray-400 text-xs block">Rank</span>
-              <span className="text-brand-royalblue font-medium">
-                #{tokenData.marketCapRank}
+              <span className="text-gray-400 text-xs block mb-1">
+                {t('tokens.rank')}
               </span>
+              {tokenData.id ? (
+                <a
+                  href={`https://www.coingecko.com/en/coins/${tokenData.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
+                >
+                  #{tokenData.marketCapRank}
+                  <ExternalLinkIcon size={12} />
+                </a>
+              ) : (
+                <span className="text-brand-royalblue font-medium">
+                  #{tokenData.marketCapRank}
+                </span>
+              )}
             </div>
           )}
           {tokenData.marketCap && (
-            <div>
-              <span className="text-gray-400 text-xs block">Market Cap</span>
-              <span className="text-white font-medium text-xs">
+            <div className="text-right">
+              <span className="text-gray-400 text-xs block mb-1">
+                {t('tokens.marketCap')}
+              </span>
+              <span className="text-white font-medium">
                 ${formatCurrency(tokenData.marketCap.toString(), 0)}
               </span>
             </div>
           )}
         </div>
 
-        {/* Volume and Supply */}
-        <div className="grid grid-cols-2 gap-4 mb-3">
+        {/* Volume and Supply - Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
           {tokenData.totalVolume && (
             <div>
-              <span className="text-gray-400 text-xs block">24h Volume</span>
-              <span className="text-white font-medium text-xs">
+              <span className="text-gray-400 text-xs block mb-1">
+                {t('tokens.volume24h')}
+              </span>
+              <span className="text-white font-medium">
                 ${formatCurrency(tokenData.totalVolume.toString(), 0)}
               </span>
             </div>
           )}
           {tokenData.circulatingSupply && (
-            <div>
-              <span className="text-gray-400 text-xs block">
-                Circulating Supply
+            <div className="text-right">
+              <span className="text-gray-400 text-xs block mb-1">
+                {t('tokens.circulatingSupply')}
               </span>
-              <span className="text-white font-medium text-xs">
+              <span className="text-white font-medium">
                 {formatCurrency(tokenData.circulatingSupply.toString(), 0)}
               </span>
             </div>
@@ -263,24 +301,80 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
         {/* Categories */}
         {tokenData.categories && tokenData.categories.length > 0 && (
-          <div className="mb-3">
-            <span className="text-gray-400 text-xs block mb-1">Categories</span>
+          <div className="mb-4">
+            <span className="text-gray-400 text-xs block mb-2">
+              {t('tokens.categories')}
+            </span>
             <div className="flex flex-wrap gap-1">
-              {tokenData.categories.slice(0, 2).map((category, index) => (
-                <span
-                  key={index}
-                  className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-xs rounded"
-                >
-                  {category}
+              {tokenData.categories.map((category, index) => {
+                // Create URL-friendly category slug
+                const categorySlug = category
+                  .toLowerCase()
+                  .replace(/\s+/g, '-');
+                return (
+                  <a
+                    key={index}
+                    href={`https://www.coingecko.com/en/categories/${categorySlug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 bg-brand-royalblue bg-opacity-20 text-brand-royalblue text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1 group"
+                  >
+                    {category}
+                    <ExternalLinkIcon
+                      size={10}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                    />
+                  </a>
+                );
+              })}
+              {tokenData.categories.length > 5 && (
+                <span className="px-2 py-1 bg-gray-700 bg-opacity-20 text-gray-400 text-xs rounded">
+                  +{tokenData.categories.length - 5} {t('tokens.more')}
                 </span>
-              ))}
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CoinGecko Links Section */}
+        {tokenData.id && (
+          <div className="mb-4 pt-3 border-t border-gray-700">
+            <span className="text-gray-400 text-xs block mb-2">
+              {t('tokens.viewOnCoinGecko')}
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`https://www.coingecko.com/en/coins/${tokenData.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 bg-green-600 bg-opacity-20 text-green-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
+              >
+                <img
+                  src="https://www.coingecko.com/favicon-96x96.png"
+                  alt="CoinGecko"
+                  className="w-3 h-3"
+                />
+                {t('tokens.tokenPage')}
+                <ExternalLinkIcon size={12} />
+              </a>
+              <a
+                href={`https://www.coingecko.com/en/coins/${tokenData.id}/historical_data`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 bg-blue-600 bg-opacity-20 text-blue-500 text-xs rounded hover:bg-opacity-30 transition-all duration-200 flex items-center gap-1"
+              >
+                {t('tokens.historicalData')}
+                <ExternalLinkIcon size={12} />
+              </a>
             </div>
           </div>
         )}
 
         {/* Verification Status */}
-        <div className="flex items-center justify-between">
-          <span className="text-gray-400 text-xs">Verification</span>
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-gray-400 text-xs">
+            {t('tokens.verification')}
+          </span>
           {tokenData.coingeckoId || tokenData.isVerified ? (
             <span className="px-2 py-1 bg-green-500 bg-opacity-20 text-green-500 text-xs rounded flex items-center">
               ✓ {t('tokens.verifiedByCoinGecko')}
@@ -294,8 +388,10 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
 
         {/* Description */}
         {tokenData.description && (
-          <div className="mt-3 pt-3 border-t border-gray-700">
-            <span className="text-gray-400 text-xs block mb-1">About</span>
+          <div className="pt-3 border-t border-gray-700">
+            <span className="text-gray-400 text-xs block mb-1">
+              {t('tokens.about')}
+            </span>
             <p className="text-white text-xs leading-relaxed line-clamp-3">
               {tokenData.description}
             </p>
@@ -377,7 +473,7 @@ export const EvmAssetDetais = ({ id }: { id: string }) => {
   const RenderAsset = () => (
     <div className="flex flex-col h-full">
       {currentAsset.contractAddress ? (
-        <div className="flex-1 overflow-y-auto scrollbar-styled pb-4">
+        <div className="flex-1 overflow-y-auto scrollbar-styled pb-20">
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
             {hasImage &&
               (currentAsset.logo ? (
