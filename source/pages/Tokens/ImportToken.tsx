@@ -45,8 +45,11 @@ export const ImportToken: React.FC = () => {
     accounts,
     activeAccount: activeAccountMeta,
     activeNetwork,
+    accountAssets,
   } = useSelector((state: RootState) => state.vault);
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
+  const activeAccountAssets =
+    accountAssets[activeAccountMeta.type][activeAccountMeta.id];
 
   // Get badge color based on token type
   const getTokenTypeBadgeColor = (type: string | undefined) => {
@@ -71,7 +74,7 @@ export const ImportToken: React.FC = () => {
     if (activeTab === 'owned') {
       loadOwnedTokens();
     }
-  }, [activeTab, activeAccount.address]);
+  }, [activeTab, activeAccount.address, activeAccountAssets?.ethereum]);
 
   // PATH 1: Load tokens user actually owns
   const loadOwnedTokens = async () => {
@@ -85,7 +88,29 @@ export const ImportToken: React.FC = () => {
       )) as ITokenSearchResult[];
 
       console.log(`[ImportToken] Found ${results?.length || 0} owned tokens`);
-      setOwnedTokens(results || []);
+
+      // Filter out already imported tokens
+      if (results && results.length > 0 && activeAccountAssets?.ethereum) {
+        const importedAddresses = new Set(
+          activeAccountAssets.ethereum.map((token: ITokenEthProps) =>
+            token.contractAddress.toLowerCase()
+          )
+        );
+
+        const filteredResults = results.filter(
+          (token) => !importedAddresses.has(token.contractAddress.toLowerCase())
+        );
+
+        console.log(
+          `[ImportToken] Filtered out ${
+            results.length - filteredResults.length
+          } already imported tokens`
+        );
+
+        setOwnedTokens(filteredResults);
+      } else {
+        setOwnedTokens(results || []);
+      }
     } catch (error) {
       console.error('Error loading owned tokens:', error);
       setOwnedTokens([]);
@@ -99,6 +124,21 @@ export const ImportToken: React.FC = () => {
     if (!contractAddress || !/^0x[a-fA-F0-9]{40}$/.test(contractAddress)) {
       setCustomTokenDetails(null);
       return;
+    }
+
+    // Check if token is already imported
+    if (activeAccountAssets?.ethereum) {
+      const alreadyImported = activeAccountAssets.ethereum.some(
+        (token: ITokenEthProps) =>
+          token.contractAddress.toLowerCase() === contractAddress.toLowerCase()
+      );
+
+      if (alreadyImported) {
+        console.log('[ImportToken] Token already imported:', contractAddress);
+        alert.error(t('tokens.tokenAlreadyImported'));
+        setCustomTokenDetails(null);
+        return;
+      }
     }
 
     setIsValidatingCustom(true);
@@ -132,6 +172,7 @@ export const ImportToken: React.FC = () => {
   // Debounced validation for custom contract
   const debouncedValidation = useCallback(debounce(validateCustomToken, 500), [
     activeAccount.address,
+    activeAccountAssets?.ethereum,
   ]);
 
   // Handle custom contract input
