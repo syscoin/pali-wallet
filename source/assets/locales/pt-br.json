@@ -504,7 +504,13 @@
     "individualTokensShownBelow": "Os tokens individuais desta coleção são mostrados abaixo",
     "yourTokens": "Seus Tokens",
     "addCustomTab": "Adicionar Personalizado",
-    "loadingYourTokens": "Carregando seus tokens..."
+    "loadingYourTokens": "Carregando seus tokens...",
+    "yourSptTokens": "Seus Tokens SPT",
+    "enterAssetGuid": "Digite o GUID do ativo (ex., 123456)",
+    "enterAssetGuidToImport": "Digite um GUID de ativo para importar um token SPT personalizado",
+    "youveImportedAllSptTokens": "Você já importou todos os seus tokens SPT",
+    "youDontOwnAnySptTokens": "Você não possui tokens SPT nesta rede",
+    "assetGuid": "GUID"
   },
   "transactions": {
     "messageCopied": "Mensagem copiada com sucesso",

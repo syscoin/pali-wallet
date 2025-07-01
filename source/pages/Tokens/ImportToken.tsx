@@ -84,7 +84,7 @@ export const ImportToken: React.FC = () => {
 
       const results = (await controllerEmitter(
         ['wallet', 'getUserOwnedTokens'],
-        [activeAccount.address, '']
+        [activeAccount.address]
       )) as ITokenSearchResult[];
 
       console.log(`[ImportToken] Found ${results?.length || 0} owned tokens`);
@@ -458,14 +458,8 @@ export const ImportToken: React.FC = () => {
             <div>
               {/* Owned tokens list */}
               {isLoadingOwned ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="relative">
-                    <div className="w-12 h-12 border-3 border-brand-royalblue/20 rounded-full"></div>
-                    <div className="absolute top-0 left-0 w-12 h-12 border-3 border-transparent border-t-brand-royalblue rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-brand-gray200 text-sm mt-3 font-poppins">
-                    {t('tokens.loadingYourTokens')}
-                  </p>
+                <div className="flex items-center justify-center py-12">
+                  <LoadingOutlined className="text-3xl text-brand-royalblue animate-spin" />
                 </div>
               ) : ownedTokens.length > 0 ? (
                 <div className="space-y-2 max-h-[460px] overflow-y-auto scrollbar-styled">
@@ -513,6 +507,12 @@ export const ImportToken: React.FC = () => {
                     <LoadingOutlined className="text-brand-royalblue animate-spin text-base" />
                   ) : customTokenDetails && customContractAddress ? (
                     <Icon name="check" size={16} className="text-green-500" />
+                  ) : customContractAddress && !customTokenDetails ? (
+                    <Icon
+                      name="close-circle"
+                      size={16}
+                      className="text-red-500"
+                    />
                   ) : null}
                 </div>
               </div>

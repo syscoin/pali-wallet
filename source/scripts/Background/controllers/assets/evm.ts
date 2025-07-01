@@ -65,11 +65,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
    * Shows what the user actually owns - much more practical than browsing thousands of tokens
    */
   const getUserOwnedTokens = async (
-    walletAddress: string,
-    explorerApiUrl?: string
+    walletAddress: string
   ): Promise<ITokenSearchResult[]> => {
     const { activeNetwork } = store.getState().vault;
-    const apiUrl = explorerApiUrl || activeNetwork.explorer;
+    const apiUrl = activeNetwork.explorer;
 
     if (!apiUrl) {
       console.warn(

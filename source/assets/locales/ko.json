@@ -517,7 +517,13 @@
     "individualTokensShownBelow": "이 컬렉션의 개별 토큰이 아래에 표시됩니다",
     "yourTokens": "내 토큰",
     "addCustomTab": "사용자 정의 추가",
-    "loadingYourTokens": "토큰을 불러오는 중..."
+    "loadingYourTokens": "토큰을 불러오는 중...",
+    "yourSptTokens": "내 SPT 토큰",
+    "enterAssetGuid": "자산 GUID 입력 (예: 123456)",
+    "enterAssetGuidToImport": "커스텀 SPT 토큰을 가져오려면 자산 GUID를 입력하세요",
+    "youveImportedAllSptTokens": "모든 SPT 토큰을 이미 가져왔습니다",
+    "youDontOwnAnySptTokens": "이 네트워크에서 SPT 토큰을 소유하고 있지 않습니다",
+    "assetGuid": "GUID"
   },
   "transactions": {
     "messageCopied": "메시지가 성공적으로 복사되었습니다",

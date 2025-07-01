@@ -60,6 +60,12 @@ export interface ISysAssetsController {
     networkUrl: string,
     networkChainId: number
   ) => Promise<ISysTokensAssetReponse[]>;
+  getUserOwnedTokens: (xpub: string) => Promise<ISysTokensAssetReponse[]>;
+  validateSPTOnly: (
+    assetGuid: string,
+    xpub: string,
+    networkUrl: string
+  ) => Promise<ITokenSysProps | null>;
 }
 
 export interface ISysTokensAssetReponse {
@@ -141,10 +147,7 @@ export interface IEvmAssetsController {
   }>;
 
   // PATH 1: Show what user owns (Blockscout API)
-  getUserOwnedTokens: (
-    walletAddress: string,
-    explorerApiUrl?: string
-  ) => Promise<ITokenSearchResult[]>;
+  getUserOwnedTokens: (walletAddress: string) => Promise<ITokenSearchResult[]>;
 
   updateAllEvmTokens: (
     account: IKeyringAccountState,

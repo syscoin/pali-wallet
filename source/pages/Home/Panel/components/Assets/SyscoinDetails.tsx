@@ -1,5 +1,5 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState, useRef } from 'react';
+import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
@@ -7,7 +7,6 @@ import { useSelector } from 'react-redux';
 
 import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import {
   formatCurrency,
@@ -15,11 +14,11 @@ import {
   camelCaseToText,
   syscoinKeysOfInterest,
   adjustUrl,
+  getTokenLogo,
 } from 'utils/index';
 
 export const SyscoinAssetDetais = ({ id }: { id: string }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
-  const { controllerEmitter } = useController();
   const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
   const [marketData, setMarketData] = useState<any>(null);
@@ -387,7 +386,9 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
       <div className="flex-1 overflow-y-auto scrollbar-styled pb-20">
         <div className="w-full flex flex-col items-center justify-center gap-y-2">
           {/* Token Icon */}
-          {marketData?.image ? (
+          {marketData?.image ||
+          asset?.image ||
+          getTokenLogo(assetSymbol?.value, false) ? (
             <div className="group relative">
               <div
                 className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
@@ -396,9 +397,12 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
               >
                 <img
                   src={
-                    marketData.image.large ||
-                    marketData.image.small ||
-                    marketData.image.thumb
+                    asset?.image ||
+                    getTokenLogo(assetSymbol?.value, false) ||
+                    marketData?.image?.large ||
+                    marketData?.image?.small ||
+                    marketData?.image?.thumb ||
+                    ''
                   }
                   alt={`${assetSymbol?.value} Logo`}
                   className="w-full h-full object-cover"
@@ -532,7 +536,7 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
           {hasContract && activeNetwork.url.includes('syscoin.org') && (
             <div className="text-brand-white hover:text-brand-deepPink100">
               <a
-                href={`https://explorer.syscoin.org/address/${asset.contract}`}
+                href={`https://explorer.syscoin.org/token/${asset.contract}`}
                 target="_blank"
                 className="flex items-center justify-center gap-x-2"
                 rel="noreferrer"
@@ -547,14 +551,14 @@ export const SyscoinAssetDetais = ({ id }: { id: string }) => {
           {hasContract && activeNetwork.url.includes('tanenbaum') && (
             <div className="text-brand-white hover:text-brand-deepPink100">
               <a
-                href={`https://explorer.tanenbaum.io/address/${asset.contract}`}
+                href={`https://explorer.tanenbaum.io/token/${asset.contract}`}
                 target="_blank"
                 className="flex items-center justify-center gap-x-2"
                 rel="noreferrer"
               >
                 <ExternalLinkIcon size={16} />
                 <span className="font-normal font-poppins underline text-sm">
-                  View on NEVM Explorer
+                  View on Tanenbaum Explorer
                 </span>
               </a>
             </div>

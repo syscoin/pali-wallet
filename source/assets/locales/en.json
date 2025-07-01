@@ -517,7 +517,13 @@
     "individualTokensShownBelow": "Individual tokens in this collection are shown below",
     "yourTokens": "Your Tokens",
     "addCustomTab": "Add Custom",
-    "loadingYourTokens": "Loading your tokens..."
+    "loadingYourTokens": "Loading your tokens...",
+    "yourSptTokens": "Your SPT Tokens",
+    "enterAssetGuid": "Enter asset GUID (e.g., 123456)",
+    "enterAssetGuidToImport": "Enter an asset GUID to import a custom SPT token",
+    "youveImportedAllSptTokens": "You've already imported all your SPT tokens",
+    "youDontOwnAnySptTokens": "You don't own any SPT tokens on this network",
+    "assetGuid": "GUID"
   },
   "transactions": {
     "messageCopied": "Message successfully copied",

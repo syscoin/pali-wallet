@@ -517,7 +517,13 @@
     "individualTokensShownBelow": "このコレクションの個別トークンは以下に表示されます",
     "yourTokens": "あなたのトークン",
     "addCustomTab": "カスタム追加",
-    "loadingYourTokens": "トークンを読み込み中..."
+    "loadingYourTokens": "トークンを読み込み中...",
+    "yourSptTokens": "あなたのSPTトークン",
+    "enterAssetGuid": "アセットGUIDを入力（例：123456）",
+    "enterAssetGuidToImport": "カスタムSPTトークンをインポートするためにアセットGUIDを入力してください",
+    "youveImportedAllSptTokens": "すべてのSPTトークンをインポート済みです",
+    "youDontOwnAnySptTokens": "このネットワークにSPTトークンを所有していません",
+    "assetGuid": "GUID"
   },
   "transactions": {
     "messageCopied": "メッセージが正常にコピーされました",

@@ -517,7 +517,13 @@
     "individualTokensShownBelow": "Отдельные токены этой коллекции показаны ниже",
     "yourTokens": "Ваши токены",
     "addCustomTab": "Добавить пользовательский",
-    "loadingYourTokens": "Загрузка ваших токенов..."
+    "loadingYourTokens": "Загрузка ваших токенов...",
+    "yourSptTokens": "Ваши SPT токены",
+    "enterAssetGuid": "Введите GUID актива (например, 123456)",
+    "enterAssetGuidToImport": "Введите GUID актива для импорта пользовательского SPT токена",
+    "youveImportedAllSptTokens": "Вы уже импортировали все свои SPT токены",
+    "youDontOwnAnySptTokens": "У вас нет SPT токенов в этой сети",
+    "assetGuid": "GUID"
   },
   "transactions": {
     "messageCopied": "Сообщение успешно скопировано",

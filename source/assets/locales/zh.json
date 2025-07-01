@@ -397,7 +397,13 @@
     "individualTokensShownBelow": "此收藏中的单个代币显示在下方",
     "yourTokens": "您的代币",
     "addCustomTab": "添加自定义",
-    "loadingYourTokens": "正在加载您的代币..."
+    "loadingYourTokens": "正在加载您的代币...",
+    "yourSptTokens": "您的 SPT 代币",
+    "enterAssetGuid": "输入资产 GUID（例如：123456）",
+    "enterAssetGuidToImport": "输入资产 GUID 以导入自定义 SPT 代币",
+    "youveImportedAllSptTokens": "您已导入所有 SPT 代币",
+    "youDontOwnAnySptTokens": "您在此网络上没有 SPT 代币",
+    "assetGuid": "GUID"
   },
   "switchNetworkPage": {
     "connectedOn": "您已连接到",

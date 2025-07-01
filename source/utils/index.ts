@@ -18,3 +18,4 @@ export * from './types';
 export * from './i18n';
 export * from './storageAPI';
 export * from './strings';
+export * from './tokens';

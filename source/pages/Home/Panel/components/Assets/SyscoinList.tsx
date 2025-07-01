@@ -11,7 +11,7 @@ import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { formatCurrency, truncate } from 'utils/index';
+import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
@@ -74,7 +74,45 @@ export const SyscoinAssetsList = () => {
         <table className="table-auto w-full">
           <tbody>
             <tr className="flex items-center justify-between font-poppins font-normal">
-              <td className="flex items-center gap-x-2">
+              <td className="flex items-center gap-x-3">
+                {/* Token Logo */}
+                {asset.image || getTokenLogo(asset.symbol) ? (
+                  <div
+                    className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
+                              hover:shadow-md hover:scale-110 transition-all duration-200"
+                  >
+                    <img
+                      src={asset.image || getTokenLogo(asset.symbol)!}
+                      alt={asset.symbol}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling?.classList.remove(
+                          'hidden'
+                        );
+                      }}
+                    />
+                    <div
+                      className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                                flex items-center justify-center"
+                    >
+                      <span className="text-white text-xs font-bold">
+                        {asset.symbol?.charAt(0).toUpperCase() || 'S'}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                              flex items-center justify-center hover:shadow-md hover:scale-110 
+                              transition-all duration-200"
+                  >
+                    <span className="text-white text-xs font-bold">
+                      {asset.symbol?.charAt(0).toUpperCase() || 'S'}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-col">
                   <div className="flex items-center gap-x-2">
                     <span className="text-brand-white font-semibold">

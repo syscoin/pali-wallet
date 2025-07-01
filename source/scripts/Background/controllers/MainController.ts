@@ -3849,14 +3849,24 @@ class MainController {
   /**
    * PATH 1: Get tokens user actually owns via Blockscout API - delegates to EvmAssetsController
    */
-  public async getUserOwnedTokens(
-    walletAddress: string,
-    explorerApiUrl?: string
-  ) {
-    return this.evmAssetsController.getUserOwnedTokens(
-      walletAddress,
-      explorerApiUrl
-    );
+  public async getUserOwnedTokens(walletAddress: string) {
+    const {
+      isBitcoinBased,
+      accounts,
+      activeAccount: activeAccountMeta,
+    } = store.getState().vault;
+
+    if (isBitcoinBased) {
+      // For UTXO networks, use xpub to get SPT tokens
+      const account = accounts[activeAccountMeta.type][activeAccountMeta.id];
+      if (!account?.xpub) {
+        throw new Error('No xpub found for active account');
+      }
+      return this.assetsManager.sys.getUserOwnedTokens(account.xpub);
+    } else {
+      // For EVM networks, use existing implementation
+      return this.evmAssetsController.getUserOwnedTokens(walletAddress);
+    }
   }
 
   /**
@@ -3867,6 +3877,7 @@ class MainController {
     contractAddress: string,
     walletAddress: string
   ): Promise<ITokenDetails | null> {
+    // This method is for EVM only
     if (!this.ethereumTransaction?.web3Provider) {
       throw new Error('No valid web3Provider available');
     }
@@ -3900,6 +3911,16 @@ class MainController {
    */
   public async getOnlyMarketData(contractAddress: string) {
     return this.evmAssetsController.getOnlyMarketData(contractAddress);
+  }
+
+  public async validateSPTOnly(assetGuid: string, xpub: string) {
+    const { activeNetwork } = store.getState().vault;
+    // This method is for UTXO only
+    return this.assetsManager.sys.validateSPTOnly(
+      assetGuid,
+      xpub,
+      activeNetwork.url
+    );
   }
 }
 
