@@ -13,7 +13,7 @@ import { RootState } from 'state/store';
 import { IERC1155Collection } from 'types/tokens';
 import { ellipsis, formatCurrency } from 'utils/index';
 
-export const EvmAssetDetais = ({ id }: { id: string }) => {
+export const EvmAssetDetails = ({ id }: { id: string }) => {
   const { controllerEmitter } = useController();
   const { activeAccount, accountAssets, activeNetwork } = useSelector(
     (state: RootState) => state.vault

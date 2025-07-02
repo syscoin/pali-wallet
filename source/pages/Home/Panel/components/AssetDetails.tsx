@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 
 import { RootState } from 'state/store';
 
-import { EvmAssetDetais, SyscoinAssetDetais } from './Assets/index';
+import { EvmAssetDetails, SyscoinAssetDetails } from './Assets/index';
 
 export const AssetDetails = ({ id }: { id: string }) => {
   const isBitcoinBased = useSelector(
@@ -11,8 +11,8 @@ export const AssetDetails = ({ id }: { id: string }) => {
   );
 
   return !isBitcoinBased ? (
-    <EvmAssetDetais id={id} />
+    <EvmAssetDetails id={id} />
   ) : (
-    <SyscoinAssetDetais id={id} />
+    <SyscoinAssetDetails id={id} />
   );
 };

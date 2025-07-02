@@ -17,7 +17,7 @@ import {
   getTokenLogo,
 } from 'utils/index';
 
-export const SyscoinAssetDetais = ({ id }: { id: string }) => {
+export const SyscoinAssetDetails = ({ id }: { id: string }) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
