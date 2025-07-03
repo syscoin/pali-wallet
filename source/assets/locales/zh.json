@@ -595,7 +595,6 @@
     "viewAllOnExplorer": "在浏览器中查看全部",
     "verifyingOwnership": "验证所有权中...",
     "youOwnThisToken": "您拥有此代币",
-    "youDontOwnAnyNftsFromCollection": "您不拥有此收藏中的任何NFT",
     "selectTokenIdOrTryDifferent": "选择此代币ID或尝试其他的",
     "erc1155RequiresManualEntry": "ERC-1155需要手动输入代币ID（无枚举标准）",
     "enterNftTokenId": "输入您的NFT代币ID（合约可能不支持枚举）",

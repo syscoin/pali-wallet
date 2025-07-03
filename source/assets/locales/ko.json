@@ -432,7 +432,6 @@
     "viewAllOnExplorer": "탐색기에서 모두 보기",
     "verifyingOwnership": "소유권 검증 중...",
     "youOwnThisToken": "이 토큰을 소유하고 있습니다",
-    "youDontOwnAnyNftsFromCollection": "이 컬렉션의 NFT를 소유하고 있지 않습니다",
     "selectTokenIdOrTryDifferent": "이 토큰 ID를 선택하거나 다른 것을 시도하세요",
     "erc1155RequiresManualEntry": "ERC-1155는 수동 토큰 ID 입력이 필요합니다 (열거 표준 없음)",
     "enterNftTokenId": "NFT 토큰 ID를 입력하세요 (계약이 열거를 지원하지 않을 수 있음)",

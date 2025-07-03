@@ -432,7 +432,6 @@
     "viewAllOnExplorer": "Просмотреть все в обозревателе",
     "verifyingOwnership": "Проверка владения...",
     "youOwnThisToken": "Вы владеете этим токеном",
-    "youDontOwnAnyNftsFromCollection": "У вас нет NFT из этой коллекции",
     "selectTokenIdOrTryDifferent": "Выберите этот ID токена или попробуйте другой",
     "erc1155RequiresManualEntry": "ERC-1155 требует ручного ввода ID токена (нет стандарта перечисления)",
     "enterNftTokenId": "Введите ваш ID токена NFT (контракт может не поддерживать перечисление)",

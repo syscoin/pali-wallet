@@ -262,7 +262,6 @@
     "viewAllOnExplorer": "Ver todo en el explorador",
     "verifyingOwnership": "Verificando propiedad...",
     "youOwnThisToken": "Posees este token",
-    "youDontOwnAnyNftsFromCollection": "No posees ningún NFT de esta colección",
     "selectTokenIdOrTryDifferent": "Selecciona este ID de token o intenta con uno diferente",
     "erc1155RequiresManualEntry": "ERC-1155 requiere entrada manual de ID del token (sin estándar de enumeración)",
     "enterNftTokenId": "Ingresa tu ID de token NFT (el contrato puede no soportar enumeración)",

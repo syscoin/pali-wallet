@@ -267,7 +267,6 @@
     "viewAllOnExplorer": "View all on Explorer",
     "verifyingOwnership": "Verifying ownership...",
     "youOwnThisToken": "You own this token",
-    "youDontOwnAnyNftsFromCollection": "You don't own any NFTs from this collection",
     "selectTokenIdOrTryDifferent": "Select this token ID or try a different one",
     "erc1155RequiresManualEntry": "ERC-1155 requires manual token ID entry (no enumeration standard)",
     "enterNftTokenId": "Enter your NFT token ID (contract may not support enumeration)",
@@ -499,6 +498,7 @@
     "welcomeTo": "WELCOME TO"
   },
   "tokens": {
+    "tokenNotAdded": "Token not added.",
     "tokenAlreadyImported": "This token has already been imported to your wallet.",
     "deleteToken": "Delete {{symbol}}",
     "confirmDeleteTokenEvm": "Are you sure you want to remove {{symbol}} from your wallet? You can re-add it anytime using the contract address.",

@@ -432,7 +432,6 @@
     "viewAllOnExplorer": "エクスプローラーですべて表示",
     "verifyingOwnership": "所有権を検証中...",
     "youOwnThisToken": "このトークンを所有しています",
-    "youDontOwnAnyNftsFromCollection": "このコレクションのNFTを所有していません",
     "selectTokenIdOrTryDifferent": "このトークンIDを選択するか、別のものを試してください",
     "erc1155RequiresManualEntry": "ERC-1155では手動でのトークンID入力が必要です（列挙標準なし）",
     "enterNftTokenId": "NFTトークンIDを入力してください（コントラクトが列挙をサポートしていない可能性があります）",
