@@ -81,43 +81,43 @@ export const TransactionsList = ({
       case 'assetallocationsend':
         return {
           label: 'SPT Transfer',
-          bgColor: 'bg-blue-500/10',
-          textColor: 'text-blue-400',
+          bgColor: 'bg-blue-500',
+          textColor: 'text-white',
           icon: '↗️',
         };
       case 'syscoinburntoallocation':
         return {
           label: 'SYS → SYSX',
-          bgColor: 'bg-orange-500/10',
-          textColor: 'text-orange-400',
+          bgColor: 'bg-orange-500',
+          textColor: 'text-white',
           icon: '🔥',
         };
       case 'assetallocationburntosyscoin':
         return {
           label: 'SYSX → SYS',
-          bgColor: 'bg-green-500/10',
-          textColor: 'text-green-400',
+          bgColor: 'bg-green-500',
+          textColor: 'text-white',
           icon: '💰',
         };
       case 'assetallocationburntoethereum':
         return {
           label: 'SPT → NEVM',
-          bgColor: 'bg-purple-500/10',
-          textColor: 'text-purple-400',
+          bgColor: 'bg-purple-500',
+          textColor: 'text-white',
           icon: '🌉',
         };
       case 'assetallocationmint':
         return {
           label: 'SPT Mint',
-          bgColor: 'bg-emerald-500/10',
-          textColor: 'text-emerald-400',
+          bgColor: 'bg-yellow-500',
+          textColor: 'text-white',
           icon: '⚡',
         };
       default:
         return {
           label: 'Transaction',
-          bgColor: 'bg-gray-500/10',
-          textColor: 'text-gray-400',
+          bgColor: 'bg-gray-500',
+          textColor: 'text-white',
           icon: '💱',
         };
     }

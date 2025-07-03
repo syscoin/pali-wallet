@@ -93,25 +93,6 @@ export interface IWatchAssetTokenProps {
   symbol: string;
 }
 
-// Interface for asset preview (used by getAssetInfo for display purposes)
-export interface IAssetPreview {
-  balance: number;
-  chainId: number;
-  contractAddress: string;
-  currentPrice?: number;
-  decimals: number;
-  id: string;
-  isNft: boolean;
-  // Enhanced preview data (not saved to vault)
-  isVerified?: boolean;
-  logo?: string;
-  marketCap?: number;
-  name: string;
-  priceChange24h?: number;
-  tokenStandard?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626';
-  tokenSymbol: string;
-}
-
 export interface ITokenSysProps {
   assetGuid?: string;
   balance?: number;

@@ -21,6 +21,41 @@ const ERC1155_ABI = [
 // Interface IDs
 const INTERFACE_ID_ERC721_ENUMERABLE = '0x780e9d63';
 
+/**
+ * Detect fake NFT contracts by testing with invalid token ID
+ * Fake contracts often return positive balances for any token ID
+ */
+async function detectFakeNftContract(
+  contract: ethers.Contract,
+  tokenStandard: 'ERC-721' | 'ERC-1155',
+  ownerAddress: string
+): Promise<boolean> {
+  try {
+    // Use a random high token ID that shouldn't exist
+    const invalidTokenId = '999999999999999999999999999999';
+
+    let balance: any;
+    if (tokenStandard === 'ERC-721') {
+      // For ERC-721, try ownerOf first (should throw for non-existent tokens)
+      try {
+        await contract.ownerOf(invalidTokenId);
+        // If ownerOf doesn't throw, this token ID exists (suspicious)
+        return true;
+      } catch {
+        // Good - token doesn't exist, contract behaves normally
+        return false;
+      }
+    } else {
+      // For ERC-1155, check balance of invalid token ID
+      balance = await contract.balanceOf(ownerAddress, invalidTokenId);
+      return Number(balance) > 0; // If balance > 0 for invalid ID, it's fake
+    }
+  } catch {
+    // If validation fails, assume contract is legitimate
+    return false;
+  }
+}
+
 export interface INftTokenInfo {
   balance: number;
   tokenId: string;
@@ -52,6 +87,24 @@ export async function verifyERC721OwnershipHelper(
 ): Promise<INftTokenInfo[]> {
   try {
     const contract = new ethers.Contract(contractAddress, ERC721_ABI, provider);
+
+    // Check if this is a fake contract first
+    const isFake = await detectFakeNftContract(
+      contract,
+      'ERC-721',
+      ownerAddress
+    );
+    if (isFake) {
+      console.warn(
+        `[NFT Utils] Detected fake ERC-721 contract: ${contractAddress}`
+      );
+      return tokenIds.map((tokenId) => ({
+        tokenId,
+        balance: 0,
+        verified: false,
+      }));
+    }
+
     const results: INftTokenInfo[] = [];
 
     // Process in batches
@@ -111,6 +164,23 @@ export async function verifyERC1155OwnershipHelper(
       ERC1155_ABI,
       provider
     );
+
+    // Check if this is a fake contract first
+    const isFake = await detectFakeNftContract(
+      contract,
+      'ERC-1155',
+      ownerAddress
+    );
+    if (isFake) {
+      console.warn(
+        `[NFT Utils] Detected fake ERC-1155 contract: ${contractAddress}`
+      );
+      return tokenIds.map((tokenId) => ({
+        tokenId,
+        balance: 0,
+        verified: false,
+      }));
+    }
 
     // Use balanceOfBatch for efficiency
     const accounts = new Array(tokenIds.length).fill(ownerAddress);

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { RootState } from 'state/store';
 
@@ -10,9 +11,12 @@ export const AssetDetails = ({ id }: { id: string }) => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
+  // Get navigation state for import preview
+  const { state } = useLocation();
+
   return !isBitcoinBased ? (
-    <EvmAssetDetails id={id} />
+    <EvmAssetDetails id={id} navigationState={state} />
   ) : (
-    <SyscoinAssetDetails id={id} />
+    <SyscoinAssetDetails id={id} navigationState={state} />
   );
 };

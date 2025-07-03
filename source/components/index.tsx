@@ -20,3 +20,4 @@ export * from './WalletErrorBoundary';
 
 export { ValidatedPasswordInput } from './Input/ValidatedPasswordInput';
 export { SeedPhraseDisplay } from './Input/SeedPhraseDisplay';
+export * from './ImportableAssetsList';

@@ -74,7 +74,6 @@ import {
   ITokenEthProps,
   IWatchAssetTokenProps,
   ISysAssetMetadata,
-  IAssetPreview,
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
@@ -1765,7 +1764,7 @@ class MainController {
     }
   }
 
-  public async handleWatchAsset(assetPreview: IAssetPreview): Promise<boolean> {
+  public async handleWatchAsset(assetPreview: ITokenDetails): Promise<boolean> {
     const { isBitcoinBased } = store.getState().vault;
 
     if (isBitcoinBased) {
@@ -1773,20 +1772,23 @@ class MainController {
     }
 
     try {
-      // Use the provided asset preview (already fetched by getAssetInfo) and convert to vault format
+      // Use the provided asset details (already fetched by getAssetInfo) and convert to vault format
       const assetToAdd: ITokenEthProps = {
-        tokenSymbol: assetPreview.tokenSymbol,
+        tokenSymbol: assetPreview.symbol,
         contractAddress: assetPreview.contractAddress,
         decimals: assetPreview.decimals,
-        isNft: assetPreview.isNft,
+        isNft: assetPreview.isNft || false,
         balance: assetPreview.balance,
-        logo: assetPreview.logo,
+        logo:
+          assetPreview.image?.large ||
+          assetPreview.image?.small ||
+          assetPreview.image?.thumb,
         chainId: assetPreview.chainId,
         name: assetPreview.name,
         id: assetPreview.id,
       };
       console.log(
-        `[MainController] Using provided asset preview for ${assetPreview.tokenSymbol}`
+        `[MainController] Using provided asset details for ${assetPreview.symbol}`
       );
 
       await this.account.eth.saveTokenInfo(assetToAdd);
@@ -1806,11 +1808,10 @@ class MainController {
 
   public async getAssetInfo(
     asset: IWatchAssetTokenProps
-  ): Promise<IAssetPreview> {
+  ): Promise<ITokenDetails> {
     const {
       activeAccount: activeAccountInfo,
       accounts,
-      activeNetwork,
       isBitcoinBased,
     } = store.getState().vault;
 
@@ -1840,37 +1841,24 @@ class MainController {
         asset?.image ||
         PaliLogo;
 
-      // Return enhanced token info for preview
-      const assetPreview: IAssetPreview = {
-        tokenSymbol: asset.symbol || tokenDetails.symbol,
-        contractAddress: asset.address,
-        decimals: Number(asset.decimals || tokenDetails.decimals),
-        isNft: false,
-        balance: tokenDetails.balance,
-        logo: tokenLogo,
-        chainId: activeNetwork.chainId,
-        name: tokenDetails.name || asset.symbol || tokenDetails.symbol,
-        id: asset.address,
-        tokenStandard: tokenDetails.tokenStandard,
-        // Add market data if available
-        ...(tokenDetails.isVerified && {
-          isVerified: tokenDetails.isVerified,
-          currentPrice: tokenDetails.market_data?.current_price?.usd,
-          priceChange24h: tokenDetails.market_data?.price_change_percentage_24h,
-          marketCap: tokenDetails.market_data?.market_cap?.usd,
-        }),
-      };
-
+      // Return the complete token details - UX will handle currency selection
       console.log(
         `[MainController] Retrieved enhanced asset info for ${tokenDetails.tokenStandard} token ${tokenDetails.symbol}`,
         {
           hasLogo: !!tokenLogo && tokenLogo !== PaliLogo,
           isVerified: tokenDetails.isVerified,
-          hasMarketData: !!tokenDetails.market_data?.current_price?.usd,
         }
       );
 
-      return assetPreview;
+      return {
+        ...tokenDetails,
+        // Override with any provided asset data
+        name: tokenDetails.name || asset.symbol || tokenDetails.symbol,
+        // Use enhanced logo
+        image: tokenLogo
+          ? { large: tokenLogo, small: tokenLogo, thumb: tokenLogo }
+          : tokenDetails.image,
+      };
     } catch (error) {
       console.error('[MainController] Error getting asset info:', error);
       throw new Error(error.message || 'Failed to get token information');

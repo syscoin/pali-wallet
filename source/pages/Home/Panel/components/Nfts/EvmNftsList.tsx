@@ -4,6 +4,7 @@ import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
+import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -34,11 +35,11 @@ export const EvmNftsList = () => {
 
   // Handle delete clicks
   const handleDeleteCollection = useCallback(
-    (contractAddress: string, name: string) => {
+    (contractAddress: string, symbol: string) => {
       setItemToDelete({
         type: 'collection',
         contractAddress,
-        name: name,
+        name: symbol, // Using symbol but keeping 'name' field for consistency with modal
       });
       setShowDeleteConfirmation(true);
     },
@@ -80,6 +81,7 @@ export const EvmNftsList = () => {
         id: nft.id, // Include the original asset id for navigation
         contractAddress: nft.contractAddress,
         name: nft.name || 'Unknown Collection',
+        symbol: nft.tokenSymbol || 'Unknown', // Use tokenSymbol for display
         tokenStandard: nft.tokenStandard || 'ERC-721',
         chainId: nft.chainId,
         totalBalance: nft.balance, // This is already the total count
@@ -145,7 +147,7 @@ export const EvmNftsList = () => {
                 className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
                 onClick={() => handleNftClick(collection)}
               >
-                {collection.name || truncate(collection.contractAddress, 16)}
+                {truncate(collection.symbol, 10).toUpperCase()}
               </span>
               <span className="text-brand-gray200 text-[10px]">
                 {collection.tokenStandard}
@@ -154,11 +156,9 @@ export const EvmNftsList = () => {
           </div>
 
           {/* Actions */}
-          <div className="flex items-center justify-between w-12">
+          <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
             <Tooltip content={t('send.nftDetails')}>
-              <DetailsIcon
-                className="cursor-pointer hover:text-fields-input-borderfocus text-brand-white"
-                size={16}
+              <IconButton
                 onClick={() =>
                   navigate('/home/details', {
                     state: {
@@ -167,21 +167,32 @@ export const EvmNftsList = () => {
                     },
                   })
                 }
-              />
+                className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                aria-label={`View details for ${collection.symbol} collection`}
+              >
+                <DetailsIcon
+                  size={16}
+                  className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
+                />
+              </IconButton>
             </Tooltip>
 
             <Tooltip content={t('send.deleteCollection')}>
-              <DeleteIcon
-                className="cursor-pointer hover:text-fields-input-borderfocus"
-                color="text-brand-white"
-                size={16}
+              <IconButton
                 onClick={() =>
                   handleDeleteCollection(
                     collection.contractAddress,
-                    collection.name
+                    collection.symbol
                   )
                 }
-              />
+                className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                aria-label={`Delete ${collection.symbol} collection`}
+              >
+                <DeleteIcon
+                  size={16}
+                  className="text-brand-white hover:text-red-500 transition-colors"
+                />
+              </IconButton>
             </Tooltip>
           </div>
         </li>

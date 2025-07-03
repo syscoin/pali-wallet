@@ -1,3 +1,4 @@
+import getSymbolFromCurrency from 'currency-symbol-map';
 import { uniqueId } from 'lodash';
 import React, { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,7 +18,15 @@ import {
   getTokenLogo,
 } from 'utils/index';
 
-export const SyscoinAssetDetails = ({ id }: { id: string }) => {
+interface ISyscoinAssetDetailsProps {
+  id: string;
+  navigationState?: any;
+}
+
+export const SyscoinAssetDetails = ({
+  id,
+  navigationState,
+}: ISyscoinAssetDetailsProps) => {
   const { navigate, useCopyClipboard, alert } = useUtils();
   const [isCopied, copy] = useCopyClipboard();
   const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
@@ -30,21 +39,36 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
   const { activeAccount, accountAssets, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
+  const { fiat } = useSelector((state: RootState) => state.price);
   const accountAssetData = accountAssets[activeAccount.type]?.[
     activeAccount.id
   ] || { ethereum: [], syscoin: [], nfts: [] };
 
   const { t } = useTranslation();
 
-  const asset = accountAssetData.syscoin?.find(
+  // Get asset from store or navigation state (for import preview)
+  let asset = accountAssetData.syscoin?.find(
     (sysAsset: any) => sysAsset.assetGuid === id
   );
 
-  const formattedAsset = [];
-  const hasContract =
-    asset?.contract &&
-    asset.contract !== '0x0000000000000000000000000000000000000000';
+  // If asset not found in store and this is an import preview, create a temporary asset object
+  if (!asset && navigationState?.isImportPreview) {
+    // Create a temporary asset object for preview
+    asset = {
+      assetGuid: navigationState.assetGuid || id,
+      symbol: navigationState.symbol || 'Unknown',
+      name: navigationState.name || navigationState.symbol || 'Unknown Token',
+      balance: navigationState.balance || 0,
+      decimals: navigationState.decimals || 8,
+      chainId: activeNetwork.chainId,
+      type: navigationState.type || 'SPTAllocated',
+      image: navigationState.logo,
+    };
+  }
 
+  // All hooks must be called before any early returns
+  // Calculate formattedAsset and assetSymbol before using them in hooks
+  const formattedAsset = [];
   if (asset) {
     for (const [key, value] of Object.entries(asset)) {
       // Check if the key is one of the keys of interest
@@ -68,7 +92,6 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
   }
 
   const assetSymbol = formattedAsset.find((item) => item.key === 'Symbol');
-  const assetDecimals = formattedAsset.find((item) => item.key === 'Decimals');
 
   // Reset fetch state when asset changes
   useEffect(() => {
@@ -114,20 +137,7 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
           if (response.ok) {
             const data = await response.json();
             setMarketData({
-              id: data.id,
-              name: data.name,
-              symbol: data.symbol,
-              image: data.image,
-              currentPrice: data.market_data?.current_price?.usd || 0,
-              marketCap: data.market_data?.market_cap?.usd || 0,
-              marketCapRank: data.market_cap_rank,
-              totalVolume: data.market_data?.total_volume?.usd || 0,
-              priceChange24h:
-                data.market_data?.price_change_percentage_24h || 0,
-              circulatingSupply: data.market_data?.circulating_supply || 0,
-              totalSupply: data.market_data?.total_supply || 0,
-              categories: data.categories || [],
-              description: data.description?.en || '',
+              ...data,
               isVerified: true,
             });
 
@@ -167,8 +177,27 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
     alert.info(t('home.contractCopied'));
   }, [isCopied, alert, t]);
 
+  // If still no asset, return error message (after all hooks have been called)
+  if (!asset) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <p className="text-brand-gray200">Asset not found</p>
+      </div>
+    );
+  }
+
+  const hasContract =
+    asset?.contract &&
+    asset.contract !== '0x0000000000000000000000000000000000000000';
+
+  const assetDecimals = formattedAsset.find((item) => item.key === 'Decimals');
+
   const renderMarketData = () => {
     if (!marketData || isLoadingMarketData) return null;
+
+    // Get user's preferred currency
+    const userCurrency = (fiat.asset || 'usd').toLowerCase();
+    const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
     return (
       <div className="mt-4 mb-4 p-4 bg-gray-900 rounded-lg border border-gray-700">
@@ -195,25 +224,34 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
         </h4>
 
         {/* Price and Change - Full Width */}
-        {marketData.currentPrice && (
+        {marketData.market_data?.current_price?.[userCurrency] && (
           <div className="mb-4">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.currentPrice')}
             </span>
             <div className="flex items-baseline gap-2">
               <span className="text-white font-medium text-lg">
-                ${formatCurrency(marketData.currentPrice.toString(), 6)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  marketData.market_data.current_price[userCurrency].toString(),
+                  6
+                )}
               </span>
-              {marketData.priceChange24h !== undefined && (
+              {marketData.market_data?.price_change_percentage_24h !== null && (
                 <span
                   className={`text-sm ${
-                    marketData.priceChange24h >= 0
+                    marketData.market_data.price_change_percentage_24h >= 0
                       ? 'text-green-500'
                       : 'text-red-500'
                   }`}
                 >
-                  {marketData.priceChange24h >= 0 ? '+' : ''}
-                  {marketData.priceChange24h.toFixed(2)}% (24h)
+                  {marketData.market_data.price_change_percentage_24h >= 0
+                    ? '+'
+                    : ''}
+                  {marketData.market_data.price_change_percentage_24h.toFixed(
+                    2
+                  )}
+                  % (24h)
                 </span>
               )}
             </div>
@@ -222,7 +260,7 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {marketData.marketCapRank && (
+          {marketData.market_cap_rank && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
@@ -234,23 +272,27 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
                   rel="noopener noreferrer"
                   className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
                 >
-                  #{marketData.marketCapRank}
+                  #{marketData.market_cap_rank}
                   <ExternalLinkIcon size={12} />
                 </a>
               ) : (
                 <span className="text-brand-royalblue font-medium">
-                  #{marketData.marketCapRank}
+                  #{marketData.market_cap_rank}
                 </span>
               )}
             </div>
           )}
-          {marketData.marketCap && (
+          {marketData.market_data?.market_cap?.[userCurrency] && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
               </span>
               <span className="text-white font-medium">
-                ${formatCurrency(marketData.marketCap.toString(), 0)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  marketData.market_data.market_cap[userCurrency].toString(),
+                  0
+                )}
               </span>
             </div>
           )}
@@ -258,23 +300,30 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {marketData.totalVolume && (
+          {marketData.market_data?.total_volume?.[userCurrency] && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
               </span>
               <span className="text-white font-medium">
-                ${formatCurrency(marketData.totalVolume.toString(), 0)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  marketData.market_data.total_volume[userCurrency].toString(),
+                  0
+                )}
               </span>
             </div>
           )}
-          {marketData.circulatingSupply && (
+          {marketData.market_data?.circulating_supply && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
               </span>
               <span className="text-white font-medium">
-                {formatCurrency(marketData.circulatingSupply.toString(), 0)}
+                {formatCurrency(
+                  marketData.market_data.circulating_supply.toString(),
+                  0
+                )}
               </span>
             </div>
           )}
@@ -367,13 +416,13 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
         </div>
 
         {/* Description */}
-        {marketData.description && (
+        {marketData.description?.en && (
           <div className="pt-3 border-t border-gray-700">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.about')}
             </span>
             <p className="text-white text-xs leading-relaxed line-clamp-3">
-              {marketData.description}
+              {marketData.description.en}
             </p>
           </div>
         )}
@@ -386,9 +435,11 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
       <div className="flex-1 overflow-y-auto scrollbar-styled pb-20">
         <div className="w-full flex flex-col items-center justify-center gap-y-2">
           {/* Token Icon */}
-          {marketData?.image ||
-          asset?.image ||
-          getTokenLogo(assetSymbol?.value, false) ? (
+          {(marketData?.image?.large ||
+            marketData?.image?.small ||
+            marketData?.image?.thumb ||
+            asset?.image ||
+            getTokenLogo(assetSymbol?.value, false)) && (
             <div className="group relative">
               <div
                 className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
@@ -406,38 +457,7 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
                   }
                   alt={`${assetSymbol?.value} Logo`}
                   className="w-full h-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    e.currentTarget.nextElementSibling?.classList.remove(
-                      'hidden'
-                    );
-                  }}
                 />
-                <div
-                  className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                            flex items-center justify-center"
-                >
-                  <span className="text-white text-lg font-bold font-rubik">
-                    {assetSymbol?.value?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-              </div>
-              {/* Optional shine effect on hover */}
-              <div
-                className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
-                          opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-              ></div>
-            </div>
-          ) : (
-            <div className="group relative">
-              <div
-                className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                          flex items-center justify-center shadow-md group-hover:shadow-xl 
-                          group-hover:scale-110 transition-all duration-300"
-              >
-                <span className="text-white text-lg font-bold font-rubik">
-                  {assetSymbol?.value?.charAt(0).toUpperCase()}
-                </span>
               </div>
               {/* Optional shine effect on hover */}
               <div

@@ -1,6 +1,7 @@
 import { isNil } from 'lodash';
 
 import { getAsset } from '@pollum-io/sysweb3-utils';
+import { cleanTokenSymbol } from '@pollum-io/sysweb3-utils';
 
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
@@ -214,8 +215,8 @@ const SysAssetsControler = (): ISysAssetsController => {
       // Return validated token details
       const tokenDetails: ITokenSysProps = {
         assetGuid: assetGuid,
-        symbol: assetData.symbol,
-        name: assetData.symbol, // Syscoin assets often use symbol as name
+        symbol: cleanTokenSymbol(assetData.symbol),
+        name: cleanTokenSymbol(assetData.symbol), // Syscoin assets often use symbol as name - keep intact
         decimals: assetData.decimals,
         balance: balance,
         maxSupply: assetData.maxSupply,

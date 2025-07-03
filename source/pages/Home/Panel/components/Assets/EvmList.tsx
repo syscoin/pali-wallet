@@ -11,6 +11,7 @@ import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
+import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -139,103 +140,106 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
 
   return (
     <>
-      {filteredAssets?.map((token: ITokenEthProps) => {
-        const btnContainerWidth =
-          token?.tokenStandard === 'ERC-1155' ? 'w-10' : 'w-12';
-        return (
-          <Fragment key={uniqueId(token.id)}>
-            <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
-              <div className="flex gap-3 items-center justify-start">
-                {!token.isNft &&
-                  (token.logo ? (
-                    <div
-                      className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
+      {filteredAssets?.map((token: ITokenEthProps) => (
+        <Fragment key={uniqueId(token.id)}>
+          <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
+            <div className="flex gap-3 items-center justify-start">
+              {!token.isNft &&
+                (token.logo ? (
+                  <div
+                    className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
                                     hover:shadow-md hover:scale-110 transition-all duration-200"
-                    >
-                      <img
-                        src={`${token.logo}`}
-                        alt={`${token.name || token.tokenSymbol} Logo`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          e.currentTarget.nextElementSibling?.classList.remove(
-                            'hidden'
-                          );
-                        }}
-                      />
-                      <div
-                        className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                      flex items-center justify-center"
-                      >
-                        <span className="text-white text-xs font-bold">
-                          {token.tokenSymbol.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
+                  >
+                    <img
+                      src={`${token.logo}`}
+                      alt={`${token.name || token.tokenSymbol} Logo`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        e.currentTarget.nextElementSibling?.classList.remove(
+                          'hidden'
+                        );
+                      }}
+                    />
                     <div
-                      className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                    flex items-center justify-center hover:shadow-md hover:scale-110 
-                                    transition-all duration-200"
+                      className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                                      flex items-center justify-center"
                     >
                       <span className="text-white text-xs font-bold">
                         {token.tokenSymbol.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                  ))}
-                {token.isNft && token?.tokenStandard === 'ERC-1155' && (
-                  <p className="font-rubik">
-                    <span
-                      className="text-button-primary font-poppins hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                      onClick={() => handleAssetClick(token)}
-                    >
-                      {`- ${token.name || token.tokenSymbol}`}
+                  </div>
+                ) : (
+                  <div
+                    className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                                    flex items-center justify-center hover:shadow-md hover:scale-110 
+                                    transition-all duration-200"
+                  >
+                    <span className="text-white text-xs font-bold">
+                      {token.tokenSymbol.charAt(0).toUpperCase()}
                     </span>
-                  </p>
-                )}
+                  </div>
+                ))}
+              {token.isNft && token?.tokenStandard === 'ERC-1155' && (
+                <p className="font-rubik">
+                  <span
+                    className="text-button-primary font-poppins hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                    onClick={() => handleAssetClick(token)}
+                  >
+                    {`- ${token.name || token.tokenSymbol}`}
+                  </span>
+                </p>
+              )}
 
-                {token?.tokenStandard !== 'ERC-1155' && (
-                  <p className="flex items-center gap-x-2">
-                    <span className="text-brand-white">{token.balance}</span>
+              {token?.tokenStandard !== 'ERC-1155' && (
+                <p className="flex items-center gap-x-2">
+                  <span className="text-brand-white">{token.balance}</span>
 
-                    <span
-                      className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                      onClick={() => handleAssetClick(token)}
-                    >
-                      {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
-                    </span>
-                  </p>
-                )}
-              </div>
+                  <span
+                    className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                    onClick={() => handleAssetClick(token)}
+                  >
+                    {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
+                  </span>
+                </p>
+              )}
+            </div>
 
-              <div
-                className={`flex items-center justify-between ${btnContainerWidth}`}
-              >
-                <Tooltip content={t('tooltip.assetDetails')}>
+            <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
+              <Tooltip content={t('tooltip.assetDetails')}>
+                <IconButton
+                  onClick={() =>
+                    navigate('/home/details', {
+                      state: { id: token.id, hash: null },
+                    })
+                  }
+                  className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
+                  aria-label={`View details for ${token.tokenSymbol} token`}
+                >
                   <DetailsIcon
-                    className="cursor-pointer hover:text-fields-input-borderfocus text-brand-white"
                     size={16}
-                    onClick={() =>
-                      navigate('/home/details', {
-                        state: { id: token.id, hash: null },
-                      })
-                    }
+                    className="text-brand-white hover:text-brand-royalbluemedium transition-colors"
                   />
-                </Tooltip>
+                </IconButton>
+              </Tooltip>
 
-                <Tooltip content={t('tooltip.deleteAsset')}>
+              <Tooltip content={t('tooltip.deleteAsset')}>
+                <IconButton
+                  onClick={() => handleDeleteClick(token)}
+                  className="p-2 hover:bg-red-500/20 rounded-full transition-colors duration-200"
+                  aria-label={`Delete ${token.tokenSymbol} token`}
+                >
                   <DeleteIcon
-                    className="cursor-pointer hover:text-fields-input-borderfocus"
-                    color="text-brand-white"
                     size={16}
-                    onClick={() => handleDeleteClick(token)}
+                    className="text-brand-white hover:text-red-500 transition-colors"
                   />
-                </Tooltip>
-              </div>
-            </li>
-          </Fragment>
-        );
-      })}
+                </IconButton>
+              </Tooltip>
+            </div>
+          </li>
+        </Fragment>
+      ))}
 
       <ConfirmationModal
         show={showDeleteConfirmation}

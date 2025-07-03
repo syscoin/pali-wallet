@@ -14,6 +14,7 @@ import {
   getNftStandardMetadata,
   getERC721StandardBalance,
 } from '@pollum-io/sysweb3-utils';
+import { cleanTokenSymbol } from '@pollum-io/sysweb3-utils';
 
 import { Queue } from '../transactions/queue';
 import store from 'state/store';
@@ -117,34 +118,44 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       const tokens = data.result;
 
-      // Convert to ITokenSearchResult format (lightweight for browsing)
-      const results: ITokenSearchResult[] = tokens.map((token: any) => {
-        // Check if it's an NFT based on type
-        const tokenType = token.type || 'ERC-20';
-        const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
+      // Helper function to detect tokens with invisible/funny characters in name
+      const hasInvisibleChars = (name: string): boolean => {
+        if (!name) return false;
 
-        return {
-          id: `${token.contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-          symbol: token.symbol || 'Unknown',
-          name: token.name || 'Unknown Token',
-          contractAddress: token.contractAddress,
-          balance: isNft
-            ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
-            : parseFloat(token.balance) /
-              Math.pow(10, parseInt(token.decimals) || 18),
-          decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
-          tokenStandard: tokenType,
-          // CoinGecko enhancement happens only when user selects/imports specific tokens
-          marketCapRank: undefined,
-          image: undefined,
-          currentPrice: undefined,
-          priceChange24h: undefined,
-          marketCap: undefined,
-        };
-      });
+        // Check for zero-width spaces and other invisible Unicode characters
+        return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(
+          name
+        );
+      };
+
+      // Convert to ITokenSearchResult format and filter out tokens with funny characters
+      const results: ITokenSearchResult[] = tokens
+        .filter((token: any) => !hasInvisibleChars(token.name || '')) // Filter out tokens with invisible chars in name
+        .map((token: any) => {
+          // Check if it's an NFT based on type
+          const tokenType = token.type || 'ERC-20';
+          const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
+
+          return {
+            id: `${token.contractAddress.toLowerCase()}-${
+              activeNetwork.chainId
+            }`,
+            symbol: cleanTokenSymbol(token.symbol || 'Unknown'),
+            name: token.name || 'Unknown Token', // Keep names intact - they can have spaces
+            contractAddress: token.contractAddress,
+            balance: isNft
+              ? parseInt(token.balance) || 1 // For NFTs, balance is the count of NFTs
+              : parseFloat(token.balance) /
+                Math.pow(10, parseInt(token.decimals) || 18),
+            decimals: isNft ? 0 : parseInt(token.decimals) || 18, // NFTs always have 0 decimals
+            tokenStandard: tokenType,
+          };
+        });
 
       console.log(
-        `[EvmAssetsController] Found ${results.length} tokens held by user (CoinGecko enhancement on selection)`
+        `[EvmAssetsController] Found ${results.length} valid tokens (filtered ${
+          tokens.length - results.length
+        } tokens with invisible characters)`
       );
       return results;
     } catch (error) {
@@ -228,8 +239,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
           id: `${contractAddress.toLowerCase()}-${
             store.getState().vault.activeNetwork.chainId
           }`,
-          symbol: symbol.toUpperCase(),
-          name: name || symbol,
+          symbol: cleanTokenSymbol(symbol).toUpperCase(),
+          name: name || symbol, // Keep names intact - they can have spaces
           contractAddress,
           decimals,
           balance: formattedBalance,
@@ -239,30 +250,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
           isVerified: false,
         };
 
-        // Try to enhance with CoinGecko data (non-blocking)
-        try {
-          const currentPlatform = getCurrentNetworkPlatform();
-          if (currentPlatform) {
-            const response = await fetch(
-              `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-            );
-
-            if (response.ok) {
-              const coinGeckoData = await response.json();
-              // Merge CoinGecko data
-              return {
-                ...coinGeckoData,
-                ...tokenDetails,
-                isVerified: true,
-              };
-            }
-          }
-        } catch (coinGeckoError) {
-          console.warn(
-            `[EvmAssetsController] CoinGecko data not available for ${contractAddress}`
-          );
-        }
-
+        // Don't fetch CoinGecko data during validation - keep it lightweight
         console.log(
           `[EvmAssetsController] Validated ${tokenStandard} token ${symbol} with balance: ${formattedBalance}`
         );
@@ -687,7 +675,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     return {
       name,
-      symbol,
+      symbol: cleanTokenSymbol(symbol),
       decimals,
       balance: balance.toString(),
     };
@@ -748,8 +736,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
         id: `${contractAddress.toLowerCase()}-${
           store.getState().vault.activeNetwork.chainId
         }`,
-        symbol: metadata.tokenSymbol.toUpperCase(),
-        name: metadata.tokenSymbol, // Use symbol as name for basic info
+        symbol: cleanTokenSymbol(metadata.tokenSymbol).toUpperCase(),
+        name: cleanTokenSymbol(metadata.tokenSymbol), // Use symbol as name for basic info
         contractAddress,
         decimals: metadata.decimals || 18,
         balance: 0, // No balance for basic details
@@ -862,9 +850,14 @@ const EvmAssetsController = (): IEvmAssetsController => {
           if (response.ok) {
             const coinGeckoData = await response.json();
 
+            // Clean CoinGecko symbol before merging
+            if (coinGeckoData.symbol) {
+              coinGeckoData.symbol = cleanTokenSymbol(coinGeckoData.symbol);
+            }
+
             // Merge CoinGecko data with our token details
             const enhancedDetails = {
-              ...coinGeckoData, // All CoinGecko fields
+              ...coinGeckoData, // All CoinGecko fields (with cleaned symbol)
               ...detailsWithBalance, // Our wallet-specific data (symbol, decimals, balance, etc.)
               isVerified: true,
             };
@@ -955,23 +948,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
         if (response.ok) {
           const coinGeckoData = await response.json();
 
-          // Extract only market-related data
+          // Clean the symbol and return in ITokenDetails format
           const marketData = {
-            id: coinGeckoData.id,
-            name: coinGeckoData.name,
-            symbol: coinGeckoData.symbol,
-            image: coinGeckoData.image,
-            currentPrice: coinGeckoData.market_data?.current_price?.usd || 0,
-            marketCap: coinGeckoData.market_data?.market_cap?.usd || 0,
-            marketCapRank: coinGeckoData.market_cap_rank,
-            totalVolume: coinGeckoData.market_data?.total_volume?.usd || 0,
-            priceChange24h:
-              coinGeckoData.market_data?.price_change_percentage_24h || 0,
-            circulatingSupply:
-              coinGeckoData.market_data?.circulating_supply || 0,
-            totalSupply: coinGeckoData.market_data?.total_supply || 0,
-            categories: coinGeckoData.categories || [],
-            description: coinGeckoData.description?.en || '',
+            ...coinGeckoData,
+            symbol: cleanTokenSymbol(coinGeckoData.symbol),
             isVerified: true,
           };
 
@@ -1178,8 +1158,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: nftMetadata.symbol.toUpperCase(),
-            name: nftMetadata.name || nftMetadata.symbol, // Use name if available, fallback to symbol
+            symbol: cleanTokenSymbol(nftMetadata.symbol).toUpperCase(),
+            name:
+              nftMetadata.name ||
+              cleanTokenSymbol(nftMetadata.symbol).toUpperCase(), // Use name if available, fallback to symbol
             contractAddress,
             decimals: 0, // NFTs always have 0 decimals
             balance: Number(balance) || 0,
@@ -1218,8 +1200,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
             nftDetails = {
               id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-              symbol: symbol.toUpperCase(),
-              name: name || symbol,
+              symbol: cleanTokenSymbol(symbol).toUpperCase(),
+              name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
               contractAddress,
               decimals: 0,
               balance: Number(balance) || 0,
@@ -1272,8 +1254,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
           nftDetails = {
             id: `${contractAddress.toLowerCase()}-${activeNetwork.chainId}`,
-            symbol: symbol.toUpperCase(),
-            name: name || symbol,
+            symbol: cleanTokenSymbol(symbol).toUpperCase(),
+            name: name || cleanTokenSymbol(symbol).toUpperCase(), // Keep names intact - they can have spaces
             contractAddress,
             decimals: 0, // NFTs always have 0 decimals
             balance: 0, // ERC-1155 balance requires specific token IDs - will be updated when user enters them
@@ -1307,36 +1289,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
       }
 
-      // Try to enhance with CoinGecko data (non-blocking)
-      try {
-        const currentPlatform = getCurrentNetworkPlatform();
-        if (currentPlatform) {
-          const response = await fetch(
-            `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-          );
-
-          if (response.ok) {
-            const coinGeckoData = await response.json();
-            // Merge CoinGecko data the same way as ERC-20 tokens for consistency
-            const enhancedNftDetails = {
-              ...coinGeckoData,
-              ...nftDetails,
-              isVerified: true,
-            };
-
-            console.log(
-              `[EvmAssetsController] Enhanced NFT with CoinGecko data: ${enhancedNftDetails.name}`
-            );
-
-            return enhancedNftDetails;
-          }
-        }
-      } catch (coinGeckoError) {
-        console.warn(
-          `[EvmAssetsController] CoinGecko data not available for NFT ${contractAddress}`
-        );
-      }
-
+      // Don't fetch CoinGecko data during validation - keep it lightweight
       console.log(`[EvmAssetsController] NFT contract validation complete:`, {
         contract: contractAddress,
         type: contractType,

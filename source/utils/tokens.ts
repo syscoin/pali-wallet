@@ -39,7 +39,7 @@ export const getTokenTypeBadgeColor = (
 ): string => {
   const borderSuffix = includeBorder ? ' border-blue-400' : '';
   const borderSuffixPurple = includeBorder ? ' border-purple-400' : '';
-  const borderSuffixPink = includeBorder ? ' border-pink-400' : '';
+  const borderSuffixYellow = includeBorder ? ' border-yellow-400' : '';
   const borderSuffixGreen = includeBorder ? ' border-green-400' : '';
   const borderSuffixOrange = includeBorder ? ' border-orange-400' : '';
   const borderSuffixGray = includeBorder ? ' border-gray-400' : '';
@@ -47,27 +47,22 @@ export const getTokenTypeBadgeColor = (
   switch (type?.toLowerCase()) {
     // EVM Token Standards
     case 'erc-20':
-      return `bg-blue-600 text-blue-100${borderSuffix}`;
+      return `bg-blue-500 text-white${borderSuffix}`;
     case 'erc-721':
-      return `bg-purple-600 text-purple-100${borderSuffixPurple}`;
+      return `bg-purple-500 text-white${borderSuffixPurple}`;
     case 'erc-1155':
-      return `bg-pink-600 text-pink-100${borderSuffixPink}`;
+      return `bg-yellow-500 text-white${borderSuffixYellow}`;
     case 'erc-777':
-      return `bg-green-600 text-green-100${borderSuffixGreen}`;
+      return `bg-green-500 text-white${borderSuffixGreen}`;
     case 'erc-4626':
-      return `bg-orange-600 text-orange-100${borderSuffixOrange}`;
+      return `bg-orange-500 text-white${borderSuffixOrange}`;
 
     // Syscoin Token Types
     case 'sptallocated':
-    case 'spt':
-    case 'sptoken':
-    case 'syscoin platform token':
-      return `bg-blue-600 text-blue-100${borderSuffix}`;
-    case 'nft':
-      return `bg-purple-600 text-purple-100${borderSuffixPurple}`;
+      return `bg-blue-500 text-white${borderSuffix}`;
 
     // Default
     default:
-      return `bg-gray-600 text-gray-100${borderSuffixGray}`;
+      return `bg-gray-500 text-white${borderSuffixGray}`;
   }
 };

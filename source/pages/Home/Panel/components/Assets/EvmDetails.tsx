@@ -1,3 +1,4 @@
+import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
@@ -11,11 +12,20 @@ import { RootState } from 'state/store';
 import { ellipsis, formatCurrency } from 'utils/index';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
-export const EvmAssetDetails = ({ id }: { id: string }) => {
+interface IEvmAssetDetailsProps {
+  id: string;
+  navigationState?: any;
+}
+
+export const EvmAssetDetails = ({
+  id,
+  navigationState,
+}: IEvmAssetDetailsProps) => {
   const { controllerEmitter } = useController();
-  const { activeAccount, accountAssets, activeNetwork } = useSelector(
+  const { activeAccount, accountAssets, activeNetwork, accounts } = useSelector(
     (state: RootState) => state.vault
   );
+  const { fiat } = useSelector((state: RootState) => state.price);
   const accountAssetData = accountAssets[activeAccount.type]?.[
     activeAccount.id
   ] || { ethereum: [], syscoin: [], nfts: [] };
@@ -30,29 +40,25 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
   // Use a ref to track if a request is in progress to prevent duplicates
   const fetchingRef = React.useRef(false);
 
+  // Get the full account object
+  const fullAccount = accounts[activeAccount.type]?.[activeAccount.id];
+
+  // Use navigation state directly for import preview, otherwise find in store
+  const currentAsset = navigationState?.isImportPreview
+    ? navigationState
+    : accountAssetData.ethereum.find((asset) => asset.id === id);
+
+  // All hooks must be called before any early returns
+  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
+
+  // Define variables that will be used in hooks
+  const is1155 = currentAsset?.tokenStandard === 'ERC-1155';
+
   useEffect(() => {
     if (!isCopied) return;
 
     alert.info(t('home.contractCopied'));
   }, [isCopied, alert, t]);
-
-  const currentAsset = accountAssetData.ethereum.find(
-    (asset) => asset.id === id
-  );
-
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
-
-  const currentName = currentAsset?.name;
-
-  const is1155 = currentAsset?.tokenStandard === 'ERC-1155';
-  const isNft = !!currentAsset?.isNft;
-  const isErc721 = isNft && currentAsset?.tokenStandard === 'ERC-721';
-  const hasImage = currentAsset?.tokenStandard !== 'ERC-1155';
-
-  // Get the actual token standard from the saved data
-  const tokenStandard =
-    currentAsset?.tokenStandard ||
-    (isNft ? (is1155 ? 'ERC-1155' : 'ERC-721') : 'ERC-20');
 
   // Check if we have enhanced data stored, if not try to fetch it
   useEffect(() => {
@@ -71,7 +77,18 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         return;
       }
 
-      // Try to fetch market data only (no blockchain calls)
+      // Check if we already have market data
+      const hasMarketData =
+        currentAsset.market_data?.current_price?.usd !== undefined ||
+        currentAsset.market_data?.market_cap?.usd !== undefined;
+
+      if (hasMarketData) {
+        setEnhancedData(currentAsset);
+        setHasFetchedData(true);
+        return;
+      }
+
+      // Fetch market data if we don't have it
       if (currentAsset.contractAddress && !fetchingRef.current) {
         // Set the ref to prevent duplicate calls
         fetchingRef.current = true;
@@ -84,7 +101,6 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
             [currentAsset.contractAddress]
           )) as any;
 
-          // Use market data if available
           if (marketData) {
             setEnhancedData(marketData);
           }
@@ -101,11 +117,42 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
     };
 
     loadEnhancedData();
-  }, [currentAsset?.contractAddress, is1155, controllerEmitter]);
+  }, [
+    currentAsset?.contractAddress,
+    is1155,
+    controllerEmitter,
+    navigationState?.isImportPreview,
+    fullAccount?.address,
+  ]);
+
+  // If still no current asset, return null (after all hooks have been called)
+  if (!currentAsset) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <p className="text-brand-gray200">Asset not found</p>
+      </div>
+    );
+  }
+
+  const currentName = currentAsset?.name;
+
+  const isNft = !!currentAsset?.isNft;
+  const isErc721 = isNft && currentAsset?.tokenStandard === 'ERC-721';
+
+  // Get the actual token standard from the saved data
+  const tokenStandard =
+    currentAsset?.tokenStandard ||
+    (isNft ? (is1155 ? 'ERC-1155' : 'ERC-721') : 'ERC-20');
 
   // Use enhanced data from token or fetched data
   const tokenData = enhancedData;
-  const hasEnhancedData = !!tokenData?.currentPrice;
+
+  // Get user's preferred currency
+  const userCurrency = (fiat.asset || 'usd').toLowerCase();
+  const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
+
+  const hasEnhancedData =
+    !!tokenData?.market_data?.current_price?.[userCurrency];
 
   const renderEnhancedMarketData = () => {
     if (!hasEnhancedData || isNft) return null;
@@ -135,25 +182,32 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         </h4>
 
         {/* Price and Change - Full Width */}
-        {tokenData.currentPrice !== undefined && (
+        {tokenData.market_data?.current_price?.[userCurrency] !== undefined && (
           <div className="mb-4">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.currentPrice')}
             </span>
             <div className="flex items-baseline gap-2">
               <span className="text-white font-medium text-lg">
-                ${formatCurrency(tokenData.currentPrice.toString(), 6)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  tokenData.market_data.current_price[userCurrency].toString(),
+                  6
+                )}
               </span>
-              {tokenData.priceChange24h !== undefined && (
+              {tokenData.market_data?.price_change_percentage_24h !== null && (
                 <span
                   className={`text-sm ${
-                    tokenData.priceChange24h >= 0
+                    tokenData.market_data.price_change_percentage_24h >= 0
                       ? 'text-green-500'
                       : 'text-red-500'
                   }`}
                 >
-                  {tokenData.priceChange24h >= 0 ? '+' : ''}
-                  {tokenData.priceChange24h.toFixed(2)}% (24h)
+                  {tokenData.market_data.price_change_percentage_24h >= 0
+                    ? '+'
+                    : ''}
+                  {tokenData.market_data.price_change_percentage_24h.toFixed(2)}
+                  % (24h)
                 </span>
               )}
             </div>
@@ -162,7 +216,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.marketCapRank !== undefined && (
+          {tokenData.market_cap_rank !== undefined && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
@@ -174,23 +228,27 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
                   rel="noopener noreferrer"
                   className="text-brand-royalblue font-medium hover:text-brand-deepPink100 transition-colors duration-200 flex items-center gap-1"
                 >
-                  #{tokenData.marketCapRank}
+                  #{tokenData.market_cap_rank}
                   <ExternalLinkIcon size={12} />
                 </a>
               ) : (
                 <span className="text-brand-royalblue font-medium">
-                  #{tokenData.marketCapRank}
+                  #{tokenData.market_cap_rank}
                 </span>
               )}
             </div>
           )}
-          {tokenData.marketCap !== undefined && (
+          {tokenData.market_data?.market_cap?.[userCurrency] !== undefined && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
               </span>
               <span className="text-white font-medium">
-                ${formatCurrency(tokenData.marketCap.toString(), 0)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  tokenData.market_data.market_cap[userCurrency].toString(),
+                  0
+                )}
               </span>
             </div>
           )}
@@ -198,23 +256,31 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.totalVolume !== undefined && (
+          {tokenData.market_data?.total_volume?.[userCurrency] !==
+            undefined && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
               </span>
               <span className="text-white font-medium">
-                ${formatCurrency(tokenData.totalVolume.toString(), 0)}
+                {currencySymbol || ''}
+                {formatCurrency(
+                  tokenData.market_data.total_volume[userCurrency].toString(),
+                  0
+                )}
               </span>
             </div>
           )}
-          {tokenData.circulatingSupply !== undefined && (
+          {tokenData.market_data?.circulating_supply !== undefined && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
               </span>
               <span className="text-white font-medium">
-                {formatCurrency(tokenData.circulatingSupply.toString(), 0)}
+                {formatCurrency(
+                  tokenData.market_data.circulating_supply.toString(),
+                  0
+                )}
               </span>
             </div>
           )}
@@ -296,7 +362,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
           <span className="text-gray-400 text-xs">
             {t('tokens.verification')}
           </span>
-          {tokenData.coingeckoId || tokenData.isVerified ? (
+          {tokenData.isVerified ? (
             <span className="px-2 py-1 bg-green-500 bg-opacity-20 text-green-500 text-xs rounded flex items-center">
               ✓ {t('tokens.verifiedByCoinGecko')}
             </span>
@@ -308,13 +374,13 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         </div>
 
         {/* Description */}
-        {tokenData.description && (
+        {tokenData.description?.en && (
           <div className="pt-3 border-t border-gray-700">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.about')}
             </span>
             <p className="text-white text-xs leading-relaxed line-clamp-3">
-              {tokenData.description}
+              {tokenData.description.en}
             </p>
           </div>
         )}
@@ -330,7 +396,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         <div className="flex items-center justify-between mb-3">
           <h4 className="text-white font-medium text-sm">NFT Information</h4>
           <span
-            className={`px-2 py-1 bg-opacity-20 text-xs rounded ${getTokenTypeBadgeColor(
+            className={`px-2 py-1 bg-opacity-80 text-xs rounded ${getTokenTypeBadgeColor(
               tokenStandard
             )}`}
           >
@@ -397,68 +463,46 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
       {currentAsset.contractAddress ? (
         <div className="flex-1 overflow-y-auto scrollbar-styled pb-20">
           <div className="w-full flex flex-col items-center justify-center gap-y-2">
-            {hasImage &&
-              (currentAsset.logo ? (
-                <div className="group relative">
-                  <div
-                    className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
+            {(enhancedData?.image?.large ||
+              enhancedData?.image?.small ||
+              enhancedData?.image?.thumb ||
+              currentAsset.logo) && (
+              <div className="group relative">
+                <div
+                  className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
                                   shadow-md group-hover:shadow-xl group-hover:scale-110 
                                   transition-all duration-300"
-                  >
-                    <img
-                      src={currentAsset.logo}
-                      alt={`${
-                        currentAsset.name || currentAsset.tokenSymbol
-                      } Logo`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove(
-                          'hidden'
-                        );
-                      }}
-                    />
-                    <div
-                      className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                    flex items-center justify-center"
-                    >
-                      <span className="text-white text-lg font-bold font-rubik">
-                        {currentAsset.tokenSymbol.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  {/* Optional shine effect on hover */}
-                  <div
-                    className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
-                                  opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                  ></div>
+                >
+                  <img
+                    src={
+                      enhancedData?.image?.large ||
+                      enhancedData?.image?.small ||
+                      enhancedData?.image?.thumb ||
+                      currentAsset.logo
+                    }
+                    alt={`${
+                      currentAsset.name ||
+                      currentAsset.tokenSymbol ||
+                      currentAsset.symbol
+                    } Logo`}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-              ) : (
-                <div className="group relative">
-                  <div
-                    className="w-12 h-12 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                  flex items-center justify-center shadow-md group-hover:shadow-xl 
-                                  group-hover:scale-110 transition-all duration-300"
-                  >
-                    <span className="text-white text-lg font-bold font-rubik">
-                      {currentAsset.tokenSymbol.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  {/* Optional shine effect on hover */}
-                  <div
-                    className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
+                {/* Optional shine effect on hover */}
+                <div
+                  className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
                                   opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
-                  ></div>
-                </div>
-              ))}
+                ></div>
+              </div>
+            )}
             <div className="flex flex-col items-center justify-center gap-y-0.5">
               <div className="flex items-center space-x-2">
                 <span className="text-xs font-light text-brand-gray200">
-                  {currentAsset.tokenSymbol}
+                  {currentAsset.tokenSymbol || currentAsset.symbol}
                 </span>
                 {(isNft || tokenStandard !== 'ERC-20') && (
                   <span
-                    className={`px-2 py-1 bg-opacity-20 text-xs rounded ${getTokenTypeBadgeColor(
+                    className={`px-2 py-1 bg-opacity-80 text-xs rounded ${getTokenTypeBadgeColor(
                       tokenStandard
                     )}`}
                   >
@@ -468,13 +512,18 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
               </div>
               {/* Only show full name if it's meaningfully different from symbol */}
               {(() => {
-                const symbol = currentAsset.tokenSymbol.toLowerCase();
-                const name = currentName.toLowerCase();
-                // Check if name is significantly different from symbol (not just case or minor differences)
+                const symbol =
+                  (
+                    currentAsset.tokenSymbol || currentAsset.symbol
+                  )?.toLowerCase() || '';
+                const name = currentName?.toLowerCase()?.trim() || '';
+                // Check if name exists and is significantly different from symbol (not just case or minor differences)
                 const isSignificantlyDifferent =
-                  !name.includes(symbol) &&
-                  !symbol.includes(name) &&
-                  name !== symbol;
+                  name && // Name must exist and not be empty
+                  name !== symbol && // Not the same as symbol
+                  !name.includes(symbol) && // Name doesn't contain symbol
+                  !symbol.includes(name) && // Symbol doesn't contain name
+                  name.length > 0; // Name has actual content
 
                 return isSignificantlyDifferent ? (
                   <span className="font-normal text-base text-brand-white">
@@ -505,7 +554,8 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
                 <p className="font-normal text-xs">{t('send.balance')}</p>
                 <p className="flex items-center font-normal gap-x-1.5 text-xs">
                   <span className="text-brand-white">
-                    {currentAsset.balance} {currentAsset.tokenSymbol}
+                    {currentAsset.balance}{' '}
+                    {currentAsset.tokenSymbol || currentAsset.symbol}
                   </span>
                 </p>
               </li>

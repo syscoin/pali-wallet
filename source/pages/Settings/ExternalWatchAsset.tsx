@@ -1,5 +1,7 @@
+import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSelector } from 'react-redux';
 
 import {
   DefaultModal,
@@ -9,17 +11,24 @@ import {
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { IAssetPreview } from 'types/tokens';
+import { RootState } from 'state/store';
+import { ITokenDetails } from 'types/tokens';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { formatCurrency } from 'utils/index';
 
 const ExternalWatchAsset = () => {
   const { host, ...data } = useQueryData();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
-  const [assetInfo, setAssetInfo] = useState<IAssetPreview>();
+  const [assetInfo, setAssetInfo] = useState<ITokenDetails>();
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+
+  // Get user's preferred currency
+  const { fiat } = useSelector((state: RootState) => state.price);
+  const userCurrency = (fiat.asset || 'usd').toLowerCase();
+  const currencySymbol = getSymbolFromCurrency(userCurrency.toUpperCase());
 
   function formatAssetData(asset: any) {
     if (typeof asset === 'object') {
@@ -62,7 +71,7 @@ const ExternalWatchAsset = () => {
       const currentAsset = (await controllerEmitter(
         ['wallet', 'getAssetInfo'],
         [assetOptions]
-      )) as IAssetPreview;
+      )) as ITokenDetails;
 
       setAssetInfo(currentAsset);
     };
@@ -93,12 +102,18 @@ const ExternalWatchAsset = () => {
             </div>
             <div className="flex flex-col items-center justify-center w-full">
               {/* Token Logo Display */}
-              {assetInfo.logo && (
+              {(assetInfo.image?.large ||
+                assetInfo.image?.small ||
+                assetInfo.image?.thumb) && (
                 <div className="flex items-center justify-center mt-4 mb-2">
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 shadow-lg">
                     <img
-                      src={assetInfo.logo}
-                      alt={assetInfo.tokenSymbol}
+                      src={
+                        assetInfo.image?.large ||
+                        assetInfo.image?.small ||
+                        assetInfo.image?.thumb
+                      }
+                      alt={assetInfo.symbol}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
@@ -147,37 +162,59 @@ const ExternalWatchAsset = () => {
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                   {t('settings.tokenSymbol')}
                   <span className="text-brand-royalblue text-xs">
-                    {assetInfo.tokenSymbol}
+                    {assetInfo.symbol}
                   </span>
                 </p>
 
                 {/* Market Data Display */}
-                {assetInfo.currentPrice && (
+                {assetInfo.market_data?.current_price?.[userCurrency] && (
                   <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                     Current Price
                     <span className="text-brand-royalblue text-xs">
-                      ${assetInfo.currentPrice.toFixed(6)}
-                      {assetInfo.priceChange24h && (
+                      {currencySymbol || ''}
+                      {formatCurrency(
+                        assetInfo.market_data.current_price[
+                          userCurrency
+                        ].toString(),
+                        6
+                      )}
+                      {assetInfo.market_data?.price_change_percentage_24h !==
+                        null && (
                         <span
                           className={`ml-2 ${
-                            assetInfo.priceChange24h >= 0
+                            assetInfo.market_data.price_change_percentage_24h >=
+                            0
                               ? 'text-green-400'
                               : 'text-red-400'
                           }`}
                         >
-                          {assetInfo.priceChange24h >= 0 ? '+' : ''}
-                          {assetInfo.priceChange24h.toFixed(2)}%
+                          {assetInfo.market_data.price_change_percentage_24h >=
+                          0
+                            ? '+'
+                            : ''}
+                          {assetInfo.market_data.price_change_percentage_24h.toFixed(
+                            2
+                          )}
+                          %
                         </span>
                       )}
                     </span>
                   </p>
                 )}
 
-                {assetInfo.marketCap && (
+                {assetInfo.market_data?.market_cap?.[userCurrency] && (
                   <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                     Market Cap
                     <span className="text-brand-royalblue text-xs">
-                      ${(assetInfo.marketCap / 1000000).toFixed(2)}M
+                      {currencySymbol || ''}
+                      {formatCurrency(
+                        (
+                          assetInfo.market_data.market_cap[userCurrency] /
+                          1000000
+                        ).toString(),
+                        2
+                      )}
+                      M
                     </span>
                   </p>
                 )}

@@ -14,7 +14,6 @@ import {
   IEvmTransactionResponse,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
-import { ITokenEthProps } from 'types/tokens';
 import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
 
 import {

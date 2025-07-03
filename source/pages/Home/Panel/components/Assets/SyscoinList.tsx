@@ -79,12 +79,12 @@ export const SyscoinAssetsList = () => {
     const AssetRenderer = (asset: any) => (
       <li
         key={uniqueId(String(asset.assetGuid))}
-        className="flex items-center py-3 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
+        className="flex items-center py-2 text-xs border-b border-dashed border-bkg-white200 hover:bg-alpha-whiteAlpha50 transition-colors duration-200 rounded-lg"
       >
         <table className="table-auto w-full">
           <tbody>
             <tr className="flex items-center justify-between font-poppins font-normal">
-              <td className="flex items-center gap-x-3">
+              <td className="flex items-center gap-3">
                 {/* Token Logo */}
                 {asset.image || getTokenLogo(asset.symbol) ? (
                   <div
@@ -166,7 +166,7 @@ export const SyscoinAssetsList = () => {
                 </div>
               </td>
 
-              <td className="flex items-center max-w-max text-left whitespace-nowrap overflow-hidden overflow-ellipsis gap-x-2.5">
+              <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
                 <Tooltip content={t('tooltip.assetDetails')}>
                   <IconButton
                     onClick={() =>
