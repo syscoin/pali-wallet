@@ -1,6 +1,5 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IAccountAssets } from 'state/vault/types';
 import {
@@ -20,19 +19,7 @@ export interface IAssetsManager {
 
 export interface IAssetsManagerUtilsResponse {
   ethereum: ITokenEthProps[];
-  nfts: INftsStructure[];
   syscoin: ITokenSysProps[];
-}
-
-export interface INftController {
-  getUserNfts: (
-    userAddress: string,
-    chainId: number,
-    rpcUrl: string
-  ) => Promise<INftsStructure[]>;
-  validateAndManagerUserNfts: (
-    fetchedNfts: INftsStructure[]
-  ) => INftsStructure[];
 }
 
 export interface IAssetsManagerUtils {
@@ -101,8 +88,19 @@ export interface IEvmAssetsController {
     coingeckoPlatformId?: string;
   } | null>;
 
-  getCurrentNetworkPlatform: () => string | null;
+  // Fetch specific NFT token IDs for a collection
+  fetchNftTokenIds: (
+    contractAddress: string,
+    ownerAddress: string,
+    tokenStandard: 'ERC-721' | 'ERC-1155'
+  ) => Promise<
+    { balance: number; tokenId: string }[] & {
+      hasMore?: boolean;
+      requiresManualEntry?: boolean;
+    }
+  >;
 
+  getCurrentNetworkPlatform: () => string | null;
   getERC20TokenInfo: (
     contractAddress: string,
     accountAddress: string,
@@ -113,6 +111,7 @@ export interface IEvmAssetsController {
     name: string;
     symbol: string;
   }>;
+
   // Get only market data from CoinGecko without any blockchain calls
   getOnlyMarketData: (contractAddress: string) => Promise<any | null>;
 
@@ -162,4 +161,26 @@ export interface IEvmAssetsController {
     walletAddress: string,
     w3Provider: CustomJsonRpcProvider
   ) => Promise<ITokenDetails | null>;
+
+  // NFT contract validation - for custom NFT import
+  validateNftContract: (
+    contractAddress: string,
+    walletAddress: string,
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<ITokenDetails | null>;
+
+  verifyERC1155Ownership: (
+    contractAddress: string,
+    ownerAddress: string,
+    tokenIds: string[],
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<{ balance: number; tokenId: string; verified: boolean }[]>;
+
+  // Verify ownership of NFT token IDs
+  verifyERC721Ownership: (
+    contractAddress: string,
+    ownerAddress: string,
+    tokenIds: string[],
+    w3Provider: CustomJsonRpcProvider
+  ) => Promise<{ balance: number; tokenId: string; verified: boolean }[]>;
 }

@@ -1,5 +1,44 @@
 /* eslint-disable @typescript-eslint/no-empty-function */
-import { chrome } from 'jest-chrome';
+
+// Mock the chrome object completely for this test
+const chrome = {
+  alarms: {
+    onAlarm: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      hasListener: jest.fn(),
+      callListeners: jest.fn(),
+      clearListeners: jest.fn(),
+    },
+    clear: jest.fn(),
+    create: jest.fn(),
+    get: jest.fn(),
+    getAll: jest.fn(),
+  },
+  runtime: {
+    onMessage: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      hasListener: jest.fn(),
+      callListeners: jest.fn(),
+      clearListeners: jest.fn(),
+    },
+    onConnect: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      hasListener: jest.fn(),
+      callListeners: jest.fn(),
+      clearListeners: jest.fn(),
+    },
+    getContexts: jest.fn(),
+  },
+};
+
+// Make it available globally
+Object.defineProperty(global, 'chrome', {
+  value: chrome,
+  writable: true,
+});
 
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
@@ -106,7 +145,7 @@ const mockMasterController: jest.Mocked<IMasterController> = {
 
 // Mock the dependencies but with better spy behavior
 jest.mock('scripts/Background/handlers/handlePaliUpdates', () => ({
-  checkForUpdates: jest.fn(),
+  checkForUpdates: jest.fn().mockResolvedValue(true), // Return a resolved promise
 }));
 
 jest.mock('scripts/Background/utils/startPolling', () => ({
@@ -124,10 +163,13 @@ describe('Background: handleListeners', () => {
 
     // Reset mocks before each test
     jest.clearAllMocks();
-    chrome.alarms.onAlarm.clearListeners();
-    chrome.runtime.onMessage.clearListeners();
 
-    // Also clear any pending alarms to prevent cross-test interference
+    // Clear our chrome mock call history
+    chrome.alarms.onAlarm.addListener.mockClear();
+    chrome.alarms.onAlarm.removeListener.mockClear();
+    chrome.runtime.onMessage.addListener.mockClear();
+    chrome.runtime.onMessage.removeListener.mockClear();
+    chrome.runtime.onConnect.addListener.mockClear();
     chrome.alarms.clear.mockClear();
 
     // Mock getPollingInterval to return a predictable value
@@ -138,9 +180,18 @@ describe('Background: handleListeners', () => {
   });
 
   describe('onAlarm Listener', () => {
-    it('should call checkForUpdates and startPolling for check_for_updates alarm', () => {
-      const alarm = { name: 'check_for_updates' } as chrome.alarms.Alarm;
-      chrome.alarms.onAlarm.callListeners(alarm);
+    it('should call checkForUpdates and startPolling for check_for_updates alarm', async () => {
+      // Get the alarm listener that was registered
+      const addListenerCalls = chrome.alarms.onAlarm.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const alarmListener = addListenerCalls[0][0];
+
+      // Call the listener with a mock alarm
+      const alarm = { name: 'check_for_updates' };
+      alarmListener(alarm);
+
+      // Wait for the async operations to complete
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Should call checkForUpdates directly
       expect(checkForUpdates).toHaveBeenCalledTimes(1);
@@ -151,10 +202,16 @@ describe('Background: handleListeners', () => {
     });
 
     it('should call setFiat for update_fiat_price_initial alarm', () => {
+      // Get the alarm listener that was registered
+      const addListenerCalls = chrome.alarms.onAlarm.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const alarmListener = addListenerCalls[0][0];
+
+      // Call the listener with a mock alarm
       const alarm = {
         name: 'update_fiat_price_initial',
-      } as chrome.alarms.Alarm;
-      chrome.alarms.onAlarm.callListeners(alarm);
+      };
+      alarmListener(alarm);
 
       // Should call setFiat
       expect(mockMasterController.wallet.setFiat).toHaveBeenCalledTimes(1);
@@ -173,25 +230,40 @@ describe('Background: handleListeners', () => {
     });
 
     it('should call dapp.setup for pw-msg-background/isInjected message', () => {
+      // Get the message listener that was registered
+      const addListenerCalls = chrome.runtime.onMessage.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const messageListener = addListenerCalls[0][0];
+
       const message = { type: 'pw-msg-background', action: 'isInjected' };
-      chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
+      messageListener(message, sender, sendResponse);
       expect(mockMasterController.dapp.setup).toHaveBeenCalledWith(sender);
       expect(sendResponse).toHaveBeenCalledWith({ isInjected: true }); // Based on mocked store
     });
 
     it('should call handleLogout for lock_wallet message', () => {
+      // Get the message listener that was registered
+      const addListenerCalls = chrome.runtime.onMessage.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const messageListener = addListenerCalls[0][0];
+
       const message = { type: 'lock_wallet' };
-      chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
+      messageListener(message, sender, sendResponse);
       expect(handleLogout).toHaveBeenCalledWith(mockMasterController);
       expect(sendResponse).not.toHaveBeenCalled();
     });
 
     it('should call wallet.setActiveNetwork for changeNetwork message (Bitcoin-based)', () => {
+      // Get the message listener that was registered
+      const addListenerCalls = chrome.runtime.onMessage.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const messageListener = addListenerCalls[0][0];
+
       const message = {
         type: 'changeNetwork',
         data: { network: { chainId: 57 }, isBitcoinBased: true },
       };
-      chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
+      messageListener(message, sender, sendResponse);
       expect(mockMasterController.wallet.setActiveNetwork).toHaveBeenCalledWith(
         message.data.network
       );
@@ -199,11 +271,16 @@ describe('Background: handleListeners', () => {
     });
 
     it('should call wallet.setActiveNetwork for changeNetwork message (EVM)', () => {
+      // Get the message listener that was registered
+      const addListenerCalls = chrome.runtime.onMessage.addListener.mock.calls;
+      expect(addListenerCalls.length).toBe(1);
+      const messageListener = addListenerCalls[0][0];
+
       const message = {
         type: 'changeNetwork',
         data: { network: { chainId: 1 }, isBitcoinBased: false },
       };
-      chrome.runtime.onMessage.callListeners(message, sender, sendResponse);
+      messageListener(message, sender, sendResponse);
       expect(mockMasterController.wallet.setActiveNetwork).toHaveBeenCalledWith(
         message.data.network
       );

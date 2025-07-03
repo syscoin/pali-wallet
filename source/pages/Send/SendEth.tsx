@@ -16,7 +16,7 @@ import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
-import { IERC1155Collection, ITokenEthProps } from 'types/tokens';
+import { ITokenEthProps } from 'types/tokens';
 import {
   getAssetBalance,
   ellipsis,
@@ -54,6 +54,26 @@ export const SendEth = () => {
 
   // State management
   const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
+  const [nftTokenIds, setNftTokenIds] = useState<
+    { balance: number; tokenId: string }[]
+  >([]);
+  const [selectedNftTokenId, setSelectedNftTokenId] = useState<string | null>(
+    null
+  );
+  const [isLoadingNftTokenIds, setIsLoadingNftTokenIds] = useState(false);
+  // NFT verification state
+  const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
+  const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
+    number | null
+  >(null);
+  const [verificationError, setVerificationError] = useState<string | null>(
+    null
+  );
+  // ERC-20 verification state
+  const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<
+    number | null
+  >(null);
+  const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
   const [isCalculatingGas, setIsCalculatingGas] = useState(false);
   const [isMaxSend, setIsMaxSend] = useState(false);
   const [cachedFeeData, setCachedFeeData] = useState<{
@@ -66,56 +86,102 @@ export const SendEth = () => {
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = useCallback(
-    (item: string) => {
-      // Clear cached fee when switching assets
-      setCachedFeeData(null);
-      // Clear max send flag when switching assets
-      setIsMaxSend(false);
+    async (value: string) => {
+      try {
+        if (value === '-1') {
+          setSelectedAsset(null);
+          setNftTokenIds([]);
+          setSelectedNftTokenId(null);
+          setCachedFeeData(null);
+          setIsMaxSend(false);
+          return;
+        }
 
-      if (item === '-1') {
-        setSelectedAsset(null);
-      } else if (activeAccountAssets?.ethereum?.length > 0) {
-        const getAsset = activeAccountAssets.ethereum.find(
-          (asset) => asset.contractAddress === item
+        const getAsset = activeAccountAssets?.ethereum?.find(
+          (item: ITokenEthProps) => item.contractAddress === value
         );
 
         if (getAsset) {
           setSelectedAsset(getAsset);
-          return;
-        }
+          setCachedFeeData(null);
+          setIsMaxSend(false);
 
-        setSelectedAsset(null);
+          // If it's an NFT, fetch token IDs
+          if (getAsset.isNft) {
+            setIsLoadingNftTokenIds(true);
+            // Set amount to 1 for NFTs
+            form.setFieldValue('amount', '1');
+            try {
+              const result = (await controllerEmitter(
+                ['wallet', 'fetchNftTokenIds'],
+                [
+                  getAsset.contractAddress,
+                  activeAccount.address,
+                  getAsset.tokenStandard || 'ERC-721',
+                ]
+              )) as { balance: number; tokenId: string }[] & {
+                hasMore?: boolean;
+                requiresManualEntry?: boolean;
+              };
+
+              setNftTokenIds(result || []);
+
+              // Auto-select first token if only one
+              if (result && result.length === 1) {
+                setSelectedNftTokenId(result[0].tokenId);
+                // Also set it in the form
+                form.setFieldValue('nftTokenId', result[0].tokenId);
+              }
+            } catch (error) {
+              console.error('Error loading NFT token IDs:', error);
+              setNftTokenIds([]);
+              alert.error(t('send.errorLoadingNfts'));
+            } finally {
+              setIsLoadingNftTokenIds(false);
+            }
+          } else {
+            setNftTokenIds([]);
+            setSelectedNftTokenId(null);
+          }
+        } else {
+          setSelectedAsset(null);
+          setNftTokenIds([]);
+          setSelectedNftTokenId(null);
+        }
+      } catch (error) {
+        console.error(error);
       }
     },
-    [activeAccountAssets?.ethereum]
-  );
-
-  // ✅ MEMOIZED: Complex computed values
-  const tokenId = useMemo(() => form.getFieldValue('amount'), [form]);
-
-  const collectionItemSymbol = useMemo(
-    () =>
-      selectedAsset?.collection?.find((item) => item.tokenId === +tokenId)
-        ?.tokenSymbol,
-    [selectedAsset?.collection, tokenId]
-  );
-
-  const finalSymbolToNextStep = useMemo(
-    () =>
-      selectedAsset?.is1155
-        ? collectionItemSymbol || selectedAsset?.collectionName
-        : selectedAsset?.tokenSymbol,
     [
-      selectedAsset?.is1155,
-      collectionItemSymbol,
-      selectedAsset?.collectionName,
-      selectedAsset?.tokenSymbol,
+      activeAccount.address,
+      activeAccountAssets,
+      controllerEmitter,
+      alert,
+      t,
+      form,
     ]
   );
 
+  // Remove old computed values that relied on is1155 and collection
+
+  const finalSymbolToNextStep = useMemo(() => {
+    if (selectedAsset?.isNft) {
+      return selectedNftTokenId
+        ? `#${selectedNftTokenId}`
+        : selectedAsset?.name || 'NFT';
+    }
+    return selectedAsset?.tokenSymbol;
+  }, [selectedAsset, selectedNftTokenId]);
+
   const nextStep = useCallback(
-    (values: { amount: string; receiver: string }) => {
+    (values: { amount: string; nftTokenId?: string; receiver: string }) => {
       try {
+        // For NFTs, validate token ID is selected
+        if (selectedAsset?.isNft && !values.nftTokenId) {
+          alert.error(t('send.selectNftToSend'));
+          return;
+        }
+
         // Check if this is a MAX send by comparing amount to balance
         let isMax = false;
         if (!selectedAsset) {
@@ -139,7 +205,11 @@ export const SendEth = () => {
               token: selectedAsset
                 ? {
                     ...selectedAsset,
-                    symbol: finalSymbolToNextStep,
+                    symbol:
+                      selectedAsset.isNft && values.nftTokenId
+                        ? `#${values.nftTokenId}`
+                        : finalSymbolToNextStep,
+                    tokenId: values.nftTokenId, // Include token ID for NFTs
                   }
                 : null,
               // Pass cached gas data to avoid recalculation on confirm screen
@@ -166,15 +236,6 @@ export const SendEth = () => {
   );
 
   const finalBalance = useCallback(() => {
-    if (selectedAsset?.is1155) {
-      return selectedAsset.collection.map(
-        (nft: IERC1155Collection, index: number, arr: IERC1155Collection[]) =>
-          `${nft.balance} ${nft.tokenSymbol} ${
-            index === arr.length - 1 ? '' : '- '
-          }`
-      );
-    }
-
     if (selectedAsset) {
       return getAssetBalance(
         selectedAsset,
@@ -192,13 +253,12 @@ export const SendEth = () => {
   }, [selectedAsset, activeAccount, activeNetwork]);
 
   const getLabel = useCallback(() => {
-    if (selectedAsset?.is1155 === undefined) {
-      return selectedAsset?.tokenSymbol
-        ? selectedAsset?.tokenSymbol.toUpperCase()
-        : activeNetwork.currency.toUpperCase();
+    if (selectedAsset?.isNft) {
+      return selectedAsset?.name || t('send.nftCollection');
     }
-
-    return selectedAsset?.collectionName.toUpperCase();
+    return selectedAsset?.tokenSymbol
+      ? selectedAsset?.tokenSymbol.toUpperCase()
+      : activeNetwork.currency.toUpperCase();
   }, [selectedAsset, activeNetwork.currency]);
 
   const openAccountInExplorer = useCallback(() => {
@@ -393,14 +453,24 @@ export const SendEth = () => {
   ]);
 
   const handleMaxButton = useCallback(() => {
-    // Fill in the full balance - either token or native ETH
+    // Only work with verified balances - no fallbacks
     let fullBalance: string;
 
     if (selectedAsset) {
-      // For tokens, use the token balance
-      fullBalance = String(selectedAsset.balance || '0');
+      // For ERC-1155 NFTs, REQUIRE verified balance
+      if (selectedAsset.isNft && selectedAsset?.tokenStandard === 'ERC-1155') {
+        if (verifiedTokenBalance === null) return; // Don't proceed if not verified
+        fullBalance = String(verifiedTokenBalance);
+      } else if (!selectedAsset.isNft) {
+        // For ERC-20 tokens, REQUIRE verified balance
+        if (verifiedERC20Balance === null) return; // Don't proceed if not verified
+        fullBalance = String(verifiedERC20Balance);
+      } else {
+        // For ERC-721, this shouldn't be called (amount field is hidden)
+        return;
+      }
     } else {
-      // For native ETH, use ETH balance
+      // For native ETH, use ETH balance (no verification needed)
       fullBalance = String(activeAccount?.balances?.ethereum || '0');
     }
 
@@ -409,7 +479,128 @@ export const SendEth = () => {
 
     // Force validation to run after setting the value
     form.validateFields(['amount']);
-  }, [activeAccount?.balances?.ethereum, selectedAsset, form]);
+  }, [
+    activeAccount?.balances?.ethereum,
+    selectedAsset,
+    verifiedTokenBalance,
+    verifiedERC20Balance,
+    form,
+  ]);
+
+  // Verify manually entered NFT token ID
+  const verifyTokenId = useCallback(
+    async (tokenId: string) => {
+      if (!selectedAsset || !activeAccount.address || !tokenId.trim()) {
+        setVerifiedTokenBalance(null);
+        setVerificationError(null);
+        return;
+      }
+
+      setIsVerifyingTokenId(true);
+      setVerificationError(null);
+
+      try {
+        const result = (await controllerEmitter(
+          [
+            'wallet',
+            selectedAsset?.tokenStandard === 'ERC-721'
+              ? 'verifyERC721Ownership'
+              : 'verifyERC1155Ownership',
+          ],
+          [selectedAsset.contractAddress, activeAccount.address, [tokenId]]
+        )) as { balance: number; tokenId: string; verified: boolean }[];
+
+        if (result && result.length > 0) {
+          const tokenInfo = result[0];
+          if (tokenInfo.verified && tokenInfo.balance > 0) {
+            setVerifiedTokenBalance(tokenInfo.balance);
+            setVerificationError(null);
+          } else {
+            setVerifiedTokenBalance(0);
+            setVerificationError(
+              tokenInfo.balance === 0
+                ? t('send.youDontOwnThisToken')
+                : t('send.tokenVerificationFailed')
+            );
+          }
+        } else {
+          setVerifiedTokenBalance(0);
+          setVerificationError(t('send.tokenNotFound'));
+        }
+      } catch (error) {
+        console.error('Error verifying token ID:', error);
+        setVerifiedTokenBalance(0);
+        setVerificationError(t('send.verificationFailed'));
+      } finally {
+        setIsVerifyingTokenId(false);
+      }
+    },
+    [selectedAsset, activeAccount.address, controllerEmitter]
+  );
+
+  // Handle manual token ID input with debounced verification
+  const handleManualTokenIdChange = useCallback(
+    (value: string) => {
+      setSelectedNftTokenId(value);
+      if (value) {
+        // Clear previous verification
+        setVerifiedTokenBalance(null);
+        setVerificationError(null);
+
+        // Debounce verification to avoid too many calls
+        const timeoutId = setTimeout(() => {
+          verifyTokenId(value);
+        }, 500);
+
+        return () => clearTimeout(timeoutId);
+      } else {
+        setVerifiedTokenBalance(null);
+        setVerificationError(null);
+      }
+    },
+    [verifyTokenId]
+  );
+
+  // Verify ERC-20 token balance
+  const verifyERC20Balance = useCallback(async () => {
+    if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) {
+      setVerifiedERC20Balance(null);
+      return;
+    }
+
+    setIsVerifyingERC20(true);
+
+    try {
+      const result = (await controllerEmitter(
+        ['wallet', 'getERC20TokenInfo'],
+        [selectedAsset.contractAddress, activeAccount.address]
+      )) as { balance: string; decimals: number; name: string; symbol: string };
+
+      if (result) {
+        const balance = Number(result.balance) / Math.pow(10, result.decimals);
+        setVerifiedERC20Balance(balance);
+      }
+    } catch (error) {
+      console.error('Error verifying ERC-20 balance:', error);
+      setVerifiedERC20Balance(null);
+    } finally {
+      setIsVerifyingERC20(false);
+    }
+  }, [selectedAsset, activeAccount.address, controllerEmitter]);
+
+  // Verify ERC-20 balance when asset changes
+  useEffect(() => {
+    if (selectedAsset && !selectedAsset.isNft) {
+      // Debounce ERC-20 verification to avoid spam
+      const timeoutId = setTimeout(() => {
+        verifyERC20Balance();
+      }, 1000);
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      setVerifiedERC20Balance(null);
+    }
+  }, [selectedAsset, verifyERC20Balance]);
 
   // ✅ OPTIMIZED: Effect with proper dependencies
   useEffect(() => {
@@ -481,6 +672,36 @@ export const SendEth = () => {
         <div className="flex gap-1 mt-[6px]">
           <p className="text-brand-gray200 text-xs">Your balance:</p>
           <p className="text-white text-xs font-semibold">{finalBalance()}</p>
+          {/* ERC-20 verification indicators */}
+          {selectedAsset && !selectedAsset.isNft && isVerifyingERC20 && (
+            <span className="text-brand-royalblue text-xs ml-1">🔄</span>
+          )}
+          {selectedAsset &&
+            !selectedAsset.isNft &&
+            verifiedERC20Balance !== null && (
+              <span
+                className="text-green-400 text-xs ml-1"
+                title={t('send.balanceVerified')}
+              >
+                ✓
+              </span>
+            )}
+          {/* ERC-1155 verification indicators */}
+          {selectedAsset?.isNft &&
+            selectedAsset?.tokenStandard === 'ERC-1155' &&
+            isVerifyingTokenId && (
+              <span className="text-brand-royalblue text-xs ml-1">🔄</span>
+            )}
+          {selectedAsset?.isNft &&
+            selectedAsset?.tokenStandard === 'ERC-1155' &&
+            verifiedTokenBalance !== null && (
+              <span
+                className="text-green-400 text-xs ml-1"
+                title={t('send.tokenOwnershipVerified')}
+              >
+                ✓
+              </span>
+            )}
         </div>
       </div>
       <Form
@@ -582,8 +803,8 @@ export const SendEth = () => {
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
                                       <p>
-                                        {item.isNft && item?.is1155
-                                          ? item.collectionName
+                                        {item.isNft
+                                          ? item.name || t('send.nftCollection')
                                           : item.tokenSymbol}
                                       </p>
                                       <small>
@@ -603,71 +824,193 @@ export const SendEth = () => {
             </Form.Item>
           </div>
 
-          <div className="flex md:w-96 relative">
-            <div className="value-custom-input w-full relative">
-              <span
-                onClick={handleMaxButton}
-                className="absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] cursor-pointer hover:bg-alpha-whiteAlpha200 z-10"
-              >
-                MAX
-              </span>
-              <Form.Item
-                name="amount"
-                className="relative w-full"
-                hasFeedback
-                rules={[
-                  {
-                    required: true,
-                    message: '',
-                  },
-                  () => ({
-                    async validator(_, value) {
-                      // Check if value is empty
-                      if (!value || value === '') {
-                        return Promise.reject('');
-                      }
-
-                      // Convert to BigNumber for precise validation
-                      let valueBN: BigNumber;
-                      try {
-                        // Parse the input value to wei for comparison
-                        valueBN = ethers.utils.parseEther(String(value));
-                      } catch (e) {
-                        // Invalid number format
-                        return Promise.reject('');
-                      }
-
-                      // Check if it's positive
-                      if (valueBN.lte(0)) {
-                        return Promise.reject('');
-                      }
-
-                      const isToken = !!selectedAsset;
-                      const isNFT = selectedAsset?.isNft;
-
-                      // For tokens and NFTs
-                      if (isToken) {
-                        if (isNFT) {
-                          return Promise.resolve(); // NFTs don't need balance check for tokenId
+          {/* Show amount field for fungible tokens and ERC-1155 NFTs */}
+          {(!selectedAsset?.isNft ||
+            selectedAsset?.tokenStandard === 'ERC-1155') && (
+            <div className="flex md:w-96 relative">
+              <div className="value-custom-input w-full relative">
+                <span
+                  onClick={
+                    // Disable MAX button until verification complete
+                    (selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155' &&
+                      verifiedTokenBalance === null) ||
+                    (!selectedAsset?.isNft &&
+                      selectedAsset &&
+                      verifiedERC20Balance === null) ||
+                    isVerifyingERC20 ||
+                    isVerifyingTokenId
+                      ? undefined
+                      : handleMaxButton
+                  }
+                  className={`absolute left-[15px] top-[50%] transform -translate-y-1/2 text-xs h-[18px] border border-alpha-whiteAlpha300 px-2 py-[2px] w-[41px] flex items-center justify-center rounded-[100px] z-10 ${
+                    (selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155' &&
+                      verifiedTokenBalance === null) ||
+                    (!selectedAsset?.isNft &&
+                      selectedAsset &&
+                      verifiedERC20Balance === null) ||
+                    isVerifyingERC20 ||
+                    isVerifyingTokenId
+                      ? 'opacity-50 cursor-not-allowed'
+                      : 'cursor-pointer hover:bg-alpha-whiteAlpha200'
+                  }`}
+                >
+                  MAX
+                </span>
+                <Form.Item
+                  name="amount"
+                  className="relative w-full"
+                  hasFeedback
+                  rules={[
+                    {
+                      required: true,
+                      message: '',
+                    },
+                    () => ({
+                      async validator(_, value) {
+                        // Check if value is empty
+                        if (!value || value === '') {
+                          return Promise.reject('');
                         }
 
+                        // Convert to BigNumber for precise validation
+                        let valueBN: BigNumber;
                         try {
-                          const tokenBalanceBN = ethers.utils.parseUnits(
-                            selectedAsset.balance || '0',
-                            selectedAsset.decimals || 18
-                          );
-                          const tokenValueBN = ethers.utils.parseUnits(
-                            String(value),
-                            selectedAsset.decimals || 18
-                          );
+                          // Parse the input value to wei for comparison
+                          valueBN = ethers.utils.parseEther(String(value));
+                        } catch (e) {
+                          // Invalid number format
+                          return Promise.reject('');
+                        }
 
-                          if (tokenValueBN.gt(tokenBalanceBN)) {
+                        // Check if it's positive
+                        if (valueBN.lte(0)) {
+                          return Promise.reject('');
+                        }
+
+                        const isToken = !!selectedAsset;
+                        const isERC1155 =
+                          selectedAsset?.isNft &&
+                          selectedAsset?.tokenStandard === 'ERC-1155';
+
+                        // For ERC-1155 NFTs, validate against verified balance
+                        if (isERC1155) {
+                          const numValue = parseInt(value);
+
+                          // Must be a positive integer
+                          if (!Number.isInteger(numValue) || numValue <= 0) {
+                            return Promise.reject(
+                              t('send.amountMustBePositiveInteger')
+                            );
+                          }
+
+                          // REQUIRE verified balance - no fallback
+                          if (verifiedTokenBalance === null) {
+                            return Promise.reject(
+                              t('send.pleaseVerifyTokenOwnership')
+                            );
+                          }
+
+                          if (numValue > verifiedTokenBalance) {
+                            return Promise.reject(
+                              t('send.youOnlyOwn', {
+                                amount: verifiedTokenBalance,
+                              })
+                            );
+                          }
+
+                          return Promise.resolve();
+                        }
+
+                        // For regular tokens
+                        if (isToken) {
+                          // REQUIRE verified balance for ERC-20 tokens
+                          if (verifiedERC20Balance === null) {
+                            return Promise.reject(
+                              t('send.pleaseWaitForBalanceVerification')
+                            );
+                          }
+
+                          try {
+                            const tokenBalanceBN = ethers.utils.parseUnits(
+                              String(verifiedERC20Balance),
+                              selectedAsset.decimals || 18
+                            );
+                            const tokenValueBN = ethers.utils.parseUnits(
+                              String(value),
+                              selectedAsset.decimals || 18
+                            );
+
+                            if (tokenValueBN.gt(tokenBalanceBN)) {
+                              return Promise.reject(
+                                t('send.insufficientFundsVerified', {
+                                  balance: verifiedERC20Balance,
+                                })
+                              );
+                            }
+                          } catch (e) {
+                            // Fallback to simple comparison using verified balance
+                            const numValue = parseFloat(value);
+                            if (numValue > verifiedERC20Balance) {
+                              return Promise.reject(
+                                t('send.insufficientFundsVerified', {
+                                  balance: verifiedERC20Balance,
+                                })
+                              );
+                            }
+                          }
+
+                          return Promise.resolve();
+                        }
+
+                        // For native currency, use BigNumber comparison
+                        try {
+                          const balanceEth = String(
+                            activeAccount?.balances?.ethereum || '0'
+                          );
+                          const balanceBN = ethers.utils.parseEther(balanceEth);
+
+                          // First check if amount exceeds total balance
+                          if (valueBN.gt(balanceBN)) {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
+
+                          // If MAX is clicked for native ETH, allow full balance (fees will be deducted automatically)
+                          if (isMaxSend && valueBN.eq(balanceBN)) {
+                            return Promise.resolve();
+                          }
+
+                          // For native ETH, also validate against max amount (balance - gas)
+                          try {
+                            // Calculate max sendable amount
+                            const maxAmountStr = await calculateMaxAmount();
+                            const maxAmountBN =
+                              ethers.utils.parseEther(maxAmountStr);
+
+                            // If amount exceeds max (balance - gas), show specific error
+                            if (valueBN.gt(maxAmountBN)) {
+                              // Check if it's just slightly over (within gas fee range)
+                              if (valueBN.lte(balanceBN)) {
+                                return Promise.reject(
+                                  t('send.insufficientFundsForGas') ||
+                                    'Insufficient funds for gas'
+                                );
+                              }
+                            }
+                          } catch (error) {
+                            console.error(
+                              'Error validating max amount:',
+                              error
+                            );
+                            // If we can't calculate gas, just check against balance
+                            // The actual transaction will fail if gas is insufficient
+                          }
                         } catch (e) {
-                          // Fallback to regular comparison if parsing fails
+                          console.error('Error in BigNumber validation:', e);
+                          // Ultimate fallback - just check balance
                           const balance = parseFloat(
-                            selectedAsset.balance || '0'
+                            String(activeAccount?.balances?.ethereum || '0')
                           );
                           const numValue = parseFloat(value);
                           if (numValue > balance) {
@@ -676,102 +1019,246 @@ export const SendEth = () => {
                         }
 
                         return Promise.resolve();
-                      }
+                      },
+                    }),
+                  ]}
+                >
+                  <Input
+                    id="with-max-button"
+                    type="number"
+                    step={
+                      selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155'
+                        ? '1'
+                        : 'any'
+                    }
+                    min={
+                      selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155'
+                        ? '1'
+                        : undefined
+                    }
+                    max={
+                      selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155' &&
+                      verifiedTokenBalance !== null
+                        ? String(verifiedTokenBalance)
+                        : undefined
+                    }
+                    disabled={
+                      // Disable until verification complete
+                      (selectedAsset?.isNft &&
+                        selectedAsset?.tokenStandard === 'ERC-1155' &&
+                        verifiedTokenBalance === null) ||
+                      (!selectedAsset?.isNft &&
+                        selectedAsset &&
+                        verifiedERC20Balance === null) ||
+                      isVerifyingERC20 ||
+                      isVerifyingTokenId
+                    }
+                    placeholder={
+                      selectedAsset?.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155'
+                        ? verifiedTokenBalance !== null
+                          ? `Amount (1-${verifiedTokenBalance})`
+                          : t('send.verifyingOwnership')
+                        : !selectedAsset?.isNft && selectedAsset
+                        ? verifiedERC20Balance !== null
+                          ? t('send.amount')
+                          : t('send.verifyingBalance')
+                        : t('send.amount')
+                    }
+                    onChange={(e) => {
+                      const inputValue = e.target.value;
 
-                      // For native currency, use BigNumber comparison
-                      try {
+                      if (!selectedAsset && inputValue) {
+                        // Check if the entered value equals the full balance
                         const balanceEth = String(
                           activeAccount?.balances?.ethereum || '0'
                         );
-                        const balanceBN = ethers.utils.parseEther(balanceEth);
 
-                        // First check if amount exceeds total balance
-                        if (valueBN.gt(balanceBN)) {
-                          return Promise.reject(t('send.insufficientFunds'));
-                        }
-
-                        // If MAX is clicked for native ETH, allow full balance (fees will be deducted automatically)
-                        if (isMaxSend && valueBN.eq(balanceBN)) {
-                          return Promise.resolve();
-                        }
-
-                        // For native ETH, also validate against max amount (balance - gas)
                         try {
-                          // Calculate max sendable amount
-                          const maxAmountStr = await calculateMaxAmount();
-                          const maxAmountBN =
-                            ethers.utils.parseEther(maxAmountStr);
+                          const inputBN = ethers.utils.parseEther(inputValue);
+                          const balanceBN = ethers.utils.parseEther(balanceEth);
 
-                          // If amount exceeds max (balance - gas), show specific error
-                          if (valueBN.gt(maxAmountBN)) {
-                            // Check if it's just slightly over (within gas fee range)
-                            if (valueBN.lte(balanceBN)) {
-                              return Promise.reject(
-                                t('send.insufficientFundsForGas') ||
-                                  'Insufficient funds for gas'
-                              );
-                            }
-                          }
-                        } catch (error) {
-                          console.error('Error validating max amount:', error);
-                          // If we can't calculate gas, just check against balance
-                          // The actual transaction will fail if gas is insufficient
+                          // Set isMaxSend based on whether value equals balance
+                          setIsMaxSend(inputBN.eq(balanceBN));
+                        } catch {
+                          // If parsing fails, it's not a MAX send
+                          setIsMaxSend(false);
                         }
-                      } catch (e) {
-                        console.error('Error in BigNumber validation:', e);
-                        // Ultimate fallback - just check balance
-                        const balance = parseFloat(
-                          String(activeAccount?.balances?.ethereum || '0')
-                        );
-                        const numValue = parseFloat(value);
-                        if (numValue > balance) {
-                          return Promise.reject(t('send.insufficientFunds'));
-                        }
-                      }
-
-                      return Promise.resolve();
-                    },
-                  }),
-                ]}
-              >
-                <Input
-                  id="with-max-button"
-                  type="number"
-                  step="any"
-                  placeholder={`${
-                    selectedAsset && selectedAsset?.isNft
-                      ? 'Token ID'
-                      : t('send.amount')
-                  }`}
-                  onChange={(e) => {
-                    const inputValue = e.target.value;
-
-                    if (!selectedAsset && inputValue) {
-                      // Check if the entered value equals the full balance
-                      const balanceEth = String(
-                        activeAccount?.balances?.ethereum || '0'
-                      );
-
-                      try {
-                        const inputBN = ethers.utils.parseEther(inputValue);
-                        const balanceBN = ethers.utils.parseEther(balanceEth);
-
-                        // Set isMaxSend based on whether value equals balance
-                        setIsMaxSend(inputBN.eq(balanceBN));
-                      } catch {
-                        // If parsing fails, it's not a MAX send
+                      } else {
+                        // For tokens or empty input, clear MAX flag
                         setIsMaxSend(false);
                       }
-                    } else {
-                      // For tokens or empty input, clear MAX flag
-                      setIsMaxSend(false);
-                    }
-                  }}
-                />
-              </Form.Item>
+                    }}
+                  />
+                </Form.Item>
+
+                {/* Helper message when amount field is disabled */}
+                {selectedAsset && (
+                  <>
+                    {selectedAsset.isNft &&
+                      selectedAsset?.tokenStandard === 'ERC-1155' &&
+                      verifiedTokenBalance === null && (
+                        <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+                          {t('send.enterTokenIdToVerifyOwnership')}
+                        </p>
+                      )}
+                    {!selectedAsset.isNft && verifiedERC20Balance === null && (
+                      <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+                        {isVerifyingERC20
+                          ? t('send.verifyingBalance')
+                          : t('send.waitingForBalanceVerification')}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
+
+        {/* NFT Token ID Selector */}
+        {selectedAsset?.isNft && (
+          <div className="w-full md:max-w-md">
+            <div className="mb-2">
+              <label className="text-brand-gray200 text-xs">
+                {selectedAsset?.tokenStandard === 'ERC-1155'
+                  ? `${t('send.tokenId')}:`
+                  : t('send.selectNft')}
+              </label>
+            </div>
+
+            {/* Quick select buttons for discovered tokens */}
+            {nftTokenIds.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {nftTokenIds.map((nft) => (
+                  <button
+                    key={nft.tokenId}
+                    type="button"
+                    onClick={() => {
+                      setSelectedNftTokenId(nft.tokenId);
+                      form.setFieldValue('nftTokenId', nft.tokenId);
+                      setVerifiedTokenBalance(nft.balance); // Already verified from enumeration
+                      setVerificationError(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                      selectedNftTokenId === nft.tokenId
+                        ? 'bg-brand-royalblue text-white'
+                        : 'bg-fields-input-primary border border-fields-input-border text-brand-gray200 hover:border-brand-royalblue hover:text-white'
+                    }`}
+                  >
+                    #{nft.tokenId}
+                    {nft.balance > 1 && ` (${nft.balance}x)`}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Manual token ID input */}
+            <Form.Item
+              name="nftTokenId"
+              rules={[
+                {
+                  required: true,
+                  message: t('send.tokenIdRequired'),
+                },
+                {
+                  validator: (_, value) => {
+                    if (!value || value.trim() === '') {
+                      return Promise.reject(
+                        new Error(t('send.tokenIdRequired'))
+                      );
+                    }
+                    // Basic validation for token ID format
+                    if (!/^\d+$/.test(value)) {
+                      return Promise.reject(
+                        new Error(t('send.invalidTokenId'))
+                      );
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <input
+                type="text"
+                placeholder={
+                  isLoadingNftTokenIds
+                    ? t('send.loadingNfts')
+                    : t('send.enterTokenId')
+                }
+                disabled={isLoadingNftTokenIds}
+                onChange={(e) => handleManualTokenIdChange(e.target.value)}
+                className="w-full px-4 py-3 bg-fields-input-primary border border-fields-input-border rounded-[100px] 
+                          text-brand-white text-sm placeholder-brand-gray200 
+                          focus:border-fields-input-borderfocus focus:outline-none
+                          disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </Form.Item>
+
+            {/* Verification status display */}
+            {selectedNftTokenId &&
+              !nftTokenIds.find(
+                (nft) => nft.tokenId === selectedNftTokenId
+              ) && (
+                <div className="mt-2">
+                  {isVerifyingTokenId ? (
+                    <p className="text-xs text-brand-royalblue flex items-center justify-center">
+                      <svg
+                        className="animate-spin -ml-1 mr-2 h-3 w-3 text-brand-royalblue"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        ></circle>
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      {t('send.verifyingOwnership')}
+                    </p>
+                  ) : verificationError ? (
+                    <p className="text-xs text-red-400 text-center">
+                      ❌ {verificationError}
+                    </p>
+                  ) : verifiedTokenBalance !== null ? (
+                    verifiedTokenBalance > 0 ? (
+                      <p className="text-xs text-green-400 text-center">
+                        ✅ {t('send.youOwnThisToken')}
+                        {selectedAsset?.tokenStandard === 'ERC-1155' &&
+                        verifiedTokenBalance > 1
+                          ? ` (${verifiedTokenBalance} available)`
+                          : ''}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-red-400 text-center">
+                        ❌ {t('send.youDontOwnThisToken')}
+                      </p>
+                    )
+                  ) : null}
+                </div>
+              )}
+
+            <p className="text-brand-gray200 text-[10px] mt-1 text-center">
+              {nftTokenIds.length > 0
+                ? t('send.clickTokenOrEnterManually')
+                : selectedAsset?.tokenStandard === 'ERC-1155'
+                ? t('send.erc1155RequiresManualEntry')
+                : t('send.enterNftTokenId')}
+            </p>
+          </div>
+        )}
 
         <div className="fixed bottom-4 left-4 right-4 md:relative md:bottom-auto md:left-auto md:right-auto md:mt-3 md:w-[96%]">
           <NeutralButton

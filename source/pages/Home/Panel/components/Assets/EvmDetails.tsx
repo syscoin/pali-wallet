@@ -1,6 +1,4 @@
-import { Disclosure } from '@headlessui/react';
-import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
@@ -10,8 +8,8 @@ import { NeutralButton, Icon } from 'components/index';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { IERC1155Collection } from 'types/tokens';
 import { ellipsis, formatCurrency } from 'utils/index';
+import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 export const EvmAssetDetails = ({ id }: { id: string }) => {
   const { controllerEmitter } = useController();
@@ -32,24 +30,6 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
   // Use a ref to track if a request is in progress to prevent duplicates
   const fetchingRef = React.useRef(false);
 
-  // Get badge color based on token type
-  const getTokenTypeBadgeColor = (type: string | undefined) => {
-    switch (type) {
-      case 'ERC-20':
-        return 'bg-blue-600 text-blue-100';
-      case 'ERC-721':
-        return 'bg-purple-600 text-purple-100';
-      case 'ERC-1155':
-        return 'bg-pink-600 text-pink-100';
-      case 'ERC-777':
-        return 'bg-green-600 text-green-100';
-      case 'ERC-4626':
-        return 'bg-orange-600 text-orange-100';
-      default:
-        return 'bg-gray-600 text-gray-100';
-    }
-  };
-
   useEffect(() => {
     if (!isCopied) return;
 
@@ -62,14 +42,12 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
-  const currentName = currentAsset?.is1155
-    ? currentAsset.collectionName
-    : currentAsset.name;
+  const currentName = currentAsset?.name;
 
-  const is1155 = !!currentAsset?.is1155;
+  const is1155 = currentAsset?.tokenStandard === 'ERC-1155';
   const isNft = !!currentAsset?.isNft;
-  const isErc721 = isNft && !is1155;
-  const hasImage = !is1155;
+  const isErc721 = isNft && currentAsset?.tokenStandard === 'ERC-721';
+  const hasImage = currentAsset?.tokenStandard !== 'ERC-1155';
 
   // Get the actual token standard from the saved data
   const tokenStandard =
@@ -88,8 +66,8 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
   useEffect(() => {
     const loadEnhancedData = async () => {
-      // Skip for NFTs or if already fetched
-      if (!currentAsset || currentAsset.isNft || is1155 || hasFetchedData) {
+      // Skip if already fetched
+      if (!currentAsset || hasFetchedData) {
         return;
       }
 
@@ -129,63 +107,6 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
   const tokenData = enhancedData;
   const hasEnhancedData = !!tokenData?.currentPrice;
 
-  const RenderCollectionItem: React.FC<{ currentNft: IERC1155Collection }> = ({
-    currentNft,
-  }) => (
-    <>
-      <Fragment key={uniqueId(id)}>
-        <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>{t('send.balance')}</p>
-          <span>
-            <b>{currentNft.balance}</b>
-          </span>
-        </li>
-
-        <li className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-bkg-2 cursor-default transition-all duration-300">
-          <p>{t('settings.tokenName')}</p>
-          <span>
-            <b>{currentNft.tokenSymbol}</b>
-          </span>
-        </li>
-      </Fragment>
-    </>
-  );
-
-  const renderAssetsDisclosure = (NFT: IERC1155Collection) => {
-    const { tokenId } = NFT;
-    return (
-      <Disclosure>
-        {({ open }) => (
-          <>
-            <div className="px-6">
-              <Disclosure.Button
-                className={`${
-                  open ? 'rounded-t-md' : 'rounded-md'
-                } mt-3 py-2 px-2 flex justify-between items-center  w-full border border-bkg-3 bg-bkg-1 cursor-pointer transition-all duration-300 text-xs`}
-              >
-                {`Token ID #${tokenId}`}
-                <Icon
-                  name="select-down"
-                  className={`${
-                    open ? 'transform rotate-180' : ''
-                  } mb-1 text-brand-white`}
-                />
-              </Disclosure.Button>
-            </div>
-
-            <div className="px-6">
-              <Disclosure.Panel>
-                <div className="flex flex-col pb-2 px-2 w-full text-brand-white text-sm bg-bkg-3 border border-t-0 border-bkg-4 rounded-lg rounded-t-none transition-all duration-300">
-                  <RenderCollectionItem currentNft={NFT} />
-                </div>
-              </Disclosure.Panel>
-            </div>
-          </>
-        )}
-      </Disclosure>
-    );
-  };
-
   const renderEnhancedMarketData = () => {
     if (!hasEnhancedData || isNft) return null;
 
@@ -214,7 +135,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         </h4>
 
         {/* Price and Change - Full Width */}
-        {tokenData.currentPrice && (
+        {tokenData.currentPrice !== undefined && (
           <div className="mb-4">
             <span className="text-gray-400 text-xs block mb-1">
               {t('tokens.currentPrice')}
@@ -241,7 +162,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
         {/* Market Cap and Rank - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.marketCapRank && (
+          {tokenData.marketCapRank !== undefined && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.rank')}
@@ -263,7 +184,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
               )}
             </div>
           )}
-          {tokenData.marketCap && (
+          {tokenData.marketCap !== undefined && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.marketCap')}
@@ -277,7 +198,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
 
         {/* Volume and Supply - Grid */}
         <div className="grid grid-cols-2 gap-4 mb-4">
-          {tokenData.totalVolume && (
+          {tokenData.totalVolume !== undefined && (
             <div>
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.volume24h')}
@@ -287,7 +208,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
               </span>
             </div>
           )}
-          {tokenData.circulatingSupply && (
+          {tokenData.circulatingSupply !== undefined && (
             <div className="text-right">
               <span className="text-gray-400 text-xs block mb-1">
                 {t('tokens.circulatingSupply')}
@@ -418,16 +339,6 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
         </div>
 
         <div className="space-y-3">
-          {/* Collection Name */}
-          {(currentAsset.collectionName || currentAsset.name) && (
-            <div>
-              <span className="text-gray-400 text-xs block">Collection</span>
-              <span className="text-white font-medium text-sm">
-                {currentAsset.collectionName || currentAsset.name}
-              </span>
-            </div>
-          )}
-
           {/* Token Standard */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -437,7 +348,7 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
               </span>
             </div>
             {isErc721 && (
-              <div>
+              <div className="text-right">
                 <span className="text-gray-400 text-xs block">Owned</span>
                 <span className="text-white font-medium text-xs">
                   {currentAsset.balance}{' '}
@@ -455,16 +366,27 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
             </span>
           </div>
 
-          {/* ERC-1155 Collection Note */}
-          {is1155 &&
-            currentAsset.collection &&
-            currentAsset.collection.length > 0 && (
-              <div className="pt-2 border-t border-gray-700">
-                <p className="text-gray-400 text-xs">
-                  💡 {t('tokens.individualTokensShownBelow')}
-                </p>
-              </div>
-            )}
+          {/* View Collection Button for NFTs */}
+          {isNft && (
+            <div className="pt-3">
+              <button
+                onClick={() =>
+                  navigate('/home/details', {
+                    state: {
+                      nftCollection: true,
+                      nftAddress: currentAsset.contractAddress,
+                    },
+                  })
+                }
+                className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue 
+                          text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200
+                          flex items-center justify-center gap-2"
+              >
+                <Icon name="eye" size={16} />
+                {t('send.viewCollectionItems')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -485,7 +407,9 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
                   >
                     <img
                       src={currentAsset.logo}
-                      alt={`${currentAsset.name} Logo`}
+                      alt={`${
+                        currentAsset.name || currentAsset.tokenSymbol
+                      } Logo`}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';
@@ -542,9 +466,22 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
                   </span>
                 )}
               </div>
-              <span className="font-normal text-base text-brand-white">
-                {currentName} ({activeNetwork.label})
-              </span>
+              {/* Only show full name if it's meaningfully different from symbol */}
+              {(() => {
+                const symbol = currentAsset.tokenSymbol.toLowerCase();
+                const name = currentName.toLowerCase();
+                // Check if name is significantly different from symbol (not just case or minor differences)
+                const isSignificantlyDifferent =
+                  !name.includes(symbol) &&
+                  !symbol.includes(name) &&
+                  name !== symbol;
+
+                return isSignificantlyDifferent ? (
+                  <span className="font-normal text-base text-brand-white">
+                    {currentName} ({activeNetwork.label})
+                  </span>
+                ) : null;
+              })()}
             </div>
           </div>
 
@@ -558,63 +495,69 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
           {renderEnhancedMarketData()}
           {renderNftMetadata()}
 
-          <div className="mt-4 mb-6">
-            <li
-              className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
-              border-dashed border-bkg-white200 cursor-default transition-all duration-300"
-            >
-              <p className="font-normal text-xs">
-                {isNft ? 'Owned' : 'Balance'}
-              </p>
-              <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                <span className="text-brand-white">
-                  {isNft
-                    ? `${currentAsset.balance} ${
-                        currentAsset.balance === 1 ? 'NFT' : 'NFTs'
-                      }`
-                    : `${currentAsset.balance} ${currentAsset.tokenSymbol}`}
-                </span>
-              </p>
-            </li>
+          {/* Only show balance/owned section for non-NFT tokens since NFTs show this in the NFT Information panel */}
+          {!isNft && (
+            <div className="mt-4 mb-6">
+              <li
+                className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
+                border-dashed border-bkg-white200 cursor-default transition-all duration-300"
+              >
+                <p className="font-normal text-xs">{t('send.balance')}</p>
+                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <span className="text-brand-white">
+                    {currentAsset.balance} {currentAsset.tokenSymbol}
+                  </span>
+                </p>
+              </li>
 
-            <li
-              className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b 
-              border-dashed border-bkg-white200 cursor-default transition-all duration-300"
-            >
-              <p className="font-normal text-xs">ID</p>
-              <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                <span className="text-brand-white">
-                  {ellipsis(currentAsset.id)}
-                </span>
+              <li
+                className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300 
+                 border-none"
+              >
+                <p className="font-normal text-xs">
+                  {t('settings.contractAddress')}
+                </p>
+                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <span className="text-brand-white">
+                    {ellipsis(currentAsset.contractAddress)}
+                  </span>
 
-                <CopyIcon
-                  size={15}
-                  className="hover:text-brand-deepPink100 cursor-pointer"
-                  color="text-brand-white"
-                  onClick={() => copy(currentAsset.id ?? '')}
-                />
-              </p>
-            </li>
+                  <CopyIcon
+                    size={15}
+                    className="hover:text-brand-deepPink100 cursor-pointer"
+                    color="text-brand-white"
+                    onClick={() => copy(currentAsset.contractAddress ?? '')}
+                  />
+                </p>
+              </li>
+            </div>
+          )}
 
-            <li
-              className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs  cursor-default transition-all duration-300 
-               border-none"
-            >
-              <p className="font-normal text-xs">Contract Address</p>
-              <p className="flex items-center font-normal gap-x-1.5 text-xs">
-                <span className="text-brand-white">
-                  {ellipsis(currentAsset.contractAddress)}
-                </span>
+          {/* Contract Address for NFTs (since we removed the duplicate owned section) */}
+          {isNft && (
+            <div className="mt-4 mb-6">
+              <li
+                className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs cursor-default transition-all duration-300 
+                 border-none"
+              >
+                <p className="font-normal text-xs">
+                  {t('settings.contractAddress')}
+                </p>
+                <p className="flex items-center font-normal gap-x-1.5 text-xs">
+                  <span className="text-brand-white">
+                    {ellipsis(currentAsset.contractAddress)}
+                  </span>
 
-                <CopyIcon
-                  size={15}
-                  className="hover:text-brand-deepPink100 cursor-pointer"
-                  color="text-brand-white"
-                  onClick={() => copy(currentAsset.contractAddress ?? '')}
-                />
-              </p>
-            </li>
-          </div>
+                  <CopyIcon
+                    size={15}
+                    className="hover:text-brand-deepPink100 cursor-pointer"
+                    color="text-brand-white"
+                    onClick={() => copy(currentAsset.contractAddress ?? '')}
+                  />
+                </p>
+              </li>
+            </div>
+          )}
 
           <div className="w-full flex items-center justify-center text-brand-white hover:text-brand-deepPink100 mb-6">
             <a
@@ -633,9 +576,6 @@ export const EvmAssetDetails = ({ id }: { id: string }) => {
           </div>
         </div>
       ) : null}
-
-      {is1155 &&
-        currentAsset.collection.map((nft) => renderAssetsDisclosure(nft))}
 
       {/* Close button - Fixed at bottom */}
       <div className="flex-shrink-0 px-4 pb-4 pt-2">

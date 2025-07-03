@@ -1,7 +1,6 @@
 import { AnyAction, Store } from 'redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
-import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import { IDAppState } from 'state/dapp/types';
 import { loadState } from 'state/paliStorage';
@@ -12,7 +11,6 @@ import {
   setAccountTypeInAccountsObject,
   setActiveNetwork,
   setIsLastTxConfirmed,
-  setAccountAssets,
 } from 'state/vault';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { IVaultState, IGlobalState, TransactionsType } from 'state/vault/types';
@@ -62,7 +60,6 @@ const MasterController = (
   let dapp: Readonly<IDAppController>;
 
   const initializeMainController = () => {
-    const vaultState = externalStore.getState().vault;
     const vaultGlobalState = externalStore.getState().vaultGlobal;
 
     // Initialize networks in vaultGlobal if they don't exist
@@ -72,29 +69,7 @@ const MasterController = (
       externalStore.dispatch(setNetworks(PALI_NETWORKS_STATE));
     }
 
-    // Check if NFTs structure exists in accountAssets
-    const needsNftsInit = Object.entries(vaultState.accountAssets ?? {}).some(
-      ([, accounts]) =>
-        Object.entries(accounts).some(([, assets]) => !assets.nfts)
-    );
-
-    if (needsNftsInit) {
-      // Initialize NFTs array for any accounts missing it
-      Object.entries(vaultState.accountAssets).forEach(([, accounts]) => {
-        Object.entries(accounts).forEach(([accountId, assets]) => {
-          if (!assets.nfts) {
-            externalStore.dispatch(
-              setAccountAssets({
-                accountId: Number(accountId),
-                accountType: KeyringAccountType.HDAccount,
-                property: 'nfts',
-                value: [] as INftsStructure[],
-              })
-            );
-          }
-        });
-      });
-    }
+    // NFTs are now part of ethereum assets array, no separate initialization needed
 
     // Now safely check for specific networks
     const globalNetworks = externalStore.getState().vaultGlobal.networks;

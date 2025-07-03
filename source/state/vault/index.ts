@@ -44,7 +44,6 @@ const initialState: IVaultState = {
       [initialActiveHdAccountState.id]: {
         ethereum: [],
         syscoin: [],
-        nfts: [],
       },
     },
     [KeyringAccountType.Imported]: {},
@@ -106,33 +105,6 @@ const VaultState = createSlice({
     ) {
       const { label, accountId, accountType } = action.payload;
       state.accounts[accountType][accountId].label = label;
-    },
-    setEditedEvmToken(
-      state: IVaultState,
-      action: PayloadAction<{
-        accountId: number;
-        accountType: KeyringAccountType;
-        editedToken: ITokenEthProps;
-        tokenIndex: number;
-      }>
-    ) {
-      const { editedToken, tokenIndex, accountId, accountType } =
-        action.payload;
-
-      // Ensure accountAssets exists for this account
-      if (!state.accountAssets[accountType]) {
-        state.accountAssets[accountType] = {};
-      }
-      if (!state.accountAssets[accountType][accountId]) {
-        state.accountAssets[accountType][accountId] = {
-          ethereum: [],
-          syscoin: [],
-          nfts: [],
-        };
-      }
-
-      state.accountAssets[accountType][accountId].ethereum[tokenIndex] =
-        editedToken;
     },
     setNetworkChange(
       state: IVaultState,
@@ -202,7 +174,6 @@ const VaultState = createSlice({
       state.accountAssets[accountType][account.id] = assets || {
         ethereum: [],
         syscoin: [],
-        nfts: [],
       };
 
       // Set up accountTransactions
@@ -382,7 +353,6 @@ const VaultState = createSlice({
           [initialActiveHdAccountState.id]: {
             ethereum: [],
             syscoin: [],
-            nfts: [],
           },
         },
         [KeyringAccountType.Imported]: {},
@@ -427,7 +397,7 @@ const VaultState = createSlice({
       action: PayloadAction<{
         accountId: number;
         accountType: KeyringAccountType;
-        // 'ethereum' | 'syscoin' | 'nfts'
+        // 'ethereum' | 'syscoin'
         assets?: IAccountAssets;
         property?: keyof IAccountAssets; // For full replacement
         value?: any; // For property-specific updates
@@ -444,7 +414,6 @@ const VaultState = createSlice({
         state.accountAssets[accountType][accountId] = {
           ethereum: [],
           syscoin: [],
-          nfts: [],
         };
       }
 
@@ -726,7 +695,6 @@ export const {
   setAccountPropertyByIdAndType,
   setActiveAccount,
   setActiveAccountProperty,
-  setEditedEvmToken,
   setNetworkChange,
   setNetworkType,
   setAccountTypeInAccountsObject,

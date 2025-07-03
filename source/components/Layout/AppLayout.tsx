@@ -84,8 +84,8 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     if (path === '/home') return '';
     if (path === '/home/details') {
       // Handle dynamic Details page titles
-      if (locationState?.nftId && locationState?.nftAddress)
-        return 'NFT DETAILS';
+      if (locationState?.nftCollection && locationState?.nftAddress)
+        return t('send.nftDetails');
       if (locationState?.id && !locationState?.hash)
         return t('titles.assetDetails');
       return t('titles.transactionDetails');

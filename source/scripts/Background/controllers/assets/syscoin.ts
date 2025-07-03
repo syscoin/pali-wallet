@@ -124,6 +124,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       const tokensWithChain = sptTokens.map((asset) => ({
         ...asset,
         chainId: networkChainId,
+        type: 'SPTAllocated',
       }));
 
       // Cache the unfiltered results
@@ -222,6 +223,7 @@ const SysAssetsControler = (): ISysAssetsController => {
         description: assetData.metaData || '',
         contract: assetData.contract || '', // NEVM contract if bridged
         chainId: store.getState().vault.activeNetwork.chainId,
+        type: 'SPTAllocated',
       };
 
       console.log(
@@ -296,9 +298,18 @@ const SysAssetsControler = (): ISysAssetsController => {
         //Need to add chainId inside the asset object to we can validate it based on network connect
         //To show it on list and maintain correctly inside state
         const assetsWithChain = filteredAssetsLength.map((asset) => {
-          if (asset.chainId && asset.chainId === networkChainId) return asset;
+          if (asset.chainId && asset.chainId === networkChainId) {
+            return {
+              ...asset,
+              type: 'SPTAllocated',
+            };
+          }
 
-          return { ...asset, chainId: networkChainId };
+          return {
+            ...asset,
+            chainId: networkChainId,
+            type: 'SPTAllocated',
+          };
         });
 
         const treatedAssets = validateAndManageUserAssets(

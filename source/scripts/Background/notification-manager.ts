@@ -722,7 +722,6 @@ class NotificationManager {
   ): Promise<{
     decimals: number;
     isNft?: boolean;
-    nftType?: string;
     symbol: string;
   } | null> {
     try {
@@ -742,11 +741,6 @@ class NotificationManager {
             symbol: token.tokenSymbol,
             decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
             isNft: token.isNft || false,
-            nftType: token.is1155
-              ? 'ERC-1155'
-              : token.isNft
-              ? 'ERC-721'
-              : undefined,
           };
           return tokenInfo;
         }
@@ -770,7 +764,6 @@ class NotificationManager {
                 symbol: tokenDetails.symbol,
                 decimals: 0, // NFTs don't use decimals
                 isNft: true,
-                nftType: tokenDetails.nftType,
               };
               return tokenInfo;
             } else {

@@ -2,12 +2,11 @@ import cloneDeep from 'lodash/cloneDeep';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import store from 'state/store';
-import { setEditedEvmToken, setAccountAssets } from 'state/vault';
+import { setAccountAssets } from 'state/vault';
 import { ITokenEthProps } from 'types/tokens';
 
 export interface IEthAccountController {
-  deleteTokenInfo: (tokenAddress: string) => void;
-  editTokenInfo: (token: ITokenEthProps) => void;
+  deleteTokenInfo: (tokenAddress: string, chainId: number) => void;
   saveTokenInfo: (
     token: ITokenEthProps,
     tokenType?: string,
@@ -97,42 +96,19 @@ const EthAccountController = (): IEthAccountController | any => {
     }
   };
 
-  const editTokenInfo = (token: ITokenEthProps) => {
-    try {
-      const { activeAccount, accountAssets } = store.getState().vault;
-      const activeAccountAssets =
-        accountAssets[activeAccount.type][activeAccount.id];
-
-      const cloneArray = cloneDeep(activeAccountAssets);
-
-      const findIndex = cloneArray.ethereum.findIndex(
-        (stateToken) => stateToken.contractAddress === token.contractAddress
-      );
-
-      store.dispatch(
-        setEditedEvmToken({
-          accountType: activeAccount.type,
-          accountId: activeAccount.id,
-          tokenIndex: findIndex,
-          editedToken: token,
-        })
-      );
-    } catch (error) {
-      throw new Error(`Could not edit token info. Error: ${error}`);
-    }
-  };
-
-  const deleteTokenInfo = (tokenAddress: string) => {
+  const deleteTokenInfo = (tokenAddress: string, chainId: number) => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
       const activeAccountAssets =
         accountAssets[activeAccount.type][activeAccount.id];
 
       const tokenExists = activeAccountAssets.ethereum?.find(
-        (asset: ITokenEthProps) => asset.contractAddress === tokenAddress
+        (asset: ITokenEthProps) =>
+          asset.contractAddress === tokenAddress && asset.chainId === chainId
       );
 
-      if (!tokenExists) throw new Error("Token doesn't exists!");
+      if (!tokenExists)
+        throw new Error("Token doesn't exist on specified network!");
 
       const cloneAssets = cloneDeep(activeAccountAssets);
 
@@ -142,7 +118,9 @@ const EthAccountController = (): IEthAccountController | any => {
           accountType: activeAccount.type,
           property: 'ethereum',
           value: cloneAssets.ethereum.filter(
-            (currentToken) => currentToken.contractAddress !== tokenAddress
+            (currentToken) =>
+              currentToken.contractAddress !== tokenAddress ||
+              currentToken.chainId !== chainId
           ),
         })
       );
@@ -153,7 +131,6 @@ const EthAccountController = (): IEthAccountController | any => {
 
   return {
     saveTokenInfo,
-    editTokenInfo,
     deleteTokenInfo,
   };
 };

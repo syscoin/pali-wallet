@@ -521,7 +521,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
                     />
                     {asset.values && asset.values.length > 1 && (
                       <ExpandableSection
-                        title="Output breakdown"
+                        title={t('send.outputBreakdown')}
                         defaultExpanded={false}
                       >
                         <div className="space-y-1">
@@ -549,7 +549,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
         {/* Outputs Summary */}
         {decodedTx.vout && decodedTx.vout.length > 0 && !isToken && (
           <ExpandableSection
-            title="Outputs"
+            title={t('send.outputs')}
             count={decodedTx.vout.length}
             defaultExpanded={decodedTx.vout.length <= 3}
           >
@@ -719,7 +719,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
             {/* Inputs Details */}
             {decodedTx.vin && decodedTx.vin.length > 0 && (
               <ExpandableSection
-                title="Inputs"
+                title={t('send.inputs')}
                 count={decodedTx.vin.length}
                 defaultExpanded={decodedTx.vin.length <= 3}
               >

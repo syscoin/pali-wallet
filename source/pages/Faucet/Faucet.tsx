@@ -51,7 +51,7 @@ export const Faucet: React.FC = () => {
                 textFeedbackDesc={faucetRequestDetails.tokenQuantity}
               />
               <FaucetApiFeedback
-                apiTitle="Smart Contract"
+                apiTitle={t('send.smartContract')}
                 apiResponse={faucetRequestDetails.smartContract}
               />
               <FaucetCardAccount

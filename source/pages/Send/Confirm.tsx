@@ -900,7 +900,7 @@ export const SendConfirm = () => {
                           networkUrl: activeNetwork.url,
                           receiver: txObjectState.to,
                           tokenAddress: basicTxValues.token.contractAddress,
-                          tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                          tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
                           isLegacy: !isEIP1559Compatible,
                           gasPrice: ethers.utils.hexlify(gasPrice),
                           gasLimit: BigNumber.from(
@@ -983,7 +983,8 @@ export const SendConfirm = () => {
                           networkUrl: activeNetwork.url,
                           receiver: txObjectState.to,
                           tokenAddress: basicTxValues.token.contractAddress,
-                          tokenId: Number(basicTxValues.amount), // Amount is the same field of TokenID at the SendEth Component,
+                          tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
+                          tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
                           isLegacy: !isEIP1559Compatible,
                           maxPriorityFeePerGas: ethers.utils.parseUnits(
                             String(
@@ -1353,22 +1354,23 @@ export const SendConfirm = () => {
       {shouldShowMainContent && basicTxValues ? (
         <div className="flex flex-col items-center justify-center w-full">
           {basicTxValues.token?.isNft ? (
-            <p className="flex flex-col items-center justify-center text-center font-rubik">
-              TokenID
-              <span>
-                {!basicTxValues.token?.isNft ? (
-                  <>
-                    {`${basicTxValues.amount} ${' '} ${
-                      basicTxValues.token
-                        ? basicTxValues.token.symbol
-                        : activeNetwork.currency.toUpperCase()
-                    }`}
-                  </>
-                ) : (
-                  <>{basicTxValues.amount}</>
-                )}
-              </span>
-            </p>
+            <div className="flex flex-col items-center justify-center text-center font-rubik">
+              {basicTxValues.token.tokenStandard === 'ERC-1155' ? (
+                <>
+                  <p>
+                    {t('send.tokenId')}: {basicTxValues.token.tokenId}
+                  </p>
+                  <p>
+                    {t('send.amount')}: {basicTxValues.amount}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>{t('send.tokenId')}</p>
+                  <span>{basicTxValues.token.tokenId}</span>
+                </>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col mb-4 items-center text-center">
               <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">

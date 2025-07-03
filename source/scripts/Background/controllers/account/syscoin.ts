@@ -52,9 +52,7 @@ const SysAccountController = (
         accountAssets[activeAccount.type][activeAccount.id];
       // Check for duplicate considering both assetGuid AND chainId (network-specific)
       const tokenExists = activeAccountAssets.syscoin.find(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === token.assetGuid &&
-          asset.chainId === activeNetwork.chainId
+        (asset: ITokenSysProps) => asset.assetGuid === token.assetGuid
       );
 
       if (tokenExists) throw new Error('Token already exists on this network');
@@ -95,16 +93,13 @@ const SysAccountController = (
 
   const deleteTokenInfo = (assetGuid: string) => {
     try {
-      const { activeAccount, activeNetwork, accountAssets } =
-        store.getState().vault;
+      const { activeAccount, accountAssets } = store.getState().vault;
       const activeAccountAssets =
         accountAssets[activeAccount.type][activeAccount.id];
 
       // Find token considering both assetGuid AND chainId (network-specific)
       const tokenExists = activeAccountAssets.syscoin?.find(
-        (asset: ITokenSysProps) =>
-          asset.assetGuid === assetGuid &&
-          asset.chainId === activeNetwork.chainId
+        (asset: ITokenSysProps) => asset.assetGuid === assetGuid
       );
 
       if (!tokenExists) throw new Error("Token doesn't exist on this network!");
@@ -115,11 +110,7 @@ const SysAccountController = (
           accountType: activeAccount.type,
           property: 'syscoin',
           value: activeAccountAssets.syscoin.filter(
-            (currentToken) =>
-              !(
-                currentToken.assetGuid === assetGuid &&
-                currentToken.chainId === activeNetwork.chainId
-              )
+            (currentToken) => !(currentToken.assetGuid === assetGuid)
           ),
         })
       );

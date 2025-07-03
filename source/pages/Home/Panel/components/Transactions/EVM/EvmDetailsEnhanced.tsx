@@ -194,10 +194,12 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
       txValue = Number(getERC20TransferValue(tx as any)) / 1e18;
     } else if (isHexValue) {
       const hexString = typeof rawValue === 'object' ? rawValue.hex : rawValue;
-      txValue = parseInt(hexString, 16) / 1e18;
+      const parsedValue = parseInt(hexString, 16);
+      txValue = isNaN(parsedValue) ? 0 : parsedValue / 1e18;
     } else {
       // Decimal string from API
-      txValue = Number(rawValue) / 1e18;
+      const parsedValue = Number(rawValue);
+      txValue = isNaN(parsedValue) ? 0 : parsedValue / 1e18;
     }
 
     txSymbol = getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache);
@@ -279,7 +281,10 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
           {getTxType(transactionTx, isTxSent)}
         </p>
         <p className="text-white text-base">
-          {removeScientificNotation(Number(txValue))} {txSymbol}
+          {isNaN(Number(txValue))
+            ? '0'
+            : removeScientificNotation(Number(txValue))}{' '}
+          {txSymbol}
         </p>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
         {isLoadingDetails && (

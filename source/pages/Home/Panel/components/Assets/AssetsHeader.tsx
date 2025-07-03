@@ -58,21 +58,23 @@ export const AssetsHeader = ({
   const handleSortSelection = (sortValue: string) => {
     setCurrentSortBy(sortValue);
     setSortyByValue(sortValue);
+    setIsSortByOpen(false);
+  };
+
+  const handleClearSort = () => {
+    setCurrentSortBy('');
+    setSortyByValue('');
   };
 
   const showDefaultHeader = !isSearchOpen;
 
-  //Guarantee values empty when the filter is closed
+  //Guarantee values empty when the search filter is closed (but preserve sort)
   useEffect(() => {
     if (!isSearchOpen) {
       setSearchValue('');
     }
+  }, [isSearchOpen]);
 
-    if (!isSortByOpen) {
-      setSortyByValue('');
-      setCurrentSortBy('');
-    }
-  }, [isSearchOpen, isSortByOpen]);
   return (
     <>
       {showDefaultHeader ? (
@@ -82,17 +84,26 @@ export const AssetsHeader = ({
               content={
                 isSortByOpen
                   ? t('tooltip.closeSortOptions')
+                  : currentSortBy
+                  ? `${t('assetsHeader.sortedBy')} ${currentSortBy}`
                   : t('tooltip.sortAssets')
               }
             >
               <div
-                className="flex items-center justify-center cursor-pointer p-2 rounded-full bg-bkg-deepBlue"
+                className={`flex items-center justify-center cursor-pointer p-2 rounded-full transition-colors duration-200 ${
+                  currentSortBy
+                    ? 'bg-brand-royalblue/30 border border-brand-royalblue/50'
+                    : 'bg-bkg-deepBlue'
+                }`}
                 onClick={() => showSortBy()}
               >
                 {isSortByOpen ? (
                   <CloseIcon size={14.5} color="#fff" />
                 ) : (
-                  <OrderByIcon size={14.5} color="#fff" />
+                  <OrderByIcon
+                    size={14.5}
+                    color={currentSortBy ? '#4FC3F7' : '#fff'}
+                  />
                 )}
               </div>
             </Tooltip>
@@ -199,6 +210,16 @@ export const AssetsHeader = ({
                 <CheckIcon size={16} className="text-brand-royalblue" />
               )}
             </li>
+            {currentSortBy && (
+              <li
+                className="cursor-pointer flex items-center justify-between w-full hover:text-red-400 transition-colors pt-2 border-t border-brand-gray200/20"
+                onClick={handleClearSort}
+              >
+                <p className="text-sm text-brand-gray300">
+                  {t('assetsHeader.clearSort')}
+                </p>
+              </li>
+            )}
           </ul>
         </div>
       ) : null}

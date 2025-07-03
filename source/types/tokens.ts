@@ -1,16 +1,12 @@
 export interface ITokenEthProps {
   balance: number;
   chainId?: number;
-  collection?: IERC1155Collection[];
-  collectionName?: string;
   contractAddress: string;
   decimals: string | number;
   id?: string;
-  is1155?: boolean;
   isNft: boolean;
   logo?: string;
   name?: string;
-  tokenId?: number | string;
   tokenStandard?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626';
   tokenSymbol: string;
 }
@@ -20,9 +16,6 @@ export interface ITokenDetails {
   balance: number;
   categories?: string[];
   chainId?: number;
-  collection?: IERC1155Collection[];
-  // ERC-1155 specific fields
-  collectionName?: string;
   contractAddress: string;
   // Wallet-specific additions
   decimals: number;
@@ -64,10 +57,8 @@ export interface ITokenDetails {
     total_volume?: { [currency: string]: number };
   };
   name: string;
-  nftType?: 'ERC-721' | 'ERC-1155';
   platforms?: { [platform: string]: string };
   symbol: string;
-  tokenId?: number;
   // Token standard information
   tokenStandard?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626';
 }
@@ -85,22 +76,19 @@ export interface ITokenSearchResult {
   name: string;
   priceChange24h?: number;
   symbol: string;
-  type?: 'ERC-20' | 'ERC-721' | 'ERC-1155' | 'ERC-777' | 'ERC-4626' | string;
-}
-
-export interface IERC1155Collection {
-  balance: number;
-  tokenId: number;
-  tokenSymbol: string;
+  tokenStandard?:
+    | 'ERC-20'
+    | 'ERC-721'
+    | 'ERC-1155'
+    | 'ERC-777'
+    | 'ERC-4626'
+    | string;
 }
 
 export interface IWatchAssetTokenProps {
   address: string;
-  aggregators?: string[];
-  balanceError?: unknown;
   decimals: number;
   image?: string;
-  isERC721?: boolean;
   name?: string;
   symbol: string;
 }

@@ -20,12 +20,12 @@ export const DetailsView = () => {
   );
 
   const {
-    state: { id, hash, nftId, nftAddress },
+    state: { id, hash, nftCollection, nftAddress },
   }: any = useLocation();
 
   const isAsset = id && !hash;
 
-  const isNft = Boolean(nftId && nftAddress);
+  const isNft = Boolean(nftCollection && nftAddress);
 
   const { explorer } = activeNetwork;
 
@@ -58,14 +58,13 @@ export const DetailsView = () => {
       ) : (
         <>
           <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">
-            {isAsset ? (
+            {isNft ? (
+              <NftsDetails nftAddress={nftAddress} />
+            ) : isAsset ? (
               <AssetDetails id={id} />
             ) : (
               <TransactionDetails hash={hash} />
             )}
-            {isNft ? (
-              <NftsDetails nftId={nftId} nftAddress={nftAddress} />
-            ) : null}
 
             {!isAsset && !isNft ? (
               <li className="mt-6 mb-4 flex items-center justify-center">

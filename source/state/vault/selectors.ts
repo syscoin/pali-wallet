@@ -8,7 +8,6 @@ import { IAccountAssets, IAccountTransactions } from './types';
 const getDefaultAssets = (): IAccountAssets => ({
   ethereum: [],
   syscoin: [],
-  nfts: [],
 });
 
 // Helper to get default empty transactions

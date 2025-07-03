@@ -487,7 +487,7 @@ export const SyscoinAssetDetails = ({ id }: { id: string }) => {
                       <button
                         onClick={() => copy(item.value)}
                         className="text-brand-royalbluemedium hover:text-brand-deepPink100 transition-colors"
-                        title="Copy contract address"
+                        title={t('send.copyContractAddress')}
                       >
                         <CopyIcon size={14} />
                       </button>

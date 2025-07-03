@@ -24,12 +24,10 @@ const ExternalWatchAsset = () => {
   function formatAssetData(asset: any) {
     if (typeof asset === 'object') {
       return {
-        type: asset.type,
         options: asset.options,
       };
     } else {
       return {
-        type: asset[0].type,
         options: asset[0].options,
       };
     }
@@ -41,13 +39,8 @@ const ExternalWatchAsset = () => {
     setLoading(true);
 
     try {
-      const { type: assetType, options: assetOptions } = receivedAsset;
-
       // Pass the already-fetched assetInfo to avoid duplicate API calls
-      await controllerEmitter(
-        ['wallet', 'handleWatchAsset'],
-        [assetType, assetOptions, assetInfo]
-      );
+      await controllerEmitter(['wallet', 'handleWatchAsset'], [assetInfo]);
 
       const type = data.eventName;
 
@@ -65,10 +58,10 @@ const ExternalWatchAsset = () => {
 
   useEffect(() => {
     const getAssetData = async () => {
-      const { type: assetType, options: assetOptions } = receivedAsset;
+      const { options: assetOptions } = receivedAsset;
       const currentAsset = (await controllerEmitter(
         ['wallet', 'getAssetInfo'],
-        [assetType, assetOptions]
+        [assetOptions]
       )) as IAssetPreview;
 
       setAssetInfo(currentAsset);

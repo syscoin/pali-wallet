@@ -3,7 +3,6 @@ import {
   KeyringAccountType,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
-import { INftsStructure } from '@pollum-io/sysweb3-utils';
 
 import {
   IEvmTransaction,
@@ -11,10 +10,9 @@ import {
 } from 'scripts/Background/controllers/transactions/types';
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 
-// Clean account assets structure
+// Clean account assets structure - NFTs are included in ethereum array as assets with isNft: true
 export interface IAccountAssets {
   ethereum: ITokenEthProps[];
-  nfts: INftsStructure[];
   syscoin: ITokenSysProps[];
 }
 

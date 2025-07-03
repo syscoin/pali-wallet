@@ -45,8 +45,10 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
 
   const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
 
-  const currentChainAssets =
+  // Separate regular tokens from NFTs as requested
+  const allAssets =
     assets?.ethereum?.filter((token) => token.chainId === chainId) || [];
+  const currentChainAssets = allAssets.filter((token) => !token.isNft);
 
   const assetsSorted = (tokens: ITokenEthProps[], sortBy: string) => {
     const sortedAssets = [...tokens]; // Create a copy to avoid mutating original array
@@ -67,17 +69,17 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   };
 
   const assetsFilteredBySearch = currentChainAssets.filter((token) => {
-    const is1155 = token?.is1155;
+    const is1155 = token?.tokenStandard === 'ERC-1155';
     const lowercaseSearchValue = searchValue?.toLowerCase();
     const isHexSearch = searchValue.startsWith('0x');
 
     if (is1155) {
-      const lowercaseCollectionName = token.collectionName?.toLowerCase() || '';
+      const lowercaseName = token.name?.toLowerCase() || '';
       const lowercaseContractAddress = token.contractAddress.toLowerCase();
       if (isHexSearch) {
         return lowercaseContractAddress.includes(lowercaseSearchValue);
       }
-      return lowercaseCollectionName.includes(lowercaseSearchValue);
+      return lowercaseName.includes(lowercaseSearchValue);
     }
 
     const lowercaseTokenName = token.name?.toLowerCase() || '';
@@ -117,7 +119,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
     if (tokenToDelete) {
       controllerEmitter(
         ['wallet', 'deleteTokenInfo'],
-        [tokenToDelete.contractAddress]
+        [tokenToDelete.contractAddress, chainId]
       );
     }
     setShowDeleteConfirmation(false);
@@ -129,10 +131,17 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
     setTokenToDelete(null);
   };
 
+  const handleAssetClick = (token: ITokenEthProps) => {
+    navigate('/home/details', {
+      state: { id: token.id, hash: null },
+    });
+  };
+
   return (
     <>
       {filteredAssets?.map((token: ITokenEthProps) => {
-        const btnContainerWidth = token?.is1155 === undefined ? 'w-12' : 'w-10';
+        const btnContainerWidth =
+          token?.tokenStandard === 'ERC-1155' ? 'w-10' : 'w-12';
         return (
           <Fragment key={uniqueId(token.id)}>
             <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
@@ -145,7 +154,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
                     >
                       <img
                         src={`${token.logo}`}
-                        alt={`${token.name} Logo`}
+                        alt={`${token.name || token.tokenSymbol} Logo`}
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           e.currentTarget.style.display = 'none';
@@ -174,19 +183,25 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
                       </span>
                     </div>
                   ))}
-                {token.isNft && token?.is1155 && (
+                {token.isNft && token?.tokenStandard === 'ERC-1155' && (
                   <p className="font-rubik">
-                    <span className="text-button-primary font-poppins">
-                      {`- ${token.collectionName}`}
+                    <span
+                      className="text-button-primary font-poppins hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                      onClick={() => handleAssetClick(token)}
+                    >
+                      {`- ${token.name || token.tokenSymbol}`}
                     </span>
                   </p>
                 )}
 
-                {token?.is1155 === undefined && (
+                {token?.tokenStandard !== 'ERC-1155' && (
                   <p className="flex items-center gap-x-2">
                     <span className="text-brand-white">{token.balance}</span>
 
-                    <span className="text-brand-royalbluemedium">
+                    <span
+                      className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                      onClick={() => handleAssetClick(token)}
+                    >
                       {`  ${truncate(token.tokenSymbol, 10).toUpperCase()}`}
                     </span>
                   </p>

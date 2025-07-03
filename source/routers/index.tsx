@@ -121,7 +121,7 @@ export const Router = () => {
       />
       <WarningModal
         show={showModal}
-        title="RPC Error"
+        title={t('send.rpcError')}
         description={`${modalMessage}`}
         warningMessage={warningMessage}
         onClose={() => setShowModal(false)}

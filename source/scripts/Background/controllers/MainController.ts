@@ -61,7 +61,6 @@ import {
   setError as setStoreError,
   setIsLoadingAssets,
   setIsLoadingBalances,
-  setIsLoadingNfts,
   setIsLoadingTxs,
   setNetwork,
   removeNetwork,
@@ -91,13 +90,12 @@ import EthAccountController, { IEthAccountController } from './account/evm';
 import SysAccountController, { ISysAccountController } from './account/syscoin';
 import AssetsManager from './assets';
 import EvmAssetsController from './assets/evm';
-import { IAssetsManager, INftController } from './assets/types';
+import { IAssetsManager } from './assets/types';
 import { ensureTrailingSlash } from './assets/utils';
 import BalancesManager from './balances';
 import { IBalancesManager } from './balances/types';
 import { clearProviderCache } from './message-handler/requests';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
-import NftsController from './nfts/nfts';
 import {
   CancellablePromises,
   PromiseTargets,
@@ -126,7 +124,6 @@ class MainController {
   public assets: IAssetsManager;
   public transactions: ITransactionsManager;
   private assetsManager: IAssetsManager;
-  private nftsController: INftController;
   private transactionsManager: ITransactionsManager;
   private balancesManager: IBalancesManager;
   private cancellablePromises: CancellablePromises;
@@ -232,8 +229,6 @@ class MainController {
     this.assetsManager = AssetsManager();
     this.transactionsManager = TransactionsManager();
     this.balancesManager = BalancesManager();
-
-    this.nftsController = NftsController();
     this.cancellablePromises = new CancellablePromises();
     this.account = {
       eth: EthAccountController(),
@@ -1770,25 +1765,11 @@ class MainController {
     }
   }
 
-  public async handleWatchAsset(
-    type: string,
-    asset: IWatchAssetTokenProps,
-    assetPreview: IAssetPreview
-  ): Promise<boolean> {
+  public async handleWatchAsset(assetPreview: IAssetPreview): Promise<boolean> {
     const { isBitcoinBased } = store.getState().vault;
 
     if (isBitcoinBased) {
       throw new Error('Watch asset is not supported on Bitcoin networks');
-    }
-
-    // Support all Blockscout token standards for external dApps
-    const supportedTypes = ['ERC20', 'ERC777', 'ERC4626'];
-    if (!supportedTypes.includes(type)) {
-      throw new Error(
-        `Asset of type ${type} not supported. Supported types: ${supportedTypes.join(
-          ', '
-        )}`
-      );
     }
 
     try {
@@ -1824,7 +1805,6 @@ class MainController {
   }
 
   public async getAssetInfo(
-    type: string,
     asset: IWatchAssetTokenProps
   ): Promise<IAssetPreview> {
     const {
@@ -1840,16 +1820,6 @@ class MainController {
 
     const activeAccount =
       accounts[activeAccountInfo.type][activeAccountInfo.id];
-
-    // Support all Blockscout token standards for external dApps
-    const supportedTypes = ['ERC20', 'ERC777', 'ERC4626'];
-    if (!supportedTypes.includes(type)) {
-      throw new Error(
-        `Asset of type ${type} not supported. Supported types: ${supportedTypes.join(
-          ', '
-        )}`
-      );
-    }
 
     try {
       // Use market data validation to get enhanced token info including logos
@@ -2196,105 +2166,6 @@ class MainController {
     }, 10);
 
     return importedAccount;
-  }
-
-  public async getUserNftsByNetwork(
-    userAddress: string,
-    chainId: number,
-    rpcUrl: string
-  ) {
-    if (chainId !== 57 && chainId !== 570) return [];
-
-    const fetchedNfts = await this.nftsController.getUserNfts(
-      userAddress,
-      chainId,
-      rpcUrl
-    );
-
-    return fetchedNfts;
-  }
-
-  public async fetchAndUpdateNftsState({
-    activeNetwork,
-    activeAccount,
-  }: {
-    activeAccount: {
-      id: number;
-      type: KeyringAccountType;
-    };
-    activeNetwork: INetwork;
-  }) {
-    const { accounts, accountAssets } = store.getState().vault;
-    const currentAccount = accounts[activeAccount.type][activeAccount.id];
-    const currentAssets = accountAssets[activeAccount.type]?.[activeAccount.id];
-
-    // Ensure currentAssets and nfts array exist
-    const currentNfts = currentAssets?.nfts || [];
-
-    const { currentPromise: nftsPromises, cancel } =
-      this.cancellablePromises.createCancellablePromise<void>(
-        async (resolve, reject) => {
-          try {
-            store.dispatch(setIsLoadingNfts(true));
-
-            const updatedNfts = await this.getUserNftsByNetwork(
-              currentAccount.address,
-              activeNetwork.chainId,
-              activeNetwork.url
-            );
-
-            const validateUpdatedAndPreviousNftsLength =
-              updatedNfts.length < currentNfts.length;
-
-            const validateIfUpdatedNftsStayEmpty =
-              currentNfts.length > 0 && isEmpty(updatedNfts);
-
-            const validateIfNftsUpdatedIsEmpty = isEmpty(updatedNfts);
-
-            const validateIfNotNullNftsValues = updatedNfts.some((value) =>
-              isNil(value)
-            );
-            const validateIfIsSameLength =
-              updatedNfts.length === currentNfts.length;
-
-            const validateIfIsInvalidDispatch =
-              validateUpdatedAndPreviousNftsLength ||
-              validateIfUpdatedNftsStayEmpty ||
-              validateIfNftsUpdatedIsEmpty ||
-              validateIfNotNullNftsValues ||
-              validateIfIsSameLength;
-
-            if (validateIfIsInvalidDispatch) {
-              // Skip dispatch but still resolve - empty data might be valid
-              store.dispatch(setIsLoadingNfts(false));
-              resolve();
-              return;
-            }
-
-            store.dispatch(
-              setAccountAssets({
-                accountId: activeAccount.id,
-                accountType: activeAccount.type,
-                property: 'nfts',
-                value: updatedNfts,
-              })
-            );
-
-            resolve();
-          } catch (error) {
-            reject(error);
-          } finally {
-            // Always clear loading state
-            store.dispatch(setIsLoadingNfts(false));
-          }
-        }
-      );
-    this.cancellablePromises.setPromise(PromiseTargets.NFTS, {
-      nftsPromises,
-      cancel,
-    });
-
-    this.cancellablePromises.runPromise(PromiseTargets.NFTS);
   }
 
   public setEvmTransactionAsCanceled(txHash: string, chainID: number) {
@@ -3660,26 +3531,9 @@ class MainController {
     return result;
   }
 
-  public async editTokenInfo(token: any) {
-    const { isBitcoinBased } = store.getState().vault;
-    let result;
-
-    // Handle Ethereum tokens
-    if (!isBitcoinBased || token.contractAddress) {
-      result = await this.account.eth.editTokenInfo(token);
-    } else {
-      // Syscoin tokens don't currently have edit functionality
-      throw new Error('Edit token is not supported for Syscoin tokens');
-    }
-
-    // Save wallet state after editing token
-    this.saveWalletState('edit-token');
-
-    return result;
-  }
-
-  public async deleteTokenInfo(tokenToDelete: any) {
-    const { isBitcoinBased } = store.getState().vault;
+  public async deleteTokenInfo(tokenToDelete: any, chainId?: number) {
+    const { isBitcoinBased, activeNetwork } = store.getState().vault;
+    const currentChainId = chainId || activeNetwork.chainId;
     let result;
 
     // Handle Ethereum tokens (tokenToDelete is contractAddress string)
@@ -3687,7 +3541,10 @@ class MainController {
       !isBitcoinBased ||
       (typeof tokenToDelete === 'string' && tokenToDelete.startsWith('0x'))
     ) {
-      result = await this.account.eth.deleteTokenInfo(tokenToDelete);
+      result = await this.account.eth.deleteTokenInfo(
+        tokenToDelete,
+        currentChainId
+      );
     } else {
       // Handle Syscoin tokens (tokenToDelete is assetGuid string)
       result = await this.account.sys.deleteTokenInfo(tokenToDelete);
@@ -3913,6 +3770,59 @@ class MainController {
     return this.evmAssetsController.getOnlyMarketData(contractAddress);
   }
 
+  /**
+   * Fetch specific NFT token IDs for a collection
+   */
+  public async fetchNftTokenIds(
+    contractAddress: string,
+    ownerAddress: string,
+    tokenStandard: 'ERC-721' | 'ERC-1155'
+  ): Promise<{ balance: number; tokenId: string }[]> {
+    return this.evmAssetsController.fetchNftTokenIds(
+      contractAddress,
+      ownerAddress,
+      tokenStandard
+    );
+  }
+
+  /**
+   * Verify ownership of ERC-721 token IDs
+   */
+  public async verifyERC721Ownership(
+    contractAddress: string,
+    ownerAddress: string,
+    tokenIds: string[]
+  ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.verifyERC721Ownership(
+      contractAddress,
+      ownerAddress,
+      tokenIds,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
+  /**
+   * Verify ownership of ERC-1155 token IDs
+   */
+  public async verifyERC1155Ownership(
+    contractAddress: string,
+    ownerAddress: string,
+    tokenIds: string[]
+  ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+    return this.evmAssetsController.verifyERC1155Ownership(
+      contractAddress,
+      ownerAddress,
+      tokenIds,
+      this.ethereumTransaction.web3Provider
+    );
+  }
+
   public async validateSPTOnly(assetGuid: string, xpub: string) {
     const { activeNetwork } = store.getState().vault;
     // This method is for UTXO only
@@ -3920,6 +3830,33 @@ class MainController {
       assetGuid,
       xpub,
       activeNetwork.url
+    );
+  }
+
+  /**
+   * Validate NFT contract for custom import - detects type and conditionally fetches balance
+   */
+  public async validateNftContract(
+    contractAddress: string,
+    walletAddress: string
+  ) {
+    const state = await this.getState();
+    const { activeNetwork } = state.vault;
+
+    if (activeNetwork.slip44 !== 60) {
+      throw new Error('NFT validation only supported on EVM networks');
+    }
+
+    const abortController = new AbortController();
+    const provider = new CustomJsonRpcProvider(
+      abortController.signal,
+      activeNetwork.url
+    );
+
+    return this.evmAssetsController.validateNftContract(
+      contractAddress,
+      walletAddress,
+      provider
     );
   }
 }

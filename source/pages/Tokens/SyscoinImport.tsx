@@ -10,7 +10,8 @@ import { useController } from 'hooks/useController';
 import { ISysTokensAssetReponse } from 'scripts/Background/controllers/assets/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
-import { truncate, getTokenLogo } from 'utils/index';
+import { truncate } from 'utils/index';
+import { getTokenLogo, getTokenTypeBadgeColor } from 'utils/tokens';
 
 export const SyscoinImport: React.FC = () => {
   const { controllerEmitter } = useController();
@@ -46,19 +47,6 @@ export const SyscoinImport: React.FC = () => {
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   const activeAccountAssets =
     accountAssets[activeAccountMeta.type][activeAccountMeta.id];
-
-  // Get badge color based on token type
-  const getTokenTypeBadgeColor = (type: string | undefined) => {
-    switch (type?.toLowerCase()) {
-      case 'sptoken':
-      case 'syscoin platform token':
-        return 'bg-blue-600 border-blue-400 text-blue-100';
-      case 'nft':
-        return 'bg-purple-600 border-purple-400 text-purple-100';
-      default:
-        return 'bg-gray-600 border-gray-400 text-gray-100';
-    }
-  };
 
   // Load user's owned tokens on component mount
   useEffect(() => {
@@ -194,6 +182,7 @@ export const SyscoinImport: React.FC = () => {
         decimals: selectedToken.decimals,
         balance: selectedToken.balance,
         chainId: selectedToken.chainId || activeNetwork.chainId,
+        type: 'SPTAllocated',
         // Store image URL only for known tokens
         ...(tokenLogo && { image: tokenLogo }),
         // Preserve fields that only exist on ITokenSysProps (from custom validation)
@@ -325,7 +314,8 @@ export const SyscoinImport: React.FC = () => {
                           </div>
                           <div
                             className={`text-xs font-poppins px-2 py-0.5 rounded-full inline-block ${getTokenTypeBadgeColor(
-                              token.type
+                              token.type,
+                              true
                             )}`}
                           >
                             SPT
@@ -465,7 +455,8 @@ export const SyscoinImport: React.FC = () => {
                         </div>
                         <div
                           className={`text-xs font-poppins px-2 py-0.5 rounded-full inline-block ${getTokenTypeBadgeColor(
-                            customTokenDetails.type
+                            customTokenDetails.type,
+                            true
                           )}`}
                         >
                           SPT

@@ -1132,10 +1132,7 @@ const CustomRPCView = () => {
             <label className="text-sm text-white font-medium">
               Block Explorer API URL (optional)
             </label>
-            <Tooltip
-              content="Include your API key in the URL if needed (e.g., https://api.etherscan.io/api?apikey=YOUR_KEY). This enables enhanced transaction details and history."
-              placement="top"
-            >
+            <Tooltip content={t('send.apiKeyTooltip')} placement="top">
               <Icon
                 name="Info"
                 isSvg

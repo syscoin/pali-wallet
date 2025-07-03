@@ -47,12 +47,22 @@ export const SyscoinAssetsList = () => {
     setShowDeleteConfirmation(true);
   }, []);
 
+  // Handle asset click
+  const handleAssetClick = useCallback(
+    (asset: any) => {
+      navigate('/home/details', {
+        state: { id: asset.assetGuid, hash: null },
+      });
+    },
+    [navigate]
+  );
+
   // Delete confirmation handlers
   const handleConfirmDelete = () => {
     if (assetToDelete) {
       controllerEmitter(
         ['wallet', 'deleteTokenInfo'],
-        [assetToDelete.assetGuid]
+        [assetToDelete.assetGuid, chainId]
       );
     }
     setShowDeleteConfirmation(false);
@@ -126,7 +136,10 @@ export const SyscoinAssetsList = () => {
                       )}
                     </span>
 
-                    <span className="text-brand-royalbluemedium font-medium">
+                    <span
+                      className="text-brand-royalbluemedium font-medium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
+                      onClick={() => handleAssetClick(asset)}
+                    >
                       {`${truncate(asset.symbol, 12).toUpperCase()}`}
                     </span>
 
@@ -135,7 +148,7 @@ export const SyscoinAssetsList = () => {
                         '0x0000000000000000000000000000000000000000' && (
                         <span
                           className="px-2 py-1 text-[10px] bg-gradient-to-r from-brand-royalbluemedium/20 to-brand-royalbluemedium/30 text-brand-royalbluemedium rounded-full border border-brand-royalbluemedium/20 font-medium"
-                          title="Cross-chain SPT with NEVM contract"
+                          title={t('send.crossChainSptWithNevm')}
                         >
                           NEVM
                         </span>
@@ -192,7 +205,7 @@ export const SyscoinAssetsList = () => {
 
     AssetRenderer.displayName = 'AssetRenderer';
     return AssetRenderer;
-  }, [navigate, t, handleDeleteClickMemo]);
+  }, [navigate, t, handleDeleteClickMemo, handleAssetClick]);
 
   return (
     <>
