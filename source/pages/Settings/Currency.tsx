@@ -3,6 +3,7 @@ import getSymbolFromCurrency from 'currency-symbol-map';
 import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { DefaultModal, NeutralButton } from 'components/index';
@@ -10,12 +11,14 @@ import { usePrice, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { formatNumber } from 'utils/index';
+import { navigateBack } from 'utils/navigationState';
 
 const CurrencyView = () => {
   const { controllerEmitter, isUnlocked: _isUnlocked } = useController();
   const { navigate } = useUtils();
   const { getFiatAmount } = usePrice();
   const { t } = useTranslation();
+  const location = useLocation();
   //* Selectors
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -228,7 +231,7 @@ const CurrencyView = () => {
     <>
       <DefaultModal
         show={confirmed}
-        onClose={() => navigate('/home')}
+        onClose={() => navigateBack(navigate, location)}
         title={t('settings.fiatCurrencySetSuccessfully')}
         description={`${t('settings.nowYouWill', {
           currency: activeNetwork.currency.toUpperCase(),

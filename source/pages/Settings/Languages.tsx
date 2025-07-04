@@ -2,12 +2,13 @@ import { Menu } from '@headlessui/react';
 import { Form } from 'antd';
 import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { DefaultModal, NeutralButton } from 'components/index';
 import { setLanguageInLocalStorage } from 'scripts/Background/utils/bgActions';
 import { i18next } from 'utils/i18n';
+import { navigateBack } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
 import { PaliLanguages } from 'utils/types';
 
@@ -103,6 +104,7 @@ const Languages = () => {
   );
 
   const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit = async () => {
     // Only save when explicitly clicking save button
@@ -134,7 +136,7 @@ const Languages = () => {
         show={confirmed}
         onClose={() => {
           setConfirmed(false);
-          navigate('/home');
+          navigateBack(navigate, location);
         }}
         title={t('settings.languageWasSet')}
         description={t('settings.yourWalletWasConfigured')}

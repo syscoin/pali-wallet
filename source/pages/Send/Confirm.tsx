@@ -39,6 +39,8 @@ import {
   removeScientificNotation,
   omitTransactionObjectData,
   INITIAL_FEE,
+  navigateBack,
+  saveNavigationState,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriority';
@@ -62,7 +64,8 @@ export const SendConfirm = () => {
   const activeAccount = accounts[activeAccountMeta.type][activeAccountMeta.id];
   // when using the default routing, state will have the tx data
   // when using createPopup (DApps), the data comes from route params
-  const { state }: { state: any } = useLocation();
+  const location = useLocation();
+  const { state } = location;
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -96,8 +99,30 @@ export const SendConfirm = () => {
   >(new Map());
   const [isCalculatingFees, setIsCalculatingFees] = useState(false);
 
-  const basicTxValues = state.tx;
+  // Handle both normal navigation and restoration
+  const basicTxValues = state.tx || state.componentState?.txData;
   const cachedGasData = basicTxValues?.cachedGasData;
+
+  // Save navigation state when confirm page loads to preserve transaction data and return context
+  useEffect(() => {
+    const saveConfirmState = async () => {
+      // Only save if we have transaction data and return context
+      if (state?.tx && state?.returnContext) {
+        const componentState = {
+          txData: state.tx,
+        };
+
+        await saveNavigationState(
+          location.pathname,
+          undefined,
+          componentState,
+          state.returnContext
+        );
+      }
+    };
+
+    saveConfirmState();
+  }, [state, location.pathname]);
 
   // The confirmation screen displays the fee and total as calculated by SendSys.
   // When the user changes fee rate in SendSys and clicks "Next", SendSys recalculates
@@ -1676,7 +1701,7 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={() => navigateBack(navigate, state)}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
             >
               {t('buttons.cancel')}

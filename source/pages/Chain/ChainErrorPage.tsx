@@ -11,6 +11,10 @@ import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import store, { RootState } from 'state/store';
 import { switchNetworkError, resetNetworkStatus } from 'state/vaultGlobal';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 export const ChainErrorPage = () => {
   const { controllerEmitter } = useController();
@@ -216,16 +220,20 @@ export const ChainErrorPage = () => {
           <div className="flex flex-col mb-2">
             <div
               className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
-              onClick={() =>
-                navigate('/settings/networks/custom-rpc', {
-                  state: {
+              onClick={() => {
+                const returnContext = createNavigationContext('/home');
+                navigateWithContext(
+                  navigate,
+                  '/settings/networks/custom-rpc',
+                  {
                     selected: displayNetwork,
                     chain: displayNetwork.chainId,
                     isDefault: displayNetwork.default,
                     isEditing: true,
                   },
-                })
-              }
+                  returnContext
+                );
+              }}
             >
               {t('chainError.editCurrentRpc')}
             </div>

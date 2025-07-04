@@ -21,6 +21,10 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 // Static account type configuration to prevent recreation
 const ACCOUNT_TYPE_CONFIG = {
@@ -85,9 +89,15 @@ const ManageAccountsView = React.memo(() => {
 
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
-      navigate('/settings/edit-account', {
-        state: account,
-      });
+      const returnContext = createNavigationContext(
+        '/settings/manage-accounts'
+      );
+      navigateWithContext(
+        navigate,
+        '/settings/edit-account',
+        account,
+        returnContext
+      );
     },
     [navigate]
   );

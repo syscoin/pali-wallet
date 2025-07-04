@@ -43,7 +43,7 @@ const CustomRPCExternal = () => {
       <DefaultModal
         show={confirmed}
         onClose={window.close}
-        title={t('settings.rpcSucessfullyAdded')}
+        title={t('settings.rpcSuccessfullyAdded')}
         buttonText={t('settings.gotIt')}
       />
 

@@ -19,3 +19,4 @@ export * from './i18n';
 export * from './storageAPI';
 export * from './strings';
 export * from './tokens';
+export * from './navigationState';

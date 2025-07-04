@@ -4,11 +4,13 @@ import React, {
   useState,
   useDeferredValue,
   startTransition,
+  useEffect,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
 import { IconButton } from 'components/index';
@@ -18,19 +20,33 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import { truncate } from 'utils/index';
+import {
+  truncate,
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
 interface IDefaultEvmAssets {
+  componentState: {
+    isCoinSelected: boolean;
+    searchValue: string;
+    sortByValue: string;
+  };
   searchValue: string;
   sortByValue: string;
 }
 
-const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
+const DefaultEvmAssets = ({
+  searchValue,
+  sortByValue,
+  componentState,
+}: IDefaultEvmAssets) => {
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
 
   // Confirmation modal state
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -133,9 +149,18 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
   };
 
   const handleAssetClick = (token: ITokenEthProps) => {
-    navigate('/home/details', {
-      state: { id: token.id, hash: null },
-    });
+    const returnContext = createNavigationContext(
+      '/home',
+      searchParams.get('tab') || 'assets',
+      componentState
+    );
+
+    navigateWithContext(
+      navigate,
+      '/home/details',
+      { id: token.id, hash: null },
+      returnContext
+    );
   };
 
   return (
@@ -209,11 +234,7 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
             <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
               <Tooltip content={t('tooltip.assetDetails')}>
                 <IconButton
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: { id: token.id, hash: null },
-                    })
-                  }
+                  onClick={() => handleAssetClick(token)}
                   className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
                   aria-label={`View details for ${token.tokenSymbol} token`}
                 >
@@ -259,10 +280,20 @@ const DefaultEvmAssets = ({ searchValue, sortByValue }: IDefaultEvmAssets) => {
 
 // todo: create a loading state
 export const EvmAssetsList = () => {
-  const [isCoinSelected, setIsCoinSelected] = useState<boolean>(true);
+  const location = useLocation();
 
-  const [searchValue, setSearchValue] = useState<string>('');
-  const [sortByValue, setSortyByValue] = useState<string>('');
+  // Restore state from navigation if available
+  const initialIsCoinSelected =
+    location.state?.componentState?.isCoinSelected ?? true;
+  const initialSearchValue = location.state?.componentState?.searchValue || '';
+  const initialSortByValue = location.state?.componentState?.sortByValue || '';
+
+  const [isCoinSelected, setIsCoinSelected] = useState<boolean>(
+    initialIsCoinSelected
+  );
+
+  const [searchValue, setSearchValue] = useState<string>(initialSearchValue);
+  const [sortByValue, setSortyByValue] = useState<string>(initialSortByValue);
 
   // Use deferred value for search to keep input responsive
   const deferredSearchValue = useDeferredValue(searchValue);
@@ -284,11 +315,26 @@ export const EvmAssetsList = () => {
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
+  // Clear navigation state when component mounts with navigation state
+  useEffect(() => {
+    if (location.state?.fromNavigation && location.state?.componentState) {
+      // Clear the navigation state to prevent re-applying on subsequent renders
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
   // Handle tab switch with transition
   const handleTabSwitch = (isCoin: boolean) => {
     startTransition(() => {
       setIsCoinSelected(isCoin);
     });
+  };
+
+  // Pass component state to child components
+  const componentState = {
+    isCoinSelected,
+    searchValue,
+    sortByValue,
   };
 
   return (
@@ -315,6 +361,7 @@ export const EvmAssetsList = () => {
               <DefaultEvmAssets
                 searchValue={deferredSearchValue}
                 sortByValue={deferredSortByValue}
+                componentState={componentState}
               />
             ) : (
               <EvmNftsList />

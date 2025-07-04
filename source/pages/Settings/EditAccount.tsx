@@ -12,9 +12,11 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { HardWallets } from 'scripts/Background/controllers/message-handler/types';
 import { ellipsis } from 'utils/format';
+import { navigateBack } from 'utils/navigationState';
 
 const EditAccountView = () => {
-  const { state } = useLocation();
+  const location = useLocation();
+  const { state } = location;
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
 
@@ -60,8 +62,7 @@ const EditAccountView = () => {
       );
 
       alert.success(t('settings.accountLabelEditedSuccessfully'));
-
-      navigate('/home');
+      setTimeout(() => navigateBack(navigate, location), 1800);
     } catch (error) {
       alert.error(error.message);
     } finally {

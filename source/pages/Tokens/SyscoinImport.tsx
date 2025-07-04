@@ -15,6 +15,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { TbFileImport } from 'react-icons/tb';
 import { useSelector } from 'react-redux';
+import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { ImportableAssetsList } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -22,24 +23,38 @@ import { useController } from 'hooks/useController';
 import { ISysTokensAssetReponse } from 'scripts/Background/controllers/assets/types';
 import { RootState } from 'state/store';
 import { ITokenSysProps } from 'types/tokens';
+import {
+  createNavigationContext,
+  navigateWithContext,
+  getCurrentTab,
+} from 'utils/index';
 import { getTokenLogo } from 'utils/tokens';
 
 export const SyscoinImport: React.FC = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
 
-  // Tab state - two tabs
-  const [activeTab, setActiveTab] = useState<'owned' | 'custom'>('owned');
+  // Tab state - initialize with restored tab from URL params or location state
+  const initialTab = getCurrentTab(searchParams, location.state, 'owned') as
+    | 'owned'
+    | 'custom';
+  const [activeTab, setActiveTab] = useState<'owned' | 'custom'>(initialTab);
 
   // PATH 1: Your Tokens state
   const [ownedTokens, setOwnedTokens] = useState<ISysTokensAssetReponse[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(false);
 
-  // PATH 2: Custom Token state
-  const [customAssetGuid, setCustomAssetGuid] = useState('');
+  // PATH 2: Custom Token state - restore from navigation state if available
+  const [customAssetGuid, setCustomAssetGuid] = useState(
+    location.state?.componentState?.customAssetGuid || ''
+  );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenSysProps | null>(null);
+    useState<ITokenSysProps | null>(
+      location.state?.componentState?.customTokenDetails || null
+    );
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
 
   // Common state
@@ -252,12 +267,27 @@ export const SyscoinImport: React.FC = () => {
 
   // Handle details click
   const handleDetailsClick = (asset: any) => {
-    navigate('/home/details', {
-      state: {
+    // Prepare component state to preserve
+    const componentState = {
+      customAssetGuid,
+      customTokenDetails,
+    };
+
+    const returnContext = createNavigationContext(
+      '/tokens/add',
+      activeTab,
+      componentState
+    );
+
+    navigateWithContext(
+      navigate,
+      '/home/details',
+      {
         ...asset,
         isImportPreview: true,
       },
-    });
+      returnContext
+    );
   };
 
   // Handle tab change
@@ -367,7 +397,10 @@ export const SyscoinImport: React.FC = () => {
                 <div className="relative inline-block mb-4">
                   <div className="absolute inset-0 bg-brand-royalblue/20 blur-3xl rounded-full"></div>
                   <div className="relative w-16 h-16 mx-auto bg-bkg-2 rounded-full flex items-center justify-center">
-                    <TbFileImport size={32} className="text-brand-royalblue" />
+                    <TbFileImport
+                      size={32}
+                      className="text-brand-royalblue hover:text-brand-royalbluemedium transition-colors duration-200"
+                    />
                   </div>
                 </div>
                 <h3 className="text-brand-white font-rubik font-medium text-lg mb-1">

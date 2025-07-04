@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 
 import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
@@ -12,6 +13,10 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
@@ -28,6 +33,7 @@ export const SyscoinAssetsList = () => {
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
 
   // Confirmation modal state
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
@@ -50,11 +56,19 @@ export const SyscoinAssetsList = () => {
   // Handle asset click
   const handleAssetClick = useCallback(
     (asset: any) => {
-      navigate('/home/details', {
-        state: { id: asset.assetGuid, hash: null },
-      });
+      const returnContext = createNavigationContext(
+        '/home',
+        searchParams.get('tab') || 'assets'
+      );
+
+      navigateWithContext(
+        navigate,
+        '/home/details',
+        { id: asset.assetGuid, hash: null },
+        returnContext
+      );
     },
-    [navigate]
+    [navigate, searchParams]
   );
 
   // Delete confirmation handlers
@@ -169,11 +183,7 @@ export const SyscoinAssetsList = () => {
               <td className="flex items-center justify-between overflow-hidden overflow-ellipsis">
                 <Tooltip content={t('tooltip.assetDetails')}>
                   <IconButton
-                    onClick={() =>
-                      navigate('/home/details', {
-                        state: { id: asset.assetGuid, hash: null },
-                      })
-                    }
+                    onClick={() => handleAssetClick(asset)}
                     className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
                     aria-label={`View details for ${asset.symbol} token`}
                   >

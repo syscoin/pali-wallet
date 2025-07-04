@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from 'components/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 interface IModal {
   children?: ReactNode;
@@ -323,7 +327,15 @@ export const RPCSuccessfullyAdded = ({
           id="btn-ok"
           type="submit"
           className="bg-white w-[22rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-          onClick={() => navigate('/settings/networks/edit')}
+          onClick={() => {
+            const returnContext = createNavigationContext('/home');
+            navigateWithContext(
+              navigate,
+              '/settings/networks/edit',
+              {},
+              returnContext
+            );
+          }}
         >
           {t('buttons.ok')}
         </Button>
@@ -366,7 +378,15 @@ export const ConnectHardwareWallet = ({
             id="unlock-btn"
             type="submit"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            onClick={() => navigate('/settings/account/hardware')}
+            onClick={() => {
+              const returnContext = createNavigationContext('/home');
+              navigateWithContext(
+                navigate,
+                '/settings/account/hardware',
+                {},
+                returnContext
+              );
+            }}
           >
             {t('buttons.connect')}
           </Button>

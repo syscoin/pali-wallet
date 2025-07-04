@@ -10,6 +10,7 @@ import { PageLoadingOverlay } from 'components/Loading/PageLoadingOverlay';
 import { useAppReady } from 'hooks/useAppReady';
 import { usePageLoadingState } from 'hooks/usePageLoadingState';
 import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 
 // Memoize frequently used navigation icons to prevent unnecessary re-renders
 const BackArrowIcon = memo(() => <Icon isSvg={true} name="ArrowLeft" />);
@@ -245,13 +246,17 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
   // Back navigation handler
   const handleBackNavigation = useCallback(() => {
-    const cameFromMenu = location.state?.fromMenu === true;
-    if (cameFromMenu) {
-      navigate('/home');
+    // First check for navigation context
+    const hasNavigationContext = location.state?.returnContext;
+
+    if (hasNavigationContext) {
+      navigateBack(navigate, location);
     } else {
-      navigate(-1);
+      // Always go to home when no navigation context
+      // This prevents cycling through browser history
+      navigate('/home');
     }
-  }, [location.state, navigate]);
+  }, [location, navigate]);
 
   // Get page ID based on route
   const pageId = useMemo(() => {

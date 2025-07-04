@@ -15,6 +15,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { TbFileImport } from 'react-icons/tb';
 import { useSelector } from 'react-redux';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ImportableAssetsList } from 'components/index';
@@ -26,23 +27,41 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
+import {
+  getCurrentTab,
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 export const ImportToken: React.FC = () => {
   const { controllerEmitter } = useController();
   const { navigate, alert } = useUtils();
   const { t } = useTranslation();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Tab state - two tabs
-  const [activeTab, setActiveTab] = useState<'owned' | 'custom'>('owned');
+  // Tab state - get initial from URL params or location state
+  const getInitialTab = () => {
+    const tabValue = getCurrentTab(searchParams, location.state, 'owned');
+    return tabValue as 'owned' | 'custom';
+  };
+
+  const [activeTab, setActiveTab] = useState<'owned' | 'custom'>(
+    getInitialTab()
+  );
 
   // PATH 1: Your Tokens state
   const [ownedTokens, setOwnedTokens] = useState<ITokenSearchResult[]>([]);
   const [isLoadingOwned, setIsLoadingOwned] = useState(false);
 
-  // PATH 2: Custom Token state
-  const [customContractAddress, setCustomContractAddress] = useState('');
+  // PATH 2: Custom Token state - restore from navigation state if available
+  const [customContractAddress, setCustomContractAddress] = useState(
+    location.state?.componentState?.customContractAddress || ''
+  );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenDetails | null>(null);
+    useState<ITokenDetails | null>(
+      location.state?.componentState?.customTokenDetails || null
+    );
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
 
   // Common state
@@ -341,19 +360,52 @@ export const ImportToken: React.FC = () => {
     }
   };
 
-  // Handle details click
+  // Update URL when tab changes
+  const updateTabInUrl = (tab: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams, { replace: true });
+  };
+
+  // Update tab when URL parameters change
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam === 'custom') {
+      setActiveTab('custom');
+    } else if (tabParam === 'owned') {
+      setActiveTab('owned');
+    }
+  }, [searchParams]);
+
+  // Handle details click with navigation context
   const handleDetailsClick = (asset: any) => {
-    navigate('/home/details', {
-      state: {
+    // Prepare component state to preserve
+    const componentState = {
+      customContractAddress,
+      customTokenDetails,
+    };
+
+    const returnContext = createNavigationContext(
+      '/tokens/add',
+      activeTab,
+      componentState
+    );
+
+    navigateWithContext(
+      navigate,
+      '/home/details',
+      {
         ...asset,
         isImportPreview: true,
       },
-    });
+      returnContext
+    );
   };
 
   // Handle tab change
   const handleTabChange = (tab: 'owned' | 'custom') => {
     setActiveTab(tab);
+    updateTabInUrl(tab);
     if (tab === 'custom') {
       setCustomContractAddress('');
       setCustomTokenDetails(null);
@@ -460,7 +512,10 @@ export const ImportToken: React.FC = () => {
                 <div className="relative inline-block mb-4">
                   <div className="absolute inset-0 bg-brand-royalblue/20 blur-3xl rounded-full"></div>
                   <div className="relative w-16 h-16 mx-auto bg-bkg-2 rounded-full flex items-center justify-center">
-                    <TbFileImport size={32} className="text-brand-royalblue" />
+                    <TbFileImport
+                      size={32}
+                      className="text-brand-royalblue hover:text-brand-royalbluemedium transition-colors duration-200"
+                    />
                   </div>
                 </div>
                 <h3 className="text-brand-white font-rubik font-medium text-lg mb-1">

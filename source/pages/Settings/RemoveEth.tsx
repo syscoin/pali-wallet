@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import metamaskIcon from 'assets/all_assets/metamask.svg';
 import { DefaultModal, NeutralButton, Icon } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 
 const RemoveEthView = () => {
   const { hasEthProperty } = useSelector(
@@ -18,6 +19,7 @@ const RemoveEthView = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit = () => {
     setLoading(true);
@@ -78,7 +80,7 @@ const RemoveEthView = () => {
         show={confirmed}
         onClose={() => {
           setConfirmed(false);
-          navigate('/home');
+          navigateBack(navigate, location);
         }}
         title={t('settings.windowObjectWasSet')}
         description={t('settings.yourWalletWasConfigured')}
@@ -133,7 +135,7 @@ const RemoveEthView = () => {
 
         <div className="w-full px-4 absolute bottom-12 md:static">
           <NeutralButton
-            onClick={() => navigate('/home')}
+            onClick={() => navigateBack(navigate, location)}
             type="button"
             fullWidth={true}
             loading={loading}

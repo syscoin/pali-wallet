@@ -19,6 +19,10 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { truncate, getHost, getTabUrl } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 interface IGeneralMenuProps {
   disabled?: boolean;
@@ -88,7 +92,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
         <>
           <Tooltip content={truncate(currentTab.host)}>
             <div
-              onClick={() => navigate('/settings/networks/connected-sites')}
+              onClick={() => {
+                const returnContext = createNavigationContext('/home');
+                navigateWithContext(
+                  navigate,
+                  '/settings/networks/connected-sites',
+                  {},
+                  returnContext
+                );
+              }}
               className="relative mx-1.5 text-brand-white cursor-pointer"
             >
               <Icon
@@ -154,7 +166,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/remove-eth')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/remove-eth',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <PaliWhiteSmallIconSvg className="text-brand-white" />
@@ -165,7 +185,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/seed')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/seed',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <KeySvg className="mb-1 text-brand-white" />
@@ -178,7 +206,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/forget-wallet')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/forget-wallet',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden gap-2 flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <TrashIconSvg className="mb-1 text-brand-white" />
@@ -194,7 +230,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/languages')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/languages',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="py-1.5 gap-2 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <div className="max-w-10">
@@ -210,7 +254,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/currency')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/currency',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <DollarSignIconSvg className="text-brand-white" />
@@ -221,7 +273,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/about')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/about',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <HelpIconSvg
@@ -246,7 +306,15 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
                   <Menu.Item>
                     <li
-                      onClick={() => navigate('/settings/advanced')}
+                      onClick={() => {
+                        const returnContext = createNavigationContext('/home');
+                        navigateWithContext(
+                          navigate,
+                          '/settings/advanced',
+                          {},
+                          returnContext
+                        );
+                      }}
                       className="gap-2 py-1.5 cursor-pointer px-5 w-full backface-visibility-hidden flex items-center justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
                     >
                       <img

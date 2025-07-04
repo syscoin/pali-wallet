@@ -1,11 +1,12 @@
 import { Form, Input } from 'antd';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { NeutralButton } from 'components/index';
 import { CreatedAccountSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useController } from 'hooks/useController';
+import { navigateBack } from 'utils/navigationState';
 
 const CreateAccount = () => {
   const [address, setAddress] = useState<string | undefined>();
@@ -14,6 +15,7 @@ const CreateAccount = () => {
   const { t } = useTranslation();
   const { controllerEmitter, handleWalletLockedError } = useController();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const onSubmit = async ({ label }: { label?: string }) => {
     setLoading(true);
@@ -46,7 +48,7 @@ const CreateAccount = () => {
           show={address !== ''}
           onClose={() => {
             setAddress('');
-            navigate('/home');
+            navigateBack(navigate, location);
           }}
           title={t('settings.yourNewAccount')}
           phraseOne={`${accountName}`}

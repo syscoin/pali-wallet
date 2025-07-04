@@ -24,6 +24,10 @@ import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { startSwitchNetwork, switchNetworkError } from 'state/vaultGlobal';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 const GlobeIcon = memo(() => (
   <Icon
@@ -205,25 +209,46 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
 
   // ✅ MEMOIZED: Navigation handlers
   const handleConnectedSitesNavigation = useCallback(() => {
-    navigate('/settings/networks/connected-sites', {
-      state: { fromMenu: true },
-    });
+    // Create navigation context to return to home
+    const returnContext = createNavigationContext('/home');
+
+    navigateWithContext(
+      navigate,
+      '/settings/networks/connected-sites',
+      { fromMenu: true },
+      returnContext
+    );
   }, [navigate]);
 
   const handleTrustedSitesNavigation = useCallback(() => {
-    navigate('/settings/networks/trusted-sites', {
-      state: { fromMenu: true },
-    });
+    // Create navigation context to return to home
+    const returnContext = createNavigationContext('/home');
+
+    navigateWithContext(
+      navigate,
+      '/settings/networks/trusted-sites',
+      { fromMenu: true },
+      returnContext
+    );
   }, [navigate]);
 
   const handleCustomRpcNavigation = useCallback(() => {
-    navigate('/settings/networks/custom-rpc', {
-      state: { fromMenu: true },
-    });
+    // Create navigation context to return to network menu
+    const returnContext = createNavigationContext('/home');
+
+    navigateWithContext(
+      navigate,
+      '/settings/networks/custom-rpc',
+      { fromMenu: true },
+      returnContext
+    );
   }, [navigate]);
 
   const handleManageNetworksNavigation = useCallback(() => {
-    navigate('/settings/networks/edit');
+    // Create navigation context to return to home
+    const returnContext = createNavigationContext('/home');
+
+    navigateWithContext(navigate, '/settings/networks/edit', {}, returnContext);
   }, [navigate]);
 
   return (

@@ -41,7 +41,7 @@ const App: FC = () => {
       port.disconnect();
       console.log('[App] 🔌 Disconnected from background script');
     };
-  }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount
+  }, []);
 
   // other logic
   return (

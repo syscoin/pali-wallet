@@ -3,12 +3,14 @@ import { useForm } from 'antd/es/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 
 const ImportAccountView = () => {
@@ -17,6 +19,7 @@ const ImportAccountView = () => {
   const { t } = useTranslation();
   const [form] = useForm();
   const [validPrivateKey, setValidPrivateKey] = useState(false);
+  const location = useLocation();
 
   //* States
   const [isAccountImported, setIsAccountImported] = useState(false);
@@ -63,7 +66,7 @@ const ImportAccountView = () => {
     <>
       <ImportedWalletSuccessfully
         show={isAccountImported}
-        onClose={() => navigate('/home')}
+        onClose={() => navigateBack(navigate, location)}
         title={t('settings.accountImported')}
       />
 

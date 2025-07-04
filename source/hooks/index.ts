@@ -7,3 +7,4 @@ export * from './useSafeNavigate';
 export * from './usePageLoadingState';
 export * from './useController';
 export { useAppReady } from './useAppReady';
+export * from './useNavigationState';

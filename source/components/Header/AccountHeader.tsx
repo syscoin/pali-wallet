@@ -22,6 +22,10 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { ellipsis, adjustUrl } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 export const AccountHeader: React.FC = () => {
   const currentAccount = useSelector(selectActiveAccount);
@@ -61,9 +65,13 @@ export const AccountHeader: React.FC = () => {
 
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
-      navigate('/settings/edit-account', {
-        state: account,
-      });
+      const returnContext = createNavigationContext('/home');
+      navigateWithContext(
+        navigate,
+        '/settings/edit-account',
+        account,
+        returnContext
+      );
     },
     [navigate]
   );

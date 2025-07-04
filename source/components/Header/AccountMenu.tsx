@@ -15,6 +15,10 @@ import {
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
@@ -78,9 +82,15 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() =>
-            navigate('/settings/account/new', { state: { fromMenu: true } })
-          }
+          onClick={() => {
+            const returnContext = createNavigationContext('/home');
+            navigateWithContext(
+              navigate,
+              '/settings/account/new',
+              { fromMenu: true },
+              returnContext
+            );
+          }}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
           <AddUserSvg className="mb-1 text-brand-white" />
@@ -91,9 +101,15 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() =>
-            navigate('/settings/manage-accounts', { state: { fromMenu: true } })
-          }
+          onClick={() => {
+            const returnContext = createNavigationContext('/home');
+            navigateWithContext(
+              navigate,
+              '/settings/manage-accounts',
+              { fromMenu: true },
+              returnContext
+            );
+          }}
           className="py-1.5 cursor-pointer pl-5 pr-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
           <ManageUserSvg className="mb-2 text-brand-white" />
@@ -104,11 +120,15 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() =>
-            navigate('/settings/account/private-key', {
-              state: { fromMenu: true },
-            })
-          }
+          onClick={() => {
+            const returnContext = createNavigationContext('/home');
+            navigateWithContext(
+              navigate,
+              '/settings/account/private-key',
+              { fromMenu: true },
+              returnContext
+            );
+          }}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
           <KeySvg className="mb-2 text-brand-white" />
@@ -131,11 +151,15 @@ export const AccountMenu: React.FC = () => {
       <Menu.Item>
         <div className="flex flex-col gap-2">
           <li
-            onClick={() =>
-              navigate('/settings/account/import', {
-                state: { fromMenu: true },
-              })
-            }
+            onClick={() => {
+              const returnContext = createNavigationContext('/home');
+              navigateWithContext(
+                navigate,
+                '/settings/account/import',
+                { fromMenu: true },
+                returnContext
+              );
+            }}
             className={`py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center justify-start gap-3 text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200`}
           >
             <UserImportedIconSvg className="mb-1 text-brand-white" />

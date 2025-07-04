@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
@@ -16,6 +17,10 @@ import { TransactionOptions } from 'components/TransactionOptions';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { ellipsis, formatDate, handleUpdateTransaction } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 export const TransactionsList = ({
   userTransactions,
@@ -27,6 +32,7 @@ export const TransactionsList = ({
     activeNetwork: { chainId },
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
+  const [searchParams] = useSearchParams();
 
   const [modalData, setModalData] = useState<{
     buttonText: string;
@@ -297,14 +303,22 @@ export const TransactionsList = ({
               <div className="flex justify-between items-center">
                 <IconButton
                   className="w-5 p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
-                  onClick={() =>
-                    navigate('/home/details', {
-                      state: {
+                  onClick={() => {
+                    const returnContext = createNavigationContext(
+                      '/home',
+                      searchParams.get('tab') || 'activity'
+                    );
+
+                    navigateWithContext(
+                      navigate,
+                      '/home/details',
+                      {
                         id: null,
                         hash: tx[txid],
                       },
-                    })
-                  }
+                      returnContext
+                    );
+                  }}
                   aria-label={`View transaction details for ${tx[txid]}`}
                 >
                   <Icon

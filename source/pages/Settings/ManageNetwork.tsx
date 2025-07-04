@@ -11,6 +11,10 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
+import {
+  createNavigationContext,
+  navigateWithContext,
+} from 'utils/navigationState';
 
 const ManageNetworkView = () => {
   const networks = useSelector(
@@ -45,9 +49,15 @@ const ManageNetworkView = () => {
     isDefault: boolean;
     selected: INetwork;
   }) => {
-    navigate('/settings/networks/custom-rpc', {
-      state: { selected, chain, isDefault, isEditing: true },
-    });
+    // Create navigation context to return to manage networks
+    const returnContext = createNavigationContext('/settings/networks/edit');
+
+    navigateWithContext(
+      navigate,
+      '/settings/networks/custom-rpc',
+      { selected, chain, isDefault, isEditing: true },
+      returnContext
+    );
   };
 
   return (

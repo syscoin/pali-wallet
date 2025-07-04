@@ -3,9 +3,39 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { AppLayout } from 'components/Layout/AppLayout';
 import { WarningModal } from 'components/Modal';
+import { useController } from 'hooks/useController';
+import { useNavigationState } from 'hooks/useNavigationState';
 import { useRouterLogic } from 'routers/useRouterLogic';
 
 import { ProtectedRoute } from './ProtectedRoute';
+
+// Navigation state restorer component
+const NavigationRestorer = () => {
+  const { restoreState } = useNavigationState();
+  const { isLoading, isUnlocked } = useController();
+  const hasAttemptedRestore = React.useRef(false);
+
+  React.useEffect(() => {
+    // Don't attempt restoration if already done
+    if (hasAttemptedRestore.current) return;
+
+    // Wait for auth state to be loaded
+    if (isLoading) return;
+
+    // Mark that we've attempted restoration
+    hasAttemptedRestore.current = true;
+
+    // If user is authenticated, attempt to restore navigation
+    if (isUnlocked) {
+      // Small delay to ensure all components are mounted and ready
+      setTimeout(() => {
+        restoreState();
+      }, 100);
+    }
+  }, [restoreState, isLoading, isUnlocked]);
+
+  return null;
+};
 
 // Lazy load route groups
 const AuthRoutes = lazy(() => import('./routes/AuthRoutes'));
@@ -113,6 +143,7 @@ export const Router = () => {
 
   return (
     <>
+      <NavigationRestorer />
       <WarningModal
         show={showUtf8ErrorModal}
         title={t('settings.bgError')}

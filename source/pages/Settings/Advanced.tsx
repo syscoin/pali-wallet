@@ -3,7 +3,7 @@ import { Form } from 'antd';
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
   DefaultModal,
@@ -12,6 +12,7 @@ import {
 } from 'components/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { navigateBack } from 'utils/navigationState';
 
 const Advanced = () => {
   const { advancedSettings } = useSelector(
@@ -38,6 +39,7 @@ const Advanced = () => {
 
   const { controllerEmitter } = useController();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const ADVANCED_SETTINGS = ['refresh', 'autolock'];
 
@@ -129,7 +131,7 @@ const Advanced = () => {
         show={confirmed}
         onClose={() => {
           setConfirmed(false);
-          navigate('/home');
+          navigateBack(navigate, location);
         }}
         title={t('settings.advancedSettingsWasSet')}
         description={t('settings.yourWalletWasConfigured')}

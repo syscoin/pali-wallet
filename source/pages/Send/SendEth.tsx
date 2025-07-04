@@ -6,6 +6,7 @@ import { uniqueId } from 'lodash';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
@@ -22,12 +23,16 @@ import {
   ellipsis,
   adjustUrl,
   formatFullPrecisionBalance,
+  createNavigationContext,
+  navigateWithContext,
+  saveNavigationState,
 } from 'utils/index';
 
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();
   const { controllerEmitter } = useController();
+  const location = useLocation();
 
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
@@ -41,27 +46,30 @@ export const SendEth = () => {
 
   const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
-  // ✅ MEMOIZED: Computed values
-  const isAccountImported = useMemo(
-    () => activeAccount?.isImported || false,
-    [activeAccount?.isImported]
-  );
+  const hasAccountAssets = Boolean(activeAccountAssets?.ethereum);
+  const isAccountImported = activeAccount?.isImported || false;
 
-  const hasAccountAssets = useMemo(
-    () => activeAccountAssets && activeAccountAssets.ethereum?.length > 0,
-    [activeAccountAssets?.ethereum?.length]
-  );
+  // Restore form state if coming back from navigation
+  const initialSelectedAsset =
+    location.state?.componentState?.selectedAsset || null;
+  const initialNftTokenIds = location.state?.componentState?.nftTokenIds || [];
+  const initialSelectedNftTokenId =
+    location.state?.componentState?.selectedNftTokenId || null;
 
-  // State management
-  const [selectedAsset, setSelectedAsset] = useState<any | null>(null);
-  const [nftTokenIds, setNftTokenIds] = useState<
-    { balance: number; tokenId: string }[]
-  >([]);
-  const [selectedNftTokenId, setSelectedNftTokenId] = useState<string | null>(
-    null
+  const [selectedAsset, setSelectedAsset] = useState<ITokenEthProps | null>(
+    initialSelectedAsset
   );
+  const [isCalculatingGas, setIsCalculatingGas] = useState(false);
+  const [cachedFeeData, setCachedFeeData] = useState<any>(null);
+  const [isMaxSend, setIsMaxSend] = useState(false);
+
+  // NFT-related state
+  const [nftTokenIds, setNftTokenIds] =
+    useState<{ balance: number; tokenId: string }[]>(initialNftTokenIds);
   const [isLoadingNftTokenIds, setIsLoadingNftTokenIds] = useState(false);
-  // NFT verification state
+  const [selectedNftTokenId, setSelectedNftTokenId] = useState<string | null>(
+    initialSelectedNftTokenId
+  );
   const [isVerifyingTokenId, setIsVerifyingTokenId] = useState(false);
   const [verifiedTokenBalance, setVerifiedTokenBalance] = useState<
     number | null
@@ -69,20 +77,69 @@ export const SendEth = () => {
   const [verificationError, setVerificationError] = useState<string | null>(
     null
   );
+
   // ERC-20 verification state
+  const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
   const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<
     number | null
   >(null);
-  const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
-  const [isCalculatingGas, setIsCalculatingGas] = useState(false);
-  const [isMaxSend, setIsMaxSend] = useState(false);
-  const [cachedFeeData, setCachedFeeData] = useState<{
-    gasLimit: string;
-    maxFeePerGas: string;
-    maxPriorityFeePerGas: string;
-    totalFeeEth: number;
-  } | null>(null);
+
   const [form] = Form.useForm();
+
+  // Restore form values if coming back from navigation
+  useEffect(() => {
+    if (location.state?.fromNavigation && location.state?.componentState) {
+      const { formValues } = location.state.componentState;
+
+      if (formValues) {
+        form.setFieldsValue(formValues);
+      }
+
+      // Clear the navigation state to prevent re-applying
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state, form]);
+
+  // Debounced form state saving - save when user is actively working on the form
+  useEffect(() => {
+    const formValues = form.getFieldsValue(true);
+    const hasFormData = Object.values(formValues).some(
+      (value) => value !== undefined && value !== '' && value !== null
+    );
+
+    // Only save if there's actual form data or non-default component state
+    if (
+      hasFormData ||
+      selectedAsset !== null ||
+      nftTokenIds.length > 0 ||
+      selectedNftTokenId !== null
+    ) {
+      const saveTimeout = setTimeout(async () => {
+        const componentState = {
+          formValues: form.getFieldsValue(true), // Get ALL field values, not just touched ones
+          selectedAsset,
+          nftTokenIds,
+          selectedNftTokenId,
+        };
+
+        await saveNavigationState(
+          location.pathname,
+          undefined,
+          componentState,
+          location.state?.returnContext
+        );
+      }, 2000); // 2 second debounce - enough time for user to finish typing
+
+      return () => clearTimeout(saveTimeout);
+    }
+  }, [
+    form.getFieldsValue(true),
+    selectedAsset,
+    nftTokenIds,
+    selectedNftTokenId,
+    form,
+    location,
+  ]);
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = useCallback(
@@ -162,8 +219,6 @@ export const SendEth = () => {
     ]
   );
 
-  // Remove old computed values that relied on is1155 and collection
-
   const finalSymbolToNextStep = useMemo(() => {
     if (selectedAsset?.isNft) {
       return selectedNftTokenId
@@ -173,20 +228,16 @@ export const SendEth = () => {
     return selectedAsset?.tokenSymbol;
   }, [selectedAsset, selectedNftTokenId]);
 
-  const nextStep = useCallback(
-    (values: { amount: string; nftTokenId?: string; receiver: string }) => {
+  const handleSubmit = useCallback(
+    async (values: any) => {
       try {
-        // For NFTs, validate token ID is selected
-        if (selectedAsset?.isNft && !values.nftTokenId) {
-          alert.error(t('send.selectNftToSend'));
-          return;
-        }
-
-        // Check if this is a MAX send by comparing amount to balance
+        // Determine if this is a MAX send for native ETH
         let isMax = false;
-        if (!selectedAsset) {
+        if (!selectedAsset && values.amount) {
+          // Check if the entered value equals the full balance
+          const balanceEth = String(activeAccount?.balances?.ethereum || '0');
+
           try {
-            const balanceEth = String(activeAccount?.balances?.ethereum || '0');
             const amountBN = ethers.utils.parseEther(values.amount);
             const balanceBN = ethers.utils.parseEther(balanceEth);
             isMax = amountBN.eq(balanceBN);
@@ -196,8 +247,26 @@ export const SendEth = () => {
           }
         }
 
-        navigate('/send/confirm', {
-          state: {
+        // Prepare component state to preserve
+        const componentState = {
+          formValues: form.getFieldsValue(true), // Get ALL field values, not just touched ones
+          selectedAsset,
+          nftTokenIds,
+          selectedNftTokenId,
+        };
+
+        // Create navigation context for returning from confirm
+        const returnContext = createNavigationContext(
+          '/send/eth',
+          undefined,
+          componentState
+        );
+
+        // Use navigateWithContext to automatically handle state preservation
+        navigateWithContext(
+          navigate,
+          '/send/confirm',
+          {
             tx: {
               sender: activeAccount.address,
               receivingAddress: values.receiver,
@@ -218,7 +287,8 @@ export const SendEth = () => {
               isMax: !selectedAsset ? isMax : false,
             },
           },
-        });
+          returnContext
+        );
       } catch (error) {
         alert.error(t('send.internalError'));
       }
@@ -232,6 +302,9 @@ export const SendEth = () => {
       alert,
       t,
       cachedFeeData,
+      form,
+      nftTokenIds,
+      selectedNftTokenId,
     ]
   );
 
@@ -710,7 +783,7 @@ export const SendEth = () => {
         id="send-form"
         labelCol={{ span: 8 }}
         wrapperCol={{ span: 8 }}
-        onFinish={nextStep}
+        onFinish={handleSubmit}
         autoComplete="off"
         className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
       >
