@@ -152,7 +152,10 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
             className="relative w-16 h-16 mx-auto bg-bkg-2 
                         rounded-full flex items-center justify-center"
           >
-            <ImportIcon size={32} className="text-brand-royalblue" />
+            <ImportIcon
+              size={32}
+              className="text-brand-royalblue hover:text-brand-royalbluemedium transition-colors duration-200"
+            />
           </div>
         </div>
         <h3 className="text-brand-white font-rubik font-medium text-lg mb-1">
