@@ -370,7 +370,12 @@ const CustomRPCView = () => {
         ];
       const existingNetwork = existingNetworks[network.chainId];
 
-      if (existingNetwork) {
+      if (state?.isEditing) {
+        // In edit mode, network should exist
+        if (!existingNetwork) {
+          throw new Error(t('settings.networkNotFoundForEditing'));
+        }
+
         // Network exists, update it
         // Preserve key if it exists
         const updatedNetwork: INetwork = {
@@ -385,6 +390,13 @@ const CustomRPCView = () => {
           autoClose: 3000,
         });
       } else {
+        // In add mode, network shouldn't exist
+        if (existingNetwork) {
+          throw new Error(
+            t('settings.networkAlreadyExists', { chainId: network.chainId })
+          );
+        }
+
         // New network, add it
         await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
         setLoading(false);
@@ -1173,9 +1185,10 @@ const CustomRPCView = () => {
             />
           </Form.Item>
         </div>
-        <div className="w-full px-4 absolute bottom-12 md:static">
+        {/* Fixed button container at bottom of viewport - inside form */}
+        <div className="fixed bottom-0 left-0 right-0 bg-brand-blue900 border-t border-brand-royalblue/30 px-4 py-3 shadow-lg z-50">
           {state?.isEditing ? (
-            <div className="flex gap-6 justify-center">
+            <div className="flex gap-6 justify-center max-w-md mx-auto">
               <SecondaryButton type="button" onClick={() => navigate(-1)}>
                 {t('buttons.cancel')}
               </SecondaryButton>
@@ -1184,16 +1197,21 @@ const CustomRPCView = () => {
               </PrimaryButton>
             </div>
           ) : (
-            <NeutralButton
-              type="submit"
-              disabled={loading}
-              loading={loading}
-              fullWidth
-            >
-              {t('buttons.save')}
-            </NeutralButton>
+            <div className="max-w-md mx-auto">
+              <NeutralButton
+                type="submit"
+                disabled={loading}
+                loading={loading}
+                fullWidth
+              >
+                {t('buttons.save')}
+              </NeutralButton>
+            </div>
           )}
         </div>
+
+        {/* Add bottom padding to form content to account for fixed buttons */}
+        <div className="pb-20"></div>
       </Form>
     </>
   );

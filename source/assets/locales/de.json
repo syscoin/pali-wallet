@@ -202,7 +202,9 @@
     "failedToRemoveAccount": "Fehler beim Entfernen des Kontos",
     "hardwareWalletSuccess": "Hardware-Wallet erfolgreich verbunden!",
     "hardwareWalletInstructions": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um Ihre Hardware-Wallet für Transaktionen zu verwenden. Ihr Konto ist jetzt gespeichert und persistent.",
-    "optimalExperience": "Für eine optimale Hardware-Wallet-Erfahrung verwenden Sie bitte einen größeren Bildschirm oder erweitern Sie Ihr Browserfenster."
+    "optimalExperience": "Für eine optimale Hardware-Wallet-Erfahrung verwenden Sie bitte einen größeren Bildschirm oder erweitern Sie Ihr Browserfenster.",
+    "networkNotFoundForEditing": "Netzwerk zur Bearbeitung nicht gefunden. Bitte aktualisieren Sie die Seite und versuchen Sie es erneut.",
+    "networkAlreadyExists": "Das Netzwerk mit der Ketten-ID {{chainId}} existiert bereits. Bitte verwenden Sie eine andere Ketten-ID oder bearbeiten Sie das bestehende Netzwerk."
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",

@@ -408,7 +408,9 @@
     "youCanUseAny": "Você pode usar qualquer dispositivo {{hardwalletName}}.",
     "hardwareWalletSuccess": "Carteira de hardware conectada com sucesso!",
     "hardwareWalletInstructions": "Feche esta janela e reabra o Pali para usar sua carteira de hardware nas transações. Sua conta agora está salva e persistente.",
-    "optimalExperience": "Para uma experiência ideal com carteira de hardware, use uma tela maior ou expanda a janela do seu navegador."
+    "optimalExperience": "Para uma experiência ideal com carteira de hardware, use uma tela maior ou expanda a janela do seu navegador.",
+    "networkNotFoundForEditing": "Rede não encontrada para edição. Por favor, atualize e tente novamente.",
+    "networkAlreadyExists": "A rede com ID da cadeia {{chainId}} já existe. Por favor, use um ID de cadeia diferente ou edite a rede existente."
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",

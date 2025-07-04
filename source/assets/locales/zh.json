@@ -202,7 +202,9 @@
     "failedToRemoveAccount": "删除账户失败",
     "hardwareWalletSuccess": "硬件钱包连接成功！",
     "hardwareWalletInstructions": "关闭此窗口并重新打开Pali以使用您的硬件钱包进行交易。您的账户现已保存并持久化。",
-    "optimalExperience": "为获得最佳硬件钱包体验，请使用更大的屏幕或展开浏览器窗口。"
+    "optimalExperience": "为获得最佳硬件钱包体验，请使用更大的屏幕或展开浏览器窗口。",
+    "networkNotFoundForEditing": "找不到要编辑的网络。请刷新页面并重试。",
+    "networkAlreadyExists": "链 ID {{chainId}} 的网络已存在。请使用不同的链 ID 或编辑现有网络。"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",

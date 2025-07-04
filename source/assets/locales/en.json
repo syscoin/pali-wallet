@@ -420,7 +420,9 @@
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",
     "hardwareWalletInstructions": "Close this window and reopen Pali to use your hardware wallet for transactions. Your account is now saved and persistent.",
-    "optimalExperience": "For optimal hardware wallet experience, please use a larger screen or expand your browser window."
+    "optimalExperience": "For optimal hardware wallet experience, please use a larger screen or expand your browser window.",
+    "networkNotFoundForEditing": "Network not found for editing. Please refresh and try again.",
+    "networkAlreadyExists": "Network with Chain ID {{chainId}} already exists. Please use a different Chain ID or edit the existing network."
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",
