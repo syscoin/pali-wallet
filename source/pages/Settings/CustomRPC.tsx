@@ -476,7 +476,7 @@ const CustomRPCView = () => {
         chainId: currentNetwork?.chainId ?? '',
         symbol: currentNetwork?.currency?.toUpperCase() ?? '',
         explorer: currentNetwork?.explorer ?? '',
-        apiUrl: currentNetwork?.apiUrl ?? '',
+        apiUrl: currentNetwork?.apiUrl,
       };
       form.setFieldsValue(formValues);
     }
@@ -1127,7 +1127,7 @@ const CustomRPCView = () => {
             className={`${inputHiddenOrNotStyle} custom-input-normal `}
           />
         </Form.Item>
-        <div className="md:w-full">
+        <div className={`${inputHiddenOrNotStyle} md:w-full`}>
           <div className="flex items-center gap-2 mb-2">
             <label className="text-sm text-white font-medium">
               Block Explorer API URL (optional)

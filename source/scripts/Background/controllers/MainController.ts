@@ -3479,9 +3479,8 @@ class MainController {
 
   // Direct transaction EVM method for UI access
   public async testExplorerApi(apiUrl: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
+    // The evmTransactionsController.testExplorerApi doesn't need a web3Provider
+    // It just makes HTTP requests to test the API endpoint
     return this.evmTransactionsController.testExplorerApi(apiUrl);
   }
 

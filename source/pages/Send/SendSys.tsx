@@ -16,7 +16,6 @@ import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
-import { useAdjustedExplorer } from 'hooks/useAdjustedExplorer';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
@@ -49,8 +48,6 @@ export const SendSys = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-
-  const adjustedExplorer = useAdjustedExplorer(activeNetwork.explorer);
 
   // Restore state from navigation if available
   const initialRBF = location.state?.componentState?.RBF ?? true;
@@ -251,22 +248,11 @@ export const SendSys = () => {
     const accountAddress = activeAccount?.address;
     if (!accountAddress) return;
 
-    let explorerUrl;
-    if (isBitcoinBased) {
-      // For UTXO networks, use the network URL pattern
-      explorerUrl = `${adjustUrl(activeNetwork.url)}address/${accountAddress}`;
-    } else {
-      // For EVM networks, use the explorer pattern
-      explorerUrl = `${adjustedExplorer}address/${accountAddress}`;
-    }
-
-    window.open(explorerUrl, '_blank');
-  }, [
-    activeAccount?.address,
-    isBitcoinBased,
-    activeNetwork.url,
-    adjustedExplorer,
-  ]);
+    window.open(
+      `${adjustUrl(activeNetwork.url)}address/${accountAddress}`,
+      '_blank'
+    );
+  }, [activeAccount?.address, activeNetwork.url]);
 
   const RBFOnChange = useCallback(
     (value: any) => {
