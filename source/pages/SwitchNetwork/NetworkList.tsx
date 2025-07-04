@@ -1,4 +1,3 @@
-import { uniqueId } from 'lodash';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -183,7 +182,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
             return (
               <div
-                key={uniqueId()}
+                key={`${currentNetworks.chainId}-${currentNetworks.url}`}
                 className={`${
                   isSelected ? 'bg-brand-blue800' : 'bg-brand-blue600'
                 } mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-between`}

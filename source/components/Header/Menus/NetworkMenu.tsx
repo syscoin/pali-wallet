@@ -1,5 +1,4 @@
 import { Disclosure, Menu } from '@headlessui/react';
-import { uniqueId } from 'lodash';
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -396,7 +395,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 {Object.values(networks.syscoin).map(
                                   (currentNetwork: INetwork) => (
                                     <li
-                                      key={uniqueId()}
+                                      key={`${currentNetwork.chainId}-${currentNetwork.url}`}
                                       className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                                   font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
                                    transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"
@@ -495,7 +494,7 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
                                 .sort(customSort)
                                 .map((currentNetwork: any) => (
                                   <li
-                                    key={uniqueId()}
+                                    key={`${currentNetwork.chainId}-${currentNetwork.url}`}
                                     className="group relative py-1.5 px-5 mx-4 w-auto max-w-full backface-visibility-hidden flex items-center justify-between text-white text-sm 
                                   font-medium cursor-pointer hover:bg-gradient-to-r hover:from-brand-blue600 hover:to-brand-blue500 active:bg-brand-blue700 active:scale-[0.98] focus:outline-none transform
                                    transition-all duration-300 ease-in-out hover:shadow-lg hover:shadow-brand-blue600/20 overflow-hidden"

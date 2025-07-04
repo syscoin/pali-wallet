@@ -3,7 +3,7 @@ import { Form, Input } from 'antd';
 import currency from 'currency.js';
 import { toSvg } from 'jdenticon';
 import * as React from 'react';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -68,6 +68,83 @@ export const SendSys = () => {
   // Fee rate will be managed by the Fee component
   const [feeRate, setFeeRate] = useState<number | null>(null);
 
+  // Track form value changes using a ref to avoid dependency issues
+  const formValuesRef = useRef<any>({});
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Save form state when values change
+  const handleFormValuesChange = useCallback(
+    (_changedValues: any, allValues: any) => {
+      formValuesRef.current = allValues;
+
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      const hasFormData = Object.values(allValues).some(
+        (value) => value !== undefined && value !== '' && value !== null
+      );
+
+      // Only save if there's actual form data or non-default component state
+      if (hasFormData || selectedAsset !== null || RBF !== true) {
+        saveTimeoutRef.current = setTimeout(async () => {
+          const componentState = {
+            formValues: allValues,
+            selectedAsset,
+            RBF,
+          };
+
+          await saveNavigationState(
+            location.pathname,
+            undefined,
+            componentState,
+            location.state?.returnContext
+          );
+        }, 2000); // 2 second debounce
+      }
+    },
+    [selectedAsset, RBF, location]
+  );
+
+  // Save component state when non-form state changes
+  useEffect(() => {
+    // Don't save on initial mount or when there's no meaningful state
+    if (
+      selectedAsset === null &&
+      RBF === true &&
+      Object.keys(formValuesRef.current).length === 0
+    ) {
+      return;
+    }
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(async () => {
+      const componentState = {
+        formValues: formValuesRef.current,
+        selectedAsset,
+        RBF,
+      };
+
+      await saveNavigationState(
+        location.pathname,
+        undefined,
+        componentState,
+        location.state?.returnContext
+      );
+    }, 2000);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [selectedAsset, RBF, location]);
+
   // Restore form values if coming back from navigation
   useEffect(() => {
     if (location.state?.fromNavigation && location.state?.componentState) {
@@ -75,40 +152,14 @@ export const SendSys = () => {
 
       if (formValues) {
         form.setFieldsValue(formValues);
+        // Also update the ref to keep it in sync
+        formValuesRef.current = formValues;
       }
 
       // Clear the navigation state to prevent re-applying
       window.history.replaceState({}, document.title);
     }
   }, [location.state, form]);
-
-  // Debounced form state saving - save when user is actively working on the form
-  useEffect(() => {
-    const formValues = form.getFieldsValue(true);
-    const hasFormData = Object.values(formValues).some(
-      (value) => value !== undefined && value !== '' && value !== null
-    );
-
-    // Only save if there's actual form data or non-default component state
-    if (hasFormData || selectedAsset !== null || RBF !== true) {
-      const saveTimeout = setTimeout(async () => {
-        const componentState = {
-          formValues: form.getFieldsValue(true), // Get ALL field values, not just touched ones
-          selectedAsset,
-          RBF,
-        };
-
-        await saveNavigationState(
-          location.pathname,
-          undefined,
-          componentState,
-          location.state?.returnContext
-        );
-      }, 2000); // 2 second debounce - enough time for user to finish typing
-
-      return () => clearTimeout(saveTimeout);
-    }
-  }, [form.getFieldsValue(true), selectedAsset, RBF, form, location]);
 
   // ✅ MEMOIZED: Callbacks to prevent unnecessary re-renders
   const handleFeeChange = useCallback((newFee: number) => {
@@ -233,6 +284,9 @@ export const SendSys = () => {
     try {
       setIsLoading(true);
 
+      // Capture ALL form values at submission time
+      const allFormValues = form.getFieldsValue();
+
       // For native SYS transactions
       if (!selectedAsset) {
         const amountCurrency = currency(amount, { precision: 8 });
@@ -341,7 +395,7 @@ export const SendSys = () => {
 
         // Prepare component state to preserve
         const componentState = {
-          formValues: form.getFieldsValue(true), // Get ALL field values, not just touched ones
+          formValues: allFormValues,
           selectedAsset,
           RBF,
         };
@@ -467,7 +521,7 @@ export const SendSys = () => {
 
         // Prepare component state to preserve
         const componentState = {
-          formValues: form.getFieldsValue(true), // Get ALL field values, not just touched ones
+          formValues: allFormValues,
           selectedAsset,
           RBF,
         };
@@ -599,6 +653,7 @@ export const SendSys = () => {
         onFinish={nextStep}
         autoComplete="off"
         className="flex flex-col gap-2 items-center justify-center mt-6 text-center md:w-full"
+        onValuesChange={handleFormValuesChange}
       >
         <div className="sender-custom-input">
           <Form.Item
