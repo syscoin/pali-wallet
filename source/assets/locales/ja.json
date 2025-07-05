@@ -135,6 +135,17 @@
     "validUrlRequired": "有効なURLを入力してください",
     "networkMismatch": "ネットワークの不一致 - chainIdが一致しません",
     "failedValidateRpc": "RPC URLの検証に失敗しました",
+    "unableToConnectToNetwork": "{{networkName}}に接続できません。テストしたすべての{{rpcType}}で認証が必要であるか、品質チェックに失敗しました。カスタムURLをお試しください。",
+    "searchNetworksPlaceholder": "{{networkType}}ネットワークを検索",
+    "blockbookUrlPlaceholder": "Blockbook URL",
+    "rpcUrlPlaceholder": "RPC URL",
+    "chainIdAutoDetectedUtxo": "Chain ID（自動検出）",
+    "chainIdAutoDetectedEvm": "Chain ID（自動検出）",
+    "blockExplorerApiUrl": "ブロックエクスプローラーAPI URL（オプション）",
+    "explorerUrlRequired": "エクスプローラーURLが必要です",
+    "testingRpcProgress": "RPC {{current}} / {{total}}をテスト中",
+    "loadingNetworks": "{{networkType}}ネットワークを読み込み中...",
+    "noMatchingNetworks": "一致するネットワークが見つかりません",
     "fixValidationErrors": "保存前に検証エラーを修正してください",
     "chainIdRequired": "Chain IDが必要です",
     "symbolRequired": "シンボルが必要です",
@@ -235,6 +246,9 @@
     "searchAssets": "資産を検索",
     "viewTokens": "トークンを表示",
     "viewNFTs": "NFTを表示"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "このネットワークではアセットはサポートされていません"
   },
   "assetsHeader": {
     "sortBy": "並び替え:",

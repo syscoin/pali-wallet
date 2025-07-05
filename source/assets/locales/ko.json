@@ -135,6 +135,17 @@
     "validUrlRequired": "유효한 URL을 입력하세요",
     "networkMismatch": "네트워크 불일치 - chainId가 일치하지 않습니다",
     "failedValidateRpc": "RPC URL 검증에 실패했습니다",
+    "unableToConnectToNetwork": "{{networkName}}에 연결할 수 없습니다. 테스트된 모든 {{rpcType}}에서 인증이 필요하거나 품질 검사에 실패했습니다. 사용자 정의 URL을 시도해보세요.",
+    "searchNetworksPlaceholder": "{{networkType}} 네트워크를 검색하려면 입력을 시작하세요",
+    "blockbookUrlPlaceholder": "Blockbook URL (예: https://btc1.trezor.io)",
+    "rpcUrlPlaceholder": "RPC URL (예: https://rpc.example.com)",
+    "chainIdAutoDetectedUtxo": "Chain ID / slip44 (자동 감지)",
+    "chainIdAutoDetectedEvm": "Chain ID (RPC에서 자동 감지)",
+    "blockExplorerApiUrl": "블록 탐색기 API URL (선택사항)",
+    "explorerUrlRequired": "탐색기 URL이 필요합니다",
+    "testingRpcProgress": "RPC {{current}} / {{total}} 테스트 중",
+    "loadingNetworks": "{{networkType}} 네트워크 로딩 중...",
+    "noMatchingNetworks": "일치하는 네트워크를 찾을 수 없습니다",
     "fixValidationErrors": "저장하기 전에 검증 오류를 수정하세요",
     "chainIdRequired": "Chain ID가 필요합니다",
     "symbolRequired": "심볼이 필요합니다",
@@ -235,6 +246,9 @@
     "searchAssets": "자산 검색",
     "viewTokens": "토큰 보기",
     "viewNFTs": "NFT 보기"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "이 네트워크에서는 자산이 지원되지 않습니다"
   },
   "assetsHeader": {
     "sortBy": "정렬 기준:",

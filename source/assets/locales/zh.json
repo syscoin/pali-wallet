@@ -135,6 +135,17 @@
     "validUrlRequired": "请输入有效的URL",
     "networkMismatch": "网络不匹配 - chainId不匹配",
     "failedValidateRpc": "验证RPC URL失败",
+    "unableToConnectToNetwork": "无法连接到{{networkName}}。所有测试的{{rpcType}}都需要身份验证或未通过质量检查。请尝试自定义URL。",
+    "searchNetworksPlaceholder": "开始输入以搜索{{networkType}}网络",
+    "blockbookUrlPlaceholder": "Blockbook URL（例如：https://btc1.trezor.io）",
+    "rpcUrlPlaceholder": "RPC URL（例如：https://rpc.example.com）",
+    "chainIdAutoDetectedUtxo": "Chain ID / slip44（自动检测）",
+    "chainIdAutoDetectedEvm": "Chain ID（从RPC自动检测）",
+    "blockExplorerApiUrl": "区块浏览器API URL（可选）",
+    "explorerUrlRequired": "需要浏览器URL",
+    "testingRpcProgress": "正在测试RPC {{current}} / {{total}}",
+    "loadingNetworks": "正在加载{{networkType}}网络...",
+    "noMatchingNetworks": "未找到匹配的网络",
     "fixValidationErrors": "请在保存前修复验证错误",
     "chainIdRequired": "需要Chain ID",
     "symbolRequired": "需要符号",
@@ -235,6 +246,9 @@
     "searchAssets": "搜索资产",
     "viewTokens": "查看代币",
     "viewNFTs": "查看 NFTs"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "此网络不支持资产"
   },
   "assetsHeader": {
     "sortBy": "排序方式:",

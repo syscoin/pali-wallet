@@ -14,7 +14,7 @@ import {
   IEvmTransactionResponse,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
-import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
+import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 
 import {
   IVaultState,
@@ -66,7 +66,7 @@ const initialState: IVaultState = {
   },
   isLastTxConfirmed: {},
   activeChain: INetworkType.Syscoin,
-  activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+  activeNetwork: SYSCOIN_UTXO_MAINNET_NETWORK,
   isBitcoinBased: true,
   shouldShowFaucetModal: {
     57: true,

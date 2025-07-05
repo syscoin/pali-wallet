@@ -58,6 +58,9 @@
     "viewTokens": "Ver tokens",
     "viewNFTs": "Ver NFTs"
   },
+  "assets": {
+    "notSupportedForThisNetwork": "Activos no compatibles con esta red"
+  },
   "assetsHeader": {
     "sortBy": "ORDENAR POR:",
     "name": "Nombre",
@@ -356,6 +359,17 @@
     "validUrlRequired": "Por favor ingresa una URL válida",
     "networkMismatch": "Error de red - el chainId no coincide",
     "failedValidateRpc": "Error al validar URL de RPC",
+    "unableToConnectToNetwork": "No se puede conectar a {{networkName}}. Todos los {{rpcType}} probados requieren autenticación o fallaron las verificaciones de calidad. Por favor, pruebe con una URL personalizada.",
+    "searchNetworksPlaceholder": "Comience a escribir para buscar redes {{networkType}}",
+    "blockbookUrlPlaceholder": "URL de Blockbook (ej. https://btc1.trezor.io)",
+    "rpcUrlPlaceholder": "URL de RPC (ej. https://rpc.example.com)",
+    "chainIdAutoDetectedUtxo": "Chain ID / slip44 (detectado automáticamente)",
+    "chainIdAutoDetectedEvm": "Chain ID (detectado automáticamente desde RPC)",
+    "blockExplorerApiUrl": "URL de API del Explorador de Bloques (opcional)",
+    "explorerUrlRequired": "Se requiere URL del explorador",
+    "testingRpcProgress": "Probando RPC {{current}} de {{total}}",
+    "loadingNetworks": "Cargando redes {{networkType}}...",
+    "noMatchingNetworks": "No se encontraron redes coincidentes",
     "fixValidationErrors": "Por favor corrige los errores de validación antes de guardar",
     "chainIdRequired": "Se requiere Chain ID",
     "symbolRequired": "Se requiere símbolo",

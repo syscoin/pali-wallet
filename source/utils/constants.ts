@@ -1,3 +1,7 @@
+import {
+  getDefaultUTXONetworks,
+  getSyscoinUTXOMainnetNetwork,
+} from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
@@ -54,10 +58,6 @@ export const syscoinKeysOfInterest = [
   'metaData', // Syscoin 5 metadata field
 ];
 
-//Video formats for NFTs
-export const nftsVideoFormats = ['.mp4', '.webm', '.avi', '.ogg'];
-export const ethTestnetsChainsIds = [5700, 11155111, 421611, 5, 69]; // Some ChainIds from Ethereum Testnets as Polygon Testnet, Goerli, Sepolia, etc.
-
 export const ROLLUX_DEFAULT_NETWORK = {
   chain: INetworkType.Ethereum,
   network: {
@@ -73,14 +73,13 @@ export const ROLLUX_DEFAULT_NETWORK = {
     coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
     coingeckoPlatformId: 'rollux', // Platform ID for token searches
   } as INetwork,
-  isEdit: false,
 };
 
 export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
   chainId: CHAIN_IDS.SYSCOIN_NEVM_TESTNET,
   url: 'https://rpc.tanenbaum.io',
   label: 'Syscoin NEVM Testnet',
-  default: true,
+  default: false, // Allow users to remove testnets to avoid chainId conflicts
   currency: 'tsys',
   kind: INetworkType.Ethereum,
   slip44: 60, // EVM networks use Ethereum's slip44
@@ -103,41 +102,7 @@ export const SYSCOIN_MAINNET_NETWORK = {
   coingeckoPlatformId: 'syscoin-nevm', // Platform ID for token searches
 } as INetwork;
 
-export const SYSCOIN_UTXO_MAINNET_NETWORK = {
-  chainId: CHAIN_IDS.SYSCOIN_MAINNET,
-  url: 'https://explorer-blockbook.syscoin.org',
-  label: 'Syscoin Mainnet',
-  default: true,
-  currency: 'sys',
-  slip44: 57,
-  kind: INetworkType.Syscoin,
-  coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
-  // No platform ID needed for UTXO networks
-} as INetwork;
-
-export const SYSCOIN_UTXO_TESTNET_NETWORK = {
-  chainId: CHAIN_IDS.SYSCOIN_TESTNET,
-  url: 'https://explorer-blockbook-dev.syscoin.org',
-  label: 'Syscoin Testnet',
-  default: true,
-  currency: 'tsys',
-  slip44: 1, // Standard testnet slip44
-  kind: INetworkType.Syscoin,
-  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
-  // No platform ID needed for UTXO networks
-} as INetwork;
-
-export const SYSCOIN_MAINNET_DEFAULT_NETWORK = {
-  chain: INetworkType.Syscoin,
-  network: SYSCOIN_UTXO_MAINNET_NETWORK,
-  isEdit: true,
-};
-
-export const SYSCOIN_TESTNET_DEFAULT_NETWORK = {
-  chain: INetworkType.Syscoin,
-  network: SYSCOIN_UTXO_TESTNET_NETWORK,
-  isEdit: true,
-};
+export const SYSCOIN_UTXO_MAINNET_NETWORK = getSyscoinUTXOMainnetNetwork();
 
 interface IFaucetNetworkData {
   [key: string]: {
@@ -231,8 +196,5 @@ export const PALI_NETWORKS_STATE = {
       coingeckoPlatformId: 'polygon-pos', // Platform ID for token searches
     } as INetwork,
   },
-  syscoin: {
-    [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_UTXO_MAINNET_NETWORK,
-    [CHAIN_IDS.SYSCOIN_TESTNET]: SYSCOIN_UTXO_TESTNET_NETWORK,
-  },
+  syscoin: getDefaultUTXONetworks(), // Use coins.ts as single source of truth
 };

@@ -135,6 +135,17 @@
     "validUrlRequired": "Veuillez saisir une URL valide",
     "networkMismatch": "Incompatibilité de réseau - chainId ne correspond pas",
     "failedValidateRpc": "Échec de la validation de l'URL RPC",
+    "unableToConnectToNetwork": "Impossible de se connecter à {{networkName}}. Tous les {{rpcType}} testés nécessitent une authentification ou ont échoué aux vérifications de qualité. Veuillez essayer une URL personnalisée.",
+    "searchNetworksPlaceholder": "Rechercher réseaux {{networkType}}",
+    "blockbookUrlPlaceholder": "URL Blockbook",
+    "rpcUrlPlaceholder": "URL RPC",
+    "chainIdAutoDetectedUtxo": "Chain ID (auto-détecté)",
+    "chainIdAutoDetectedEvm": "Chain ID (auto-détecté)",
+    "blockExplorerApiUrl": "URL de l'API de l'Explorateur de Blocs (optionnel)",
+    "explorerUrlRequired": "URL de l'explorateur requise",
+    "testingRpcProgress": "Test RPC {{current}} sur {{total}}",
+    "loadingNetworks": "Chargement des réseaux {{networkType}}...",
+    "noMatchingNetworks": "Aucun réseau correspondant trouvé",
     "fixValidationErrors": "Veuillez corriger les erreurs de validation avant de sauvegarder",
     "chainIdRequired": "Chain ID est requis",
     "symbolRequired": "Symbole est requis",
@@ -235,6 +246,9 @@
     "searchAssets": "Rechercher des actifs",
     "viewTokens": "Voir les tokens",
     "viewNFTs": "Voir les NFTs"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "Actifs non pris en charge pour ce réseau"
   },
   "assetsHeader": {
     "sortBy": "TRIER PAR:",

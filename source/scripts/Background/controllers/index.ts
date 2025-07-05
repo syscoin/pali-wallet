@@ -22,7 +22,7 @@ import {
 import { IDAppController } from 'types/controllers';
 import {
   ROLLUX_DEFAULT_NETWORK,
-  SYSCOIN_MAINNET_DEFAULT_NETWORK,
+  SYSCOIN_UTXO_MAINNET_NETWORK,
   CHAIN_IDS,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
@@ -95,12 +95,11 @@ const MasterController = (
 
     if (
       currentRpcSysUtxoMainnet &&
-      currentRpcSysUtxoMainnet.url !==
-        SYSCOIN_MAINNET_DEFAULT_NETWORK.network.url
+      currentRpcSysUtxoMainnet.url !== SYSCOIN_UTXO_MAINNET_NETWORK.url
     ) {
       externalStore.dispatch(
         setNetwork({
-          network: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+          network: SYSCOIN_UTXO_MAINNET_NETWORK,
         })
       );
     }
@@ -111,9 +110,7 @@ const MasterController = (
       activeNetwork?.url?.includes(DEPRECATED_RPC_PATTERN);
 
     if (isSysUtxoMainnetWithDeprecatedRpc) {
-      externalStore.dispatch(
-        setActiveNetwork(SYSCOIN_MAINNET_DEFAULT_NETWORK.network)
-      );
+      externalStore.dispatch(setActiveNetwork(SYSCOIN_UTXO_MAINNET_NETWORK));
     }
 
     const isNetworkOldState =

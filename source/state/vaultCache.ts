@@ -13,7 +13,7 @@ export const DEFAULT_UTXO_SLIP44 = 57; // Syscoin
  */
 export function getSlip44ForNetwork(network: INetwork): number {
   return (
-    network.slip44 ||
+    network.slip44 ?? // Use nullish coalescing to allow slip44: 0 (Bitcoin)
     (network.kind === INetworkType.Syscoin
       ? DEFAULT_UTXO_SLIP44
       : DEFAULT_EVM_SLIP44)

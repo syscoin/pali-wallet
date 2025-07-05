@@ -4,12 +4,13 @@ import React, { useEffect, useState } from 'react';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
+  BtcChainSvg,
   ChainFallbackSvg,
   EthChainSvg,
   RolluxChainSvg,
   SysChainSvg,
 } from 'components/Icon/Icon';
-import { getChainIconUrl } from 'utils/chainIcons';
+import ChainListService from 'scripts/Background/controllers/chainlist';
 
 // Cache for actual image data URLs (base64) to prevent any network requests
 const imageDataCache = new Map<number, string | null>();
@@ -27,24 +28,39 @@ interface IChainIconProps {
   chainId: number;
   className?: string;
   fallbackClassName?: string;
-  iconName?: string;
   networkKind?: INetworkType;
-  size?: number | string; // Optional icon name for custom networks
+  size?: number | string;
 }
 
-// Known chain icons that we have locally
+// Known chain icons with chainId and network type
 const KNOWN_CHAIN_ICONS: {
-  [chainId: number]:
+  [key: string]:
     | React.ComponentType<{ className?: string; style?: React.CSSProperties }>
     | string;
 } = {
-  1: EthChainSvg, // Ethereum Mainnet
-  5: EthChainSvg, // Ethereum Goerli (testnet)
-  11155111: EthChainSvg, // Ethereum Sepolia (testnet)
-  57: SysChainSvg, // Syscoin UTXO
-  570: RolluxChainSvg, // Rollux Mainnet
-  5700: SysChainSvg, // Syscoin NEVM Testnet
-  57000: RolluxChainSvg, // Rollux Testnet
+  // Ethereum networks (chainId-networkType)
+  '1-ethereum': EthChainSvg, // Ethereum Mainnet
+  '5-ethereum': EthChainSvg, // Ethereum Goerli (testnet)
+  '11155111-ethereum': EthChainSvg, // Ethereum Sepolia (testnet)
+  '57-ethereum': SysChainSvg, // Syscoin NEVM Mainnet
+  '5700-ethereum': SysChainSvg, // Syscoin NEVM Testnet
+  '570-ethereum': RolluxChainSvg, // Rollux Mainnet
+  '57000-ethereum': RolluxChainSvg, // Rollux Testnet
+
+  // UTXO networks (chainId-networkType) - using chainId from coins.ts
+  '0-syscoin': BtcChainSvg, // Bitcoin Mainnet (slip44: 0)
+  '1-syscoin': BtcChainSvg, // Bitcoin Testnet (chainId: 1)
+  '57-syscoin': SysChainSvg, // Syscoin UTXO Mainnet (slip44: 57)
+  '5700-syscoin': SysChainSvg, // Syscoin Testnet (chainId: 5700)
+  '10000-syscoin': BtcChainSvg, // Bitcoin Regtest (chainId: 10000)
+};
+
+// Helper function to get icon with fallback
+const getKnownIcon = (chainId: number, networkKind?: INetworkType) => {
+  const networkType =
+    networkKind === INetworkType.Ethereum ? 'ethereum' : 'syscoin';
+  const iconKey = `${chainId}-${networkType}`;
+  return KNOWN_CHAIN_ICONS[iconKey] || null;
 };
 
 /**
@@ -58,22 +74,21 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     className = '',
     fallbackClassName = 'rounded-full',
     networkKind,
-    iconName,
   }) => {
     // Determine initial state based on what we already know
     const getInitialState = () => {
-      // Check known local icons first
-      if (KNOWN_CHAIN_ICONS[chainId]) {
-        const icon = KNOWN_CHAIN_ICONS[chainId];
+      // Check for known local icons using smart lookup
+      const knownIcon = getKnownIcon(chainId, networkKind);
+      if (knownIcon) {
         return {
-          url: typeof icon === 'string' ? icon : null,
-          component: typeof icon !== 'string' ? icon : null,
+          url: typeof knownIcon === 'string' ? knownIcon : null,
+          component: typeof knownIcon !== 'string' ? knownIcon : null,
           error: false,
           loading: false,
         };
       }
 
-      // Check cache
+      // Check cache for networks
       if (imageDataCache.has(chainId)) {
         const cached = imageDataCache.get(chainId);
         return {
@@ -81,16 +96,6 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
           component: null,
           error: cached === null,
           loading: false, // Never show loading for cached items
-        };
-      }
-
-      // UTXO networks don't have remote icons
-      if (networkKind === INetworkType.Syscoin) {
-        return {
-          url: null,
-          component: null,
-          error: true,
-          loading: false,
         };
       }
 
@@ -113,20 +118,20 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     const [isLoading, setIsLoading] = useState(initial.loading);
 
     useEffect(() => {
-      // Check if we have a known local icon first
-      if (KNOWN_CHAIN_ICONS[chainId]) {
-        const icon = KNOWN_CHAIN_ICONS[chainId];
-        if (typeof icon === 'string') {
-          if (iconUrl !== icon) {
-            setIconUrl(icon);
+      // Check for known local icons using smart lookup
+      const knownIcon = getKnownIcon(chainId, networkKind);
+      if (knownIcon) {
+        if (typeof knownIcon === 'string') {
+          if (iconUrl !== knownIcon) {
+            setIconUrl(knownIcon);
             setIconComponent(null);
             setError(false);
             setIsLoading(false);
           }
         } else {
-          if (iconComponent !== icon) {
+          if (iconComponent !== knownIcon) {
             setIconUrl(null);
-            setIconComponent(icon);
+            setIconComponent(knownIcon);
             setError(false);
             setIsLoading(false);
           }
@@ -146,62 +151,44 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
         return;
       }
 
-      // For UTXO networks, skip ChainList fetching as they're not in ChainList
-      if (networkKind === INetworkType.Syscoin) {
-        if (!error) {
-          setError(true);
-          setIsLoading(false);
-        }
-        return;
-      }
-
       // Lazy load with delay to prevent blocking renderer
-      const loadTimer = setTimeout(() => {
-        // If an iconName is provided, try to use it for ChainList lookup
-        if (iconName) {
-          const iconUrls = [
-            `https://icons.llamao.fi/icons/chains/rsz_${iconName}.jpg`,
-            `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${iconName}/info/logo.png`,
-          ];
+      const loadTimer = setTimeout(async () => {
+        try {
+          // Use ChainListService to look up icon data
+          const chainListService = ChainListService.getInstance();
+          const chainInfo = await chainListService.getChainById(
+            chainId,
+            networkKind
+          );
 
-          const tryIconUrl = (index: number) => {
-            if (index >= iconUrls.length) {
-              imageDataCache.set(chainId, null);
-              setError(true);
-              setIsLoading(false);
-              return;
-            }
+          // Try to get icon identifier from chainInfo
+          const iconIdentifier =
+            chainInfo?.icon || chainInfo?.chainSlug || chainInfo?.shortName;
 
-            // Load image and convert to data URL for permanent caching
-            fetch(iconUrls[index])
-              .then((response) => {
-                if (!response.ok) throw new Error('Failed to fetch');
-                return response.blob();
-              })
-              .then((blob) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  const dataUrl = reader.result as string;
-                  imageDataCache.set(chainId, dataUrl);
-                  setIconUrl(dataUrl);
-                  setError(false);
-                  setIsLoading(false);
-                };
-                reader.readAsDataURL(blob);
-              })
-              .catch(() => tryIconUrl(index + 1));
-          };
+          if (iconIdentifier) {
+            // Try different icon sources based on the icon data
+            const iconUrls = [
+              // CoinLore - has excellent coverage for major chains like Arbitrum
+              `https://c1.coinlore.com/img/25x25/${iconIdentifier}.png`,
+              // Alternative CoinLore format
+              `https://coinlore.com/img/${iconIdentifier}.png`,
+              // Llamao (works for many coins)
+              `https://icons.llamao.fi/icons/chains/rsz_${iconIdentifier}.jpg`,
+              // TrustWallet assets (backup)
+              `https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/${iconIdentifier}/info/logo.png`,
+            ];
 
-          tryIconUrl(0);
-          return;
-        }
+            const tryIconUrl = (index: number) => {
+              if (index >= iconUrls.length) {
+                // All icon sources failed, cache as null and show fallback
+                imageDataCache.set(chainId, null);
+                setError(true);
+                setIsLoading(false);
+                return;
+              }
 
-        // Otherwise try to fetch from ChainList (EVM networks only)
-        getChainIconUrl(chainId)
-          .then((url) => {
-            if (url) {
-              // Convert external URL to data URL for consistent caching
-              fetch(url)
+              // Load image and convert to data URL for permanent caching
+              fetch(iconUrls[index])
                 .then((response) => {
                   if (!response.ok) throw new Error('Failed to fetch');
                   return response.blob();
@@ -217,28 +204,33 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
                   };
                   reader.readAsDataURL(blob);
                 })
-                .catch(() => {
-                  imageDataCache.set(chainId, null);
-                  setError(true);
-                  setIsLoading(false);
-                });
-            } else {
-              imageDataCache.set(chainId, null);
-              setError(true);
-              setIsLoading(false);
-            }
-          })
-          .catch(() => {
-            imageDataCache.set(chainId, null);
-            setError(true);
-            setIsLoading(false);
-          });
+                .catch(() => tryIconUrl(index + 1));
+            };
+
+            tryIconUrl(0);
+            return;
+          }
+
+          // ChainListService doesn't have this chain, cache as null and show fallback
+          imageDataCache.set(chainId, null);
+          setError(true);
+          setIsLoading(false);
+        } catch (fetchError) {
+          console.error(
+            'Error looking up chain in ChainListService:',
+            fetchError
+          );
+          // Cache as null and show fallback
+          imageDataCache.set(chainId, null);
+          setError(true);
+          setIsLoading(false);
+        }
       }, 50); // Reduced from 150ms to 50ms for better UX while still preventing blocking
 
       return () => {
         clearTimeout(loadTimer);
       };
-    }, [chainId, networkKind, iconName]);
+    }, [chainId, networkKind]);
 
     // Use fallback SVG for unknown chains
     if (error || (!iconUrl && !iconComponent && !isLoading)) {
@@ -291,8 +283,7 @@ export const ChainIcon: React.FC<IChainIconProps> = React.memo(
     prevProps.size === nextProps.size &&
     prevProps.className === nextProps.className &&
     prevProps.fallbackClassName === nextProps.fallbackClassName &&
-    prevProps.networkKind === nextProps.networkKind &&
-    prevProps.iconName === nextProps.iconName
+    prevProps.networkKind === nextProps.networkKind
 );
 
 ChainIcon.displayName = 'ChainIcon';

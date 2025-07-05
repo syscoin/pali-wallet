@@ -150,6 +150,7 @@ export const ChainErrorPage = () => {
               chainId={Number(displayNetwork.chainId)}
               size={45}
               className=""
+              networkKind={displayNetwork.kind}
               fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
             />
             <span className="text-xs text-gray-300 truncate max-w-[120px]">
@@ -166,6 +167,7 @@ export const ChainErrorPage = () => {
         chainId={Number(activeNetwork.chainId)}
         size={45}
         className=""
+        networkKind={activeNetwork.kind}
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
     );
@@ -175,6 +177,7 @@ export const ChainErrorPage = () => {
         chainId={Number(displayNetwork.chainId)}
         size={45}
         className=""
+        networkKind={displayNetwork.kind}
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
     );
@@ -221,7 +224,9 @@ export const ChainErrorPage = () => {
             <div
               className="bg-brand-blue600 mb-[2px] rounded-[10px] p-2 w-full h-[37px] text-white text-sm font-normal transition-all cursor-pointer hover:bg-brand-blue800 flex items-center justify-center"
               onClick={() => {
-                const returnContext = createNavigationContext('/home');
+                const returnContext = createNavigationContext(
+                  '/chain-fail-to-connect'
+                );
                 navigateWithContext(
                   navigate,
                   '/settings/networks/custom-rpc',

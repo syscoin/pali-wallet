@@ -8,7 +8,7 @@ import esTranslations from 'assets/locales/es.json';
 import frTranslations from 'assets/locales/fr.json';
 import jaTranslations from 'assets/locales/ja.json';
 import koTranslations from 'assets/locales/ko.json';
-import ptBrTranslations from 'assets/locales/pt-br.json';
+import ptBrTranslations from 'assets/locales/pt.json';
 import ruTranslations from 'assets/locales/ru.json';
 import zhTranslations from 'assets/locales/zh.json';
 import { chromeStorage } from 'utils/storageAPI';
@@ -16,7 +16,7 @@ import { chromeStorage } from 'utils/storageAPI';
 export const availableLanguages = [
   'en',
   'es',
-  'pt-br',
+  'pt',
   'fr',
   'de',
   'zh',
@@ -86,7 +86,7 @@ const initI18next = async () => {
       es: {
         translation: esTranslations,
       },
-      'pt-br': {
+      pt: {
         translation: ptBrTranslations,
       },
       fr: {

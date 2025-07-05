@@ -135,6 +135,17 @@
     "validUrlRequired": "Bitte geben Sie eine gültige URL ein",
     "networkMismatch": "Netzwerk-Unstimmigkeit - chainId stimmt nicht überein",
     "failedValidateRpc": "Validierung der RPC-URL fehlgeschlagen",
+    "unableToConnectToNetwork": "Verbindung zu {{networkName}} nicht möglich. Alle getesteten {{rpcType}} erfordern eine Authentifizierung oder haben Qualitätsprüfungen nicht bestanden. Bitte versuchen Sie eine benutzerdefinierte URL.",
+    "searchNetworksPlaceholder": "Tippen für {{networkType}}-Suche",
+    "blockbookUrlPlaceholder": "Blockbook-URL",
+    "rpcUrlPlaceholder": "RPC-URL",
+    "chainIdAutoDetectedUtxo": "Chain ID (automatisch erkannt)",
+    "chainIdAutoDetectedEvm": "Chain ID (automatisch erkannt)",
+    "blockExplorerApiUrl": "Block-Explorer-API-URL (optional)",
+    "explorerUrlRequired": "Explorer-URL ist erforderlich",
+    "testingRpcProgress": "Teste RPC {{current}} von {{total}}",
+    "loadingNetworks": "Lade {{networkType}}-Netzwerke...",
+    "noMatchingNetworks": "Keine passenden Netzwerke gefunden",
     "fixValidationErrors": "Bitte beheben Sie die Validierungsfehler vor dem Speichern",
     "chainIdRequired": "Chain ID ist erforderlich",
     "symbolRequired": "Symbol ist erforderlich",
@@ -235,6 +246,9 @@
     "searchAssets": "Assets suchen",
     "viewTokens": "Token anzeigen",
     "viewNFTs": "NFTs anzeigen"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "Assets werden für dieses Netzwerk nicht unterstützt"
   },
   "assetsHeader": {
     "sortBy": "SORTIEREN NACH:",

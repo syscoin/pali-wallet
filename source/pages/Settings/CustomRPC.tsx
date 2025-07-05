@@ -9,7 +9,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import {
-  validateRpcBatch,
+  validateRpcBatchUniversal,
   INetworkType,
   INetwork,
 } from '@pollum-io/sysweb3-network';
@@ -50,7 +50,6 @@ const CustomRPCView = () => {
     return Boolean(isSyscoinSelected);
   });
   const [networkSuggestions, setNetworkSuggestions] = useState<ChainInfo[]>([]);
-  const [networkLoading, setNetworkLoading] = useState(false);
   const [testingRpcs, setTestingRpcs] = useState(false);
   const [allChains, setAllChains] = useState<ChainInfo[]>([]);
   const [currentRpcTest, setCurrentRpcTest] = useState<{
@@ -70,8 +69,6 @@ const CustomRPCView = () => {
   const switchBallStyle = isSyscoinRpc
     ? 'translate-x-6 bg-brand-deepPink100'
     : 'translate-x-1  bg-brand-blue200';
-
-  const inputHiddenOrNotStyle = isSyscoinRpc ? 'hidden' : 'relative';
 
   const validateUrl = (url: string): boolean => {
     try {
@@ -266,11 +263,11 @@ const CustomRPCView = () => {
     try {
       // Use getRpc from controller which handles all validation and returns the network
       const rpcParams = {
-        url: rpcUrl,
+        url: rpcUrl.trim(),
         label: formData?.label || '',
-        symbol: formData?.symbol || '',
-        explorer: formData?.explorer || '',
-        apiUrl: formData?.apiUrl || '',
+        symbol: isSyscoinRpc ? '' : formData?.symbol || '',
+        explorer: isSyscoinRpc ? rpcUrl.trim() : formData?.explorer || '',
+        apiUrl: isSyscoinRpc ? '' : formData?.apiUrl || '',
         chainId: formData?.chainId || '',
         isSyscoinRpc,
       };
@@ -289,6 +286,13 @@ const CustomRPCView = () => {
         // Not in edit mode, update the chainId field with the detected value
         form.setFieldsValue({
           chainId: network.chainId.toString(),
+        });
+      }
+
+      // Auto-fill label from coin data for UTXO networks
+      if (isSyscoinRpc && network.label && !formData?.label?.trim()) {
+        form.setFieldsValue({
+          label: network.label,
         });
       }
 
@@ -349,6 +353,14 @@ const CustomRPCView = () => {
       return;
     }
 
+    // Prepare data for UTXO networks - set appropriate defaults
+    if (isSyscoinRpc) {
+      data.symbol = ''; // UTXO networks don't need symbol
+      data.explorer = data.url; // For UTXO, the Blockbook URL is the explorer
+      data.apiUrl = ''; // UTXO networks don't use separate API URLs
+      data.chainId = 0; // Will be auto-detected
+    }
+
     // Validate RPC URL and get network configuration
     const network = await validateRpcUrlAndShowError(data.url, data);
     if (!network) {
@@ -356,8 +368,12 @@ const CustomRPCView = () => {
       return;
     }
 
-    // Validate API URL and show toast error if invalid
-    if (data.apiUrl && !(await validateApiUrlAndShowError(data.apiUrl))) {
+    // Validate API URL and show toast error if invalid (only for EVM)
+    if (
+      !isSyscoinRpc &&
+      data.apiUrl &&
+      !(await validateApiUrlAndShowError(data.apiUrl))
+    ) {
       setLoading(false);
       return;
     }
@@ -370,6 +386,23 @@ const CustomRPCView = () => {
         ];
       const existingNetwork = existingNetworks[network.chainId];
 
+      // For UTXO networks, also check for blockchain conflicts (same slip44, different chainId)
+      if (network.kind === INetworkType.Syscoin && !state?.isEditing) {
+        const blockchainConflict = Object.values(existingNetworks).find(
+          (existingNet: INetwork) =>
+            existingNet.slip44 === network.slip44 &&
+            existingNet.chainId !== network.chainId
+        );
+
+        if (blockchainConflict) {
+          throw new Error(
+            t('settings.networkAlreadyExists', {
+              chainId: blockchainConflict.chainId,
+            })
+          );
+        }
+      }
+
       if (state?.isEditing) {
         // In edit mode, network should exist
         if (!existingNetwork) {
@@ -381,6 +414,7 @@ const CustomRPCView = () => {
         const updatedNetwork: INetwork = {
           ...network,
           ...(existingNetwork.key && { key: existingNetwork.key }),
+          default: existingNetwork.default, // Preserve original default value
         };
 
         await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
@@ -439,45 +473,40 @@ const CustomRPCView = () => {
     label: currentNetwork?.label ?? '',
     url: currentNetwork?.url ?? '',
     chainId: currentNetwork?.chainId ?? '',
-    symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-    explorer: currentNetwork?.explorer ?? '',
-    apiUrl: currentNetwork?.apiUrl ?? '',
+    symbol: isSyscoinRpc ? '' : currentNetwork?.currency?.toUpperCase() ?? '',
+    explorer: isSyscoinRpc
+      ? currentNetwork?.url ?? ''
+      : currentNetwork?.explorer ?? '',
+    apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
   };
 
   // Simplified - no conditional save logic
 
   const isInputDisableByEditMode = state?.isEditing ? state.isDefault : false;
 
-  // Load and cache chain data once on component mount
+  // Preload chains based on network type for instant searching
   useEffect(() => {
-    // Multi-level caching strategy:
-    // 1. ChainListService singleton (initialized by MainController on startup)
-    //    - Browser storage cache (24h persistence)
-    //    - In-memory cache with request deduplication
-    //    - Background fetching for stale cache
-    // 2. Component-level caching (this state)
-    //    - Eliminates async call overhead during search
-    //    - Pure JavaScript filtering for instant results
-    const loadChainData = async () => {
+    const loadChains = async () => {
       try {
         const chainListService = ChainListService.getInstance();
-        // Since MainController already initializes this service, the data should be readily available
-        const chains = await chainListService.getChainData();
+        const networkType = isSyscoinRpc
+          ? INetworkType.Syscoin
+          : INetworkType.Ethereum;
+        const chains = await chainListService.getChainData(networkType);
         setAllChains(chains);
         console.log(
-          `[CustomRPC] Loaded ${chains.length} chains from ChainListService`
+          `[CustomRPC] Preloaded ${chains.length} ${
+            isSyscoinRpc ? 'UTXO' : 'EVM'
+          } chains`
         );
       } catch (error) {
-        console.error('[CustomRPC] Failed to load chain data:', error);
-        // Still allow the component to work even if chain data fails
+        console.error('[CustomRPC] Failed to preload chains:', error);
         setAllChains([]);
       }
     };
 
-    loadChainData();
-
-    // Simplified initialization
-  }, []);
+    loadChains();
+  }, [isSyscoinRpc]); // Reload when network type changes
 
   // Update form when Redux state changes (for editing mode)
   useEffect(() => {
@@ -486,9 +515,13 @@ const CustomRPCView = () => {
         label: currentNetwork?.label ?? '',
         url: currentNetwork?.url ?? '',
         chainId: currentNetwork?.chainId ?? '',
-        symbol: currentNetwork?.currency?.toUpperCase() ?? '',
-        explorer: currentNetwork?.explorer ?? '',
-        apiUrl: currentNetwork?.apiUrl,
+        symbol: isSyscoinRpc
+          ? ''
+          : currentNetwork?.currency?.toUpperCase() ?? '',
+        explorer: isSyscoinRpc
+          ? currentNetwork?.url ?? ''
+          : currentNetwork?.explorer ?? '',
+        apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
       };
       form.setFieldsValue(formValues);
     }
@@ -513,9 +546,9 @@ const CustomRPCView = () => {
     };
   }, []);
 
-  // Smart network search with auto-completion - now uses cached data
-  const searchNetworks = debounce(async (query: string) => {
-    if (!query || !query.trim() || isSyscoinRpc) {
+  // Smart network search with instant filtering from preloaded data
+  const searchNetworks = debounce((query: string) => {
+    if (!query || !query.trim()) {
       setNetworkSuggestions([]);
       return;
     }
@@ -528,70 +561,74 @@ const CustomRPCView = () => {
 
     // Early return if no chains loaded yet
     if (allChains.length === 0) {
-      setNetworkLoading(true);
       return;
     }
 
-    setNetworkLoading(true);
+    const lowerQuery = query.toLowerCase().trim();
+    const results: (ChainInfo & { score?: number })[] = [];
 
-    try {
-      const lowerQuery = query.toLowerCase().trim();
-      const results: (ChainInfo & { score?: number })[] = [];
+    allChains.forEach((chain) => {
+      let score = 0;
+      const name = chain.name.toLowerCase();
+      const symbol = chain.nativeCurrency.symbol.toLowerCase();
+      const chainId = chain.chainId.toString();
+      const coinLabel = chain.coinLabel?.toLowerCase() || '';
+      const coinShortcut = chain.coinShortcut?.toLowerCase() || '';
 
-      allChains.forEach((chain) => {
-        let score = 0;
-        const name = chain.name.toLowerCase();
-        const symbol = chain.nativeCurrency.symbol.toLowerCase();
-        const chainId = chain.chainId.toString();
+      // Scoring for relevance - exact matches score highest
+      if (name === lowerQuery) score += 100;
+      else if (name.startsWith(lowerQuery)) score += 50;
+      else if (name.includes(lowerQuery)) score += 25;
 
-        // Scoring for relevance
-        if (name === lowerQuery) score += 100;
-        else if (name.startsWith(lowerQuery)) score += 50;
-        else if (name.includes(lowerQuery)) score += 25;
+      if (symbol === lowerQuery) score += 80;
+      else if (symbol.startsWith(lowerQuery)) score += 40;
+      else if (symbol.includes(lowerQuery)) score += 20;
 
-        if (symbol === lowerQuery) score += 80;
-        else if (symbol.startsWith(lowerQuery)) score += 40;
+      if (chainId === query) score += 90;
+      else if (chainId.startsWith(query)) score += 45;
 
-        if (chainId === lowerQuery) score += 90;
-        else if (chainId.startsWith(lowerQuery)) score += 45;
+      // UTXO specific scoring
+      if (coinLabel === lowerQuery) score += 100;
+      else if (coinLabel.startsWith(lowerQuery)) score += 50;
+      else if (coinLabel.includes(lowerQuery)) score += 25;
 
-        if (score > 0 && chain.rpc && chain.rpc.length > 0) {
-          results.push({ ...chain, score });
-        }
-      });
+      if (coinShortcut === lowerQuery) score += 80;
+      else if (coinShortcut.startsWith(lowerQuery)) score += 40;
 
-      // Sort by score and take top 6 for better UI
-      const sortedResults = results
-        .sort((a, b) => (b.score || 0) - (a.score || 0))
-        .slice(0, 6);
+      if (score > 0 && chain.rpc && chain.rpc.length > 0) {
+        results.push({ ...chain, score });
+      }
+    });
 
-      setNetworkSuggestions(sortedResults);
-    } catch (error) {
-      console.error('Network search failed:', error);
-      setNetworkSuggestions([]);
-    } finally {
-      setNetworkLoading(false);
-    }
-  }, 10);
+    // Sort by score and take top 6 for better UI
+    const sortedResults = results
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 6);
+
+    setNetworkSuggestions(sortedResults);
+  }, 10); // Reduced debounce for instant feel
 
   // Handle network selection from autocomplete
-  const handleNetworkSelect = async (value: string, option: any) => {
-    const selectedChain = option.chain;
-    if (!selectedChain) return;
-
+  const handleNetworkSelect = async (chain: ChainInfo) => {
     // Clear suggestions immediately to close dropdown
     setNetworkSuggestions([]);
 
     // Fill form fields immediately for instant UX with uppercase symbol
     form.setFieldsValue({
-      label: selectedChain.name,
-      chainId: selectedChain.chainId.toString(),
-      symbol: selectedChain.nativeCurrency.symbol.toUpperCase(),
-      explorer:
-        selectedChain.explorers && selectedChain.explorers.length > 0
-          ? selectedChain.explorers[0].url
-          : '',
+      label: chain.name,
+      chainId: chain.chainId.toString(),
+      symbol: chain.nativeCurrency.symbol.toUpperCase(),
     });
+
+    // For EVM networks, also set explorer
+    if (!isSyscoinRpc) {
+      form.setFieldsValue({
+        explorer:
+          chain.explorers && chain.explorers.length > 0
+            ? chain.explorers[0].url
+            : '',
+      });
+    }
 
     // Reset URL field before testing
     form.setFieldsValue({ url: '' });
@@ -602,11 +639,11 @@ const CustomRPCView = () => {
       url: '',
     });
 
-    // Try RPCs in order until we find one that works
-    await tryBestWorkingRpc(selectedChain);
+    // Try RPCs/Blockbooks in order until we find one that works
+    await tryBestWorkingRpc(chain);
   };
 
-  // Try multiple RPCs until we find one that works
+  // Try multiple RPCs/Blockbooks until we find one that works - with latency testing
   const tryBestWorkingRpc = async (chain: ChainInfo) => {
     if (!chain.rpc || chain.rpc.length === 0) return;
 
@@ -646,9 +683,10 @@ const CustomRPCView = () => {
         // Add a small delay for UX
         await new Promise((resolve) => setTimeout(resolve, 300));
 
-        // Use the centralized batch validation from sysweb3 with minimum latency of 500ms
-        const result = await validateRpcBatch(
+        // Use validateRpcBatchUniversal for both EVM and UTXO with different minimum latencies
+        const result = await validateRpcBatchUniversal(
           rpc.url,
+          isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
           chain.chainId,
           5000,
           500
@@ -656,19 +694,25 @@ const CustomRPCView = () => {
 
         if (!result.success) {
           // Log why this RPC failed for debugging
-          console.log(`RPC ${rpc.url} failed:`, result.error);
+          console.log(
+            `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
+            result.error
+          );
 
           // If it requires authentication, skip to next without showing error
           if ('requiresAuth' in result && result.requiresAuth) {
-            console.log(`RPC ${rpc.url} requires authentication, skipping...`);
+            console.log(
+              `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${
+                rpc.url
+              } requires authentication, skipping...`
+            );
             continue;
           }
 
           continue; // Try next RPC
         }
 
-        // This RPC works and is for the correct chain!
-        // Found a working RPC, set it and break
+        // This RPC works!
         setTestingRpcs(false);
         setCurrentRpcTest(null);
 
@@ -677,24 +721,23 @@ const CustomRPCView = () => {
           // Also update the form field
           form.setFieldsValue({ chainId: result.chainId.toString() });
         }
+        // Symbol is already filled from chain.nativeCurrency.symbol in handleNetworkSelect
 
-        // Clear any existing toasts first to prevent conflicts
-
-        // Create stable success message with latency info
-        const hostname = rpc.url ? new URL(rpc.url).hostname : 'RPC server';
+        const hostname = new URL(rpc.url).hostname;
         const latencyInfo =
           'latency' in result && result.latency ? ` (${result.latency}ms)` : '';
         const successMessage = `Connected to ${chain.name} via ${hostname}${latencyInfo}`;
 
-        // Success feedback with stable message
         alert.success(successMessage, {
           autoClose: 3000,
         });
 
         return;
       } catch (error) {
-        // This RPC failed, continue to next one
-        console.log(`RPC ${rpc.url} failed:`, error);
+        console.log(
+          `${isSyscoinRpc ? 'Blockbook' : 'RPC'} ${rpc.url} failed:`,
+          error
+        );
         continue;
       }
     }
@@ -703,7 +746,10 @@ const CustomRPCView = () => {
     setTestingRpcs(false);
     setCurrentRpcTest(null);
     alert.error(
-      `Unable to connect to ${chain.name}. All tested RPCs either require authentication or failed quality checks. Please try a custom RPC URL.`,
+      t('settings.unableToConnectToNetwork', {
+        networkName: chain.name,
+        rpcType: isSyscoinRpc ? 'Blockbook URLs' : 'RPCs',
+      }),
       {
         autoClose: 5000,
       }
@@ -717,8 +763,7 @@ const CustomRPCView = () => {
         <ChainIcon
           chainId={chain.chainId}
           size={size}
-          networkKind={INetworkType.Ethereum}
-          iconName={chain.icon || chain.chainSlug}
+          networkKind={chain.chain || INetworkType.Ethereum}
           className="flex-shrink-0"
         />
       ),
@@ -788,7 +833,7 @@ const CustomRPCView = () => {
                   •
                 </span>
                 <span className="font-mono text-xs text-brand-gray300 group-hover:text-brand-white/80">
-                  {chain.rpc?.length || 0} RPC
+                  {chain.rpc?.length || 0} {isSyscoinRpc ? 'Blockbook' : 'RPC'}
                   {(chain.rpc?.length || 0) !== 1 ? 's' : ''}
                 </span>
               </span>
@@ -824,7 +869,10 @@ const CustomRPCView = () => {
             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
             <div className="flex-1">
               <p className="text-sm font-medium text-blue-900">
-                Testing RPC {currentRpcTest.index} of {currentRpcTest.total}
+                {t('settings.testingRpcProgress', {
+                  current: currentRpcTest.index,
+                  total: currentRpcTest.total,
+                })}
               </p>
               <p className="text-xs text-blue-700 truncate">
                 {new URL(currentRpcTest.url).hostname}
@@ -937,82 +985,77 @@ const CustomRPCView = () => {
               hasFeedback
               rules={[
                 {
-                  required: !isSyscoinRpc,
+                  required: true,
                   message: '',
                 },
               ]}
             >
-              {/* Always render both inputs, hide with CSS to prevent hook order changes */}
-              <div className={!isSyscoinRpc ? 'block' : 'hidden'}>
-                {/* Autocomplete input for adding mode */}
-                <div className="relative w-full" ref={dropdownRef}>
-                  <Input
-                    type="text"
-                    disabled={isInputDisableByEditMode}
-                    placeholder={`${t(
-                      'settings.label'
-                    )} - Start typing to search networks`}
-                    className="custom-input-normal relative"
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      form.setFieldsValue({ label: value });
-                      searchNetworks(value);
-                    }}
-                    value={form.getFieldValue('label')}
-                  />
-                  <div
-                    className={`absolute top-full left-0 right-0 z-50 mt-2 bg-brand-blue600 border border-brand-royalblue/30 rounded-xl shadow-2xl shadow-brand-blue600/40 max-h-80 overflow-hidden transition-all duration-300 ease-out backdrop-blur-sm ${
-                      networkSuggestions.length > 0 && !testingRpcs
-                        ? 'opacity-100 visible transform scale-100'
-                        : 'opacity-0 invisible pointer-events-none transform scale-95'
-                    }`}
-                    style={{
-                      background:
-                        'linear-gradient(145deg, #1E365C 0%, #162742 100%)',
-                      boxShadow:
-                        '0 20px 25px -5px rgba(30, 54, 92, 0.4), 0 10px 10px -5px rgba(30, 54, 92, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-                    }}
-                  >
-                    {/* Subtle top border accent */}
-                    <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue to-transparent"></div>
-
-                    <div className="overflow-y-auto max-h-80 scrollbar-styled">
-                      {networkLoading ? (
-                        <div className="p-6 text-center">
-                          <div className="inline-flex items-center gap-3 text-brand-white/80">
-                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-brand-royalblue border-t-transparent"></div>
-                            <span className="font-medium">
-                              Searching networks...
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        networkSuggestions.map((chain) => (
-                          <NetworkSuggestionItem
-                            key={`network-${chain.chainId}`}
-                            chain={chain}
-                            onSelect={() => {
-                              setNetworkSuggestions([]); // Close immediately
-                              handleNetworkSelect(chain.name, { chain });
-                            }}
-                          />
-                        ))
-                      )}
-                    </div>
-
-                    {/* Subtle bottom border accent */}
-                    <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue/50 to-transparent"></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className={isSyscoinRpc ? 'block' : 'hidden'}>
+              {/* Autocomplete input for both EVM and UTXO networks */}
+              <div className="relative w-full" ref={dropdownRef}>
                 <Input
                   type="text"
                   disabled={isInputDisableByEditMode}
-                  placeholder={`${t('settings.label')}`}
+                  placeholder={`${t('settings.label')} - ${t(
+                    'settings.searchNetworksPlaceholder',
+                    { networkType: isSyscoinRpc ? 'UTXO' : 'EVM' }
+                  )}`}
                   className="custom-input-normal relative"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    form.setFieldsValue({ label: value });
+                    searchNetworks(value);
+                  }}
+                  value={form.getFieldValue('label')}
                 />
+                <div
+                  className={`absolute top-full left-0 right-0 z-50 mt-2 bg-brand-blue600 border border-brand-royalblue/30 rounded-xl shadow-2xl shadow-brand-blue600/40 max-h-80 overflow-hidden transition-all duration-300 ease-out backdrop-blur-sm ${
+                    networkSuggestions.length > 0 && !testingRpcs
+                      ? 'opacity-100 visible transform scale-100'
+                      : 'opacity-0 invisible pointer-events-none transform scale-95'
+                  }`}
+                  style={{
+                    background:
+                      'linear-gradient(145deg, #1E365C 0%, #162742 100%)',
+                    boxShadow:
+                      '0 20px 25px -5px rgba(30, 54, 92, 0.4), 0 10px 10px -5px rgba(30, 54, 92, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+                  }}
+                >
+                  {/* Subtle top border accent */}
+                  <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue to-transparent"></div>
+
+                  <div className="overflow-y-auto max-h-80 scrollbar-styled">
+                    {allChains.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <div className="inline-flex items-center gap-3 text-brand-white/80">
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-brand-royalblue border-t-transparent"></div>
+                          <span className="font-medium">
+                            {t('settings.loadingNetworks', {
+                              networkType: isSyscoinRpc ? 'UTXO' : 'EVM',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    ) : networkSuggestions.length === 0 ? (
+                      <div className="p-4 text-center text-brand-white/60">
+                        {t('settings.noMatchingNetworks')}
+                      </div>
+                    ) : (
+                      networkSuggestions.map((chain) => (
+                        <NetworkSuggestionItem
+                          key={`network-${chain.chainId}`}
+                          chain={chain}
+                          onSelect={() => {
+                            setNetworkSuggestions([]); // Close immediately
+                            handleNetworkSelect(chain);
+                          }}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  {/* Subtle bottom border accent */}
+                  <div className="h-px bg-gradient-to-r from-transparent via-brand-royalblue/50 to-transparent"></div>
+                </div>
               </div>
             </Form.Item>
           </>
@@ -1052,7 +1095,11 @@ const CustomRPCView = () => {
           <Input
             ref={urlInputRef}
             type="text"
-            placeholder={`${isSyscoinRpc ? 'Explorer' : 'RPC URL'}`}
+            placeholder={t(
+              isSyscoinRpc
+                ? 'settings.blockbookUrlPlaceholder'
+                : 'settings.rpcUrlPlaceholder'
+            )}
             className="custom-input-normal relative"
             onBlur={async (e) => {
               const url = e.target.value?.trim();
@@ -1080,8 +1127,12 @@ const CustomRPCView = () => {
           <Input
             type="text"
             readOnly={true}
-            placeholder="Chain ID (auto-detected from RPC)"
-            className={`${inputHiddenOrNotStyle} custom-input-normal `}
+            placeholder={t(
+              isSyscoinRpc
+                ? 'settings.chainIdAutoDetectedUtxo'
+                : 'settings.chainIdAutoDetectedEvm'
+            )}
+            className="custom-input-normal relative"
             style={{
               cursor: 'not-allowed',
               backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1094,7 +1145,7 @@ const CustomRPCView = () => {
           className="md:w-full"
           rules={[
             {
-              required: !isSyscoinRpc,
+              required: true,
               message: t('settings.symbolRequired'),
             },
           ]}
@@ -1102,72 +1153,28 @@ const CustomRPCView = () => {
           <Input
             type="text"
             placeholder={t('settings.symbol')}
-            className={`${inputHiddenOrNotStyle} custom-input-normal relative uppercase`}
+            className="custom-input-normal relative uppercase"
             onChange={(e) => {
               const upperValue = e.target.value.toUpperCase();
               form.setFieldsValue({ symbol: upperValue });
             }}
           />
         </Form.Item>
-        <Form.Item
-          hasFeedback
-          className="md:w-full"
-          name="explorer"
-          rules={[
-            {
-              required: false,
-              message: 'Explorer URL is required',
-            },
-            () => ({
-              validator(_, value) {
-                if (!value || value.trim() === '') {
-                  return Promise.resolve();
-                }
-                if (validateUrl(value.trim())) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t('settings.validUrlRequired'))
-                );
-              },
-            }),
-          ]}
-        >
-          <Input
-            type="text"
-            placeholder={t('settings.explorer')}
-            className={`${inputHiddenOrNotStyle} custom-input-normal `}
-          />
-        </Form.Item>
-        <div className={`${inputHiddenOrNotStyle} md:w-full`}>
-          <div className="flex items-center gap-2 mb-2">
-            <label className="text-sm text-white font-medium">
-              Block Explorer API URL (optional)
-            </label>
-            <Tooltip content={t('send.apiKeyTooltip')} placement="top">
-              <Icon
-                name="Info"
-                isSvg
-                size={14}
-                className="text-brand-gray200 hover:text-white cursor-pointer"
-              />
-            </Tooltip>
-          </div>
+        {!isSyscoinRpc && (
           <Form.Item
             hasFeedback
-            className="md:w-full mb-6"
-            name="apiUrl"
+            className="md:w-full"
+            name="explorer"
             rules={[
               {
                 required: false,
-                message: '',
+                message: t('settings.explorerUrlRequired'),
               },
               () => ({
                 validator(_, value) {
                   if (!value || value.trim() === '') {
                     return Promise.resolve();
                   }
-                  // Only validate URL format, not API functionality
                   if (validateUrl(value.trim())) {
                     return Promise.resolve();
                   }
@@ -1180,11 +1187,59 @@ const CustomRPCView = () => {
           >
             <Input
               type="text"
-              placeholder="https://api.example.com/api"
+              placeholder={t('settings.explorer')}
               className="custom-input-normal relative"
             />
           </Form.Item>
-        </div>
+        )}
+        {!isSyscoinRpc && (
+          <div className="md:w-full">
+            <div className="flex items-center gap-2 mb-2">
+              <label className="text-sm text-white font-medium">
+                {t('settings.blockExplorerApiUrl')}
+              </label>
+              <Tooltip content={t('send.apiKeyTooltip')} placement="top">
+                <Icon
+                  name="Info"
+                  isSvg
+                  size={14}
+                  className="text-brand-gray200 hover:text-white cursor-pointer"
+                />
+              </Tooltip>
+            </div>
+            <Form.Item
+              hasFeedback
+              className="md:w-full mb-6"
+              name="apiUrl"
+              rules={[
+                {
+                  required: false,
+                  message: '',
+                },
+                () => ({
+                  validator(_, value) {
+                    if (!value || value.trim() === '') {
+                      return Promise.resolve();
+                    }
+                    // Only validate URL format, not API functionality
+                    if (validateUrl(value.trim())) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t('settings.validUrlRequired'))
+                    );
+                  },
+                }),
+              ]}
+            >
+              <Input
+                type="text"
+                placeholder="https://api.example.com/api"
+                className="custom-input-normal relative"
+              />
+            </Form.Item>
+          </div>
+        )}
         {/* Fixed button container at bottom of viewport - inside form */}
         <div className="fixed bottom-0 left-0 right-0 bg-brand-blue900 border-t border-brand-royalblue/30 px-4 py-3 shadow-lg z-50">
           {state?.isEditing ? (

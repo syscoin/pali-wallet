@@ -41,7 +41,7 @@ export const rehydrateStore = async (
         store.dispatch(vaultRehydrate(state.vault));
       } else {
         // Background context: Need to load slip44-specific vault from storage
-        const targetSlip44 = slip44 || storageState.vaultGlobal?.activeSlip44;
+        const targetSlip44 = slip44 ?? storageState.vaultGlobal?.activeSlip44;
 
         if (targetSlip44) {
           console.log(

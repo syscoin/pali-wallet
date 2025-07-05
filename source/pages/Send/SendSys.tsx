@@ -45,9 +45,6 @@ export const SendSys = () => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
 
   // Restore state from navigation if available
   const initialRBF = location.state?.componentState?.RBF ?? true;

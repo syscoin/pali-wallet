@@ -10,7 +10,7 @@ export enum PaliLanguages {
   FR = 'fr',
   JA = 'ja',
   KO = 'ko',
-  PT = 'pt-br',
+  PT = 'pt',
   RU = 'ru',
   ZH = 'zh',
 }

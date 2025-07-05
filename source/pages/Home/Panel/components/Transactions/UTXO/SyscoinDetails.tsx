@@ -37,7 +37,7 @@ export const SyscoinTransactionDetails = ({
 }: ISyscoinTransactionDetailsProps) => {
   const { controllerEmitter } = useController();
   const {
-    activeNetwork: { chainId, url: activeNetworkUrl },
+    activeNetwork: { chainId, url: activeNetworkUrl, currency },
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
   const { getTxType, getTxStatus } = useTransactionsListConfig();
@@ -230,7 +230,9 @@ export const SyscoinTransactionDetails = ({
         <p className="text-brand-gray200 text-xs font-light">
           {getTxType(transactionTx, isTxSent)}
         </p>
-        <p className="text-white text-base">{Number(txValue) / 10 ** 8} SYS</p>
+        <p className="text-white text-base">
+          {Number(txValue) / 10 ** 8} {currency?.toUpperCase() || 'SYS'}
+        </p>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
       {formattedTransactionDetails.map(({ label, value, canCopy }: any) => (

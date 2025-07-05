@@ -135,6 +135,17 @@
     "validUrlRequired": "Пожалуйста, введите действительный URL",
     "networkMismatch": "Несоответствие сети - chainId не совпадает",
     "failedValidateRpc": "Не удалось проверить URL RPC",
+    "unableToConnectToNetwork": "Невозможно подключиться к {{networkName}}. Все протестированные {{rpcType}} требуют аутентификации или не прошли проверки качества. Пожалуйста, попробуйте пользовательский URL.",
+    "searchNetworksPlaceholder": "Начните вводить для поиска сетей {{networkType}}",
+    "blockbookUrlPlaceholder": "URL Blockbook (например, https://btc1.trezor.io)",
+    "rpcUrlPlaceholder": "URL RPC (например, https://rpc.example.com)",
+    "chainIdAutoDetectedUtxo": "Chain ID / slip44 (автоматически обнаружено)",
+    "chainIdAutoDetectedEvm": "Chain ID (автоматически обнаружено из RPC)",
+    "blockExplorerApiUrl": "URL API обозревателя блоков (необязательно)",
+    "explorerUrlRequired": "Требуется URL обозревателя",
+    "testingRpcProgress": "Тестирование RPC {{current}} из {{total}}",
+    "loadingNetworks": "Загрузка сетей {{networkType}}...",
+    "noMatchingNetworks": "Подходящие сети не найдены",
     "fixValidationErrors": "Пожалуйста, исправьте ошибки валидации перед сохранением",
     "chainIdRequired": "Требуется Chain ID",
     "symbolRequired": "Требуется символ",
@@ -235,6 +246,9 @@
     "searchAssets": "Поиск активов",
     "viewTokens": "Показать токены",
     "viewNFTs": "Показать NFT"
+  },
+  "assets": {
+    "notSupportedForThisNetwork": "Активы не поддерживаются для этой сети"
   },
   "assetsHeader": {
     "sortBy": "СОРТИРОВАТЬ ПО:",

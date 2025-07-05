@@ -5,6 +5,8 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon/Icon';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
@@ -334,6 +336,7 @@ export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
                   chainId={Number(currentNft.chainId)}
                   size={28}
                   className=""
+                  networkKind={INetworkType.Ethereum}
                 />
                 <span className="text-sm font-normal text-brand-gray200">
                   {t('nftDetails.network')}

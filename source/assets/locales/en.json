@@ -89,6 +89,9 @@
     "viewTokens": "View tokens",
     "viewNFTs": "View NFTs"
   },
+  "assets": {
+    "notSupportedForThisNetwork": "Assets not supported for this network"
+  },
   "assetsHeader": {
     "sortBy": "SORT BY:",
     "name": "Name",
@@ -353,6 +356,17 @@
     "validUrlRequired": "Please enter a valid URL",
     "networkMismatch": "Network mismatch - chainId does not match",
     "failedValidateRpc": "Failed to validate RPC URL",
+    "unableToConnectToNetwork": "Unable to connect to {{networkName}}. All tested {{rpcType}} either require authentication or failed quality checks. Please try a custom URL.",
+    "searchNetworksPlaceholder": "Start typing to search {{networkType}} networks",
+    "blockbookUrlPlaceholder": "Blockbook URL (e.g. https://btc1.trezor.io)",
+    "rpcUrlPlaceholder": "RPC URL (e.g. https://rpc.example.com)",
+    "chainIdAutoDetectedUtxo": "Chain ID / slip44 (auto-detected)",
+    "chainIdAutoDetectedEvm": "Chain ID (auto-detected from RPC)",
+    "blockExplorerApiUrl": "Block Explorer API URL (optional)",
+    "explorerUrlRequired": "Explorer URL is required",
+    "testingRpcProgress": "Testing RPC {{current}} of {{total}}",
+    "loadingNetworks": "Loading {{networkType}} networks...",
+    "noMatchingNetworks": "No matching networks found",
     "fixValidationErrors": "Please fix the validation errors before saving",
     "chainIdRequired": "Chain ID is required",
     "symbolRequired": "Symbol is required",

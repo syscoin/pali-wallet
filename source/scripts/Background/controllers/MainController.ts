@@ -77,7 +77,7 @@ import {
   ITokenDetails,
 } from 'types/tokens';
 import { ICustomRpcParams } from 'types/transactions';
-import { SYSCOIN_MAINNET_DEFAULT_NETWORK } from 'utils/constants';
+import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import {
@@ -1210,7 +1210,7 @@ class MainController {
         );
         store.dispatch(
           setNetworkChange({
-            activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+            activeNetwork: SYSCOIN_UTXO_MAINNET_NETWORK,
           })
         );
       }
@@ -1304,7 +1304,7 @@ class MainController {
         // This ensures activeNetwork exists before keyring operations
         store.dispatch(
           setNetworkChange({
-            activeNetwork: SYSCOIN_MAINNET_DEFAULT_NETWORK.network,
+            activeNetwork: SYSCOIN_UTXO_MAINNET_NETWORK,
           })
         );
       }
@@ -1419,6 +1419,13 @@ class MainController {
 
   public async createAccount(label?: string): Promise<IKeyringAccountState> {
     const newAccount = await this.getActiveKeyring().addNewAccount(label);
+
+    // Validate account creation was successful before storing in Redux
+    if (!newAccount.address || !newAccount.xpub) {
+      throw new Error(
+        'Account creation failed: invalid account data returned from keyring'
+      );
+    }
 
     store.dispatch(
       createAccount({
@@ -1869,7 +1876,12 @@ class MainController {
     const { networks } = store.getState().vaultGlobal;
 
     // Validate required fields
-    if (!network.url || !network.chainId || !network.label) {
+    if (
+      !network.url ||
+      network.chainId === null ||
+      network.chainId === undefined ||
+      !network.label
+    ) {
       throw new Error('Missing required network configuration fields');
     }
 
@@ -3520,7 +3532,7 @@ class MainController {
 
   public async deleteTokenInfo(tokenToDelete: any, chainId?: number) {
     const { isBitcoinBased, activeNetwork } = store.getState().vault;
-    const currentChainId = chainId || activeNetwork.chainId;
+    const currentChainId = chainId ?? activeNetwork.chainId;
     let result;
 
     // Handle Ethereum tokens (tokenToDelete is contractAddress string)

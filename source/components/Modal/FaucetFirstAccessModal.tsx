@@ -17,7 +17,7 @@ export const FaucetFirstAccessModal = ({
   const { t } = useTranslation();
 
   const {
-    activeNetwork: { chainId },
+    activeNetwork: { chainId, kind },
   } = useSelector((state: RootState) => state.vault);
 
   const currentNetworkData = faucetNetworkData?.[chainId];
@@ -34,7 +34,12 @@ export const FaucetFirstAccessModal = ({
         </button>
 
         <div className="flex flex-col items-center gap-4">
-          <ChainIcon chainId={chainId} size={80} className="" />
+          <ChainIcon
+            chainId={chainId}
+            size={80}
+            className=""
+            networkKind={kind}
+          />
 
           <h2 className="text-lg font-medium text-white">
             {t('faucet.firstAccessTitle', {

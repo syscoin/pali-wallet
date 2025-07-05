@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { INetworkType } from '@pollum-io/sysweb3-network';
+
 import { SecondButton } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
@@ -49,6 +51,7 @@ const SwitchChain: React.FC = () => {
         chainId={activeNetwork.chainId}
         size={100}
         className=""
+        networkKind={INetworkType.Ethereum}
         fallbackClassName="rounded-full flex items-center justify-center text-white text-sm bg-brand-blue200 p-5"
       />
     );
@@ -58,6 +61,7 @@ const SwitchChain: React.FC = () => {
         chainId={network.chainId}
         size={100}
         className=""
+        networkKind={INetworkType.Ethereum}
         fallbackClassName="rounded-full flex items-center justify-center text-brand-blue200 bg-white text-sm"
       />
     );
