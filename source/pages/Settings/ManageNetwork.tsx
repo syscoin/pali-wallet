@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -7,7 +7,13 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
-import { IconButton, Icon, NeutralButton, Tooltip } from 'components/index';
+import {
+  IconButton,
+  Icon,
+  NeutralButton,
+  Tooltip,
+  ConfirmationModal,
+} from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
@@ -33,6 +39,16 @@ const ManageNetworkView = () => {
   // Ref for the scrollable ul element
   const scrollContainerRef = useRef<HTMLUListElement>(null);
 
+  // State for confirmation modal
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [networkToRemove, setNetworkToRemove] = useState<{
+    chain: INetworkType;
+    chainId: number;
+    key?: string;
+    label: string;
+    rpcUrl: string;
+  } | null>(null);
+
   // Custom scroll restoration for the ul element
   useEffect(() => {
     if (
@@ -45,17 +61,44 @@ const ManageNetworkView = () => {
     }
   }, [location.state]);
 
-  const removeNetwork = async (
+  const removeNetwork = (
     chain: INetworkType,
     chainId: number,
     rpcUrl: string,
     label: string,
     key?: string
-  ) =>
-    controllerEmitter(
+  ) => {
+    // Store network info and show confirmation modal
+    setNetworkToRemove({ chain, chainId, rpcUrl, label, key });
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmRemoval = async () => {
+    if (!networkToRemove) return;
+
+    // Close modal first
+    setShowConfirmModal(false);
+
+    // Proceed with removal
+    await controllerEmitter(
       ['wallet', 'removeKeyringNetwork'],
-      [chain, chainId, rpcUrl, label, key]
+      [
+        networkToRemove.chain,
+        networkToRemove.chainId,
+        networkToRemove.rpcUrl,
+        networkToRemove.label,
+        networkToRemove.key,
+      ]
     );
+
+    // Clear state
+    setNetworkToRemove(null);
+  };
+
+  const handleCancelRemoval = () => {
+    setShowConfirmModal(false);
+    setNetworkToRemove(null);
+  };
 
   const editNetwork = ({
     selected,
@@ -287,6 +330,17 @@ const ManageNetworkView = () => {
           {t('buttons.close')}
         </NeutralButton>{' '}
       </div>
+
+      <ConfirmationModal
+        show={showConfirmModal}
+        title={t('settings.confirmRemoveNetwork', {
+          networkName: networkToRemove?.label || '',
+        })}
+        description=""
+        buttonText={t('buttons.remove')}
+        onClose={handleCancelRemoval}
+        onClick={handleConfirmRemoval}
+      />
     </>
   );
 };

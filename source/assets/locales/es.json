@@ -438,7 +438,9 @@
     "hardwareWalletInstructions": "Cierra esta ventana y vuelve a abrir Pali para usar tu monedero hardware en las transacciones. Tu cuenta ahora está guardada y es persistente.",
     "optimalExperience": "Para una experiencia óptima con el monedero hardware, utiliza una pantalla más grande o expande la ventana de tu navegador.",
     "networkNotFoundForEditing": "Red no encontrada para editar. Por favor, actualice y vuelva a intentarlo.",
-    "networkAlreadyExists": "La red con ID de cadena {{chainId}} ya existe. Por favor, use un ID de cadena diferente o edite la red existente."
+    "networkAlreadyExists": "La red con ID de cadena {{chainId}} ya existe. Por favor, use un ID de cadena diferente o edite la red existente.",
+    "utxoNetworkConflict": "Ya existe una red de {{networkType}} ({{existingNetworkName}}). Solo puede estar activa una red de {{networkType}} a la vez. Por favor, elimine primero la red de {{networkType}} existente.",
+    "confirmRemoveNetwork": "¿Estás seguro de que quieres eliminar la red \"{{networkName}}\"?"
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

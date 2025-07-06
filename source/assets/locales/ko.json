@@ -217,7 +217,9 @@
     "hardwareWalletInstructions": "이 창을 닫고 Pali를 다시 열어서 거래에 하드웨어 지갑을 사용하세요. 귀하의 계정이 저장되고 지속됩니다.",
     "optimalExperience": "최적의 하드웨어 지갑 경험을 위해 더 큰 화면을 사용하거나 브라우저 창을 확장하세요.",
     "networkNotFoundForEditing": "편집할 네트워크를 찾을 수 없습니다. 페이지를 새로고침하고 다시 시도해주세요.",
-    "networkAlreadyExists": "체인 ID {{chainId}}인 네트워크가 이미 존재합니다. 다른 체인 ID를 사용하거나 기존 네트워크를 편집해주세요."
+    "networkAlreadyExists": "체인 ID {{chainId}}인 네트워크가 이미 존재합니다. 다른 체인 ID를 사용하거나 기존 네트워크를 편집해주세요.",
+    "utxoNetworkConflict": "{{networkType}} 네트워크가 이미 존재합니다 ({{existingNetworkName}}). 한 번에 하나의 {{networkType}} 네트워크만 활성화할 수 있습니다. 먼저 기존 {{networkType}} 네트워크를 제거해주세요.",
+    "confirmRemoveNetwork": "네트워크 \"{{networkName}}\"를 제거하시겠습니까?"
   },
   "components": {
     "newPassword": "새 비밀번호 (최소 8자)",

@@ -392,7 +392,10 @@ const CustomRPCView = () => {
       // Keep the symbol as provided - it's required and should be auto-filled
       data.explorer = data.url; // For UTXO, the Blockbook URL is the explorer
       data.apiUrl = ''; // UTXO networks don't use separate API URLs
-      data.chainId = 0; // Will be auto-detected for UTXO
+      // Preserve user-provided chainId for UTXO networks, don't override to 0
+      if (typeof data.chainId === 'string') {
+        data.chainId = parseInt(data.chainId, 10);
+      }
     } else {
       // For EVM networks, ensure chainId is a number
       if (typeof data.chainId === 'string') {
@@ -425,7 +428,8 @@ const CustomRPCView = () => {
         ];
       const existingNetwork = existingNetworks[network.chainId];
 
-      // For UTXO networks, also check for blockchain conflicts (same slip44, different chainId)
+      // For UTXO networks, check for slip44 conflicts - keyring uses slip44 for key derivation
+      // so only one network per slip44 value can exist (e.g., only one testnet at a time)
       if (network.kind === INetworkType.Syscoin && !state?.isEditing) {
         const blockchainConflict = Object.values(existingNetworks).find(
           (existingNet: INetwork) =>
@@ -434,9 +438,15 @@ const CustomRPCView = () => {
         );
 
         if (blockchainConflict) {
+          const isTestnet = network.slip44 === 1;
+          const networkType = isTestnet ? 'testnet' : 'mainnet';
+          const existingNetworkName =
+            blockchainConflict.label || `Chain ${blockchainConflict.chainId}`;
+
           throw new Error(
-            t('settings.networkAlreadyExists', {
-              chainId: blockchainConflict.chainId,
+            t('settings.utxoNetworkConflict', {
+              networkType,
+              existingNetworkName,
             })
           );
         }
@@ -657,19 +667,12 @@ const CustomRPCView = () => {
     // Clear suggestions immediately to close dropdown
     setNetworkSuggestions([]);
 
-    // Get current symbol to preserve user input
-    const currentSymbol = form.getFieldValue('symbol');
-
-    // Fill form fields immediately for instant UX, preserving custom symbol if set
+    // Fill form fields immediately for instant UX, always updating symbol like chainId
     const formValues: any = {
       label: chain.name,
       chainId: chain.chainId.toString(),
+      symbol: chain.nativeCurrency.symbol.toUpperCase(),
     };
-
-    // Only auto-fill symbol if user hasn't entered a custom one
-    if (!currentSymbol || !String(currentSymbol).trim()) {
-      formValues.symbol = chain.nativeCurrency.symbol.toUpperCase();
-    }
 
     form.setFieldsValue(formValues);
 

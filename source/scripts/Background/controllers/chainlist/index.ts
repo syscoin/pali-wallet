@@ -131,7 +131,7 @@ class ChainListService {
             url: url,
           })),
           icon: getIconName(coin),
-          name: coin.coinLabel || coin.name,
+          name: coin.name || coin.coinLabel,
           nativeCurrency: {
             decimals: coin.decimals,
             name: coin.coinName,

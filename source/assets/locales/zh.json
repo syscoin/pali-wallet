@@ -217,7 +217,9 @@
     "hardwareWalletInstructions": "关闭此窗口并重新打开Pali以使用您的硬件钱包进行交易。您的账户现已保存并持久化。",
     "optimalExperience": "为获得最佳硬件钱包体验，请使用更大的屏幕或展开浏览器窗口。",
     "networkNotFoundForEditing": "找不到要编辑的网络。请刷新页面并重试。",
-    "networkAlreadyExists": "链 ID {{chainId}} 的网络已存在。请使用不同的链 ID 或编辑现有网络。"
+    "networkAlreadyExists": "链 ID {{chainId}} 的网络已存在。请使用不同的链 ID 或编辑现有网络。",
+    "utxoNetworkConflict": "{{networkType}}网络已存在（{{existingNetworkName}}）。一次只能激活一个{{networkType}}网络。请先删除现有的{{networkType}}网络。",
+    "confirmRemoveNetwork": "您确定要删除网络\"{{networkName}}\"吗？"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",

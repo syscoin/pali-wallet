@@ -2046,10 +2046,60 @@ class MainController {
     label: string,
     key?: string
   ) {
+    // For UTXO networks, also remove the keyring and vault state since addresses might be different
+    // when a new testnet/network with the same slip44 is added later
+    if (chain === INetworkType.Syscoin) {
+      const { networks } = store.getState().vaultGlobal;
+      const networkToRemove = networks.syscoin[chainId];
+
+      if (networkToRemove && networkToRemove.slip44 !== undefined) {
+        const slip44ToRemove = networkToRemove.slip44;
+        console.log(
+          `[MainController] Removing keyring and vault state for slip44: ${slip44ToRemove} when removing network: ${label}`
+        );
+
+        // Remove the keyring for this slip44
+        this.keyrings.delete(slip44ToRemove);
+
+        // Also clear the persisted vault state for this slip44
+        this.clearSlip44VaultState(slip44ToRemove).catch((error) => {
+          console.error(
+            `[MainController] Failed to clear vault state for slip44 ${slip44ToRemove}:`,
+            error
+          );
+        });
+      }
+    }
+
     store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
 
     // Save wallet state after removing network
     this.saveWalletState('remove-network');
+  }
+
+  private async clearSlip44VaultState(slip44: number): Promise<void> {
+    try {
+      // Clear the vault state from storage
+      const storageKey = `state-vault-${slip44}`;
+      await new Promise<void>((resolve) => {
+        chrome.storage.local.remove([storageKey], () => {
+          resolve();
+        });
+      });
+
+      // Clear from vault cache as well
+      vaultCache.clearSlip44FromCache(slip44);
+
+      console.log(
+        `[MainController] Successfully cleared vault state for slip44: ${slip44}`
+      );
+    } catch (error) {
+      console.error(
+        `[MainController] Error clearing vault state for slip44 ${slip44}:`,
+        error
+      );
+      throw error;
+    }
   }
 
   public getRecommendedFee() {

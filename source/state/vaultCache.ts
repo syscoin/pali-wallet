@@ -130,6 +130,14 @@ class VaultCache {
   }
 
   /**
+   * Clear specific slip44 from cache
+   */
+  clearSlip44FromCache(slip44: number): void {
+    this.slip44Cache.delete(slip44);
+    console.log(`[VaultCache] Cleared slip44 ${slip44} from cache`);
+  }
+
+  /**
    * Emergency save before app closes/navigates away
    * Always saves everything regardless of dirty flags - better safe than sorry
    */

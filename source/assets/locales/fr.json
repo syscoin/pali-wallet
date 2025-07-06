@@ -217,7 +217,9 @@
     "hardwareWalletInstructions": "Fermez cette fenêtre et rouvrez Pali pour utiliser votre portefeuille matériel pour les transactions. Votre compte est maintenant sauvegardé et persistant.",
     "optimalExperience": "Pour une expérience optimale avec le portefeuille matériel, veuillez utiliser un écran plus grand ou agrandir la fenêtre de votre navigateur.",
     "networkNotFoundForEditing": "Réseau non trouvé pour l'édition. Veuillez actualiser et réessayer.",
-    "networkAlreadyExists": "Le réseau avec l'ID de chaîne {{chainId}} existe déjà. Veuillez utiliser un ID de chaîne différent ou modifier le réseau existant."
+    "networkAlreadyExists": "Le réseau avec l'ID de chaîne {{chainId}} existe déjà. Veuillez utiliser un ID de chaîne différent ou modifier le réseau existant.",
+    "utxoNetworkConflict": "Un réseau {{networkType}} existe déjà ({{existingNetworkName}}). Un seul réseau {{networkType}} peut être actif à la fois. Veuillez d'abord supprimer le réseau {{networkType}} existant.",
+    "confirmRemoveNetwork": "Êtes-vous sûr de vouloir supprimer le réseau \"{{networkName}}\" ?"
   },
   "components": {
     "newPassword": "Nouveau mot de passe (8 caractères min.)",
