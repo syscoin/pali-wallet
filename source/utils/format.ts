@@ -1,7 +1,8 @@
 import currency from 'currency.js';
 import format from 'date-fns/format';
 
-import { ONE_MILLION } from './constants';
+// Local constant to avoid heavy dependency chain from constants.ts
+const ONE_MILLION = 1000000;
 
 /**
  * Add `...` to shorten a string. Keeps chars at the beginning and end
