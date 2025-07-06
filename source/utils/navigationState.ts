@@ -54,7 +54,7 @@ export const saveNavigationState = async (
       timestamp: Date.now(),
     };
 
-    await chromeStorage.setItem(NAVIGATION_STATE_KEY, JSON.stringify(state));
+    await chromeStorage.setItem(NAVIGATION_STATE_KEY, state);
   } catch (error) {
     console.error('[NavigationState] Failed to save navigation state:', error);
   }
@@ -71,7 +71,7 @@ export const loadNavigationState =
         return null;
       }
 
-      const state = JSON.parse(savedState) as ISavedNavigationState;
+      const state = savedState as ISavedNavigationState;
 
       // Check if state is fresh (less than 24 hours old)
       const twentyFourHours = 24 * 60 * 60 * 1000;

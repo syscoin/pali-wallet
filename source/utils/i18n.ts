@@ -36,7 +36,7 @@ const determineLngFn = async (code: string): Promise<string> => {
       .getItem('language')
       .then((lng) => {
         try {
-          return lng ? JSON.parse(lng) : null;
+          return lng ? lng : null;
         } catch {
           return null;
         }

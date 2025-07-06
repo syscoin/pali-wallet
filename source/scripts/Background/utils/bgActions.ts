@@ -3,8 +3,7 @@ import { PaliLanguages } from 'utils/types';
 
 export const setLanguageInLocalStorage = async (lang: PaliLanguages) => {
   try {
-    const serializedState = JSON.stringify(lang);
-    await chromeStorage.setItem('language', serializedState);
+    await chromeStorage.setItem('language', lang);
   } catch (e) {
     console.error('<!> Error saving language', e);
   }

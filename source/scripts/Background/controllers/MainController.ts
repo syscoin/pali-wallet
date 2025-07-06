@@ -81,6 +81,7 @@ import { ICustomRpcParams } from 'types/transactions';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
+import { chromeStorage } from 'utils/storageAPI';
 import {
   isTransactionInBlock,
   getTransactionBlockInfo,
@@ -380,12 +381,29 @@ class MainController {
     // Ensure the target keyring exists
     let targetKeyring = this.keyrings.get(slip44);
     let keyringWasJustCreated = false;
+    let needsAccountRepair = false;
+
     if (!targetKeyring) {
       console.log('[MainController] Creating new keyring on demand');
       targetKeyring = this.createKeyringOnDemand();
       keyringWasJustCreated = true;
       // Store the new keyring immediately so it's available for subsequent operations
       this.keyrings.set(slip44, targetKeyring);
+    }
+
+    // Check if we need to repair corrupted accounts (using the flag we set earlier)
+    if (hasExistingVaultState) {
+      const { accounts } = store.getState().vault;
+
+      // Quick check for missing xpub in HD accounts
+      if (accounts.HDAccount) {
+        for (const account of Object.values(accounts.HDAccount)) {
+          if (!account.xpub || account.xpub === '') {
+            needsAccountRepair = true;
+            break;
+          }
+        }
+      }
     }
 
     // 🔥 FIX: Transfer session if switching slip44 AND any keyring is unlocked
@@ -423,8 +441,24 @@ class MainController {
           store.dispatch(setActiveSlip44(slip44));
         }
 
-        // Only create accounts if no existing vault state was rehydrated
-        if (!hasExistingVaultState) {
+        // Create accounts if no existing vault state OR if vault exists but has no accounts
+        let shouldCreateFirstAccount = !hasExistingVaultState;
+
+        if (hasExistingVaultState) {
+          // Check if the vault has any HD accounts
+          const { accounts } = store.getState().vault;
+          const hasHDAccounts =
+            accounts.HDAccount && Object.keys(accounts.HDAccount).length > 0;
+
+          if (!hasHDAccounts) {
+            console.log(
+              '[MainController] Existing vault state found but no HD accounts exist, will create first account'
+            );
+            shouldCreateFirstAccount = true;
+          }
+        }
+
+        if (shouldCreateFirstAccount) {
           // Ensure the keyring is properly unlocked before creating account
           if (!targetKeyring.isUnlocked()) {
             throw new Error(
@@ -432,7 +466,7 @@ class MainController {
             );
           }
 
-          // No existing vault state - create first account
+          // Create first account
           // Session data was already transferred, so we can create the first account directly
           const account = await targetKeyring.createFirstAccount();
           console.log(
@@ -484,6 +518,25 @@ class MainController {
 
     // Ensure the keyring is stored in the map (might have been done earlier, but be sure)
     this.keyrings.set(slip44, targetKeyring);
+
+    // Repair corrupted accounts if needed (after session transfer is complete)
+    if (needsAccountRepair && targetKeyring.isUnlocked()) {
+      console.log(
+        `[MainController] Starting account repair for slip44 ${slip44} after network switch`
+      );
+
+      try {
+        // We need the password to repair accounts, but we don't have it here
+        // Instead, we can try to repair using the existing session
+        await this.repairCorruptedAccountsWithSession(targetKeyring);
+      } catch (error) {
+        console.error(
+          `[MainController] Failed to repair accounts during network switch:`,
+          error
+        );
+        // Don't throw - continue with network switch even if repair fails
+      }
+    }
 
     // Perform deferred save of previous vault state (non-blocking)
     if (deferredSaveData) {
@@ -742,58 +795,58 @@ class MainController {
       const lockResult = await new Promise<boolean>((resolve) => {
         let retryCount = 0;
 
-        const attemptLock = () => {
-          chrome.storage.local.get([FIAT_LOCK_KEY], (storageResult) => {
-            const existing = storageResult[FIAT_LOCK_KEY];
+        const attemptLock = async () => {
+          try {
+            const storageResult = await chromeStorage.getItem(FIAT_LOCK_KEY);
+            const existing = storageResult;
             const now = Date.now();
 
             // If no lock exists or lock is expired, acquire it
             if (!existing || now - existing.timestamp > LOCK_TIMEOUT) {
               // Use a unique identifier to detect race conditions
               const lockId = `${chrome.runtime.id}-${now}-${Math.random()}`;
-              chrome.storage.local.set(
-                {
-                  [FIAT_LOCK_KEY]: {
-                    timestamp: now,
-                    instance: chrome.runtime.id,
-                    lockId,
-                  },
-                },
-                () => {
-                  // Double-check that we actually got the lock (detect race conditions)
-                  setTimeout(() => {
-                    chrome.storage.local.get([FIAT_LOCK_KEY], (doubleCheck) => {
-                      const currentLock = doubleCheck[FIAT_LOCK_KEY];
-                      if (currentLock && currentLock.lockId === lockId) {
-                        console.log(
-                          `🔓 setFiat: Acquired global lock (attempt ${
-                            retryCount + 1
-                          }), proceeding`
-                        );
-                        resolve(true);
-                      } else {
-                        console.log(
-                          `🔒 setFiat: Lost race condition (attempt ${
-                            retryCount + 1
-                          }), retrying...`
-                        );
-                        retryCount++;
-                        if (retryCount < MAX_RETRIES) {
-                          setTimeout(
-                            attemptLock,
-                            Math.floor(Math.random() * 200) + 100
-                          ); // 100-300ms delay
-                        } else {
-                          console.log(
-                            '🔒 setFiat: Max retries reached, skipping'
-                          );
-                          resolve(false);
-                        }
-                      }
-                    });
-                  }, 10); // Small delay for double-check
+              await chromeStorage.setItem(FIAT_LOCK_KEY, {
+                timestamp: now,
+                instance: chrome.runtime.id,
+                lockId,
+              });
+
+              // Double-check that we actually got the lock (detect race conditions)
+              setTimeout(async () => {
+                try {
+                  const doubleCheck = await chromeStorage.getItem(
+                    FIAT_LOCK_KEY
+                  );
+                  const currentLock = doubleCheck;
+                  if (currentLock && currentLock.lockId === lockId) {
+                    console.log(
+                      `🔓 setFiat: Acquired global lock (attempt ${
+                        retryCount + 1
+                      }), proceeding`
+                    );
+                    resolve(true);
+                  } else {
+                    console.log(
+                      `🔒 setFiat: Lost race condition (attempt ${
+                        retryCount + 1
+                      }), retrying...`
+                    );
+                    retryCount++;
+                    if (retryCount < MAX_RETRIES) {
+                      setTimeout(
+                        attemptLock,
+                        Math.floor(Math.random() * 200) + 100
+                      ); // 100-300ms delay
+                    } else {
+                      console.log('🔒 setFiat: Max retries reached, skipping');
+                      resolve(false);
+                    }
+                  }
+                } catch (error) {
+                  console.error('🔒 setFiat: Error in double-check:', error);
+                  resolve(false);
                 }
-              );
+              }, 10); // Small delay for double-check
             } else {
               console.log(
                 `🔒 setFiat: Global lock held by another instance (attempt ${
@@ -802,7 +855,10 @@ class MainController {
               );
               resolve(false);
             }
-          });
+          } catch (error) {
+            console.error('🔒 setFiat: Error in attemptLock:', error);
+            resolve(false);
+          }
         };
 
         attemptLock();
@@ -873,9 +929,12 @@ class MainController {
       }
     } finally {
       // Release global lock
-      chrome.storage.local.remove([FIAT_LOCK_KEY], () => {
+      try {
+        await chromeStorage.removeItem(FIAT_LOCK_KEY);
         console.log('🔓 setFiat: Released global lock');
-      });
+      } catch (error) {
+        console.error('🔓 setFiat: Error releasing global lock:', error);
+      }
     }
   }
 
@@ -1121,20 +1180,16 @@ class MainController {
     // Clear all vault-related storage completely
     // Remove vault from Chrome storage (both legacy and current keys)
     try {
-      await new Promise<void>((resolve) => {
-        chrome.storage.local.remove(
-          ['sysweb3-vault', 'sysweb3-vault-keys'],
-          () => {
-            resolve();
-          }
-        );
-      });
+      await chromeStorage.removeItem('sysweb3-vault');
+      await chromeStorage.removeItem('sysweb3-vault-keys');
     } catch (error) {
       console.error('Error clearing vault storage:', error);
     }
 
     // Clear all slip44-specific vault states
     try {
+      // Note: chromeStorage doesn't have a direct equivalent to chrome.storage.local.get(null)
+      // so we'll keep this as direct chrome.storage.local for now as it's a specialized operation
       const allItems = await new Promise<{ [key: string]: any }>((resolve) => {
         chrome.storage.local.get(null, (items) => {
           resolve(items);
@@ -1150,11 +1205,10 @@ class MainController {
       );
 
       if (keysToRemove.length > 0) {
-        await new Promise<void>((resolve) => {
-          chrome.storage.local.remove(keysToRemove, () => {
-            resolve();
-          });
-        });
+        // Remove keys individually using chromeStorage
+        await Promise.all(
+          keysToRemove.map((key) => chromeStorage.removeItem(key))
+        );
       }
     } catch (error) {
       console.error('Error clearing slip44 vault states:', error);
@@ -1238,6 +1292,9 @@ class MainController {
 
       console.log('[MainController] Unlock successful');
 
+      // REPAIR CHECK: Detect and fix accounts with missing xpub/xprv
+      await this.repairCorruptedAccounts();
+
       // Set flags to indicate we just unlocked and are starting up
       this.justUnlocked = true;
       this.isStartingUp = true;
@@ -1288,6 +1345,281 @@ class MainController {
     } catch (error) {
       console.error('[MainController] Unlock error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Repair corrupted accounts using an already-unlocked keyring (no password needed)
+   * This is used during network switches when we already have session data
+   */
+  private async repairCorruptedAccountsWithSession(
+    keyring: KeyringManager
+  ): Promise<void> {
+    try {
+      const { accounts } = store.getState().vault;
+
+      if (!keyring || !keyring.isUnlocked()) {
+        console.log(
+          '[MainController] Keyring not unlocked, skipping account repair'
+        );
+        return;
+      }
+
+      // Check if any HD accounts have missing xpub
+      let hasCorruptedAccounts = false;
+      if (accounts.HDAccount) {
+        for (const account of Object.values(accounts.HDAccount)) {
+          if (!account.xpub || account.xpub === '') {
+            hasCorruptedAccounts = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasCorruptedAccounts) {
+        console.log(
+          '[MainController] No corrupted accounts found, skipping repair'
+        );
+        return;
+      }
+
+      console.log(
+        '[MainController] Found corrupted HD accounts, recreating all accounts...'
+      );
+
+      // Store old account data for labels and metadata
+      const oldAccounts = { ...accounts.HDAccount };
+      const maxAccountId = Math.max(
+        ...Object.keys(oldAccounts).map((id) => parseInt(id))
+      );
+
+      console.log(
+        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
+      );
+
+      // Clear all HD accounts from Redux
+      // We'll recreate them all to ensure proper state
+      // NOTE: This only removes from Redux, not from keyring's internal state
+      // The keyring might still have references to these accounts
+      Object.keys(oldAccounts).forEach((idStr) => {
+        const id = parseInt(idStr);
+        store.dispatch(
+          removeAccount({
+            id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      });
+
+      // IMPORTANT: The keyring still has the accounts internally
+      // When we call createFirstAccount/addNewAccount, it will return existing accounts
+      // This is actually what we want - we're just refreshing the Redux state
+
+      // Recreate all accounts in order
+      for (let i = 0; i <= maxAccountId; i++) {
+        try {
+          const oldAccount = oldAccounts[i];
+          const label =
+            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
+
+          let newAccount;
+          if (i === 0) {
+            // First account
+            newAccount = await keyring.createFirstAccount();
+            // Update the label if needed
+            if (label !== 'Account 1') {
+              newAccount.label = label;
+            }
+          } else {
+            // Subsequent accounts
+            newAccount = await keyring.addNewAccount(label);
+          }
+
+          console.log(`[MainController] Recreated HD account ${i}:`, {
+            address: newAccount.address,
+            xpub: newAccount.xpub ? 'present' : 'missing',
+            label: newAccount.label,
+            oldAddress: oldAccount?.address,
+            addressMatch: newAccount.address === oldAccount?.address,
+          });
+
+          // Add the recreated account to Redux
+          store.dispatch(
+            createAccount({
+              account: newAccount,
+              accountType: KeyringAccountType.HDAccount,
+            })
+          );
+
+          // Warn if address changed (shouldn't happen with same seed)
+          if (oldAccount && newAccount.address !== oldAccount.address) {
+            console.error(
+              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `[MainController] Failed to recreate HD account ${i}:`,
+            error
+          );
+          throw error; // Stop the repair process on error
+        }
+      }
+
+      // Save the repaired wallet state
+      this.saveWalletState('repair-corrupted-accounts');
+
+      console.log('[MainController] Account repair completed successfully');
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to repair corrupted accounts:',
+        error
+      );
+      // Don't throw - we don't want to prevent network switch if repair fails
+    }
+  }
+
+  /**
+   * Detect and repair accounts with missing xpub/xprv by recreating them from the seed
+   * This handles slip44 mismatches and corrupted account states
+   */
+  private async repairCorruptedAccounts(): Promise<void> {
+    try {
+      const { accounts, activeNetwork } = store.getState().vault;
+      const keyring = this.getActiveKeyring();
+
+      if (!keyring || !keyring.isUnlocked()) {
+        console.log(
+          '[MainController] Keyring not unlocked, skipping account repair'
+        );
+        return;
+      }
+
+      // Check if any HD accounts have missing xpub
+      let hasCorruptedAccounts = false;
+      if (accounts.HDAccount) {
+        for (const account of Object.values(accounts.HDAccount)) {
+          if (!account.xpub || account.xpub === '') {
+            hasCorruptedAccounts = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasCorruptedAccounts) {
+        console.log(
+          '[MainController] No corrupted accounts found, skipping repair'
+        );
+        return;
+      }
+
+      console.log(
+        '[MainController] Found corrupted HD accounts, recreating all accounts...'
+      );
+
+      // Store old account data for labels and metadata
+      const oldAccounts = { ...accounts.HDAccount };
+      const maxAccountId = Math.max(
+        ...Object.keys(oldAccounts).map((id) => parseInt(id))
+      );
+
+      console.log(
+        `[MainController] Will recreate ${maxAccountId + 1} HD accounts`
+      );
+
+      // Clear all HD accounts from Redux
+      Object.keys(oldAccounts).forEach((idStr) => {
+        const id = parseInt(idStr);
+        store.dispatch(
+          removeAccount({
+            id,
+            type: KeyringAccountType.HDAccount,
+          })
+        );
+      });
+
+      // Recreate all accounts in order
+      for (let i = 0; i <= maxAccountId; i++) {
+        try {
+          const oldAccount = oldAccounts[i];
+          const label =
+            oldAccount?.label || (i === 0 ? 'Account 1' : `Account ${i + 1}`);
+
+          let newAccount;
+          if (i === 0) {
+            // First account
+            newAccount = await keyring.createFirstAccount();
+            // Update the label if needed
+            if (label !== 'Account 1') {
+              newAccount.label = label;
+            }
+          } else {
+            // Subsequent accounts
+            newAccount = await keyring.addNewAccount(label);
+          }
+
+          console.log(`[MainController] Recreated HD account ${i}:`, {
+            address: newAccount.address,
+            xpub: newAccount.xpub ? 'present' : 'missing',
+            label: newAccount.label,
+            oldAddress: oldAccount?.address,
+            addressMatch: newAccount.address === oldAccount?.address,
+          });
+
+          // Add the recreated account to Redux
+          store.dispatch(
+            createAccount({
+              account: newAccount,
+              accountType: KeyringAccountType.HDAccount,
+            })
+          );
+
+          // Warn if address changed (shouldn't happen with same seed)
+          if (oldAccount && newAccount.address !== oldAccount.address) {
+            console.error(
+              `[MainController] WARNING: Address mismatch for account ${i}! Old: ${oldAccount.address}, New: ${newAccount.address}`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `[MainController] Failed to recreate HD account ${i}:`,
+            error
+          );
+          throw error; // Stop the repair process on error
+        }
+      }
+
+      // Handle imported accounts separately - we can't repair these without private keys
+      if (accounts.Imported) {
+        let hasCorruptedImported = false;
+        for (const account of Object.values(accounts.Imported)) {
+          if (!account.xpub || account.xpub === '') {
+            hasCorruptedImported = true;
+            break;
+          }
+        }
+
+        if (hasCorruptedImported) {
+          console.warn(
+            '[MainController] Found corrupted imported accounts - these cannot be auto-repaired without private keys'
+          );
+        }
+      }
+
+      // Ensure the active keyring network matches the current network
+      await keyring.setSignerNetwork(activeNetwork as any);
+
+      // Save the repaired wallet state
+      this.saveWalletState('repair-corrupted-accounts');
+
+      console.log('[MainController] Account repair completed successfully');
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to repair corrupted accounts:',
+        error
+      );
+      // Don't throw - we don't want to prevent unlock if repair fails
+      // The wallet might still be usable even with some corrupted accounts
     }
   }
 
@@ -1419,10 +1751,19 @@ class MainController {
   }
 
   public async createAccount(label?: string): Promise<IKeyringAccountState> {
-    const newAccount = await this.getActiveKeyring().addNewAccount(label);
+    const keyring = this.getActiveKeyring();
+    const newAccount = await keyring.addNewAccount(label);
 
     // Validate account creation was successful before storing in Redux
     if (!newAccount.address || !newAccount.xpub) {
+      console.error(
+        '[MainController] Account creation returned invalid data:',
+        {
+          hasAddress: !!newAccount.address,
+          hasXpub: !!newAccount.xpub,
+          keyringUnlocked: keyring.isUnlocked(),
+        }
+      );
       throw new Error(
         'Account creation failed: invalid account data returned from keyring'
       );
@@ -1443,6 +1784,24 @@ class MainController {
 
     // Save wallet state after creating account
     this.saveWalletState('create-account');
+
+    // Double-check the account was stored correctly
+    const { accounts } = store.getState().vault;
+    const storedAccount = accounts.HDAccount[newAccount.id];
+    if (!storedAccount?.xpub) {
+      console.error(
+        '[MainController] WARNING: Account stored without xpub, attempting repair...'
+      );
+      // Attempt immediate repair
+      store.dispatch(
+        setAccountPropertyByIdAndType({
+          id: newAccount.id,
+          type: KeyringAccountType.HDAccount,
+          property: 'xpub',
+          value: newAccount.xpub,
+        })
+      );
+    }
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true); // Force update after account creation
@@ -2081,11 +2440,7 @@ class MainController {
     try {
       // Clear the vault state from storage
       const storageKey = `state-vault-${slip44}`;
-      await new Promise<void>((resolve) => {
-        chrome.storage.local.remove([storageKey], () => {
-          resolve();
-        });
-      });
+      await chromeStorage.removeItem(storageKey);
 
       // Clear from vault cache as well
       vaultCache.clearSlip44FromCache(slip44);

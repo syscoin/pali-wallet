@@ -1,6 +1,8 @@
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { coins as utxoCoins, retryableFetch } from '@pollum-io/sysweb3-network';
 
+import { chromeStorage } from 'utils/storageAPI';
+
 interface IChainInfo {
   chain: INetworkType;
   chainId: number;
@@ -160,43 +162,29 @@ class ChainListService {
     data: IChainInfo[];
     timestamp: number;
   } | null> {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(this.STORAGE_KEY, (result) => {
-        if (result[this.STORAGE_KEY]) {
-          resolve(result[this.STORAGE_KEY]);
-        } else {
-          resolve(null);
-        }
-      });
-    });
+    try {
+      const result = await chromeStorage.getItem(this.STORAGE_KEY);
+      return result || null;
+    } catch (error) {
+      console.error('[ChainListService] Failed to load from cache:', error);
+      return null;
+    }
   }
 
   private async saveToCache(
     data: IChainInfo[],
     timestamp: number
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.set(
-        {
-          [this.STORAGE_KEY]: { data, timestamp },
-        },
-        () => {
-          if (chrome.runtime.lastError) {
-            console.error(
-              '[ChainListService] Failed to save chain data to cache:',
-              chrome.runtime.lastError.message
-            );
-            reject(new Error(chrome.runtime.lastError.message));
-            return;
-          }
-
-          console.log(
-            '[ChainListService] Successfully saved chain data to cache'
-          );
-          resolve();
-        }
+    try {
+      await chromeStorage.setItem(this.STORAGE_KEY, { data, timestamp });
+      console.log('[ChainListService] Successfully saved chain data to cache');
+    } catch (error) {
+      console.error(
+        '[ChainListService] Failed to save chain data to cache:',
+        error
       );
-    });
+      throw error;
+    }
   }
 
   private isCacheValid(timestamp: number): boolean {

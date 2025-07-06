@@ -12,6 +12,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { CHAIN_IDS } from 'utils/constants';
 import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
+import { chromeStorage } from 'utils/storageAPI';
 
 import { popupPromise } from './popup-promise';
 
@@ -522,10 +523,8 @@ export const enable = async (
   const { dapp, wallet } = getController();
   const isConnected = dapp.isConnected(host);
   const isUnlocked = wallet.isUnlocked();
-  const storage = await new Promise<{ isPopupOpen?: boolean }>((resolve) => {
-    chrome.storage.local.get('isPopupOpen', resolve);
-  });
-  const { isPopupOpen } = storage;
+  const storage = await chromeStorage.getItem('isPopupOpen');
+  const isPopupOpen = storage;
 
   if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({

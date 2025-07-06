@@ -24,7 +24,7 @@ const Languages = () => {
     const fetchLanguage = async () => {
       const storedLang = await chromeStorage
         .getItem('language')
-        .then((state) => JSON.parse(state));
+        .then((state) => state);
       const currentLang = storedLang ?? PaliLanguages.EN;
       setSavedLang(currentLang);
       setSelectedLang(currentLang); // Initialize preview with saved value

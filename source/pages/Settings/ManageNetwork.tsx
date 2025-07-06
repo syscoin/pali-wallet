@@ -18,10 +18,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { truncate } from 'utils/index';
-import {
-  createNavigationContext,
-  navigateWithContext,
-} from 'utils/navigationState';
+import { navigateWithContext } from 'utils/navigationState';
 
 const ManageNetworkView = () => {
   const networks = useSelector(

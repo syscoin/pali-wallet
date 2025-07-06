@@ -28,10 +28,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ellipsis } from 'utils/index';
-import {
-  createNavigationContext,
-  navigateWithContext,
-} from 'utils/navigationState';
+import { navigateWithContext } from 'utils/navigationState';
 
 // Static account type configuration to prevent recreation
 const ACCOUNT_TYPE_CONFIG = {

@@ -2,8 +2,7 @@ import { chromeStorage } from 'utils/storageAPI';
 
 export const saveState = async (appState: any) => {
   try {
-    const serializedState = JSON.stringify(appState);
-    await chromeStorage.setItem('state', serializedState);
+    await chromeStorage.setItem('state', appState);
   } catch (e) {
     console.error('<!> Error saving state', e);
   }
@@ -11,8 +10,7 @@ export const saveState = async (appState: any) => {
 
 export const saveSlip44State = async (slip44: number, vaultState: any) => {
   try {
-    const serializedState = JSON.stringify(vaultState);
-    await chromeStorage.setItem(`state-vault-${slip44}`, serializedState);
+    await chromeStorage.setItem(`state-vault-${slip44}`, vaultState);
   } catch (error) {
     console.error(
       `[PaliStorage] ❌ Failed to save slip44 vault ${slip44}:`,
@@ -28,7 +26,7 @@ export const loadState = async () => {
     if (serializedState === null) {
       return undefined;
     }
-    return JSON.parse(serializedState);
+    return serializedState;
   } catch (e) {
     console.error('<!> Error getting state', e);
     return null;
@@ -42,8 +40,7 @@ export const loadSlip44State = async (slip44: number) => {
     );
 
     if (serializedState) {
-      const parsedState = JSON.parse(serializedState);
-      return parsedState;
+      return serializedState;
     } else {
       return null;
     }
@@ -53,35 +50,6 @@ export const loadSlip44State = async (slip44: number) => {
       error
     );
     return null;
-  }
-};
-
-export const loadAllSlip44States = async () => {
-  try {
-    const allItems = await new Promise<{ [key: string]: any }>((resolve) => {
-      chrome.storage.local.get(null, (items) => {
-        resolve(items);
-      });
-    });
-
-    const slip44States: { [slip44: number]: any } = {};
-
-    Object.keys(allItems).forEach((key) => {
-      const match = key.match(/^state-vault-(\d+)$/);
-      if (match) {
-        const slip44 = parseInt(match[1], 10);
-        try {
-          slip44States[slip44] = JSON.parse(allItems[key]);
-        } catch (e) {
-          console.error(`Failed to parse state for slip44 ${slip44}`, e);
-        }
-      }
-    });
-
-    return slip44States;
-  } catch (e) {
-    console.error('<!> Error loading all slip44 states', e);
-    return {};
   }
 };
 

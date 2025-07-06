@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
-import { Button, Tooltip } from 'components/index';
+import { Button } from 'components/index';
 import { RootState } from 'state/store';
 
 import { AssetsPanel, TransactionsPanel } from './Panel/index';
