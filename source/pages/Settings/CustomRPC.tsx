@@ -1330,7 +1330,11 @@ const CustomRPCView = () => {
               >
                 {t('buttons.cancel')}
               </SecondaryButton>
-              <PrimaryButton type="submit" disabled={loading} loading={loading}>
+              <PrimaryButton
+                type="submit"
+                disabled={loading || testingRpcs}
+                loading={loading || testingRpcs}
+              >
                 {t('buttons.save')}
               </PrimaryButton>
             </div>
@@ -1338,8 +1342,8 @@ const CustomRPCView = () => {
             <div className="max-w-md mx-auto">
               <NeutralButton
                 type="submit"
-                disabled={loading}
-                loading={loading}
+                disabled={loading || testingRpcs}
+                loading={loading || testingRpcs}
                 fullWidth
               >
                 {t('buttons.save')}
