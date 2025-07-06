@@ -6,6 +6,8 @@ import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { FiCopy as CopyIcon } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 
+import { retryableFetch } from '@pollum-io/sysweb3-network';
+
 import { NeutralButton } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
@@ -130,7 +132,7 @@ export const SyscoinAssetDetails = ({
           );
 
           // Fetch token details from CoinGecko
-          const response = await fetch(
+          const response = await retryableFetch(
             `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
           );
 

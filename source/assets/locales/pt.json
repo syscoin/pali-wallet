@@ -349,6 +349,8 @@
     "rpcUrlPlaceholder": "URL do RPC",
     "chainIdAutoDetectedUtxo": "Chain ID (detectado automaticamente)",
     "chainIdAutoDetectedEvm": "Chain ID (detectado automaticamente)",
+    "chainIdCannotBeEdited": "Chain ID (não pode ser editado)",
+    "chainIdCustomEvm": "Chain ID (ex: 1 para Ethereum, 56 para BSC)",
     "blockExplorerApiUrl": "URL da API do Explorador de Blocos (opcional)",
     "explorerUrlRequired": "URL do explorador é obrigatória",
     "testingRpcProgress": "Testando RPC {{current}} de {{total}}",

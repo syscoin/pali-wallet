@@ -141,6 +141,8 @@
     "rpcUrlPlaceholder": "RPC URL",
     "chainIdAutoDetectedUtxo": "Chain ID（自動検出）",
     "chainIdAutoDetectedEvm": "Chain ID（自動検出）",
+    "chainIdCannotBeEdited": "Chain ID（編集不可）",
+    "chainIdCustomEvm": "Chain ID（例：Ethereumは1、BSCは56）",
     "blockExplorerApiUrl": "ブロックエクスプローラーAPI URL（オプション）",
     "explorerUrlRequired": "エクスプローラーURLが必要です",
     "testingRpcProgress": "RPC {{current}} / {{total}}をテスト中",

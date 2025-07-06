@@ -1,3 +1,5 @@
+import { retryableFetch } from '@pollum-io/sysweb3-network';
+
 import ChainListService from 'scripts/Background/controllers/chainlist';
 
 // Cache for chain icons to avoid repeated lookups
@@ -46,7 +48,7 @@ export const getChainIconUrl = async (
 
       for (const iconUrl of iconSources) {
         try {
-          const response = await fetch(iconUrl, { method: 'HEAD' });
+          const response = await retryableFetch(iconUrl, { method: 'HEAD' });
           if (response.ok) {
             chainIconCache[chainId] = iconUrl;
             return iconUrl;

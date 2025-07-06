@@ -141,6 +141,8 @@
     "rpcUrlPlaceholder": "RPC-URL",
     "chainIdAutoDetectedUtxo": "Chain ID (automatisch erkannt)",
     "chainIdAutoDetectedEvm": "Chain ID (automatisch erkannt)",
+    "chainIdCannotBeEdited": "Chain ID (kann nicht bearbeitet werden)",
+    "chainIdCustomEvm": "Chain ID (z.B.: 1 für Ethereum, 56 für BSC)",
     "blockExplorerApiUrl": "Block-Explorer-API-URL (optional)",
     "explorerUrlRequired": "Explorer-URL ist erforderlich",
     "testingRpcProgress": "Teste RPC {{current}} von {{total}}",

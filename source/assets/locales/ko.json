@@ -141,6 +141,8 @@
     "rpcUrlPlaceholder": "RPC URL (예: https://rpc.example.com)",
     "chainIdAutoDetectedUtxo": "Chain ID / slip44 (자동 감지)",
     "chainIdAutoDetectedEvm": "Chain ID (RPC에서 자동 감지)",
+    "chainIdCannotBeEdited": "Chain ID (편집할 수 없음)",
+    "chainIdCustomEvm": "Chain ID (예: 이더리움은 1, BSC는 56)",
     "blockExplorerApiUrl": "블록 탐색기 API URL (선택사항)",
     "explorerUrlRequired": "탐색기 URL이 필요합니다",
     "testingRpcProgress": "RPC {{current}} / {{total}} 테스트 중",

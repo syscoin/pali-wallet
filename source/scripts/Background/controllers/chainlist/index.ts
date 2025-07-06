@@ -1,5 +1,5 @@
 import { INetworkType } from '@pollum-io/sysweb3-network';
-import { coins as utxoCoins } from '@pollum-io/sysweb3-network';
+import { coins as utxoCoins, retryableFetch } from '@pollum-io/sysweb3-network';
 
 interface IChainInfo {
   chain: INetworkType;
@@ -231,7 +231,7 @@ class ChainListService {
 
   private async _fetchData(): Promise<IChainInfo[]> {
     try {
-      const response = await fetch(this.CHAINLIST_URL, {
+      const response = await retryableFetch(this.CHAINLIST_URL, {
         headers: {
           Accept: 'application/json',
           'Cache-Control': 'no-cache',

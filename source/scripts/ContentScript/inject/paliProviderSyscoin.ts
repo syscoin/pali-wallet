@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetworkType, retryableFetch } from '@pollum-io/sysweb3-network';
 import { isNFT as _isNFT } from '@pollum-io/sysweb3-utils';
 
 import { ISysAssetMetadata } from 'types/tokens';
@@ -279,9 +279,10 @@ export class PaliInpageProviderSys extends BaseProvider {
     let checkExplorer = false;
     try {
       //Only blockbook endpoints are accepted for UTXO chains
-      const rpcoutput = await (
-        await fetch(this._sysState.blockExplorerURL + '/api/v2')
-      ).json();
+      const response = await retryableFetch(
+        this._sysState.blockExplorerURL + '/api/v2'
+      );
+      const rpcoutput = await response.json();
       // Check if it's a valid blockbook endpoint (supports any UTXO coin)
       checkExplorer = Boolean(rpcoutput.blockbook && rpcoutput.blockbook.coin);
     } catch (e) {

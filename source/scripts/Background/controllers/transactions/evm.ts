@@ -1,5 +1,5 @@
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
+import { INetworkType, retryableFetch } from '@pollum-io/sysweb3-network';
 
 import store from 'state/store';
 
@@ -45,7 +45,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         url.searchParams.set('apikey', existingApiKey);
       }
 
-      const blockResponse = await fetch(url.toString(), {
+      const blockResponse = await retryableFetch(url.toString(), {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -77,7 +77,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('module', 'proxy');
       url.searchParams.set('action', 'eth_blockNumber');
 
-      const proxyResponse = await fetch(url.toString(), {
+      const proxyResponse = await retryableFetch(url.toString(), {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -336,7 +336,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         apiKey ? `&apikey=${apiKey}` : ''
       }`;
 
-      const response = await fetch(apiEndpoint);
+      const response = await retryableFetch(apiEndpoint);
       const data = await response.json();
 
       if (data.status === '1' && data.result) {

@@ -14,6 +14,7 @@ import {
   INetwork,
   INetworkType,
   clearRpcCaches,
+  retryableFetch,
 } from '@pollum-io/sysweb3-network';
 import { txUtils } from '@pollum-io/sysweb3-utils';
 
@@ -181,7 +182,7 @@ class MainController {
       } else {
         // Fallback: check if we can determine from vault state
         const vaultState = store.getState().vault;
-        if (vaultState?.activeNetwork?.slip44) {
+        if (vaultState?.activeNetwork?.slip44 !== undefined) {
           initialSlip44 = vaultState.activeNetwork.slip44;
         } else if (
           vaultState &&
@@ -1948,7 +1949,10 @@ class MainController {
   }
 
   public async editCustomRpc(network: INetwork): Promise<INetwork> {
+    // Update the network in the global networks store
+    // The setNetwork reducer will automatically preserve CoinGecko IDs and other metadata
     store.dispatch(setNetwork({ network, isEdit: true }));
+
     // Save wallet state after editing network
     this.saveWalletState('edit-network');
     return network;
@@ -3653,9 +3657,10 @@ class MainController {
 
     try {
       const activeNetworkURL = ensureTrailingSlash(networkUrl);
-      const currencies = await (
-        await fetch(`${activeNetworkURL}${ASSET_PRICE_API}`)
-      ).json();
+      const response = await retryableFetch(
+        `${activeNetworkURL}${ASSET_PRICE_API}`
+      );
+      const currencies = await response.json();
 
       if (currencies && currencies.rates && currencies.rates[currency]) {
         const result = {

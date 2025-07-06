@@ -1,5 +1,6 @@
 import InputDataDecoder from 'ethereum-input-data-decoder';
 
+import { retryableFetch } from '@pollum-io/sysweb3-network';
 import { getErc20Abi } from '@pollum-io/sysweb3-utils';
 
 import { ITransactionParams } from 'types/transactions';
@@ -14,7 +15,7 @@ export const fetchFunctionSignature = async (
   methodId: string
 ): Promise<string | null> => {
   try {
-    const response = await fetch(
+    const response = await retryableFetch(
       `https://www.4byte.directory/api/v1/signatures/?hex_signature=${methodId}`
     );
     const data = await response.json();

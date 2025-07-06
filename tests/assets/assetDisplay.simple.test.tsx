@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import React from 'react';
 import { Provider } from 'react-redux';
 import '@testing-library/jest-dom';
@@ -87,13 +87,13 @@ describe('Asset Display Simple Tests', () => {
       },
     });
 
-    render(
+    const { getByText } = render(
       <Provider store={store}>
         <TestComponent />
       </Provider>
     );
 
-    expect(screen.getByText('Test Component')).toBeInTheDocument();
+    expect(getByText('Test Component')).toBeInTheDocument();
   });
 
   it('should handle mock data correctly', () => {

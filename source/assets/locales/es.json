@@ -365,6 +365,8 @@
     "rpcUrlPlaceholder": "URL de RPC (ej. https://rpc.example.com)",
     "chainIdAutoDetectedUtxo": "Chain ID / slip44 (detectado automáticamente)",
     "chainIdAutoDetectedEvm": "Chain ID (detectado automáticamente desde RPC)",
+    "chainIdCannotBeEdited": "Chain ID (no se puede editar)",
+    "chainIdCustomEvm": "Chain ID (ej: 1 para Ethereum, 56 para BSC)",
     "blockExplorerApiUrl": "URL de API del Explorador de Bloques (opcional)",
     "explorerUrlRequired": "Se requiere URL del explorador",
     "testingRpcProgress": "Probando RPC {{current}} de {{total}}",

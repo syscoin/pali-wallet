@@ -265,7 +265,7 @@ const CustomRPCView = () => {
       const rpcParams = {
         url: rpcUrl.trim(),
         label: formData?.label || '',
-        symbol: isSyscoinRpc ? '' : formData?.symbol || '',
+        symbol: formData?.symbol || '',
         explorer: isSyscoinRpc ? rpcUrl.trim() : formData?.explorer || '',
         apiUrl: isSyscoinRpc ? '' : formData?.apiUrl || '',
         chainId: formData?.chainId || '',
@@ -283,22 +283,54 @@ const CustomRPCView = () => {
 
       // Auto-fill chainId from RPC validation
       if (network.chainId && !state?.selected) {
-        // Not in edit mode, update the chainId field with the detected value
-        form.setFieldsValue({
-          chainId: network.chainId.toString(),
-        });
+        // For UTXO networks, always auto-fill chainId
+        // For EVM networks, only auto-fill if user hasn't provided one
+        const chainIdString = String(formData?.chainId || '').trim();
+        const shouldAutoFillChainId = isSyscoinRpc || !chainIdString;
+
+        if (shouldAutoFillChainId) {
+          form.setFieldsValue({
+            chainId: network.chainId.toString(),
+          });
+        }
       }
 
-      // Auto-fill label from coin data for UTXO networks
+      // Auto-fill label and symbol from coin data for UTXO networks
       if (isSyscoinRpc && network.label && !formData?.label?.trim()) {
         form.setFieldsValue({
           label: network.label,
         });
       }
 
+      // Auto-fill symbol from coin data for UTXO networks if not provided
+      if (isSyscoinRpc && network.currency) {
+        const currentSymbol = String(formData?.symbol || '').trim();
+        if (!currentSymbol) {
+          form.setFieldsValue({
+            symbol: network.currency.toUpperCase(),
+          });
+        }
+      }
+
       // For edit mode, verify chainId matches
       if (state?.selected && network.chainId !== state.selected.chainId) {
         throw new Error(t('settings.networkMismatch'));
+      }
+
+      // For EVM networks in create mode, validate user-provided chainId matches RPC
+      if (!isSyscoinRpc && !state?.selected && formData?.chainId) {
+        const chainIdString = String(formData.chainId).trim();
+        if (chainIdString) {
+          const userProvidedChainId = parseInt(chainIdString, 10);
+          if (
+            !isNaN(userProvidedChainId) &&
+            network.chainId !== userProvidedChainId
+          ) {
+            throw new Error(
+              `Chain ID mismatch: RPC reports ${network.chainId}, but you entered ${userProvidedChainId}`
+            );
+          }
+        }
       }
 
       return network;
@@ -355,10 +387,15 @@ const CustomRPCView = () => {
 
     // Prepare data for UTXO networks - set appropriate defaults
     if (isSyscoinRpc) {
-      data.symbol = ''; // UTXO networks don't need symbol
+      // Keep the symbol as provided - it's required and should be auto-filled
       data.explorer = data.url; // For UTXO, the Blockbook URL is the explorer
       data.apiUrl = ''; // UTXO networks don't use separate API URLs
-      data.chainId = 0; // Will be auto-detected
+      data.chainId = 0; // Will be auto-detected for UTXO
+    } else {
+      // For EVM networks, ensure chainId is a number
+      if (typeof data.chainId === 'string') {
+        data.chainId = parseInt(data.chainId, 10);
+      }
     }
 
     // Validate RPC URL and get network configuration
@@ -473,7 +510,7 @@ const CustomRPCView = () => {
     label: currentNetwork?.label ?? '',
     url: currentNetwork?.url ?? '',
     chainId: currentNetwork?.chainId ?? '',
-    symbol: isSyscoinRpc ? '' : currentNetwork?.currency?.toUpperCase() ?? '',
+    symbol: currentNetwork?.currency?.toUpperCase() ?? '',
     explorer: isSyscoinRpc
       ? currentNetwork?.url ?? ''
       : currentNetwork?.explorer ?? '',
@@ -508,24 +545,26 @@ const CustomRPCView = () => {
     loadChains();
   }, [isSyscoinRpc]); // Reload when network type changes
 
-  // Update form when Redux state changes (for editing mode)
+  // Track if we've already initialized the form to prevent overriding user changes
+  const [formInitialized, setFormInitialized] = useState(false);
+
+  // Update form when Redux state changes (for editing mode) - only once on initial load
   useEffect(() => {
-    if (currentNetwork && state?.isEditing) {
+    if (currentNetwork && state?.isEditing && !formInitialized) {
       const formValues = {
         label: currentNetwork?.label ?? '',
         url: currentNetwork?.url ?? '',
         chainId: currentNetwork?.chainId ?? '',
-        symbol: isSyscoinRpc
-          ? ''
-          : currentNetwork?.currency?.toUpperCase() ?? '',
+        symbol: currentNetwork?.currency?.toUpperCase() ?? '',
         explorer: isSyscoinRpc
           ? currentNetwork?.url ?? ''
           : currentNetwork?.explorer ?? '',
         apiUrl: isSyscoinRpc ? '' : currentNetwork?.apiUrl ?? '',
       };
       form.setFieldsValue(formValues);
+      setFormInitialized(true);
     }
-  }, [currentNetwork, form, state?.isEditing]);
+  }, [currentNetwork, form, state?.isEditing, formInitialized, isSyscoinRpc]);
 
   // Simplified - no form change tracking needed
 
@@ -613,12 +652,21 @@ const CustomRPCView = () => {
     // Clear suggestions immediately to close dropdown
     setNetworkSuggestions([]);
 
-    // Fill form fields immediately for instant UX with uppercase symbol
-    form.setFieldsValue({
+    // Get current symbol to preserve user input
+    const currentSymbol = form.getFieldValue('symbol');
+
+    // Fill form fields immediately for instant UX, preserving custom symbol if set
+    const formValues: any = {
       label: chain.name,
       chainId: chain.chainId.toString(),
-      symbol: chain.nativeCurrency.symbol.toUpperCase(),
-    });
+    };
+
+    // Only auto-fill symbol if user hasn't entered a custom one
+    if (!currentSymbol || !String(currentSymbol).trim()) {
+      formValues.symbol = chain.nativeCurrency.symbol.toUpperCase();
+    }
+
+    form.setFieldsValue(formValues);
 
     // For EVM networks, also set explorer
     if (!isSyscoinRpc) {
@@ -1119,23 +1167,47 @@ const CustomRPCView = () => {
           className="md:w-full"
           rules={[
             {
-              required: false,
+              required: !isSyscoinRpc && !state?.isEditing,
               message: t('settings.chainIdRequired'),
             },
+            // Add validation for EVM chainId format
+            ...(!isSyscoinRpc && !state?.isEditing
+              ? [
+                  {
+                    validator: (_, value) => {
+                      if (!value || value.trim() === '') {
+                        return Promise.resolve();
+                      }
+                      const chainId = parseInt(value.trim());
+                      if (isNaN(chainId) || chainId <= 0) {
+                        return Promise.reject(
+                          new Error('Chain ID must be a positive number')
+                        );
+                      }
+                      return Promise.resolve();
+                    },
+                  },
+                ]
+              : []),
           ]}
         >
           <Input
             type="text"
-            readOnly={true}
-            placeholder={t(
+            readOnly={isSyscoinRpc || state?.isEditing}
+            placeholder={
               isSyscoinRpc
-                ? 'settings.chainIdAutoDetectedUtxo'
-                : 'settings.chainIdAutoDetectedEvm'
-            )}
+                ? t('settings.chainIdAutoDetectedUtxo')
+                : state?.isEditing
+                ? t('settings.chainIdCannotBeEdited')
+                : t('settings.chainIdCustomEvm')
+            }
             className="custom-input-normal relative"
             style={{
-              cursor: 'not-allowed',
-              backgroundColor: 'rgba(255,255,255,0.05)',
+              cursor: isSyscoinRpc || state?.isEditing ? 'not-allowed' : 'text',
+              backgroundColor:
+                isSyscoinRpc || state?.isEditing
+                  ? 'rgba(255,255,255,0.05)'
+                  : 'transparent',
             }}
           />
         </Form.Item>

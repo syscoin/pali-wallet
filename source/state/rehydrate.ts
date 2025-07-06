@@ -43,7 +43,7 @@ export const rehydrateStore = async (
         // Background context: Need to load slip44-specific vault from storage
         const targetSlip44 = slip44 ?? storageState.vaultGlobal?.activeSlip44;
 
-        if (targetSlip44) {
+        if (targetSlip44 !== null && targetSlip44 !== undefined) {
           console.log(
             `[Rehydrate] Loading slip44 vault using centralized function: ${targetSlip44}`
           );

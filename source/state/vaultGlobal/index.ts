@@ -160,7 +160,7 @@ const vaultGlobalSlice = createSlice({
       }
 
       if (isEdit) {
-        // Find and update existing network
+        // Find and update existing network, preserving metadata
         const chainType = network.kind;
         const networks =
           chainType === INetworkType.Ethereum
@@ -168,7 +168,19 @@ const vaultGlobalSlice = createSlice({
             : state.networks.syscoin;
 
         if (networks && networks[network.chainId]) {
-          networks[network.chainId] = network;
+          const existingNetwork = networks[network.chainId];
+
+          // Merge new network data with existing metadata
+          networks[network.chainId] = {
+            ...network,
+            // Preserve CoinGecko IDs and other metadata if they exist
+            ...(existingNetwork.coingeckoId && {
+              coingeckoId: existingNetwork.coingeckoId,
+            }),
+            ...(existingNetwork.coingeckoPlatformId && {
+              coingeckoPlatformId: existingNetwork.coingeckoPlatformId,
+            }),
+          };
         }
       } else {
         // Add new network

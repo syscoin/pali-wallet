@@ -5,6 +5,7 @@ import isNil from 'lodash/isNil';
 
 import { CustomJsonRpcProvider } from '@pollum-io/sysweb3-keyring';
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
+import { retryableFetch } from '@pollum-io/sysweb3-network';
 import {
   contractChecker,
   getErc20Abi,
@@ -97,7 +98,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       const tokenListUrl = `${baseUrl}/api?module=account&action=tokenlist&address=${walletAddress}&apikey=${apiKey}`;
 
-      const response = await fetch(tokenListUrl);
+      const response = await retryableFetch(tokenListUrl);
 
       if (!response.ok) {
         console.warn(
@@ -305,7 +306,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
     try {
       // Use the network's coingeckoId directly - it should be the native token's ID
-      const priceResponse = await fetch(
+      const priceResponse = await retryableFetch(
         `https://api.coingecko.com/api/v3/simple/price?ids=${network.coingeckoId}&vs_currencies=${currency}&include_24hr_change=true`
       );
 
@@ -381,7 +382,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       );
 
       // Query asset platforms from CoinGecko
-      const platformsResponse = await fetch(
+      const platformsResponse = await retryableFetch(
         'https://api.coingecko.com/api/v3/asset_platforms'
       );
 
@@ -843,7 +844,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
         if (currentPlatform) {
           // Check if token exists in CoinGecko
-          const response = await fetch(
+          const response = await retryableFetch(
             `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
           );
 
@@ -941,7 +942,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         }
 
         // Only fetch market data from CoinGecko
-        const response = await fetch(
+        const response = await retryableFetch(
           `https://api.coingecko.com/api/v3/coins/${currentPlatform}/contract/${contractAddress}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
         );
 

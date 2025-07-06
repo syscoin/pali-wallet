@@ -141,6 +141,8 @@
     "rpcUrlPlaceholder": "RPC URL（例如：https://rpc.example.com）",
     "chainIdAutoDetectedUtxo": "Chain ID / slip44（自动检测）",
     "chainIdAutoDetectedEvm": "Chain ID（从RPC自动检测）",
+    "chainIdCannotBeEdited": "Chain ID（无法编辑）",
+    "chainIdCustomEvm": "Chain ID（例如：以太坊为1，BSC为56）",
     "blockExplorerApiUrl": "区块浏览器API URL（可选）",
     "explorerUrlRequired": "需要浏览器URL",
     "testingRpcProgress": "正在测试RPC {{current}} / {{total}}",

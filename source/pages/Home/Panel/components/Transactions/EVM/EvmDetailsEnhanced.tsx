@@ -3,6 +3,8 @@ import React, { Fragment, useEffect, useState, memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { retryableFetch } from '@pollum-io/sysweb3-network';
+
 import {
   EvmTxDetailsLabelsToKeep,
   EnhancedEvmTxDetailsLabelsToKeep,
@@ -143,7 +145,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
           apiKey ? `&apikey=${apiKey}` : ''
         }`;
 
-        const response = await fetch(apiEndpoint);
+        const response = await retryableFetch(apiEndpoint);
         const data = await response.json();
 
         if (data.status === '1' && data.result) {
