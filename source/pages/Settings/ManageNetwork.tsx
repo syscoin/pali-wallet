@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { INetwork } from '@pollum-io/sysweb3-network';
@@ -24,9 +25,25 @@ const ManageNetworkView = () => {
     (state: RootState) => state.vault.activeNetwork
   );
   const { t } = useTranslation();
+  const location = useLocation();
 
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
+
+  // Ref for the scrollable ul element
+  const scrollContainerRef = useRef<HTMLUListElement>(null);
+
+  // Custom scroll restoration for the ul element
+  useEffect(() => {
+    if (
+      location.state?.fromNavigation &&
+      location.state?.scrollPosition !== undefined
+    ) {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = location.state.scrollPosition;
+      }
+    }
+  }, [location.state]);
 
   const removeNetwork = async (
     chain: INetworkType,
@@ -49,8 +66,14 @@ const ManageNetworkView = () => {
     isDefault: boolean;
     selected: INetwork;
   }) => {
-    // Create navigation context to return to manage networks
-    const returnContext = createNavigationContext('/settings/networks/edit');
+    // Create navigation context with scroll position from the ul element
+    const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
+
+    const returnContext = {
+      returnRoute: '/settings/networks/edit',
+      scrollPosition,
+      componentState: undefined,
+    };
 
     navigateWithContext(
       navigate,
@@ -62,7 +85,10 @@ const ManageNetworkView = () => {
 
   return (
     <>
-      <ul className=" mb-4 w-full h-85 text-sm overflow-auto md:h-96">
+      <ul
+        ref={scrollContainerRef}
+        className=" mb-4 w-full h-85 text-sm overflow-auto md:h-96"
+      >
         <p className="pb-3 pt-1 text-center tracking-[0.2rem] text-brand-white  text-xs font-semibold bg-transparent border-b-2 border-brand-pink200">
           UTXO
         </p>

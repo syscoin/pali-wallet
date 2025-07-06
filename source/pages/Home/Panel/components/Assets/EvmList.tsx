@@ -20,11 +20,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ITokenEthProps } from 'types/tokens';
-import {
-  truncate,
-  createNavigationContext,
-  navigateWithContext,
-} from 'utils/index';
+import { truncate, navigateWithContext } from 'utils/index';
 
 import { AssetsHeader } from './AssetsHeader';
 
@@ -149,11 +145,15 @@ const DefaultEvmAssets = ({
   };
 
   const handleAssetClick = (token: ITokenEthProps) => {
-    const returnContext = createNavigationContext(
-      '/home',
-      searchParams.get('tab') || 'assets',
-      componentState
-    );
+    // Capture current scroll position
+    const scrollPosition = window.scrollY || 0;
+
+    const returnContext = {
+      returnRoute: '/home',
+      tab: searchParams.get('tab') || 'assets',
+      scrollPosition,
+      componentState,
+    };
 
     navigateWithContext(
       navigate,
@@ -315,11 +315,18 @@ export const EvmAssetsList = () => {
   const loadingValidation =
     (isCoinSelected && isLoadingAssets) || isNetworkChanging;
 
-  // Clear navigation state when component mounts with navigation state
+  // Handle navigation state restoration and cleanup
   useEffect(() => {
-    if (location.state?.fromNavigation && location.state?.componentState) {
+    if (location.state?.fromNavigation) {
+      // Restore scroll position if available
+      if (location.state?.scrollPosition !== undefined) {
+        window.scrollTo(0, location.state.scrollPosition);
+      }
+
       // Clear the navigation state to prevent re-applying on subsequent renders
-      window.history.replaceState({}, document.title);
+      if (location.state?.componentState) {
+        window.history.replaceState({}, document.title);
+      }
     }
   }, [location.state]);
 

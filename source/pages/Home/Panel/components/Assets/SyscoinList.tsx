@@ -1,10 +1,16 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useMemo, useCallback, useState } from 'react';
+import React, {
+  Fragment,
+  useMemo,
+  useCallback,
+  useState,
+  useEffect,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as ShareIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
@@ -13,10 +19,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { formatCurrency, truncate, getTokenLogo } from 'utils/index';
-import {
-  createNavigationContext,
-  navigateWithContext,
-} from 'utils/navigationState';
+import { navigateWithContext } from 'utils/navigationState';
 
 //todo: create a loading state
 export const SyscoinAssetsList = () => {
@@ -34,12 +37,23 @@ export const SyscoinAssetsList = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
 
   // Confirmation modal state
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [assetToDelete, setAssetToDelete] = useState<any>(null);
 
   const isNetworkChanging = networkStatus === 'switching';
+
+  // Handle navigation state restoration
+  useEffect(() => {
+    if (
+      location.state?.fromNavigation &&
+      location.state?.scrollPosition !== undefined
+    ) {
+      window.scrollTo(0, location.state.scrollPosition);
+    }
+  }, [location.state]);
 
   // Memoize filtered assets for performance
   const filteredAssets = useMemo(
@@ -56,10 +70,15 @@ export const SyscoinAssetsList = () => {
   // Handle asset click
   const handleAssetClick = useCallback(
     (asset: any) => {
-      const returnContext = createNavigationContext(
-        '/home',
-        searchParams.get('tab') || 'assets'
-      );
+      // Capture current scroll position
+      const scrollPosition = window.scrollY || 0;
+
+      const returnContext = {
+        returnRoute: '/home',
+        tab: searchParams.get('tab') || 'assets',
+        scrollPosition,
+        componentState: undefined,
+      };
 
       navigateWithContext(
         navigate,

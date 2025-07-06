@@ -1,8 +1,15 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiOutlineUsb } from 'react-icons/ai';
 import { RiUserReceivedLine } from 'react-icons/ri/';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import {
   IKeyringAccountState,
@@ -79,6 +86,23 @@ const ManageAccountsView = React.memo(() => {
   const { navigate, alert } = useUtils();
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
+  const location = useLocation();
+
+  // Ref for the scrollable ul element
+  const scrollContainerRef = useRef<HTMLUListElement>(null);
+
+  // Custom scroll restoration for the ul element
+  useEffect(() => {
+    if (
+      location.state?.fromNavigation &&
+      location.state?.scrollPosition !== undefined
+    ) {
+      // Small delay to ensure the component has rendered before scrolling
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = location.state.scrollPosition;
+      }
+    }
+  }, [location.state]);
 
   // State for confirmation dialog
   const [accountToRemove, setAccountToRemove] = useState<{
@@ -89,9 +113,15 @@ const ManageAccountsView = React.memo(() => {
 
   const editAccount = useCallback(
     (account: IKeyringAccountState) => {
-      const returnContext = createNavigationContext(
-        '/settings/manage-accounts'
-      );
+      // Create navigation context with scroll position from the ul element
+      const scrollPosition = scrollContainerRef.current?.scrollTop || 0;
+
+      const returnContext = {
+        returnRoute: '/settings/manage-accounts',
+        scrollPosition,
+        componentState: undefined,
+      };
+
       navigateWithContext(
         navigate,
         '/settings/edit-account',
@@ -243,7 +273,10 @@ const ManageAccountsView = React.memo(() => {
 
   return (
     <>
-      <ul className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96">
+      <ul
+        ref={scrollContainerRef}
+        className="scrollbar-styled mb-4 w-full h-80 text-sm overflow-auto md:h-96"
+      >
         {accountsList.map(({ account, accountType }) =>
           renderAccount(account, accountType)
         )}

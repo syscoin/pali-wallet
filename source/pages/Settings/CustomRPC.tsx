@@ -30,9 +30,11 @@ import ChainListService, {
 } from 'scripts/Background/controllers/chainlist';
 import { RootState } from 'state/store';
 import { ICustomRpcParams } from 'types/transactions';
+import { navigateBack } from 'utils/navigationState';
 
 const CustomRPCView = () => {
-  const { state }: { state: any } = useLocation();
+  const location = useLocation();
+  const { state }: { state: any } = location;
   const { t } = useTranslation();
   const networks = useSelector(
     (reduxState: RootState) => reduxState.vaultGlobal.networks
@@ -460,6 +462,9 @@ const CustomRPCView = () => {
         alert.success(t('settings.rpcSuccessfullyEdited'), {
           autoClose: 3000,
         });
+
+        // Navigate back to preserve scroll position after successful edit
+        setTimeout(() => navigateBack(navigate, location), 1800);
       } else {
         // In add mode, network shouldn't exist
         if (existingNetwork) {
@@ -1316,7 +1321,10 @@ const CustomRPCView = () => {
         <div className="fixed bottom-0 left-0 right-0 bg-brand-blue900 border-t border-brand-royalblue/30 px-4 py-3 shadow-lg z-50">
           {state?.isEditing ? (
             <div className="flex gap-6 justify-center max-w-md mx-auto">
-              <SecondaryButton type="button" onClick={() => navigate(-1)}>
+              <SecondaryButton
+                type="button"
+                onClick={() => navigateBack(navigate, location)}
+              >
                 {t('buttons.cancel')}
               </SecondaryButton>
               <PrimaryButton type="submit" disabled={loading} loading={loading}>
