@@ -76,19 +76,24 @@ const EvmAssetsController = (): IEvmAssetsController => {
     walletAddress: string
   ): Promise<ITokenSearchResult[]> => {
     const { activeNetwork } = store.getState().vault;
-    const apiUrl = activeNetwork.apiUrl || activeNetwork.explorer;
+
+    // Only use the API URL if it's explicitly provided
+    // Don't blindly use explorer URLs as API endpoints
+    const apiUrl = activeNetwork.apiUrl;
 
     if (!apiUrl) {
-      console.warn(
-        `[EvmAssetsController] No API URL found for network: ${activeNetwork.label}`
+      console.log(
+        `[EvmAssetsController] No API URL configured for network: ${activeNetwork.label}. Token discovery will be limited to manually added tokens.`
       );
       return [];
     }
 
     try {
-      console.log(`[EvmAssetsController] Fetching user tokens from ${apiUrl}`);
+      console.log(
+        `[EvmAssetsController] Fetching user tokens from API: ${apiUrl}`
+      );
 
-      // Parse explorer API URL and construct tokenlist endpoint
+      // Parse API URL and construct tokenlist endpoint
       const url = new URL(apiUrl);
       const baseUrl = `${url.protocol}//${url.host}`;
 
@@ -102,7 +107,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       if (!response.ok) {
         console.warn(
-          `[EvmAssetsController] Failed to fetch user tokens: ${response.status}`
+          `[EvmAssetsController] API request failed with status ${response.status}. This may indicate the API URL is incorrect or the service is unavailable.`
         );
         return [];
       }
@@ -111,8 +116,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
 
       if (data.status !== '1' || !data.result) {
         console.warn(
-          `[EvmAssetsController] API returned no tokens or error:`,
-          data.message
+          `[EvmAssetsController] API returned error or no tokens:`,
+          data.message || 'No results'
         );
         return [];
       }
@@ -154,13 +159,21 @@ const EvmAssetsController = (): IEvmAssetsController => {
         });
 
       console.log(
-        `[EvmAssetsController] Found ${results.length} valid tokens (filtered ${
+        `[EvmAssetsController] Found ${
+          results.length
+        } valid tokens via API (filtered ${
           tokens.length - results.length
         } tokens with invisible characters)`
       );
       return results;
     } catch (error) {
-      console.error(`[EvmAssetsController] Error fetching user tokens:`, error);
+      console.error(
+        `[EvmAssetsController] Error fetching tokens from API:`,
+        error
+      );
+      console.warn(
+        `[EvmAssetsController] API token discovery failed for ${activeNetwork.label}. This may indicate the API URL is incorrect or the service doesn't provide token listing APIs.`
+      );
       return [];
     }
   };
@@ -468,9 +481,12 @@ const EvmAssetsController = (): IEvmAssetsController => {
       );
 
       // If API is available, use it for efficient batch updates
-      const apiUrl = activeNetwork.apiUrl || activeNetwork.explorer;
+      // Only use explicitly configured API URLs, not explorer URLs
+      const apiUrl = activeNetwork.apiUrl;
       if (apiUrl) {
-        console.log(`[EvmAssetsController] Using API for batch token update`);
+        console.log(
+          `[EvmAssetsController] Using API for batch token update: ${apiUrl}`
+        );
 
         try {
           // Get all tokens from API in one call
