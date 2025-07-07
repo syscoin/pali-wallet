@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { HiTrash as DeleteIcon } from 'react-icons/hi';
 import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 
 import { IconButton } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
@@ -11,18 +12,27 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { selectActiveAccountWithAssets } from 'state/vault/selectors';
-import { truncate } from 'utils/index';
+import { truncate, navigateWithContext } from 'utils/index';
 import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 
-export const EvmNftsList = () => {
+interface IEvmNftsListProps {
+  state: {
+    isCoinSelected: boolean;
+    searchValue: string;
+    sortByValue: string;
+  };
+}
+
+export const EvmNftsList = ({ state }: IEvmNftsListProps) => {
   const { controllerEmitter } = useController();
   const { navigate } = useUtils();
   const { t } = useTranslation();
+  const [searchParams] = useSearchParams();
 
   const { assets: accountAssets } = useSelector(selectActiveAccountWithAssets);
   const {
     activeNetwork: { chainId },
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((rootState: RootState) => rootState.vault);
 
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{
@@ -93,19 +103,30 @@ export const EvmNftsList = () => {
 
   // ✅ MEMOIZED: Loading state - use assets loading state since NFTs come with assets
   const isLoadingAssets = useSelector(
-    (state: RootState) => state.vaultGlobal.loadingStates.isLoadingAssets
+    (rootState: RootState) =>
+      rootState.vaultGlobal.loadingStates.isLoadingAssets
   );
 
   const handleNftClick = useCallback(
     (collection: any) => {
-      navigate('/home/details', {
-        state: {
-          id: collection.id,
-          hash: null,
-        },
-      });
+      // Capture current scroll position
+      const scrollPosition = window.scrollY || 0;
+
+      const returnContext = {
+        returnRoute: '/home',
+        tab: searchParams.get('tab') || 'assets',
+        scrollPosition,
+        state, // Use the complete state object passed as prop
+      };
+
+      navigateWithContext(
+        navigate,
+        '/home/details',
+        { id: collection.id, hash: null },
+        returnContext
+      );
     },
-    [navigate]
+    [navigate, searchParams, state]
   );
 
   if (isLoadingAssets) {
@@ -117,14 +138,7 @@ export const EvmNftsList = () => {
   }
 
   if (collections.length === 0) {
-    return (
-      <div className="w-full text-center py-8">
-        <p className="text-brand-gray200 text-sm">No NFTs found</p>
-        <p className="text-brand-gray200 text-xs text-center mt-8 mb-6">
-          {t('send.nftsYouOwnWillAppearHere')}
-        </p>
-      </div>
-    );
+    return null; // Let the parent AssetsPanel handle empty state with Import Token link
   }
 
   return (
@@ -159,14 +173,7 @@ export const EvmNftsList = () => {
           <div className="flex items-center justify-between overflow-hidden overflow-ellipsis">
             <Tooltip content={t('send.nftDetails')}>
               <IconButton
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: {
-                      id: collection.id,
-                      hash: null,
-                    },
-                  })
-                }
+                onClick={() => handleNftClick(collection)}
                 className="p-2 hover:bg-brand-royalbluemedium/20 rounded-full transition-colors duration-200"
                 aria-label={`View details for ${collection.symbol} collection`}
               >

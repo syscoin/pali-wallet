@@ -49,12 +49,10 @@ export const SyscoinImport: React.FC = () => {
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customAssetGuid, setCustomAssetGuid] = useState(
-    location.state?.componentState?.customAssetGuid || ''
+    location.state?.customAssetGuid || ''
   );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenSysProps | null>(
-      location.state?.componentState?.customTokenDetails || null
-    );
+    useState<ITokenSysProps | null>(location.state?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
 
   // Common state
@@ -268,16 +266,16 @@ export const SyscoinImport: React.FC = () => {
   // Handle details click
   const handleDetailsClick = (asset: any) => {
     // Prepare component state to preserve
-    const componentState = {
+    const state = {
       customAssetGuid,
       customTokenDetails,
     };
 
-    const returnContext = createNavigationContext(
-      '/tokens/add',
-      activeTab,
-      componentState
-    );
+    const returnContext = {
+      ...createNavigationContext('/tokens/add', activeTab, state),
+      // Include existing return context to make it recursive
+      returnContext: location.state?.returnContext,
+    };
 
     navigateWithContext(
       navigate,

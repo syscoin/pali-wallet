@@ -56,12 +56,10 @@ export const ImportToken: React.FC = () => {
 
   // PATH 2: Custom Token state - restore from navigation state if available
   const [customContractAddress, setCustomContractAddress] = useState(
-    location.state?.componentState?.customContractAddress || ''
+    location.state?.customContractAddress || ''
   );
   const [customTokenDetails, setCustomTokenDetails] =
-    useState<ITokenDetails | null>(
-      location.state?.componentState?.customTokenDetails || null
-    );
+    useState<ITokenDetails | null>(location.state?.customTokenDetails || null);
   const [isValidatingCustom, setIsValidatingCustom] = useState(false);
 
   // Common state
@@ -380,16 +378,16 @@ export const ImportToken: React.FC = () => {
   // Handle details click with navigation context
   const handleDetailsClick = (asset: any) => {
     // Prepare component state to preserve
-    const componentState = {
+    const state = {
       customContractAddress,
       customTokenDetails,
     };
 
-    const returnContext = createNavigationContext(
-      '/tokens/add',
-      activeTab,
-      componentState
-    );
+    const returnContext = {
+      ...createNavigationContext('/tokens/add', activeTab, state),
+      // Include existing return context to make it recursive
+      returnContext: location.state?.returnContext,
+    };
 
     navigateWithContext(
       navigate,

@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { IconButton } from 'components/index';
+import { TokenIcon } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -47,10 +48,7 @@ export const SyscoinAssetsList = () => {
 
   // Handle navigation state restoration
   useEffect(() => {
-    if (
-      location.state?.fromNavigation &&
-      location.state?.scrollPosition !== undefined
-    ) {
+    if (location.state?.scrollPosition !== undefined) {
       window.scrollTo(0, location.state.scrollPosition);
     }
   }, [location.state]);
@@ -77,7 +75,6 @@ export const SyscoinAssetsList = () => {
         returnRoute: '/home',
         tab: searchParams.get('tab') || 'assets',
         scrollPosition,
-        componentState: undefined,
       };
 
       navigateWithContext(
@@ -119,42 +116,13 @@ export const SyscoinAssetsList = () => {
             <tr className="flex items-center justify-between font-poppins font-normal">
               <td className="flex items-center gap-3">
                 {/* Token Logo */}
-                {asset.image || getTokenLogo(asset.symbol) ? (
-                  <div
-                    className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
-                              hover:shadow-md hover:scale-110 transition-all duration-200"
-                  >
-                    <img
-                      src={asset.image || getTokenLogo(asset.symbol)!}
-                      alt={asset.symbol}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove(
-                          'hidden'
-                        );
-                      }}
-                    />
-                    <div
-                      className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                flex items-center justify-center"
-                    >
-                      <span className="text-white text-xs font-bold">
-                        {asset.symbol?.charAt(0).toUpperCase() || 'S'}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                              flex items-center justify-center hover:shadow-md hover:scale-110 
-                              transition-all duration-200"
-                  >
-                    <span className="text-white text-xs font-bold">
-                      {asset.symbol?.charAt(0).toUpperCase() || 'S'}
-                    </span>
-                  </div>
-                )}
+                <TokenIcon
+                  logo={asset.image || getTokenLogo(asset.symbol)}
+                  assetGuid={String(asset.assetGuid)}
+                  symbol={asset.symbol}
+                  size={24}
+                  className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                />
 
                 <div className="flex flex-col">
                   <div className="flex items-center gap-x-2">

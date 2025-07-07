@@ -9,27 +9,28 @@ import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon/Icon';
+import { TokenIcon } from 'components/TokenIcon';
 import { useUtils, useAdjustedExplorer } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { ellipsis } from 'utils/index';
 import { NFT_FALLBACK_IMAGE } from 'utils/nftFallback';
-import { getNftAssetsFromEthereum } from 'utils/nftToAsset';
 
-export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
+export const NftsDetails = ({ nftData }: { nftData: any }) => {
   const { controllerEmitter } = useController();
   const {
-    activeNetwork: { explorer, chainId },
+    activeNetwork: { explorer },
     activeAccount,
     accounts,
   } = useSelector((state: RootState) => state.vault);
 
   // Use proper selector for assets
-  const accountAssets = useSelector(selectActiveAccountAssets);
   const currentAccount = accounts[activeAccount.type][activeAccount.id];
 
   const { useCopyClipboard, alert } = useUtils();
+
+  // Get NFT data from navigation state if available (for import preview/search results)
+  const currentNft = nftData;
 
   const [copied, copy] = useCopyClipboard();
   const [nftTokenIds, setNftTokenIds] = useState<
@@ -49,18 +50,12 @@ export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
 
   const { t } = useTranslation();
 
-  // Find NFT collection from ethereum assets array
-  const nftAssets = getNftAssetsFromEthereum(accountAssets.ethereum, chainId);
-  const currentNft = nftAssets.find(
-    (nft) => nft.contractAddress === nftAddress
-  );
-
   // Load token IDs when component mounts (only if no specific tokenId provided)
   useEffect(() => {
     if (currentNft && currentNft.balance > 0) {
       loadTokenIds();
     }
-  }, [nftAddress, currentNft]);
+  }, [currentNft]);
 
   // Verify manually entered token ID
   const verifyTokenId = async (tokenId: string) => {
@@ -118,7 +113,7 @@ export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
       const result = (await controllerEmitter(
         ['wallet', 'fetchNftTokenIds'],
         [
-          nftAddress,
+          currentNft.contractAddress,
           currentAccount.address,
           currentNft.tokenStandard || 'ERC-721',
         ]
@@ -307,14 +302,14 @@ export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
 
             {/* NFT Image */}
             <div>
-              <img
-                id={`${currentNft.name}`}
-                className="rounded-[10px] w-[153px] h-[153px] object-cover"
-                src={getNftImage()}
-                alt={currentNft.name || `NFT #${displayTokenId || ''}`}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = NFT_FALLBACK_IMAGE;
-                }}
+              <TokenIcon
+                logo={getNftImage()}
+                contractAddress={currentNft.contractAddress}
+                symbol={currentNft.name || 'NFT'}
+                isNft={true}
+                size={153}
+                className="rounded-[10px] object-cover"
+                fallbackClassName="rounded-[10px]"
               />
             </div>
 
@@ -378,10 +373,13 @@ export const NftsDetails = ({ nftAddress }: { nftAddress: string }) => {
                 </p>
 
                 <div className="w-full flex items-center text-xs font-normal gap-x-1.5">
-                  <img
-                    className="w-6 h-6 rounded-full"
-                    src={currentNft.logo || NFT_FALLBACK_IMAGE}
-                    alt={currentNft.name}
+                  <TokenIcon
+                    logo={currentNft.logo}
+                    contractAddress={currentNft.contractAddress}
+                    symbol={currentNft.name || 'NFT'}
+                    isNft={true}
+                    size={24}
+                    className="rounded-full"
                   />
 
                   <span className="text-brand-gray200">{currentNft.name}</span>

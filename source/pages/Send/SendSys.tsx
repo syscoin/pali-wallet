@@ -47,10 +47,9 @@ export const SendSys = () => {
   );
 
   // Restore state from navigation if available
-  const initialRBF = location.state?.componentState?.RBF ?? true;
+  const initialRBF = location.state?.RBF ?? true;
   const [RBF, setRBF] = useState<boolean>(initialRBF);
-  const initialSelectedAsset =
-    location.state?.componentState?.selectedAsset || null;
+  const initialSelectedAsset = location.state?.selectedAsset || null;
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     initialSelectedAsset
@@ -83,7 +82,7 @@ export const SendSys = () => {
       // Only save if there's actual form data or non-default component state
       if (hasFormData || selectedAsset !== null || RBF !== true) {
         saveTimeoutRef.current = setTimeout(async () => {
-          const componentState = {
+          const state = {
             formValues: allValues,
             selectedAsset,
             RBF,
@@ -92,7 +91,7 @@ export const SendSys = () => {
           await saveNavigationState(
             location.pathname,
             undefined,
-            componentState,
+            state,
             location.state?.returnContext
           );
         }, 2000); // 2 second debounce
@@ -118,7 +117,7 @@ export const SendSys = () => {
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
-      const componentState = {
+      const state = {
         formValues: formValuesRef.current,
         selectedAsset,
         RBF,
@@ -127,7 +126,7 @@ export const SendSys = () => {
       await saveNavigationState(
         location.pathname,
         undefined,
-        componentState,
+        state,
         location.state?.returnContext
       );
     }, 2000);
@@ -141,8 +140,8 @@ export const SendSys = () => {
 
   // Restore form values if coming back from navigation
   useEffect(() => {
-    if (location.state?.fromNavigation && location.state?.componentState) {
-      const { formValues } = location.state.componentState;
+    if (location.state?.scrollPosition !== undefined) {
+      const { formValues } = location.state;
 
       if (formValues) {
         form.setFieldsValue(formValues);
@@ -377,18 +376,19 @@ export const SendSys = () => {
         setIsLoading(false);
 
         // Prepare component state to preserve
-        const componentState = {
+        const state = {
           formValues: allFormValues,
           selectedAsset,
           RBF,
         };
 
         // Create navigation context for returning from confirm
-        const returnContext = createNavigationContext(
-          '/send/sys',
-          undefined,
-          componentState
-        );
+
+        const returnContext = {
+          ...createNavigationContext('/send/sys', undefined, state),
+          // Include existing return context to make it recursive
+          returnContext: location.state?.returnContext,
+        };
 
         // The sysweb3-keyring library expects a fee rate (SYS per byte), not a total fee.
 
@@ -503,18 +503,18 @@ export const SendSys = () => {
         setIsLoading(false);
 
         // Prepare component state to preserve
-        const componentState = {
+        const state = {
           formValues: allFormValues,
           selectedAsset,
           RBF,
         };
 
         // Create navigation context for returning from confirm
-        const returnContext = createNavigationContext(
-          '/send/sys',
-          undefined,
-          componentState
-        );
+        const returnContext = {
+          ...createNavigationContext('/send/sys', undefined, state),
+          // Include existing return context to make it recursive
+          returnContext: location.state?.returnContext,
+        };
 
         // Use navigateWithContext to automatically handle state preservation
         navigateWithContext(

@@ -90,10 +90,7 @@ const ManageAccountsView = React.memo(() => {
 
   // Custom scroll restoration for the ul element
   useEffect(() => {
-    if (
-      location.state?.fromNavigation &&
-      location.state?.scrollPosition !== undefined
-    ) {
+    if (location.state?.scrollPosition !== undefined) {
       // Small delay to ensure the component has rendered before scrolling
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = location.state.scrollPosition;
@@ -116,7 +113,6 @@ const ManageAccountsView = React.memo(() => {
       const returnContext = {
         returnRoute: '/settings/manage-accounts',
         scrollPosition,
-        componentState: undefined,
       };
 
       navigateWithContext(

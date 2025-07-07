@@ -48,10 +48,7 @@ const ManageNetworkView = () => {
 
   // Custom scroll restoration for the ul element
   useEffect(() => {
-    if (
-      location.state?.fromNavigation &&
-      location.state?.scrollPosition !== undefined
-    ) {
+    if (location.state?.scrollPosition !== undefined) {
       if (scrollContainerRef.current) {
         scrollContainerRef.current.scrollTop = location.state.scrollPosition;
       }
@@ -112,7 +109,6 @@ const ManageNetworkView = () => {
     const returnContext = {
       returnRoute: '/settings/networks/edit',
       scrollPosition,
-      componentState: undefined,
     };
 
     navigateWithContext(

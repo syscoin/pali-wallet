@@ -250,7 +250,6 @@
     "erc1155RequiresManualEntry": "ERC-1155 requiere entrada manual de ID del token (sin estándar de enumeración)",
     "enterNftTokenId": "Ingresa tu ID de token NFT (el contrato puede no soportar enumeración)",
     "orEnterDifferentTokenId": "O ingresa un ID de token diferente",
-    "nftsYouOwnWillAppearHere": "Los NFTs que posees aparecerán aquí",
     "deleteCollectionConfirm": "¿Estás seguro de que quieres eliminar \"{name}\"? Esto eliminará todos los NFTs en esta colección.",
     "deleteCollection": "Eliminar Colección",
     "viewCollectionItems": "Ver Elementos de la Colección",

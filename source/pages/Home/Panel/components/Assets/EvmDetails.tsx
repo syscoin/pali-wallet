@@ -4,12 +4,15 @@ import { useTranslation } from 'react-i18next';
 import { FiExternalLink as ExternalLinkIcon } from 'react-icons/fi';
 import { RiFileCopyLine as CopyIcon } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 
 import { NeutralButton, Icon } from 'components/index';
+import { TokenIcon } from 'components/TokenIcon';
 import { useAdjustedExplorer, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { ellipsis, formatCurrency } from 'utils/index';
+import { navigateWithContext } from 'utils/navigationState';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
 interface IEvmAssetDetailsProps {
@@ -22,6 +25,7 @@ export const EvmAssetDetails = ({
   navigationState,
 }: IEvmAssetDetailsProps) => {
   const { controllerEmitter } = useController();
+  const location = useLocation();
   const { activeAccount, accountAssets, activeNetwork, accounts } = useSelector(
     (state: RootState) => state.vault
   );
@@ -436,14 +440,25 @@ export const EvmAssetDetails = ({
           {isNft && (
             <div className="pt-3">
               <button
-                onClick={() =>
-                  navigate('/home/details', {
-                    state: {
+                onClick={() => {
+                  // Create recursive return context
+                  const returnContext = {
+                    returnRoute: '/home/details',
+                    state: navigationState || { id },
+                    // Include existing return context to make it recursive
+                    returnContext: location.state?.returnContext,
+                  };
+
+                  navigateWithContext(
+                    navigate,
+                    '/home/details',
+                    {
                       nftCollection: true,
-                      nftAddress: currentAsset.contractAddress,
+                      nftData: currentAsset, // Just pass the full asset data
                     },
-                  })
-                }
+                    returnContext
+                  );
+                }}
                 className="w-full py-2 px-4 bg-brand-royalblue bg-opacity-20 text-brand-royalblue 
                           text-sm font-medium rounded-lg hover:bg-opacity-30 transition-all duration-200
                           flex items-center justify-center gap-2"
@@ -467,31 +482,25 @@ export const EvmAssetDetails = ({
               enhancedData?.image?.small ||
               enhancedData?.image?.thumb ||
               currentAsset.logo) && (
-              <div className="group relative">
-                <div
-                  className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
-                                  shadow-md group-hover:shadow-xl group-hover:scale-110 
-                                  transition-all duration-300"
-                >
-                  <img
-                    src={
-                      enhancedData?.image?.large ||
-                      enhancedData?.image?.small ||
-                      enhancedData?.image?.thumb ||
-                      currentAsset.logo
-                    }
-                    alt={`${
-                      currentAsset.name ||
-                      currentAsset.tokenSymbol ||
-                      currentAsset.symbol
-                    } Logo`}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+              <div className="group relative p-2">
+                <TokenIcon
+                  logo={
+                    enhancedData?.image?.large ||
+                    enhancedData?.image?.small ||
+                    enhancedData?.image?.thumb ||
+                    currentAsset.logo
+                  }
+                  contractAddress={currentAsset.contractAddress}
+                  symbol={currentAsset.tokenSymbol || currentAsset.symbol}
+                  isNft={isNft}
+                  size={48}
+                  className="shadow-md group-hover:shadow-xl group-hover:scale-110 transition-all duration-300"
+                  fallbackClassName="rounded-full"
+                />
                 {/* Optional shine effect on hover */}
                 <div
-                  className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
-                                  opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                  className="absolute inset-2 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
+                              opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
                 ></div>
               </div>
             )}

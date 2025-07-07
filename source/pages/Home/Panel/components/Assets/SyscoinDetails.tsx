@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import { retryableFetch } from '@pollum-io/sysweb3-network';
 
 import { NeutralButton } from 'components/index';
+import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import {
@@ -442,28 +443,25 @@ export const SyscoinAssetDetails = ({
             marketData?.image?.thumb ||
             asset?.image ||
             getTokenLogo(assetSymbol?.value, false)) && (
-            <div className="group relative">
-              <div
-                className="w-12 h-12 rounded-full overflow-hidden bg-bkg-2 border-2 border-bkg-4 
-                          shadow-md group-hover:shadow-xl group-hover:scale-110 
-                          transition-all duration-300"
-              >
-                <img
-                  src={
-                    asset?.image ||
-                    getTokenLogo(assetSymbol?.value, false) ||
-                    marketData?.image?.large ||
-                    marketData?.image?.small ||
-                    marketData?.image?.thumb ||
-                    ''
-                  }
-                  alt={`${assetSymbol?.value} Logo`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+            <div className="group relative p-2">
+              <TokenIcon
+                logo={
+                  asset?.image ||
+                  getTokenLogo(assetSymbol?.value, false) ||
+                  marketData?.image?.large ||
+                  marketData?.image?.small ||
+                  marketData?.image?.thumb ||
+                  ''
+                }
+                assetGuid={String(asset?.assetGuid || id)}
+                symbol={assetSymbol?.value}
+                size={48}
+                className="shadow-md group-hover:shadow-xl group-hover:scale-110 transition-all duration-300"
+                fallbackClassName="rounded-full"
+              />
               {/* Optional shine effect on hover */}
               <div
-                className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
+                className="absolute inset-2 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent 
                           opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
               ></div>
             </div>

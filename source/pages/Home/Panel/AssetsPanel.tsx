@@ -2,9 +2,11 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CgImport as ImportIcon } from 'react-icons/cg';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { createNavigationContext, navigateWithContext } from 'utils/index';
 
 import { EvmAssetsList, SyscoinAssetsList } from './components/Assets';
 
@@ -14,6 +16,7 @@ export const AssetsPanel = () => {
     useSelector((state: RootState) => state.vault);
   const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
   const { chainId } = activeNetwork;
+  const [searchParams] = useSearchParams();
 
   const ethTokensValidation =
     assets?.ethereum?.filter((token: any) => token?.chainId === chainId)
@@ -27,6 +30,17 @@ export const AssetsPanel = () => {
     : assets?.ethereum?.length === 0 || ethTokensValidation;
 
   const { navigate } = useUtils();
+
+  const handleImportTokenClick = () => {
+    // Create navigation context to preserve home page state
+    const returnContext = createNavigationContext(
+      '/home',
+      searchParams.get('tab') || 'assets', // Preserve the active tab
+      {} // No additional state needed for home page
+    );
+
+    navigateWithContext(navigate, '/tokens/add', {}, returnContext);
+  };
 
   const NoAssetsComponent = () => (
     <div className="flex mt-8 items-center justify-center p-3 text-brand-white text-sm">
@@ -49,10 +63,7 @@ export const AssetsPanel = () => {
           color="text-brand-white"
           style={{ marginRight: '6px' }}
         />
-        <p
-          className="underline text-sm"
-          onClick={() => navigate('/tokens/add')}
-        >
+        <p className="underline text-sm" onClick={handleImportTokenClick}>
           {t('home.importToken')}
         </p>
       </div>

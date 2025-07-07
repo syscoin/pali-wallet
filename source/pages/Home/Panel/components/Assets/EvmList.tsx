@@ -13,7 +13,7 @@ import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
 import { EvmNftsList } from '../Nfts/EvmNftsList';
-import { IconButton } from 'components/index';
+import { IconButton, TokenIcon } from 'components/index';
 import { ConfirmationModal } from 'components/Modal';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/index';
@@ -25,19 +25,19 @@ import { truncate, navigateWithContext } from 'utils/index';
 import { AssetsHeader } from './AssetsHeader';
 
 interface IDefaultEvmAssets {
-  componentState: {
+  searchValue: string;
+  sortByValue: string;
+  state: {
     isCoinSelected: boolean;
     searchValue: string;
     sortByValue: string;
   };
-  searchValue: string;
-  sortByValue: string;
 }
 
 const DefaultEvmAssets = ({
   searchValue,
   sortByValue,
-  componentState,
+  state,
 }: IDefaultEvmAssets) => {
   const { navigate } = useUtils();
   const { controllerEmitter } = useController();
@@ -54,7 +54,7 @@ const DefaultEvmAssets = ({
     accountAssets,
     activeAccount,
     activeNetwork: { chainId },
-  } = useSelector((state: RootState) => state.vault);
+  } = useSelector((rootState: RootState) => rootState.vault);
 
   const assets = accountAssets[activeAccount.type]?.[activeAccount.id];
 
@@ -152,7 +152,7 @@ const DefaultEvmAssets = ({
       returnRoute: '/home',
       tab: searchParams.get('tab') || 'assets',
       scrollPosition,
-      componentState,
+      state,
     };
 
     navigateWithContext(
@@ -169,52 +169,23 @@ const DefaultEvmAssets = ({
         <Fragment key={uniqueId(token.id)}>
           <li className="flex items-center justify-between py-2 text-xs border-b border-dashed border-bkg-white200">
             <div className="flex gap-3 items-center justify-start">
-              {!token.isNft &&
-                (token.logo ? (
-                  <div
-                    className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
-                                    hover:shadow-md hover:scale-110 transition-all duration-200"
-                  >
-                    <img
-                      src={`${token.logo}`}
-                      alt={`${token.name || token.tokenSymbol} Logo`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove(
-                          'hidden'
-                        );
-                      }}
-                    />
-                    <div
-                      className="hidden w-full h-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                      flex items-center justify-center"
-                    >
-                      <span className="text-white text-xs font-bold">
-                        {token.tokenSymbol.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className="w-6 h-6 rounded-full bg-gradient-to-br from-brand-royalblue to-brand-pink200 
-                                    flex items-center justify-center hover:shadow-md hover:scale-110 
-                                    transition-all duration-200"
-                  >
-                    <span className="text-white text-xs font-bold">
-                      {token.tokenSymbol.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                ))}
-              {token.isNft && token?.tokenStandard === 'ERC-1155' && (
-                <p className="font-rubik">
-                  <span
-                    className="text-button-primary font-poppins hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"
-                    onClick={() => handleAssetClick(token)}
-                  >
-                    {`- ${token.name || token.tokenSymbol}`}
-                  </span>
-                </p>
+              {!token.isNft && (
+                <TokenIcon
+                  logo={token.logo}
+                  contractAddress={token.contractAddress}
+                  symbol={token.tokenSymbol}
+                  size={24}
+                  className="hover:shadow-md hover:scale-110 transition-all duration-200"
+                />
+              )}
+              {token.isNft && (
+                <div
+                  className="w-6 h-6 rounded bg-gradient-to-br from-brand-royalblue to-brand-pink200 
+                              flex items-center justify-center hover:shadow-md hover:scale-110 
+                              transition-all duration-200"
+                >
+                  <span className="text-white text-xs font-bold">NFT</span>
+                </div>
               )}
 
               {token?.tokenStandard !== 'ERC-1155' && (
@@ -283,10 +254,9 @@ export const EvmAssetsList = () => {
   const location = useLocation();
 
   // Restore state from navigation if available
-  const initialIsCoinSelected =
-    location.state?.componentState?.isCoinSelected ?? true;
-  const initialSearchValue = location.state?.componentState?.searchValue || '';
-  const initialSortByValue = location.state?.componentState?.sortByValue || '';
+  const initialIsCoinSelected = location.state?.isCoinSelected ?? true;
+  const initialSearchValue = location.state?.searchValue || '';
+  const initialSortByValue = location.state?.sortByValue || '';
 
   const [isCoinSelected, setIsCoinSelected] = useState<boolean>(
     initialIsCoinSelected
@@ -304,10 +274,10 @@ export const EvmAssetsList = () => {
   const isSorting = sortByValue !== deferredSortByValue;
 
   const { isLoadingAssets } = useSelector(
-    (state: RootState) => state.vaultGlobal.loadingStates
+    (rootState: RootState) => rootState.vaultGlobal.loadingStates
   );
   const { networkStatus } = useSelector(
-    (state: RootState) => state.vaultGlobal
+    (rootState: RootState) => rootState.vaultGlobal
   );
 
   const isNetworkChanging = networkStatus === 'switching';
@@ -317,14 +287,12 @@ export const EvmAssetsList = () => {
 
   // Handle navigation state restoration and cleanup
   useEffect(() => {
-    if (location.state?.fromNavigation) {
-      // Restore scroll position if available
-      if (location.state?.scrollPosition !== undefined) {
-        window.scrollTo(0, location.state.scrollPosition);
-      }
+    if (location.state?.scrollPosition !== undefined) {
+      // Restore scroll position
+      window.scrollTo(0, location.state.scrollPosition);
 
       // Clear the navigation state to prevent re-applying on subsequent renders
-      if (location.state?.componentState) {
+      if (location.state) {
         window.history.replaceState({}, document.title);
       }
     }
@@ -338,7 +306,7 @@ export const EvmAssetsList = () => {
   };
 
   // Pass component state to child components
-  const componentState = {
+  const state = {
     isCoinSelected,
     searchValue,
     sortByValue,
@@ -368,10 +336,10 @@ export const EvmAssetsList = () => {
               <DefaultEvmAssets
                 searchValue={deferredSearchValue}
                 sortByValue={deferredSortByValue}
-                componentState={componentState}
+                state={state}
               />
             ) : (
-              <EvmNftsList />
+              <EvmNftsList state={state} />
             )}
           </div>
         </>

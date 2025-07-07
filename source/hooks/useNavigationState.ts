@@ -62,9 +62,8 @@ export const useNavigationState = () => {
       // Navigate directly to restored path with original context (no nesting)
       navigate(path, {
         state: {
-          componentState: savedState.componentState,
+          ...savedState.state,
           returnContext: savedState.returnContext, // Preserve original navigation chain
-          fromNavigation: true,
           scrollPosition: savedState.scrollPosition,
         },
       });

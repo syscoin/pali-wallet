@@ -19,13 +19,13 @@ export const DetailsView = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
 
+  const location = useLocation();
   const {
-    state: { id, hash, nftCollection, nftAddress },
-  }: any = useLocation();
+    state: { id, hash, nftCollection, nftData },
+  }: any = location;
 
   const isAsset = id && !hash;
-
-  const isNft = Boolean(nftCollection && nftAddress);
+  const isNft = Boolean(nftCollection && nftData);
 
   const { explorer } = activeNetwork;
 
@@ -59,7 +59,7 @@ export const DetailsView = () => {
         <>
           <ul className="scrollbar-styled md:max-h-max w-full text-sm overflow-auto">
             {isNft ? (
-              <NftsDetails nftAddress={nftAddress} />
+              <NftsDetails nftData={nftData} />
             ) : isAsset ? (
               <AssetDetails id={id} />
             ) : (

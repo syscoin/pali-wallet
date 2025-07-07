@@ -545,7 +545,6 @@
     "erc1155RequiresManualEntry": "ERC-1155需要手动输入代币ID（无枚举标准）",
     "enterNftTokenId": "输入您的NFT代币ID（合约可能不支持枚举）",
     "orEnterDifferentTokenId": "或输入不同的代币ID",
-    "nftsYouOwnWillAppearHere": "您拥有的NFT将在此处显示",
     "deleteCollectionConfirm": "您确定要删除\"{name}\"吗？这将删除此收藏中的所有NFT。",
     "deleteCollection": "删除收藏",
     "viewCollectionItems": "查看收藏项目",

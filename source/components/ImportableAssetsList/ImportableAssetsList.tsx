@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { FiDownload as ImportIcon } from 'react-icons/fi';
 import { RiShareForward2Line as DetailsIcon } from 'react-icons/ri';
 
-import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { IconButton } from 'components/index';
+import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { truncate } from 'utils/index';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
@@ -77,61 +77,17 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
   const getAssetLogo = (asset: IImportableAsset) => {
     const isFetchingLogo = fetchingLogos.has(asset.id);
 
-    if (asset.logo && asset.logo !== PaliLogo) {
-      return (
-        <div
-          className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
-                      hover:shadow-md hover:scale-110 transition-all duration-200"
-        >
-          <img
-            src={asset.logo}
-            alt={`${asset.name || asset.symbol} Logo`}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              const target = e.currentTarget;
-              // Hide the broken image
-              target.style.display = 'none';
-              // Show Pali logo fallback
-              const fallback = target.nextElementSibling as HTMLImageElement;
-              if (fallback) {
-                fallback.style.display = 'block';
-              }
-            }}
-          />
-          <img
-            src={PaliLogo}
-            alt="Pali Logo"
-            className="w-full h-full object-cover hidden"
-            style={{ display: 'none' }}
-          />
-        </div>
-      );
-    }
-
-    // Show loading indicator if fetching logo
-    if (isFetchingLogo) {
-      return (
-        <div
-          className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
-                      flex items-center justify-center"
-        >
-          <div className="animate-spin rounded-full h-3 w-3 border-t-2 border-b-2 border-brand-royalblue"></div>
-        </div>
-      );
-    }
-
-    // Default to Pali logo if no logo provided
     return (
-      <div
-        className="w-6 h-6 rounded-full overflow-hidden bg-bkg-2 border border-bkg-4 
-                    hover:shadow-md hover:scale-110 transition-all duration-200"
-      >
-        <img
-          src={PaliLogo}
-          alt="Pali Logo"
-          className="w-full h-full object-cover"
-        />
-      </div>
+      <TokenIcon
+        logo={asset.logo}
+        contractAddress={asset.contractAddress}
+        assetGuid={asset.assetGuid}
+        symbol={asset.symbol}
+        size={24}
+        className={`hover:shadow-md hover:scale-110 transition-all duration-200 ${
+          isFetchingLogo ? 'opacity-50' : ''
+        }`}
+      />
     );
   };
 

@@ -391,7 +391,6 @@
     "erc1155RequiresManualEntry": "ERC-1155では手動でのトークンID入力が必要です（列挙標準なし）",
     "enterNftTokenId": "NFTトークンIDを入力してください（コントラクトが列挙をサポートしていない可能性があります）",
     "orEnterDifferentTokenId": "または異なるトークンIDを入力してください",
-    "nftsYouOwnWillAppearHere": "所有しているNFTがここに表示されます",
     "deleteCollectionConfirm": "\"{name}\"を削除してもよろしいですか？このコレクション内のすべてのNFTが削除されます。",
     "deleteCollection": "コレクションを削除",
     "viewCollectionItems": "コレクションアイテムを表示",

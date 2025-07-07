@@ -391,7 +391,6 @@
     "erc1155RequiresManualEntry": "ERC-1155 требует ручного ввода ID токена (нет стандарта перечисления)",
     "enterNftTokenId": "Введите ваш ID токена NFT (контракт может не поддерживать перечисление)",
     "orEnterDifferentTokenId": "Или введите другой ID токена",
-    "nftsYouOwnWillAppearHere": "NFT, которыми вы владеете, появятся здесь",
     "deleteCollectionConfirm": "Вы уверены, что хотите удалить \"{name}\"? Это удалит все NFT в этой коллекции.",
     "deleteCollection": "Удалить Коллекцию",
     "viewCollectionItems": "Просмотреть Элементы Коллекции",

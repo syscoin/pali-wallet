@@ -6,14 +6,14 @@
 import { chromeStorage } from './storageAPI';
 
 export interface INavigationContext {
-  // Component state to preserve
-  componentState?: Record<string, any>;
   // Nested return context for chained back navigation
   returnContext?: INavigationContext;
   // The route to return to
   returnRoute: string;
   // Scroll position to restore
   scrollPosition?: number;
+  // Component state to preserve
+  state?: Record<string, any>;
   // Tab or view state to restore
   tab?: string;
 }
@@ -22,10 +22,10 @@ export interface INavigationContext {
 const NAVIGATION_STATE_KEY = 'pali_navigation_state';
 
 export interface ISavedNavigationState {
-  componentState?: Record<string, any>;
   currentPath: string;
   returnContext?: INavigationContext;
   scrollPosition?: number;
+  state?: Record<string, any>;
   tab?: string; // Preserve return navigation
   timestamp: number; // To validate freshness
 }
@@ -36,25 +36,20 @@ export interface ISavedNavigationState {
 export const saveNavigationState = async (
   path: string,
   tab?: string,
-  componentState?: Record<string, any>,
+  state?: Record<string, any>,
   returnContext?: INavigationContext
 ): Promise<void> => {
   try {
-    // Prevent recursive nesting - only preserve one level of back navigation
-    if (returnContext) {
-      returnContext.returnContext = undefined;
-    }
-
-    const state: ISavedNavigationState = {
+    const navigationState: ISavedNavigationState = {
       currentPath: path,
       tab,
-      componentState,
+      state,
       returnContext,
       scrollPosition: window.scrollY || 0,
       timestamp: Date.now(),
     };
 
-    await chromeStorage.setItem(NAVIGATION_STATE_KEY, state);
+    await chromeStorage.setItem(NAVIGATION_STATE_KEY, navigationState);
   } catch (error) {
     console.error('[NavigationState] Failed to save navigation state:', error);
   }
@@ -111,12 +106,12 @@ export const clearNavigationState = async (): Promise<void> => {
 export const createNavigationContext = (
   returnRoute: string,
   tab?: string,
-  componentState?: Record<string, any>
+  state?: Record<string, any>
 ): INavigationContext => ({
   returnRoute,
   tab,
   scrollPosition: window.scrollY || 0,
-  componentState,
+  state,
 });
 
 /**
@@ -156,9 +151,8 @@ export const navigateBack = (
 
     navigate(path, {
       state: {
-        componentState: returnContext.componentState,
+        ...returnContext.state,
         returnContext: returnContext.returnContext, // Preserve nested return context
-        fromNavigation: true,
         scrollPosition: returnContext.scrollPosition,
       },
     });

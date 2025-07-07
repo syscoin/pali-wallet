@@ -100,25 +100,19 @@ export const SendConfirm = () => {
   const [isCalculatingFees, setIsCalculatingFees] = useState(false);
 
   // Handle both normal navigation and restoration
-  const basicTxValues = state.tx || state.componentState?.txData;
+  const basicTxValues = state.tx;
   const cachedGasData = basicTxValues?.cachedGasData;
 
   // Save navigation state when confirm page loads to preserve transaction data and return context
   useEffect(() => {
     const saveConfirmState = async () => {
       // Only save if we have transaction data and return context
-      if (state?.tx && state?.returnContext) {
-        const componentState = {
-          txData: state.tx,
-        };
-
-        await saveNavigationState(
-          location.pathname,
-          undefined,
-          componentState,
-          state.returnContext
-        );
-      }
+      await saveNavigationState(
+        location.pathname,
+        undefined,
+        state,
+        state.returnContext
+      );
     };
 
     saveConfirmState();
