@@ -351,7 +351,22 @@ export const ConnectHardwareWallet = ({
   title,
 }: IDefaultModal) => {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+
+  const handleConnectHardwareWallet = () => {
+    // Open hardware wallet setup in a new tab instead of popup window
+    const url = chrome.runtime.getURL(
+      'app.html?direct=true#/settings/account/hardware'
+    );
+    window.open(url, '_blank');
+
+    // Close the modal
+    if (onClose) onClose(true);
+
+    // Close the extension popup window after a short delay to ensure the new tab opens
+    setTimeout(() => {
+      window.close();
+    }, 100);
+  };
 
   return (
     <ModalBase onClose={onClose} show={show}>
@@ -378,15 +393,7 @@ export const ConnectHardwareWallet = ({
             id="unlock-btn"
             type="submit"
             className="bg-white w-[10.313rem] h-10 text-brand-blue200 text-base mb-12 font-base font-medium rounded-2xl"
-            onClick={() => {
-              const returnContext = createNavigationContext('/home');
-              navigateWithContext(
-                navigate,
-                '/settings/account/hardware',
-                {},
-                returnContext
-              );
-            }}
+            onClick={handleConnectHardwareWallet}
           >
             {t('buttons.connect')}
           </Button>

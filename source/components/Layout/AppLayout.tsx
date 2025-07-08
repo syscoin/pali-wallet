@@ -187,8 +187,10 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   // Don't show banner on home page and chain error page
   const showBanner = useMemo(() => {
     const noBannerRoutes = ['/home', '/chain-fail-to-connect'];
-    return !noBannerRoutes.includes(location.pathname) && pageTitle;
-  }, [location.pathname, pageTitle]);
+    return (
+      !noBannerRoutes.includes(location.pathname) && pageTitle && !hideHeader
+    );
+  }, [location.pathname, pageTitle, hideHeader]);
 
   // Check if this is an external transaction
   const isExternalTransaction = useMemo(
@@ -359,6 +361,9 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       {/* Content area */}
       {location.pathname === '/home' ? (
         // Home page gets no wrapper - it has its own layout
+        <>{children || <Outlet />}</>
+      ) : hideHeader ? (
+        // Hardware wallet and other hideHeader pages get no wrapper
         <>{children || <Outlet />}</>
       ) : (
         // Other pages get the standard content wrapper

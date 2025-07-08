@@ -334,6 +334,7 @@
     "explorer": "Explorador",
     "viewTheAddresses": "Ver las direcciones de tus cuentas permitidas",
     "errorCreatingHardWallet": "Error al crear monedero hardware.",
+    "noDeviceSelected": "No se seleccionó ningún dispositivo. Por favor, elija un dispositivo para conectar.",
     "hardwareWallet": "Conectar hardware",
     "selectTheHardware": "Seleccionar hardware:",
     "dontHaveWallet": "¿No tienes un monedero hardware?",
@@ -439,7 +440,9 @@
     "networkNotFoundForEditing": "Red no encontrada para editar. Por favor, actualice y vuelva a intentarlo.",
     "networkAlreadyExists": "La red con ID de cadena {{chainId}} ya existe. Por favor, use un ID de cadena diferente o edite la red existente.",
     "utxoNetworkConflict": "Ya existe una red de {{networkType}} ({{existingNetworkName}}). Solo puede estar activa una red de {{networkType}} a la vez. Por favor, elimine primero la red de {{networkType}} existente.",
-    "confirmRemoveNetwork": "¿Estás seguro de que quieres eliminar la red \"{{networkName}}\"?"
+    "confirmRemoveNetwork": "¿Está seguro de que desea eliminar la red \"{{networkName}}\"?",
+    "walletLoggedOut": "La billetera está desconectada",
+    "closeAndReopenPali": "Cierre esta ventana y reabra Pali para autenticarse y conectar su billetera de hardware"
   },
   "start": {
     "paliDoesnt": "Pali no guarda tu contraseña. Recuperar el acceso requiere un reinicio de la billetera con tu Frase Secreta de Recuperación. Esta acción borra la billetera actual, las cuentas creadas, tokens personalizados y cuentas importadas de tu dispositivo, generando una nueva cuenta vinculada a la frase de reinicio.",

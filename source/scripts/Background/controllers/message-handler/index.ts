@@ -44,7 +44,20 @@ export const onMessage = async (
   message: any,
   sender: chrome.runtime.MessageSender
 ) => {
-  const { host } = new URL(sender.url);
+  // Validate sender URL before attempting to construct URL object
+  if (!sender?.url) {
+    console.warn('[Background] Message received with no sender URL:', sender);
+    return;
+  }
+
+  let host: string;
+  try {
+    const url = new URL(sender.url);
+    host = url.host;
+  } catch (error) {
+    console.warn('[Background] Invalid URL from sender:', sender.url, error);
+    return;
+  }
 
   if (!sender?.tab?.id) return;
 

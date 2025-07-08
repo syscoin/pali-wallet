@@ -1,7 +1,6 @@
 import React, { FC } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
-import { Container } from 'components/index';
 import { ExternalRoute } from 'routers/ExternalRoute';
 
 const External: FC = () => (
@@ -9,14 +8,10 @@ const External: FC = () => (
   // Start component (for unauthenticated) and route components (for authenticated)
   // will signal when they have content ready
 
-  <section className="mx-auto min-w-popup h-full min-h-popup md:max-w-2xl">
-    <Container>
-      <BrowserRouter>
-        <div className="w-full min-w-popup h-full min-h-popup">
-          <ExternalRoute />
-        </div>
-      </BrowserRouter>
-    </Container>
-  </section>
+  <BrowserRouter>
+    <div className="w-full min-w-popup max-w-popup h-full min-h-popup font-poppins text-xl overflow-x-hidden">
+      <ExternalRoute />
+    </div>
+  </BrowserRouter>
 );
 export default External;

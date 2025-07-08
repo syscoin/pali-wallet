@@ -333,6 +333,7 @@
     "permissions": "Permissions",
     "viewTheAddresses": "View the addresses of your permitted accounts",
     "errorCreatingHardWallet": "Error creating hardware wallet.",
+    "noDeviceSelected": "No device selected. Please choose a device to connect.",
     "hardwareWallet": "CONNECT HARDWALLET",
     "selectTheHardware": "SELECT HARDWALLET:",
     "dontHaveWallet": "Don't have a hardware wallet?",
@@ -439,7 +440,9 @@
     "networkNotFoundForEditing": "Network not found for editing. Please refresh and try again.",
     "networkAlreadyExists": "Network with Chain ID {{chainId}} already exists. Please use a different Chain ID or edit the existing network.",
     "utxoNetworkConflict": "A {{networkType}} network already exists ({{existingNetworkName}}). Only one {{networkType}} network can be active at a time. Please remove the existing {{networkType}} network first.",
-    "confirmRemoveNetwork": "Are you sure you want to remove the network \"{{networkName}}\"?"
+    "confirmRemoveNetwork": "Are you sure you want to remove the network \"{{networkName}}\"?",
+    "walletLoggedOut": "Wallet is logged out",
+    "closeAndReopenPali": "Close this window and reopen Pali to authenticate and connect your hardware wallet"
   },
   "start": {
     "paliDoesnt": "Pali doesn't store your password. Regaining access requires a wallet reset with your Secret Recovery Phrase. This action erases the current wallet, created accounts, custom tokens, and imported accounts from your device, generating a new account tied to the reset phrase.",

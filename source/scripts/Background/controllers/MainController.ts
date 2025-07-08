@@ -2504,6 +2504,9 @@ class MainController {
   public async importTrezorAccountFromController(label?: string) {
     let importedAccount;
     try {
+      // Initialize Trezor before importing account
+      await this.getActiveKeyring().trezorSigner.init();
+
       importedAccount = await this.getActiveKeyring().importTrezorAccount(
         label
       );

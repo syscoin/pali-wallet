@@ -113,6 +113,7 @@
     "permissions": "权限",
     "viewTheAddresses": "查看您允许账户的地址",
     "errorCreatingHardWallet": "创建硬件钱包时出错。",
+    "noDeviceSelected": "未选择设备。请选择要连接的设备。",
     "hardwareWallet": "连接硬件钱包",
     "selectTheHardware": "选择硬件钱包：",
     "dontHaveWallet": "没有硬件钱包？",
@@ -219,7 +220,9 @@
     "networkNotFoundForEditing": "找不到要编辑的网络。请刷新页面并重试。",
     "networkAlreadyExists": "链 ID {{chainId}} 的网络已存在。请使用不同的链 ID 或编辑现有网络。",
     "utxoNetworkConflict": "{{networkType}}网络已存在（{{existingNetworkName}}）。一次只能激活一个{{networkType}}网络。请先删除现有的{{networkType}}网络。",
-    "confirmRemoveNetwork": "您确定要删除网络\"{{networkName}}\"吗？"
+    "confirmRemoveNetwork": "您确定要删除网络 \"{{networkName}}\" 吗？",
+    "walletLoggedOut": "钱包已注销",
+    "closeAndReopenPali": "关闭此窗口并重新打开 Pali 以进行身份验证并连接您的硬件钱包"
   },
   "components": {
     "newPassword": "新密码（至少8个字符）",

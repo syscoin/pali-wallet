@@ -78,6 +78,24 @@ export async function checkForUpdates(): Promise<boolean> {
       return true; // Return true since we acquired the lock (for startPolling responsibility)
     }
 
+    // Skip all updates if we're on the hardware wallet page
+    // Hardware wallet pages don't need balance/asset/transaction updates
+    try {
+      const tabs = await chrome.tabs.query({});
+      const hasHardwareWalletTab = tabs.some((tab) =>
+        tab.url?.includes('/settings/account/hardware')
+      );
+      if (hasHardwareWalletTab) {
+        console.log(
+          '⏸️ checkForUpdates: Skipping updates - hardware wallet page is open'
+        );
+        return true; // Return true since we acquired the lock
+      }
+    } catch (error) {
+      // If we can't check the URL, continue with updates
+      console.warn('[checkForUpdates] Could not check tab URLs:', error);
+    }
+
     console.log('✅ checkForUpdates: Proceeding with update');
 
     // Always use direct controller call since we're already in the background

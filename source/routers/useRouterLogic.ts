@@ -39,6 +39,10 @@ export const useRouterLogic = () => {
     errorMessage: '',
   });
 
+  // Check if this is a direct navigation (e.g., hardware wallet opened via button)
+  const urlParams = new URLSearchParams(window.location.search);
+  const isDirectNavigation = urlParams.get('direct') === 'true';
+
   useEffect(() => {
     if (!isBitcoinBased) {
       controllerEmitter(['wallet', 'getProviderStatus'], [])
@@ -177,6 +181,16 @@ export const useRouterLogic = () => {
     const canProceed = isUnlocked && accounts;
     const isOnHardwareWalletPage = pathname === '/settings/account/hardware';
 
+    // Skip automatic navigation if this is a direct navigation to hardware wallet
+    if (isDirectNavigation && isOnHardwareWalletPage) {
+      setInitialCheckComplete(true);
+      // Clear the direct parameter from URL to prevent issues on subsequent loads
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('direct');
+      window.history.replaceState({}, '', newUrl.toString());
+      return;
+    }
+
     // Handle initial navigation after unlock
     if (canProceed && !initialCheckComplete) {
       // Determine target route based on screen size
@@ -224,6 +238,7 @@ export const useRouterLogic = () => {
     isFullscreen,
     isNetworkChanging,
     debouncedNavigate,
+    isDirectNavigation,
   ]);
 
   // Removed unused development-only useEffect that was calling non-existent functions

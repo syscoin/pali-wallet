@@ -180,7 +180,13 @@ export const formatTransactionAmount = (
  *
  * Default `size` is 30
  */
-export const truncate = (input: string, size = 30, dots = true) => {
+export const truncate = (
+  input: string | undefined | null,
+  size = 30,
+  dots = true
+) => {
+  if (!input || typeof input !== 'string') return '';
+
   if (input.length < size) return input;
 
   return `${input.slice(0, size)} ${dots ? '...' : ''}`;

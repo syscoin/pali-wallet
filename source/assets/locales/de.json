@@ -113,6 +113,7 @@
     "permissions": "Berechtigungen",
     "viewTheAddresses": "Die Adressen Ihrer zugelassenen Konten anzeigen",
     "errorCreatingHardWallet": "Fehler beim Erstellen der Hardware-Wallet.",
+    "noDeviceSelected": "Kein Gerät ausgewählt. Bitte wählen Sie ein Gerät zum Verbinden.",
     "hardwareWallet": "HARDWARE-WALLET VERBINDEN",
     "selectTheHardware": "HARDWARE-WALLET AUSWÄHLEN:",
     "dontHaveWallet": "Haben Sie keine Hardware-Wallet?",
@@ -219,7 +220,9 @@
     "networkNotFoundForEditing": "Netzwerk zur Bearbeitung nicht gefunden. Bitte aktualisieren Sie die Seite und versuchen Sie es erneut.",
     "networkAlreadyExists": "Das Netzwerk mit der Ketten-ID {{chainId}} existiert bereits. Bitte verwenden Sie eine andere Ketten-ID oder bearbeiten Sie das bestehende Netzwerk.",
     "utxoNetworkConflict": "Ein {{networkType}}-Netzwerk existiert bereits ({{existingNetworkName}}). Es kann nur ein {{networkType}}-Netzwerk gleichzeitig aktiv sein. Bitte entfernen Sie zuerst das bestehende {{networkType}}-Netzwerk.",
-    "confirmRemoveNetwork": "Sind Sie sicher, dass Sie das Netzwerk \"{{networkName}}\" entfernen möchten?"
+    "confirmRemoveNetwork": "Sind Sie sicher, dass Sie das Netzwerk \"{{networkName}}\" entfernen möchten?",
+    "walletLoggedOut": "Wallet ist abgemeldet",
+    "closeAndReopenPali": "Schließen Sie dieses Fenster und öffnen Sie Pali erneut, um sich zu authentifizieren und Ihre Hardware-Wallet zu verbinden"
   },
   "components": {
     "newPassword": "Neues Passwort (min. 8 Zeichen)",

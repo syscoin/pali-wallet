@@ -113,6 +113,7 @@
     "permissions": "権限",
     "viewTheAddresses": "許可されたアカウントのアドレスを表示",
     "errorCreatingHardWallet": "ハードウェアウォレットの作成エラー。",
+    "noDeviceSelected": "デバイスが選択されていません。接続するデバイスを選択してください。",
     "hardwareWallet": "ハードウォレットを接続",
     "selectTheHardware": "ハードウォレットを選択：",
     "dontHaveWallet": "ハードウェアウォレットをお持ちでないですか？",
@@ -219,7 +220,9 @@
     "networkNotFoundForEditing": "編集するネットワークが見つかりません。ページを更新してもう一度お試しください。",
     "networkAlreadyExists": "チェーンID {{chainId}}のネットワークは既に存在します。別のチェーンIDを使用するか、既存のネットワークを編集してください。",
     "utxoNetworkConflict": "{{networkType}}ネットワークが既に存在します（{{existingNetworkName}}）。一度に一つの{{networkType}}ネットワークのみアクティブにできます。まず既存の{{networkType}}ネットワークを削除してください。",
-    "confirmRemoveNetwork": "ネットワーク「{{networkName}}」を削除してもよろしいですか？"
+    "confirmRemoveNetwork": "ネットワーク \"{{networkName}}\" を削除してもよろしいですか？",
+    "walletLoggedOut": "ウォレットがログアウトしています",
+    "closeAndReopenPali": "このウィンドウを閉じてPaliを再度開き、認証してハードウェアウォレットを接続してください"
   },
   "components": {
     "newPassword": "新しいパスワード（最低8文字）",

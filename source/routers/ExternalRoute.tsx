@@ -41,53 +41,87 @@ export const ExternalRoute = () => {
   const query = useQuery();
   const [defaultRoute] = useState(query.route + '?data=' + query.data);
 
+  // Check if this is the hardware wallet page to avoid unnecessary state updates
+  const isHardwareWalletPage = window.location.hash.includes(
+    '/settings/account/hardware'
+  );
+
   useEffect(() => {
+    // Skip frequent state updates for hardware wallet page
+    if (isHardwareWalletPage) {
+      console.log(
+        '[ExternalRoute] Hardware wallet page detected, skipping state rehydration'
+      );
+      return;
+    }
+
     chrome.runtime.sendMessage({ type: 'getCurrentState' }, (message) => {
-      // Use startTransition for non-critical state updates
-      startTransition(() => {
-        rehydrateStore(store, message.data);
-      });
+      if (chrome.runtime.lastError) {
+        console.warn(
+          '[ExternalRoute] Error getting current state:',
+          chrome.runtime.lastError
+        );
+        return;
+      }
+
+      if (message?.data) {
+        // Use startTransition for non-critical state updates
+        startTransition(() => {
+          rehydrateStore(store, message.data);
+        });
+      }
     });
 
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE') {
-        // Progressive state updates for better dApp responsiveness
-        startTransition(() => {
-          rehydrateStore(store, message.data);
-        });
+        if (message?.data) {
+          // Progressive state updates for better dApp responsiveness
+          startTransition(() => {
+            rehydrateStore(store, message.data);
+          });
+        }
         return true;
       }
       return false;
     }
 
+    // Only add state change listener for non-hardware wallet pages
     chrome.runtime.onMessage.addListener(handleStateChange);
 
     return () => {
       chrome.runtime.onMessage.removeListener(handleStateChange);
     };
-  }, []);
+  }, [isHardwareWalletPage]);
 
   useEffect(() => {
+    // Skip navigation logic for hardware wallet page
+    if (isHardwareWalletPage) {
+      return;
+    }
+
     if (isUnlocked && defaultRoute) {
       navigate(`/external/${defaultRoute}`);
-
       return;
     }
 
     async function checkExternalRoute() {
-      const externalRoute = (await controllerEmitter(
-        ['appRoute'],
-        [null, true]
-      )) as string;
-      if (externalRoute && externalRoute !== '/') navigate(externalRoute);
+      try {
+        const externalRoute = (await controllerEmitter(
+          ['appRoute'],
+          [null, true]
+        )) as string;
+        if (externalRoute && externalRoute !== '/') navigate(externalRoute);
+      } catch (error) {
+        console.warn('[ExternalRoute] Error checking external route:', error);
+      }
     }
 
     checkExternalRoute();
 
     return () => {
-      checkExternalRoute();
+      // Cleanup if needed
     };
-  }, [isUnlocked]);
+  }, [isUnlocked, isHardwareWalletPage]);
 
   useEffect(() => {
     const messageListener = (

@@ -16,6 +16,11 @@ export const useController = () => {
     (state: RootState) => state.vaultGlobal.hasEncryptedVault
   );
 
+  // Check if this is the hardware wallet page that handles its own authentication
+  const isHardwareWalletPage = location.pathname.includes(
+    '/settings/account/hardware'
+  );
+
   // Function to check unlock status
   const checkUnlockStatus = async () => {
     try {
@@ -26,12 +31,31 @@ export const useController = () => {
       setIsUnlocked(nowUnlocked);
 
       // If wallet was unlocked but now locked, redirect to unlock screen
-      // BUT only if there's still an encrypted vault (not forgotten)
-      if (wasUnlocked && !nowUnlocked && !isLoading && hasEncryptedVault) {
+      // BUT only if there's still an encrypted vault (not forgotten) AND not on hardware wallet page
+      if (
+        wasUnlocked &&
+        !nowUnlocked &&
+        !isLoading &&
+        hasEncryptedVault &&
+        !isHardwareWalletPage
+      ) {
         console.log(
           '[useController] Wallet became locked, redirecting to unlock screen'
         );
         navigate('/', { replace: true });
+      }
+
+      // Special log for hardware wallet page
+      if (
+        wasUnlocked &&
+        !nowUnlocked &&
+        !isLoading &&
+        hasEncryptedVault &&
+        isHardwareWalletPage
+      ) {
+        console.log(
+          '[useController] Wallet became locked on hardware wallet page, staying on page'
+        );
       }
 
       // If there's no encrypted vault, don't force redirect - let routing logic handle it
@@ -84,14 +108,18 @@ export const useController = () => {
       // Double-check unlock status to be safe
       checkUnlockStatus();
     } else if (message.type === 'logout') {
-      // Explicit logout message - only redirect if there's still an encrypted vault
+      // Explicit logout message - only redirect if there's still an encrypted vault AND not on hardware wallet page
       console.log('[useController] Logout message received');
       setIsUnlocked(false);
-      if (hasEncryptedVault) {
+      if (hasEncryptedVault && !isHardwareWalletPage) {
         console.log(
           '[useController] Redirecting to unlock screen after logout'
         );
         navigate('/', { replace: true });
+      } else if (hasEncryptedVault && isHardwareWalletPage) {
+        console.log(
+          '[useController] Logout on hardware wallet page, staying on page'
+        );
       } else {
         console.log(
           '[useController] No encrypted vault, letting routing logic handle navigation'
@@ -204,12 +232,19 @@ export const useController = () => {
       pattern.test(errorMessage)
     );
 
-    if (isWalletLockedError && hasEncryptedVault) {
+    if (isWalletLockedError && hasEncryptedVault && !isHardwareWalletPage) {
       console.log(
         '[useController] Wallet locked error detected, redirecting to unlock screen'
       );
       navigate('/', { replace: true });
       return true; // Error was handled
+    }
+
+    if (isWalletLockedError && hasEncryptedVault && isHardwareWalletPage) {
+      console.log(
+        '[useController] Wallet locked error on hardware wallet page, staying on page'
+      );
+      return true; // Error was handled (by staying on page)
     }
 
     return false; // Error was not handled

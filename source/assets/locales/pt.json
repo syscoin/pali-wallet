@@ -321,6 +321,7 @@
     "permissions": "Permissões",
     "viewTheAddresses": "Ver os endereços das suas contas permitidas",
     "errorCreatingHardWallet": "Erro ao criar carteira de hardware.",
+    "noDeviceSelected": "Nenhum dispositivo selecionado. Por favor, escolha um dispositivo para conectar.",
     "hardwareWallet": "CARTEIRA DE HARDWARE",
     "selectTheHardware": "Selecione a carteira de hardware que você gostaria",
     "dontHaveWallet": "Não tem uma carteira de hardware?",
@@ -427,7 +428,9 @@
     "networkNotFoundForEditing": "Rede não encontrada para edição. Por favor, atualize e tente novamente.",
     "networkAlreadyExists": "A rede com ID da cadeia {{chainId}} já existe. Por favor, use um ID de cadeia diferente ou edite a rede existente.",
     "utxoNetworkConflict": "Uma rede {{networkType}} já existe ({{existingNetworkName}}). Apenas uma rede {{networkType}} pode estar ativa por vez. Por favor, remova primeiro a rede {{networkType}} existente.",
-    "confirmRemoveNetwork": "Tem certeza de que deseja remover a rede \"{{networkName}}\"?"
+    "confirmRemoveNetwork": "Tem certeza de que deseja remover a rede \"{{networkName}}\"?",
+    "walletLoggedOut": "A carteira está desconectada",
+    "closeAndReopenPali": "Feche esta janela e reabra o Pali para autenticar e conectar sua carteira de hardware"
   },
   "start": {
     "paliDoesnt": "O Pali não armazena sua senha. Para recuperar o acesso, é necessário redefinir a carteira com sua Frase de Recuperação Secreta. Esta ação apaga a carteira atual, contas criadas, tokens personalizados e contas importadas do seu dispositivo, gerando uma nova conta vinculada à frase de redefinição.",

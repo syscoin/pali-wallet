@@ -102,7 +102,7 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // Create and store message listener
   messageListener = (message, sender, sendResponse) => {
-    const { type, data, action } = message;
+    const { type, data, action } = message || {};
     const { hasEthProperty } = store.getState().vaultGlobal;
 
     // Let specialized handlers handle their message types
@@ -138,12 +138,27 @@ export const handleListeners = (masterController: IMasterController) => {
       return true; // Indicate async response was sent
     }
 
-    // Handle malformed messages
+    // Handle malformed messages - only warn for messages that should have types
+    if (!type && message && Object.keys(message).length > 0) {
+      // Only log if the message has content but no type
+      // Skip empty or undefined messages to reduce noise
+      if (
+        data ||
+        action ||
+        (message &&
+          typeof message === 'object' &&
+          Object.keys(message).some((key) => key !== 'type'))
+      ) {
+        console.warn('[Background] Received message with undefined type:', {
+          message: message,
+          sender: sender?.url || 'unknown',
+        });
+      }
+      return false;
+    }
+
+    // Skip processing if no type
     if (!type) {
-      console.warn('[Background] Received message with undefined type:', {
-        data,
-        action,
-      });
       return false;
     }
 
@@ -172,7 +187,10 @@ export const handleListeners = (masterController: IMasterController) => {
         sendResponse({ data: store.getState() });
         return true; // Indicate async response
       default:
-        console.log('[Background] Unhandled message type:', type);
+        // Only log unhandled messages that have meaningful content
+        if (type && type !== '') {
+          console.log('[Background] Unhandled message type:', type);
+        }
         return false; // Let other listeners handle this message
     }
 
