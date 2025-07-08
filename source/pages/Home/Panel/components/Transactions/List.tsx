@@ -22,6 +22,8 @@ import {
   navigateWithContext,
 } from 'utils/navigationState';
 
+import { useTransactionsListConfig } from './utils/useTransactionsInfos';
+
 export const TransactionsList = ({
   userTransactions,
 }: {
@@ -33,7 +35,7 @@ export const TransactionsList = ({
     isBitcoinBased,
   } = useSelector((state: RootState) => state.vault);
   const [searchParams] = useSearchParams();
-
+  const { getTxStatus } = useTransactionsListConfig();
   const [modalData, setModalData] = useState<{
     buttonText: string;
     description: string;
@@ -183,27 +185,6 @@ export const TransactionsList = ({
     deferredSearchQuery,
     txid,
   ]);
-
-  const getTxStatus = useCallback(
-    (isCanceled: boolean, isConfirmed: boolean) => {
-      let className = '';
-      let status = '';
-
-      switch (isCanceled) {
-        case true:
-          className = 'text-warning-error';
-          status = t('send.canceled');
-          break;
-        case false:
-          className = isConfirmed ? 'text-warning-success' : 'text-yellow-300';
-          status = isConfirmed ? t('send.confirmed') : t('send.pending');
-          break;
-      }
-
-      return <p className={className}>{status}</p>;
-    },
-    [userTransactions]
-  );
 
   const getTxOptions = (isCanceled: boolean, isConfirmed: boolean, tx: any) => {
     if (!isCanceled && !isConfirmed) {

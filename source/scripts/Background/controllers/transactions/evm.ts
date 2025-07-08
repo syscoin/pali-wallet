@@ -146,8 +146,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       url.searchParams.set('module', 'account');
       url.searchParams.set('action', 'txlist');
       url.searchParams.set('address', address);
-      url.searchParams.set('startblock', '0');
-      url.searchParams.set('endblock', '99999999');
       url.searchParams.set('sort', 'desc');
       url.searchParams.set('page', '1');
       url.searchParams.set('offset', '50');
@@ -245,7 +243,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             );
             timestamp = currentTime;
           }
-
           return {
             hash: tx.hash,
             from: tx.from,

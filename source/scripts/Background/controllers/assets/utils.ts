@@ -42,9 +42,12 @@ export const validateAndManageUserAssets = (
   //With a bigger os smaller value from balance, we can't use maxBy to validate it. So we filter by assetGuid or contractAddres
   //And order / sort it by balance value, to keep the biggests ones at first positions
   return uniqWith(
-    flatMap(fetchedAssetsOrTokens).sort(
-      (a, b) => (parseFloat(b.balance) || 0) - (parseFloat(a.balance) || 0)
-    ),
+    flatMap(fetchedAssetsOrTokens).sort((a, b) => {
+      // Handle null/undefined balance values safely
+      const balanceA = a?.balance ? parseFloat(a.balance) : 0;
+      const balanceB = b?.balance ? parseFloat(b.balance) : 0;
+      return balanceB - balanceA;
+    }),
     (a, b) => a[tokenPropertyToUseAtGroupBy] === b[tokenPropertyToUseAtGroupBy]
   );
 };

@@ -148,6 +148,7 @@ export const useTransactionsListConfig = (
           status = isConfirmed ? t('send.confirmed') : t('send.pending');
           break;
       }
+
       return <p className={`text-xs font-normal ${className}`}>{status}</p>;
     },
     [t]
