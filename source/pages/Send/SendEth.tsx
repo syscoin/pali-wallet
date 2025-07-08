@@ -168,7 +168,7 @@ export const SendEth = () => {
         location.pathname,
         undefined,
         state,
-        location.state.returnContext
+        location.state?.returnContext
       );
     }, 2000);
 
