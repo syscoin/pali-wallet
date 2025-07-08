@@ -406,7 +406,6 @@
     "enterTokenId": "Введите ID токена",
     "amountMustBePositiveInteger": "Сумма должна быть положительным целым числом",
     "verifyingBalance": "Проверка баланса...",
-    "enterTokenIdToVerifyOwnership": "Введите ID токена ниже, чтобы проверить владение и активировать выбор суммы",
     "waitingForBalanceVerification": "Ожидание проверки баланса...",
     "clickTokenOrEnterManually": "Нажмите на токен выше или введите ID вручную",
     "outputBreakdown": "Разбор выходов",

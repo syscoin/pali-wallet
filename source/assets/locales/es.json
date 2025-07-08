@@ -262,7 +262,6 @@
     "enterTokenId": "Ingresar ID del token",
     "amountMustBePositiveInteger": "La cantidad debe ser un número entero positivo",
     "verifyingBalance": "Verificando saldo...",
-    "enterTokenIdToVerifyOwnership": "Ingresa el ID del token abajo para verificar la propiedad y habilitar la selección de cantidad",
     "waitingForBalanceVerification": "Esperando verificación del saldo...",
     "clickTokenOrEnterManually": "Haz clic en un token arriba o ingresa el ID manualmente",
     "outputBreakdown": "Desglose de salidas",

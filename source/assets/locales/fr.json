@@ -401,7 +401,6 @@
     "enterTokenId": "Entrer l'ID du token",
     "amountMustBePositiveInteger": "Le montant doit être un nombre entier positif",
     "verifyingBalance": "Vérification du solde...",
-    "enterTokenIdToVerifyOwnership": "Entrez l'ID du token ci-dessous pour vérifier la propriété et activer la sélection du montant",
     "waitingForBalanceVerification": "En attente de vérification du solde...",
     "clickTokenOrEnterManually": "Cliquez sur un token ci-dessus ou entrez l'ID manuellement",
     "outputBreakdown": "Répartition des sorties",

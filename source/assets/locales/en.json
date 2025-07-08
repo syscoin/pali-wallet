@@ -267,7 +267,6 @@
     "enterTokenId": "Enter token ID",
     "amountMustBePositiveInteger": "Amount must be a positive integer",
     "verifyingBalance": "Verifying balance...",
-    "enterTokenIdToVerifyOwnership": "Enter token ID below to verify ownership and enable amount selection",
     "waitingForBalanceVerification": "Waiting for balance verification...",
     "clickTokenOrEnterManually": "Click a token above or enter ID manually",
     "outputBreakdown": "Output breakdown",

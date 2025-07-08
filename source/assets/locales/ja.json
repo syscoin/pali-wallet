@@ -406,7 +406,6 @@
     "enterTokenId": "トークンIDを入力",
     "amountMustBePositiveInteger": "金額は正の整数である必要があります",
     "verifyingBalance": "残高を検証中...",
-    "enterTokenIdToVerifyOwnership": "所有権を確認し、金額選択を有効にするには、下にトークンIDを入力してください",
     "waitingForBalanceVerification": "残高確認を待機中...",
     "clickTokenOrEnterManually": "上のトークンをクリックするか、手動でIDを入力してください",
     "outputBreakdown": "アウトプット内訳",

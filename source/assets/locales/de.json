@@ -406,7 +406,6 @@
     "enterTokenId": "Token-ID eingeben",
     "amountMustBePositiveInteger": "Betrag muss eine positive ganze Zahl sein",
     "verifyingBalance": "Saldo wird verifiziert...",
-    "enterTokenIdToVerifyOwnership": "Gib die Token-ID unten ein, um den Besitz zu verifizieren und die Betragsauswahl zu aktivieren",
     "waitingForBalanceVerification": "Warte auf Saldo-Verifizierung...",
     "clickTokenOrEnterManually": "Klicke auf einen Token oben oder gib die ID manuell ein",
     "outputBreakdown": "Ausgaben-Aufschlüsselung",

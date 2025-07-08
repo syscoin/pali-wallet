@@ -222,6 +222,8 @@ export const SendEth = () => {
             setIsLoadingNftTokenIds(true);
             // Set amount to 1 for NFTs
             form.setFieldValue('amount', '1');
+            // Initialize the NFT token ID field with empty string to make it controlled from the start
+            form.setFieldValue('nftTokenId', '');
             try {
               const result = (await controllerEmitter(
                 ['wallet', 'fetchNftTokenIds'],
@@ -253,6 +255,8 @@ export const SendEth = () => {
           } else {
             setNftTokenIds([]);
             setSelectedNftTokenId(null);
+            // Clear the NFT token ID field when switching away from NFT
+            form.setFieldValue('nftTokenId', undefined);
           }
         } else {
           setSelectedAsset(null);
@@ -368,6 +372,15 @@ export const SendEth = () => {
 
   const finalBalance = useCallback(() => {
     if (selectedAsset) {
+      // For ERC-20 tokens, prefer verified balance if available
+      if (!selectedAsset.isNft && verifiedERC20Balance !== null) {
+        const displayBalance = verifiedERC20Balance.toFixed(4);
+        return `${displayBalance} ${
+          selectedAsset.tokenSymbol?.toUpperCase() || ''
+        }`;
+      }
+
+      // For NFTs and unverified tokens, use stored balance
       return getAssetBalance(
         selectedAsset,
         activeAccount,
@@ -381,16 +394,21 @@ export const SendEth = () => {
     const displayBalance = formatFullPrecisionBalance(fullBalance, 4);
 
     return `${displayBalance} ${activeNetwork.currency.toUpperCase()}`;
-  }, [selectedAsset, activeAccount, activeNetwork]);
+  }, [selectedAsset, activeAccount, activeNetwork, verifiedERC20Balance]);
 
   const getLabel = useCallback(() => {
     if (selectedAsset?.isNft) {
-      return selectedAsset?.name || t('send.nftCollection');
+      // For NFTs, prefer tokenSymbol over name
+      return (
+        selectedAsset?.tokenSymbol ||
+        selectedAsset?.name ||
+        t('send.nftCollection')
+      ).toUpperCase();
     }
     return selectedAsset?.tokenSymbol
       ? selectedAsset?.tokenSymbol.toUpperCase()
       : activeNetwork.currency.toUpperCase();
-  }, [selectedAsset, activeNetwork.currency]);
+  }, [selectedAsset, activeNetwork.currency, t]);
 
   const openAccountInExplorer = useCallback(() => {
     const accountAddress = activeAccount?.address;
@@ -673,6 +691,9 @@ export const SendEth = () => {
   const handleManualTokenIdChange = useCallback(
     (value: string) => {
       setSelectedNftTokenId(value);
+      // Also update the form field to keep them in sync
+      form.setFieldValue('nftTokenId', value);
+
       if (value) {
         // Clear previous verification
         setVerifiedTokenBalance(null);
@@ -689,7 +710,7 @@ export const SendEth = () => {
         setVerificationError(null);
       }
     },
-    [verifyTokenId]
+    [verifyTokenId, form]
   );
 
   // Verify ERC-20 token balance
@@ -732,6 +753,30 @@ export const SendEth = () => {
       setVerifiedERC20Balance(null);
     }
   }, [selectedAsset, verifyERC20Balance]);
+
+  // Sync form field with component state for NFT token ID
+  useEffect(() => {
+    if (selectedAsset?.isNft) {
+      const currentFormValue = form.getFieldValue('nftTokenId');
+      if (currentFormValue !== selectedNftTokenId) {
+        form.setFieldValue('nftTokenId', selectedNftTokenId || '');
+      }
+    } else {
+      // Ensure the field is removed when not an NFT to prevent controlled/uncontrolled issues
+      form.setFieldValue('nftTokenId', undefined);
+    }
+  }, [selectedNftTokenId, selectedAsset, form]);
+
+  // Initialize form fields to prevent controlled/uncontrolled issues
+  useEffect(() => {
+    // Initialize all form fields with default values to ensure they're controlled from the start
+    const currentValues = form.getFieldsValue();
+
+    // Only set defaults if the field doesn't already have a value
+    if (currentValues.nftTokenId === undefined) {
+      form.setFieldValue('nftTokenId', '');
+    }
+  }, [form]);
 
   // ✅ OPTIMIZED: Effect with proper dependencies
   useEffect(() => {
@@ -857,7 +902,7 @@ export const SendEth = () => {
                 message: '',
               },
               () => ({
-                async validator(_, value) {
+                validator(_, value) {
                   if (!value) {
                     return Promise.resolve();
                   }
@@ -875,7 +920,7 @@ export const SendEth = () => {
           </Form.Item>
         </div>
 
-        <div className="flex gap-2 w-full items-center">
+        <div className="flex gap-2 w-full items-center mb-6">
           <div className="flex md:max-w-md">
             <Form.Item
               name="asset"
@@ -934,11 +979,7 @@ export const SendEth = () => {
                                       }
                                       className="group flex items-center justify-between px-2 py-2 w-full hover:text-brand-royalblue text-brand-white font-poppins text-sm border-0 border-transparent transition-all duration-300"
                                     >
-                                      <p>
-                                        {item.isNft
-                                          ? item.name || t('send.nftCollection')
-                                          : item.tokenSymbol}
-                                      </p>
+                                      <p>{item.tokenSymbol}</p>
                                       <small>
                                         {item.isNft ? 'NFT' : 'Token'}
                                       </small>
@@ -1191,13 +1232,10 @@ export const SendEth = () => {
                     placeholder={
                       selectedAsset?.isNft &&
                       selectedAsset?.tokenStandard === 'ERC-1155'
-                        ? verifiedTokenBalance !== null
+                        ? verifiedTokenBalance !== null &&
+                          verifiedTokenBalance > 1
                           ? `Amount (1-${verifiedTokenBalance})`
-                          : t('send.verifyingOwnership')
-                        : !selectedAsset?.isNft && selectedAsset
-                        ? verifiedERC20Balance !== null
-                          ? t('send.amount')
-                          : t('send.verifyingBalance')
+                          : t('send.amount')
                         : t('send.amount')
                     }
                     onChange={(e) => {
@@ -1227,24 +1265,46 @@ export const SendEth = () => {
                   />
                 </Form.Item>
 
-                {/* Helper message when amount field is disabled */}
+                {/* Verification Status Display */}
                 {selectedAsset && (
-                  <>
-                    {selectedAsset.isNft &&
-                      selectedAsset?.tokenStandard === 'ERC-1155' &&
-                      verifiedTokenBalance === null && (
-                        <p className="text-brand-gray200 text-[10px] mt-1 text-center">
-                          {t('send.enterTokenIdToVerifyOwnership')}
-                        </p>
-                      )}
-                    {!selectedAsset.isNft && verifiedERC20Balance === null && (
-                      <p className="text-brand-gray200 text-[10px] mt-1 text-center">
-                        {isVerifyingERC20
-                          ? t('send.verifyingBalance')
-                          : t('send.waitingForBalanceVerification')}
-                      </p>
+                  <div className="absolute -bottom-6 left-0 right-0">
+                    {/* ERC-20 token verification status */}
+                    {!selectedAsset.isNft && (
+                      <div className="flex items-center justify-center gap-1">
+                        {isVerifyingERC20 ? (
+                          <>
+                            <svg
+                              className="animate-spin h-3 w-3 text-brand-royalblue"
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                              ></circle>
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            <p className="text-brand-royalblue text-[10px]">
+                              {t('send.verifyingBalance')}
+                            </p>
+                          </>
+                        ) : verifiedERC20Balance === null ? (
+                          <p className="text-brand-gray200 text-[10px]">
+                            {t('send.waitingForBalanceVerification')}
+                          </p>
+                        ) : null}
+                      </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>
@@ -1289,46 +1349,42 @@ export const SendEth = () => {
             )}
 
             {/* Manual token ID input */}
-            <Form.Item
-              name="nftTokenId"
-              rules={[
-                {
-                  required: true,
-                  message: t('send.tokenIdRequired'),
-                },
-                {
-                  validator: (_, value) => {
-                    if (!value || value.trim() === '') {
-                      return Promise.reject(
-                        new Error(t('send.tokenIdRequired'))
-                      );
-                    }
-                    // Basic validation for token ID format
-                    if (!/^\d+$/.test(value)) {
-                      return Promise.reject(
-                        new Error(t('send.invalidTokenId'))
-                      );
-                    }
-                    return Promise.resolve();
+            <div className="sender-custom-input">
+              <Form.Item
+                name="nftTokenId"
+                hasFeedback
+                rules={[
+                  {
+                    required: true,
+                    message: '',
                   },
-                },
-              ]}
-            >
-              <input
-                type="text"
-                placeholder={
-                  isLoadingNftTokenIds
-                    ? t('send.loadingNfts')
-                    : t('send.enterTokenId')
-                }
-                disabled={isLoadingNftTokenIds}
-                onChange={(e) => handleManualTokenIdChange(e.target.value)}
-                className="w-full px-4 py-3 bg-fields-input-primary border border-fields-input-border rounded-[100px] 
-                          text-brand-white text-sm placeholder-brand-gray200 
-                          focus:border-fields-input-borderfocus focus:outline-none
-                          disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </Form.Item>
+                  {
+                    validator: (_, value) => {
+                      if (!value || value.trim() === '') {
+                        return Promise.reject();
+                      }
+                      // Basic validation for token ID format
+                      if (!/^\d+$/.test(value)) {
+                        return Promise.reject();
+                      }
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+              >
+                <Input
+                  type="text"
+                  value={form.getFieldValue('nftTokenId') || ''}
+                  placeholder={
+                    isLoadingNftTokenIds
+                      ? t('networkConnection.loadingNfts')
+                      : t('send.enterTokenId')
+                  }
+                  disabled={isLoadingNftTokenIds}
+                  onChange={(e) => handleManualTokenIdChange(e.target.value)}
+                />
+              </Form.Item>
+            </div>
 
             {/* Verification status display */}
             {selectedNftTokenId &&

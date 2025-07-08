@@ -406,7 +406,6 @@
     "enterTokenId": "토큰 ID 입력",
     "amountMustBePositiveInteger": "금액은 양의 정수여야 합니다",
     "verifyingBalance": "잔액 확인 중...",
-    "enterTokenIdToVerifyOwnership": "소유권을 확인하고 금액 선택을 활성화하려면 아래에 토큰 ID를 입력하세요",
     "waitingForBalanceVerification": "잔액 확인 대기 중...",
     "clickTokenOrEnterManually": "위의 토큰을 클릭하거나 수동으로 ID를 입력하세요",
     "outputBreakdown": "출력 분석",

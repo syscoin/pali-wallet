@@ -560,7 +560,6 @@
     "enterTokenId": "输入代币ID",
     "amountMustBePositiveInteger": "金额必须是正整数",
     "verifyingBalance": "验证余额中...",
-    "enterTokenIdToVerifyOwnership": "在下方输入代币ID以验证所有权并启用金额选择",
     "waitingForBalanceVerification": "等待余额验证...",
     "clickTokenOrEnterManually": "点击上方的代币或手动输入ID",
     "outputBreakdown": "输出明细",
