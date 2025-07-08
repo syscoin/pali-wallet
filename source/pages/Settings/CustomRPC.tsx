@@ -469,12 +469,9 @@ const CustomRPCView = () => {
         await controllerEmitter(['wallet', 'editCustomRpc'], [updatedNetwork]);
         setLoading(false);
 
-        alert.success(t('settings.rpcSuccessfullyEdited'), {
-          autoClose: 3000,
-        });
+        alert.success(t('settings.rpcSuccessfullyEdited'));
 
-        // Navigate back to preserve scroll position after successful edit
-        setTimeout(() => navigateBack(navigate, location), 1800);
+        navigateBack(navigate, location);
       } else {
         // In add mode, network shouldn't exist
         if (existingNetwork) {
@@ -487,10 +484,8 @@ const CustomRPCView = () => {
         await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
         setLoading(false);
 
-        alert.success(t('settings.rpcSuccessfullyAdded'), {
-          autoClose: 3000,
-        });
-        setTimeout(() => navigate(-1), 1800);
+        alert.success(t('settings.rpcSuccessfullyAdded'));
+        navigate(-1);
       }
     } catch (error: any) {
       setShowModal(true);

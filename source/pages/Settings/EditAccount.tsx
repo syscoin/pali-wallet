@@ -62,7 +62,7 @@ const EditAccountView = () => {
       );
 
       alert.success(t('settings.accountLabelEditedSuccessfully'));
-      setTimeout(() => navigateBack(navigate, location), 1800);
+      navigateBack(navigate, location);
     } catch (error) {
       alert.error(error.message);
     } finally {
