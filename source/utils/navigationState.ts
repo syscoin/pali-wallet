@@ -3,6 +3,8 @@
  * Handles preservation of tab states and navigation context when moving between pages
  */
 
+import store from '../state/store';
+
 import { chromeStorage } from './storageAPI';
 
 export interface INavigationContext {
@@ -68,9 +70,19 @@ export const loadNavigationState =
 
       const state = savedState as ISavedNavigationState;
 
-      // Check if state is fresh (less than 24 hours old)
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      if (Date.now() - state.timestamp > twentyFourHours) {
+      // Get autolock setting from store - use navigation state timeout based on autolock
+      // since wallet will automatically lock and navigate to home after autolock period
+      const { advancedSettings } = store.getState().vaultGlobal;
+      const autoLockMinutes =
+        typeof advancedSettings?.autolock === 'number'
+          ? advancedSettings.autolock
+          : 5; // Default 5 minutes if not set or not a number
+      const autoLockTimeout = autoLockMinutes * 60 * 1000; // Convert minutes to milliseconds
+
+      // Check if state is fresh (less than autolock timeout)
+      // Add a small buffer (30 seconds) to ensure we don't restore state right before autolock
+      const stateTimeout = autoLockTimeout - 30 * 1000;
+      if (Date.now() - state.timestamp > stateTimeout) {
         await clearNavigationState();
         return null;
       }
