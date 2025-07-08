@@ -19,9 +19,6 @@ const ConnectHardwareWalletView: FC = () => {
     window.innerWidth <= 600
   );
   const { accounts } = useSelector((state: RootState) => state.vault);
-  const { advancedSettings } = useSelector(
-    (state: RootState) => state.vaultGlobal
-  );
   const { t } = useTranslation();
   const { alert, navigate } = useUtils();
   const { controllerEmitter, isUnlocked } = useController();
@@ -46,12 +43,6 @@ const ConnectHardwareWalletView: FC = () => {
     selectedHardwareWallet === HardWallets.LEDGER
       ? 'bg-brand-blue400 border-2 border-brand-blue400 cursor-pointer'
       : 'bg-transparent border-2 border-white '
-  }`;
-
-  const confirmButtonDisbledStyle = `${
-    selectedHardwareWallet === undefined // Removed testnet restriction - hardware wallets now support testnet
-      ? 'opacity-60'
-      : 'opacity-100'
   }`;
 
   const isLedger = selectedHardwareWallet === HardWallets.LEDGER;
