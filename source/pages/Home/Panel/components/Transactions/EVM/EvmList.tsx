@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -239,6 +245,9 @@ export const EvmTransactionsList = ({
   const accountAssets = useSelector(
     (state: RootState) => state.vault.accountAssets
   );
+  const accountTransactions = useSelector(
+    (state: RootState) => state.vault.accountTransactions
+  );
 
   const { chainId, currency } = activeNetwork;
 
@@ -277,7 +286,77 @@ export const EvmTransactionsList = ({
     [date: string]: ITransactionInfoEvm[];
   }>({});
 
+  // Track the previous confirmation state locally (like UTXO implementation)
+  const prevConfirmationState = useRef<{ [hash: string]: number }>({});
+  const isFirstRender = useRef(true);
+  const lastToastTime = useRef<number>(0);
+
   const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+  const currentAccountTransactions =
+    accountTransactions[activeAccount.type]?.[activeAccount.id];
+
+  // Create a stable dependency by tracking only transaction count and confirmation sum
+  const ethereumTxs = currentAccountTransactions?.ethereum?.[chainId] || [];
+  const txCount = ethereumTxs.length;
+  const confirmationSum = ethereumTxs.reduce(
+    (sum: number, tx: any) => sum + (tx.confirmations || 0),
+    0
+  );
+
+  // Add reactive confirmation tracking (like UTXO implementation)
+  useEffect(() => {
+    // Get the specific transactions for this chain
+    const ethereumTransactions =
+      currentAccountTransactions?.ethereum?.[chainId];
+
+    if (!ethereumTransactions || !Array.isArray(ethereumTransactions)) {
+      return;
+    }
+
+    // Track confirmation changes for all transactions
+    const newConfirmationStates: { [hash: string]: number } = {};
+    let hasNewlyConfirmedTx = false;
+
+    // Skip showing toast on first render
+    const shouldCheckForNewConfirmations = !isFirstRender.current;
+
+    ethereumTransactions.forEach((tx: any) => {
+      const txHash = tx.hash;
+      const currentConfirmations = tx.confirmations || 0;
+
+      newConfirmationStates[txHash] = currentConfirmations;
+
+      // Check if this transaction just went from pending (0) to confirmed (>0)
+      if (
+        shouldCheckForNewConfirmations &&
+        prevConfirmationState.current[txHash] === 0 &&
+        currentConfirmations > 0
+      ) {
+        hasNewlyConfirmedTx = true;
+      }
+    });
+
+    // Show toast if we detected a newly confirmed transaction
+    if (hasNewlyConfirmedTx) {
+      const now = Date.now();
+      // Prevent showing multiple toasts within 3 seconds
+      if (now - lastToastTime.current > 3000) {
+        // Defer toast to next tick to avoid conflicts with re-renders
+        alert.success(t('send.txSuccessfull'), {
+          autoClose: 5000, // Show for 5 seconds
+        });
+        lastToastTime.current = now;
+      }
+    }
+
+    // Update the previous state for next comparison
+    prevConfirmationState.current = newConfirmationStates;
+
+    // Mark that first render is complete
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+    }
+  }, [txCount, confirmationSum, chainId, alert, t, currentAccountTransactions]);
 
   const getTxOptions = useCallback(
     (isCanceled: boolean, isConfirmed: boolean, tx: ITransactionInfoEvm) => {

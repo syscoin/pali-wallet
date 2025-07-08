@@ -1,18 +1,21 @@
 import { uniqueId } from 'lodash';
-import React, { Fragment, useEffect, useState, memo, useMemo } from 'react';
+import React, {
+  Fragment,
+  useEffect,
+  useState,
+  memo,
+  useMemo,
+  useRef,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { retryableFetch } from '@pollum-io/sysweb3-network';
-
-import {
-  EvmTxDetailsLabelsToKeep,
-  EnhancedEvmTxDetailsLabelsToKeep,
-} from '../utils/txLabelsDetail';
+import { EnhancedEvmTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
+import { useController } from 'hooks/useController';
 import { IEvmTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import {
@@ -42,6 +45,7 @@ const CopyIcon = memo(() => (
 CopyIcon.displayName = 'CopyIcon';
 
 export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
+  const { controllerEmitter } = useController();
   const {
     activeNetwork: { chainId, currency, apiUrl },
     activeAccount,
@@ -77,6 +81,9 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
   const [, copy] = useCopyClipboard();
   const [enhancedDetails, setEnhancedDetails] = useState<any>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+  // Simple duplicate prevention (like EvmAssetDetails pattern)
+  const fetchingRef = useRef(false);
 
   let isTxCanceled: boolean;
   let isConfirmed: boolean;
@@ -123,10 +130,10 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
   // Copy message is now handled inline in the copy button onClick
 
-  // Fetch enhanced transaction details from API with caching
+  // Fetch enhanced transaction details using controller methods (handles both API and provider)
   useEffect(() => {
     const fetchEnhancedDetails = async () => {
-      if (!apiUrl || !hash) return;
+      if (!hash) return;
 
       // Check cache first
       const cached = txDetailsCache.get(hash);
@@ -135,35 +142,54 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
         return;
       }
 
+      // Prevent duplicate fetches
+      if (fetchingRef.current) return;
+
+      fetchingRef.current = true;
       setIsLoadingDetails(true);
       try {
-        const url = new URL(apiUrl);
-        const apiKey = url.searchParams.get('apikey') || '';
-        url.search = '';
+        let enhancedData = null;
 
-        const apiEndpoint = `${url.toString()}?module=transaction&action=gettxinfo&txhash=${hash}${
-          apiKey ? `&apikey=${apiKey}` : ''
-        }`;
+        if (apiUrl) {
+          // Use API method for networks with API URL (faster, but may miss some EIP-1559 fields)
+          enhancedData = await controllerEmitter(
+            ['wallet', 'getEvmTransactionFromAPI'],
+            [hash, apiUrl]
+          );
+        } else {
+          // Use provider method for networks without API URL (slower, but complete)
+          enhancedData = await controllerEmitter(
+            ['wallet', 'getEvmTransactionFromProvider'],
+            [hash]
+          );
+        }
 
-        const response = await retryableFetch(apiEndpoint);
-        const data = await response.json();
-
-        if (data.status === '1' && data.result) {
+        if (enhancedData) {
           // Cache the result
           txDetailsCache.set(hash, {
-            data: data.result,
+            data: enhancedData,
             timestamp: Date.now(),
           });
-          setEnhancedDetails(data.result);
+          setEnhancedDetails(enhancedData);
+        } else {
+          setEnhancedDetails(null);
         }
       } catch (error) {
         console.error('Failed to fetch enhanced transaction details:', error);
+        // On error, set to null to fall back to basic data
+        setEnhancedDetails(null);
       } finally {
+        fetchingRef.current = false;
         setIsLoadingDetails(false);
       }
     };
 
     fetchEnhancedDetails();
+
+    // Cleanup function to reset fetch state
+    return () => {
+      fetchingRef.current = false;
+    };
   }, [hash, apiUrl]);
 
   const formattedTransaction = [];
@@ -209,7 +235,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     isConfirmed = tx.confirmations > 0;
     isTxSent = tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 
-    // Merge with enhanced details if available
+    // Merge with enhanced details if available - prioritize enhanced data
     const mergedTx = enhancedDetails ? { ...tx, ...enhancedDetails } : tx;
 
     // Add method information from decoding if available
@@ -265,9 +291,8 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
     }
   });
 
-  const labelsToUse = enhancedDetails
-    ? EnhancedEvmTxDetailsLabelsToKeep
-    : EvmTxDetailsLabelsToKeep;
+  // Always use enhanced labels since provider data is now normalized to same structure as API
+  const labelsToUse = EnhancedEvmTxDetailsLabelsToKeep;
 
   const formattedTransactionDetails = formattedTransaction
     .filter(({ label }) => labelsToUse.includes(label))

@@ -3905,6 +3905,190 @@ class MainController {
     return this.evmTransactionsController.testExplorerApi(apiUrl);
   }
 
+  /**
+   * Fetch individual EVM transaction details from API (efficient, like getRawTransaction for UTXO)
+   */
+  public async getEvmTransactionFromAPI(hash: string, apiUrl: string) {
+    return this.evmTransactionsController.fetchTransactionDetailsFromAPI(
+      hash,
+      apiUrl
+    );
+  }
+
+  /**
+   * Helper function to safely convert hex values and BigNumber objects to numbers or strings
+   */
+  private convertHexValue(
+    hexValue: any,
+    returnType: 'number' | 'string' = 'string'
+  ): any {
+    if (hexValue === null || hexValue === undefined) return null;
+
+    // Handle BigNumber objects from web3 provider
+    if (hexValue && typeof hexValue === 'object') {
+      // Check for different BigNumber structures
+      let hexString = null;
+
+      if (hexValue.hex) {
+        hexString = hexValue.hex;
+      } else if (hexValue._hex) {
+        hexString = hexValue._hex;
+      } else if (hexValue.type === 'BigNumber' && hexValue.toHexString) {
+        // Try calling toHexString method if available
+        try {
+          hexString = hexValue.toHexString();
+        } catch (e) {
+          console.warn('Failed to call toHexString on BigNumber:', e);
+        }
+      }
+
+      if (hexString && hexString.startsWith('0x')) {
+        try {
+          const parsed = parseInt(hexString, 16);
+          const result = returnType === 'number' ? parsed : parsed.toString();
+          return result;
+        } catch (error) {
+          console.warn(`Failed to convert BigNumber ${hexString}:`, error);
+          return hexValue;
+        }
+      }
+    }
+
+    // Handle hex strings
+    const hexStr = hexValue.toString();
+    if (!hexStr.startsWith('0x')) return hexValue; // Already converted or not hex
+
+    try {
+      const parsed = parseInt(hexStr, 16);
+      return returnType === 'number' ? parsed : parsed.toString();
+    } catch (error) {
+      console.warn(`Failed to convert hex value ${hexStr}:`, error);
+      return hexValue;
+    }
+  }
+
+  /**
+   * Fetch individual EVM transaction details from blockchain (for networks without API)
+   */
+  public async getEvmTransactionFromProvider(hash: string) {
+    if (!this.ethereumTransaction?.web3Provider) {
+      throw new Error('No valid web3Provider available');
+    }
+
+    try {
+      // Get transaction from provider
+      const tx = await this.ethereumTransaction.web3Provider.getTransaction(
+        hash
+      );
+      if (!tx) return null;
+
+      // Get receipt for confirmation status
+      let receipt = null;
+      try {
+        receipt =
+          await this.ethereumTransaction.web3Provider.getTransactionReceipt(
+            hash
+          );
+      } catch (receiptError) {
+        // Transaction might be pending, receipt not available yet
+        console.log(
+          `Transaction ${hash} receipt not available (likely pending)`
+        );
+      }
+
+      // Get current block number for confirmation count
+      const latestBlock =
+        await this.ethereumTransaction.web3Provider.getBlockNumber();
+      const blockNumber = receipt
+        ? this.convertHexValue(receipt.blockNumber, 'number')
+        : null;
+      const confirmations = blockNumber
+        ? Math.max(0, latestBlock - blockNumber)
+        : 0;
+
+      // Get block timestamp for accurate timestamp (better than Date.now())
+      let timestamp = Math.floor(Date.now() / 1000);
+      if (receipt && receipt.blockNumber) {
+        try {
+          const block = await this.ethereumTransaction.web3Provider.getBlock(
+            receipt.blockNumber
+          );
+          timestamp = block ? block.timestamp : timestamp;
+        } catch (blockError) {
+          console.log(
+            `Could not fetch block ${receipt.blockNumber} for timestamp`
+          );
+        }
+      }
+
+      // Convert status from hex to boolean for proper comparison
+      const isSuccess = receipt
+        ? this.convertHexValue(receipt.status, 'number') === 1
+        : null;
+
+      // Return transaction in the same format as API (normalize for Enhanced component)
+      return {
+        hash: tx.hash,
+        from: tx.from,
+        to: tx.to,
+        value: this.convertHexValue(tx.value) || '0',
+        blockNumber: blockNumber,
+        blockHash: receipt ? receipt.blockHash : null,
+        timestamp: timestamp,
+        confirmations,
+        chainId: this.convertHexValue(tx.chainId, 'number'),
+        input: tx.data,
+        gasPrice: this.convertHexValue(tx.gasPrice),
+        gas: this.convertHexValue(tx.gasLimit),
+        gasLimit: this.convertHexValue(tx.gasLimit), // Enhanced component expects gasLimit
+        nonce: this.convertHexValue(tx.nonce, 'number'),
+        gasUsed: receipt ? this.convertHexValue(receipt.gasUsed) : null,
+        // Use effectiveGasPrice from receipt if available (more accurate for EIP-1559)
+        effectiveGasPrice:
+          receipt && receipt.effectiveGasPrice
+            ? this.convertHexValue(receipt.effectiveGasPrice)
+            : null,
+        status:
+          isSuccess === null ? 'pending' : isSuccess ? 'success' : 'failed',
+        // Normalize to match Enhanced component expectations
+        success: isSuccess,
+        isError: isSuccess === null ? null : isSuccess ? '0' : '1',
+        logs: receipt ? receipt.logs || [] : [], // Actual logs from receipt
+        revertReason: null, // Not available from provider
+        maxFeePerGas: this.convertHexValue(tx.maxFeePerGas),
+        maxPriorityFeePerGas: this.convertHexValue(tx.maxPriorityFeePerGas),
+        // Add other fields that Enhanced component might expect
+        contractAddress: receipt ? receipt.contractAddress : null,
+        cumulativeGasUsed: receipt
+          ? this.convertHexValue(receipt.cumulativeGasUsed)
+          : null,
+        transactionIndex: receipt
+          ? this.convertHexValue(receipt.transactionIndex, 'number')
+          : null,
+        // Method detection for enhanced display
+        method: tx.data && tx.data !== '0x' ? 'Contract Interaction' : null,
+        // Add type for EIP-1559 vs legacy transactions
+        type: this.convertHexValue(tx.type),
+        // Add any L1 fee info if available (for L2 chains like Optimism)
+        l1Fee:
+          receipt && receipt.l1Fee ? this.convertHexValue(receipt.l1Fee) : null,
+        l1GasPrice:
+          receipt && receipt.l1GasPrice
+            ? this.convertHexValue(receipt.l1GasPrice)
+            : null,
+        l1GasUsed:
+          receipt && receipt.l1GasUsed
+            ? this.convertHexValue(receipt.l1GasUsed)
+            : null,
+        l1FeeScalar:
+          receipt && receipt.l1FeeScalar ? receipt.l1FeeScalar : null, // This might be a decimal string
+      };
+    } catch (error) {
+      console.error('Error fetching EVM transaction from provider:', error);
+      return null;
+    }
+  }
+
   // Direct Syscoin methods for consistency
   public async getSysAssetsByXpub(xpub: string, url: string, chainId: number) {
     return this.assetsManager.sys.getSysAssetsByXpub(xpub, url, chainId);

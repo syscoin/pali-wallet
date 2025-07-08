@@ -18,6 +18,10 @@ import {
 import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, ellipsis } from 'utils/index';
 
+// UTXO transaction details cache with TTL (5 minutes - consistent with EVM)
+const utxoTxDetailsCache = new Map<string, { data: any; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 // Memoize copy icon to prevent unnecessary re-renders
 const CopyIcon = memo(() => (
   <Icon
@@ -92,13 +96,31 @@ export const SyscoinTransactionDetails = ({
   let transactionTx: any;
   let txValue: number;
 
-  const setTx = async () =>
-    setRawTransaction(
-      await controllerEmitter(
+  const setTx = async () => {
+    // Check cache first (consistent with EVM implementation)
+    const cached = utxoTxDetailsCache.get(hash);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      setRawTransaction(cached.data);
+      return;
+    }
+
+    try {
+      const rawTxData = await controllerEmitter(
         ['wallet', 'getRawTransaction'],
         [activeNetworkUrl, hash]
-      )
-    );
+      );
+
+      // Cache the result
+      utxoTxDetailsCache.set(hash, {
+        data: rawTxData,
+        timestamp: Date.now(),
+      });
+
+      setRawTransaction(rawTxData);
+    } catch (error) {
+      console.error('Failed to fetch UTXO transaction details:', error);
+    }
+  };
 
   useEffect(() => {
     setTx();

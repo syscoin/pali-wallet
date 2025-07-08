@@ -8,22 +8,6 @@ export const UtxoTxDetailsLabelsToKeep = [
   'Fees',
 ];
 
-export const EvmTxDetailsLabelsToKeep = [
-  'Hash',
-  'From',
-  'To',
-  'Block Hash',
-  'Confirmations',
-  'Timestamp',
-  'Max Fee Per Gas',
-  'Nonce',
-  'Gas Used',
-  'Gas Price',
-  'Success',
-  'Revert Reason',
-  'Method',
-];
-
 export const EnhancedEvmTxDetailsLabelsToKeep = [
   'Hash',
   'From',
