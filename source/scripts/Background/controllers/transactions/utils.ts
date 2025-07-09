@@ -209,6 +209,13 @@ export const findUserTxsInProviderByBlocksRange = async (
             timestamp: response.timestamp
               ? Number(response.timestamp)
               : Math.floor(Date.now() / 1000),
+            nonce:
+              txWithConfirmations.nonce !== undefined &&
+              txWithConfirmations.nonce !== null
+                ? typeof txWithConfirmations.nonce === 'string'
+                  ? parseInt(txWithConfirmations.nonce, 16) // RPC returns nonce as hex string
+                  : Number(txWithConfirmations.nonce)
+                : undefined,
           };
         });
 
@@ -224,18 +231,65 @@ export const treatAndSortTransactions = (
 ): UnifiedTransaction[] => {
   // Single pass: Group transactions by their ID and keep the best version
   const txMap = new Map<string, UnifiedTransaction>();
+  // Track transactions by nonce for replacement detection
+  const nonceMap = new Map<number, string>(); // nonce -> hash mapping
 
   for (const tx of transactions) {
-    // For EVM transactions with nonce, use nonce to detect replacements
-    // For UTXO or transactions without nonce, use hash/txid
-    let id: string;
-    if ('nonce' in tx && typeof tx.nonce === 'number') {
-      id = tx.nonce.toString();
-    } else {
-      id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
+    // Always use hash as primary identifier
+    const txHash = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
+
+    // Check if this is an EVM transaction with a valid nonce
+    const hasValidNonce =
+      'nonce' in tx &&
+      typeof tx.nonce === 'number' &&
+      !isNaN(tx.nonce) &&
+      tx.nonce >= 0;
+
+    let existingTxHash: string | undefined;
+
+    // If we have a valid nonce, check if there's already a transaction with this nonce
+    if (hasValidNonce) {
+      existingTxHash = nonceMap.get((tx as IEvmTransactionResponse).nonce);
     }
 
-    const existing = txMap.get(id);
+    // If we found an existing transaction with the same nonce, this could be a replacement
+    if (existingTxHash && existingTxHash !== txHash) {
+      const existingTx = txMap.get(existingTxHash);
+
+      if (existingTx) {
+        // This is a replacement transaction (same nonce, different hash)
+        // Keep the one with more confirmations or the newer one if both are pending
+        const shouldReplace =
+          tx.confirmations > existingTx.confirmations ||
+          (tx.confirmations === 0 && existingTx.confirmations === 0);
+
+        if (shouldReplace) {
+          // Remove the old transaction and add the new one
+          txMap.delete(existingTxHash);
+          // Merge important properties from the existing transaction
+          const mergedTx = { ...tx };
+
+          // If the existing transaction had a timestamp and the new one doesn't, preserve it
+          if (
+            existingTx &&
+            'timestamp' in existingTx &&
+            existingTx.timestamp &&
+            (!('timestamp' in mergedTx) || !mergedTx.timestamp)
+          ) {
+            (mergedTx as any).timestamp = existingTx.timestamp;
+          }
+
+          txMap.set(txHash, mergedTx);
+          // Update nonce map to point to new hash
+          nonceMap.set((tx as IEvmTransactionResponse).nonce, txHash);
+        }
+        // Skip further processing for this transaction
+        continue;
+      }
+    }
+
+    // Normal deduplication by hash
+    const existing = txMap.get(txHash);
 
     // Update if: no existing tx, more confirmations, or transaction just got into a block
     const shouldUpdate =
@@ -269,7 +323,12 @@ export const treatAndSortTransactions = (
         }
       }
 
-      txMap.set(id, mergedTx);
+      txMap.set(txHash, mergedTx);
+
+      // Update nonce map if this transaction has a valid nonce
+      if (hasValidNonce) {
+        nonceMap.set((tx as IEvmTransactionResponse).nonce, txHash);
+      }
     } else if (existing) {
       // The existing tx has same or more confirmations, but check if new tx has earlier timestamps
       const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
@@ -296,7 +355,7 @@ export const treatAndSortTransactions = (
       }
 
       if (updated) {
-        txMap.set(id, mergedTx);
+        txMap.set(txHash, mergedTx);
       }
     }
   }

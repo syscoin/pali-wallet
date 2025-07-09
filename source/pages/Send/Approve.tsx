@@ -32,6 +32,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/index';
 import { verifyZerosInBalanceAndFormat, ellipsis } from 'utils/index';
+import { clearNavigationState } from 'utils/navigationState';
 
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
@@ -225,7 +226,10 @@ export const ApproveTransactionComponent = () => {
         if (isExternal)
           createTemporaryAlarm({
             delayInSeconds: 4,
-            callback: () => window.close(),
+            callback: () => {
+              clearNavigationState();
+              window.close();
+            },
           });
         setLoading(false);
         return error;
@@ -253,6 +257,14 @@ export const ApproveTransactionComponent = () => {
       abortController.abort();
     };
   }, [dataTx]);
+
+  // Clear navigation state when component unmounts or navigates away
+  useEffect(
+    () => () => {
+      clearNavigationState();
+    },
+    []
+  );
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -333,6 +345,9 @@ export const ApproveTransactionComponent = () => {
   // Navigate when transaction is confirmed
   useEffect(() => {
     if (confirmedDefaultModal) {
+      // Clear navigation state when actually navigating or closing
+      clearNavigationState();
+
       alert.success(t('send.approveSuccessful'));
 
       if (isExternal) {
@@ -583,8 +598,14 @@ export const ApproveTransactionComponent = () => {
                 <SecondaryButton
                   type="button"
                   onClick={() => {
-                    if (isExternal) window.close();
-                    else navigate('/home');
+                    // Clear navigation state when exiting send flow
+                    clearNavigationState();
+
+                    if (isExternal) {
+                      window.close();
+                    } else {
+                      navigate('/home');
+                    }
                   }}
                 >
                   {t('buttons.cancel')}

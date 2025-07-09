@@ -18,6 +18,7 @@ import {
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { logError } from 'utils/logger';
+import { clearNavigationState } from 'utils/navigationState';
 import removeScientificNotation from 'utils/removeScientificNotation';
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
@@ -198,13 +199,20 @@ export const SendTransaction = () => {
 
         alert.error(t('send.cantCompleteTxs'));
 
-        if (isExternal) setTimeout(window.close, 4000);
-        else setLoading(false);
+        if (isExternal) {
+          clearNavigationState();
+          setTimeout(window.close, 4000);
+        } else {
+          setLoading(false);
+        }
         return error;
       }
     } else {
       alert.error(t('send.enoughFunds'));
-      if (isExternal) setTimeout(window.close, 2000);
+      if (isExternal) {
+        clearNavigationState();
+        setTimeout(window.close, 2000);
+      }
     }
   };
 
@@ -225,6 +233,7 @@ export const SendTransaction = () => {
       } catch (e) {
         logError('error getting fees', 'Transaction', e);
         alert.error(t('send.txWillFail'), e);
+        clearNavigationState();
         setTimeout(window.close, 3000);
       }
     };
@@ -243,6 +252,9 @@ export const SendTransaction = () => {
   // Navigate when transaction is confirmed
   useEffect(() => {
     if (confirmed) {
+      // Clear navigation state when actually navigating
+      clearNavigationState();
+
       if (isExternal) {
         window.close();
       } else {
@@ -250,6 +262,14 @@ export const SendTransaction = () => {
       }
     }
   }, [confirmed, alert, t, navigate, isExternal]);
+
+  // Clear navigation state when component unmounts or navigates away
+  useEffect(
+    () => () => {
+      clearNavigationState();
+    },
+    []
+  );
 
   return (
     <>
@@ -382,6 +402,8 @@ export const SendTransaction = () => {
             <SecondaryButton
               type="button"
               onClick={() => {
+                // Clear navigation state when user cancels/goes away
+                clearNavigationState();
                 if (isExternal) {
                   window.close();
                 } else {

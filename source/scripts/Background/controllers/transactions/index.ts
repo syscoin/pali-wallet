@@ -45,7 +45,8 @@ const TransactionsManager = (): ITransactionsManager => {
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     web3Provider: CustomJsonRpcProvider,
-    accountTransactions?: IAccountTransactions // Pass transactions separately
+    accountTransactions?: IAccountTransactions,
+    isPolling?: boolean
   ) => {
     // Clear expired cache entries
     clearExpiredCache();
@@ -86,7 +87,8 @@ const TransactionsManager = (): ITransactionsManager => {
           return [];
         }
         result = await EvmTransactionsController().pollingEvmTransactions(
-          web3Provider
+          web3Provider,
+          isPolling
         );
       }
       // Cache the result only if no pending transactions

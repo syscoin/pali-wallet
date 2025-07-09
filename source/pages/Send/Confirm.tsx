@@ -41,6 +41,7 @@ import {
   INITIAL_FEE,
   navigateBack,
   saveNavigationState,
+  clearNavigationState,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriority';
@@ -1334,6 +1335,9 @@ export const SendConfirm = () => {
   // Navigate home when transaction is confirmed
   useEffect(() => {
     if (confirmed) {
+      // Clear navigation state when actually navigating
+      clearNavigationState();
+
       navigate('/home', {
         state: { fromTransaction: true },
       });
@@ -1695,7 +1699,10 @@ export const SendConfirm = () => {
           <div className="flex items-center justify-around py-6 w-full mt-4">
             <Button
               type="button"
-              onClick={() => navigateBack(navigate, state)}
+              onClick={() => {
+                clearNavigationState();
+                navigate('/home');
+              }}
               className="xl:p-18 h-[40px] w-[164px] flex items-center justify-center text-brand-white text-base bg-transparent hover:opacity-60 border border-white rounded-[100px] transition-all duration-300 xl:flex-none"
             >
               {t('buttons.cancel')}

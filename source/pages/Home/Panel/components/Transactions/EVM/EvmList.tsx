@@ -63,6 +63,8 @@ const EvmTransactionItem = React.memo(
     const isSpeedUp = tx?.isSpeedUp === true;
     const isConfirmed = isTransactionInBlock(tx);
     const isErc20Tx = isERC20Transfer(tx as any);
+    // Check if this is a native token transfer (no contract interaction)
+    const isNativeTransfer = !tx?.input || tx.input === '0x';
     const isTxSent =
       tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
     const tokenValue = (() => {
@@ -116,7 +118,9 @@ const EvmTransactionItem = React.memo(
                 {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal line-through">
-                {getFiatAmount(Number(finalTxValue), 6)}
+                {isNativeTransfer
+                  ? getFiatAmount(Number(finalTxValue), 6)
+                  : '---'}
               </div>
             </div>
             <div className="m-auto">
@@ -154,7 +158,9 @@ const EvmTransactionItem = React.memo(
                 {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal line-through">
-                {getFiatAmount(Number(finalTxValue), 6)}
+                {isNativeTransfer
+                  ? getFiatAmount(Number(finalTxValue), 6)
+                  : '---'}
               </div>
             </div>
             <div className="m-auto">
@@ -192,7 +198,7 @@ const EvmTransactionItem = React.memo(
                 {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
               </div>
               <div className="text-brand-gray200 text-xs font-normal">
-                {getFiatAmount(finalTxValue, 6)}
+                {isNativeTransfer ? getFiatAmount(finalTxValue, 6) : '---'}
               </div>
             </div>
             <div className="m-auto">
@@ -398,24 +404,33 @@ export const EvmTransactionsList = ({
         ([date, transactions]: any) => (
           <div key={date} className="relative mb-[20px]">
             <div className="text-xs text-white font-normal">{date}</div>
-            {transactions?.map((tx) => (
-              <EvmTransactionItem
-                key={tx?.hash}
-                tx={tx}
-                currentAccount={currentAccount}
-                getTxStatusIcons={getTxStatusIcons}
-                getTxType={getTxType}
-                getTxStatus={getTxStatus}
-                getTokenSymbol={getTokenSymbol}
-                currency={currency}
-                getFiatAmount={getFiatAmount}
-                navigate={navigate}
-                txId={txId}
-                getTxOptions={getTxOptions}
-                t={t}
-                tokenSymbolCache={tokenSymbolCache}
-              />
-            ))}
+            {transactions?.map((tx, index) => {
+              // Create a unique key that handles replacements properly
+              // Use nonce if available (EVM), otherwise use hash/txid
+              const txKey =
+                tx.nonce !== undefined
+                  ? `nonce-${tx.nonce}-${tx?.hash || `unknown-${index}`}`
+                  : `${tx?.hash || tx?.txid || `unknown-${index}`}-${index}`;
+
+              return (
+                <EvmTransactionItem
+                  key={txKey}
+                  tx={tx}
+                  currentAccount={currentAccount}
+                  getTxStatusIcons={getTxStatusIcons}
+                  getTxType={getTxType}
+                  getTxStatus={getTxStatus}
+                  getTokenSymbol={getTokenSymbol}
+                  currency={currency}
+                  getFiatAmount={getFiatAmount}
+                  navigate={navigate}
+                  txId={txId}
+                  getTxOptions={getTxOptions}
+                  t={t}
+                  tokenSymbolCache={tokenSymbolCache}
+                />
+              );
+            })}
           </div>
         )
       )}

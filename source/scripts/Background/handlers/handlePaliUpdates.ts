@@ -64,7 +64,7 @@ const releaseUpdateLock = () => {
   chrome.storage.local.remove([UPDATE_LOCK_KEY]);
 };
 
-export async function checkForUpdates(): Promise<boolean> {
+export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {
   // Try to acquire cross-context lock
   const hasLock = await acquireUpdateLock();
   if (!hasLock) {
@@ -101,7 +101,7 @@ export async function checkForUpdates(): Promise<boolean> {
     // Always use direct controller call since we're already in the background
     // This avoids unnecessary errors when popup is closed
     try {
-      await getController().wallet.getLatestUpdateForCurrentAccount(true);
+      await getController().wallet.getLatestUpdateForCurrentAccount(isPolling);
 
       // Save state after successful update
       saveState(store.getState());

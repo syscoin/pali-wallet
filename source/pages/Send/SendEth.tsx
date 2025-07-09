@@ -182,18 +182,22 @@ export const SendEth = () => {
   // Restore form values if coming back from navigation
   useEffect(() => {
     if (location.state?.scrollPosition !== undefined) {
-      const { formValues } = location.state;
+      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
 
       if (formValues) {
         form.setFieldsValue(formValues);
-        // Also update the ref to keep it in sync
         formValuesRef.current = formValues;
+
+        // If this was a max send, recalculate the max amount
+        if (restoredIsMaxSend) {
+          handleMaxButton();
+        }
       }
 
       // Clear the navigation state to prevent re-applying
       window.history.replaceState({}, document.title);
     }
-  }, [location.state, form]);
+  }, [location.state, form]); // handleMaxButton is stable useCallback, no need to include
 
   // ✅ MEMOIZED: Handlers
   const handleSelectedAsset = useCallback(

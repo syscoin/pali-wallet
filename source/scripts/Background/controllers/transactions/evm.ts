@@ -256,7 +256,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             input: tx.input,
             gasPrice: tx.gasPrice,
             gas: tx.gas || tx.gasLimit, // Blockscout may use 'gas' or 'gasLimit'
-            nonce: parseInt(tx.nonce),
+            nonce:
+              tx.nonce !== undefined && tx.nonce !== null
+                ? parseInt(tx.nonce)
+                : undefined,
           };
         });
 
@@ -288,7 +291,10 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
               input: tx.input,
               gasPrice: tx.gasPrice,
               gas: tx.gas || tx.gasLimit,
-              nonce: tx.nonce !== undefined ? parseInt(tx.nonce) : null,
+              nonce:
+                tx.nonce !== undefined && tx.nonce !== null
+                  ? parseInt(tx.nonce)
+                  : undefined,
               // Add any other fields your UI expects as null/default
               contractAddress: tx.contractAddress || null,
               cumulativeGasUsed: tx.cumulativeGasUsed || null,
@@ -346,7 +352,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
   };
 
   const pollingEvmTransactions = async (
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    isPolling?: boolean
   ) => {
     // Guard: ensure web3Provider is valid before polling
     if (!web3Provider) {
@@ -356,7 +363,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
       return [];
     }
     try {
-      const { activeAccount, accounts, activeNetwork } = store.getState().vault;
+      const { activeAccount, accounts, activeNetwork, accountTransactions } =
+        store.getState().vault;
       const currentAccount = accounts[activeAccount.type][activeAccount.id];
       const currentNetworkChainId = activeNetwork?.chainId;
       const rpcForbiddenList = [10];
@@ -403,7 +411,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         !rpcForbiddenList.includes(currentNetworkChainId!)
       ) {
         // Smart block scanning based on account history
-        const { accountTransactions } = store.getState().vault;
         const currentAccountTxs =
           accountTransactions[activeAccount.type]?.[activeAccount.id];
 
@@ -437,11 +444,99 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
             `[pollingEvmTransactions] Account has transaction history, scanning last ${blocksToScan} blocks`
           );
         }
+        rawTransactions = [];
+        if (isPolling) {
+          rawTransactions = await getUserTransactionByDefaultProvider(
+            blocksToScan,
+            web3Provider
+          );
+        }
 
-        rawTransactions = await getUserTransactionByDefaultProvider(
-          blocksToScan,
-          web3Provider
-        );
+        // ENHANCEMENT: When no API is available, also check specific pending transactions
+        // This ensures pending transactions are tracked even if they fall outside the polling window
+        if (
+          !activeNetwork?.apiUrl &&
+          currentAccountTxs?.ethereum?.[currentNetworkChainId!]
+        ) {
+          const existingTxs =
+            currentAccountTxs.ethereum[currentNetworkChainId!];
+          const pendingTxs = existingTxs.filter(
+            (tx: any) =>
+              tx.confirmations === 0 || !tx.blockNumber || !tx.blockHash
+          );
+
+          if (pendingTxs.length > 0) {
+            console.log(
+              `[pollingEvmTransactions] Checking ${pendingTxs.length} pending transactions individually`
+            );
+
+            // Fetch each pending transaction individually to get its current status
+            const pendingTxPromises = pendingTxs.map(async (pendingTx: any) => {
+              try {
+                const tx = await web3Provider.getTransaction(pendingTx.hash);
+                if (tx) {
+                  // If transaction is found and has a block number, it's confirmed
+                  if (tx.blockNumber) {
+                    const block = await web3Provider.getBlock(tx.blockNumber);
+                    const latestBlock = await web3Provider.getBlockNumber();
+                    const confirmations = Math.max(
+                      0,
+                      latestBlock - tx.blockNumber
+                    );
+
+                    return {
+                      ...tx,
+                      confirmations,
+                      timestamp:
+                        block?.timestamp || Math.floor(Date.now() / 1000),
+                      chainId: currentNetworkChainId,
+                      nonce:
+                        tx.nonce !== undefined && tx.nonce !== null
+                          ? typeof tx.nonce === 'string'
+                            ? parseInt(tx.nonce, 16)
+                            : Number(tx.nonce)
+                          : undefined,
+                    };
+                  } else {
+                    // Still pending
+                    return {
+                      ...tx,
+                      confirmations: 0,
+                      timestamp:
+                        pendingTx.timestamp || Math.floor(Date.now() / 1000),
+                      chainId: currentNetworkChainId,
+                      nonce:
+                        tx.nonce !== undefined && tx.nonce !== null
+                          ? typeof tx.nonce === 'string'
+                            ? parseInt(tx.nonce, 16)
+                            : Number(tx.nonce)
+                          : undefined,
+                    };
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  `[pollingEvmTransactions] Error fetching pending tx ${pendingTx.hash}:`,
+                  error
+                );
+              }
+              return null;
+            });
+
+            const updatedPendingTxs = await Promise.all(pendingTxPromises);
+            const validUpdatedTxs = updatedPendingTxs.filter(
+              (tx) => tx !== null
+            );
+
+            // Merge the individually fetched pending transactions with the block scan results
+            if (validUpdatedTxs.length > 0) {
+              console.log(
+                `[pollingEvmTransactions] Found ${validUpdatedTxs.length} updated pending transactions`
+              );
+              rawTransactions = [...rawTransactions, ...validUpdatedTxs];
+            }
+          }
+        }
       }
 
       // Process all transactions consistently, regardless of source (API or RPC)

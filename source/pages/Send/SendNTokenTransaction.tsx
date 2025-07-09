@@ -23,6 +23,7 @@ import {
   ellipsis,
   removeScientificNotation,
   omitTransactionObjectData,
+  clearNavigationState,
 } from 'utils/index';
 
 import { EditPriorityModal } from './EditPriority';
@@ -183,8 +184,12 @@ export const SendNTokenTransaction = () => {
 
           alert.error(t('send.cantCompleteTxs'));
 
-          if (isExternal) setTimeout(window.close, 4000);
-          else setLoading(false);
+          if (isExternal) {
+            clearNavigationState();
+            setTimeout(window.close, 4000);
+          } else {
+            setLoading(false);
+          }
           return legacyError;
         }
       } else {
@@ -255,8 +260,12 @@ export const SendNTokenTransaction = () => {
 
           alert.error(t('send.cantCompleteTxs'));
 
-          if (isExternal) setTimeout(window.close, 4000);
-          else setLoading(false);
+          if (isExternal) {
+            clearNavigationState();
+            setTimeout(window.close, 4000);
+          } else {
+            setLoading(false);
+          }
           return notLegacyError;
         }
       }
@@ -439,8 +448,12 @@ export const SendNTokenTransaction = () => {
             ['wallet', 'sendAndSaveTransaction'],
             [confirmedTx]
           );
-          if (isExternal) window.close();
-          else navigate('/home');
+          clearNavigationState();
+          if (isExternal) {
+            window.close();
+          } else {
+            navigate('/home');
+          }
         }}
       />
 
@@ -590,8 +603,12 @@ export const SendNTokenTransaction = () => {
             <SecondaryButton
               type="button"
               onClick={() => {
-                if (isExternal) window.close();
-                else navigate('/home');
+                clearNavigationState();
+                if (isExternal) {
+                  window.close();
+                } else {
+                  navigate('/home');
+                }
               }}
             >
               {t('buttons.cancel')}

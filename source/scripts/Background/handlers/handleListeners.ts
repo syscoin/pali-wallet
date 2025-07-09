@@ -59,7 +59,7 @@ export const handleListeners = (masterController: IMasterController) => {
       console.log(`🎯 handleListeners: Processing check_for_updates alarm`);
       // Only the instance that acquired the checkForUpdates lock should call startPolling
       // This prevents duplicate alarm creation from multiple service worker instances
-      checkForUpdates()
+      checkForUpdates(true)
         .then((acquiredLock) => {
           // Only call startPolling if this instance acquired the lock
           // This ensures only one instance manages the alarm lifecycle

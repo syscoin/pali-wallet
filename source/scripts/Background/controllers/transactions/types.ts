@@ -129,7 +129,8 @@ export interface IEvmTransactionsController {
     web3Provider: CustomJsonRpcProvider
   ) => Promise<IEvmTransactionResponse[]>;
   pollingEvmTransactions: (
-    web3Provider: CustomJsonRpcProvider
+    web3Provider: CustomJsonRpcProvider,
+    isPolling?: boolean
   ) => Promise<IEvmTransactionResponse[]>;
   testExplorerApi: (
     apiUrl: string
@@ -177,7 +178,8 @@ export interface ITransactionsManagerUtils {
     isBitcoinBased: boolean,
     activeNetworkUrl: string,
     web3Provider: CustomJsonRpcProvider,
-    accountTransactions?: IAccountTransactions
+    accountTransactions?: IAccountTransactions,
+    isPolling?: boolean
   ) => Promise<IEvmTransaction[] | ISysTransaction[]>;
 }
 export interface ITransactionsManager {

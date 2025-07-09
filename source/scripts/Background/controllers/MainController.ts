@@ -2692,7 +2692,8 @@ class MainController {
                 isBitcoinBased,
                 activeNetwork.url,
                 web3Provider,
-                currentAccountTxs
+                currentAccountTxs,
+                isPolling
               );
 
             // Dispatch transactions for both UTXO and EVM
@@ -3378,7 +3379,7 @@ class MainController {
       );
 
       try {
-        await checkForUpdates();
+        await checkForUpdates(false);
         // Check current transaction state before polling
         const { accountTransactions, activeAccount, activeNetwork } =
           store.getState().vault;
@@ -3783,17 +3784,27 @@ class MainController {
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = (psbtOrHex: any, isRawHex = false) => {
-    const keyring = this.getActiveKeyring();
-    if (!keyring) {
-      throw new Error(
-        'Wallet is locked. Please unlock to decode transactions.'
-      );
-    }
     try {
-      return keyring.syscoinTransaction.decodeRawTransaction(
-        psbtOrHex,
-        isRawHex
-      );
+      // First try to get the active keyring if unlocked (preferred)
+      const keyring = this.getActiveKeyringIfUnlocked();
+
+      if (keyring) {
+        // Wallet is unlocked, use normal signer
+        return keyring.syscoinTransaction.decodeRawTransaction(
+          psbtOrHex,
+          isRawHex
+        );
+      } else {
+        const tempKeyring = new KeyringManager();
+
+        // Set up the vault state getter so it can access network info
+        tempKeyring.setVaultStateGetter(() => store.getState().vault);
+
+        return tempKeyring.syscoinTransaction.decodeRawTransaction(
+          psbtOrHex,
+          isRawHex
+        );
+      }
     } catch (error) {
       console.error('Error decoding raw transaction:', error);
       throw new Error(`Failed to decode raw transaction: ${error.message}`);
@@ -4289,13 +4300,35 @@ class MainController {
    * Get basic token details from blockchain - delegates to EvmAssetsController
    */
   public async getTokenDetails(contractAddress: string, walletAddress: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
+    // Try to get the provider without requiring wallet unlock for notification purposes
+    let web3Provider: CustomJsonRpcProvider | null = null;
+
+    try {
+      // First try to get provider from unlocked wallet (preferred)
+      if (this.ethereumTransaction?.web3Provider) {
+        web3Provider = this.ethereumTransaction.web3Provider;
+      }
+    } catch (error) {
+      // Wallet is locked, fall back to persistent provider
+      console.log(
+        '[MainController] Wallet locked, using persistent provider for token details'
+      );
     }
+
+    // If we couldn't get provider from wallet, use persistent provider
+    if (!web3Provider) {
+      const { activeNetwork } = store.getState().vault;
+      web3Provider = this.getPersistentProvider(activeNetwork.url);
+
+      if (!web3Provider) {
+        throw new Error('No provider available for token details');
+      }
+    }
+
     return this.evmAssetsController.getTokenDetails(
       contractAddress,
       walletAddress,
-      this.ethereumTransaction.web3Provider
+      web3Provider
     );
   }
 

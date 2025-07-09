@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -14,6 +14,7 @@ import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { clearNavigationState } from 'utils/navigationState';
 
 interface ISign {
   signOnly?: boolean;
@@ -66,7 +67,6 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       dispatchBackgroundEvent(`${eventName}.${host}`, response);
 
       // Show success toast
-
       alert.success(
         signOnly
           ? t('transactions.theDappHas')
@@ -74,7 +74,11 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       );
 
       // Close window after a short delay
-      setTimeout(() => window.close(), 2000);
+      setTimeout(() => {
+        // Clear navigation state when actually closing
+        clearNavigationState();
+        window.close();
+      }, 2000);
     } catch (error: any) {
       const isNecessaryReconnect = error.message?.includes(
         'read properties of undefined'
@@ -105,7 +109,13 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       });
     }
   };
-
+  // Clear navigation state when component unmounts or navigates away
+  useEffect(
+    () => () => {
+      clearNavigationState();
+    },
+    []
+  );
   return (
     <>
       <DefaultModal

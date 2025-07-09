@@ -50,11 +50,13 @@ export const SendSys = () => {
   const initialRBF = location.state?.RBF ?? true;
   const [RBF, setRBF] = useState<boolean>(initialRBF);
   const initialSelectedAsset = location.state?.selectedAsset || null;
+  const initialIsMaxSend = location.state?.isMaxSend ?? false;
 
   const [selectedAsset, setSelectedAsset] = useState<ITokenSysProps | null>(
     initialSelectedAsset
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [isMaxSend, setIsMaxSend] = useState<boolean>(initialIsMaxSend);
 
   const [form] = Form.useForm();
 
@@ -80,12 +82,18 @@ export const SendSys = () => {
       );
 
       // Only save if there's actual form data or non-default component state
-      if (hasFormData || selectedAsset !== null || RBF !== true) {
+      if (
+        hasFormData ||
+        selectedAsset !== null ||
+        RBF !== true ||
+        isMaxSend !== false
+      ) {
         saveTimeoutRef.current = setTimeout(async () => {
           const state = {
             formValues: allValues,
             selectedAsset,
             RBF,
+            isMaxSend,
           };
 
           await saveNavigationState(
@@ -97,7 +105,7 @@ export const SendSys = () => {
         }, 2000); // 2 second debounce
       }
     },
-    [selectedAsset, RBF, location]
+    [selectedAsset, RBF, isMaxSend, location]
   );
 
   // Save component state when non-form state changes
@@ -106,6 +114,7 @@ export const SendSys = () => {
     if (
       selectedAsset === null &&
       RBF === true &&
+      isMaxSend === false &&
       Object.keys(formValuesRef.current).length === 0
     ) {
       return;
@@ -121,6 +130,7 @@ export const SendSys = () => {
         formValues: formValuesRef.current,
         selectedAsset,
         RBF,
+        isMaxSend,
       };
 
       await saveNavigationState(
@@ -136,17 +146,22 @@ export const SendSys = () => {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [selectedAsset, RBF, location]);
+  }, [selectedAsset, RBF, isMaxSend, location]);
 
   // Restore form values if coming back from navigation
   useEffect(() => {
     if (location.state?.scrollPosition !== undefined) {
-      const { formValues } = location.state;
+      const { formValues, isMaxSend: restoredIsMaxSend } = location.state;
 
       if (formValues) {
         form.setFieldsValue(formValues);
         // Also update the ref to keep it in sync
         formValuesRef.current = formValues;
+
+        // If this was a max send, recalculate the max amount
+        if (restoredIsMaxSend) {
+          handleMaxButton();
+        }
       }
 
       // Clear the navigation state to prevent re-applying
@@ -221,6 +236,7 @@ export const SendSys = () => {
   const handleMaxButton = useCallback(() => {
     // Simply fill in the full balance
     form.setFieldValue('amount', balanceStr);
+    setIsMaxSend(true);
     form.validateFields(['amount']); // Trigger validation after setting value
   }, [balanceStr, form]);
 
@@ -380,6 +396,7 @@ export const SendSys = () => {
           formValues: allFormValues,
           selectedAsset,
           RBF,
+          isMaxSend,
         };
 
         // Create navigation context for returning from confirm
@@ -507,6 +524,7 @@ export const SendSys = () => {
           formValues: allFormValues,
           selectedAsset,
           RBF,
+          isMaxSend,
         };
 
         // Create navigation context for returning from confirm
