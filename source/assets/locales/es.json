@@ -220,7 +220,6 @@
     "enterAMaximumSpendingLimit": "Ingresa un límite de gasto máximo",
     "editFee": "Editar Tarifa",
     "gasLimit": "Límite de Gas",
-    "gasLimitMessage": "El límite de gas debe ser mayor que 1000",
     "maxPriority": "Prioridad Máxima",
     "maxPriorityFee": "Tarifa de Prioridad Máxima",
     "maxFee": "Tarifa Máxima",
@@ -295,7 +294,7 @@
     "invalidAssetAllocation": "Asignación de activos inválida. Token GUID {{guid}} no encontrado o inválido.",
     "transactionCreationFailedWithCode": "Error al crear la transacción ({{code}}): {{message}}",
     "transactionSendFailed": "Error al enviar la transacción: {{message}}",
-    "gasLimitTooLow": "El límite de gas debe ser mayor a 1000",
+    "gasLimitTooLow": "El límite de gas debe ser mayor a 42000",
     "priorityFeeTooHigh": "La tarifa de prioridad debe ser menor que la tarifa máxima",
     "maxFeeTooLow": "La tarifa máxima debe ser mayor que la tarifa de prioridad",
     "gasPriceTooLow": "El precio del gas debe ser mayor que 0"

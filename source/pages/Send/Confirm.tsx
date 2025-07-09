@@ -16,6 +16,12 @@ import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import {
+  ICustomFeeParams,
+  IFeeState,
+  ITxState,
+  TransactionType,
+} from '../../types/transactions';
+import {
   DefaultModal,
   Button,
   Icon,
@@ -31,7 +37,6 @@ import {
   IEvmTransactionResponse,
 } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
-import { ICustomFeeParams, IFeeState, ITxState } from 'types/transactions';
 import {
   truncate,
   logError,
@@ -76,13 +81,7 @@ export const SendConfirm = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
-  const [fee, setFee] = useState<IFeeState>({
-    gasLimit: 0,
-    maxFeePerGas: 0,
-    maxPriorityFeePerGas: 0,
-    baseFee: 0,
-    gasPrice: 0,
-  });
+
   const [gasPrice, setGasPrice] = useState<number>(0);
   const [txObjectState, setTxObjectState] = useState<any>();
   const [isOpenEditFeeModal, setIsOpenEditFeeModal] = useState<boolean>(false);
@@ -102,6 +101,15 @@ export const SendConfirm = () => {
   // Handle both normal navigation and restoration
   const basicTxValues = state.tx;
   const cachedGasData = basicTxValues?.cachedGasData;
+
+  // Initialize fee state after basicTxValues is available
+  const [fee, setFee] = useState<IFeeState>({
+    gasLimit: basicTxValues?.defaultGasLimit || 42000,
+    maxFeePerGas: 0,
+    maxPriorityFeePerGas: 0,
+    baseFee: 0,
+    gasPrice: 0,
+  });
 
   // Save navigation state when confirm page loads to preserve transaction data and return context
   useEffect(() => {
@@ -123,7 +131,7 @@ export const SendConfirm = () => {
   // the transaction with the new fee rate and passes the correct values here.
 
   const validateCustomGasLimit = Boolean(
-    customFee.isCustom && customFee.gasLimit > 0
+    customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
 
   const getFormattedFee = (currentFee: number | string | undefined) => {
@@ -167,6 +175,12 @@ export const SendConfirm = () => {
     }
   };
 
+  // Helper function to safely convert fee values to numbers and format them
+  const safeToFixed = (value: any, decimals = 9): string => {
+    const numValue = Number(value);
+    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
+  };
+
   const getLegacyGasPrice = async () => {
     const correctGasPrice = Boolean(
       customFee.isCustom && customFee.gasPrice > 0
@@ -178,18 +192,19 @@ export const SendConfirm = () => {
           'getRecommendedGasPrice',
         ]).then((gas) => BigNumber.from(gas).toNumber());
 
-    const gasLimit: any = await controllerEmitter(
-      ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-      [basicTxValues]
-    ).then((gas) => BigNumber.from(gas).toNumber());
+    // Always use a valid gas limit - custom, default from tx type, or fallback
+    const gasLimit =
+      customFee.isCustom && customFee.gasLimit > 0
+        ? customFee.gasLimit
+        : basicTxValues?.defaultGasLimit || 42000;
 
-    const initialFee = INITIAL_FEE;
+    const initialFee = { ...INITIAL_FEE, gasLimit };
 
     initialFee.gasPrice = correctGasPrice;
 
     // Use startTransition for non-critical fee updates
     startTransition(() => {
-      setFee({ ...initialFee, gasLimit });
+      setFee(initialFee);
       setGasPrice(correctGasPrice);
     });
 
@@ -220,12 +235,14 @@ export const SendConfirm = () => {
     if (activeAccount && balance >= 0) {
       setLoading(true);
 
-      // Handle with Syscoin and Ethereum transactions with differentes fee values.
-      // First switch parameter has to be true because we can't isBitcoinBased prop directly to validate all this conditions,
-      // we just need to enter and validate it inside
-      switch (true) {
-        // SYSCOIN TRANSACTIONS
-        case isBitcoinBased === true:
+      // Handle transactions based on type
+      const transactionType =
+        basicTxValues.transactionType ||
+        (isBitcoinBased ? TransactionType.UTXO : TransactionType.NATIVE_ETH);
+
+      switch (transactionType) {
+        // SYSCOIN/UTXO TRANSACTIONS
+        case TransactionType.UTXO:
           try {
             // Step 1: Sign the unsigned PSBT
             const signedPsbt = await controllerEmitter(
@@ -391,7 +408,7 @@ export const SendConfirm = () => {
           break;
 
         // ETHEREUM TRANSACTIONS FOR NATIVE TOKENS
-        case isBitcoinBased === false && basicTxValues.token === null:
+        case TransactionType.NATIVE_ETH:
           if (activeAccount.isTrezorWallet) {
             await controllerEmitter(
               ['wallet', 'trezorSigner', 'init'],
@@ -415,9 +432,7 @@ export const SendConfirm = () => {
             // This is required because ethers.js validates balance >= value + gas
             if (basicTxValues.isMax) {
               const gasLimit = BigNumber.from(
-                validateCustomGasLimit
-                  ? customFee.gasLimit * 10 ** 9
-                  : fee.gasLimit
+                validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
 
               if (isEIP1559Compatible) {
@@ -425,8 +440,8 @@ export const SendConfirm = () => {
                 const maxFeePerGasWei = ethers.utils.parseUnits(
                   String(
                     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? customFee.maxFeePerGas.toFixed(9)
-                      : fee.maxFeePerGas.toFixed(9)
+                      ? safeToFixed(customFee.maxFeePerGas)
+                      : safeToFixed(fee.maxFeePerGas)
                   ),
                   9
                 );
@@ -456,11 +471,13 @@ export const SendConfirm = () => {
                       ...restTx,
                       value,
                       gasPrice: ethers.utils.hexlify(gasPrice),
-                      gasLimit: BigNumber.from(
-                        validateCustomGasLimit
-                          ? customFee.gasLimit
-                          : fee.gasLimit
-                      ),
+                      gasLimit: validateCustomGasLimit
+                        ? BigNumber.from(customFee.gasLimit)
+                        : BigNumber.from(
+                            fee.gasLimit ||
+                              basicTxValues.defaultGasLimit ||
+                              42000
+                          ),
                     },
                     !isEIP1559Compatible,
                   ]
@@ -536,8 +553,8 @@ export const SendConfirm = () => {
                           customFee.isCustom &&
                             customFee.maxPriorityFeePerGas > 0
                         )
-                          ? customFee.maxPriorityFeePerGas.toFixed(9)
-                          : fee.maxPriorityFeePerGas.toFixed(9)
+                          ? safeToFixed(customFee.maxPriorityFeePerGas)
+                          : safeToFixed(fee.maxPriorityFeePerGas)
                       ),
                       9
                     ),
@@ -546,16 +563,16 @@ export const SendConfirm = () => {
                         Boolean(
                           customFee.isCustom && customFee.maxFeePerGas > 0
                         )
-                          ? customFee.maxFeePerGas.toFixed(9)
-                          : fee.maxFeePerGas.toFixed(9)
+                          ? safeToFixed(customFee.maxFeePerGas)
+                          : safeToFixed(fee.maxFeePerGas)
                       ),
                       9
                     ),
-                    gasLimit: BigNumber.from(
-                      validateCustomGasLimit
-                        ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                        : fee.gasLimit
-                    ),
+                    gasLimit: validateCustomGasLimit
+                      ? BigNumber.from(customFee.gasLimit)
+                      : BigNumber.from(
+                          fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+                        ),
                   },
                 ]
               ) as Promise<ISysTransaction | IEvmTransactionResponse>
@@ -616,8 +633,8 @@ export const SendConfirm = () => {
                             customFee.isCustom &&
                               customFee.maxPriorityFeePerGas > 0
                           )
-                            ? customFee.maxPriorityFeePerGas.toFixed(9)
-                            : fee.maxPriorityFeePerGas.toFixed(9)
+                            ? safeToFixed(customFee.maxPriorityFeePerGas)
+                            : safeToFixed(fee.maxPriorityFeePerGas)
                         ),
                         9
                       ),
@@ -626,15 +643,17 @@ export const SendConfirm = () => {
                           Boolean(
                             customFee.isCustom && customFee.maxFeePerGas > 0
                           )
-                            ? customFee.maxFeePerGas.toFixed(9)
-                            : fee.maxFeePerGas.toFixed(9)
+                            ? safeToFixed(customFee.maxFeePerGas)
+                            : safeToFixed(fee.maxFeePerGas)
                         ),
                         9
                       ),
                       gasLimit: BigNumber.from(
                         validateCustomGasLimit
-                          ? customFee.gasLimit * 10 ** 9
-                          : fee.gasLimit
+                          ? customFee.gasLimit
+                          : fee.gasLimit ||
+                              basicTxValues.defaultGasLimit ||
+                              42000
                       ),
                     };
 
@@ -682,8 +701,12 @@ export const SendConfirm = () => {
           }
           break;
 
-        // ETHEREUM TRANSACTIONS FOR ERC20 & ERC721 TOKENS
-        case isBitcoinBased === false && basicTxValues.token !== null:
+        // ETHEREUM TRANSACTIONS FOR ERC20 TOKENS
+        case TransactionType.ERC20:
+        // ETHEREUM TRANSACTIONS FOR ERC721 TOKENS
+        case TransactionType.ERC721:
+        // ETHEREUM TRANSACTIONS FOR ERC1155 TOKENS
+        case TransactionType.ERC1155:
           if (activeAccount.isTrezorWallet) {
             await controllerEmitter(
               ['wallet', 'trezorSigner', 'init'],
@@ -691,10 +714,10 @@ export const SendConfirm = () => {
               false
             );
           }
-          //SWITCH CASE TO HANDLE DIFFERENT TOKENS TRANSACTION
-          switch (basicTxValues.token.isNft) {
+          //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
+          switch (transactionType) {
             //HANDLE ERC20 TRANSACTION
-            case false:
+            case TransactionType.ERC20:
               if (isEIP1559Compatible === false) {
                 try {
                   (
@@ -713,11 +736,13 @@ export const SendConfirm = () => {
                           isLegacy: !isEIP1559Compatible,
                           decimals: basicTxValues?.token?.decimals,
                           gasPrice: ethers.utils.hexlify(gasPrice),
-                          gasLimit: BigNumber.from(
-                            validateCustomGasLimit
-                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                              : fee.gasLimit * 4
-                          ),
+                          gasLimit: validateCustomGasLimit
+                            ? BigNumber.from(customFee.gasLimit)
+                            : BigNumber.from(
+                                fee.gasLimit ||
+                                  basicTxValues.defaultGasLimit ||
+                                  65000
+                              ),
                         },
                       ]
                     ) as Promise<IEvmTransactionResponse | ISysTransaction>
@@ -805,8 +830,8 @@ export const SendConfirm = () => {
                               customFee.isCustom &&
                                 customFee.maxPriorityFeePerGas > 0
                             )
-                              ? customFee.maxPriorityFeePerGas.toFixed(9)
-                              : fee.maxPriorityFeePerGas.toFixed(9)
+                              ? safeToFixed(customFee.maxPriorityFeePerGas)
+                              : safeToFixed(fee.maxPriorityFeePerGas)
                           ),
                           9
                         ),
@@ -815,16 +840,18 @@ export const SendConfirm = () => {
                             Boolean(
                               customFee.isCustom && customFee.maxFeePerGas > 0
                             )
-                              ? customFee.maxFeePerGas.toFixed(9)
-                              : fee.maxFeePerGas.toFixed(9)
+                              ? safeToFixed(customFee.maxFeePerGas)
+                              : safeToFixed(fee.maxFeePerGas)
                           ),
                           9
                         ),
-                        gasLimit: BigNumber.from(
-                          validateCustomGasLimit
-                            ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                            : fee.gasLimit * 4
-                        ),
+                        gasLimit: validateCustomGasLimit
+                          ? BigNumber.from(customFee.gasLimit)
+                          : BigNumber.from(
+                              fee.gasLimit ||
+                                basicTxValues.defaultGasLimit ||
+                                65000
+                            ),
                       },
                     ]
                   ) as Promise<IEvmTransactionResponse | ISysTransaction>
@@ -889,14 +916,100 @@ export const SendConfirm = () => {
               }
               break;
 
-            //HANDLE ERC721/ERC1155 NFTS TRANSACTIONS
-            case true:
-              const contractInfo = (await controllerEmitter(
-                ['wallet', 'checkContractType'],
-                [basicTxValues.token.contractAddress]
-              )) as { type: string };
-              const { type } = contractInfo;
+            //HANDLE ERC721 NFT TRANSACTIONS
+            case TransactionType.ERC721:
+              if (activeAccount.isTrezorWallet) {
+                await controllerEmitter(
+                  ['wallet', 'trezorSigner', 'init'],
+                  [],
+                  false
+                );
+              }
+              try {
+                controllerEmitter(
+                  [
+                    'wallet',
+                    'ethereumTransaction',
+                    'sendSignedErc721Transaction',
+                  ],
+                  [
+                    {
+                      networkUrl: activeNetwork.url,
+                      receiver: txObjectState.to,
+                      tokenAddress: basicTxValues.token.contractAddress,
+                      tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
+                      isLegacy: !isEIP1559Compatible,
+                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasLimit: validateCustomGasLimit
+                        ? BigNumber.from(customFee.gasLimit)
+                        : BigNumber.from(
+                            fee.gasLimit ||
+                              basicTxValues.defaultGasLimit ||
+                              85000
+                          ),
+                    },
+                  ]
+                )
+                  .then(async (response) => {
+                    // Save transaction to local state for immediate visibility
+                    controllerEmitter(
+                      ['wallet', 'sendAndSaveTransaction'],
+                      [response]
+                    );
 
+                    setConfirmed(true);
+                    setLoading(false);
+
+                    // Balance will be updated when user navigates back to Home
+                    // This prevents redundant API calls and timing issues
+                  })
+                  .catch((error) => {
+                    const isNecessaryReconnect = error.message.includes(
+                      'read properties of undefined'
+                    );
+                    const isNecessaryBlindSigning = error.message.includes(
+                      'Please enable Blind signing'
+                    );
+                    if (
+                      activeAccount.isLedgerWallet &&
+                      isNecessaryBlindSigning
+                    ) {
+                      alert.warning(t('settings.ledgerBlindSigning'));
+                      setLoading(false);
+                      return;
+                    }
+                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                      setIsReconectModalOpen(true);
+                      setLoading(false);
+                      return;
+                    }
+
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
+
+                    if (isDeviceLocked) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+                    logError('error send ERC721', 'Transaction', error);
+
+                    alert.error(t('send.cantCompleteTxs'));
+                    setLoading(false);
+                  });
+
+                return;
+              } catch (_erc721Error) {
+                logError('error send ERC721', 'Transaction', _erc721Error);
+
+                alert.error(t('send.cantCompleteTxs'));
+
+                setLoading(false);
+              }
+              break;
+
+            //HANDLE ERC1155 NFT TRANSACTIONS
+            case TransactionType.ERC1155:
               if (activeAccount.isTrezorWallet) {
                 await controllerEmitter(
                   ['wallet', 'trezorSigner', 'init'],
@@ -905,198 +1018,107 @@ export const SendConfirm = () => {
                 );
               }
 
-              switch (type) {
-                case 'ERC-721':
-                  try {
+              try {
+                controllerEmitter(
+                  [
+                    'wallet',
+                    'ethereumTransaction',
+                    'sendSignedErc1155Transaction',
+                  ],
+                  [
+                    {
+                      networkUrl: activeNetwork.url,
+                      receiver: txObjectState.to,
+                      tokenAddress: basicTxValues.token.contractAddress,
+                      tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
+                      tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
+                      isLegacy: !isEIP1559Compatible,
+                      maxPriorityFeePerGas: ethers.utils.parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom &&
+                              customFee.maxPriorityFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxPriorityFeePerGas)
+                            : safeToFixed(fee.maxPriorityFeePerGas)
+                        ),
+                        9
+                      ),
+                      maxFeePerGas: ethers.utils.parseUnits(
+                        String(
+                          Boolean(
+                            customFee.isCustom && customFee.maxFeePerGas > 0
+                          )
+                            ? safeToFixed(customFee.maxFeePerGas)
+                            : safeToFixed(fee.maxFeePerGas)
+                        ),
+                        9
+                      ),
+                      gasPrice: ethers.utils.hexlify(gasPrice),
+                      gasLimit: validateCustomGasLimit
+                        ? BigNumber.from(customFee.gasLimit)
+                        : BigNumber.from(
+                            fee.gasLimit ||
+                              basicTxValues.defaultGasLimit ||
+                              90000
+                          ),
+                    },
+                  ]
+                )
+                  .then(async (response) => {
+                    // Save transaction to local state for immediate visibility
                     controllerEmitter(
-                      [
-                        'wallet',
-                        'ethereumTransaction',
-                        'sendSignedErc721Transaction',
-                      ],
-                      [
-                        {
-                          networkUrl: activeNetwork.url,
-                          receiver: txObjectState.to,
-                          tokenAddress: basicTxValues.token.contractAddress,
-                          tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
-                          isLegacy: !isEIP1559Compatible,
-                          gasPrice: ethers.utils.hexlify(gasPrice),
-                          gasLimit: BigNumber.from(
-                            validateCustomGasLimit
-                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                              : fee.gasLimit * 4
-                          ),
-                        },
-                      ]
-                    )
-                      .then(async (response) => {
-                        // Save transaction to local state for immediate visibility
-                        controllerEmitter(
-                          ['wallet', 'sendAndSaveTransaction'],
-                          [response]
-                        );
-
-                        setConfirmed(true);
-                        setLoading(false);
-
-                        // Balance will be updated when user navigates back to Home
-                        // This prevents redundant API calls and timing issues
-                      })
-                      .catch((error) => {
-                        const isNecessaryReconnect = error.message.includes(
-                          'read properties of undefined'
-                        );
-                        const isNecessaryBlindSigning = error.message.includes(
-                          'Please enable Blind signing'
-                        );
-                        if (
-                          activeAccount.isLedgerWallet &&
-                          isNecessaryBlindSigning
-                        ) {
-                          alert.warning(t('settings.ledgerBlindSigning'));
-                          setLoading(false);
-                          return;
-                        }
-                        if (
-                          activeAccount.isLedgerWallet &&
-                          isNecessaryReconnect
-                        ) {
-                          setIsReconectModalOpen(true);
-                          setLoading(false);
-                          return;
-                        }
-
-                        const isDeviceLocked =
-                          error?.message.includes('Locked device');
-
-                        if (isDeviceLocked) {
-                          alert.warning(t('settings.lockedDevice'));
-                          setLoading(false);
-                          return;
-                        }
-                        logError('error send ERC721', 'Transaction', error);
-
-                        alert.error(t('send.cantCompleteTxs'));
-                        setLoading(false);
-                      });
-
-                    return;
-                  } catch (_erc721Error) {
-                    logError('error send ERC721', 'Transaction', _erc721Error);
-
-                    alert.error(t('send.cantCompleteTxs'));
-
-                    setLoading(false);
-                  }
-                case 'ERC-1155':
-                  try {
-                    controllerEmitter(
-                      [
-                        'wallet',
-                        'ethereumTransaction',
-                        'sendSignedErc1155Transaction',
-                      ],
-                      [
-                        {
-                          networkUrl: activeNetwork.url,
-                          receiver: txObjectState.to,
-                          tokenAddress: basicTxValues.token.contractAddress,
-                          tokenId: Number(basicTxValues.token.tokenId), // The actual NFT token ID
-                          tokenAmount: String(basicTxValues.amount), // The amount of tokens to send
-                          isLegacy: !isEIP1559Compatible,
-                          maxPriorityFeePerGas: ethers.utils.parseUnits(
-                            String(
-                              Boolean(
-                                customFee.isCustom &&
-                                  customFee.maxPriorityFeePerGas > 0
-                              )
-                                ? customFee.maxPriorityFeePerGas.toFixed(9)
-                                : fee.maxPriorityFeePerGas.toFixed(9)
-                            ),
-                            9
-                          ),
-                          maxFeePerGas: ethers.utils.parseUnits(
-                            String(
-                              Boolean(
-                                customFee.isCustom && customFee.maxFeePerGas > 0
-                              )
-                                ? customFee.maxFeePerGas.toFixed(9)
-                                : fee.maxFeePerGas.toFixed(9)
-                            ),
-                            9
-                          ),
-                          gasPrice: ethers.utils.hexlify(gasPrice),
-                          gasLimit: BigNumber.from(
-                            validateCustomGasLimit
-                              ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                              : fee.gasLimit * 4
-                          ),
-                        },
-                      ]
-                    )
-                      .then(async (response) => {
-                        // Save transaction to local state for immediate visibility
-                        controllerEmitter(
-                          ['wallet', 'sendAndSaveTransaction'],
-                          [response]
-                        );
-
-                        setConfirmed(true);
-                        setLoading(false);
-
-                        // Balance will be updated when user navigates back to Home
-                        // This prevents redundant API calls and timing issues
-                      })
-                      .catch((error) => {
-                        const isNecessaryReconnect = error.message.includes(
-                          'read properties of undefined'
-                        );
-                        const isNecessaryBlindSigning = error.message.includes(
-                          'Please enable Blind signing'
-                        );
-                        if (
-                          activeAccount.isLedgerWallet &&
-                          isNecessaryBlindSigning
-                        ) {
-                          alert.warning(t('settings.ledgerBlindSigning'));
-                          setLoading(false);
-                          return;
-                        }
-                        if (
-                          activeAccount.isLedgerWallet &&
-                          isNecessaryReconnect
-                        ) {
-                          setIsReconectModalOpen(true);
-                          setLoading(false);
-                          return;
-                        }
-                        const isDeviceLocked =
-                          error?.message.includes('Locked device');
-
-                        if (isDeviceLocked) {
-                          alert.warning(t('settings.lockedDevice'));
-                          setLoading(false);
-                          return;
-                        }
-                        logError('error send ERC1155', 'Transaction', error);
-
-                        alert.error(t('send.cantCompleteTxs'));
-                        setLoading(false);
-                      });
-
-                    return;
-                  } catch (_erc1155Error) {
-                    logError(
-                      'error send ERC1155',
-                      'Transaction',
-                      _erc1155Error
+                      ['wallet', 'sendAndSaveTransaction'],
+                      [response]
                     );
 
-                    alert.error(t('send.cantCompleteTxs'));
-
+                    setConfirmed(true);
                     setLoading(false);
-                  }
+
+                    // Balance will be updated when user navigates back to Home
+                    // This prevents redundant API calls and timing issues
+                  })
+                  .catch((error) => {
+                    const isNecessaryReconnect = error.message.includes(
+                      'read properties of undefined'
+                    );
+                    const isNecessaryBlindSigning = error.message.includes(
+                      'Please enable Blind signing'
+                    );
+                    if (
+                      activeAccount.isLedgerWallet &&
+                      isNecessaryBlindSigning
+                    ) {
+                      alert.warning(t('settings.ledgerBlindSigning'));
+                      setLoading(false);
+                      return;
+                    }
+                    if (activeAccount.isLedgerWallet && isNecessaryReconnect) {
+                      setIsReconectModalOpen(true);
+                      setLoading(false);
+                      return;
+                    }
+                    const isDeviceLocked =
+                      error?.message.includes('Locked device');
+
+                    if (isDeviceLocked) {
+                      alert.warning(t('settings.lockedDevice'));
+                      setLoading(false);
+                      return;
+                    }
+                    logError('error send ERC1155', 'Transaction', error);
+
+                    alert.error(t('send.cantCompleteTxs'));
+                    setLoading(false);
+                  });
+
+                return;
+              } catch (_erc1155Error) {
+                logError('error send ERC1155', 'Transaction', _erc1155Error);
+
+                alert.error(t('send.cantCompleteTxs'));
+
+                setLoading(false);
               }
 
               break;
@@ -1128,6 +1150,11 @@ export const SendConfirm = () => {
       return; // Not calculate fees before being aware of EIP1559 compatibility
     }
 
+    // Skip fee recalculation when using custom fees
+    if (customFee.isCustom) {
+      return;
+    }
+
     // Create cache key for this fee calculation
     const cacheKey = JSON.stringify({
       sender: basicTxValues.sender,
@@ -1138,7 +1165,7 @@ export const SendConfirm = () => {
     });
 
     // Check if we already have cached result
-    if (feeCalculationCache.has(cacheKey) && !customFee.isCustom) {
+    if (feeCalculationCache.has(cacheKey)) {
       const cachedFee = feeCalculationCache.get(cacheKey);
       setFee(cachedFee);
       return;
@@ -1175,8 +1202,8 @@ export const SendConfirm = () => {
 
     // If we have cached gas data from SendEth, use it immediately
     if (cachedGasData && !customFee.isCustom) {
-      const { maxFeePerGas, maxPriorityFeePerGas, gasLimit } = cachedGasData;
-
+      const { maxFeePerGas, maxPriorityFeePerGas } = cachedGasData;
+      const gasLimit = basicTxValues.defaultGasLimit || 42000;
       const initialFeeDetails = {
         maxFeePerGas: BigNumber.from(maxFeePerGas).toNumber() / 10 ** 9,
         baseFee:
@@ -1185,7 +1212,7 @@ export const SendConfirm = () => {
           10 ** 9,
         maxPriorityFeePerGas:
           BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-        gasLimit: BigNumber.from(gasLimit).toNumber(),
+        gasLimit: BigNumber.from(gasLimit).toNumber(), // Always use default gas limit from transaction type
       };
 
       const formattedTxObject = {
@@ -1227,7 +1254,7 @@ export const SendConfirm = () => {
             10 ** 9,
           maxPriorityFeePerGas:
             BigNumber.from(maxPriorityFeePerGas).toNumber() / 10 ** 9,
-          gasLimit: BigNumber.from(0),
+          gasLimit: basicTxValues.defaultGasLimit || 42000, // Always use appropriate default gas limit
         };
 
         const formattedTxObject = {
@@ -1240,12 +1267,11 @@ export const SendConfirm = () => {
 
         setTxObjectState(formattedTxObject);
 
-        const getGasLimit = await stableControllerEmitter
-          .current(
-            ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-            [formattedTxObject]
-          )
-          .then((gas) => BigNumber.from(gas).toNumber());
+        // Use custom gas limit, or default from transaction type, always have a value
+        const getGasLimit =
+          customFee.isCustom && customFee.gasLimit > 0
+            ? customFee.gasLimit
+            : basicTxValues.defaultGasLimit || 42000;
 
         const finalFeeDetails = {
           ...initialFeeDetails,
@@ -1305,26 +1331,50 @@ export const SendConfirm = () => {
   ]);
 
   const getCalculatedFee = useMemo(() => {
-    const arrayValidation = [
-      !fee?.gasLimit,
-      !fee?.maxFeePerGas,
-      isBitcoinBased,
-    ];
+    if (isBitcoinBased) return 0;
 
-    if (arrayValidation.some((validation) => validation === true)) return 0;
+    // Use custom gas limit, or fee.gasLimit, or default from transaction type
+    const gasLimit = Number(
+      validateCustomGasLimit
+        ? customFee.gasLimit
+        : fee?.gasLimit || basicTxValues.defaultGasLimit || 0
+    );
+
+    if (!gasLimit) return 0;
+
+    // Handle legacy transactions (non-EIP1559)
+    if (isEIP1559Compatible === false) {
+      const gasPriceValue = Number(
+        customFee.isCustom && customFee.gasPrice > 0
+          ? customFee.gasPrice
+          : gasPrice / 10 ** 9
+      );
+
+      if (isNaN(gasPriceValue) || isNaN(gasLimit)) return 0;
+
+      return (gasPriceValue * gasLimit) / 10 ** 9;
+    }
+
+    // Handle EIP-1559 transactions
+    if (!fee?.maxFeePerGas) return 0;
 
     const feePerGas = Number(
       customFee.isCustom ? customFee.maxFeePerGas : fee?.maxFeePerGas
-    );
-    const gasLimit = Number(
-      validateCustomGasLimit ? customFee.gasLimit : fee?.gasLimit
     );
 
     // Ensure we don't return NaN
     if (isNaN(feePerGas) || isNaN(gasLimit)) return 0;
 
     return (feePerGas * gasLimit) / 10 ** 9;
-  }, [fee?.gasLimit, fee?.maxFeePerGas, customFee, isBitcoinBased]);
+  }, [
+    fee?.gasLimit,
+    fee?.maxFeePerGas,
+    customFee,
+    isBitcoinBased,
+    isEIP1559Compatible,
+    gasPrice,
+    validateCustomGasLimit,
+  ]);
 
   useEffect(() => {
     if (!copied) return;
@@ -1359,6 +1409,7 @@ export const SendConfirm = () => {
         }}
         fee={fee}
         isSendLegacyTransaction={!isEIP1559Compatible}
+        defaultGasLimit={basicTxValues?.defaultGasLimit || 42000}
       />
 
       <DefaultModal
@@ -1482,7 +1533,7 @@ export const SendConfirm = () => {
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
                       ) {
-                        feeAmount = gasPrice / 10 ** 18;
+                        feeAmount = getCalculatedFee;
                       } else {
                         feeAmount = getCalculatedFee;
                       }
@@ -1527,6 +1578,26 @@ export const SendConfirm = () => {
                   Total ({t('send.amountAndFee')})
                   <span className="text-white text-xs">
                     {(() => {
+                      // For ERC20 tokens, handle differently since we can't combine token amount + ETH fee into single fiat value
+                      if (basicTxValues.token && !basicTxValues.token.isNft) {
+                        const gasFeeFiat = getFeeFiatAmount(getCalculatedFee);
+
+                        return (
+                          <div className="flex flex-col">
+                            <span>
+                              {basicTxValues.amount}{' '}
+                              {basicTxValues.token.symbol} + Gas Fee
+                            </span>
+                            {gasFeeFiat && (
+                              <span className="text-brand-gray200 text-xs">
+                                Gas Fee: ≈ {gasFeeFiat}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // For native currency transactions (ETH/SYS), calculate combined total
                       let totalAmount;
                       let totalCrypto;
 
@@ -1562,7 +1633,7 @@ export const SendConfirm = () => {
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
                       ) {
-                        const gasPriceEther = gasPrice / 10 ** 18;
+                        const calculatedFeeEther = getCalculatedFee;
                         if (basicTxValues.isMax) {
                           // For MAX sends, fee is already deducted from amount
                           totalAmount = basicTxValues.amount;
@@ -1570,7 +1641,7 @@ export const SendConfirm = () => {
                             precision: 8,
                           }).format({ symbol: '' });
                         } else {
-                          const total = currency(gasPriceEther, {
+                          const total = currency(calculatedFeeEther, {
                             precision: 8,
                           }).add(basicTxValues.amount);
                           totalAmount = total.value;
@@ -1607,9 +1678,7 @@ export const SendConfirm = () => {
                         <div className="flex flex-col">
                           <span>
                             {removeScientificNotation(totalCrypto)}{' '}
-                            {basicTxValues.token
-                              ? basicTxValues.token.symbol
-                              : activeNetwork.currency.toUpperCase()}
+                            {activeNetwork.currency.toUpperCase()}
                           </span>
                           {totalFiatAmount && (
                             <span className="text-brand-gray200 text-xs">
@@ -1634,7 +1703,7 @@ export const SendConfirm = () => {
                         !isBitcoinBased &&
                         isEIP1559Compatible === false
                       ) {
-                        feeAmount = gasPrice / 10 ** 18;
+                        feeAmount = getCalculatedFee;
                       } else {
                         feeAmount = getCalculatedFee;
                       }

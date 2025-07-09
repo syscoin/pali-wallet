@@ -9,7 +9,12 @@ import { IconButton } from 'components/IconButton';
 import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
-import { IDecodedTx, IFeeState, ITxState } from 'types/transactions';
+import {
+  ICustomFeeParams,
+  IDecodedTx,
+  IFeeState,
+  ITxState,
+} from 'types/transactions';
 import { ellipsis } from 'utils/format';
 import removeScientificNotation from 'utils/removeScientificNotation';
 
@@ -25,22 +30,10 @@ const CopyIcon = memo(() => (
 CopyIcon.displayName = 'CopyIcon';
 
 interface ITransactionDetailsProps {
-  customFee: {
-    gasLimit: number;
-    isCustom: boolean;
-    maxFeePerGas: number;
-    maxPriorityFeePerGas: number;
-  };
+  customFee: ICustomFeeParams;
   decodedTx: IDecodedTx;
   fee: IFeeState;
-  setCustomFee: React.Dispatch<
-    React.SetStateAction<{
-      gasLimit: number;
-      isCustom: boolean;
-      maxFeePerGas: number;
-      maxPriorityFeePerGas: number;
-    }>
-  >;
+  setCustomFee: React.Dispatch<React.SetStateAction<ICustomFeeParams>>;
   setCustomNonce: React.Dispatch<React.SetStateAction<number>>;
   setFee: React.Dispatch<React.SetStateAction<IFeeState>>;
   setHaveError: React.Dispatch<React.SetStateAction<boolean>>;

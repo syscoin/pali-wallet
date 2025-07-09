@@ -362,7 +362,6 @@
     "enterAMaximumSpendingLimit": "최대 지출 한도 입력",
     "editFee": "수수료 편집",
     "gasLimit": "가스 한도",
-    "gasLimitMessage": "가스 한도는 1000보다 커야 합니다",
     "maxPriority": "최대 우선순위",
     "maxPriorityFee": "최대 우선순위 수수료",
     "maxFee": "최대 수수료",
@@ -438,7 +437,7 @@
     "invalidAssetAllocation": "잘못된 자산 할당입니다. 토큰 GUID {{guid}}를 찾을 수 없거나 유효하지 않습니다.",
     "transactionCreationFailedWithCode": "거래 생성 실패 ({{code}}): {{message}}",
     "transactionSendFailed": "거래 전송 실패: {{message}}",
-    "gasLimitTooLow": "가스 한도는 1000보다 커야 합니다",
+    "gasLimitTooLow": "가스 한도는 42000보다 커야 합니다",
     "priorityFeeTooHigh": "우선 수수료는 최대 수수료보다 작아야 합니다",
     "maxFeeTooLow": "최대 수수료는 우선 수수료보다 커야 합니다",
     "gasPriceTooLow": "가스 가격은 0보다 커야 합니다"

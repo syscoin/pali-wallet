@@ -15,6 +15,7 @@ import { useLocation } from 'react-router-dom';
 
 import { isValidEthereumAddress } from '@pollum-io/sysweb3-utils';
 
+import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { NeutralButton, Tooltip, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -32,7 +33,7 @@ import {
   navigateWithContext,
   saveNavigationState,
 } from 'utils/index';
-
+import { getDefaultGasLimit } from 'utils/transactionUtils';
 export const SendEth = () => {
   const { alert, navigate } = useUtils();
   const { t } = useTranslation();
@@ -293,6 +294,21 @@ export const SendEth = () => {
   const handleSubmit = useCallback(
     async (values: any) => {
       try {
+        // Determine transaction type based on selected asset
+        let transactionType: TransactionType;
+        if (selectedAsset) {
+          if (selectedAsset.isNft) {
+            transactionType =
+              selectedAsset.tokenStandard === 'ERC-1155'
+                ? TransactionType.ERC1155
+                : TransactionType.ERC721;
+          } else {
+            transactionType = TransactionType.ERC20;
+          }
+        } else {
+          transactionType = TransactionType.NATIVE_ETH;
+        }
+
         // Determine if this is a MAX send for native ETH
         let isMax = false;
         if (!selectedAsset && values.amount) {
@@ -350,6 +366,9 @@ export const SendEth = () => {
               cachedGasData: !selectedAsset ? cachedFeeData : null,
               // Pass isMax flag for proper fee handling
               isMax: !selectedAsset ? isMax : false,
+              // Pass transaction type and default gas limit
+              transactionType,
+              defaultGasLimit: getDefaultGasLimit(transactionType),
             },
           },
           returnContext
@@ -446,10 +465,6 @@ export const SendEth = () => {
       return;
     }
 
-    const receiver =
-      form.getFieldValue('receiver') ||
-      '0x0000000000000000000000000000000000000000';
-
     setIsCalculatingGas(true);
 
     try {
@@ -460,32 +475,10 @@ export const SendEth = () => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
       ])) as any;
 
-      // Estimate gas limit for a simple transfer
-      const testAmount = '1';
-
-      const txObject = {
-        from: activeAccount.address,
-        to: receiver,
-        value: testAmount,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      };
-
-      const gasLimit = await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-        [txObject]
-      ).then((gas) => BigNumber.from(gas));
-
-      // Calculate total fee in ETH
-      const totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
-      const totalFeeEth = Number(totalFeeWei.toString()) / 10 ** 18;
-
-      // Cache the fee data
+      // Cache only the fee rates - gas limit will be handled by backend
       setCachedFeeData({
         maxFeePerGas,
         maxPriorityFeePerGas,
-        gasLimit: gasLimit.toString(),
-        totalFeeEth,
       });
     } catch (error) {
       console.error('Error calculating gas fees:', error);
@@ -493,7 +486,7 @@ export const SendEth = () => {
     } finally {
       setIsCalculatingGas(false);
     }
-  }, [selectedAsset, activeAccount.address, controllerEmitter, form]); // isCalculatingGas excluded to prevent loops
+  }, [selectedAsset, controllerEmitter]);
 
   const calculateMaxAmount = useCallback(async (): Promise<string> => {
     if (selectedAsset) {
@@ -506,61 +499,32 @@ export const SendEth = () => {
       const balanceEth = activeAccount?.balances?.ethereum || '0';
       const balanceWei = ethers.utils.parseEther(String(balanceEth));
 
-      // Try to get fresh fee data or use cached data
+      // Always try to get fresh fee data for max calculations to avoid stale cached data
       let totalFeeWei = BigNumber.from(0);
 
       if (!cachedFeeData) {
         // Try to calculate fresh fee data
         try {
-          const receiver =
-            form.getFieldValue('receiver') || activeAccount.address;
-
           const { maxFeePerGas, maxPriorityFeePerGas } =
             (await controllerEmitter([
               'wallet',
               'ethereumTransaction',
               'getFeeDataWithDynamicMaxPriorityFeePerGas',
             ])) as any;
-
-          // Estimate gas limit for a simple transfer
-          const gasLimit = await controllerEmitter(
-            ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-            [
-              {
-                from: activeAccount.address,
-                to: receiver,
-                value: '0x1', // Small test value
-                maxFeePerGas,
-                maxPriorityFeePerGas,
-              },
-            ]
-          ).then((gas) => BigNumber.from(gas));
-
-          // Calculate total fee in wei
-          totalFeeWei = gasLimit.mul(BigNumber.from(maxFeePerGas));
-
           // Cache the fee data for future use
-          const totalFeeEth = Number(ethers.utils.formatEther(totalFeeWei));
           setCachedFeeData({
             maxFeePerGas: maxFeePerGas.toString(),
             maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-            gasLimit: gasLimit.toString(),
-            totalFeeEth,
           });
         } catch (error) {
           console.error('Error calculating fresh fee data:', error);
-          // Use conservative estimate based on network
-          const conservativeFeeEth =
-            activeNetwork.chainId === 570 ? '0.00001' : '0.001';
-          totalFeeWei = ethers.utils.parseEther(conservativeFeeEth);
         }
-      } else {
-        // Use cached fee data - reconstruct wei value from components
-        const gasLimit = BigNumber.from(cachedFeeData.gasLimit);
-        const maxFeePerGas = BigNumber.from(cachedFeeData.maxFeePerGas);
-        totalFeeWei = gasLimit.mul(maxFeePerGas);
       }
-
+      const gasLimit = BigNumber.from(
+        getDefaultGasLimit(TransactionType.NATIVE_ETH).toString
+      );
+      const maxFeePerGas = BigNumber.from(cachedFeeData.maxFeePerGas);
+      totalFeeWei = gasLimit.mul(maxFeePerGas);
       // Calculate max amount in wei (no buffer needed when using BigNumber)
       const maxAmountWei = balanceWei.sub(totalFeeWei);
 
@@ -623,7 +587,7 @@ export const SendEth = () => {
         return;
       }
     } else {
-      // For native ETH, use ETH balance (no verification needed)
+      // For native ETH, use full balance - Confirm component will handle gas deduction for MAX sends
       fullBalance = String(activeAccount?.balances?.ethereum || '0');
     }
 

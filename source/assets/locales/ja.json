@@ -364,7 +364,6 @@
     "enterAMaximumSpendingLimit": "最大支出限度額を入力",
     "editFee": "手数料を編集",
     "gasLimit": "ガス制限",
-    "gasLimitMessage": "ガス制限は1000より大きい必要があります",
     "maxPriority": "最大優先度",
     "maxPriorityFee": "最大優先度手数料",
     "maxFee": "最大手数料",
@@ -438,7 +437,7 @@
     "invalidAssetAllocation": "無効なアセット配分です。トークンGUID {{guid}}が見つからないか無効です。",
     "transactionCreationFailedWithCode": "トランザクションの作成に失敗しました ({{code}}): {{message}}",
     "transactionSendFailed": "トランザクションの送信に失敗しました: {{message}}",
-    "gasLimitTooLow": "ガスリミットは1000より大きくする必要があります",
+    "gasLimitTooLow": "ガスリミットは42000より大きくする必要があります",
     "priorityFeeTooHigh": "優先手数料は最大手数料より小さくする必要があります",
     "maxFeeTooLow": "最大手数料は優先手数料より大きくする必要があります",
     "gasPriceTooLow": "ガス価格は0より大きくする必要があります"

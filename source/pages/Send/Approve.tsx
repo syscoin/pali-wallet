@@ -82,6 +82,12 @@ export const ApproveTransactionComponent = () => {
     maxFeePerGas: 0,
   });
 
+  // Helper function to safely convert fee values to numbers and format them
+  const safeToFixed = (value: any, decimals = 9): string => {
+    const numValue = Number(value);
+    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
+  };
+
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
@@ -169,16 +175,16 @@ export const ApproveTransactionComponent = () => {
         maxPriorityFeePerGas: ethers.utils.parseUnits(
           String(
             Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
-              ? customFee.maxPriorityFeePerGas.toFixed(9)
-              : fee.maxPriorityFeePerGas.toFixed(9)
+              ? safeToFixed(customFee.maxPriorityFeePerGas)
+              : safeToFixed(fee.maxPriorityFeePerGas)
           ),
           9
         ),
         maxFeePerGas: ethers.utils.parseUnits(
           String(
             Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-              ? customFee.maxFeePerGas.toFixed(9)
-              : fee.maxFeePerGas.toFixed(9)
+              ? safeToFixed(customFee.maxFeePerGas)
+              : safeToFixed(fee.maxFeePerGas)
           ),
           9
         ),
@@ -323,7 +329,7 @@ export const ApproveTransactionComponent = () => {
 
     if (customFee.isCustom) {
       return (
-        (Number(customFee.maxFeePerGas.toFixed(9)) / 10 ** 9) *
+        (Number(safeToFixed(customFee.maxFeePerGas)) / 10 ** 9) *
         (customFee.gasLimit > 0 ? customFee.gasLimit : fee.gasLimit)
       );
     }
@@ -380,6 +386,7 @@ export const ApproveTransactionComponent = () => {
           // No-op function since haveError is not used
         }}
         fee={fee}
+        defaultGasLimit={60000} // ERC20 approvals typically need ~50-60k gas
       />
 
       <EditApprovedAllowanceValueModal

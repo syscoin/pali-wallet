@@ -92,8 +92,14 @@ export const SendNTokenTransaction = () => {
     Boolean(tx.type === '0x0') || !isEIP1559Compatible;
 
   const validateCustomGasLimit = Boolean(
-    customFee.isCustom && customFee.gasLimit > 0
+    customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
+
+  // Helper function to safely convert fee values to numbers and format them
+  const safeToFixed = (value: any, decimals = 9): string => {
+    const numValue = Number(value);
+    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
+  };
 
   const handleConfirm = async () => {
     const {
@@ -204,23 +210,21 @@ export const SendNTokenTransaction = () => {
                     Boolean(
                       customFee.isCustom && customFee.maxPriorityFeePerGas > 0
                     )
-                      ? customFee.maxPriorityFeePerGas.toFixed(9)
-                      : fee.maxPriorityFeePerGas.toFixed(9)
+                      ? safeToFixed(customFee.maxPriorityFeePerGas)
+                      : safeToFixed(fee.maxPriorityFeePerGas)
                   ),
                   9
                 ),
                 maxFeePerGas: ethers.utils.parseUnits(
                   String(
                     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                      ? customFee.maxFeePerGas.toFixed(9)
-                      : fee.maxFeePerGas.toFixed(9)
+                      ? safeToFixed(customFee.maxFeePerGas)
+                      : safeToFixed(fee.maxFeePerGas)
                   ),
                   9
                 ),
                 gasLimit: BigNumber.from(
-                  validateCustomGasLimit
-                    ? customFee.gasLimit * 10 ** 9 // Multiply gasLimit to reach correctly decimal value
-                    : fee.gasLimit
+                  validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
                 ),
               },
             ]
@@ -467,6 +471,7 @@ export const SendNTokenTransaction = () => {
         }}
         fee={fee}
         isSendLegacyTransaction={isLegacyTransaction}
+        defaultGasLimit={100000} // General contract interactions can vary widely
       />
 
       <DefaultModal

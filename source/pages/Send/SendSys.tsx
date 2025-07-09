@@ -13,6 +13,7 @@ import { ISyscoinTransactionError } from '@pollum-io/sysweb3-keyring';
 import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
+import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Tooltip, Fee, NeutralButton, Icon } from 'components/index';
 import { useUtils } from 'hooks/index';
@@ -425,7 +426,7 @@ export const SendSys = () => {
         navigateWithContext(
           navigate,
           '/send/confirm',
-          { tx: txData },
+          { tx: txData, transactionType: TransactionType.UTXO },
           returnContext
         );
       } else {
@@ -552,6 +553,7 @@ export const SendSys = () => {
                 guid: selectedAsset.assetGuid,
               },
               isMax: false, // Tokens don't support max send functionality
+              transactionType: TransactionType.UTXO,
             },
           },
           returnContext

@@ -110,3 +110,18 @@ export interface IIsEditedAllowanceModalProps {
   setOpenEditFeeModal: React.Dispatch<React.SetStateAction<boolean>>;
   showModal: boolean;
 }
+
+// eslint-disable-next-line no-shadow
+export enum TransactionType {
+  ERC1155 = 'ERC1155',
+  ERC20 = 'ERC20',
+  ERC721 = 'ERC721',
+  NATIVE_ETH = 'NATIVE_ETH',
+  UTXO = 'UTXO',
+}
+
+export interface ITransactionTypeInfo {
+  defaultGasLimit?: number;
+  isLegacy?: boolean;
+  type: TransactionType;
+}

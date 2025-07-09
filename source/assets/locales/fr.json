@@ -357,7 +357,6 @@
     "enterAMaximumSpendingLimit": "Entrez une limite de dépense maximale",
     "editFee": "Modifier les frais",
     "gasLimit": "Limite de gaz",
-    "gasLimitMessage": "La limite de gaz doit être supérieure à 1000",
     "maxPriority": "Priorité maximale",
     "maxPriorityFee": "Frais de priorité maximale",
     "maxFee": "Frais maximaux",
@@ -433,7 +432,7 @@
     "invalidAssetAllocation": "Allocation d'actifs invalide. Token GUID {{guid}} introuvable ou invalide.",
     "transactionCreationFailedWithCode": "Échec de la création de la transaction ({{code}}): {{message}}",
     "transactionSendFailed": "Échec de l'envoi de la transaction: {{message}}",
-    "gasLimitTooLow": "La limite de gaz doit être supérieure à 1000",
+    "gasLimitTooLow": "La limite de gaz doit être supérieure à 42000",
     "priorityFeeTooHigh": "Les frais de priorité doivent être inférieurs aux frais max",
     "maxFeeTooLow": "Les frais max doivent être supérieurs aux frais de priorité",
     "gasPriceTooLow": "Le prix du gaz doit être supérieur à 0"

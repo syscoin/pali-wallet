@@ -84,7 +84,14 @@ export const SendTransaction = () => {
     gasLimit: 0,
     maxPriorityFeePerGas: 0,
     maxFeePerGas: 0,
+    gasPrice: 0,
   });
+
+  // Helper function to safely convert fee values to numbers and format them
+  const safeToFixed = (value: any, decimals = 9): string => {
+    const numValue = Number(value);
+    return isNaN(numValue) ? '0' : numValue.toFixed(decimals);
+  };
 
   const formattedValueAndCurrency = `${removeScientificNotation(
     Number(tx?.value ? tx?.value : 0) / 10 ** 18
@@ -117,21 +124,23 @@ export const SendTransaction = () => {
         maxPriorityFeePerGas: ethers.utils.parseUnits(
           String(
             Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas > 0)
-              ? customFee.maxPriorityFeePerGas.toFixed(9)
-              : fee.maxPriorityFeePerGas.toFixed(9)
+              ? safeToFixed(customFee.maxPriorityFeePerGas)
+              : safeToFixed(fee.maxPriorityFeePerGas)
           ),
           9
         ),
         maxFeePerGas: ethers.utils.parseUnits(
           String(
             Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-              ? customFee.maxFeePerGas.toFixed(9)
-              : fee.maxFeePerGas.toFixed(9)
+              ? safeToFixed(customFee.maxFeePerGas)
+              : safeToFixed(fee.maxFeePerGas)
           ),
           9
         ),
         gasLimit: BigNumber.from(
-          Boolean(customFee.isCustom && customFee.gasLimit > 0)
+          Boolean(
+            customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
+          )
             ? customFee.gasLimit
             : fee.gasLimit
         ),
@@ -148,21 +157,25 @@ export const SendTransaction = () => {
                   Boolean(
                     customFee.isCustom && customFee.maxPriorityFeePerGas > 0
                   )
-                    ? customFee.maxPriorityFeePerGas.toFixed(9)
-                    : fee.maxPriorityFeePerGas.toFixed(9)
+                    ? safeToFixed(customFee.maxPriorityFeePerGas)
+                    : safeToFixed(fee.maxPriorityFeePerGas)
                 ),
                 9
               ),
               maxFeePerGas: ethers.utils.parseUnits(
                 String(
                   Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-                    ? customFee.maxFeePerGas.toFixed(9)
-                    : fee.maxFeePerGas.toFixed(9)
+                    ? safeToFixed(customFee.maxFeePerGas)
+                    : safeToFixed(fee.maxFeePerGas)
                 ),
                 9
               ),
               gasLimit: BigNumber.from(
-                Boolean(customFee.isCustom && customFee.gasLimit > 0)
+                Boolean(
+                  customFee.isCustom &&
+                    customFee.gasLimit &&
+                    customFee.gasLimit > 0
+                )
                   ? customFee.gasLimit
                   : fee.gasLimit
               ),
@@ -282,6 +295,7 @@ export const SendTransaction = () => {
           // No-op function since haveError is not used
         }}
         fee={fee}
+        defaultGasLimit={100000} // General transactions can vary widely
       />
 
       <DefaultModal

@@ -202,7 +202,6 @@
     "enterAMaximumSpendingLimit": "Digite um limite máximo de gasto",
     "editFee": "Editar Taxa",
     "gasLimit": "Limite de Gas",
-    "gasLimitMessage": "O limite de gas precisa ser maior que 1000",
     "maxPriority": "Prioridade Máxima",
     "maxPriorityFee": "Taxa de Prioridade Máxima",
     "maxFee": "Taxa Máxima",
@@ -283,7 +282,7 @@
     "insufficientFundsForGas": "Fundos insuficientes para cobrir as taxas de gás",
     "reduceFee": "Por favor, reduza as taxas para enviar a transação.",
     "hex": "Hex",
-    "gasLimitTooLow": "O limite de gas deve ser maior que 1000",
+    "gasLimitTooLow": "O limite de gas deve ser maior que 42000",
     "priorityFeeTooHigh": "A taxa de prioridade deve ser menor que a taxa máxima",
     "maxFeeTooLow": "A taxa máxima deve ser maior que a taxa de prioridade",
     "gasPriceTooLow": "O preço do gas deve ser maior que 0"

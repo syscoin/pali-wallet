@@ -362,7 +362,6 @@
     "enterAMaximumSpendingLimit": "Введите максимальный лимит расходов",
     "editFee": "Редактировать комиссию",
     "gasLimit": "Лимит газа",
-    "gasLimitMessage": "Лимит газа должен быть больше 1000",
     "maxPriority": "Макс. приоритет",
     "maxPriorityFee": "Макс. комиссия за приоритет",
     "maxFee": "Макс. комиссия",
@@ -438,7 +437,7 @@
     "invalidAssetAllocation": "Неверное распределение активов. Токен GUID {{guid}} не найден или недействителен.",
     "transactionCreationFailedWithCode": "Не удалось создать транзакцию ({{code}}): {{message}}",
     "transactionSendFailed": "Не удалось отправить транзакцию: {{message}}",
-    "gasLimitTooLow": "Лимит газа должен быть больше 1000",
+    "gasLimitTooLow": "Лимит газа должен быть больше 42000",
     "priorityFeeTooHigh": "Плата за приоритет должна быть меньше максимальной платы",
     "maxFeeTooLow": "Максимальная плата должна быть больше платы за приоритет",
     "gasPriceTooLow": "Цена газа должна быть больше 0"

@@ -21,6 +21,7 @@ import {
   createNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { useTransactionsListConfig } from './utils/useTransactionsInfos';
 
@@ -205,7 +206,7 @@ export const TransactionsList = ({
 
   const renderTransaction = (tx, idx) => {
     const isTxCanceled = tx?.isCanceled === true;
-    const isConfirmed = tx.confirmations > 0;
+    const isConfirmed = isTransactionInBlock(tx);
     const timestamp =
       blocktime &&
       new Date(tx[blocktime] * 1000).toLocaleTimeString(

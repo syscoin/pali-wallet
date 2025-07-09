@@ -17,6 +17,7 @@ import {
 } from 'state/vault/selectors';
 import { TransactionsType } from 'state/vault/types';
 import { camelCaseToText, ellipsis } from 'utils/index';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // UTXO transaction details cache with TTL (5 minutes - consistent with EVM)
 const utxoTxDetailsCache = new Map<string, { data: any; timestamp: number }>();
@@ -194,7 +195,7 @@ export const SyscoinTransactionDetails = ({
     transactionTx = tx;
     txValue = tx?.vout?.[0]?.value || 0;
     isTxCanceled = tx?.isCanceled === true;
-    isConfirmed = tx.confirmations > 0;
+    isConfirmed = isTransactionInBlock(tx);
     isTxSent = isBitcoinBased
       ? false
       : tx.from.toLowerCase() === activeAccount.address.toLowerCase();

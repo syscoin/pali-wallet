@@ -28,6 +28,7 @@ import {
   removeScientificNotation,
 } from 'utils/index';
 import { getERC20TransferValue, isERC20Transfer } from 'utils/transactions';
+import { isTransactionInBlock } from 'utils/transactionUtils';
 
 // Transaction details cache with TTL (5 minutes)
 const txDetailsCache = new Map<string, { data: any; timestamp: number }>();
@@ -231,7 +232,7 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
 
     txSymbol = getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache);
     isTxCanceled = tx?.isCanceled === true;
-    isConfirmed = tx.confirmations > 0;
+    isConfirmed = isTransactionInBlock(tx);
     isTxSent = tx.from.toLowerCase() === currentAccount?.address?.toLowerCase();
 
     // Merge with enhanced details if available - prioritize enhanced data
