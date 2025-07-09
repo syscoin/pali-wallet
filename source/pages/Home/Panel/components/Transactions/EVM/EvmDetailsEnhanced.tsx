@@ -1,4 +1,3 @@
-import { uniqueId } from 'lodash';
 import React, {
   Fragment,
   useEffect,

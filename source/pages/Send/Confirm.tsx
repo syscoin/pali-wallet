@@ -39,7 +39,6 @@ import {
   removeScientificNotation,
   omitTransactionObjectData,
   INITIAL_FEE,
-  navigateBack,
   saveNavigationState,
   clearNavigationState,
 } from 'utils/index';
