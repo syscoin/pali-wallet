@@ -95,7 +95,7 @@ export const SendTransaction = () => {
 
   const formattedValueAndCurrency = `${removeScientificNotation(
     Number(tx?.value ? tx?.value : 0) / 10 ** 18
-  )} ${' '} ${activeNetwork.currency.toUpperCase()}`;
+  )} ${' '} ${activeNetwork.currency?.toUpperCase()}`;
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 

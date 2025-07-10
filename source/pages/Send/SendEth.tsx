@@ -497,7 +497,7 @@ export const SendEth = () => {
     } finally {
       setIsCalculatingGas(false);
     }
-  }, [selectedAsset, controllerEmitter]);
+  }, [selectedAsset, controllerEmitter, isCalculatingGas]);
 
   const calculateMaxAmount = useCallback((): string => {
     if (selectedAsset) {

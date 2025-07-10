@@ -496,11 +496,11 @@ export const SendNTokenTransaction = () => {
               <span>
                 {`${
                   Number(tx.value ? tx.value : 0) / 10 ** 18
-                } ${' '} ${activeNetwork.currency.toUpperCase()}`}
+                } ${' '} ${activeNetwork.currency?.toUpperCase()}`}
               </span>
             ) : (
               <span>
-                {`${0} ${' '} ${activeNetwork.currency.toUpperCase()}`}
+                {`${0} ${' '} ${activeNetwork.currency?.toUpperCase()}`}
               </span>
             )}
           </p>
