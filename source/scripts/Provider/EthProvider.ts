@@ -31,7 +31,9 @@ export const EthProvider = (host: string) => {
 
     const tx = params;
     const validateTxToAddress = await validateEOAAddress(tx.to, web3Provider);
-    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(web3Provider));
+    // Get current block to check EIP1559 compatibility
+    const currentBlock = await web3Provider.getBlock('latest');
+    const isLegacyTx = !(await verifyNetworkEIP1559Compatibility(currentBlock));
     const decodedTx = (await decodeTransactionData(
       tx,
       validateTxToAddress
