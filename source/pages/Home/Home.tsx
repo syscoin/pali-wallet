@@ -129,6 +129,7 @@ export const Home = () => {
     lastLogin,
     loadingStates: { isLoadingBalances },
     isPollingUpdate,
+    isSwitchingAccount,
   } = useSelector((rootState: RootState) => rootState.vaultGlobal);
 
   // ALL useState hooks
@@ -263,6 +264,7 @@ export const Home = () => {
       isFaucetAvailable &&
       parseFloat(actualBalance) === 0 &&
       !isLoadingBalance &&
+      !isSwitchingAccount &&
       currentAccount;
 
     if (canShowFaucet) {
@@ -271,7 +273,13 @@ export const Home = () => {
       // Immediately hide the faucet modal if conditions aren't met
       setShouldShowFaucet(false);
     }
-  }, [isFaucetAvailable, actualBalance, isLoadingBalance, currentAccount]);
+  }, [
+    isFaucetAvailable,
+    actualBalance,
+    isLoadingBalance,
+    isSwitchingAccount,
+    currentAccount,
+  ]);
 
   // Early returns only AFTER all hooks are called
   if (!accounts || !activeAccount || !activeNetwork || !currentAccount) {
@@ -292,7 +300,6 @@ export const Home = () => {
               )}
             </>
           )}
-
           {/* Floating dots container wrapping both blue sections for continuity */}
           <div className="floating-dots-container">
             <WalletProviderDefaultModal />
