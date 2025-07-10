@@ -86,17 +86,8 @@ export async function controllerEmitter<
                 if (response.error === true && response.code) {
                   return reject(response);
                 }
-                // Also check if the entire response is the error object
-                if (response.code && typeof response.error === 'boolean') {
-                  return reject(response);
-                }
                 // For simple error messages, wrap in Error object
                 return reject(new Error(response.error));
-              }
-
-              // Also check if response itself is a structured error
-              if (response && response.code && response.error === true) {
-                return reject(response);
               }
 
               resolve(response);
