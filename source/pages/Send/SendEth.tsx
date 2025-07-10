@@ -984,9 +984,9 @@ export const SendEth = () => {
 
                         // For ERC-1155 NFTs, validate against verified balance
                         if (isERC1155) {
-                          const numValue = parseInt(value);
+                          const numValue = parseFloat(value);
 
-                          // Must be a positive integer
+                          // Must be a positive integer (check the original float value)
                           if (!Number.isInteger(numValue) || numValue <= 0) {
                             return Promise.reject(
                               t('send.amountMustBePositiveInteger')
