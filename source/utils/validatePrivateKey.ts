@@ -14,7 +14,10 @@ export const validatePrivateKeyValue = (
 
   if (!isBitcoinBased) {
     try {
-      new ethers.Wallet(privKey);
+      // Normalize the private key by adding '0x' prefix if missing
+      const normalizedKey =
+        privKey.slice(0, 2) === '0x' ? privKey : `0x${privKey}`;
+      new ethers.Wallet(normalizedKey);
       return true;
     } catch (error) {
       return false;
