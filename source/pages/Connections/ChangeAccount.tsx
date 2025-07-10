@@ -70,8 +70,9 @@ export const ChangeAccount = () => {
 
       window.close();
     } catch (error) {
-      setIsChanging(false);
       console.error('Failed to change account:', error);
+    } finally {
+      setIsChanging(false);
     }
   };
 
