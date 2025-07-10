@@ -17,7 +17,7 @@ type currentNetwork = {
   current: INetwork;
 };
 
-export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
+export const NetworkList = () => {
   const { controllerEmitter } = useController();
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
@@ -32,7 +32,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
     useState<currentNetwork>();
   const [selectedNetwork, setSelectedNetwork] = useState<INetworkType>(
-    isBitcoinBased ? INetworkType.Ethereum : INetworkType.Syscoin
+    isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum
   );
   const [isLoading, setIsLoading] = useState(false);
 
@@ -49,7 +49,7 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     selectedNetworkText,
     leftLogo,
     rightLogo,
-  } = useNetworkInfo({ isBitcoinBased, isChanging, selectedNetwork });
+  } = useNetworkInfo({ isBitcoinBased, selectedNetwork });
 
   const seletedEvmButtonStyle =
     selectedNetwork === INetworkType.Ethereum ? 'opacity-100' : 'opacity-60';
@@ -108,17 +108,14 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
     }
   };
 
-  const newNetworks = useMemo(() => {
-    if (isChanging) {
-      return selectedNetwork === INetworkType.Syscoin
+  const newNetworks = useMemo(
+    () =>
+      // Always show networks based on selectedNetwork to allow switching between UTXO and EVM
+      selectedNetwork === INetworkType.Syscoin
         ? Object.values(networks.syscoin)
-        : Object.values(networks.ethereum);
-    }
-
-    return isBitcoinBased
-      ? Object.values(networks.ethereum)
-      : Object.values(networks.syscoin);
-  }, [isBitcoinBased, isChanging, selectedNetwork, networks]);
+        : Object.values(networks.ethereum),
+    [selectedNetwork, networks]
+  );
 
   const sortedNetworks = useMemo(
     () =>
@@ -130,28 +127,27 @@ export const NetworkList = ({ isChanging }: { isChanging: boolean }) => {
 
   return (
     <div className="mb-14">
-      {isChanging && (
-        <div className="flex pl-[20px] gap-2">
-          <div
-            className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
-            onClick={() => {
-              setSelectedNetwork(INetworkType.Syscoin);
-              setSelectCurrentNetwork(null);
-            }}
-          >
-            UTXO
-          </div>
-          <div
-            className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
-            onClick={() => {
-              setSelectedNetwork(INetworkType.Ethereum);
-              setSelectCurrentNetwork(null);
-            }}
-          >
-            EVM
-          </div>
+      {/* Always show network type tabs so users can switch between UTXO and EVM */}
+      <div className="flex pl-[20px] gap-2">
+        <div
+          className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+          onClick={() => {
+            setSelectedNetwork(INetworkType.Syscoin);
+            setSelectCurrentNetwork(null);
+          }}
+        >
+          UTXO
         </div>
-      )}
+        <div
+          className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+          onClick={() => {
+            setSelectedNetwork(INetworkType.Ethereum);
+            setSelectCurrentNetwork(null);
+          }}
+        >
+          EVM
+        </div>
+      </div>
       <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">
         <div className="relative flex mb-4">
           {React.createElement(leftLogo, {

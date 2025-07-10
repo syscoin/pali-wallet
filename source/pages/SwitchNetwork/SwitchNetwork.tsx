@@ -76,7 +76,7 @@ export const SwitchNetwork = () => {
               </p> */}
           </>
         ) : null}
-        <NetworkList isChanging={state?.switchingFromTimeError} />
+        <NetworkList />
       </div>
     </>
   );

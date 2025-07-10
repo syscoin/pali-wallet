@@ -31,14 +31,13 @@ const BLUE_COLOR = 'text-brand-blue200';
 
 export const useNetworkInfo = ({
   isBitcoinBased,
-  isChanging,
   selectedNetwork,
 }: {
   isBitcoinBased?: boolean;
-  isChanging?: boolean;
   selectedNetwork?: string;
 }): INetworkInfo => {
-  const utxoNetwork: INetworkInfo = {
+  // For switching context (what you need to switch TO)
+  const utxoSwitchingInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Syscoin,
     networkThatNeedsChanging: INetworkType.Ethereum,
     connectedColor: PINK_COLOR,
@@ -49,7 +48,7 @@ export const useNetworkInfo = ({
     rightLogo: RolluxChainWhiteSvg,
   };
 
-  const evmNetworkInfo: INetworkInfo = {
+  const evmSwitchingInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Ethereum,
     networkThatNeedsChanging: INetworkType.Syscoin,
     connectedColor: BLUE_COLOR,
@@ -60,13 +59,40 @@ export const useNetworkInfo = ({
     rightLogo: SysChainWhiteSvg,
   };
 
+  // For selection context (what you're currently selecting)
+  const utxoSelectionInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Syscoin,
+    networkThatNeedsChanging: INetworkType.Syscoin,
+    connectedColor: PINK_COLOR,
+    networkNeedsChangingColor: PINK_COLOR,
+    networkDescription: 'Unspent Transaction Output',
+    selectedNetworkText: 'Select a UTXO network:',
+    leftLogo: PinkBitcoinSvg,
+    rightLogo: SysChainWhiteSvg,
+  };
+
+  const evmSelectionInfo: INetworkInfo = {
+    connectedNetwork: INetworkType.Ethereum,
+    networkThatNeedsChanging: INetworkType.Ethereum,
+    connectedColor: BLUE_COLOR,
+    networkNeedsChangingColor: BLUE_COLOR,
+    networkDescription: 'Ethereum Virtual Machine',
+    selectedNetworkText: 'Select an EVM network:',
+    leftLogo: EthChainDarkBlueSvg,
+    rightLogo: RolluxChainWhiteSvg,
+  };
+
   let value: any;
 
-  if (isChanging) {
+  // If selectedNetwork is provided, use selection context (for network selection tabs)
+  // Otherwise, use switching context (for warning messages)
+  if (selectedNetwork) {
     value =
-      selectedNetwork === INetworkType.Syscoin ? evmNetworkInfo : utxoNetwork;
+      selectedNetwork === INetworkType.Syscoin
+        ? utxoSelectionInfo
+        : evmSelectionInfo;
   } else {
-    value = isBitcoinBased ? utxoNetwork : evmNetworkInfo;
+    value = isBitcoinBased ? utxoSwitchingInfo : evmSwitchingInfo;
   }
 
   return value;
