@@ -61,20 +61,12 @@ export const NetworkList = () => {
     try {
       setIsLoading(true);
 
-      // Add a timeout promise that rejects after 10 seconds
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(new Error('Network switch timed out. Please try again.')),
-          10000
-        )
-      );
+      // Remove the timeout race condition - let the network switch take as long as it needs
+      // The user can always navigate away or try a different network if it's taking too long
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
 
-      // Race between the network change and timeout
-      await Promise.race([
-        controllerEmitter(['wallet', 'setActiveNetwork'], [network]),
-        timeoutPromise,
-      ]);
+      // Reset loading state on success
+      setIsLoading(false);
 
       // Navigate only after successful network change
       navigate('/home');
@@ -95,10 +87,20 @@ export const NetworkList = () => {
         return;
       }
 
-      // If it's a timeout, suggest retrying
-      if (errorMessage.includes('timed out')) {
+      // Show appropriate error message based on the type of error
+      if (
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('timed out')
+      ) {
         alert.error(
-          `${errorMessage} The network might be slow or unresponsive.`
+          `Network connection timed out. The network might be slow or unresponsive.`
+        );
+      } else if (
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('429')
+      ) {
+        alert.error(
+          `The network is rate limiting requests. Please wait a moment and try again.`
         );
       } else {
         alert.error(errorMessage);
