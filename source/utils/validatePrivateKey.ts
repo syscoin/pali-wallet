@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { INetwork } from '@pollum-io/sysweb3-network';
 
 import { getController } from 'scripts/Background';
+import store from 'state/store';
 
 export const validatePrivateKeyValue = (
   privKey: string,
@@ -21,11 +22,41 @@ export const validatePrivateKeyValue = (
   }
 
   if (isBitcoinBased) {
-    const { isValid } = mainController.wallet.validateZprv(
-      privKey,
-      activeNetwork
-    );
-    return isValid;
+    // If activeNetwork is undefined, try to get it from the vault
+    let networkToValidate = activeNetwork;
+
+    if (!networkToValidate) {
+      try {
+        // Get the active network from the vault state
+        const vaultState = store.getState().vault;
+        networkToValidate = vaultState?.activeNetwork;
+      } catch (error) {
+        // If we can't get the vault state, validation cannot proceed
+        console.warn(
+          'validatePrivateKeyValue: Unable to get active network for validation'
+        );
+        return false;
+      }
+    }
+
+    // If we still don't have a network, we cannot validate
+    if (!networkToValidate) {
+      console.warn(
+        'validatePrivateKeyValue: No network available for Bitcoin-based validation'
+      );
+      return false;
+    }
+
+    try {
+      const { isValid } = mainController.wallet.validateZprv(
+        privKey,
+        networkToValidate
+      );
+      return isValid;
+    } catch (error) {
+      console.error('validatePrivateKeyValue: Error validating zprv:', error);
+      return false;
+    }
   }
 
   return false;
