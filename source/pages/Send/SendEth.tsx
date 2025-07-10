@@ -324,7 +324,7 @@ export const SendEth = () => {
         let isMax = false;
         if (!selectedAsset && values.amount) {
           // Check if the entered value equals the full balance
-          const balanceEth = String(activeAccount?.balances?.ethereum || '0');
+          const balanceEth = String(activeAccount?.balances?.ethereum || 0);
 
           try {
             const amountBN = ethers.utils.parseEther(values.amount);
@@ -424,7 +424,7 @@ export const SendEth = () => {
     }
 
     // For native currency, format the balance for display (4 decimals)
-    const fullBalance = String(activeAccount?.balances?.ethereum || '0');
+    const fullBalance = String(activeAccount?.balances?.ethereum || 0);
     const displayBalance = formatFullPrecisionBalance(fullBalance, 4);
 
     return `${displayBalance} ${activeNetwork.currency.toUpperCase()}`;
@@ -499,86 +499,17 @@ export const SendEth = () => {
     }
   }, [selectedAsset, controllerEmitter]);
 
-  const calculateMaxAmount = useCallback(async (): Promise<string> => {
+  const calculateMaxAmount = useCallback((): string => {
     if (selectedAsset) {
       // For tokens, use full balance as fees are paid in native token
       return String(selectedAsset.balance);
     }
 
-    try {
-      // Get balance in wei using the full precision stored balance
-      const balanceEth = activeAccount?.balances?.ethereum || '0';
-      const balanceWei = ethers.utils.parseEther(String(balanceEth));
-
-      // Always try to get fresh fee data for max calculations to avoid stale cached data
-      let totalFeeWei = BigNumber.from(0);
-
-      if (!cachedFeeData) {
-        // Try to calculate fresh fee data
-        try {
-          const { maxFeePerGas, maxPriorityFeePerGas } =
-            (await controllerEmitter([
-              'wallet',
-              'ethereumTransaction',
-              'getFeeDataWithDynamicMaxPriorityFeePerGas',
-            ])) as any;
-          // Cache the fee data for future use
-          setCachedFeeData({
-            maxFeePerGas: maxFeePerGas.toString(),
-            maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-          });
-        } catch (error) {
-          console.error('Error calculating fresh fee data:', error);
-        }
-      }
-      const gasLimit = BigNumber.from(
-        getDefaultGasLimit(TransactionType.NATIVE_ETH).toString
-      );
-      const maxFeePerGas = BigNumber.from(cachedFeeData.maxFeePerGas);
-      totalFeeWei = gasLimit.mul(maxFeePerGas);
-      // Calculate max amount in wei (no buffer needed when using BigNumber)
-      const maxAmountWei = balanceWei.sub(totalFeeWei);
-
-      // If result would be negative, return 0
-      if (maxAmountWei.lt(0)) {
-        return '0';
-      }
-
-      // Convert back to ETH as a string to preserve precision
-      const maxAmountEth = ethers.utils.formatEther(maxAmountWei);
-
-      // Return as string to preserve full precision
-      return maxAmountEth;
-    } catch (error) {
-      console.error('Error calculating max amount:', error);
-      // Fallback: return balance minus conservative fee using BigNumber
-      try {
-        const balanceEth = activeAccount?.balances?.ethereum || '0';
-        const balanceWei = ethers.utils.parseEther(String(balanceEth));
-        const conservativeFee =
-          activeNetwork.chainId === 570 ? '0.00001' : '0.001';
-        const conservativeFeeWei = ethers.utils.parseEther(conservativeFee);
-        const maxAmountWei = balanceWei.sub(conservativeFeeWei);
-
-        if (maxAmountWei.lt(0)) {
-          return '0';
-        }
-
-        return ethers.utils.formatEther(maxAmountWei);
-      } catch (fallbackError) {
-        console.error('Error in fallback calculation:', fallbackError);
-        return '0';
-      }
-    }
-  }, [
-    selectedAsset,
-    cachedFeeData,
-    activeAccount?.balances?.ethereum,
-    activeAccount?.address,
-    activeNetwork.chainId,
-    controllerEmitter,
-    form,
-  ]);
+    // For native ETH, return the full balance
+    // The backend will handle gas deduction for MAX sends
+    const balanceEth = activeAccount?.balances?.ethereum || 0;
+    return String(balanceEth);
+  }, [selectedAsset, activeAccount?.balances?.ethereum]);
 
   const handleMaxButton = useCallback(() => {
     // Only work with verified balances - no fallbacks
@@ -598,8 +529,9 @@ export const SendEth = () => {
         return;
       }
     } else {
-      // For native ETH, use full balance - Confirm component will handle gas deduction for MAX sends
-      fullBalance = String(activeAccount?.balances?.ethereum || '0');
+      // For native ETH, use full balance
+      // The backend will handle gas deduction for MAX sends
+      fullBalance = calculateMaxAmount();
     }
 
     form.setFieldValue('amount', fullBalance);
@@ -608,7 +540,7 @@ export const SendEth = () => {
     // Force validation to run after setting the value
     form.validateFields(['amount']);
   }, [
-    activeAccount?.balances?.ethereum,
+    calculateMaxAmount,
     selectedAsset,
     verifiedTokenBalance,
     verifiedERC20Balance,
@@ -1123,7 +1055,7 @@ export const SendEth = () => {
                         // For native currency, use BigNumber comparison
                         try {
                           const balanceEth = String(
-                            activeAccount?.balances?.ethereum || '0'
+                            activeAccount?.balances?.ethereum || 0
                           );
                           const balanceBN = ethers.utils.parseEther(balanceEth);
 
@@ -1132,41 +1064,63 @@ export const SendEth = () => {
                             return Promise.reject(t('send.insufficientFunds'));
                           }
 
-                          // If MAX is clicked for native ETH, allow full balance (fees will be deducted automatically)
+                          // For MAX sends, we need to ensure there's enough for gas
                           if (isMaxSend && valueBN.eq(balanceBN)) {
+                            // For MAX sends, we'll validate gas availability at transaction time
+                            // The backend will handle the proper gas deduction
                             return Promise.resolve();
                           }
 
-                          // For native ETH, also validate against max amount (balance - gas)
-                          try {
-                            // Calculate max sendable amount
-                            const maxAmountStr = await calculateMaxAmount();
-                            const maxAmountBN =
-                              ethers.utils.parseEther(maxAmountStr);
+                          // For non-MAX native ETH sends, validate against a conservative gas estimate
+                          if (!isMaxSend) {
+                            try {
+                              // Use cached fee data if available, otherwise use conservative estimate
+                              let estimatedGasCost: BigNumber;
 
-                            // If amount exceeds max (balance - gas), show specific error
-                            if (valueBN.gt(maxAmountBN)) {
-                              // Check if it's just slightly over (within gas fee range)
-                              if (valueBN.lte(balanceBN)) {
+                              if (cachedFeeData && cachedFeeData.maxFeePerGas) {
+                                // Use cached fee data for estimation
+                                const gasLimit = BigNumber.from(
+                                  getDefaultGasLimit(
+                                    TransactionType.NATIVE_ETH
+                                  ).toString()
+                                );
+                                const maxFeePerGas = BigNumber.from(
+                                  cachedFeeData.maxFeePerGas
+                                );
+                                estimatedGasCost = gasLimit.mul(maxFeePerGas);
+                              } else {
+                                // Use conservative fallback estimate
+                                const conservativeFee =
+                                  activeNetwork.chainId === 570
+                                    ? '0.00001'
+                                    : '0.001';
+                                estimatedGasCost =
+                                  ethers.utils.parseEther(conservativeFee);
+                              }
+
+                              // Check if balance minus amount leaves enough for gas
+                              const remainingAfterSend = balanceBN.sub(valueBN);
+
+                              if (remainingAfterSend.lt(estimatedGasCost)) {
                                 return Promise.reject(
                                   t('send.insufficientFundsForGas') ||
                                     'Insufficient funds for gas'
                                 );
                               }
+                            } catch (error) {
+                              console.error(
+                                'Error validating gas estimate:',
+                                error
+                              );
+                              // On error, allow the transaction to proceed
+                              // The backend will provide proper validation
                             }
-                          } catch (error) {
-                            console.error(
-                              'Error validating max amount:',
-                              error
-                            );
-                            // If we can't calculate gas, just check against balance
-                            // The actual transaction will fail if gas is insufficient
                           }
                         } catch (e) {
                           console.error('Error in BigNumber validation:', e);
                           // Ultimate fallback - just check balance
                           const balance = parseFloat(
-                            String(activeAccount?.balances?.ethereum || '0')
+                            String(activeAccount?.balances?.ethereum || 0)
                           );
                           const numValue = parseFloat(value);
                           if (numValue > balance) {
@@ -1227,7 +1181,7 @@ export const SendEth = () => {
                       if (!selectedAsset && inputValue) {
                         // Check if the entered value equals the full balance
                         const balanceEth = String(
-                          activeAccount?.balances?.ethereum || '0'
+                          activeAccount?.balances?.ethereum || 0
                         );
 
                         try {
