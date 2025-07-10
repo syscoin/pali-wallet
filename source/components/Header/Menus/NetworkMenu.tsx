@@ -21,7 +21,6 @@ import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
-import { selectActiveAccount } from 'state/vault/selectors';
 import { startSwitchNetwork, switchNetworkError } from 'state/vaultGlobal';
 import {
   createNavigationContext,
@@ -83,7 +82,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
   );
 
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
-  const activeAccount = useSelector(selectActiveAccount);
 
   // ✅ MEMOIZED: Computed values
   const isNetworkChanging = useMemo(

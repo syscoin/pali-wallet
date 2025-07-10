@@ -4570,7 +4570,8 @@ class MainController {
         );
 
         // Remove vault data from state
-        const { vault, ...cleanState } = currentState;
+        const { vault: _vault, ...cleanState } = currentState;
+        void _vault; // Mark as intentionally unused
 
         // Save cleaned state
         await chromeStorage.setItem('state', cleanState);

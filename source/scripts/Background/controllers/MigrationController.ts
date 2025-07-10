@@ -23,7 +23,8 @@ const migrations: Array<{
         );
 
         // Create cleaned state without vault
-        const { vault, ...cleanedState } = state;
+        const { vault: _vault, ...cleanedState } = state;
+        void _vault; // Mark as intentionally unused
 
         // Save cleaned state
         await chromeStorage.setItem('state', cleanedState);
