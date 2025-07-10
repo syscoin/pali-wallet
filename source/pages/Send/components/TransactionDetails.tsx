@@ -126,7 +126,7 @@ export const TransactionDetailsComponent = (
       <p className="flex flex-col pt-2 w-full text-brand-gray200 font-poppins font-thin">
         {t('send.estimatedGasFee')}
         <p className="flex text-white text-xs">
-          {formattedFinalFee} {activeNetwork.currency.toUpperCase()}
+          {formattedFinalFee} {activeNetwork.currency?.toUpperCase()}
           <div
             className="hover:text-fields-input-borderfocus"
             onClick={() => setIsOpen(true)}
@@ -159,7 +159,7 @@ export const TransactionDetailsComponent = (
           {removeScientificNotation(
             Number(currentTxValue) / 10 ** 18 + finalFee
           )}{' '}
-          {activeNetwork.currency.toUpperCase()}
+          {activeNetwork.currency?.toUpperCase()}
         </span>
       </p>
     </div>
