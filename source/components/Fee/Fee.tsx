@@ -1,5 +1,5 @@
 import { Form, Input } from 'antd';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -28,6 +28,17 @@ export const Fee = ({
   // State to track current fee value for real-time validation
   const [currentFee, setCurrentFee] = useState<string>('');
 
+  // Memoize the fee change handler to avoid triggering effects
+  const handleFeeChange = useCallback(
+    (value: number | undefined) => {
+      // Only call onFeeChange if value is a valid positive number
+      if (onFeeChange && value !== undefined && value > 0 && !isNaN(value)) {
+        onFeeChange(value);
+      }
+    },
+    [onFeeChange]
+  );
+
   // Initialize and sync form value with recommend
   useEffect(() => {
     const currentFormValue = form.getFieldValue('fee');
@@ -36,21 +47,23 @@ export const Fee = ({
       form.setFieldsValue({ fee: recommend });
       setCurrentFee(String(recommend));
       // Notify parent component of initial fee
-      if (onFeeChange) {
-        onFeeChange(recommend);
-      }
+      handleFeeChange(recommend);
     } else if (currentFormValue) {
       // Use existing form value if user has already entered something
       setCurrentFee(String(currentFormValue));
       // Notify parent component of existing fee
-      if (onFeeChange && !isNaN(Number(currentFormValue))) {
-        onFeeChange(Number(currentFormValue));
+      const numValue = Number(currentFormValue);
+      // Only call if it's a valid positive number
+      if (numValue > 0 && !isNaN(numValue)) {
+        handleFeeChange(numValue);
       }
     } else {
       // Default case
       setCurrentFee(String(recommend || ''));
     }
-  }, [form, recommend, onFeeChange]);
+    // Remove onFeeChange from dependencies to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, recommend]);
 
   // Fee rate validation thresholds for UTXO networks (coin/byte)
   const getFeeRateThresholds = () => {
@@ -198,8 +211,12 @@ export const Fee = ({
                     // Trigger form validation to update the visual feedback
                     form.validateFields(['fee']);
                     // Notify parent component of fee change
-                    if (onFeeChange && newValue && !isNaN(Number(newValue))) {
-                      onFeeChange(Number(newValue));
+                    // Only call if newValue is not empty and converts to a valid positive number
+                    if (newValue && newValue.trim() !== '') {
+                      const numValue = Number(newValue);
+                      if (numValue > 0 && !isNaN(numValue)) {
+                        handleFeeChange(numValue);
+                      }
                     }
                   }}
                 />
