@@ -22,7 +22,7 @@ export interface IBalancesManagerUtils {
     currentAccount: IKeyringAccountState,
     isBitcoinBased: boolean,
     networkUrl: string,
-    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider
+    provider: CustomJsonRpcProvider | CustomL2JsonRpcProvider | null
   ) => Promise<string>;
 }
 
