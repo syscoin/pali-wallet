@@ -249,7 +249,7 @@ const ManageAccountsView = React.memo(() => {
         </li>
       );
     },
-    [editAccount, isActiveAccount]
+    [editAccount, isActiveAccount, canRemoveAccount, handleRemoveClick]
   );
 
   // Memoize the account list computation
