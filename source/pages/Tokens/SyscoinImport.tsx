@@ -131,11 +131,10 @@ export const SyscoinImport: React.FC = () => {
     }
   }, [
     activeAccount?.address,
+    activeAccount?.xpub,
     importedAssetGuids,
     recentlyImportedGuids,
     controllerEmitter,
-    alert,
-    t,
   ]);
 
   // Load user's owned tokens - only once per account/network combination
