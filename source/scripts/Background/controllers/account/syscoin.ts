@@ -48,6 +48,16 @@ const SysAccountController = (
     try {
       const { activeAccount, activeNetwork, accountAssets } =
         store.getState().vault;
+
+      // Add null checks for nested property access
+      if (!accountAssets[activeAccount.type]) {
+        throw new Error('Account type assets not initialized');
+      }
+
+      if (!accountAssets[activeAccount.type][activeAccount.id]) {
+        throw new Error('Account assets not initialized');
+      }
+
       const activeAccountAssets =
         accountAssets[activeAccount.type][activeAccount.id];
       // Check for duplicate considering both assetGuid AND chainId (network-specific)
@@ -94,6 +104,16 @@ const SysAccountController = (
   const deleteTokenInfo = (assetGuid: string) => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
+
+      // Add null checks for nested property access
+      if (!accountAssets[activeAccount.type]) {
+        throw new Error('Account type assets not initialized');
+      }
+
+      if (!accountAssets[activeAccount.type][activeAccount.id]) {
+        throw new Error('Account assets not initialized');
+      }
+
       const activeAccountAssets =
         accountAssets[activeAccount.type][activeAccount.id];
 
