@@ -98,18 +98,6 @@ export const useTransactionsListConfig = (
     }
   }, []);
 
-  const isShowedGroupBar = useCallback(
-    (tx: any, idx: number) =>
-      tx === null &&
-      tx === undefined &&
-      userTransactions[idx - 1] === undefined &&
-      userTransactions[idx - 1] === null &&
-      (idx === 0 ||
-        new Date(tx[blocktime] * 1e3).toDateString() !==
-          new Date(userTransactions[idx - 1][blocktime] * 1e3).toDateString()),
-    [userTransactions]
-  );
-
   const filteredTransactions = useMemo(() => {
     if (!Array.isArray(userTransactions)) {
       return [];
@@ -248,7 +236,6 @@ export const useTransactionsListConfig = (
       formatTimeStamp,
       formatTimeStampUtxo,
       filteredTransactions,
-      isShowedGroupBar,
       txId,
       getTxType,
       blocktime,
@@ -259,7 +246,6 @@ export const useTransactionsListConfig = (
       formatTimeStamp,
       formatTimeStampUtxo,
       filteredTransactions,
-      isShowedGroupBar,
       txId,
       getTxType,
       blocktime,

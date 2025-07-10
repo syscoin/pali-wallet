@@ -136,15 +136,30 @@ export const TransactionsList = ({
   const blocktime = isBitcoinBased ? 'blockTime' : 'timestamp';
 
   const isShowedGroupBar = useCallback(
-    (tx: any, idx: number) =>
-      tx === null &&
-      tx === undefined &&
-      userTransactions[idx - 1] === undefined &&
-      userTransactions[idx - 1] === null &&
-      (idx === 0 ||
+    (tx: any, idx: number) => {
+      // Early return if current transaction is null/undefined
+      if (tx === null || tx === undefined) {
+        return false;
+      }
+
+      // Check if it's the first transaction
+      if (idx === 0) {
+        return true;
+      }
+
+      // Early return if previous transaction is null/undefined
+      const prevTx = userTransactions[idx - 1];
+      if (prevTx === null || prevTx === undefined) {
+        return false;
+      }
+
+      // Compare dates between current and previous transaction
+      return (
         new Date(tx[blocktime] * 1e3).toDateString() !==
-          new Date(userTransactions[idx - 1][blocktime] * 1e3).toDateString()),
-    [userTransactions]
+        new Date(prevTx[blocktime] * 1e3).toDateString()
+      );
+    },
+    [userTransactions, blocktime]
   );
 
   const filteredTransactions = useMemo(() => {
