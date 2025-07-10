@@ -1,7 +1,6 @@
 import { getController } from '..';
 import { isPollingRunNotValid } from 'scripts/Background/utils/isPollingRunNotValid';
-import { saveState } from 'state/paliStorage';
-import store from 'state/store';
+import { saveMainState } from 'state/store';
 
 // Cross-context deduplication using Chrome storage
 const UPDATE_LOCK_KEY = 'checkForUpdates_lock';
@@ -103,8 +102,8 @@ export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {
     try {
       await getController().wallet.getLatestUpdateForCurrentAccount(isPolling);
 
-      // Save state after successful update
-      saveState(store.getState());
+      // Save main state after successful update (excludes vault data)
+      await saveMainState();
     } catch (error) {
       console.error('Error updating account in checkForUpdates:', error);
     }
