@@ -655,6 +655,9 @@ export const SendEth = () => {
     [selectedAsset, activeAccount.address, controllerEmitter]
   );
 
+  // Ref to store the timeout ID for proper cleanup
+  const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Handle manual token ID input with debounced verification
   const handleManualTokenIdChange = useCallback(
     (value: string) => {
@@ -662,17 +665,21 @@ export const SendEth = () => {
       // Also update the form field to keep them in sync
       form.setFieldValue('nftTokenId', value);
 
+      // Clear any existing timeout to prevent race conditions
+      if (tokenIdVerificationTimeoutRef.current) {
+        clearTimeout(tokenIdVerificationTimeoutRef.current);
+        tokenIdVerificationTimeoutRef.current = null;
+      }
+
       if (value) {
         // Clear previous verification
         setVerifiedTokenBalance(null);
         setVerificationError(null);
 
         // Debounce verification to avoid too many calls
-        const timeoutId = setTimeout(() => {
+        tokenIdVerificationTimeoutRef.current = setTimeout(() => {
           verifyTokenId(value);
         }, 500);
-
-        return () => clearTimeout(timeoutId);
       } else {
         setVerifiedTokenBalance(null);
         setVerificationError(null);
@@ -764,6 +771,16 @@ export const SendEth = () => {
       calculateGasFees();
     }
   }, [selectedAsset, activeAccount?.address, cachedFeeData, calculateGasFees]);
+
+  // Cleanup token ID verification timeout on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+      if (tokenIdVerificationTimeoutRef.current) {
+        clearTimeout(tokenIdVerificationTimeoutRef.current);
+        tokenIdVerificationTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="w-full md:max-w-sm">
