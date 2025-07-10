@@ -517,7 +517,8 @@
     "seeDetails": "세부 정보 보기",
     "seeOnBlockExplorer": "블록 탐색기에서 보기",
     "replaced": "대체됨",
-    "replaces": "대체"
+    "replaces": "대체",
+    "unknownDecimals": "소수점 알 수 없음"
   },
   "switchNetworkPage": {
     "connectedOn": "연결됨:",

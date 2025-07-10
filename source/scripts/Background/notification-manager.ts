@@ -11,7 +11,7 @@ import {
   updatePendingTransactionBadge,
   ITransactionNotification,
 } from 'utils/notifications';
-import { isERC20Transfer, getERC20TransferValue } from 'utils/transactions';
+import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 interface INotificationState {
@@ -380,67 +380,74 @@ class NotificationManager {
     account: any,
     network: any
   ) {
-    let value: string | undefined;
-    let tokenSymbol = network.currency.toUpperCase();
-    let tokenDecimals = 18; // Default for ETH/native tokens
+    try {
+      // Use the shared utility to get transaction display info
+      const displayInfo = await getTransactionDisplayInfo(tx, network.currency);
 
-    // Check if this is an ERC20 transfer
-    const isErc20 = isERC20Transfer(tx as any);
+      let value: string | undefined;
+      const tokenSymbol = displayInfo.displaySymbol;
 
-    if (isErc20) {
-      // Extract token information from the transaction
-      const tokenValue = getERC20TransferValue(tx as any);
-      const tokenAddress = tx.to; // The 'to' address is the token contract for ERC20 transfers
-
-      if (tokenValue && tokenAddress) {
-        // Try to get token info from cache or user's token list
-        const tokenInfo = await this.getTokenInfo(tokenAddress, account);
-
-        if (tokenInfo) {
-          tokenSymbol = tokenInfo.symbol;
-          tokenDecimals = tokenInfo.decimals;
-
-          // Handle NFT transfers differently
-          if (tokenInfo.isNft) {
-            // For NFTs, show count instead of formatted value
-            value = `${tokenValue.toString()} NFT${
-              tokenValue.toString() !== '1' ? 's' : ''
-            }`;
-          } else {
-            // Regular ERC-20 token
-            value = this.formatValue(tokenValue.toString(), tokenDecimals);
-          }
+      // Format the value appropriately for notifications
+      if (displayInfo.isNft) {
+        // For NFTs, the displayValue already contains the formatted string
+        value = displayInfo.displayValue as string;
+      } else {
+        // For regular tokens and native currency
+        if (typeof displayInfo.displayValue === 'number') {
+          value =
+            displayInfo.displayValue > 0
+              ? displayInfo.displayValue.toFixed(4)
+              : undefined;
         } else {
-          // Fallback: show raw value with contract address
-          value = this.formatValue(tokenValue.toString(), 18);
-          tokenSymbol = `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
-            -4
-          )}`;
+          value = displayInfo.displayValue;
         }
       }
-    } else {
-      // Native currency transaction
-      value = tx.value ? this.formatValue(tx.value.toString(), 18) : undefined;
-    }
 
-    const notification: ITransactionNotification = {
-      txHash: tx.hash,
-      type,
-      from: tx.from || account.address,
-      to: isErc20 ? this.getERC20Recipient(tx as any) : tx.to,
-      value,
-      tokenSymbol,
-      network: network.label,
-      chainId: network.chainId,
-    };
+      const notification: ITransactionNotification = {
+        txHash: tx.hash,
+        type,
+        from: tx.from || account.address,
+        to: displayInfo.actualRecipient || tx.to,
+        value,
+        tokenSymbol,
+        network: network.label,
+        chainId: network.chainId,
+      };
 
-    showTransactionNotification(notification);
+      showTransactionNotification(notification);
 
-    if (type === 'pending') {
-      this.state.pendingTransactions.set(
-        `${tx.hash}_${network.chainId}`,
-        notification
+      if (type === 'pending') {
+        this.state.pendingTransactions.set(
+          `${tx.hash}_${network.chainId}`,
+          notification
+        );
+      }
+    } catch (error) {
+      console.error(
+        '[NotificationManager] Error showing EVM transaction notification:',
+        error
       );
+
+      // Fallback to simple notification if the shared utility fails
+      const notification: ITransactionNotification = {
+        txHash: tx.hash,
+        type,
+        from: tx.from || account.address,
+        to: tx.to,
+        value: tx.value ? this.formatValue(tx.value.toString(), 18) : undefined,
+        tokenSymbol: network.currency.toUpperCase(),
+        network: network.label,
+        chainId: network.chainId,
+      };
+
+      showTransactionNotification(notification);
+
+      if (type === 'pending') {
+        this.state.pendingTransactions.set(
+          `${tx.hash}_${network.chainId}`,
+          notification
+        );
+      }
     }
   }
 
@@ -713,113 +720,6 @@ class NotificationManager {
       // Keep the badge count updated with current pending transactions
       updatePendingTransactionBadge(this.state.pendingTransactions.size);
     }
-  }
-
-  // Get token info from user's token list or fetch from controller
-  private async getTokenInfo(
-    contractAddress: string,
-    account: any
-  ): Promise<{
-    decimals: number;
-    isNft?: boolean;
-    symbol: string;
-  } | null> {
-    try {
-      // Check user's account assets first (fastest)
-      const { accountAssets } = store.getState().vault;
-      const userAssets = accountAssets[account.type]?.[account.id];
-
-      if (userAssets?.ethereum) {
-        const token = userAssets.ethereum.find(
-          (asset) =>
-            asset.contractAddress?.toLowerCase() ===
-            contractAddress.toLowerCase()
-        );
-
-        if (token) {
-          const tokenInfo = {
-            symbol: token.tokenSymbol,
-            decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
-            isNft: token.isNft || false,
-          };
-          return tokenInfo;
-        }
-      }
-
-      // If not in user's assets, try to fetch from controller
-      try {
-        const { getController } = await import('./index');
-        const controller = getController();
-
-        if (controller?.wallet) {
-          const tokenDetails = await controller.wallet.getTokenDetails(
-            contractAddress,
-            account.address
-          );
-
-          if (tokenDetails) {
-            // Handle NFTs differently - they don't have traditional decimals
-            if (tokenDetails.isNft) {
-              const tokenInfo = {
-                symbol: tokenDetails.symbol,
-                decimals: 0, // NFTs don't use decimals
-                isNft: true,
-              };
-              return tokenInfo;
-            } else {
-              // Regular ERC-20 token
-              const tokenInfo = {
-                symbol: tokenDetails.symbol,
-                decimals: tokenDetails.decimals,
-                isNft: false,
-              };
-              return tokenInfo;
-            }
-          }
-        }
-      } catch (controllerError) {
-        console.warn(
-          '[NotificationManager] Controller token lookup failed:',
-          controllerError
-        );
-        // Continue to fallback
-      }
-    } catch (error) {
-      console.error('[NotificationManager] Error getting token info:', error);
-    }
-
-    return null;
-  }
-
-  // Get the actual recipient of an ERC20 transfer
-  private getERC20Recipient(tx: any): string | undefined {
-    if (!tx.input) return undefined;
-
-    try {
-      // For transfer(address,uint256), recipient is the first parameter
-      const transferMethodId = '0xa9059cbb';
-      // For transferFrom(address,address,uint256), recipient is the second parameter
-      const transferFromMethodId = '0x23b872dd';
-
-      if (tx.input.startsWith(transferMethodId)) {
-        // Extract recipient address (first 32 bytes after method id)
-        const recipientHex = '0x' + tx.input.slice(10, 74);
-        // Remove leading zeros and add 0x prefix
-        return '0x' + recipientHex.slice(-40);
-      } else if (tx.input.startsWith(transferFromMethodId)) {
-        // Extract recipient address (second 32 bytes after method id)
-        const recipientHex = '0x' + tx.input.slice(74, 138);
-        // Remove leading zeros and add 0x prefix
-        return '0x' + recipientHex.slice(-40);
-      }
-    } catch (error) {
-      console.error(
-        '[NotificationManager] Error parsing ERC20 recipient:',
-        error
-      );
-    }
-
-    return tx.to;
   }
 
   // Get SPT metadata including any color information

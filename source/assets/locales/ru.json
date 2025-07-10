@@ -517,7 +517,8 @@
     "seeDetails": "Посмотреть детали",
     "seeOnBlockExplorer": "Посмотреть в блок-проводнике",
     "replaced": "Заменена",
-    "replaces": "Заменяет"
+    "replaces": "Заменяет",
+    "unknownDecimals": "Десятичные разряды неизвестны"
   },
   "switchNetworkPage": {
     "connectedOn": "Вы подключены к",

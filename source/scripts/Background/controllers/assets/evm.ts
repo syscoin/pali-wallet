@@ -722,65 +722,85 @@ const EvmAssetsController = (): IEvmAssetsController => {
       return cached.details;
     }
 
-    try {
-      // Get contract type for token standard tracking
-      const contractTypeResponse = await contractChecker(
-        contractAddress,
-        w3Provider
+    // Check if there's already a pending request for this contract
+    const pendingKey = `basic-${contractAddress}`;
+    if (pendingRequests.has(pendingKey)) {
+      console.log(
+        `[EvmAssetsController] Reusing pending basic token details request for ${contractAddress}`
       );
+      return pendingRequests.get(pendingKey);
+    }
 
-      if (String(contractTypeResponse).includes('Invalid contract address')) {
+    // Create the promise and store it
+    const requestPromise = (async () => {
+      try {
+        // Get contract type for token standard tracking
+        const contractTypeResponse = await contractChecker(
+          contractAddress,
+          w3Provider
+        );
+
+        if (String(contractTypeResponse).includes('Invalid contract address')) {
+          console.error(
+            `[EvmAssetsController] Invalid contract address: ${contractAddress}`
+          );
+          return null;
+        }
+
+        const contractType = (contractTypeResponse as any).type;
+        console.log(
+          `[EvmAssetsController] Getting basic details for ${contractType} token: ${contractAddress}`
+        );
+
+        // Get basic token metadata (no balance to save API calls)
+        const metadata = await getTokenStandardMetadata(
+          contractAddress,
+          walletAddress,
+          w3Provider
+        );
+
+        // Create basic token details (no balance, no market data)
+        const basicTokenDetails: ITokenDetails = {
+          id: `${contractAddress.toLowerCase()}-${
+            store.getState().vault.activeNetwork.chainId
+          }`,
+          symbol: cleanTokenSymbol(metadata.tokenSymbol).toUpperCase(),
+          name: cleanTokenSymbol(metadata.tokenSymbol), // Use symbol as name for basic info
+          contractAddress,
+          decimals: metadata.decimals || 18,
+          balance: 0, // No balance for basic details
+          chainId: store.getState().vault.activeNetwork.chainId,
+          tokenStandard: contractType as any,
+          isNft: contractType === 'ERC-721' || contractType === 'ERC-1155',
+          isVerified: false, // Basic validation only, no CoinGecko verification
+        };
+
+        // Cache the basic details for future use
+        tokenDetailsCache.set(cacheKey, {
+          details: basicTokenDetails,
+          timestamp: now,
+        });
+
+        console.log(
+          `[EvmAssetsController] Cached basic details for ${contractType} token ${metadata.tokenSymbol}`
+        );
+        return basicTokenDetails;
+      } catch (error) {
         console.error(
-          `[EvmAssetsController] Invalid contract address: ${contractAddress}`
+          '[EvmAssetsController] Error getting basic token details:',
+          error
         );
         return null;
+      } finally {
+        // Clean up the pending request
+        pendingRequests.delete(pendingKey);
       }
+    })();
 
-      const contractType = (contractTypeResponse as any).type;
-      console.log(
-        `[EvmAssetsController] Getting basic details for ${contractType} token: ${contractAddress}`
-      );
+    // Store the pending request
+    pendingRequests.set(pendingKey, requestPromise);
 
-      // Get basic token metadata (no balance to save API calls)
-      const metadata = await getTokenStandardMetadata(
-        contractAddress,
-        walletAddress,
-        w3Provider
-      );
-
-      // Create basic token details (no balance, no market data)
-      const basicTokenDetails: ITokenDetails = {
-        id: `${contractAddress.toLowerCase()}-${
-          store.getState().vault.activeNetwork.chainId
-        }`,
-        symbol: cleanTokenSymbol(metadata.tokenSymbol).toUpperCase(),
-        name: cleanTokenSymbol(metadata.tokenSymbol), // Use symbol as name for basic info
-        contractAddress,
-        decimals: metadata.decimals || 18,
-        balance: 0, // No balance for basic details
-        chainId: store.getState().vault.activeNetwork.chainId,
-        tokenStandard: contractType as any,
-        isNft: contractType === 'ERC-721' || contractType === 'ERC-1155',
-        isVerified: false, // Basic validation only, no CoinGecko verification
-      };
-
-      // Cache the basic details for future use
-      tokenDetailsCache.set(cacheKey, {
-        details: basicTokenDetails,
-        timestamp: now,
-      });
-
-      console.log(
-        `[EvmAssetsController] Cached basic details for ${contractType} token ${metadata.tokenSymbol}`
-      );
-      return basicTokenDetails;
-    } catch (error) {
-      console.error(
-        '[EvmAssetsController] Error getting basic token details:',
-        error
-      );
-      return null;
-    }
+    return requestPromise;
   };
 
   /**

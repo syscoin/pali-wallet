@@ -517,7 +517,8 @@
     "seeDetails": "Voir les détails",
     "seeOnBlockExplorer": "Voir sur l'explorateur de blocs",
     "replaced": "Remplacée",
-    "replaces": "Remplace"
+    "replaces": "Remplace",
+    "unknownDecimals": "Décimales inconnues"
   },
   "switchNetworkPage": {
     "connectedOn": "Vous êtes connecté sur",

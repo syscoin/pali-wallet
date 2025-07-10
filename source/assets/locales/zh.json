@@ -401,7 +401,8 @@
     "seeDetails": "查看详情",
     "seeOnBlockExplorer": "在区块浏览器中查看",
     "replaced": "已替换",
-    "replaces": "替换"
+    "replaces": "替换",
+    "unknownDecimals": "小数位未知"
   },
   "forgetWalletPage": {
     "importedAccountsWont": "导入的账户不会链接到您初始的Pali账户密钥恢复短语",

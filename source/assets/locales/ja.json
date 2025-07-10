@@ -517,7 +517,8 @@
     "seeDetails": "詳細を表示",
     "seeOnBlockExplorer": "ブロックエクスプローラーで表示",
     "replaced": "置き換えられました",
-    "replaces": "置き換え"
+    "replaces": "置き換え",
+    "unknownDecimals": "小数点不明"
   },
   "switchNetworkPage": {
     "connectedOn": "接続中：",

@@ -18,11 +18,18 @@ import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoEvm, modalDataType } from 'types/useTransactionsInfo';
 import {
-  getERC20TransferValue,
+  getTransactionDisplayInfo,
   handleUpdateTransaction,
-  isERC20Transfer,
 } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
+
+// Skeleton loader component for transaction values
+const TransactionValueSkeleton = () => (
+  <div className="animate-pulse">
+    <div className="h-3 bg-bkg-3 rounded w-20 mb-1"></div>
+    <div className="h-3 bg-bkg-3 rounded w-16"></div>
+  </div>
+);
 
 // Memoized transaction item component to prevent re-renders when other transactions update
 const EvmTransactionItem = React.memo(
@@ -32,26 +39,31 @@ const EvmTransactionItem = React.memo(
     getTxStatusIcons,
     getTxType,
     getTxStatus,
-    getTokenSymbol,
     currency,
     getFiatAmount,
     navigate,
     txId,
     getTxOptions,
     t,
-    tokenSymbolCache,
+    tokenCache,
   }: {
     currency: string;
     currentAccount: any;
     getFiatAmount: any;
-    getTokenSymbol: any;
     getTxOptions: any;
     getTxStatus: any;
     getTxStatusIcons: any;
     getTxType: any;
     navigate: any;
     t: any;
-    tokenSymbolCache: Map<string, string>;
+    tokenCache: Map<
+      string,
+      {
+        decimals: number;
+        isNft: boolean;
+        symbol: string;
+      }
+    >;
     tx: ITransactionInfoEvm & {
       isReplaced?: boolean;
       isSpeedUp?: boolean;
@@ -63,36 +75,109 @@ const EvmTransactionItem = React.memo(
     const isReplaced = tx?.isReplaced === true;
     const isSpeedUp = tx?.isSpeedUp === true;
     const isConfirmed = isTransactionInBlock(tx);
-    const isErc20Tx = isERC20Transfer(tx as any);
-    // Check if this is a native token transfer (no contract interaction)
-    const isNativeTransfer = !tx?.input || tx.input === '0x';
     const isTxSent =
       tx?.from?.toLowerCase() === currentAccount?.address?.toLowerCase();
-    const tokenValue = (() => {
-      if (typeof tx?.value === 'string') {
-        // Check if it's hex (starts with 0x)
-        if (tx.value.startsWith('0x')) {
-          return parseInt(tx.value, 16) / 1e18;
+
+    // Add loading state
+    const [isLoadingDisplayInfo, setIsLoadingDisplayInfo] =
+      React.useState(true);
+    const [displayInfo, setDisplayInfo] = React.useState<{
+      actualRecipient: string;
+      displaySymbol: string;
+      displayValue: number | string;
+      hasUnknownDecimals?: boolean;
+      isErc20Transfer: boolean;
+      isNft: boolean;
+    }>({
+      displayValue: 0,
+      displaySymbol: currency.toUpperCase(),
+      isErc20Transfer: false,
+      actualRecipient: '',
+      isNft: false,
+    });
+
+    // Create a stable cache key for memoization
+    const cacheKey = useMemo(
+      () => `${tx.hash}-${tx.value}-${tx.to}-${tx.input}`,
+      [tx.hash, tx.value, tx.to, tx.input]
+    );
+
+    // Effect to get proper transaction display info
+    React.useEffect(() => {
+      let cancelled = false;
+
+      const getDisplayInfo = async () => {
+        setIsLoadingDisplayInfo(true);
+        try {
+          const info = await getTransactionDisplayInfo(
+            tx,
+            currency,
+            tokenCache
+          );
+          if (!cancelled) {
+            setDisplayInfo(info);
+            setIsLoadingDisplayInfo(false);
+          }
+        } catch (error) {
+          console.error('Error getting transaction display info:', error);
+          if (!cancelled) {
+            setIsLoadingDisplayInfo(false);
+          }
         }
-        // Otherwise it's a decimal string
-        return Number(tx.value) / 1e18;
-      } else if (tx?.value?.hex) {
-        return parseInt(tx.value.hex, 16) / 1e18;
-      } else if ((tx?.value as any)?._hex) {
-        return parseInt((tx.value as any)._hex, 16) / 1e18;
-      } else if (typeof tx?.value === 'number') {
-        return tx.value / 1e18;
-      }
-      return 0;
-    })();
-    const finalTxValue = isErc20Tx
-      ? Number(getERC20TransferValue(tx as any)) / 1e18
-      : tokenValue;
+      };
+
+      getDisplayInfo();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [cacheKey, currency, tokenCache, tx]);
+
+    const finalTxValue = displayInfo.displayValue;
+    const finalSymbol = displayInfo.displaySymbol;
+    const isErc20Tx = displayInfo.isErc20Transfer;
+    // Check if this is a native token transfer (no contract interaction)
+    const isNativeTransfer = !isErc20Tx;
 
     const handleGoTxDetails = () => {
       navigate('/home/details', {
         state: { id: null, hash: tx[txId] },
       });
+    };
+
+    // Render value display with loading state
+    const renderValueDisplay = () => {
+      if (isLoadingDisplayInfo) {
+        return <TransactionValueSkeleton />;
+      }
+
+      return (
+        <div className="flex flex-col justify-end items-end">
+          <div className="text-white text-xs font-normal">
+            {displayInfo.isNft
+              ? displayInfo.displayValue
+              : displayInfo.hasUnknownDecimals
+              ? `${finalSymbol} Transfer`
+              : `${
+                  isNaN(Number(finalTxValue))
+                    ? '0.0000'
+                    : Number(finalTxValue).toFixed(4)
+                } ${finalSymbol}`}
+          </div>
+          <div className="text-brand-gray200 text-xs font-normal">
+            {isNativeTransfer &&
+            !displayInfo.isNft &&
+            !displayInfo.hasUnknownDecimals
+              ? getFiatAmount(Number(finalTxValue), 6)
+              : '---'}
+          </div>
+          {displayInfo.hasUnknownDecimals && (
+            <div className="text-warning-error text-[10px]">
+              {t('transactions.unknownDecimals')}
+            </div>
+          )}
+        </div>
+      );
     };
 
     // If transaction is replaced, show it with a different style
@@ -111,18 +196,8 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex flex-col justify-end items-end">
-              <div className="text-white text-xs font-normal line-through">
-                {isNaN(Number(finalTxValue))
-                  ? '0.0000'
-                  : Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
-              </div>
-              <div className="text-brand-gray200 text-xs font-normal line-through">
-                {isNativeTransfer
-                  ? getFiatAmount(Number(finalTxValue), 6)
-                  : '---'}
-              </div>
+            <div className="line-through opacity-50">
+              {renderValueDisplay()}
             </div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
@@ -153,18 +228,8 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex flex-col justify-end items-end">
-              <div className="text-white text-xs font-normal line-through">
-                {isNaN(Number(finalTxValue))
-                  ? '0.0000'
-                  : Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
-              </div>
-              <div className="text-brand-gray200 text-xs font-normal line-through">
-                {isNativeTransfer
-                  ? getFiatAmount(Number(finalTxValue), 6)
-                  : '---'}
-              </div>
+            <div className="line-through opacity-50">
+              {renderValueDisplay()}
             </div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
@@ -197,15 +262,7 @@ const EvmTransactionItem = React.memo(
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex flex-col justify-end items-end">
-              <div className="text-white text-xs font-normal">
-                {Number(finalTxValue).toFixed(4)}
-                {getTokenSymbol(isErc20Tx, tx, currency, tokenSymbolCache)}
-              </div>
-              <div className="text-brand-gray200 text-xs font-normal">
-                {isNativeTransfer ? getFiatAmount(finalTxValue, 6) : '---'}
-              </div>
-            </div>
+            {renderValueDisplay()}
             <div className="m-auto">
               {isConfirmed || isTxCanceled || isReplaced ? (
                 <Tooltip content={t('notifications.clickToView')}>
@@ -264,16 +321,27 @@ export const EvmTransactionsList = ({
 
   const { chainId, currency } = activeNetwork;
 
-  // Create token symbol cache from user's assets
-  const tokenSymbolCache = useMemo(() => {
-    const cache = new Map<string, string>();
+  // Create enhanced token cache from user's assets with symbol, decimals, and NFT info
+  const tokenCache = useMemo(() => {
+    const cache = new Map<
+      string,
+      {
+        decimals: number;
+        isNft: boolean;
+        symbol: string;
+      }
+    >();
     const currentAccountAssets =
       accountAssets[activeAccount.type]?.[activeAccount.id];
 
     if (currentAccountAssets?.ethereum) {
       currentAccountAssets.ethereum.forEach((token) => {
         if (token.contractAddress && token.tokenSymbol) {
-          cache.set(token.contractAddress.toLowerCase(), token.tokenSymbol);
+          cache.set(token.contractAddress.toLowerCase(), {
+            symbol: token.tokenSymbol,
+            decimals: Number(token.decimals) || (token.isNft ? 0 : 18),
+            isNft: token.isNft || false,
+          });
         }
       });
     }
@@ -286,7 +354,6 @@ export const EvmTransactionsList = ({
     formatTimeStamp,
     getTxStatusIcons,
     getTxStatus,
-    getTokenSymbol,
     getTxType,
     txId,
   } = useTransactionsListConfig(userTransactions);
@@ -427,14 +494,13 @@ export const EvmTransactionsList = ({
                   getTxStatusIcons={getTxStatusIcons}
                   getTxType={getTxType}
                   getTxStatus={getTxStatus}
-                  getTokenSymbol={getTokenSymbol}
                   currency={currency}
                   getFiatAmount={getFiatAmount}
                   navigate={navigate}
                   txId={txId}
                   getTxOptions={getTxOptions}
                   t={t}
-                  tokenSymbolCache={tokenSymbolCache}
+                  tokenCache={tokenCache}
                 />
               );
             })}

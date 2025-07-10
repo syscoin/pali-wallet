@@ -17,6 +17,7 @@ import {
   retryableFetch,
 } from '@pollum-io/sysweb3-network';
 import { txUtils } from '@pollum-io/sysweb3-utils';
+import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from '..';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
@@ -77,8 +78,9 @@ import {
   ISysAssetMetadata,
   ITokenDetails,
 } from 'types/tokens';
-import { ICustomRpcParams } from 'types/transactions';
+import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
+import { decodeTransactionData } from 'utils/ethUtil';
 import { logError } from 'utils/logger';
 import { getNetworkChain } from 'utils/network';
 import { chromeStorage } from 'utils/storageAPI';
@@ -4487,6 +4489,73 @@ class MainController {
       walletAddress,
       provider
     );
+  }
+
+  /**
+   * Decode EVM transaction data to determine transaction type and method
+   * Used by transaction detail components to properly categorize transactions
+   */
+  public async decodeEvmTransactionData(
+    transaction: any
+  ): Promise<IDecodedTx | null> {
+    try {
+      // Get web3Provider - try unlocked wallet first, then persistent provider
+      let web3Provider: CustomJsonRpcProvider | null = null;
+
+      try {
+        if (this.ethereumTransaction?.web3Provider) {
+          web3Provider = this.ethereumTransaction.web3Provider;
+        }
+      } catch (error) {
+        // Wallet is locked, use persistent provider
+        console.log(
+          '[MainController] Wallet locked, using persistent provider for transaction decoding'
+        );
+      }
+
+      // If we couldn't get provider from wallet, use persistent provider
+      if (!web3Provider) {
+        const { activeNetwork } = store.getState().vault;
+        web3Provider = this.getPersistentProvider(activeNetwork.url);
+
+        if (!web3Provider) {
+          throw new Error('No provider available for transaction decoding');
+        }
+      }
+
+      // Validate the destination address to determine if it's a contract or wallet
+      if (!transaction.to) {
+        // No destination address - likely a contract deployment
+        return {
+          method: 'Contract Deployment',
+          types: [],
+          inputs: [],
+          names: [],
+        };
+      }
+
+      const validateTxToAddress = await validateEOAAddress(
+        transaction.to,
+        web3Provider
+      );
+
+      // Normalize transaction data - decodeTransactionData expects 'data' field
+      const normalizedTransaction = {
+        ...transaction,
+        data: transaction.data || transaction.input, // Use 'data' field if available, otherwise use 'input'
+      };
+
+      // Use the existing decodeTransactionData function
+      const decodedTx = await decodeTransactionData(
+        normalizedTransaction,
+        validateTxToAddress
+      );
+
+      return decodedTx as IDecodedTx;
+    } catch (error) {
+      console.error('Error decoding EVM transaction data:', error);
+      return null;
+    }
   }
 }
 

@@ -512,7 +512,8 @@
     "seeDetails": "Ver detalhes",
     "seeOnBlockExplorer": "Ver no explorador de blocos",
     "replaced": "Substituída",
-    "replaces": "Substitui"
+    "replaces": "Substitui",
+    "unknownDecimals": "Decimais desconhecidos"
   },
   "switchNetworkPage": {
     "connectedOn": "Você está conectado em",
