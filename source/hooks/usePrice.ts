@@ -29,7 +29,7 @@ export const usePrice = () => {
     const currencySymbol = getSymbolFromCurrency(currency);
 
     const arrayValidationSymbol = [
-      withSymbol !== false,
+      withSymbol === true,
       currencySymbol !== undefined,
       currencySymbol !== 'undefined',
     ];

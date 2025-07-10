@@ -2,10 +2,10 @@ import { Dialog, Transition } from '@headlessui/react';
 import React, { Fragment, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ImWarning } from 'react-icons/im';
+import { MdBugReport } from 'react-icons/md';
 
 import { PrimaryButton, SecondaryButton, NeutralButton } from '..';
 import CheckIcon from 'assets/all_assets/check_icon.svg';
-import CloseIcon from 'assets/all_assets/close.svg';
 
 interface IModal {
   children: ReactNode;
@@ -295,7 +295,7 @@ export const ErrorModal = ({
                 )
               }
             >
-              <img src={CloseIcon} alt="Error icon" />
+              <MdBugReport size={20} />
               Report
             </SecondaryButton>
 
