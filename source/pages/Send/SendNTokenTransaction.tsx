@@ -62,7 +62,6 @@ export const SendNTokenTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
-  const [confirmedTx, setConfirmedTx] = useState<any>();
   const { isEIP1559Compatible } = useEIP1559();
   const [errors, setErrors] = useState<{
     eip1559GasError: boolean;
@@ -230,7 +229,11 @@ export const SendNTokenTransaction = () => {
             ]
           )
             .then((response) => {
-              setConfirmedTx(response);
+              controllerEmitter(
+                ['wallet', 'sendAndSaveTransaction'],
+                [response]
+              );
+
               setConfirmed(true);
               setLoading(false);
               if (isExternal)
@@ -448,10 +451,6 @@ export const SendNTokenTransaction = () => {
         title={t('send.txSuccessfull')}
         description={t('send.txSuccessfullMessage')}
         onClose={() => {
-          controllerEmitter(
-            ['wallet', 'sendAndSaveTransaction'],
-            [confirmedTx]
-          );
           clearNavigationState();
           if (isExternal) {
             window.close();
