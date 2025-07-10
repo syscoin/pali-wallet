@@ -20,7 +20,7 @@ export const FaucetAccessModal = () => {
   return (
     <div
       onClick={() => navigate('/faucet')}
-      className="cursor-pointer z-[49] mx-4 px-4 py-3 absolute left-0 right-0 top-[7.2rem] max-w-[calc(100%-2rem)] flex items-center rounded-[12px] bg-brand-blue400 hover:bg-brand-blue500 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+      className="cursor-pointer z-[10] mx-4 px-4 pt-6 pb-3 absolute left-0 right-0 top-[7.2rem] max-w-[calc(100%-2rem)] flex items-center rounded-b-[12px] bg-brand-blue400 hover:bg-brand-blue500 transition-all duration-300 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.1),0_2px_4px_-2px_rgba(0,0,0,0.1)] hover:shadow-[0_10px_15px_-3px_rgba(0,0,0,0.1),0_4px_6px_-4px_rgba(0,0,0,0.1)] hover:scale-[1.02]"
     >
       <div className="flex items-center justify-center gap-3 w-full">
         <ChainIcon

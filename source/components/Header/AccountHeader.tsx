@@ -170,7 +170,7 @@ export const AccountHeader: React.FC = () => {
   }, [copied, alert, t]);
 
   return (
-    <div className="flex items-center justify-between p-1 bg-bkg-3">
+    <div className="relative z-[55] flex items-center justify-between p-1 bg-bkg-3">
       <ConfirmationModal
         title={t('home.verifySysAddress', {
           currency: activeNetwork.currency.toUpperCase(),

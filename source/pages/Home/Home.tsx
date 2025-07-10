@@ -261,17 +261,12 @@ export const Home = () => {
   useEffect(() => {
     const canShowFaucet =
       isFaucetAvailable &&
-      actualBalance === '0' &&
+      parseFloat(actualBalance) === 0 &&
       !isLoadingBalance &&
       currentAccount;
 
     if (canShowFaucet) {
-      // Delay showing the faucet modal to allow loading states to update
-      const timer = setTimeout(() => {
-        setShouldShowFaucet(true);
-      }, 500); // 500ms delay to ensure loading states are properly set
-
-      return () => clearTimeout(timer);
+      setShouldShowFaucet(true);
     } else {
       // Immediately hide the faucet modal if conditions aren't met
       setShouldShowFaucet(false);
@@ -288,22 +283,26 @@ export const Home = () => {
     <div className="h-full bg-bkg-3">
       {currentAccount && lastLogin && isUnlocked && (
         <>
+          {shouldShowFaucet && (
+            <>
+              {shouldShowFaucetFirstModal ? (
+                <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
+              ) : (
+                <FaucetAccessModal />
+              )}
+            </>
+          )}
+
           {/* Floating dots container wrapping both blue sections for continuity */}
           <div className="floating-dots-container">
             <WalletProviderDefaultModal />
 
-            {shouldShowFaucet && (
-              <>
-                {shouldShowFaucetFirstModal ? (
-                  <FaucetFirstAccessModal onClose={handleOnCloseFaucetModal} />
-                ) : (
-                  <FaucetAccessModal />
-                )}
-              </>
-            )}
-
             <section className="flex flex-col gap-1 items-center pt-8 pb-24 text-brand-white bg-bkg-1">
-              <div className="flex flex-col items-center justify-center text-center floating-dots-content">
+              <div
+                className={`flex flex-col items-center justify-center text-center floating-dots-content ${
+                  shouldShowFaucet ? 'mt-12' : ''
+                }`}
+              >
                 <BalanceDisplay
                   actualBalance={actualBalance}
                   isLoadingBalance={isLoadingBalance}
