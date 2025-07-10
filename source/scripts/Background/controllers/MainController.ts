@@ -4557,6 +4557,37 @@ class MainController {
       return null;
     }
   }
+
+  // Manual cleanup utility for vault data in main state
+  public async cleanupMainStateVault() {
+    try {
+      // Load current main state
+      const currentState = await chromeStorage.getItem('state');
+
+      if (currentState && currentState.vault) {
+        console.log(
+          '[MainController] Found vault data in main state, cleaning up...'
+        );
+
+        // Remove vault data from state
+        const { vault, ...cleanState } = currentState;
+
+        // Save cleaned state
+        await chromeStorage.setItem('state', cleanState);
+
+        console.log(
+          '[MainController] Successfully cleaned vault data from main state'
+        );
+        return true;
+      }
+
+      console.log('[MainController] No vault data found in main state');
+      return false;
+    } catch (error) {
+      console.error('[MainController] Error cleaning up main state:', error);
+      return false;
+    }
+  }
 }
 
 export default MainController;

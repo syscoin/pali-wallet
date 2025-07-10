@@ -34,6 +34,14 @@ export const handleMasterControllerInstance = async () => {
     );
   }
 
+  // Clean up any vault data from main state (one-time cleanup)
+  controller.wallet.cleanupMainStateVault().catch((error) => {
+    console.error(
+      '[handleMasterControllerInstance] Failed to cleanup main state:',
+      error
+    );
+  });
+
   // Note: Window/tab shutdown detection needs to be in popup context, not background script
 
   // Chrome extension service worker events

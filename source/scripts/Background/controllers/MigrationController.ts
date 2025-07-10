@@ -1,6 +1,7 @@
 /* eslint-disable camelcase */
 import paliData from '../../../../package.json';
 import { getIsMigratedVersion } from 'state/paliStorage';
+import { chromeStorage } from 'utils/storageAPI';
 
 // Define migration entries in order
 const migrations: Array<{
@@ -8,8 +9,31 @@ const migrations: Array<{
   handler: (state: any) => Promise<void>;
   version: string;
 }> = [
-  // No migrations needed currently
-  // Add new migrations here as needed
+  // Clean up vault data from main state storage
+  {
+    version: '3.5.1',
+    description: 'Remove vault data from main state storage',
+    handler: async (state: any) => {
+      console.log('[Migration 3.0.0] Checking for vault data in main state...');
+
+      // If state contains vault data, we need to clean it up
+      if (state && state.vault) {
+        console.log(
+          '[Migration 3.0.0] Found vault data in main state, cleaning up...'
+        );
+
+        // Create cleaned state without vault
+        const { vault, ...cleanedState } = state;
+
+        // Save cleaned state
+        await chromeStorage.setItem('state', cleanedState);
+
+        console.log('[Migration 3.0.0] Vault data removed from main state');
+      } else {
+        console.log('[Migration 3.0.0] No vault data found in main state');
+      }
+    },
+  },
 ];
 
 // Compare versions: returns 1 if a > b, -1 if a < b, 0 if equal
@@ -57,6 +81,8 @@ const MigrationController = async (state: any) => {
           console.log(
             `[MigrationController] Migration ${migration.version} completed successfully`
           );
+          // Mark migration as completed
+          await chromeStorage.setItem(migration.version, 'migrated');
         } catch (error) {
           console.error(
             `[MigrationController] Migration ${migration.version} failed:`,
