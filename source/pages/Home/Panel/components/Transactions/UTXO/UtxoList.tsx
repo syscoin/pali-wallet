@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
+import { Tooltip } from 'components/Tooltip';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
 import { ITransactionInfoUtxo } from 'types/useTransactionsInfo';
@@ -18,6 +19,7 @@ export const UtxoTransactionsListComponent = ({
   userTransactions: ITransactionInfoUtxo[];
 }) => {
   const { navigate } = useUtils();
+  const { t } = useTranslation();
   const { getTxStatus, formatTimeStampUtxo, blocktime } =
     useTransactionsListConfig(userTransactions);
 
@@ -44,10 +46,12 @@ export const UtxoTransactionsListComponent = ({
         <p className="text-xs">Transaction</p>
       </div>
       <div>
-        <DetailArrowSvg
-          className="cursor-pointer transition-all hover:opacity-60"
-          onClick={handleGoTxDetails}
-        />
+        <Tooltip content={t('notifications.clickToView')}>
+          <DetailArrowSvg
+            className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+            onClick={handleGoTxDetails}
+          />
+        </Tooltip>
       </div>
     </div>
   );

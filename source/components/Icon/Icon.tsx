@@ -324,7 +324,7 @@ export const DetailArrowSvg = memo(
   }) => (
     <svg
       onClick={onClick}
-      className={`cursor-pointer transition-all hover:opacity-60 ${className}`}
+      className={`cursor-pointer ${className}`}
       xmlns="http://www.w3.org/2000/svg"
       width="16"
       height="16"

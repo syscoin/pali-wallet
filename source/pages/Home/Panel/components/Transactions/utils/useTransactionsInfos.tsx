@@ -10,11 +10,11 @@ import { ITransactionsListConfig } from 'types/useTransactionsInfo';
 const SentIcon = memo(({ isDetail }: { isDetail: boolean }) => (
   <>
     {isDetail ? (
-      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2 transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
         <ArrowUpSvg className="relative w-[30px] h-[30px]" />
       </div>
     ) : (
-      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
         <ArrowUpSvg className="relative" />
       </div>
     )}
@@ -25,11 +25,11 @@ SentIcon.displayName = 'SentIcon';
 const ReceivedIcon = memo(({ isDetail }: { isDetail: boolean }) => (
   <>
     {isDetail ? (
-      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2">
+      <div className="relative w-[50px] h-[50px] bg-brand-pink200 rounded-[100px] flex items-center justify-center mb-2 transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
         <ReceivedArrowSvg className="relative w-[30px] h-[30px]" />
       </div>
     ) : (
-      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center">
+      <div className="relative w-[36px] h-[36px] bg-brand-whiteAlpaBlue rounded-[100px] mr-2 flex items-center justify-center transition-all duration-200 hover:scale-110 hover:opacity-80 cursor-pointer">
         <ReceivedArrowSvg className="relative" />
       </div>
     )}

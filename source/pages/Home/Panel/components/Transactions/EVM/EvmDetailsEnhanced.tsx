@@ -315,9 +315,9 @@ export const EvmTransactionDetailsEnhanced = ({ hash }: { hash: string }) => {
         </p>
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
         {isLoadingDetails && (
-          <p className="text-xs text-brand-gray200 mt-2">
-            Loading enhanced details...
-          </p>
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-brand-royalblue"></div>
+          </div>
         )}
       </div>
       {formattedTransactionDetails.map(

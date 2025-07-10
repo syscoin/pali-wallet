@@ -11,6 +11,7 @@ import { useSelector } from 'react-redux';
 import { useTransactionsListConfig } from '../utils/useTransactionsInfos';
 import { DetailArrowSvg } from 'components/Icon/Icon';
 import { ConfirmationModal } from 'components/Modal';
+import { Tooltip } from 'components/Tooltip';
 import { TransactionOptions } from 'components/TransactionOptions';
 import { usePrice } from 'hooks/usePrice';
 import { useUtils } from 'hooks/useUtils';
@@ -124,10 +125,12 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
             <div className="m-auto">
-              <DetailArrowSvg
-                className="cursor-pointer transition-all hover:opacity-60"
-                onClick={handleGoTxDetails}
-              />
+              <Tooltip content={t('notifications.clickToView')}>
+                <DetailArrowSvg
+                  className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+                  onClick={handleGoTxDetails}
+                />
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -164,10 +167,12 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
             <div className="m-auto">
-              <DetailArrowSvg
-                className="cursor-pointer transition-all hover:opacity-60"
-                onClick={handleGoTxDetails}
-              />
+              <Tooltip content={t('notifications.clickToView')}>
+                <DetailArrowSvg
+                  className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+                  onClick={handleGoTxDetails}
+                />
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -203,10 +208,12 @@ const EvmTransactionItem = React.memo(
             </div>
             <div className="m-auto">
               {isConfirmed || isTxCanceled || isReplaced ? (
-                <DetailArrowSvg
-                  className="cursor-pointer transition-all hover:opacity-60"
-                  onClick={handleGoTxDetails}
-                />
+                <Tooltip content={t('notifications.clickToView')}>
+                  <DetailArrowSvg
+                    className="cursor-pointer transition-all duration-200 hover:scale-110 hover:opacity-80"
+                    onClick={handleGoTxDetails}
+                  />
+                </Tooltip>
               ) : (
                 getTxOptions(isTxCanceled, isConfirmed, tx)
               )}

@@ -308,10 +308,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
   if (loading) {
     return (
       <div className="flex items-center justify-center p-4">
-        <ClockCircleOutlined className="text-brand-gray200 mr-2 animate-spin" />
-        <Typography.Text className="text-brand-gray200 text-xs">
-          Loading transaction details...
-        </Typography.Text>
+        <ClockCircleOutlined className="text-brand-royalblue text-lg animate-spin" />
       </div>
     );
   }
