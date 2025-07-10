@@ -58,6 +58,11 @@ export interface EnableLegacyPali {
 export class BaseProvider extends EventEmitter {
   public wallet: string;
   public chainType: INetworkType;
+  private _networkStateCache: {
+    isBitcoinBased?: boolean;
+    timestamp?: number;
+  } = {};
+  private static readonly CACHE_TTL = 5000; // 5 seconds cache
   protected _sentWarnings: SentWarningsState = {
     // methods
     enable: false,
@@ -84,11 +89,85 @@ export class BaseProvider extends EventEmitter {
     this._rpcRequest = this._rpcRequest.bind(this);
     this.request = this.request.bind(this);
     this.wallet = wallet;
+
+    // Listen for network changes to clear cache
+    this._setupNetworkChangeListener();
+  }
+
+  /**
+   * Sets up listener for network change events to clear the cache
+   */
+  private _setupNetworkChangeListener(): void {
+    // Listen for chainChanged events which are emitted when network changes
+    this.on('chainChanged', () => {
+      // Clear the network state cache when network changes
+      this._networkStateCache = {};
+      console.log('[BaseProvider] Network changed, cache cleared');
+    });
   }
 
   //====================
   // Public Methods
   //====================
+
+  /**
+   * Gets the current network type from the wallet
+   * Uses caching to avoid excessive RPC calls
+   */
+  private async getNetworkType(): Promise<boolean> {
+    const now = Date.now();
+
+    // Check cache first
+    if (
+      this._networkStateCache.isBitcoinBased !== undefined &&
+      this._networkStateCache.timestamp &&
+      now - this._networkStateCache.timestamp < BaseProvider.CACHE_TTL
+    ) {
+      return this._networkStateCache.isBitcoinBased;
+    }
+
+    try {
+      // Try to get provider state to determine network type
+      const providerState = (await this.proxy('METHOD_REQUEST', {
+        method: 'wallet_getProviderState',
+        params: [],
+      })) as any;
+
+      if (providerState && typeof providerState.isBitcoinBased === 'boolean') {
+        // Update cache
+        this._networkStateCache = {
+          isBitcoinBased: providerState.isBitcoinBased,
+          timestamp: now,
+        };
+        return providerState.isBitcoinBased;
+      }
+    } catch (error) {
+      // If getProviderState fails, try getSysProviderState
+      try {
+        const sysProviderState = (await this.proxy('METHOD_REQUEST', {
+          method: 'wallet_getSysProviderState',
+          params: [],
+        })) as any;
+
+        if (
+          sysProviderState &&
+          typeof sysProviderState.isBitcoinBased === 'boolean'
+        ) {
+          // Update cache
+          this._networkStateCache = {
+            isBitcoinBased: sysProviderState.isBitcoinBased,
+            timestamp: now,
+          };
+          return sysProviderState.isBitcoinBased;
+        }
+      } catch (sysError) {
+        console.warn('Failed to determine network type:', sysError);
+      }
+    }
+
+    // Default to false (EVM) if we can't determine
+    return false;
+  }
 
   /**
    * Submits an RPC request for the given method, with the given params.
@@ -131,12 +210,10 @@ export class BaseProvider extends EventEmitter {
       const isEvmOnlyMethod = evmOnlyMethods.includes(method);
 
       if (isEvmOnlyMethod) {
-        // Check current URL to determine if we're likely on a Bitcoin network
-        const currentUrl = window.location.href;
-        const isBlockbookUrl =
-          currentUrl.includes('blockbook') || currentUrl.includes('trezor');
+        // Get actual network type from wallet state
+        const isBitcoinBased = await this.getNetworkType();
 
-        if (isBlockbookUrl) {
+        if (isBitcoinBased) {
           console.log(`Blocking EVM method ${method} on Bitcoin-based network`);
           throw new Error(
             `${method} is not available on Bitcoin-based networks`
