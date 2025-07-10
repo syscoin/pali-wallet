@@ -94,6 +94,7 @@ export const SendEth = () => {
   // Track form value changes using a ref to avoid dependency issues
   const formValuesRef = useRef<any>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const tokenIdVerificationTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Save form state when values change
   const handleFormValuesChange = useCallback(
@@ -179,6 +180,16 @@ export const SendEth = () => {
       }
     };
   }, [selectedAsset, nftTokenIds, selectedNftTokenId, isMaxSend, location]);
+
+  // Cleanup timeout on unmount to prevent memory leaks
+  useEffect(
+    () => () => {
+      if (tokenIdVerificationTimeoutRef.current) {
+        clearTimeout(tokenIdVerificationTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   // Restore form values if coming back from navigation
   useEffect(() => {
@@ -662,17 +673,21 @@ export const SendEth = () => {
       // Also update the form field to keep them in sync
       form.setFieldValue('nftTokenId', value);
 
+      // Clear any existing timeout to prevent verification calls for outdated values
+      if (tokenIdVerificationTimeoutRef.current) {
+        clearTimeout(tokenIdVerificationTimeoutRef.current);
+        tokenIdVerificationTimeoutRef.current = undefined;
+      }
+
       if (value) {
         // Clear previous verification
         setVerifiedTokenBalance(null);
         setVerificationError(null);
 
         // Debounce verification to avoid too many calls
-        const timeoutId = setTimeout(() => {
+        tokenIdVerificationTimeoutRef.current = setTimeout(() => {
           verifyTokenId(value);
         }, 500);
-
-        return () => clearTimeout(timeoutId);
       } else {
         setVerifiedTokenBalance(null);
         setVerificationError(null);
