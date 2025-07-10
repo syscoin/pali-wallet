@@ -43,11 +43,28 @@ const vaultGlobalSlice = createSlice({
   initialState,
   reducers: {
     rehydrate(state: IGlobalState, action: PayloadAction<IGlobalState>) {
-      // Use stored state as-is, but ensure networks always exists
+      // Preserve custom networks while ensuring defaults exist
+      const restoredNetworks = action.payload.networks;
+      let mergedNetworks = PALI_NETWORKS_STATE;
+
+      if (restoredNetworks) {
+        // Merge custom networks with defaults, preserving custom networks
+        mergedNetworks = {
+          ethereum: {
+            ...PALI_NETWORKS_STATE.ethereum,
+            ...restoredNetworks.ethereum,
+          },
+          syscoin: {
+            ...PALI_NETWORKS_STATE.syscoin,
+            ...restoredNetworks.syscoin,
+          },
+        };
+      }
+
       return {
         ...action.payload,
-        // Ensure networks always exists, use default if not in restored state
-        networks: action.payload.networks || PALI_NETWORKS_STATE,
+        // Use merged networks to preserve custom ones
+        networks: mergedNetworks,
       };
     },
     resetLoadingStates(state: IGlobalState) {

@@ -74,11 +74,13 @@ const MasterController = (
     // Now safely check for specific networks
     const globalNetworks = externalStore.getState().vaultGlobal.networks;
 
+    // Only add missing default networks, don't overwrite existing ones
     if (
       !globalNetworks ||
       !globalNetworks[TransactionsType.Ethereum] ||
       !globalNetworks[TransactionsType.Ethereum][CHAIN_IDS.ROLLUX_MAINNET]
     ) {
+      // Only add this specific network if missing, don't overwrite entire state
       externalStore.dispatch(
         setNetwork({
           network: ROLLUX_DEFAULT_NETWORK.network,
@@ -97,9 +99,11 @@ const MasterController = (
       currentRpcSysUtxoMainnet &&
       currentRpcSysUtxoMainnet.url !== SYSCOIN_UTXO_MAINNET_NETWORK.url
     ) {
+      // Update only this specific network, not all networks
       externalStore.dispatch(
         setNetwork({
           network: SYSCOIN_UTXO_MAINNET_NETWORK,
+          isEdit: true, // Mark as edit to preserve other properties
         })
       );
     }
@@ -121,10 +125,12 @@ const MasterController = (
       false;
 
     if (isNetworkOldState) {
+      // Only update default networks individually, preserve custom ones
       Object.values(PALI_NETWORKS_STATE.ethereum).forEach((network) => {
         externalStore.dispatch(
           setNetwork({
             network: network,
+            isEdit: true, // Mark as edit to preserve existing custom networks
           })
         );
       });
