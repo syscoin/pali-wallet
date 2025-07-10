@@ -136,9 +136,12 @@ export class PaliInpageProviderEth extends BaseProvider {
             'Provider state call failed, network type unclear:',
             providerError.message
           );
-          // Don't make actual RPC calls that would fail on UTXO networks
-          // Just don't initialize if we can't determine the network type
-          return;
+          // If both calls fail, we should still attempt to initialize as an EVM provider
+          // This ensures the provider works on EVM networks even if initial state calls fail
+          console.log(
+            'Attempting EVM initialization despite state call failures'
+          );
+          return this._initializeEthereumProvider();
         }
       }
     })();
@@ -161,12 +164,15 @@ export class PaliInpageProviderEth extends BaseProvider {
         >[0];
         this._initializeState(initialState);
       })
-      .catch((error) =>
+      .catch((error) => {
         console.error(
           'Pali: Failed to get initial state. Please report this bug.',
           error
-        )
-      );
+        );
+        // Even if we fail to get initial state, we should still mark the provider as initialized
+        // This ensures the provider can function with default state on EVM networks
+        this._initializeState();
+      });
   }
 
   public initMessageListener() {
@@ -597,10 +603,21 @@ export class PaliInpageProviderEth extends BaseProvider {
             // If not initialized and no initialization in progress, start it
             if (!this._initializationPromise) {
               await this._checkNetworkTypeAndInitialize();
+            } else {
+              // Wait for the existing initialization to complete
+              await this._initializationPromise;
             }
-            await new Promise<void>((resolve) => {
-              this.on('_initialized', () => resolve());
-            });
+
+            // Double-check initialization completed successfully
+            if (!this._state.initialized) {
+              await new Promise<void>((resolve) => {
+                const handler = () => {
+                  this.off('_initialized', handler);
+                  resolve();
+                };
+                this.on('_initialized', handler);
+              });
+            }
           }
           return this._state.isUnlocked;
         },
