@@ -1,11 +1,11 @@
 /* eslint-disable react/prop-types */
 import { Menu } from '@headlessui/react';
 import React, { useState, useCallback, useMemo } from 'react';
+import { RiUserReceivedLine } from 'react-icons/ri';
 import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
-import importIcon from 'assets/all_assets/import.png';
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
 import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { PaliWhiteSmallIconSvg, LoadingSvg } from 'components/Icon/Icon';
@@ -77,10 +77,9 @@ const getAccountIcon = (accountType: KeyringAccountType, account: any) => {
       // In EVM mode, check if it's imported to show import icon
       if (account.isImported) {
         return (
-          <img
-            src={importIcon}
-            className="w-7 h-7 group-hover:brightness-110 transition-all duration-300"
-            alt=""
+          <RiUserReceivedLine
+            size={24}
+            className="text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300"
           />
         );
       }

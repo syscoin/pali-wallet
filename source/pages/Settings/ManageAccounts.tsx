@@ -6,7 +6,6 @@ import React, {
   useEffect,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AiOutlineUsb } from 'react-icons/ai';
 import { RiUserReceivedLine } from 'react-icons/ri/';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -17,6 +16,7 @@ import {
 } from '@pollum-io/sysweb3-keyring';
 
 import ledgerLogo from 'assets/all_assets/ledgerLogo.png';
+import trezorLogo from 'assets/all_assets/trezorLogo.png';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import {
   IconButton,
@@ -37,7 +37,7 @@ const ACCOUNT_TYPE_CONFIG = {
     bgColor: 'bg-brand-royalblue',
     icon: (props: any) => (
       <PaliWhiteSmallIconSvg
-        className="mr-1 w-7 text-brand-gray300 opacity-80"
+        className="mr-1 w-7 text-brand-gray300 opacity-80 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300"
         {...props}
       />
     ),
@@ -46,14 +46,27 @@ const ACCOUNT_TYPE_CONFIG = {
     label: 'Imported',
     bgColor: 'bg-orange-500',
     icon: (props: any) => (
-      <RiUserReceivedLine size={20} className="mr-1" {...props} />
+      <RiUserReceivedLine
+        size={24}
+        className="mr-1 text-white opacity-90 group-hover:opacity-100 group-hover:text-brand-white transition-all duration-300"
+        {...props}
+      />
     ),
   },
   [KeyringAccountType.Trezor]: {
     label: 'Trezor',
     bgColor: 'bg-green-500',
     icon: (props: any) => (
-      <AiOutlineUsb size={20} className="mr-1" {...props} />
+      <img
+        src={trezorLogo}
+        alt=""
+        className="mr-1 w-5 h-5 group-hover:brightness-110 transition-all duration-300"
+        style={{
+          filter:
+            'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
+        }}
+        {...props}
+      />
     ),
   },
   [KeyringAccountType.Ledger]: {
@@ -63,7 +76,7 @@ const ACCOUNT_TYPE_CONFIG = {
       <img
         src={ledgerLogo}
         alt=""
-        className="mr-1 w-5 h-5"
+        className="mr-1 w-5 h-5 group-hover:brightness-110 transition-all duration-300"
         style={{
           filter:
             'invert(100%) sepia(0%) saturate(0%) hue-rotate(44deg) brightness(108%) contrast(102%)',
@@ -198,14 +211,16 @@ const ManageAccountsView = React.memo(() => {
       return (
         <li
           key={`${accountType}-${account.id}`}
-          className="my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
+          className="group my-3 py-2 w-full flex justify-between items-center transition-all duration-300 border-b border-dashed border-dashed-light cursor-default"
         >
           <div className="flex items-center">
             <span
               style={{ maxWidth: '16.25rem', textOverflow: 'ellipsis' }}
               className="w-max flex items-center justify-start whitespace-nowrap overflow-hidden"
             >
-              <IconComponent />
+              <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out">
+                <IconComponent />
+              </div>
               {account.label} ({ellipsis(account.address, 4, 4)})
             </span>
             <span
