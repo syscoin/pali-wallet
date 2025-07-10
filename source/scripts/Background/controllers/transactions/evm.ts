@@ -461,8 +461,7 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           const existingTxs =
             currentAccountTxs.ethereum[currentNetworkChainId!];
           const pendingTxs = existingTxs.filter(
-            (tx: any) =>
-              tx.confirmations === 0 || !tx.blockNumber || !tx.blockHash
+            (tx: any) => !tx.blockNumber || !tx.blockHash
           );
 
           if (pendingTxs.length > 0) {

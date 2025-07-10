@@ -348,6 +348,18 @@ export const validateAndManageUserTransactions = (
     return [];
   }
 
+  // Safety check: validate account access path
+  if (
+    !accounts[activeAccount.type] ||
+    !accounts[activeAccount.type][activeAccount.id]
+  ) {
+    console.warn(
+      'validateAndManageUserTransactions: account not found',
+      activeAccount
+    );
+    return [];
+  }
+
   const account = accounts[activeAccount.type][activeAccount.id];
   const userAddress = account.address.toLowerCase();
 
@@ -356,9 +368,10 @@ export const validateAndManageUserTransactions = (
       (tx) =>
         (tx.from?.toLowerCase() === userAddress ||
           tx.to?.toLowerCase() === userAddress) &&
-        // For pending transactions (confirmations === 0), don't require blockHash/blockNumber
-        // For confirmed transactions, require both blockHash and blockNumber
-        (tx.confirmations === 0 || (tx.blockHash && tx.blockNumber))
+        // Include valid transactions: either pending (missing block info) or confirmed (has both)
+        // Pending: missing blockHash OR blockNumber
+        // Confirmed: has both blockHash AND blockNumber
+        (!tx.blockHash || !tx.blockNumber || (tx.blockHash && tx.blockNumber))
     )
     .map((tx) => {
       // Add direction field to transaction
