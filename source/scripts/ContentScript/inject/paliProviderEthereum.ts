@@ -76,23 +76,16 @@ export class PaliInpageProviderEth extends BaseProvider {
     this.selectedAddress = null;
     this.chainId = null;
 
-    // Only initialize provider state for EVM-compatible networks
-    // Check network type before making any provider state requests
-    if (!this._isInitializing && !this._initializationPromise) {
-      this._isInitializing = true;
-      this._initializationPromise =
-        this._checkNetworkTypeAndInitialize().finally(() => {
-          this._isInitializing = false;
-        });
-    }
+    // Start initialization immediately and atomically
+    this._checkNetworkTypeAndInitialize();
 
     this.initMessageListener();
   }
 
   private async _checkNetworkTypeAndInitialize(): Promise<void> {
-    if (this._isInitializing) {
-      // If already initializing, wait for the existing promise
-      return this._initializationPromise!;
+    // If already initializing, wait for the existing promise
+    if (this._initializationPromise) {
+      return this._initializationPromise;
     }
 
     this._isInitializing = true;
@@ -154,6 +147,8 @@ export class PaliInpageProviderEth extends BaseProvider {
       await this._initializationPromise;
     } finally {
       this._isInitializing = false;
+      // Reset the promise to null to allow re-initialization if needed
+      this._initializationPromise = null;
     }
   }
 
@@ -599,6 +594,10 @@ export class PaliInpageProviderEth extends BaseProvider {
          */
         isUnlocked: async () => {
           if (!this._state.initialized) {
+            // If not initialized and no initialization in progress, start it
+            if (!this._initializationPromise) {
+              await this._checkNetworkTypeAndInitialize();
+            }
             await new Promise<void>((resolve) => {
               this.on('_initialized', () => resolve());
             });

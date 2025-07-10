@@ -48,30 +48,41 @@ export class PaliInpageProviderSys extends BaseProvider {
     };
     this.chainId = null;
     this.networkVersion = null;
-    if (!this._isInitializing && !this._initializationPromise) {
-      this._isInitializing = true;
-      this._initializationPromise = this.request({
-        method: 'wallet_getSysProviderState',
-      })
-        .then((state) => {
-          const initialState = state as Parameters<
-            PaliInpageProviderSys['_initializeState']
-          >[0];
 
-          this._initializeState(initialState);
-        })
-        .catch((error) =>
-          console.error(
-            'Pali: Failed to get initial state. Please report this bug.',
-            error
-          )
-        )
-        .finally(() => {
-          this._isInitializing = false;
-        });
-    }
+    // Start initialization immediately and atomically
+    this._initializeProvider();
 
     this.initMessageListener();
+  }
+
+  private _initializeProvider(): void {
+    // Check if already initializing and return existing promise if so
+    if (this._initializationPromise) {
+      return;
+    }
+
+    this._isInitializing = true;
+    this._initializationPromise = this.request({
+      method: 'wallet_getSysProviderState',
+    })
+      .then((state) => {
+        const initialState = state as Parameters<
+          PaliInpageProviderSys['_initializeState']
+        >[0];
+
+        this._initializeState(initialState);
+      })
+      .catch((error) =>
+        console.error(
+          'Pali: Failed to get initial state. Please report this bug.',
+          error
+        )
+      )
+      .finally(() => {
+        this._isInitializing = false;
+        // Reset the promise to null to allow re-initialization if needed
+        this._initializationPromise = null;
+      });
   }
 
   public initMessageListener() {
@@ -163,6 +174,10 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   public async activeExplorer(): Promise<string> {
     if (!this._sysState.initialized) {
+      // If not initialized and no initialization in progress, start it
+      if (!this._initializationPromise) {
+        this._initializeProvider();
+      }
       await new Promise<void>((resolve) => {
         this.on('_sysInitialized', () => resolve());
       });
@@ -199,6 +214,10 @@ export class PaliInpageProviderSys extends BaseProvider {
 
   public async isUnlocked(): Promise<boolean> {
     if (!this._sysState.initialized) {
+      // If not initialized and no initialization in progress, start it
+      if (!this._initializationPromise) {
+        this._initializeProvider();
+      }
       await new Promise<void>((resolve) => {
         this.on('_sysInitialized', () => resolve());
       });
@@ -414,8 +433,11 @@ export class PaliInpageProviderSys extends BaseProvider {
          * @returns Promise send back tokens data
          */
         getDataAsset: async (assetGuid: any) => {
-          if (this._sysState) {
-            //TODO: create sysInitialized event
+          if (!this._sysState.initialized) {
+            // If not initialized and no initialization in progress, start it
+            if (!this._initializationPromise) {
+              this._initializeProvider();
+            }
             await new Promise<void>((resolve) => {
               this.on('_sysInitialized', () => resolve());
             });
