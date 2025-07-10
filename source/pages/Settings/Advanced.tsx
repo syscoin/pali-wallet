@@ -200,11 +200,17 @@ const Advanced = () => {
                       }
                     }}
                     onBlur={(e) => {
-                      // Just ensure it's in valid range
-                      const value = Number(e.target.value) || 5;
+                      // Respect empty field state
+                      const value = e.target.value;
+                      if (value === '') {
+                        // Keep it undefined if user cleared the field
+                        return;
+                      }
+                      // Only constrain if there's an actual value
+                      const numValue = Number(value);
                       const constrainedValue = Math.max(
                         5,
-                        Math.min(120, value)
+                        Math.min(120, numValue)
                       );
                       setEnabledProperties((prevState) => ({
                         ...prevState,
