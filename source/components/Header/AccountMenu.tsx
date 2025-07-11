@@ -28,7 +28,6 @@ export const AccountMenu: React.FC = () => {
   const isBitcoinBased = useSelector(
     (state: RootState) => state.vault.isBitcoinBased
   );
-  const url = chrome.runtime.getURL('app.html');
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     try {
@@ -139,7 +138,18 @@ export const AccountMenu: React.FC = () => {
 
       <Menu.Item>
         <li
-          onClick={() => window.open(url)}
+          onClick={() => {
+            const url = chrome.runtime.getURL(
+              'external.html?route=settings/account/hardware'
+            );
+            window.open(url, '_blank');
+
+            // Set storage flag for detection
+            chrome.storage.local.set({
+              'pali-popup-open': true,
+              'pali-popup-timestamp': Date.now(),
+            });
+          }}
           className="py-1.5 cursor-pointer px-6 w-full backface-visibility-hidden flex items-center gap-3 justify-start text-white text-sm font-medium hover:bg-brand-blue500 hover:bg-opacity-20 active:bg-opacity-40 focus:outline-none transition-colors duration-200"
         >
           <HardWalletIconSvg className="mb-2 text-brand-white" />

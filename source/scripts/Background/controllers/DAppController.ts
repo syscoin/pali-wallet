@@ -115,6 +115,14 @@ const DAppController = (): IDAppController => {
     accountId: number,
     accountType: KeyringAccountType
   ) => {
+    // Safety check: ensure the dapp session exists
+    if (!_dapps[host]) {
+      console.warn(
+        `[DAppController] Cannot change account for ${host} - session not initialized`
+      );
+      return;
+    }
+
     const date = Date.now();
     const { accounts, isBitcoinBased } = store.getState().vault;
     store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));

@@ -111,7 +111,6 @@
     "editConnection": "接続を編集",
     "deleteConnected": "接続済みサイトを削除",
     "permissions": "権限",
-    "viewTheAddresses": "許可されたアカウントのアドレスを表示",
     "errorCreatingHardWallet": "ハードウェアウォレットの作成エラー。",
     "noDeviceSelected": "デバイスが選択されていません。接続するデバイスを選択してください。",
     "hardwareWallet": "ハードウォレットを接続",

@@ -355,9 +355,15 @@ export const ConnectHardwareWallet = ({
   const handleConnectHardwareWallet = () => {
     // Open hardware wallet setup in a new tab instead of popup window
     const url = chrome.runtime.getURL(
-      'app.html?direct=true#/settings/account/hardware'
+      'external.html?route=settings/account/hardware'
     );
     window.open(url, '_blank');
+
+    // Set storage flag for detection
+    chrome.storage.local.set({
+      'pali-popup-open': true,
+      'pali-popup-timestamp': Date.now(),
+    });
 
     // Close the modal
     if (onClose) onClose(true);

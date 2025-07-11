@@ -12,7 +12,6 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { CHAIN_IDS } from 'utils/constants';
 import { areStringsPresent } from 'utils/format';
 import { getNetworkChain, networkChain } from 'utils/network';
-import { chromeStorage } from 'utils/storageAPI';
 
 import { popupPromise } from './popup-promise';
 
@@ -523,8 +522,6 @@ export const enable = async (
   const { dapp, wallet } = getController();
   const isConnected = dapp.isConnected(host);
   const isUnlocked = wallet.isUnlocked();
-  const storage = await chromeStorage.getItem('isPopupOpen');
-  const isPopupOpen = storage;
 
   if (!isSyscoinDapp && isBitcoinBased && !isHybridDapp) {
     throw ethErrors.provider.custom({
@@ -543,13 +540,6 @@ export const enable = async (
   if (isConnected && isUnlocked) {
     return [dapp.getAccount(host).address];
   }
-
-  if (isPopupOpen)
-    throw cleanErrorStack(
-      ethErrors.rpc.resourceUnavailable({
-        message: 'Already processing eth_requestAccounts. Please wait.',
-      })
-    );
 
   const dAppActiveAddress: any = await popupPromise({
     host,

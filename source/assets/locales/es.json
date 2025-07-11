@@ -330,7 +330,6 @@
     "deleteConnected": "Eliminar sitio conectado",
     "permissions": "Permisos",
     "explorer": "Explorador",
-    "viewTheAddresses": "Ver las direcciones de tus cuentas permitidas",
     "errorCreatingHardWallet": "Error al crear monedero hardware.",
     "noDeviceSelected": "No se seleccionó ningún dispositivo. Por favor, elija un dispositivo para conectar.",
     "hardwareWallet": "Conectar hardware",

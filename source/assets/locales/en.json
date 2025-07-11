@@ -329,7 +329,6 @@
     "editConnection": "Edit connection",
     "deleteConnected": "Delete connected site",
     "permissions": "Permissions",
-    "viewTheAddresses": "View the addresses of your permitted accounts",
     "errorCreatingHardWallet": "Error creating hardware wallet.",
     "noDeviceSelected": "No device selected. Please choose a device to connect.",
     "hardwareWallet": "CONNECT HARDWALLET",

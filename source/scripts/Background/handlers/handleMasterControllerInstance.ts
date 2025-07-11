@@ -4,6 +4,7 @@ import { loadState } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
+import { setHasEncryptedVault } from 'state/vaultGlobal';
 
 export const handleMasterControllerInstance = async () => {
   // Add performance timing
@@ -22,6 +23,28 @@ export const handleMasterControllerInstance = async () => {
     );
     const activeSlip44 = storageState?.vaultGlobal?.activeSlip44;
     await rehydrateStore(store, null, activeSlip44);
+  }
+
+  // 🔥 FIX: Initialize hasEncryptedVault flag based on actual vault existence
+  // This prevents the "wallet was forgotten" false positive on startup
+  try {
+    const vault = await new Promise<any>((resolve) => {
+      chrome.storage.local.get('sysweb3-vault', (result) => {
+        resolve(result['sysweb3-vault']);
+      });
+    });
+
+    const hasVault = !!vault;
+
+    // Set the flag in Redux to match actual vault existence
+    store.dispatch(setHasEncryptedVault(hasVault));
+  } catch (error) {
+    console.error(
+      '[handleMasterControllerInstance] Error checking vault:',
+      error
+    );
+    // If we can't check, assume no vault (safe default)
+    store.dispatch(setHasEncryptedVault(false));
   }
 
   const controller = MasterController(store);

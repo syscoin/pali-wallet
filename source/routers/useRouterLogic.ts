@@ -5,7 +5,6 @@ import { useLocation } from 'react-router-dom';
 
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-// Removed unused development-only imports
 import { rehydrateStore } from 'state/rehydrate';
 import store, { RootState } from 'state/store';
 import { SYSCOIN_UTXO_MAINNET_NETWORK } from 'utils/constants';
@@ -39,11 +38,23 @@ export const useRouterLogic = () => {
     errorMessage: '',
   });
 
-  // Check if this is a direct navigation (e.g., hardware wallet opened via button)
-  const urlParams = new URLSearchParams(window.location.search);
-  const isDirectNavigation = urlParams.get('direct') === 'true';
+  const { serverHasAnError, errorMessage } = providerStatus;
+
+  const isNetworkChanging = networkStatus === 'switching';
+
+  const utf8ErrorData = JSON.parse(
+    window.localStorage.getItem('sysweb3-utf8Error') ??
+      JSON.stringify({ hasUtf8Error: false })
+  );
+
+  const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
 
   useEffect(() => {
+    // Don't run provider status check during initial loading or network changes
+    if (isLoading || isNetworkChanging) {
+      return;
+    }
+
     if (!isBitcoinBased) {
       controllerEmitter(['wallet', 'getProviderStatus'], [])
         .then((status: any) => {
@@ -56,18 +67,7 @@ export const useRouterLogic = () => {
           setProviderStatus({ serverHasAnError: false, errorMessage: '' });
         });
     }
-  }, [controllerEmitter, isBitcoinBased]);
-
-  const { serverHasAnError, errorMessage } = providerStatus;
-
-  const isNetworkChanging = networkStatus === 'switching';
-
-  const utf8ErrorData = JSON.parse(
-    window.localStorage.getItem('sysweb3-utf8Error') ??
-      JSON.stringify({ hasUtf8Error: false })
-  );
-
-  const hasUtf8Error = utf8ErrorData?.hasUtf8Error ?? false;
+  }, [controllerEmitter, isBitcoinBased, isLoading, isNetworkChanging]);
 
   // Debounced navigation function to prevent rapid navigation
   const debouncedNavigate = useCallback(
@@ -84,7 +84,10 @@ export const useRouterLogic = () => {
 
       // Set a small delay to debounce navigation
       navigationTimeoutRef.current = setTimeout(() => {
-        if (pathname !== targetRoute && !navigationLockRef.current) {
+        // Use current pathname from location instead of dependency
+        const currentPathname = window.location.hash.slice(1) || '/';
+
+        if (currentPathname !== targetRoute && !navigationLockRef.current) {
           navigationLockRef.current = true;
           lastNavigationRef.current = targetRoute;
 
@@ -97,7 +100,7 @@ export const useRouterLogic = () => {
         }
       }, 50);
     },
-    [navigate, pathname]
+    [navigate] // Remove pathname dependency to prevent recreation
   );
 
   // Handle window resize events to properly track fullscreen state
@@ -129,25 +132,22 @@ export const useRouterLogic = () => {
   }, []);
 
   useEffect(() => {
-    // Try to get current state from background script
-    chrome.runtime.sendMessage({ type: 'getCurrentState' }, (response) => {
-      // Handle potential errors gracefully
-      if (chrome.runtime.lastError) {
-        // Service worker might not be ready yet - that's ok
-        console.log(
-          '[useRouterLogic] Service worker not ready, will receive state via message'
-        );
-        return;
-      }
-
-      if (response?.data) {
-        rehydrateStore(store, response.data);
-      }
-    });
+    let isRehydrating = false;
 
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE' && message.data) {
-        rehydrateStore(store, message.data);
+        // Prevent rehydration loops by checking if we're already rehydrating
+        if (isRehydrating) {
+          console.warn(
+            '[useRouterLogic] Skipping rehydration - already in progress'
+          );
+          return true;
+        }
+
+        isRehydrating = true;
+        rehydrateStore(store, message.data).finally(() => {
+          isRehydrating = false;
+        });
         return true;
       }
       return false;
@@ -179,66 +179,60 @@ export const useRouterLogic = () => {
     }
 
     const canProceed = isUnlocked && accounts;
-    const isOnHardwareWalletPage = pathname === '/settings/account/hardware';
+    const isOnExternalRoute = pathname.includes('external');
 
-    // Skip automatic navigation if this is a direct navigation to hardware wallet
-    if (isDirectNavigation && isOnHardwareWalletPage) {
+    // IMPORTANT: Skip automatic navigation for external routes
+    // External routes should handle their own navigation logic
+    if (isOnExternalRoute) {
+      console.log('[useRouterLogic] Skipping navigation - on external route');
       setInitialCheckComplete(true);
-      // Clear the direct parameter from URL to prevent issues on subsequent loads
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete('direct');
-      window.history.replaceState({}, '', newUrl.toString());
       return;
     }
 
     // Handle initial navigation after unlock
     if (canProceed && !initialCheckComplete) {
-      // Determine target route based on screen size
-      const targetRoute = isFullscreen ? '/settings/account/hardware' : '/home';
+      // Check if we're in external context and preserve the route
+      const urlParams = new URLSearchParams(window.location.search);
+      const externalRoute = urlParams.get('route');
 
-      debouncedNavigate(targetRoute);
+      if (isOnExternalRoute && externalRoute) {
+        // Preserve external route after login
+        debouncedNavigate(`/external/${externalRoute}`);
+      } else {
+        // Navigate to home page for main app
+        debouncedNavigate('/home');
+      }
       setInitialCheckComplete(true);
       return;
     }
 
-    // IMPORTANT: Don't auto-navigate away from hardware wallet page
-    // Hardware wallet operations should be focused and uninterrupted
-    if (isOnHardwareWalletPage) {
-      // If user is on hardware wallet page, let them stay there regardless of screen size
-      // They can manually navigate away using browser controls if needed
-      // Block ANY automatic navigation attempts including resize-based changes
-      return;
-    }
-
-    // Handle navigation based on screen size changes (only after initial setup)
-    // Only apply automatic navigation for non-hardware wallet pages
-    if (canProceed && initialCheckComplete && !isOnHardwareWalletPage) {
-      // Only navigate to hardware wallet if fullscreen AND not already there AND currently on home page
-      if (isFullscreen && pathname === '/home') {
-        debouncedNavigate('/settings/account/hardware');
-      }
-      return;
-    }
-
     // Handle app route check for locked state
+    // BUT ONLY for non-external routes - external routes handle their own auth
     if (!canProceed && !initialCheckComplete) {
-      controllerEmitter(['appRoute']).then((route) => {
-        if (route !== '/' && typeof route === 'string') {
-          debouncedNavigate(route);
-        }
+      if (isOnExternalRoute) {
+        // External routes handle their own auth - just mark as complete
         setInitialCheckComplete(true);
-      });
+      } else {
+        // Regular app route navigation for locked state
+        controllerEmitter(['appRoute']).then((route) => {
+          if (route !== '/' && typeof route === 'string') {
+            debouncedNavigate(route);
+          }
+          setInitialCheckComplete(true);
+        });
+      }
     }
   }, [
     isUnlocked,
     isLoading,
     initialCheckComplete,
-    accounts,
+    // Remove 'accounts' from dependencies to prevent re-renders during rehydration
+    // The canProceed check will still work correctly
     pathname,
     isFullscreen,
     isNetworkChanging,
     debouncedNavigate,
-    isDirectNavigation,
+    controllerEmitter, // Add this since it's used in the effect
   ]);
 
   // Removed unused development-only useEffect that was calling non-existent functions

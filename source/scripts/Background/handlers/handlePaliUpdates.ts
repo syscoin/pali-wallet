@@ -81,12 +81,10 @@ export async function checkForUpdates(isPolling?: boolean): Promise<boolean> {
     // Hardware wallet pages don't need balance/asset/transaction updates
     try {
       const tabs = await chrome.tabs.query({});
-      const hasHardwareWalletTab = tabs.some((tab) =>
-        tab.url?.includes('/settings/account/hardware')
-      );
-      if (hasHardwareWalletTab) {
+      const isExternal = tabs.some((tab) => tab.url?.includes('external'));
+      if (isExternal) {
         console.log(
-          '⏸️ checkForUpdates: Skipping updates - hardware wallet page is open'
+          '⏸️ checkForUpdates: Skipping updates - external wallet page is open'
         );
         return true; // Return true since we acquired the lock
       }

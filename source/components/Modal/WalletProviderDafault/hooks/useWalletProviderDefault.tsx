@@ -25,28 +25,38 @@ export const useWalletProviderDefault = () => {
   const containerIconStyleAnimation = getContainerIconStyleAnimation(isHovered);
   const iconStyleAnimation = getIconStyleAnimation(isHovered);
 
-  const turnPaliAsDefault = () => {
+  const turnPaliAsDefault = async () => {
     setIsEnabled(!isEnabled);
     if (isEnabled) {
       controllerEmitter(['wallet', 'removeWindowEthProperty']);
-
       controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
 
-      controllerEmitter(['dapp', 'getAll']).then(async (response) => {
+      try {
+        const response = await controllerEmitter(['dapp', 'getAll']);
         const dapps = Object.values(response);
 
         if (dapps.length) {
-          for (const dapp of dapps) {
-            await controllerEmitter(['dapp', 'isConnected'], [dapp.host]).then(
-              async (isConnected: boolean) => {
-                if (isConnected) {
-                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-                }
+          await Promise.all(
+            dapps.map(async (dapp: any) => {
+              const isConnected = await controllerEmitter(
+                ['dapp', 'isConnected'],
+                [dapp.host]
+              );
+              if (isConnected) {
+                await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
               }
-            );
-          }
+            })
+          );
+
+          // Now save once after all disconnects are complete
+          await controllerEmitter(
+            ['wallet', 'saveCurrentState'],
+            ['wallet-provider-disconnects']
+          );
         }
-      });
+      } catch (error) {
+        console.error('Error disconnecting dapps:', error);
+      }
     } else {
       controllerEmitter(['wallet', 'addWindowEthProperty']);
       controllerEmitter(['wallet', 'setHasEthProperty'], [true]);

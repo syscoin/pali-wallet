@@ -21,16 +21,14 @@ export const useController = () => {
   );
 
   // Check if this is the hardware wallet page that handles its own authentication
-  const isHardwareWalletPage = location.pathname.includes(
-    '/settings/account/hardware'
-  );
+  const isExternalPage = location.pathname.includes('external');
 
   // Use refs to store latest values without causing re-renders
   const latestValuesRef = useRef({
     isUnlocked,
     isLoading,
     hasEncryptedVault,
-    isHardwareWalletPage,
+    isExternalPage,
   });
 
   // Update the ref whenever values change
@@ -39,9 +37,9 @@ export const useController = () => {
       isUnlocked,
       isLoading,
       hasEncryptedVault,
-      isHardwareWalletPage,
+      isExternalPage,
     };
-  }, [isUnlocked, isLoading, hasEncryptedVault, isHardwareWalletPage]);
+  }, [isUnlocked, isLoading, hasEncryptedVault, isExternalPage]);
 
   // Function to check unlock status - stable reference
   const checkUnlockStatus = useCallback(async () => {
@@ -56,7 +54,7 @@ export const useController = () => {
       const {
         isLoading: currentIsLoading,
         hasEncryptedVault: currentHasEncryptedVault,
-        isHardwareWalletPage: currentIsHardwareWalletPage,
+        isExternalPage: currentIsExternalPage,
       } = latestValuesRef.current;
 
       // If wallet was unlocked but now locked, redirect to unlock screen
@@ -66,7 +64,7 @@ export const useController = () => {
         !nowUnlocked &&
         !currentIsLoading &&
         currentHasEncryptedVault &&
-        !currentIsHardwareWalletPage
+        !currentIsExternalPage
       ) {
         console.log(
           '[useController] Wallet became locked, redirecting to unlock screen'
@@ -80,7 +78,7 @@ export const useController = () => {
         !nowUnlocked &&
         !currentIsLoading &&
         currentHasEncryptedVault &&
-        currentIsHardwareWalletPage
+        currentIsExternalPage
       ) {
         console.log(
           '[useController] Wallet became locked on hardware wallet page, staying on page'
@@ -150,15 +148,15 @@ export const useController = () => {
         // Use latest values from ref
         const {
           hasEncryptedVault: currentHasEncryptedVault,
-          isHardwareWalletPage: currentIsHardwareWalletPage,
+          isExternalPage: currentIsExternalPage,
         } = latestValuesRef.current;
 
-        if (currentHasEncryptedVault && !currentIsHardwareWalletPage) {
+        if (currentHasEncryptedVault && !currentIsExternalPage) {
           console.log(
             '[useController] Redirecting to unlock screen after logout'
           );
           navigate('/', { replace: true });
-        } else if (currentHasEncryptedVault && currentIsHardwareWalletPage) {
+        } else if (currentHasEncryptedVault && currentIsExternalPage) {
           console.log(
             '[useController] Logout on hardware wallet page, staying on page'
           );
@@ -293,7 +291,7 @@ export const useController = () => {
       pattern.test(errorMessage)
     );
 
-    if (isWalletLockedError && hasEncryptedVault && !isHardwareWalletPage) {
+    if (isWalletLockedError && hasEncryptedVault && !isExternalPage) {
       console.log(
         '[useController] Wallet locked error detected, redirecting to unlock screen'
       );
@@ -301,7 +299,7 @@ export const useController = () => {
       return true; // Error was handled
     }
 
-    if (isWalletLockedError && hasEncryptedVault && isHardwareWalletPage) {
+    if (isWalletLockedError && hasEncryptedVault && isExternalPage) {
       console.log(
         '[useController] Wallet locked error on hardware wallet page, staying on page'
       );

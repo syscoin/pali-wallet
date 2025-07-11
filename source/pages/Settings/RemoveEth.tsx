@@ -21,7 +21,7 @@ const RemoveEthView = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     setLoading(true);
 
     setIsEnabled(!isEnabled);
@@ -29,30 +29,44 @@ const RemoveEthView = () => {
     switch (isEnabled) {
       case true:
         controllerEmitter(['wallet', 'removeWindowEthProperty']);
-
         controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
 
-        controllerEmitter(['dapp', 'getAll']).then((dapps) => {
-          for (const dapp of Object.values(dapps)) {
-            controllerEmitter(['dapp', 'isConnected'], [dapp.host]).then(
-              (isConnected: boolean) => {
-                if (isConnected)
-                  controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
-              }
+        // Get all dapps and disconnect them efficiently
+        try {
+          const dapps = await controllerEmitter(['dapp', 'getAll']);
+          const dappEntries = Object.values(dapps);
+
+          if (dappEntries.length > 0) {
+            await Promise.all(
+              dappEntries.map(async (dapp: any) => {
+                const isConnected = await controllerEmitter(
+                  ['dapp', 'isConnected'],
+                  [dapp.host]
+                );
+                if (isConnected) {
+                  await controllerEmitter(['dapp', 'disconnect'], [dapp.host]);
+                }
+              })
+            );
+
+            // Now save once after all disconnects are complete
+            await controllerEmitter(
+              ['wallet', 'saveCurrentState'],
+              ['remove-eth-disconnects']
             );
           }
-        });
+        } catch (error) {
+          console.error('Error disconnecting dapps:', error);
+        }
 
         setConfirmed(true);
         setLoading(false);
         break;
       case false:
         controllerEmitter(['wallet', 'addWindowEthProperty']);
-
         controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
 
         setConfirmed(true);
-
         setLoading(false);
         break;
       default:

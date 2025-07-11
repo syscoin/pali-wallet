@@ -171,12 +171,14 @@ class NotificationManager {
     const previousTxs =
       previousVault.accountTransactions[activeAccount.type]?.[activeAccount.id];
 
+    // Early return if no current transactions exist for this account
     if (!currentTxs) {
       return;
     }
 
     if (isBitcoinBased) {
-      const currentUtxoTxs = currentTxs.syscoin?.[activeNetwork.chainId] || [];
+      // Safely access syscoin transactions with proper null checks
+      const currentUtxoTxs = currentTxs?.syscoin?.[activeNetwork.chainId] || [];
       const previousUtxoTxs =
         previousTxs?.syscoin?.[activeNetwork.chainId] || [];
       this.checkUtxoTransactions(
@@ -186,7 +188,8 @@ class NotificationManager {
         activeNetwork
       );
     } else {
-      const currentEvmTxs = currentTxs.ethereum?.[activeNetwork.chainId] || [];
+      // Safely access ethereum transactions with proper null checks
+      const currentEvmTxs = currentTxs?.ethereum?.[activeNetwork.chainId] || [];
       const previousEvmTxs =
         previousTxs?.ethereum?.[activeNetwork.chainId] || [];
       this.checkEvmTransactions(

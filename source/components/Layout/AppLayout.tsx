@@ -49,23 +49,24 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
 
   // Determine if we should hide the header entirely (e.g., hardware wallet page)
   const hideHeader = useMemo(() => {
-    const hideHeaderRoutes = ['/settings/account/hardware'];
+    const hideHeaderRoutes = ['/external/settings/account/hardware'];
     return hideHeaderRoutes.includes(location.pathname);
   }, [location.pathname]);
 
   // Determine if this is a title-only page (shows banner but not header)
   const titleOnly = useMemo(() => {
     const titleOnlyRoutes = [
-      '/connections/connect',
-      '/connections/change-account',
-      '/connections/change-connected-account',
+      // External routes should be title-only (no persistent header)
+      '/external/connect-wallet',
+      '/external/change-account',
+      '/external/change-active-connected-account',
     ];
     return titleOnlyRoutes.includes(location.pathname);
   }, [location.pathname]);
 
   // Determine if this is a connect page (affects content width)
   const isConnectPage = useMemo(() => {
-    const connectRoutes = ['/connections/connect'];
+    const connectRoutes = ['/external/connect-wallet'];
     return connectRoutes.includes(location.pathname);
   }, [location.pathname]);
 
@@ -110,13 +111,6 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     if (path === '/switch-network') return t('settings.switchChain');
     if (path === '/switch-utxo-evm') return t('settings.switchChain');
 
-    // Connection routes - special handling
-    if (path === '/connections/connect') return t('connections.connectAccount');
-    if (path === '/connections/change-account')
-      return t('connections.connectedAccount');
-    if (path === '/connections/change-connected-account')
-      return t('connections.connectedAccount');
-
     // Transaction routes (both internal and external)
     if (path === '/send/approve') return t('send.approve');
     if (path === '/send/tx/send/ethTx') return t('send.send');
@@ -137,6 +131,21 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     if (path === '/external/tx/decrypt') return t('send.decrypt');
     if (path === '/external/tx/sign-psbt') return t('send.sign');
 
+    // External dApp routes
+    if (path === '/external/connect-wallet')
+      return t('connections.connectAccount');
+    if (path === '/external/change-account')
+      return t('connections.connectedAccount');
+    if (path === '/external/change-active-connected-account')
+      return t('connections.connectedAccount');
+    if (path === '/external/watch-asset') return t('buttons.addToken');
+    if (path === '/external/switch-network') return t('settings.switchChain');
+    if (path === '/external/add-EthChain') return t('settings.customRpc');
+    if (path === '/external/switch-EthChain') return t('settings.switchChain');
+    if (path === '/external/switch-UtxoEvm') return t('settings.switchChain');
+    if (path === '/external/settings/account/hardware')
+      return t('settings.hardwareWallet');
+
     // Settings routes
     if (path.startsWith('/settings')) {
       if (path === '/settings/about')
@@ -149,8 +158,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       if (path === '/settings/manage-accounts')
         return t('settings.manageAccounts');
       if (path === '/settings/edit-account') return t('settings.editAccount');
-      if (path === '/settings/account/hardware')
-        return t('settings.hardwareWallet');
+
       if (path === '/settings/account/new') return t('settings.createAccount');
       if (path === '/settings/account/import')
         return t('header.importAccount').toUpperCase();
@@ -206,9 +214,15 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
     const noNavigationRoutes = [
       '/switch-network',
       '/switch-utxo-evm',
-      '/connections/connect',
-      '/connections/change-account',
-      '/connections/change-connected-account',
+      // External dApp routes
+      '/external/connect-wallet',
+      '/external/change-account',
+      '/external/change-active-connected-account',
+      '/external/watch-asset',
+      '/external/switch-network',
+      '/external/add-EthChain',
+      '/external/switch-EthChain',
+      '/external/switch-UtxoEvm',
       // External transaction routes
       '/external/tx/send/confirm',
       '/external/tx/send/ethTx',
@@ -263,7 +277,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   // Get page ID based on route
   const pageId = useMemo(() => {
     if (location.pathname === '/settings/about') return 'info-help-title';
-    if (location.pathname === '/settings/account/hardware')
+    if (location.pathname === '/external/settings/account/hardware')
       return 'hardware-wallet-title';
     return undefined;
   }, [location.pathname]);

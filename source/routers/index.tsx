@@ -1,5 +1,11 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import {
+  Routes,
+  Route,
+  Navigate,
+  useSearchParams,
+  useNavigate,
+} from 'react-router-dom';
 
 import { AppLayout } from 'components/Layout/AppLayout';
 import { WarningModal } from 'components/Modal';
@@ -8,6 +14,61 @@ import { useNavigationState } from 'hooks/useNavigationState';
 import { useRouterLogic } from 'routers/useRouterLogic';
 
 import { ProtectedRoute } from './ProtectedRoute';
+
+// Component to handle external routing from query parameters
+const ExternalQueryHandler = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const hasRedirectedRef = React.useRef(false);
+  const { isUnlocked, isLoading } = useController();
+
+  React.useEffect(() => {
+    // Prevent double execution
+    if (hasRedirectedRef.current) {
+      return;
+    }
+
+    // Wait for auth check to complete
+    if (isLoading) {
+      return;
+    }
+
+    const route = searchParams.get('route');
+
+    if (route) {
+      // Mark that we've handled the redirect
+      hasRedirectedRef.current = true;
+
+      if (!isUnlocked) {
+        // If not authenticated, redirect to auth flow and preserve the external route info
+        const data = searchParams.get('data');
+        const newSearchParams = new URLSearchParams();
+        if (data) {
+          newSearchParams.set('data', data);
+        }
+        newSearchParams.set('externalRoute', route);
+
+        navigate(`/?${newSearchParams.toString()}`, { replace: true });
+      } else {
+        // If authenticated, redirect to the external route
+        const routePath = `/external/${route}`;
+
+        // Preserve the data parameter for the target route
+        const data = searchParams.get('data');
+        const newSearchParams = new URLSearchParams();
+        if (data) {
+          newSearchParams.set('data', data);
+        }
+
+        navigate(routePath + (data ? `?${newSearchParams.toString()}` : ''), {
+          replace: true,
+        });
+      }
+    }
+  }, [navigate, searchParams, isUnlocked, isLoading]);
+
+  return <div style={{ opacity: 0 }}>Loading...</div>;
+};
 
 // Navigation state restorer component
 const NavigationRestorer = () => {
@@ -130,6 +191,51 @@ const SwitchNetwork = lazy(() =>
   import('pages/SwitchNetwork').then((m) => ({ default: m.SwitchNetwork }))
 );
 
+// External/dApp components
+const ConnectWallet = lazy(() =>
+  import('pages').then((m) => ({ default: m.ConnectWallet }))
+);
+const ChangeAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.ChangeAccount }))
+);
+const ChangeConnectedAccount = lazy(() =>
+  import('pages').then((m) => ({ default: m.ChangeConnectedAccount }))
+);
+const ExternalWatchAsset = lazy(() =>
+  import('pages').then((m) => ({ default: m.ExternalWatchAsset }))
+);
+const CustomRPCExternal = lazy(() =>
+  import('pages').then((m) => ({ default: m.CustomRPCExternal }))
+);
+const SwitchChain = lazy(() =>
+  import('pages').then((m) => ({ default: m.SwitchChain }))
+);
+const SwitchNeworkUtxoEvm = lazy(() =>
+  import('pages').then((m) => ({ default: m.SwitchNeworkUtxoEvm }))
+);
+const SendTransaction = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendTransaction }))
+);
+const SendNTokenTransaction = lazy(() =>
+  import('pages').then((m) => ({ default: m.SendNTokenTransaction }))
+);
+const ApproveTransactionComponent = lazy(() =>
+  import('pages').then((m) => ({ default: m.ApproveTransactionComponent }))
+);
+const SignAndSend = lazy(() =>
+  import('pages').then((m) => ({ default: m.SignAndSend }))
+);
+const EthSign = lazy(() =>
+  import('pages').then((m) => ({ default: m.EthSign }))
+);
+const EncryptPubKey = lazy(() =>
+  import('pages').then((m) => ({ default: m.EncryptPubKey }))
+);
+const Decrypt = lazy(() =>
+  import('pages').then((m) => ({ default: m.Decrypt }))
+);
+const Sign = lazy(() => import('pages').then((m) => ({ default: m.Sign })));
+
 export const Router = () => {
   const {
     showModal,
@@ -176,6 +282,9 @@ export const Router = () => {
             <Route path="phrase" element={<SeedConfirm />} />
           </Route>
 
+          {/* Handle external.html with query parameters */}
+          <Route path="external.html" element={<ExternalQueryHandler />} />
+
           {/* Special route for switch-network that needs different handling */}
           <Route path="switch-network" element={<SwitchNetwork />} />
 
@@ -211,10 +320,6 @@ export const Router = () => {
             <Route path="/settings/edit-account" element={<EditAccount />} />
 
             {/* Account sub-routes */}
-            <Route
-              path="/settings/account/hardware"
-              element={<ConnectHardwareWallet />}
-            />
             <Route path="/settings/account/new" element={<CreateAccount />} />
             <Route
               path="/settings/account/import"
@@ -239,6 +344,46 @@ export const Router = () => {
               path="/settings/networks/trusted-sites"
               element={<TrustedSites />}
             />
+
+            {/* External/dApp Routes - also wrapped in AppLayout */}
+            <Route path="/external">
+              <Route path="import" element={<Import />} />
+              <Route path="phrase" element={<SeedConfirm />} />
+              <Route path="connect-wallet" element={<ConnectWallet />} />
+              <Route path="change-account" element={<ChangeAccount />} />
+              <Route
+                path="change-active-connected-account"
+                element={<ChangeConnectedAccount />}
+              />
+              <Route path="watch-asset" element={<ExternalWatchAsset />} />
+              <Route path="switch-network" element={<SwitchNetwork />} />
+              <Route path="add-EthChain" element={<CustomRPCExternal />} />
+              <Route path="switch-EthChain" element={<SwitchChain />} />
+              <Route path="switch-UtxoEvm" element={<SwitchNeworkUtxoEvm />} />
+              <Route
+                path="settings/account/hardware"
+                element={<ConnectHardwareWallet />}
+              />
+
+              {/* External transaction routes */}
+              <Route path="tx">
+                <Route path="send/confirm" element={<SendConfirm />} />
+                <Route path="send/ethTx" element={<SendTransaction />} />
+                <Route
+                  path="send/nTokenTx"
+                  element={<SendNTokenTransaction />}
+                />
+                <Route
+                  path="send/approve"
+                  element={<ApproveTransactionComponent />}
+                />
+                <Route path="sign" element={<SignAndSend />} />
+                <Route path="ethSign" element={<EthSign />} />
+                <Route path="encryptKey" element={<EncryptPubKey />} />
+                <Route path="decrypt" element={<Decrypt />} />
+                <Route path="sign-psbt" element={<Sign />} />
+              </Route>
+            </Route>
           </Route>
 
           <Route

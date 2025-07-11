@@ -92,6 +92,42 @@ const handleCloseWindow = (
   chrome.windows.onRemoved.addListener(handleWindowRemoval);
 };
 
+// Detection function for popup blocking - includes ALL extension windows that should block new popups
+const checkForAnyOpenPopupOrHardwareWallet = async (): Promise<boolean> => {
+  try {
+    // Use only context detection since chrome.tabs.query doesn't give us URLs without tabs permission
+    if (
+      'getContexts' in chrome.runtime &&
+      typeof chrome.runtime.getContexts === 'function'
+    ) {
+      return new Promise((resolve) => {
+        (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
+          const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+
+          const hasBlockingWindow = contexts.some((ctx) => {
+            // Check for ANY tab from our extension (includes hardware wallet and external tabs)
+            if (
+              ctx.contextType === 'TAB' &&
+              ctx.documentOrigin === ourExtensionOrigin
+            ) {
+              return true;
+            }
+
+            return false;
+          });
+
+          resolve(hasBlockingWindow);
+        });
+      });
+    }
+
+    return false;
+  } catch (error) {
+    console.error('[checkForAnyOpenPopupOrHardwareWallet] Error:', error);
+    return false;
+  }
+};
+
 /**
  * Opens a popup and adds events listener to resolve a promise.
  *
@@ -145,16 +181,52 @@ export const popupPromise = async ({
   });
 };
 
-function checkIfPopupIsOpen() {
+function checkIfPopupIsOpen(): Promise<boolean> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: 'isPopupOpen' }, (response) => {
-      // Handle the case where popup is closed
-      if (chrome.runtime.lastError) {
-        // Popup is closed, so return false
-        resolve(false);
-      } else {
-        resolve(response === true);
+    // Check storage flag with timestamp validation first
+    chrome.storage.local.get(
+      ['pali-popup-open', 'pali-popup-timestamp'],
+      (result) => {
+        if (chrome.runtime.lastError) {
+          console.error(
+            '[checkIfPopupIsOpen] Storage error:',
+            chrome.runtime.lastError
+          );
+          resolve(false);
+          return;
+        }
+
+        const popupOpen = !!result['pali-popup-open'];
+        const timestamp = result['pali-popup-timestamp'];
+
+        if (popupOpen && timestamp) {
+          // Check if timestamp is stale (older than 5 minutes)
+          const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+          const now = Date.now();
+
+          if (now - timestamp > STALE_TIMEOUT) {
+            chrome.storage.local.remove([
+              'pali-popup-open',
+              'pali-popup-timestamp',
+            ]);
+
+            // Only use context detection as fallback when cleaning up stale flags
+            checkForAnyOpenPopupOrHardwareWallet()
+              .then(resolve)
+              .catch(() => resolve(false));
+            return;
+          }
+
+          // Storage flag is valid and recent
+          resolve(true);
+          return;
+        }
+
+        // No storage flag means no popup is open
+        checkForAnyOpenPopupOrHardwareWallet()
+          .then(resolve)
+          .catch(() => resolve(false));
       }
-    });
+    );
   });
 }

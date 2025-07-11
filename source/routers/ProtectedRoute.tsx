@@ -8,13 +8,7 @@ export function ProtectedRoute({ element }: { element: JSX.Element }) {
   const { isUnlocked, isLoading } = useController();
 
   // Check if we're in external context (external.html instead of app.html)
-  const isExternal = window.location.pathname.includes('external.html');
-
-  // Check if this is the hardware wallet page that handles its own authentication
-  // Use hash instead of pathname since React Router uses hash routing
-  const isHardwareWalletPage = window.location.hash.includes(
-    '/settings/account/hardware'
-  );
+  const isExternal = window.location.pathname.includes('external');
 
   // Signal app ready for external authenticated routes
   // For non-external routes, AppLayout handles this
@@ -27,7 +21,7 @@ export function ProtectedRoute({ element }: { element: JSX.Element }) {
   }
 
   // Special handling for hardware wallet page - don't redirect on logout
-  if (isHardwareWalletPage) {
+  if (isExternal) {
     return element; // Always render the element, let it handle its own auth state
   }
 

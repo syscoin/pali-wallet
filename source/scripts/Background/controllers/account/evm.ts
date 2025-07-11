@@ -15,52 +15,13 @@ export interface IEthAccountController {
 }
 
 const EthAccountController = (): IEthAccountController | any => {
-  const saveTokenInfo = async (token: ITokenEthProps, tokenType: string) => {
+  const saveTokenInfo = async (token: ITokenEthProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const { chainId } = activeNetwork;
     const activeAccountAssets =
       accountAssets[activeAccount.type][activeAccount.id];
     try {
-      if (tokenType === 'ERC-1155') {
-        const currentAssets = [...activeAccountAssets.ethereum];
-
-        const nftCollection = currentAssets.find(
-          (nft) => nft.contractAddress === token.contractAddress
-        );
-        const finalToken = { ...token, chainId };
-
-        if (nftCollection) {
-          const indexItem = currentAssets.indexOf(nftCollection);
-
-          const finalEthAssets = [
-            ...activeAccountAssets.ethereum.slice(0, indexItem),
-            finalToken,
-            ...activeAccountAssets.ethereum.slice(indexItem + 1),
-          ];
-
-          store.dispatch(
-            setAccountAssets({
-              accountId: activeAccount.id,
-              accountType: activeAccount.type,
-              property: 'ethereum',
-              value: finalEthAssets,
-            })
-          );
-          return;
-        }
-
-        store.dispatch(
-          setAccountAssets({
-            accountId: activeAccount.id,
-            accountType: activeAccount.type,
-            property: 'ethereum',
-            value: [...activeAccountAssets.ethereum, finalToken],
-          })
-        );
-        return;
-      }
-
       const tokenExists = activeAccountAssets.ethereum?.find(
         (asset: ITokenEthProps) =>
           asset.contractAddress === token.contractAddress

@@ -111,7 +111,6 @@
     "editConnection": "Modifier la connexion",
     "deleteConnected": "Supprimer le site connecté",
     "permissions": "Permissions",
-    "viewTheAddresses": "Voir les adresses de vos comptes autorisés",
     "errorCreatingHardWallet": "Erreur lors de la création du portefeuille matériel.",
     "noDeviceSelected": "Aucun appareil sélectionné. Veuillez choisir un appareil à connecter.",
     "hardwareWallet": "CONNECTER PORTEFEUILLE MATÉRIEL",

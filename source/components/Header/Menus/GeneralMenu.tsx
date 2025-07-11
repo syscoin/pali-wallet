@@ -1,6 +1,6 @@
 import { Menu } from '@headlessui/react';
 import { Badge } from 'antd';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
@@ -18,7 +18,7 @@ import { Icon, Tooltip, AccountMenu } from 'components/index';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { truncate, getHost, getTabUrl } from 'utils/index';
+import { truncate } from 'utils/index';
 import {
   createNavigationContext,
   navigateWithContext,
@@ -39,11 +39,21 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
     changingConnectedAccount: { isChangingConnectedAccount },
     advancedSettings,
   } = useSelector((state: RootState) => state.vaultGlobal);
+
+  // Get dapps from Redux state
+  const dapps = useSelector((state: RootState) => state.dapp.dapps);
+
+  // Check if there are ANY connected dapps
+  const hasAnyConnectedDapps = Object.keys(dapps).length > 0;
+
   const [currentTab, setCurrentTab] = useState({
     host: '',
     isConnected: false,
   });
-  const className = currentTab.isConnected ? 'success' : 'error';
+
+  // Use hasAnyConnectedDapps OR current tab connection for the icon color
+  const className =
+    hasAnyConnectedDapps || currentTab.isConnected ? 'success' : 'error';
 
   const handleLogout = () => {
     controllerEmitter(['wallet', 'lock']);
@@ -51,37 +61,35 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
     navigate('/');
   };
 
+  // Function to check current tab connection status
+  const checkTabConnectionStatus = useCallback(async () => {
+    try {
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tabs[0]?.url) {
+        const { host } = new URL(tabs[0].url);
+        const isConnected = !!dapps[host];
+        setCurrentTab({ host, isConnected });
+      }
+    } catch (error) {
+      console.error('Error checking tab connection status:', error);
+    }
+  }, [dapps]);
+
   useEffect(() => {
-    const getTabData = async () => {
-      const url = await getTabUrl();
+    checkTabConnectionStatus();
+  }, [checkTabConnectionStatus]);
 
-      if (!url) return;
-
-      const host = getHost(url);
-
-      controllerEmitter(['dapp', 'isConnected'], [host]).then(
-        (isConnected: boolean) => {
-          setCurrentTab({ host, isConnected });
-        }
-      );
-    };
-
-    getTabData();
-  }, []);
+  // State updates are handled automatically by the background script
+  // via CONTROLLER_STATE_CHANGE messages and Redux store updates
 
   useEffect(() => {
     if (!isChangingConnectedAccount) {
-      getTabUrl().then(async (url: string) => {
-        const host = getHost(url);
-
-        controllerEmitter(['dapp', 'isConnected'], [host]).then(
-          (isConnected: boolean) => {
-            setCurrentTab({ host, isConnected });
-          }
-        );
-      });
+      checkTabConnectionStatus();
     }
-  }, [isChangingConnectedAccount]);
+  }, [isChangingConnectedAccount, checkTabConnectionStatus]);
 
   return (
     <Menu

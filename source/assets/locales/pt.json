@@ -317,7 +317,6 @@
     "editConnection": "Editar conexão",
     "deleteConnected": "Excluir site conectado",
     "permissions": "Permissões",
-    "viewTheAddresses": "Ver os endereços das suas contas permitidas",
     "errorCreatingHardWallet": "Erro ao criar carteira de hardware.",
     "noDeviceSelected": "Nenhum dispositivo selecionado. Por favor, escolha um dispositivo para conectar.",
     "hardwareWallet": "CARTEIRA DE HARDWARE",

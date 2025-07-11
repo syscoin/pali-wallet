@@ -40,17 +40,25 @@ export const isNotificationSupported = (): boolean =>
   'notifications' in chrome && chrome.notifications !== undefined;
 
 // Check if popup is open
-export const isPopupOpen = async (): Promise<boolean> =>
+export const checkIfPopupIsOpen = async (): Promise<boolean> =>
   new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: 'isPopupOpen' }, (response) => {
-      // Handle the case where popup is closed
-      if (chrome.runtime.lastError) {
-        // Popup is closed, so return false
-        resolve(false);
-      } else {
-        resolve(response === true);
-      }
-    });
+    if (
+      'getContexts' in chrome.runtime &&
+      typeof chrome.runtime.getContexts === 'function'
+    ) {
+      // Use getContexts directly
+      const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+      (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
+        const popupOpen = contexts.some(
+          (ctx) =>
+            ctx.contextType === 'POPUP' &&
+            ctx.documentOrigin === ourExtensionOrigin
+        );
+        resolve(popupOpen);
+      });
+    } else {
+      return false;
+    }
   });
 
 // Create a notification
@@ -63,7 +71,7 @@ export const createNotification = async (
   }
 
   // Don't show notifications if popup is open (user is actively using the wallet)
-  const popupOpen = await isPopupOpen();
+  const popupOpen = await checkIfPopupIsOpen();
   if (popupOpen && !options.requireInteraction) {
     return null;
   }
@@ -288,17 +296,31 @@ export const showAccountChangeNotification = async (
   });
 };
 
+// Helper function to safely extract hostname from URL or hostname string
+const getHostnameFromUrl = (urlOrHostname: string): string => {
+  try {
+    // Try to create a URL object - if it works, extract hostname
+    const url = new URL(urlOrHostname);
+    return url.hostname;
+  } catch {
+    // If URL construction fails, assume it's already a hostname
+    // Remove any protocol prefix if present
+    return urlOrHostname.replace(/^https?:\/\//, '');
+  }
+};
+
 // DApp connection notification
 export const showDappConnectionNotification = async (
   dappUrl: string,
   approved: boolean
 ): Promise<string | null> => {
+  const hostname = getHostnameFromUrl(dappUrl);
+
   // Check if i18next is initialized, but don't wait
   if (!i18next.isInitialized) {
     console.warn(
       '[Notifications] i18next not initialized for dapp connection, using fallback text'
     );
-    const hostname = new URL(dappUrl).hostname;
     return createNotification({
       title: approved ? 'Site Connected' : 'Connection Rejected',
       message: approved
@@ -315,13 +337,14 @@ export const showDappConnectionNotification = async (
       : i18next.t('notifications.connectionRejected'),
     message: approved
       ? i18next.t('notifications.connectedTo', {
-          dappUrl: new URL(dappUrl).hostname,
+          dappUrl: hostname,
         })
       : i18next.t('notifications.rejectedFrom', {
-          dappUrl: new URL(dappUrl).hostname,
+          dappUrl: hostname,
         }),
     type: 'basic',
     priority: 1,
+    requireInteraction: true,
   });
 };
 

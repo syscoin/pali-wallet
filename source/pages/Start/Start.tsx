@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 
 import { ImportWalletWarning } from 'components/Modal/WarningBaseModal';
 import GetStarted from 'components/Start/GetStarted';
@@ -15,7 +16,18 @@ export const Start = (props: any) => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const { isExternal, externalRoute } = props;
+  const [searchParams] = useSearchParams();
+
+  // Check for external route from URL parameters (when redirected from ExternalQueryHandler)
+  const urlExternalRoute = searchParams.get('externalRoute');
+  const urlData = searchParams.get('data');
+
+  // Determine if this is an external request and what the route should be
+  const isExternal = !!urlExternalRoute || props.isExternal;
+  const externalRoute = urlExternalRoute
+    ? `/external/${urlExternalRoute}${urlData ? `?data=${urlData}` : ''}`
+    : props.externalRoute;
+
   const isFirstStep = !hasAccount && !hasVault;
 
   useEffect(() => {
@@ -56,7 +68,6 @@ export const Start = (props: any) => {
   if (isInitialLoading) {
     return null;
   }
-
   return (
     <div className="flex flex-col items-center bg-no-repeat bg-[url('../../../source/assets/all_assets/GET_STARTED2.png')] justify-center min-w-full h-screen login-animated-bg">
       {/* Subtle twinkling particles */}

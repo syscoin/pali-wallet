@@ -944,6 +944,11 @@ class MainController {
     store.dispatch(setHasEthProperty(exist));
   }
 
+  public saveCurrentState(reason = 'manual-save'): void {
+    // Public method to trigger a state save - this is considered user activity
+    this.saveWalletState(reason, true);
+  }
+
   public async setAdvancedSettings(
     advancedProperty: string,
     value: boolean | number
@@ -951,8 +956,8 @@ class MainController {
     // Update Redux state
     store.dispatch(setAdvancedSettings({ advancedProperty, value }));
 
-    // Save wallet state after changing settings
-    this.saveWalletState('update-settings');
+    // Save wallet state after changing settings - this is user activity
+    this.saveWalletState('update-settings', true);
 
     // If this is the autolock setting, restart the timer
     if (advancedProperty === 'autolock' && typeof value === 'number') {
@@ -1077,16 +1082,18 @@ class MainController {
     }, 10);
   }
 
-  // Centralized wallet state saving with debouncing and auto-lock timer reset
-  private saveWalletState(operation: string): void {
+  // Centralized wallet state saving with debouncing - auto-lock timer reset only for user operations
+  private saveWalletState(operation: string, isUserActivity = false): void {
     try {
       // Clear any existing save timeout to debounce rapid calls
       if (this.saveTimeout) {
         clearTimeout(this.saveTimeout);
       }
 
-      // Reset auto-lock timer since this represents user activity
-      this.resetAutoLockTimer();
+      // Only reset auto-lock timer for explicit user activities, not automatic saves
+      if (isUserActivity) {
+        this.resetAutoLockTimer();
+      }
 
       // Debounce the actual save by 100ms to prevent rapid consecutive saves
       this.saveTimeout = setTimeout(async () => {
@@ -1689,7 +1696,7 @@ class MainController {
       store.dispatch(setLastLogin());
 
       // Save vault state to persistent storage after creating the first account
-      this.saveWalletState('create-wallet');
+      this.saveWalletState('create-wallet', true);
 
       setTimeout(() => {
         this.setFiat();
@@ -1788,7 +1795,7 @@ class MainController {
     );
 
     // Save wallet state after creating account
-    this.saveWalletState('create-account');
+    this.saveWalletState('create-account', true);
 
     // Double-check the account was stored correctly
     const { accounts } = store.getState().vault;
@@ -1820,7 +1827,7 @@ class MainController {
     host?: string,
     connectedAccount?: IOmmitedAccount
   ): Promise<void> {
-    const { accounts, activeAccount, isBitcoinBased } = store.getState().vault;
+    const { accounts, activeAccount } = store.getState().vault;
 
     try {
       // Prevent concurrent account switching
@@ -1870,12 +1877,7 @@ class MainController {
 
       // Defer heavy operations to prevent blocking the UI
       setTimeout(() => {
-        this.performPostAccountSwitchOperations(
-          isBitcoinBased,
-          accounts,
-          type,
-          id
-        );
+        this.performPostAccountSwitchOperations();
       }, 0);
     } catch (error) {
       console.error('Failed to set active account:', error);
@@ -1889,12 +1891,7 @@ class MainController {
     }
   }
 
-  private async performPostAccountSwitchOperations(
-    isBitcoinBased: boolean,
-    accounts: any,
-    type: KeyringAccountType,
-    id: number
-  ) {
+  private async performPostAccountSwitchOperations() {
     try {
       setTimeout(() => {
         this.getLatestUpdateForCurrentAccount(false, true); // Force update after account switch
@@ -1907,36 +1904,20 @@ class MainController {
         );
         return;
       }
+
+      // IMPORTANT: We do NOT automatically update dapp connections when switching accounts.
+      // Each dapp maintains its own connection to a specific account. When a dapp needs
+      // to interact with its connected account while a different account is active,
+      // it will prompt the user to switch accounts (see message-handler/requests.ts).
+      // This matches the behavior of MetaMask and other wallets.
+
       // Save wallet state after account switching (includes auto-lock timer reset)
-      this.saveWalletState('account-switch');
-      // Notify all connected DApps about the account change
-      const controller = getController();
-      const { dapps } = store.getState().dapp;
-      const newAccount = accounts[type][id];
+      this.saveWalletState('account-switch', true);
 
-      // Update each connected DApp with the new account
-      Object.keys(dapps).forEach((dappHost) => {
-        if (dapps[dappHost]) {
-          controller.dapp.changeAccount(dappHost, id, type);
-        }
-      });
-
-      // Emit global account change events
-      if (isBitcoinBased) {
-        this.handleStateChange([
-          {
-            method: PaliEvents.xpubChanged,
-            params: newAccount.xpub,
-          },
-        ]);
-      } else {
-        this.handleStateChange([
-          {
-            method: PaliEvents.accountsChanged,
-            params: [newAccount.address],
-          },
-        ]);
-      }
+      // Note: We do NOT emit global account change events here anymore.
+      // Account change events should only be sent to dapps that are actually
+      // connected to the specific account. This prevents confusion where all
+      // dapps receive account change events even when they're not affected.
     } catch (error) {
       console.error('Error in post-account-switch operations:', error);
     }
@@ -2158,12 +2139,13 @@ class MainController {
         chainId: assetPreview.chainId,
         name: assetPreview.name,
         id: assetPreview.id,
+        tokenStandard: assetPreview.tokenStandard || 'ERC-20',
       };
       console.log(
         `[MainController] Using provided asset details for ${assetPreview.symbol}`
       );
 
-      await this.account.eth.saveTokenInfo(assetToAdd);
+      await this.saveTokenInfo(assetToAdd);
 
       console.log(
         `[MainController] Successfully added token ${assetToAdd.tokenSymbol} via dApp request`
@@ -2307,7 +2289,7 @@ class MainController {
     store.dispatch(setNetwork({ network: networkWithCustomParams }));
 
     // Save wallet state after adding custom network
-    this.saveWalletState('add-custom-network');
+    this.saveWalletState('add-custom-network', true);
 
     return networkWithCustomParams;
   }
@@ -2318,7 +2300,7 @@ class MainController {
     store.dispatch(setNetwork({ network, isEdit: true }));
 
     // Save wallet state after editing network
-    this.saveWalletState('edit-network');
+    this.saveWalletState('edit-network', true);
     return network;
   }
 
@@ -2346,7 +2328,7 @@ class MainController {
     );
 
     // Save wallet state after editing account label
-    this.saveWalletState('edit-account-label');
+    this.saveWalletState('edit-account-label', true);
   }
 
   public removeAccount(accountId: number, accountType: KeyringAccountType) {
@@ -2383,9 +2365,6 @@ class MainController {
     // Remove from store
     store.dispatch(removeAccount({ id: accountId, type: accountType }));
 
-    // Save wallet state after removing account
-    this.saveWalletState('remove-account');
-
     // Notify connected DApps if needed
     const controller = getController();
     const { dapps } = store.getState().dapp;
@@ -2401,6 +2380,8 @@ class MainController {
         controller.dapp.disconnect(dappHost);
       }
     });
+    // Save wallet state after removing account
+    this.saveWalletState('remove-account', true);
   }
 
   public removeKeyringNetwork(
@@ -2438,7 +2419,7 @@ class MainController {
     store.dispatch(removeNetwork({ chain, chainId, rpcUrl, label, key }));
 
     // Save wallet state after removing network
-    this.saveWalletState('remove-network');
+    this.saveWalletState('remove-network', true);
   }
 
   private async clearSlip44VaultState(slip44: number): Promise<void> {
@@ -2497,7 +2478,7 @@ class MainController {
     );
 
     // Save wallet state after importing account from private key
-    this.saveWalletState('import-account-private-key');
+    this.saveWalletState('import-account-private-key', true);
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing private key
@@ -2536,7 +2517,7 @@ class MainController {
     );
 
     // Save wallet state after importing Trezor account
-    this.saveWalletState('import-account-trezor');
+    this.saveWalletState('import-account-trezor', true);
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Trezor account
@@ -2576,7 +2557,7 @@ class MainController {
     );
 
     // Save wallet state after importing Ledger account
-    this.saveWalletState('import-account-ledger');
+    this.saveWalletState('import-account-ledger', true);
 
     setTimeout(() => {
       this.getLatestUpdateForCurrentAccount(false, true); // Force update after importing Ledger account
@@ -4124,20 +4105,20 @@ class MainController {
     return this.assetsManager.sys.getAssetCached(networkUrl, assetGuid);
   }
 
-  public async saveTokenInfo(token: any, tokenType?: string) {
+  public async saveTokenInfo(token: any) {
     const { isBitcoinBased } = store.getState().vault;
     let result;
 
     // Handle Ethereum tokens
     if (!isBitcoinBased || token.contractAddress) {
-      result = await this.account.eth.saveTokenInfo(token, tokenType);
+      result = await this.account.eth.saveTokenInfo(token);
     } else {
       // Handle Syscoin tokens
       result = await this.account.sys.saveTokenInfo(token);
     }
 
     // Save wallet state after adding token
-    this.saveWalletState('add-token');
+    this.saveWalletState('add-token', true);
 
     return result;
   }
@@ -4162,7 +4143,7 @@ class MainController {
     }
 
     // Save wallet state after deleting token
-    this.saveWalletState('delete-token');
+    this.saveWalletState('delete-token', true);
 
     return result;
   }

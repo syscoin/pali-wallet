@@ -111,7 +111,6 @@
     "editConnection": "연결 편집",
     "deleteConnected": "연결된 사이트 삭제",
     "permissions": "권한",
-    "viewTheAddresses": "허용된 계정의 주소 보기",
     "errorCreatingHardWallet": "하드웨어 지갑 생성 오류.",
     "noDeviceSelected": "선택된 장치가 없습니다. 연결할 장치를 선택해주세요.",
     "hardwareWallet": "하드웨어 지갑 연결",

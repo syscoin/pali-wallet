@@ -111,7 +111,6 @@
     "editConnection": "Verbindung bearbeiten",
     "deleteConnected": "Verbundene Seite löschen",
     "permissions": "Berechtigungen",
-    "viewTheAddresses": "Die Adressen Ihrer zugelassenen Konten anzeigen",
     "errorCreatingHardWallet": "Fehler beim Erstellen der Hardware-Wallet.",
     "noDeviceSelected": "Kein Gerät ausgewählt. Bitte wählen Sie ein Gerät zum Verbinden.",
     "hardwareWallet": "HARDWARE-WALLET VERBINDEN",

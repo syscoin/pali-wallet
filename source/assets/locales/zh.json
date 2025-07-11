@@ -111,7 +111,6 @@
     "editConnection": "编辑连接",
     "deleteConnected": "删除已连接的网站",
     "permissions": "权限",
-    "viewTheAddresses": "查看您允许账户的地址",
     "errorCreatingHardWallet": "创建硬件钱包时出错。",
     "noDeviceSelected": "未选择设备。请选择要连接的设备。",
     "hardwareWallet": "连接硬件钱包",

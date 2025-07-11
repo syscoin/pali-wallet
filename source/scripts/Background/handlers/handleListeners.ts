@@ -19,9 +19,6 @@ let messageListener:
     ) => void)
   | null = null;
 
-// Store popup state
-let isPopupCurrentlyOpen = false;
-
 // Export for testing
 export const resetListenersFlag = () => {
   listenersInitialized = false;
@@ -102,7 +99,18 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // Create and store message listener
   messageListener = (message, sender, sendResponse) => {
-    const { type, data, action } = message || {};
+    // EMERGENCY FIX: Stop message loops immediately
+    if (!message || typeof message !== 'object') {
+      return false; // Silently drop malformed messages
+    }
+
+    const { type, data, action } = message;
+
+    // EMERGENCY FIX: Drop all messages without types to prevent loops
+    if (!type) {
+      return false; // Silently drop malformed messages
+    }
+
     const { hasEthProperty } = store.getState().vaultGlobal;
 
     // Let specialized handlers handle their message types
@@ -117,49 +125,6 @@ export const handleListeners = (masterController: IMasterController) => {
       type === 'IS_UNLOCKED'
     ) {
       return false; // Let other listeners handle these
-    }
-
-    // Handle isPopupOpen check
-    if (type === 'isPopupOpen') {
-      // For MV3, we'll use the port connection state or chrome.runtime.getContexts if available
-      if (
-        'getContexts' in chrome.runtime &&
-        typeof chrome.runtime.getContexts === 'function'
-      ) {
-        // Chrome 116+ - use the new API
-        (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
-          const popupOpen = contexts.some((ctx) => ctx.contextType === 'POPUP');
-          sendResponse(popupOpen);
-        });
-      } else {
-        // Fallback to port-based tracking
-        sendResponse(isPopupCurrentlyOpen);
-      }
-      return true; // Indicate async response was sent
-    }
-
-    // Handle malformed messages - only warn for messages that should have types
-    if (!type && message && Object.keys(message).length > 0) {
-      // Only log if the message has content but no type
-      // Skip empty or undefined messages to reduce noise
-      if (
-        data ||
-        action ||
-        (message &&
-          typeof message === 'object' &&
-          Object.keys(message).some((key) => key !== 'type'))
-      ) {
-        console.warn('[Background] Received message with undefined type:', {
-          message: message,
-          sender: sender?.url || 'unknown',
-        });
-      }
-      return false;
-    }
-
-    // Skip processing if no type
-    if (!type) {
-      return false;
     }
 
     switch (type) {
@@ -183,18 +148,12 @@ export const handleListeners = (masterController: IMasterController) => {
           console.error('Error in startPolling:', pollError)
         );
         return false; // Synchronous, no response needed
-      case 'getCurrentState':
-        sendResponse({ data: store.getState() });
-        return true; // Indicate async response
+      // getCurrentState removed - background script automatically broadcasts state changes
       default:
-        // Only log unhandled messages that have meaningful content
-        if (type && type !== '') {
-          console.log('[Background] Unhandled message type:', type);
-        }
-        return false; // Let other listeners handle this message
+        // Silently drop unknown message types to prevent spam
+        return false;
     }
 
-    // If we get here without returning, return false
     return false;
   };
 
@@ -205,13 +164,11 @@ export const handleListeners = (masterController: IMasterController) => {
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name === 'popup-connection') {
       console.log('[Background] 🔌 Popup connected via port');
-      isPopupCurrentlyOpen = true;
 
       port.onDisconnect.addListener(() => {
         console.log(
           '[Background] 🔌 Popup disconnected, triggering emergency save...'
         );
-        isPopupCurrentlyOpen = false;
 
         // Trigger emergency save when popup closes
         vaultCache

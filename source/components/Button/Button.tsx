@@ -164,6 +164,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   loading = false,
   onClick,
   type,
+  width = '36',
 }) => {
   const closeIcon = (
     <Icon
@@ -176,7 +177,7 @@ export const SecondaryButton: React.FC<IPrimaryButton> = ({
   return (
     <button
       className={`
-      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-36 h-10 text-brand-white
+      flex justify-center rounded-full gap-x-2 items-center font-bold tracking-normal text-sm leading-4 w-${width} h-10 text-brand-white
       ${
         disabled || loading
           ? 'opacity-60 cursor-not-allowed'

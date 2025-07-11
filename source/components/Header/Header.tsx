@@ -66,6 +66,7 @@ export const Header: React.FC<IHeader> = ({ accountHeader = false }) => {
   const handleDisconnectFromDapp = () => {
     controllerEmitter(['dapp', 'disconnect'], [host]);
     controllerEmitter(['wallet', 'resolveAccountConflict']);
+    controllerEmitter(['wallet', 'saveCurrentState'], ['header-disconnect']);
   };
   const handleChangeConnectedAccount = () => {
     controllerEmitter(

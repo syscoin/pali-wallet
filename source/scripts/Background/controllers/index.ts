@@ -231,6 +231,24 @@ const MasterController = (
             if (chrome.runtime.lastError) {
               reject(chrome.runtime.lastError);
             } else {
+              // Set storage flag with timestamp when popup is created
+              chrome.storage.local.set({
+                'pali-popup-open': true,
+                'pali-popup-timestamp': Date.now(),
+              });
+
+              // Listen for window close to clear flag and timestamp
+              const handleWindowClose = (windowId: number) => {
+                if (windowId === newWindow!.id) {
+                  chrome.storage.local.remove([
+                    'pali-popup-open',
+                    'pali-popup-timestamp',
+                  ]);
+                  chrome.windows.onRemoved.removeListener(handleWindowClose);
+                }
+              };
+
+              chrome.windows.onRemoved.addListener(handleWindowClose);
               resolve(newWindow!);
             }
           }
