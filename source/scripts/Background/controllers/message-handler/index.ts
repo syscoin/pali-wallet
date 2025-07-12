@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
-import { getController } from 'scripts/Background';
+import { getController, getIsReady } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { getNetworkChain } from 'utils/network';
@@ -32,6 +32,8 @@ const _messageHandler = (host: string, message: Message) => {
       return methodRequest(host, message.data);
     case 'IS_UNLOCKED':
       return isUnlocked();
+    case 'ping':
+      return { ready: getIsReady() };
     default:
       throw cleanErrorStack(ethErrors.rpc.methodNotFound(message));
   }
@@ -44,9 +46,26 @@ export const onMessage = async (
   message: any,
   sender: chrome.runtime.MessageSender
 ) => {
+  // Helper function to send error response
+  const sendErrorResponse = (errorMessage: string) => {
+    if (sender?.tab?.id) {
+      chrome.tabs.sendMessage(sender.tab.id, {
+        id: message.id,
+        data: {
+          error: {
+            message: errorMessage,
+            code: -32603,
+          },
+        },
+      });
+    }
+  };
+
+  // 🔥 FIX: Always send response, even for validation failures
   // Validate sender URL before attempting to construct URL object
   if (!sender?.url) {
     console.warn('[Background] Message received with no sender URL:', sender);
+    sendErrorResponse('Invalid sender URL');
     return;
   }
 
@@ -56,22 +75,42 @@ export const onMessage = async (
     host = url.host;
   } catch (error) {
     console.warn('[Background] Invalid URL from sender:', sender.url, error);
+    sendErrorResponse('Invalid sender URL format');
     return;
   }
 
-  if (!sender?.tab?.id) return;
+  if (!sender?.tab?.id) {
+    console.warn('[Background] Message received with no tab ID:', sender);
+    sendErrorResponse('Invalid sender tab');
+    return;
+  }
 
   try {
     const response = await _messageHandler(host, message);
-    if (response === undefined) return;
+    // 🔥 FIX: Send response even if undefined - content script expects a response
     await chrome.tabs.sendMessage(sender.tab.id, {
       id: message.id,
-      data: response,
+      data: response !== undefined ? response : null,
     });
   } catch (error: any) {
+    // 🔥 FIX: Extract error message from nested structure
+    let errorMessage = 'Unknown error';
+    if (error?.data?.message) {
+      errorMessage = error.data.message;
+    } else if (error?.error?.message) {
+      errorMessage = error.error.message;
+    } else if (error?.message) {
+      errorMessage = error.message;
+    }
+
     await chrome.tabs.sendMessage(sender.tab.id, {
       id: message.id,
-      data: { error },
+      data: {
+        error: {
+          message: errorMessage,
+          code: -32603,
+        },
+      },
     });
   }
 };

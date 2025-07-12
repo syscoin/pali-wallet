@@ -27,15 +27,6 @@ declare global {
 let MasterControllerInstance = {} as IMasterController;
 let isReady = false;
 
-// Handle ping messages immediately
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'ping') {
-    sendResponse({ ready: isReady });
-    return false; // Synchronous response
-  }
-  return false; // Let other handlers process non-ping messages
-});
-
 console.log('[Background] Initializing controller...');
 
 // Start offscreen preload IMMEDIATELY - don't wait for controller
@@ -68,6 +59,7 @@ handleMasterControllerInstance()
   });
 
 export const getController = () => MasterControllerInstance;
+export const getIsReady = () => isReady;
 export { notificationManager };
 
 // Removed keep-alive port listener - Chrome alarms handle critical functions
