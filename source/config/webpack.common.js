@@ -135,7 +135,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'app.html'),
       inject: 'body',
-      chunks: ['vendor', 'sysweb3', 'pali', 'app'],
+      chunks: ['vendor', 'sysweb3', 'app'],
       hash: true,
       filename: 'app.html',
       minify: {
@@ -147,7 +147,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'offscreen.html'),
       inject: 'body',
-      chunks: ['vendor', 'sysweb3', 'pali', 'app'],
+      chunks: ['vendor', 'sysweb3', 'app'],
       hash: true,
       filename: 'offscreen.html',
       minify: {
@@ -159,7 +159,7 @@ module.exports = {
     new HtmlWebpackPlugin({
       template: join(viewsPath, 'external.html'),
       inject: 'body',
-      chunks: ['vendor', 'sysweb3', 'pali', 'external'],
+      chunks: ['vendor', 'sysweb3', 'external'],
       hash: true,
       filename: 'external.html',
       minify: {
@@ -222,10 +222,9 @@ module.exports = {
   optimization: {
     splitChunks: {
       chunks(chunk) {
-        // Only split chunks for app and external, NOT background
+        // Only split chunks for app and external, NOT background, contentScript, inpage, pali, or handleWindowProperties
         return (
           chunk.name === 'app' ||
-          chunk.name === 'pali' ||
           chunk.name === 'vendor' ||
           chunk.name === 'sysweb3' ||
           chunk.name === 'external'

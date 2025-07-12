@@ -72,12 +72,15 @@ export class PaliInpageProviderSys extends BaseProvider {
 
         this._initializeState(initialState);
       })
-      .catch((error) =>
+      .catch((error) => {
         console.error(
           'Pali: Failed to get initial state. Please report this bug.',
           error
-        )
-      )
+        );
+        // Even if we fail to get initial state, mark as initialized
+        // This allows the provider to function with default state
+        this._initializeState();
+      })
       .finally(() => {
         this._isInitializing = false;
         // Reset the promise to null to allow re-initialization if needed

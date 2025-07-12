@@ -54,7 +54,6 @@ export class PaliInpageProviderEth extends BaseProvider {
   };
   protected _state: EthereumProviderState;
   public readonly isMetaMask: boolean = true;
-  private _isInitializing = false;
   private _initializationPromise: Promise<void> | null = null;
 
   constructor(maxEventListeners = 100, wallet = 'pali-v2') {
@@ -88,10 +87,9 @@ export class PaliInpageProviderEth extends BaseProvider {
       return this._initializationPromise;
     }
 
-    this._isInitializing = true;
-
     this._initializationPromise = (async () => {
       try {
+        // 🔥 FIX: Try getSysProviderState first (works on all networks)
         const syscoinState = await this.request({
           method: 'wallet_getSysProviderState',
         });
@@ -109,16 +107,17 @@ export class PaliInpageProviderEth extends BaseProvider {
             return;
           }
 
+          // If not Bitcoin-based, initialize Ethereum provider
           return this._initializeEthereumProvider();
         }
       } catch (sysError) {
         console.log(
-          'Syscoin provider state call failed, this might be an EVM network:',
+          'getSysProviderState failed, trying getProviderState:',
           sysError.message
         );
 
-        // Only proceed with EVM calls if we're confident this is an EVM network
-        // First check if we can get provider state without making actual RPC calls
+        // 🔥 FIX: Only try getProviderState if getSysProviderState fails
+        // This handles EVM networks properly
         try {
           const providerState = await this.request({
             method: 'wallet_getProviderState',
@@ -129,11 +128,16 @@ export class PaliInpageProviderEth extends BaseProvider {
             if (!isBitcoinBased) {
               console.log('EVM network confirmed via provider state');
               return this._initializeEthereumProvider();
+            } else {
+              console.log(
+                'Bitcoin network detected, not initializing Ethereum provider'
+              );
+              return;
             }
           }
         } catch (providerError) {
           console.log(
-            'Provider state call failed, network type unclear:',
+            'Both provider state calls failed, network type unclear:',
             providerError.message
           );
           // If both calls fail, we should still attempt to initialize as an EVM provider
@@ -149,7 +153,6 @@ export class PaliInpageProviderEth extends BaseProvider {
     try {
       await this._initializationPromise;
     } finally {
-      this._isInitializing = false;
       // Reset the promise to null to allow re-initialization if needed
       this._initializationPromise = null;
     }
