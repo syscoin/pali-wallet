@@ -7,11 +7,213 @@ import {
 
 const emitter = new EventEmitter();
 
+// Connection management
+let isBackgroundConnected = true;
+let lastConnectionAttempt = 0;
+const reconnectTimeout: NodeJS.Timeout | null = null;
+const CONNECTION_RETRY_DELAY = 1000; // 1 second
+const CONNECTION_CHECK_INTERVAL = 5000; // 5 seconds
+
+// Message retry system
+interface PendingMessage {
+  handleResponse?: (response: any) => void;
+  message: any;
+  retryCount: number;
+  timestamp: number;
+}
+
+const pendingMessages = new Map<string, PendingMessage>();
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 500; // 500ms
+
+/**
+ * Wake up the service worker by sending a ping message
+ */
+const wakeUpServiceWorker = (): Promise<boolean> =>
+  new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      resolve(false);
+    }, 1000); // 1 second timeout
+
+    chrome.runtime.sendMessage({ type: 'ping' }, (response) => {
+      clearTimeout(timeout);
+      // Capture error immediately to avoid race conditions
+      const currentError = chrome.runtime.lastError
+        ? { ...chrome.runtime.lastError }
+        : null;
+
+      if (currentError) {
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
+
+/**
+ * Check if background script is responsive
+ */
+const checkBackgroundConnection = async (): Promise<boolean> => {
+  try {
+    const isAwake = await wakeUpServiceWorker();
+    if (isAwake !== isBackgroundConnected) {
+      isBackgroundConnected = isAwake;
+      console.log(
+        `[ContentScript] Background connection: ${
+          isAwake ? 'restored' : 'lost'
+        }`
+      );
+    }
+    return isAwake;
+  } catch (error) {
+    isBackgroundConnected = false;
+    return false;
+  }
+};
+
+/**
+ * Retry a failed message with improved error detection
+ */
+const retryMessage = (messageId: string, delay: number = RETRY_DELAY) => {
+  setTimeout(async () => {
+    const pending = pendingMessages.get(messageId);
+    if (!pending) return;
+
+    // Only retry if we've confirmed the service worker was actually asleep
+    const isConnected = await checkBackgroundConnection();
+
+    if (!isConnected && pending.retryCount >= MAX_RETRIES) {
+      // Give up after max retries
+      pendingMessages.delete(messageId);
+      if (pending.handleResponse) {
+        pending.handleResponse({
+          error: {
+            message:
+              'Pali: Background script unavailable. Extension may need to be reloaded.',
+            code: -32603,
+          },
+        });
+      }
+      return;
+    }
+
+    if (isConnected) {
+      // Service worker is awake, retry the message
+      sendToBackgroundInternal(
+        messageId,
+        pending.message,
+        pending.handleResponse
+      );
+    } else {
+      // Service worker still not responsive, retry with exponential backoff
+      pending.retryCount++;
+      const nextDelay = Math.min(delay * 2, 5000); // Max 5 seconds
+      retryMessage(messageId, nextDelay);
+    }
+  }, delay);
+};
+
+/**
+ * Internal message sending with improved error handling
+ */
+const sendToBackgroundInternal = (
+  messageId: string,
+  message: any,
+  handleResponse?: (response: any) => void
+) => {
+  chrome.runtime.sendMessage(message, (response) => {
+    // Capture error immediately to avoid race conditions with other Chrome API calls
+    const currentError = chrome.runtime.lastError
+      ? { ...chrome.runtime.lastError }
+      : null;
+
+    if (currentError) {
+      const errorMessage = currentError.message || '';
+
+      // Check if this is likely a service worker sleep issue vs processing error
+      const isConnectionError =
+        errorMessage.includes('message port closed') ||
+        errorMessage.includes('Receiving end does not exist');
+
+      if (isConnectionError) {
+        isBackgroundConnected = false;
+        const pending = pendingMessages.get(messageId);
+
+        if (pending && pending.retryCount < MAX_RETRIES) {
+          console.warn(
+            `[ContentScript] Retrying message (attempt ${
+              pending.retryCount + 1
+            }/${MAX_RETRIES}) - ${errorMessage}`
+          );
+          pending.retryCount++;
+          retryMessage(messageId);
+          return;
+        }
+
+        // Max retries reached
+        console.error(
+          `[ContentScript] Message failed after ${MAX_RETRIES} retries:`,
+          currentError
+        );
+      } else {
+        // Not a connection error - likely processing timeout or other issue
+        console.error(
+          `[ContentScript] Message processing error (not retrying):`,
+          currentError
+        );
+      }
+
+      // Remove from pending messages
+      pendingMessages.delete(messageId);
+
+      // Rate-limit error logging to reduce spam
+      if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
+        console.error('Content script connection error:', currentError);
+        lastConnectionAttempt = Date.now();
+      }
+
+      // Call response handler with error
+      if (handleResponse) {
+        handleResponse({
+          error: {
+            message: `Pali: ${
+              isConnectionError
+                ? 'Background script temporarily unavailable'
+                : 'Message processing failed'
+            }.`,
+            code: -32603,
+          },
+        });
+      }
+      return;
+    }
+
+    // Success - remove from pending and call response handler
+    pendingMessages.delete(messageId);
+    isBackgroundConnected = true;
+
+    if (handleResponse) {
+      handleResponse(response);
+    }
+  });
+};
+
 const sendToBackground = (
   message: any,
   handleResponse?: (response: any) => void
 ) => {
-  chrome.runtime.sendMessage(message, handleResponse);
+  const messageId = `msg_${Date.now()}_${Math.random()}`;
+
+  // Store pending message for retry
+  pendingMessages.set(messageId, {
+    message,
+    handleResponse,
+    retryCount: 0,
+    timestamp: Date.now(),
+  });
+
+  // Send the message
+  sendToBackgroundInternal(messageId, message, handleResponse);
 };
 
 const handleEthInjection = (message: any) => {
@@ -27,22 +229,7 @@ const handleEthInjection = (message: any) => {
   }
 };
 
-// Use requestIdleCallback for truly non-blocking injection
-const checkInjectionStatus = () => {
-  sendToBackground(
-    { action: 'isInjected', type: 'pw-msg-background' },
-    (response) => {
-      handleEthInjection(response);
-    }
-  );
-};
-
-// Use requestIdleCallback if available, otherwise use setTimeout
-if ('requestIdleCallback' in window) {
-  (window as any).requestIdleCallback(checkInjectionStatus, { timeout: 100 });
-} else {
-  setTimeout(checkInjectionStatus, 0);
-}
+// Moved ethereum injection check after pali injection
 
 // Add listener for pali events
 const checkForPaliRegisterEvent = (id: any) => {
@@ -79,11 +266,21 @@ const start = () => {
       // listen for the response
       checkForPaliRegisterEvent(id);
 
-      sendToBackground({
-        id,
-        type,
-        data,
-      });
+      sendToBackground(
+        {
+          id,
+          type,
+          data,
+        },
+        (response) => {
+          // Handle response or error from background
+          if (response && response.error) {
+            // Emit error back to the page
+            emitter.emit(id, response);
+          }
+          // Normal responses are handled by backgroundMessageListener
+        }
+      );
     },
     false
   );
@@ -163,6 +360,8 @@ export const injectScriptFile = (file: string, id: string) => {
   try {
     const inpage = document.getElementById('inpage');
     const removeProperty = document.getElementById('removeProperty');
+    const pali = document.getElementById('pali-provider-script');
+
     switch (id) {
       case 'removeProperty':
         // remove inpage script for not inject the same thing many times
@@ -174,19 +373,27 @@ export const injectScriptFile = (file: string, id: string) => {
         if (inpage) inpage.remove();
         if (removeProperty) removeProperty.remove();
         break;
-      default:
+      case 'pali':
+        // remove existing pali script
+        if (pali) pali.remove();
+        // Also remove any old pali script with the old ID
+        const oldPali = document.getElementById('pali');
+        if (oldPali) oldPali.remove();
         break;
+      default:
+        if (!id) return;
     }
+
     const container = document.head || document.documentElement;
     const scriptTag = document.createElement('script');
-    scriptTag.src = file.includes('http') ? file : chrome.runtime.getURL(file);
-    scriptTag.setAttribute('id', id);
+    scriptTag.setAttribute('async', 'false');
+    scriptTag.setAttribute('id', id === 'pali' ? 'pali-provider-script' : id);
+    scriptTag.src = chrome.runtime.getURL(file);
 
-    // Make script load async to prevent render blocking
-    scriptTag.async = true;
     container.insertBefore(scriptTag, container.children[0]);
+    scriptTag.onload = () => scriptTag.remove();
   } catch (error) {
-    console.error('Pali Wallet: Provider injection failed.', error);
+    console.error('Provider injection failed.', error);
   }
 };
 
@@ -218,22 +425,64 @@ chrome.runtime.onMessage.addListener(backgroundMessageListener);
 // Cleanup on page unload (content script lifecycle)
 window.addEventListener('beforeunload', () => {
   chrome.runtime.onMessage.removeListener(backgroundMessageListener);
+
+  // Clear any pending messages and timeouts
+  pendingMessages.clear();
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+  }
 });
 
-// Initial setup - make non-blocking
-if (shouldInjectProvider()) {
-  // Use requestIdleCallback for truly non-blocking injection
-  const injectPali = () => {
-    // inject window.pali property in browser
-    injectScriptFile('js/pali.bundle.js', 'pali');
-  };
+// Periodic cleanup of old pending messages and connection health check
+setInterval(() => {
+  const now = Date.now();
+  const MESSAGE_TIMEOUT = 30000; // 30 seconds
 
-  // Inject when browser is idle, with a timeout fallback
-  if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(injectPali, { timeout: 200 });
-  } else {
-    setTimeout(injectPali, 0);
+  // Clean up old pending messages
+  for (const [messageId, pending] of pendingMessages.entries()) {
+    if (now - pending.timestamp > MESSAGE_TIMEOUT) {
+      pendingMessages.delete(messageId);
+      if (pending.handleResponse) {
+        pending.handleResponse({
+          error: {
+            message: 'Pali: Message timeout - background script may be busy.',
+            code: -32603,
+          },
+        });
+      }
+    }
   }
+
+  // Periodic connection health check (only if we think we're disconnected)
+  if (!isBackgroundConnected) {
+    checkBackgroundConnection().catch(() => {
+      // Ignore errors in health check
+    });
+  }
+}, 10000); // Every 10 seconds
+
+// Initial setup - inject providers immediately at document_start
+if (shouldInjectProvider()) {
+  // Always inject pali provider first
+  injectScriptFile('js/pali.bundle.js', 'pali');
+
+  // Then check if ethereum should be injected after a small delay
+  // This ensures pali is loaded before ethereum to avoid conflicts
+  setTimeout(() => {
+    sendToBackground(
+      { action: 'isInjected', type: 'pw-msg-background' },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn(
+            'Error checking ethereum injection status:',
+            chrome.runtime.lastError
+          );
+          return;
+        }
+        handleEthInjection(response);
+      }
+    );
+  }, 10); // Small delay to ensure pali loads first
 }
 
 start();
