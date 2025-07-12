@@ -33,7 +33,7 @@ const wakeUpServiceWorker = (): Promise<boolean> =>
   new Promise((resolve) => {
     const timeout = setTimeout(() => {
       resolve(false);
-    }, 1000); // 1 second timeout
+    }, 10000); // 10 second timeout
 
     chrome.runtime.sendMessage({ type: 'ping' }, (response) => {
       clearTimeout(timeout);
@@ -140,11 +140,6 @@ const sendToBackgroundInternal = (
         const pending = pendingMessages.get(messageId);
 
         if (pending && pending.retryCount < MAX_RETRIES) {
-          console.warn(
-            `[ContentScript] Retrying message (attempt ${
-              pending.retryCount + 1
-            }/${MAX_RETRIES}) - ${errorMessage}`
-          );
           pending.retryCount++;
           retryMessage(messageId);
           return;
