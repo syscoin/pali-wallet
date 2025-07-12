@@ -26,6 +26,11 @@ interface IDappsSession {
  */
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
+
+  // 🔥 FIX: Register message handler immediately, not in setup()
+  // This prevents race conditions where METHOD_REQUEST comes before setup() is called
+  chrome.runtime.onMessage.addListener(onMessage);
+
   const isConnected = (host: string) => {
     const { dapps } = store.getState().dapp;
 
@@ -42,8 +47,6 @@ const DAppController = (): IDAppController => {
       activeAddress: activeAccount ? activeAccount : null,
       hasWindow: false,
     };
-
-    chrome.runtime.onMessage.addListener(onMessage);
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
