@@ -63,6 +63,19 @@ export class BaseProvider extends EventEmitter {
     timestamp?: number;
   } = {};
   private static readonly CACHE_TTL = 5000; // 5 seconds cache
+
+  // Enhanced caching for provider state
+  private _providerStateCache: {
+    data?: any;
+    isValid?: boolean;
+    timestamp?: number;
+  } = {};
+  private static readonly PROVIDER_STATE_CACHE_TTL = 10000; // 10 seconds cache for provider state
+  private static readonly CONNECTION_ERROR_CACHE_TTL = 2000; // 2 seconds cache for connection errors
+
+  // Connection state tracking
+  private _isBackgroundConnected = true;
+  private _lastConnectionError = 0;
   protected _sentWarnings: SentWarningsState = {
     // methods
     enable: false,
@@ -100,9 +113,18 @@ export class BaseProvider extends EventEmitter {
   private _setupNetworkChangeListener(): void {
     // Listen for chainChanged events which are emitted when network changes
     this.on('chainChanged', () => {
-      // Clear the network state cache when network changes
+      // Clear both network state cache and provider state cache when network changes
       this._networkStateCache = {};
-      console.log('[BaseProvider] Network changed, cache cleared');
+      this._providerStateCache = { isValid: false };
+      console.log('[BaseProvider] Network changed, caches cleared');
+    });
+
+    // Also listen for disconnect events to invalidate caches
+    this.on('disconnect', () => {
+      this._providerStateCache = { isValid: false };
+      this._isBackgroundConnected = false;
+      this._lastConnectionError = Date.now();
+      console.log('[BaseProvider] Disconnected, caches invalidated');
     });
   }
 
@@ -126,47 +148,61 @@ export class BaseProvider extends EventEmitter {
       return this._networkStateCache.isBitcoinBased;
     }
 
+    // 🔥 FIX: Try getSysProviderState first (works on all networks)
+    // If it fails, then try getProviderState (EVM only)
     try {
-      // Try to get provider state to determine network type
-      const providerState = (await this.proxy('METHOD_REQUEST', {
-        method: 'wallet_getProviderState',
+      const sysProviderState = (await this.proxy('METHOD_REQUEST', {
+        method: 'wallet_getSysProviderState',
         params: [],
       })) as any;
 
-      if (providerState && typeof providerState.isBitcoinBased === 'boolean') {
+      if (
+        sysProviderState &&
+        typeof sysProviderState.isBitcoinBased === 'boolean'
+      ) {
         // Update cache
         this._networkStateCache = {
-          isBitcoinBased: providerState.isBitcoinBased,
+          isBitcoinBased: sysProviderState.isBitcoinBased,
           timestamp: now,
         };
-        return providerState.isBitcoinBased;
+        return sysProviderState.isBitcoinBased;
       }
-    } catch (error) {
-      // If getProviderState fails, try getSysProviderState
+    } catch (sysError) {
+      // If getSysProviderState fails, try getProviderState (EVM networks)
       try {
-        const sysProviderState = (await this.proxy('METHOD_REQUEST', {
-          method: 'wallet_getSysProviderState',
+        const providerState = (await this.proxy('METHOD_REQUEST', {
+          method: 'wallet_getProviderState',
           params: [],
         })) as any;
 
         if (
-          sysProviderState &&
-          typeof sysProviderState.isBitcoinBased === 'boolean'
+          providerState &&
+          typeof providerState.isBitcoinBased === 'boolean'
         ) {
           // Update cache
           this._networkStateCache = {
-            isBitcoinBased: sysProviderState.isBitcoinBased,
+            isBitcoinBased: providerState.isBitcoinBased,
             timestamp: now,
           };
-          return sysProviderState.isBitcoinBased;
+          return providerState.isBitcoinBased;
         }
-      } catch (sysError) {
-        console.warn('Failed to determine network type:', sysError);
+      } catch (providerError) {
+        console.warn('Failed to determine network type:', providerError);
       }
     }
 
-    // Default to false (EVM) if we can't determine
-    return false;
+    // Default based on the provider type
+    // If this is a Syscoin provider, default to bitcoin-based (true)
+    // If this is an Ethereum provider, default to EVM (false)
+    const defaultValue = this.chainType === INetworkType.Syscoin;
+
+    // Cache the default value to avoid repeated failures
+    this._networkStateCache = {
+      isBitcoinBased: defaultValue,
+      timestamp: now,
+    };
+
+    return defaultValue;
   }
 
   /**
@@ -320,30 +356,115 @@ export class BaseProvider extends EventEmitter {
     data: UnvalidatedJsonRpcRequest | EnableLegacyPali
   ) =>
     new Promise((resolve, reject) => {
+      const now = Date.now();
+
+      // Check cache for provider state requests
+      if (data && typeof data === 'object' && 'method' in data) {
+        const method = data.method;
+
+        // Cache provider state calls
+        if (
+          method === 'wallet_getProviderState' ||
+          method === 'wallet_getSysProviderState'
+        ) {
+          if (
+            this._providerStateCache.data &&
+            this._providerStateCache.timestamp &&
+            this._providerStateCache.isValid &&
+            now - this._providerStateCache.timestamp <
+              BaseProvider.PROVIDER_STATE_CACHE_TTL
+          ) {
+            console.log(`[BaseProvider] Returning cached ${method} response`);
+            resolve(this._providerStateCache.data);
+            return;
+          }
+        }
+
+        // Rate limit requests if we recently had connection errors
+        if (
+          !this._isBackgroundConnected &&
+          now - this._lastConnectionError <
+            BaseProvider.CONNECTION_ERROR_CACHE_TTL
+        ) {
+          reject({
+            message: 'Pali: Background connection temporarily unavailable',
+            code: -32603,
+          });
+          return;
+        }
+      }
+
       const id = Date.now() + '.' + Math.random();
 
-      window.addEventListener(
-        id,
-        (event: any) => {
-          if (event.detail === undefined) {
-            resolve(undefined);
-            return;
-          } else if (event.detail === null) {
-            resolve(null);
-            return;
+      const handleResponse = (event: any) => {
+        if (event.detail === undefined) {
+          resolve(undefined);
+          return;
+        } else if (event.detail === null) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const response = JSON.parse(event.detail);
+
+          // Track connection success
+          this._isBackgroundConnected = true;
+
+          // Cache successful provider state responses
+          if (data && typeof data === 'object' && 'method' in data) {
+            const method = data.method;
+            if (
+              (method === 'wallet_getProviderState' ||
+                method === 'wallet_getSysProviderState') &&
+              !response.error
+            ) {
+              this._providerStateCache = {
+                data: response,
+                timestamp: now,
+                isValid: true,
+              };
+            }
           }
 
-          const response = JSON.parse(event.detail);
           if (response.error) {
+            // Handle specific error types
+            if (
+              response.error.message &&
+              (response.error.message.includes('Background script') ||
+                response.error.message.includes('temporarily unavailable'))
+            ) {
+              this._isBackgroundConnected = false;
+              this._lastConnectionError = now;
+            }
             reject(response.error);
+          } else {
+            resolve(response);
           }
-          resolve(response);
-        },
-        {
-          once: true,
-          passive: true,
+        } catch (parseError) {
+          reject({
+            message: 'Failed to parse response from background script',
+            code: -32700,
+          });
         }
-      );
+      };
+
+      window.addEventListener(id, handleResponse, {
+        once: true,
+        passive: true,
+      });
+
+      // Add timeout for requests
+      const timeout = setTimeout(() => {
+        window.removeEventListener(id, handleResponse);
+        this._isBackgroundConnected = false;
+        this._lastConnectionError = now;
+        reject({
+          message: 'Request timeout - background script may be busy',
+          code: -32603,
+        });
+      }, 10000); // 10 second timeout
+
       window.postMessage(
         {
           id,
@@ -352,5 +473,18 @@ export class BaseProvider extends EventEmitter {
         },
         '*'
       );
+
+      // Clear timeout if response comes back
+      const originalHandler = handleResponse;
+      const timeoutHandler = (event: any) => {
+        clearTimeout(timeout);
+        originalHandler(event);
+      };
+
+      window.removeEventListener(id, handleResponse);
+      window.addEventListener(id, timeoutHandler, {
+        once: true,
+        passive: true,
+      });
     });
 }
