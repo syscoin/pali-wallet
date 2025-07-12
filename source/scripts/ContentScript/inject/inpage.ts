@@ -14,13 +14,37 @@ declare global {
     ethereum: Readonly<any>;
   }
 }
+
 const ethereumProvider = new PaliInpageProviderEth();
 const proxiedProvider = new Proxy(ethereumProvider, {
   // some common libraries, e.g. web3@1.x, mess with our API
   deleteProperty: () => true,
 });
-window.ethereum = proxiedProvider;
 
+// Check if MetaMask or another wallet is already present
+const existingEthereum = window.ethereum;
+const isMetaMaskPresent =
+  existingEthereum &&
+  (existingEthereum.isMetaMask || existingEthereum._metamask);
+
+if (isMetaMaskPresent) {
+  console.log('[Pali] MetaMask detected, using EIP-6963 for coexistence');
+
+  // Store reference to MetaMask for potential fallback
+  (window as any)._metamask_ethereum = existingEthereum;
+
+  // For bridges that check wallet.ethereum specifically,
+  // we still set window.ethereum but preserve MetaMask access
+  window.ethereum = proxiedProvider;
+
+  // Also preserve MetaMask under its own namespace
+  (window as any).metamask = existingEthereum;
+} else {
+  console.log('[Pali] No MetaMask detected, setting as primary provider');
+  window.ethereum = proxiedProvider;
+}
+
+// Always announce via EIP-6963 for modern dApps
 window.addEventListener('eip6963:requestProvider', () => {
   announceProvider(proxiedProvider, uuidv4());
 });
