@@ -4,11 +4,10 @@ import { ethErrors } from 'helpers/errors';
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
+import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
-import {
-  blockingRestrictedMethods,
-  unrestrictedMethods,
-} from 'scripts/Background/controllers/message-handler/types';
+import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
+import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -45,7 +44,7 @@ export const EthProvider = (host: string) => {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
-        route: 'tx/send/ethTx',
+        route: MethodRoute.SendEthTx,
         eventName: 'txSend',
       });
       return resp;
@@ -56,7 +55,7 @@ export const EthProvider = (host: string) => {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
-        route: 'tx/send/nTokenTx',
+        route: MethodRoute.SendNTokenTx,
         eventName: 'nTokenTx',
       });
 
@@ -70,7 +69,7 @@ export const EthProvider = (host: string) => {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
-        route: 'tx/send/nTokenTx',
+        route: MethodRoute.SendNTokenTx,
         eventName: 'nTokenTx',
       });
 
@@ -81,7 +80,7 @@ export const EthProvider = (host: string) => {
       const resp = await popupPromise({
         host,
         data: { tx, decodedTx, external: true },
-        route: 'tx/send/approve',
+        route: MethodRoute.SendApprove,
         eventName: 'txApprove',
       });
       return resp;
@@ -95,7 +94,7 @@ export const EthProvider = (host: string) => {
     const resp = await popupPromise({
       host,
       data,
-      route: 'tx/ethSign',
+      route: MethodRoute.EthSign,
       eventName: 'eth_sign',
     });
     return resp;
@@ -108,7 +107,7 @@ export const EthProvider = (host: string) => {
     const resp = await popupPromise({
       host,
       data,
-      route: 'tx/ethSign',
+      route: MethodRoute.EthSign,
       eventName: 'personal_sign',
     });
     return resp;
@@ -118,7 +117,7 @@ export const EthProvider = (host: string) => {
     return popupPromise({
       host,
       data,
-      route: 'tx/ethSign',
+      route: MethodRoute.EthSign,
       eventName: 'eth_signTypedData',
     });
   };
@@ -129,7 +128,7 @@ export const EthProvider = (host: string) => {
     return popupPromise({
       host,
       data,
-      route: 'tx/ethSign',
+      route: MethodRoute.EthSign,
       eventName: 'eth_signTypedData_v3',
     });
   };
@@ -140,7 +139,7 @@ export const EthProvider = (host: string) => {
     return popupPromise({
       host,
       data,
-      route: 'tx/ethSign',
+      route: MethodRoute.EthSign,
       eventName: 'eth_signTypedData_v4',
     });
   };
@@ -150,7 +149,7 @@ export const EthProvider = (host: string) => {
     return popupPromise({
       host,
       data,
-      route: 'tx/encryptKey',
+      route: MethodRoute.EncryptKey,
       eventName: 'eth_getEncryptionPublicKey',
     });
   };
@@ -161,8 +160,45 @@ export const EthProvider = (host: string) => {
     return popupPromise({
       host,
       data,
-      route: 'tx/decrypt',
+      route: MethodRoute.DecryptKey,
       eventName: 'eth_decrypt',
+    });
+  };
+
+  const changeUTXOEVM = async (params: any[]) => {
+    // Handle network type switching for bridges
+    // Extract chainId and network type from params
+    const chainId = params?.[0]?.chainId || params?.[0];
+    const prefix = params?.[0]?.prefix || 'sys'; // Default to switching to UTXO
+
+    if (!chainId) {
+      throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
+    }
+
+    // Get the network configuration
+    const { vaultGlobal } = store.getState();
+    const { networks } = vaultGlobal;
+    const newChainValue =
+      prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';
+    const targetNetwork = networks[newChainValue]?.[chainId];
+
+    if (!targetNetwork) {
+      throw cleanErrorStack(
+        ethErrors.provider.custom({
+          code: 4902,
+          message: `Network with chainId ${chainId} not found for ${newChainValue}`,
+        })
+      );
+    }
+
+    return popupPromise({
+      host,
+      route: MethodRoute.SwitchUtxoEvm,
+      eventName: 'change_UTXOEVM',
+      data: {
+        newNetwork: targetNetwork,
+        newChainValue: newChainValue,
+      },
     });
   };
 
@@ -182,7 +218,8 @@ export const EthProvider = (host: string) => {
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
-    if (!unrestrictedMethods.find((el) => el === method)) return false;
+    const unrestrictedMethods = getUnrestrictedMethods();
+    if (!unrestrictedMethods.includes(method)) return false;
     const { ethereumTransaction } = getController().wallet;
 
     // Safety check: ensure web3Provider exists for EVM networks
@@ -202,9 +239,6 @@ export const EthProvider = (host: string) => {
       console.error({ error });
     }
   };
-
-  const checkIsBlocking = (method: string) =>
-    blockingRestrictedMethods.find((el) => el === method);
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
     const { ethereumTransaction } = getController().wallet;
@@ -232,21 +266,15 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
-        // Additional safety check for contentScriptWeb3Provider
-        if (!ethereumTransaction?.contentScriptWeb3Provider) {
-          throw cleanErrorStack(
-            ethErrors.provider.unauthorized(
-              'EthProvider methods are not available on UTXO networks'
-            )
-          );
-        }
-        return await ethereumTransaction.contentScriptWeb3Provider._getAddress(
+        return await ethereumTransaction.web3Provider.getAddress(
           ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );
       case 'eth_getEncryptionPublicKey':
         return await getEncryptionPubKey(params[0]);
       case 'eth_decrypt':
         return await decryptMessage(params);
+      case 'eth_changeUTXOEVM':
+        return await changeUTXOEVM(params);
       default:
         try {
           const requestResult = await ethereumTransaction.web3Provider.send(
@@ -270,7 +298,7 @@ export const EthProvider = (host: string) => {
     signTypedDataV3,
     signTypedDataV4,
     unrestrictedRPCMethods,
-    checkIsBlocking,
     restrictedRPCMethods,
+    changeUTXOEVM,
   };
 };

@@ -22,6 +22,7 @@ import {
   Tooltip,
   IconButton,
 } from 'components/index';
+import { TokenIcon } from 'components/TokenIcon';
 import trustedApps from 'constants/trustedApps.json';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -58,6 +59,78 @@ const AccountIcon = React.memo(
   }
 );
 AccountIcon.displayName = 'AccountIcon';
+
+// Component to render overlapping token icons like MetaMask
+const TokenIconStack = React.memo(
+  ({ tokens, maxVisible = 3 }: { maxVisible?: number; tokens: any[] }) => {
+    if (!tokens || tokens.length === 0) return null;
+
+    // Create a function to generate a unique key for visual deduplication
+    const getVisualKey = (token: any) => {
+      // If token has a logo, use that as the key
+      if (token.logo) return `logo:${token.logo}`;
+      // If token has a symbol, use that (since fallback will show symbol initial)
+      if (token.symbol) return `symbol:${token.symbol.charAt(0).toUpperCase()}`;
+      // Fallback to contract address or asset guid
+      return `address:${token.contractAddress || token.assetGuid}`;
+    };
+
+    // Deduplicate tokens by their visual appearance
+    const uniqueTokens = tokens.reduce((acc: any[], token: any) => {
+      const visualKey = getVisualKey(token);
+      const exists = acc.some((t) => getVisualKey(t) === visualKey);
+      if (!exists) {
+        acc.push(token);
+      }
+      return acc;
+    }, []);
+
+    // Prioritize tokens with actual logos
+    const sortedTokens = uniqueTokens.sort((a, b) => {
+      const aHasLogo = !!a.logo;
+      const bHasLogo = !!b.logo;
+      if (aHasLogo && !bHasLogo) return -1;
+      if (!aHasLogo && bHasLogo) return 1;
+      return 0;
+    });
+
+    const visibleTokens = sortedTokens.slice(0, maxVisible);
+    const uniqueCount = uniqueTokens.length;
+    const remainingCount = uniqueCount - visibleTokens.length;
+
+    return (
+      <div className="flex items-center">
+        <div className="flex">
+          {visibleTokens.map((token, index) => (
+            <div
+              key={token.contractAddress || token.assetGuid || index}
+              className="relative"
+              style={{
+                marginLeft: index > 0 ? '-8px' : '0',
+                zIndex: visibleTokens.length - index,
+              }}
+            >
+              <TokenIcon
+                logo={token.logo}
+                contractAddress={token.contractAddress}
+                assetGuid={token.assetGuid}
+                symbol={token.symbol}
+                size={16}
+                className="border border-bkg-3 rounded-full"
+              />
+            </div>
+          ))}
+        </div>
+        {remainingCount > 0 && (
+          <span className="ml-1 text-[10px] text-brand-royalblue">
+            +{remainingCount}
+          </span>
+        )}
+      </div>
+    );
+  }
+);
+TokenIconStack.displayName = 'TokenIconStack';
 
 export const ConnectWallet = () => {
   const { controllerEmitter } = useController();
@@ -102,16 +175,16 @@ export const ConnectWallet = () => {
       const fiatValue =
         nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
 
-      // Count tokens from accountAssets (excluding native currency)
+      // Get tokens from accountAssets (excluding native currency)
       const assets = accountAssets[accType]?.[account.id];
       const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
-      const tokenCount = Array.isArray(allAssets)
+      const tokens = Array.isArray(allAssets)
         ? allAssets.filter(
             (asset: any) => asset.contractAddress && asset.balance > 0
-          ).length
-        : 0;
+          )
+        : [];
 
-      return { balance: formattedBalance, fiatValue, tokenCount };
+      return { balance: formattedBalance, fiatValue, tokens };
     },
     [accountAssets, isBitcoinBased, getFiatAmount]
   );
@@ -269,7 +342,7 @@ export const ConnectWallet = () => {
                         {keyringAccounts.map((acc) => {
                           const isSelected =
                             acc.id === accountId && accountType === keyringType;
-                          const { balance, fiatValue, tokenCount } =
+                          const { balance, fiatValue, tokens } =
                             getAccountBalance(acc, keyringType);
 
                           return (
@@ -299,12 +372,12 @@ export const ConnectWallet = () => {
                                 }
                               }}
                             >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
+                              <div className="flex items-center justify-between gap-2 w-full">
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
                                   <div className="relative">
                                     <AccountIcon account={acc} size={40} />
                                   </div>
-                                  <div className="flex-1 min-w-0 pr-3">
+                                  <div className="flex-1 min-w-0 pr-2">
                                     <p className="font-medium text-sm text-brand-white mb-1 truncate">
                                       {acc.label}
                                     </p>
@@ -313,17 +386,17 @@ export const ConnectWallet = () => {
                                         content={acc.address}
                                         placement="top"
                                       >
-                                        <p className="text-xs text-brand-graylight truncate">
-                                          {ellipsis(acc.address, 15, 4)}
+                                        <p className="text-xs text-brand-graylight">
+                                          {acc.address
+                                            ? ellipsis(acc.address, 8, 4)
+                                            : 'No address'}
                                         </p>
                                       </Tooltip>
                                       <div
                                         onClick={(e) => e.stopPropagation()}
-                                        className="inline-flex flex-shrink-0"
+                                        className="inline-flex flex-shrink-0 items-center relative z-20"
                                       >
                                         <IconButton
-                                          type="primary"
-                                          shape="circle"
                                           onClick={() => {
                                             copy(acc.address);
                                             alert.info(t('home.addressCopied'));
@@ -334,6 +407,7 @@ export const ConnectWallet = () => {
                                             name="copy"
                                             className="text-xs hover:text-brand-royalblue"
                                             size={10}
+                                            wrapperClassname="h-[1em] flex items-center"
                                           />
                                         </IconButton>
                                       </div>
@@ -341,20 +415,29 @@ export const ConnectWallet = () => {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3 flex-shrink-0">
-                                  <div className="text-right min-w-[100px]">
-                                    <p className="text-sm font-medium text-brand-white">
-                                      {balance}{' '}
-                                      {activeNetwork.currency?.toUpperCase() ||
-                                        'SYS'}
-                                    </p>
-                                    <p className="text-xs text-brand-graylight">
+                                  <div className="text-right">
+                                    <Tooltip
+                                      content={`${balance} ${
+                                        activeNetwork.currency?.toUpperCase() ||
+                                        'SYS'
+                                      }`}
+                                      placement="top"
+                                    >
+                                      <p className="text-sm font-medium text-brand-white whitespace-nowrap">
+                                        {parseFloat(balance || '0')
+                                          .toFixed(8)
+                                          .replace(/\.?0+$/, '')}{' '}
+                                        {activeNetwork.currency?.toUpperCase() ||
+                                          'SYS'}
+                                      </p>
+                                    </Tooltip>
+                                    <p className="text-xs text-brand-graylight whitespace-nowrap">
                                       {fiatValue}
                                     </p>
-                                    {tokenCount > 0 && (
-                                      <p className="text-xs text-brand-royalblue mt-0.5">
-                                        +{tokenCount}{' '}
-                                        {tokenCount === 1 ? 'token' : 'tokens'}
-                                      </p>
+                                    {tokens && tokens.length > 0 && (
+                                      <div className="mt-0.5 flex justify-end">
+                                        <TokenIconStack tokens={tokens} />
+                                      </div>
                                     )}
                                   </div>
                                   <div

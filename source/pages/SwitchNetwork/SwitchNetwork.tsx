@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { Header } from 'components/Header';
 import { WarnIconSvg } from 'components/Icon/Icon';
+import { useQueryData } from 'hooks/index';
 import { RootState } from 'state/store';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -12,12 +12,16 @@ import { NetworkList } from './NetworkList';
 
 export const SwitchNetwork = () => {
   const { state }: { state: any } = useLocation();
+  const queryData = useQueryData();
   const { t } = useTranslation();
+
+  // Use query data for popup data, fallback to location state for navigation
+  const popupData = Object.keys(queryData).length > 0 ? queryData : state;
+
   const { isBitcoinBased, activeNetwork } = useSelector(
     (rootState: RootState) => rootState.vault
   );
   const {
-    connectedNetwork,
     networkThatNeedsChanging,
     connectedColor,
     networkNeedsChangingColor,
@@ -33,10 +37,10 @@ export const SwitchNetwork = () => {
   const networkSymbol = useMemo(
     () => (
       <p className={`text-xs font-extrabold ${connectedColor}`}>
-        {connectedNetwork}
+        {isBitcoinBased ? 'UTXO' : 'EVM'}
       </p>
     ),
-    []
+    [connectedColor, isBitcoinBased]
   );
 
   const networkSymbolChange = useMemo(
@@ -50,7 +54,6 @@ export const SwitchNetwork = () => {
 
   return (
     <>
-      <Header accountHeader={false} />
       <div className="gap-4 mb-7 w-full flex flex-col justify-center items-center scrollbar-styled h-full">
         {!state || !state?.switchingFromTimeError ? (
           <>
@@ -76,7 +79,11 @@ export const SwitchNetwork = () => {
               </p> */}
           </>
         ) : null}
-        <NetworkList />
+        <NetworkList
+          disabledNetworkType={popupData?.disabledNetworkType}
+          forceNetworkType={popupData?.forceNetworkType}
+          isTypeSwitch={popupData?.isTypeSwitch}
+        />
       </div>
     </>
   );

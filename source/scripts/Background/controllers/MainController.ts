@@ -271,35 +271,6 @@ class MainController {
 
     return keyring;
   }
-
-  // Safe getter that checks if wallet is unlocked before returning keyring
-  private getActiveKeyringIfUnlocked(): KeyringManager | null {
-    const keyring = this.getActiveKeyring();
-
-    if (!keyring.isUnlocked()) {
-      // During network switching, the keyring might temporarily appear locked
-      // due to session transfer between keyrings. Be more lenient in this case.
-      if (this.isNetworkSwitching) {
-        console.warn(
-          '[MainController] Wallet appears locked during network switching, allowing operation to proceed'
-        );
-        return keyring; // Return the keyring anyway during network switching
-      }
-
-      // During polling, this might be a false positive - reduce log level
-      const { isPollingUpdate } = store.getState().vaultGlobal;
-      if (isPollingUpdate) {
-        // Don't warn during polling - this is often a false positive
-        return null;
-      }
-
-      console.warn('[MainController] Wallet is locked, skipping operation');
-      return null;
-    }
-
-    return keyring;
-  }
-
   // Switch active keyring based on network
   private async switchActiveKeyring(network: INetwork): Promise<void> {
     const slip44 = getSlip44ForNetwork(network);
@@ -665,41 +636,11 @@ class MainController {
 
   // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
   public get syscoinTransaction() {
-    const keyring = this.getActiveKeyringIfUnlocked();
-
-    if (!keyring) {
-      throw new Error(
-        'Wallet is locked. Please unlock to access syscoin transactions.'
-      );
-    }
-
-    const { isBitcoinBased } = store.getState().vault;
-    if (!isBitcoinBased) {
-      console.warn(
-        '[MainController] Accessing syscoinTransaction for non-UTXO network'
-      );
-    }
-
-    return keyring.syscoinTransaction;
+    return this.getActiveKeyring().syscoinTransaction;
   }
 
   public get ethereumTransaction() {
-    const keyring = this.getActiveKeyringIfUnlocked();
-
-    if (!keyring) {
-      throw new Error(
-        'Wallet is locked. Please unlock to access ethereum transactions.'
-      );
-    }
-
-    const { isBitcoinBased } = store.getState().vault;
-    if (isBitcoinBased) {
-      console.warn(
-        '[MainController] Accessing ethereumTransaction for UTXO network - this might cause issues'
-      );
-    }
-
-    return keyring.ethereumTransaction;
+    return this.getActiveKeyring().ethereumTransaction;
   }
 
   // Additional public methods for UX access (used by controllerEmitter)
@@ -2618,8 +2559,8 @@ class MainController {
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
-      const keyring = this.getActiveKeyringIfUnlocked();
-      if (!keyring) {
+      const keyring = this.getActiveKeyring();
+      if (!keyring.isUnlocked()) {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling transaction updates'
         );
@@ -2643,35 +2584,7 @@ class MainController {
             }
 
             // Safe access to transaction objects with error handling
-            let web3Provider = null;
-            try {
-              if (!isBitcoinBased) {
-                // Use persistent provider for polling or when locked
-                if (isPolling || !this.isUnlocked()) {
-                  web3Provider = this.getPersistentProvider(activeNetwork.url);
-                } else {
-                  web3Provider = this.ethereumTransaction.web3Provider;
-                }
-              }
-            } catch (error) {
-              // Fallback to persistent provider for EVM networks
-              if (!isBitcoinBased) {
-                web3Provider = this.getPersistentProvider(activeNetwork.url);
-              } else {
-                console.warn(
-                  '[MainController] Cannot access ethereumTransaction:',
-                  error
-                );
-                // Don't clear loading state on error - let it stay active
-                reject(
-                  new Error(
-                    'Cannot access ethereumTransaction for transaction update'
-                  )
-                );
-                return;
-              }
-            }
-
+            const web3Provider = this.ethereumTransaction.web3Provider;
             const txs =
               await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
                 currentAccount,
@@ -2785,8 +2698,8 @@ class MainController {
     // For polling, we don't need keyring access - we're just fetching public asset balances
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
-      const keyring = this.getActiveKeyringIfUnlocked();
-      if (!keyring) {
+      const keyring = this.getActiveKeyring();
+      if (!keyring.isUnlocked()) {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling asset updates'
         );
@@ -2813,35 +2726,7 @@ class MainController {
         async (resolve, reject) => {
           try {
             // Safe access to transaction objects with error handling
-            let web3Provider = null;
-            try {
-              if (!isBitcoinBased) {
-                // Use persistent provider for polling or when locked
-                if (isPollingUpdate || !this.isUnlocked()) {
-                  web3Provider = this.getPersistentProvider(activeNetwork.url);
-                } else {
-                  web3Provider = this.ethereumTransaction.web3Provider;
-                }
-              }
-            } catch (error) {
-              // Fallback to persistent provider for EVM networks
-              if (!isBitcoinBased) {
-                web3Provider = this.getPersistentProvider(activeNetwork.url);
-              } else {
-                console.warn(
-                  '[MainController] Cannot access ethereumTransaction for asset update:',
-                  error
-                );
-                // Don't clear loading state on error - let it stay active
-                reject(
-                  new Error(
-                    'Cannot access ethereumTransaction for asset update'
-                  )
-                );
-                return;
-              }
-            }
-
+            const web3Provider = this.ethereumTransaction.web3Provider;
             const updatedAssets =
               await this.assetsManager.utils.updateAssetsFromCurrentAccount(
                 currentAccount,
@@ -2931,8 +2816,8 @@ class MainController {
     // For polling, we don't need keyring access - we're just fetching public balance data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
-      const keyring = this.getActiveKeyringIfUnlocked();
-      if (!keyring) {
+      const keyring = this.getActiveKeyring();
+      if (!keyring.isUnlocked()) {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling balance updates'
         );
@@ -2963,35 +2848,7 @@ class MainController {
 
           try {
             // Safe access to transaction objects with error handling
-            let web3Provider = null;
-            try {
-              if (!isBitcoinBased) {
-                // Use persistent provider for polling or when locked
-                if (isPollingUpdate || !this.isUnlocked()) {
-                  web3Provider = this.getPersistentProvider(activeNetwork.url);
-                } else {
-                  web3Provider = this.ethereumTransaction.web3Provider;
-                }
-              }
-            } catch (error) {
-              // Fallback to persistent provider for EVM networks
-              if (!isBitcoinBased) {
-                web3Provider = this.getPersistentProvider(activeNetwork.url);
-              } else {
-                console.warn(
-                  '[MainController] Cannot access ethereumTransaction for balance update:',
-                  error
-                );
-                // Don't clear loading state on error - let it stay active
-                reject(
-                  new Error(
-                    'Cannot access ethereumTransaction for balance update'
-                  )
-                );
-                return;
-              }
-            }
-
+            const web3Provider = this.ethereumTransaction.web3Provider;
             const updatedBalance =
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
@@ -3093,14 +2950,14 @@ class MainController {
     isPolling = false,
     forceUpdate = false // Force update even if just unlocked
   ): Promise<boolean> {
-    // Set polling state early so getActiveKeyringIfUnlocked knows it's a polling call
+    // Set polling state early so getActiveKeyring knows it's a polling call
     store.dispatch(setIsPollingUpdate(isPolling));
 
     // For polling, we don't need the wallet to be unlocked - we're just fetching public data
     // Only check if unlocked for non-polling operations that might need private keys
     if (!isPolling) {
-      const keyring = this.getActiveKeyringIfUnlocked();
-      if (!keyring) {
+      const keyring = this.getActiveKeyring();
+      if (!keyring.isUnlocked()) {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling account updates'
         );
@@ -3724,6 +3581,7 @@ class MainController {
         params: {
           chainId: `0x${network.chainId.toString(16)}`,
           networkVersion: network.chainId,
+          isBitcoinBased,
         },
       },
       {
@@ -3771,26 +3629,7 @@ class MainController {
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = (psbtOrHex: any, isRawHex = false) => {
     try {
-      // First try to get the active keyring if unlocked (preferred)
-      const keyring = this.getActiveKeyringIfUnlocked();
-
-      if (keyring) {
-        // Wallet is unlocked, use normal signer
-        return keyring.syscoinTransaction.decodeRawTransaction(
-          psbtOrHex,
-          isRawHex
-        );
-      } else {
-        const tempKeyring = new KeyringManager();
-
-        // Set up the vault state getter so it can access network info
-        tempKeyring.setVaultStateGetter(() => store.getState().vault);
-
-        return tempKeyring.syscoinTransaction.decodeRawTransaction(
-          psbtOrHex,
-          isRawHex
-        );
-      }
+      return this.syscoinTransaction.decodeRawTransaction(psbtOrHex, isRawHex);
     } catch (error) {
       console.error('Error decoding raw transaction:', error);
       throw new Error(`Failed to decode raw transaction: ${error.message}`);
@@ -3858,9 +3697,6 @@ class MainController {
   // Direct EVM methods for cleaner UI access
 
   public async checkContractType(contractAddress: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.checkContractType(
       contractAddress,
       this.ethereumTransaction.web3Provider
@@ -3871,9 +3707,6 @@ class MainController {
     contractAddress: string,
     accountAddress: string
   ) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.getERC20TokenInfo(
       contractAddress,
       accountAddress,
@@ -3887,9 +3720,6 @@ class MainController {
     web3Provider: CustomJsonRpcProvider,
     accountAssets: ITokenEthProps[]
   ) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.updateAllEvmTokens(
       account,
       currentNetworkChainId,
@@ -3971,10 +3801,6 @@ class MainController {
    * Fetch individual EVM transaction details from blockchain (for networks without API)
    */
   public async getEvmTransactionFromProvider(hash: string) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-
     try {
       // Get transaction from provider
       const tx = await this.ethereumTransaction.web3Provider.getTransaction(
@@ -4148,45 +3974,6 @@ class MainController {
     return result;
   }
 
-  // Get or create a persistent provider for a network
-  private getPersistentProvider(
-    networkUrl: string
-  ): CustomJsonRpcProvider | null {
-    // Use network URL as the key for provider caching
-    const providerKey = networkUrl;
-
-    // Check if we already have a provider for this network
-    let provider = this.persistentProviders.get(providerKey);
-
-    if (!provider) {
-      try {
-        console.log(
-          `[MainController] Creating persistent provider for ${networkUrl}`
-        );
-
-        // Create a simple abort controller for the provider
-        const abortController = new AbortController();
-
-        // Create provider without needing keyring access
-        provider = new CustomJsonRpcProvider(
-          abortController.signal,
-          networkUrl
-        );
-
-        // Store the provider for future use
-        this.persistentProviders.set(providerKey, provider);
-      } catch (error) {
-        console.error(
-          '[MainController] Failed to create persistent provider:',
-          error
-        );
-        return null;
-      }
-    }
-
-    return provider;
-  }
-
   // Clean up persistent providers
   private cleanupPersistentProviders(): void {
     console.log('[MainController] Cleaning up persistent providers');
@@ -4286,35 +4073,10 @@ class MainController {
    * Get basic token details from blockchain - delegates to EvmAssetsController
    */
   public async getTokenDetails(contractAddress: string, walletAddress: string) {
-    // Try to get the provider without requiring wallet unlock for notification purposes
-    let web3Provider: CustomJsonRpcProvider | null = null;
-
-    try {
-      // First try to get provider from unlocked wallet (preferred)
-      if (this.ethereumTransaction?.web3Provider) {
-        web3Provider = this.ethereumTransaction.web3Provider;
-      }
-    } catch (error) {
-      // Wallet is locked, fall back to persistent provider
-      console.log(
-        '[MainController] Wallet locked, using persistent provider for token details'
-      );
-    }
-
-    // If we couldn't get provider from wallet, use persistent provider
-    if (!web3Provider) {
-      const { activeNetwork } = store.getState().vault;
-      web3Provider = this.getPersistentProvider(activeNetwork.url);
-
-      if (!web3Provider) {
-        throw new Error('No provider available for token details');
-      }
-    }
-
     return this.evmAssetsController.getTokenDetails(
       contractAddress,
       walletAddress,
-      web3Provider
+      this.ethereumTransaction.web3Provider
     );
   }
 
@@ -4349,11 +4111,6 @@ class MainController {
     contractAddress: string,
     walletAddress: string
   ): Promise<ITokenDetails | null> {
-    // This method is for EVM only
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
-
     return this.evmAssetsController.validateERC20Only(
       contractAddress,
       walletAddress,
@@ -4368,9 +4125,6 @@ class MainController {
     contractAddress: string,
     walletAddress: string
   ) {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.getTokenDetailsWithMarketData(
       contractAddress,
       walletAddress,
@@ -4408,9 +4162,6 @@ class MainController {
     ownerAddress: string,
     tokenIds: string[]
   ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.verifyERC721Ownership(
       contractAddress,
       ownerAddress,
@@ -4427,9 +4178,6 @@ class MainController {
     ownerAddress: string,
     tokenIds: string[]
   ): Promise<{ balance: number; tokenId: string; verified: boolean }[]> {
-    if (!this.ethereumTransaction?.web3Provider) {
-      throw new Error('No valid web3Provider available');
-    }
     return this.evmAssetsController.verifyERC1155Ownership(
       contractAddress,
       ownerAddress,
@@ -4483,30 +4231,6 @@ class MainController {
     transaction: any
   ): Promise<IDecodedTx | null> {
     try {
-      // Get web3Provider - try unlocked wallet first, then persistent provider
-      let web3Provider: CustomJsonRpcProvider | null = null;
-
-      try {
-        if (this.ethereumTransaction?.web3Provider) {
-          web3Provider = this.ethereumTransaction.web3Provider;
-        }
-      } catch (error) {
-        // Wallet is locked, use persistent provider
-        console.log(
-          '[MainController] Wallet locked, using persistent provider for transaction decoding'
-        );
-      }
-
-      // If we couldn't get provider from wallet, use persistent provider
-      if (!web3Provider) {
-        const { activeNetwork } = store.getState().vault;
-        web3Provider = this.getPersistentProvider(activeNetwork.url);
-
-        if (!web3Provider) {
-          throw new Error('No provider available for transaction decoding');
-        }
-      }
-
       // Validate the destination address to determine if it's a contract or wallet
       if (!transaction.to) {
         // No destination address - likely a contract deployment
@@ -4520,7 +4244,7 @@ class MainController {
 
       const validateTxToAddress = await validateEOAAddress(
         transaction.to,
-        web3Provider
+        this.ethereumTransaction.web3Provider
       );
 
       // Normalize transaction data - decodeTransactionData expects 'data' field

@@ -6,9 +6,11 @@ import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
 import { NeutralButton } from 'components/Button';
 import { ChainIcon } from 'components/ChainIcon';
+import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { RootState } from 'state/store';
+import { dispatchBackgroundEvent } from 'utils/browser';
 import { getChainIdPriority } from 'utils/chainIdPriority';
 
 import { useNetworkInfo } from './NetworkInfo';
@@ -17,23 +19,42 @@ type currentNetwork = {
   current: INetwork;
 };
 
-export const NetworkList = () => {
+interface INetworkListProps {
+  disabledNetworkType?: string;
+  forceNetworkType?: string;
+  isTypeSwitch?: boolean;
+}
+
+export const NetworkList = ({
+  disabledNetworkType,
+  forceNetworkType,
+  isTypeSwitch,
+}: INetworkListProps) => {
   const { controllerEmitter } = useController();
   const { isBitcoinBased, activeNetwork } = useSelector(
     (state: RootState) => state.vault
   );
   const { t } = useTranslation();
   const { networks } = useSelector((state: RootState) => state.vaultGlobal);
-  const { isDappAskingToChangeNetwork } = useSelector(
-    (state: RootState) => state.vaultGlobal
-  );
+
   const { navigate, alert } = useUtils();
+
+  // Get query data for external popup handling
+  const queryData = useQueryData();
+  const { host, eventName } = queryData;
 
   const [selectCurrentNetwork, setSelectCurrentNetwork] =
     useState<currentNetwork>();
-  const [selectedNetwork, setSelectedNetwork] = useState<INetworkType>(
-    isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum
-  );
+  const [selectedNetwork, setSelectedNetwork] = useState<INetworkType>(() => {
+    // If this is a type switch, force the target network type
+    if (isTypeSwitch && forceNetworkType) {
+      return forceNetworkType === 'ethereum'
+        ? INetworkType.Ethereum
+        : INetworkType.Syscoin;
+    }
+    // Otherwise use current network type
+    return isBitcoinBased ? INetworkType.Syscoin : INetworkType.Ethereum;
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   // Set the initial selected network to the current active network
@@ -51,6 +72,10 @@ export const NetworkList = () => {
     rightLogo,
   } = useNetworkInfo({ isBitcoinBased, selectedNetwork });
 
+  // Check if tabs should be disabled
+  const isUtxoDisabled = disabledNetworkType === 'syscoin';
+  const isEvmDisabled = disabledNetworkType === 'ethereum';
+
   const seletedEvmButtonStyle =
     selectedNetwork === INetworkType.Ethereum ? 'opacity-100' : 'opacity-60';
 
@@ -63,14 +88,24 @@ export const NetworkList = () => {
 
       // Remove the timeout race condition - let the network switch take as long as it needs
       // The user can always navigate away or try a different network if it's taking too long
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
+      await controllerEmitter(
+        ['wallet', 'setActiveNetwork'],
+        [network, isTypeSwitch]
+      ); // syncUpdates: true
 
       // Reset loading state on success
       setIsLoading(false);
+      if (isTypeSwitch) {
+        // Then dispatch the background event
+        if (host && eventName) {
+          dispatchBackgroundEvent(`${eventName}.${host}`, null);
+        }
+        window.close();
+        return;
+      }
 
-      // Navigate only after successful network change
+      // Navigate only after successful network change for regular navigation
       navigate('/home');
-      if (isDappAskingToChangeNetwork) window.close();
     } catch (networkError) {
       console.error('Network change failed:', networkError);
       setIsLoading(false);
@@ -132,22 +167,34 @@ export const NetworkList = () => {
       {/* Always show network type tabs so users can switch between UTXO and EVM */}
       <div className="flex pl-[20px] gap-2">
         <div
-          className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+          className={`bg-brand-blue500 text-base text-white ${seletedUtxoButtonStyle} px-[19px] py-2 rounded-t-[20px] ${
+            isUtxoDisabled
+              ? 'opacity-30 cursor-not-allowed'
+              : 'cursor-pointer hover:bg-brand-blue800'
+          }`}
           onClick={() => {
-            setSelectedNetwork(INetworkType.Syscoin);
-            setSelectCurrentNetwork(null);
+            if (!isUtxoDisabled) {
+              setSelectedNetwork(INetworkType.Syscoin);
+              setSelectCurrentNetwork(null);
+            }
           }}
         >
-          UTXO
+          UTXO {isUtxoDisabled && '(Current)'}
         </div>
         <div
-          className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] cursor-pointer hover:bg-brand-blue800`}
+          className={`bg-brand-blue500 text-base text-white ${seletedEvmButtonStyle} px-[19px] py-2 rounded-t-[20px] ${
+            isEvmDisabled
+              ? 'opacity-30 cursor-not-allowed'
+              : 'cursor-pointer hover:bg-brand-blue800'
+          }`}
           onClick={() => {
-            setSelectedNetwork(INetworkType.Ethereum);
-            setSelectCurrentNetwork(null);
+            if (!isEvmDisabled) {
+              setSelectedNetwork(INetworkType.Ethereum);
+              setSelectCurrentNetwork(null);
+            }
           }}
         >
-          EVM
+          EVM {isEvmDisabled && '(Current)'}
         </div>
       </div>
       <div className="rounded-[20px] bg-brand-blue500 p-5 h-max w-full max-w-[22rem]">

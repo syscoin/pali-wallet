@@ -19,7 +19,7 @@ export const fetchGasAndDecodeFunction = async (
   }
 
   const currentBlock = (await controllerEmitter(
-    ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],
+    ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
     ['eth_getBlockByNumber', ['latest', false]]
   )) as any;
 
@@ -84,7 +84,7 @@ export const fetchGasAndDecodeFunction = async (
         delete clonedTx.to;
       }
       await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'contentScriptWeb3Provider', 'send'],
+        ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
         ['eth_call', [clonedTx, 'latest']]
       );
     } catch (error) {

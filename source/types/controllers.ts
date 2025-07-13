@@ -84,21 +84,6 @@ export interface IDAppController {
   setup: (sender: chrome.runtime.MessageSender) => void;
 }
 
-// eslint-disable-next-line no-shadow
-export enum PaliRoutes {
-  AddEthChain = 'add-EthChain',
-  ChangeAccount = 'change-account',
-  EncryptKey = 'tx/encryptKey',
-  EthSign = 'tx/ethSign',
-  SendApprove = 'tx/send/approve',
-  SendEthTX = 'tx/send/ethTx',
-  SendNTokenTX = 'tx/send/nTokenTx',
-  SwitchEthChain = 'switch-EthChain',
-  SwitchNetwork = 'switch-network',
-  SwitchUtxo = 'switch-UtxoEvm',
-  WatchAsset = 'watch-asset',
-}
-
 export interface IEventData {
   detail?: string;
   eventName: string;

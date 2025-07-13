@@ -64,11 +64,13 @@ export class BaseProvider extends EventEmitter {
   } = {};
   private static readonly CACHE_TTL = 5000; // 5 seconds cache
 
-  // Enhanced caching for provider state
+  // Enhanced caching for provider state - separate caches for different methods
   private _providerStateCache: {
-    data?: any;
-    isValid?: boolean;
-    timestamp?: number;
+    [method: string]: {
+      data?: any;
+      isValid?: boolean;
+      timestamp?: number;
+    };
   } = {};
   private static readonly PROVIDER_STATE_CACHE_TTL = 10000; // 10 seconds cache for provider state
   private static readonly CONNECTION_ERROR_CACHE_TTL = 2000; // 2 seconds cache for connection errors
@@ -115,13 +117,13 @@ export class BaseProvider extends EventEmitter {
     this.on('chainChanged', () => {
       // Clear both network state cache and provider state cache when network changes
       this._networkStateCache = {};
-      this._providerStateCache = { isValid: false };
+      this._providerStateCache = {};
       console.log('[BaseProvider] Network changed, caches cleared');
     });
 
     // Also listen for disconnect events to invalidate caches
     this.on('disconnect', () => {
-      this._providerStateCache = { isValid: false };
+      this._providerStateCache = {};
       this._isBackgroundConnected = false;
       this._lastConnectionError = Date.now();
       console.log('[BaseProvider] Disconnected, caches invalidated');
@@ -234,29 +236,9 @@ export class BaseProvider extends EventEmitter {
       throw messages.errors.invalidRequestParams();
     }
 
-    // For Ethereum provider, check if we should block certain calls based on network type
-    if (this.chainType === 'ethereum') {
-      const evmOnlyMethods = [
-        'eth_chainId',
-        'eth_accounts',
-        'eth_requestAccounts',
-        'net_version',
-        'getProviderState',
-      ];
-      const isEvmOnlyMethod = evmOnlyMethods.includes(method);
-
-      if (isEvmOnlyMethod) {
-        // Get actual network type from wallet state
-        const isBitcoinBased = await this.getNetworkType();
-
-        if (isBitcoinBased) {
-          console.log(`Blocking EVM method ${method} on Bitcoin-based network`);
-          throw new Error(
-            `${method} is not available on Bitcoin-based networks`
-          );
-        }
-      }
-    }
+    // 🔥 REMOVED: Don't block EVM methods here - let the background pipeline handle network switching
+    // The pipeline will detect network mismatches and prompt the user to switch networks
+    // This provides a much better UX than just throwing an error
 
     return new Promise<T>((resolve, reject) => {
       this._rpcRequest(
@@ -367,15 +349,16 @@ export class BaseProvider extends EventEmitter {
           method === 'wallet_getProviderState' ||
           method === 'wallet_getSysProviderState'
         ) {
+          const cache = this._providerStateCache[method];
           if (
-            this._providerStateCache.data &&
-            this._providerStateCache.timestamp &&
-            this._providerStateCache.isValid &&
-            now - this._providerStateCache.timestamp <
-              BaseProvider.PROVIDER_STATE_CACHE_TTL
+            cache &&
+            cache.data &&
+            cache.timestamp &&
+            cache.isValid &&
+            now - cache.timestamp < BaseProvider.PROVIDER_STATE_CACHE_TTL
           ) {
             console.log(`[BaseProvider] Returning cached ${method} response`);
-            resolve(this._providerStateCache.data);
+            resolve(cache.data);
             return;
           }
         }
@@ -419,7 +402,7 @@ export class BaseProvider extends EventEmitter {
                 method === 'wallet_getSysProviderState') &&
               !response.error
             ) {
-              this._providerStateCache = {
+              this._providerStateCache[method] = {
                 data: response,
                 timestamp: now,
                 isValid: true,
@@ -454,16 +437,9 @@ export class BaseProvider extends EventEmitter {
         passive: true,
       });
 
-      // Add timeout for requests
-      const timeout = setTimeout(() => {
-        window.removeEventListener(id, handleResponse);
-        this._isBackgroundConnected = false;
-        this._lastConnectionError = now;
-        reject({
-          message: 'Request timeout - background script may be busy',
-          code: -32603,
-        });
-      }, 10000); // 10 second timeout
+      // No timeout - let requests wait indefinitely until response or page unload
+      // Browser will automatically clean up when user navigates away or closes tab
+      // This prevents authentication timeouts and provides better UX
 
       window.postMessage(
         {
@@ -473,18 +449,5 @@ export class BaseProvider extends EventEmitter {
         },
         '*'
       );
-
-      // Clear timeout if response comes back
-      const originalHandler = handleResponse;
-      const timeoutHandler = (event: any) => {
-        clearTimeout(timeout);
-        originalHandler(event);
-      };
-
-      window.removeEventListener(id, handleResponse);
-      window.addEventListener(id, timeoutHandler, {
-        once: true,
-        passive: true,
-      });
     });
 }

@@ -18,7 +18,7 @@ interface INetworkInfo {
   }>;
   networkDescription: string;
   networkNeedsChangingColor: string;
-  networkThatNeedsChanging: INetworkType;
+  networkThatNeedsChanging: string;
   rightLogo: React.ComponentType<{
     className?: string;
     style?: React.CSSProperties;
@@ -39,7 +39,7 @@ export const useNetworkInfo = ({
   // For switching context (what you need to switch TO)
   const utxoSwitchingInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Syscoin,
-    networkThatNeedsChanging: INetworkType.Ethereum,
+    networkThatNeedsChanging: 'EVM',
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',
@@ -50,7 +50,7 @@ export const useNetworkInfo = ({
 
   const evmSwitchingInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Ethereum,
-    networkThatNeedsChanging: INetworkType.Syscoin,
+    networkThatNeedsChanging: 'UTXO',
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
@@ -62,7 +62,7 @@ export const useNetworkInfo = ({
   // For selection context (what you're currently selecting)
   const utxoSelectionInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Syscoin,
-    networkThatNeedsChanging: INetworkType.Syscoin,
+    networkThatNeedsChanging: 'UTXO',
     connectedColor: PINK_COLOR,
     networkNeedsChangingColor: PINK_COLOR,
     networkDescription: 'Unspent Transaction Output',
@@ -73,7 +73,7 @@ export const useNetworkInfo = ({
 
   const evmSelectionInfo: INetworkInfo = {
     connectedNetwork: INetworkType.Ethereum,
-    networkThatNeedsChanging: INetworkType.Ethereum,
+    networkThatNeedsChanging: 'EVM',
     connectedColor: BLUE_COLOR,
     networkNeedsChangingColor: BLUE_COLOR,
     networkDescription: 'Ethereum Virtual Machine',

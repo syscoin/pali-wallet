@@ -34,11 +34,9 @@ const ExternalQueryHandler = () => {
     }
 
     const route = searchParams.get('route');
-
+    // Mark that we've handled the redirect
+    hasRedirectedRef.current = true;
     if (route) {
-      // Mark that we've handled the redirect
-      hasRedirectedRef.current = true;
-
       if (!isUnlocked) {
         // If not authenticated, redirect to auth flow and preserve the external route info
         const data = searchParams.get('data');
@@ -66,7 +64,6 @@ const ExternalQueryHandler = () => {
       }
     }
   }, [navigate, searchParams, isUnlocked, isLoading]);
-
   return <div style={{ opacity: 0 }}>Loading...</div>;
 };
 
@@ -349,6 +346,7 @@ export const Router = () => {
             <Route path="/external">
               <Route path="import" element={<Import />} />
               <Route path="phrase" element={<SeedConfirm />} />
+              <Route path="login" element={<Start isExternal={true} />} />
               <Route path="connect-wallet" element={<ConnectWallet />} />
               <Route path="change-account" element={<ChangeAccount />} />
               <Route

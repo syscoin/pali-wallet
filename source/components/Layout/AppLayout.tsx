@@ -57,9 +57,15 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
   const titleOnly = useMemo(() => {
     const titleOnlyRoutes = [
       // External routes should be title-only (no persistent header)
+      '/external/login',
       '/external/connect-wallet',
       '/external/change-account',
       '/external/change-active-connected-account',
+      '/external/watch-asset',
+      '/external/switch-network',
+      '/external/add-EthChain',
+      '/external/switch-EthChain',
+      '/external/switch-UtxoEvm',
     ];
     return titleOnlyRoutes.includes(location.pathname);
   }, [location.pathname]);
@@ -215,6 +221,7 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       '/switch-network',
       '/switch-utxo-evm',
       // External dApp routes
+      '/external/login',
       '/external/connect-wallet',
       '/external/change-account',
       '/external/change-active-connected-account',

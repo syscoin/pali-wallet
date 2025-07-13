@@ -7,122 +7,19 @@ import {
 
 const emitter = new EventEmitter();
 
-// Connection management
-let isBackgroundConnected = true;
+// Simple error logging rate limiting
 let lastConnectionAttempt = 0;
-const reconnectTimeout: NodeJS.Timeout | null = null;
-const CONNECTION_RETRY_DELAY = 1000; // 1 second
 const CONNECTION_CHECK_INTERVAL = 5000; // 5 seconds
 
-// Message retry system
-interface PendingMessage {
-  handleResponse?: (response: any) => void;
-  message: any;
-  retryCount: number;
-  timestamp: number;
-}
-
-const pendingMessages = new Map<string, PendingMessage>();
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 500; // 500ms
-
 /**
- * Wake up the service worker by sending a ping message
+ * Send message to background script with simple error handling
  */
-const wakeUpServiceWorker = (): Promise<boolean> =>
-  new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      resolve(false);
-    }, 10000); // 10 second timeout
-
-    chrome.runtime.sendMessage({ type: 'ping' }, (response) => {
-      clearTimeout(timeout);
-      // Capture error immediately to avoid race conditions
-      const currentError = chrome.runtime.lastError
-        ? { ...chrome.runtime.lastError }
-        : null;
-
-      if (currentError) {
-        resolve(false);
-      } else {
-        resolve(true);
-      }
-    });
-  });
-
-/**
- * Check if background script is responsive
- */
-const checkBackgroundConnection = async (): Promise<boolean> => {
-  try {
-    const isAwake = await wakeUpServiceWorker();
-    if (isAwake !== isBackgroundConnected) {
-      isBackgroundConnected = isAwake;
-      console.log(
-        `[ContentScript] Background connection: ${
-          isAwake ? 'restored' : 'lost'
-        }`
-      );
-    }
-    return isAwake;
-  } catch (error) {
-    isBackgroundConnected = false;
-    return false;
-  }
-};
-
-/**
- * Retry a failed message with improved error detection
- */
-const retryMessage = (messageId: string, delay: number = RETRY_DELAY) => {
-  setTimeout(async () => {
-    const pending = pendingMessages.get(messageId);
-    if (!pending) return;
-
-    // Only retry if we've confirmed the service worker was actually asleep
-    const isConnected = await checkBackgroundConnection();
-
-    if (!isConnected && pending.retryCount >= MAX_RETRIES) {
-      // Give up after max retries
-      pendingMessages.delete(messageId);
-      if (pending.handleResponse) {
-        pending.handleResponse({
-          error: {
-            message:
-              'Pali: Background script unavailable. Extension may need to be reloaded.',
-            code: -32603,
-          },
-        });
-      }
-      return;
-    }
-
-    if (isConnected) {
-      // Service worker is awake, retry the message
-      sendToBackgroundInternal(
-        messageId,
-        pending.message,
-        pending.handleResponse
-      );
-    } else {
-      // Service worker still not responsive, retry with exponential backoff
-      pending.retryCount++;
-      const nextDelay = Math.min(delay * 2, 5000); // Max 5 seconds
-      retryMessage(messageId, nextDelay);
-    }
-  }, delay);
-};
-
-/**
- * Internal message sending with improved error handling
- */
-const sendToBackgroundInternal = (
-  messageId: string,
+const sendToBackground = (
   message: any,
   handleResponse?: (response: any) => void
 ) => {
   chrome.runtime.sendMessage(message, (response) => {
-    // Capture error immediately to avoid race conditions with other Chrome API calls
+    // Capture error immediately to avoid race conditions
     const currentError = chrome.runtime.lastError
       ? { ...chrome.runtime.lastError }
       : null;
@@ -130,36 +27,10 @@ const sendToBackgroundInternal = (
     if (currentError) {
       const errorMessage = currentError.message || '';
 
-      // Check if this is likely a service worker sleep issue vs processing error
+      // Check if this is a connection error
       const isConnectionError =
         errorMessage.includes('message port closed') ||
         errorMessage.includes('Receiving end does not exist');
-
-      if (isConnectionError) {
-        isBackgroundConnected = false;
-        const pending = pendingMessages.get(messageId);
-
-        if (pending && pending.retryCount < MAX_RETRIES) {
-          pending.retryCount++;
-          retryMessage(messageId);
-          return;
-        }
-
-        // Max retries reached
-        console.error(
-          `[ContentScript] Message failed after ${MAX_RETRIES} retries:`,
-          currentError
-        );
-      } else {
-        // Not a connection error - likely processing timeout or other issue
-        console.error(
-          `[ContentScript] Message processing error (not retrying):`,
-          currentError
-        );
-      }
-
-      // Remove from pending messages
-      pendingMessages.delete(messageId);
 
       // Rate-limit error logging to reduce spam
       if (Date.now() - lastConnectionAttempt > CONNECTION_CHECK_INTERVAL) {
@@ -183,32 +54,11 @@ const sendToBackgroundInternal = (
       return;
     }
 
-    // Success - remove from pending and call response handler
-    pendingMessages.delete(messageId);
-    isBackgroundConnected = true;
-
+    // Success - call response handler
     if (handleResponse) {
       handleResponse(response);
     }
   });
-};
-
-const sendToBackground = (
-  message: any,
-  handleResponse?: (response: any) => void
-) => {
-  const messageId = `msg_${Date.now()}_${Math.random()}`;
-
-  // Store pending message for retry
-  pendingMessages.set(messageId, {
-    message,
-    handleResponse,
-    retryCount: 0,
-    timestamp: Date.now(),
-  });
-
-  // Send the message
-  sendToBackgroundInternal(messageId, message, handleResponse);
 };
 
 const handleEthInjection = (message: any) => {
@@ -420,41 +270,7 @@ chrome.runtime.onMessage.addListener(backgroundMessageListener);
 // Cleanup on page unload (content script lifecycle)
 window.addEventListener('beforeunload', () => {
   chrome.runtime.onMessage.removeListener(backgroundMessageListener);
-
-  // Clear any pending messages and timeouts
-  pendingMessages.clear();
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout);
-  }
 });
-
-// Periodic cleanup of old pending messages and connection health check
-setInterval(() => {
-  const now = Date.now();
-  const MESSAGE_TIMEOUT = 30000; // 30 seconds
-
-  // Clean up old pending messages
-  for (const [messageId, pending] of pendingMessages.entries()) {
-    if (now - pending.timestamp > MESSAGE_TIMEOUT) {
-      pendingMessages.delete(messageId);
-      if (pending.handleResponse) {
-        pending.handleResponse({
-          error: {
-            message: 'Pali: Message timeout - background script may be busy.',
-            code: -32603,
-          },
-        });
-      }
-    }
-  }
-
-  // Periodic connection health check (only if we think we're disconnected)
-  if (!isBackgroundConnected) {
-    checkBackgroundConnection().catch(() => {
-      // Ignore errors in health check
-    });
-  }
-}, 10000); // Every 10 seconds
 
 // Initial setup - inject providers immediately at document_start
 if (shouldInjectProvider()) {

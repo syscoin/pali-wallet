@@ -123,10 +123,19 @@ export class PaliInpageProviderSys extends BaseProvider {
           case 'pali_addProperty':
             break;
           default:
-            this._handleDisconnect(
-              false,
-              messages.errors.permanentlyDisconnected()
+            console.warn(
+              '[PaliSysProvider] Unknown notification method:',
+              method,
+              'params:',
+              params
             );
+            console.warn(
+              '[PaliSysProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+            );
+            // Don't disconnect for unknown notifications - just ignore them
+            // This prevents disconnection when switching networks or receiving notifications
+            // intended for other providers (like Ethereum provider)
+            break;
         }
       },
       { passive: true }

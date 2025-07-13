@@ -9,7 +9,6 @@ import { IOmittedVault } from 'state/vault/types';
 import { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 
-import { onMessage } from './message-handler';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
 interface IDappsSession {
@@ -27,9 +26,8 @@ interface IDappsSession {
 const DAppController = (): IDAppController => {
   const _dapps: IDappsSession = {};
 
-  // 🔥 FIX: Register message handler immediately, not in setup()
-  // This prevents race conditions where METHOD_REQUEST comes before setup() is called
-  chrome.runtime.onMessage.addListener(onMessage);
+  // Message handler is registered in handleListeners - no need to register here
+  // This prevents duplicate listener registration which causes "message port closed" errors
 
   const isConnected = (host: string) => {
     const { dapps } = store.getState().dapp;
@@ -38,15 +36,32 @@ const DAppController = (): IDAppController => {
   };
 
   const setup = (sender: chrome.runtime.MessageSender) => {
-    const { isBitcoinBased } = store.getState().vault;
-    const { host } = new URL(sender.url);
-    const activeAccount = isBitcoinBased
-      ? getAccount(host)?.xpub
-      : getAccount(host)?.address;
-    _dapps[host] = {
-      activeAddress: activeAccount ? activeAccount : null,
-      hasWindow: false,
-    };
+    // Validate sender and sender.url to prevent TypeError
+    if (!sender || !sender.url) {
+      console.warn(
+        '[DAppController] setup called with invalid sender:',
+        sender
+      );
+      return;
+    }
+
+    try {
+      const { isBitcoinBased } = store.getState().vault;
+      const { host } = new URL(sender.url);
+      const activeAccount = isBitcoinBased
+        ? getAccount(host)?.xpub
+        : getAccount(host)?.address;
+      _dapps[host] = {
+        activeAddress: activeAccount ? activeAccount : null,
+        hasWindow: false,
+      };
+    } catch (error) {
+      console.error(
+        '[DAppController] Error in setup with sender.url:',
+        sender.url,
+        error
+      );
+    }
   };
 
   const connect = (dapp: IDApp, isDappConnected = false) => {
@@ -220,6 +235,17 @@ const DAppController = (): IDAppController => {
     new Promise<void>((resolve, reject) => {
       try {
         const hosts = Object.keys(_dapps) as unknown as string;
+
+        // Validate input data - params can be null for some events like pali_accountsChanged on UTXO
+        if (!data || !data.method || data.params === undefined) {
+          console.warn(
+            '[DAppController] handleStateChange received invalid data:',
+            { id, data }
+          );
+          resolve();
+          return;
+        }
+
         const paliData = data;
         for (const host of hosts) {
           if (id === PaliEvents.lockStateChanged && _dapps[host]) {
@@ -260,6 +286,15 @@ const DAppController = (): IDAppController => {
     data?: { method: string; params: any },
     id = 'notification'
   ) => {
+    // Don't dispatch notifications with undefined or invalid data
+    if (!data || !data.method || data.method === 'undefined') {
+      console.warn(
+        '[DAppController] Skipping paliNotification dispatch - invalid data:',
+        { id, data, host }
+      );
+      return;
+    }
+
     const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
       chrome.tabs.query({ url: `*://${host}/*` }, resolve);
     });

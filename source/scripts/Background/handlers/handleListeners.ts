@@ -1,3 +1,4 @@
+import { onMessage } from '../controllers/message-handler';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { startPolling } from 'scripts/Background/utils/startPolling';
@@ -113,16 +114,40 @@ export const handleListeners = (masterController: IMasterController) => {
 
     const { hasEthProperty } = store.getState().vaultGlobal;
 
+    // Handle DApp messages directly
+    if (
+      type === 'METHOD_REQUEST' ||
+      type === 'ENABLE' ||
+      type === 'DISABLE' ||
+      type === 'IS_UNLOCKED'
+    ) {
+      // Handle DApp messages using the onMessage handler
+      onMessage(message, sender)
+        .then((response) => {
+          if (response !== undefined) {
+            sendResponse(response);
+          } else {
+            // Always send a response to avoid "message channel closed" errors
+            sendResponse(null);
+          }
+        })
+        .catch((error) => {
+          console.error('[handleListeners] DApp message error:', error);
+          sendResponse({
+            error: {
+              message: error.message || 'Internal error',
+              code: error.code || -32603,
+            },
+          });
+        });
+      return true; // Indicate async response
+    }
+
     // Let specialized handlers handle their message types
     if (
       type === 'CONTROLLER_ACTION' ||
       type === 'CONTROLLER_STATE_CHANGE' ||
-      type === 'logout' ||
-      type === 'ping' || // Handled in index.ts
-      type === 'METHOD_REQUEST' || // Handled by DApp controller
-      type === 'ENABLE' ||
-      type === 'DISABLE' ||
-      type === 'IS_UNLOCKED'
+      type === 'logout'
     ) {
       return false; // Let other listeners handle these
     }

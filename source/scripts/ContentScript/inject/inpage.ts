@@ -31,6 +31,7 @@ if (isMetaMaskPresent) {
   console.log('[Pali] MetaMask detected, using EIP-6963 for coexistence');
 
   // Store reference to MetaMask for potential fallback
+  // eslint-disable-next-line camelcase
   (window as any)._metamask_ethereum = existingEthereum;
 
   // For bridges that check wallet.ethereum specifically,

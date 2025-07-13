@@ -81,7 +81,7 @@ export const useController = () => {
         currentIsExternalPage
       ) {
         console.log(
-          '[useController] Wallet became locked on hardware wallet page, staying on page'
+          '[useController] Wallet became locked on external popup, staying on page'
         );
       }
 

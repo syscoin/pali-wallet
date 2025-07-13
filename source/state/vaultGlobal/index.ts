@@ -16,7 +16,6 @@ const initialState: IGlobalState = {
   hasEncryptedVault: false,
   hasEthProperty: true,
   error: null,
-  isDappAskingToChangeNetwork: false,
   isSwitchingAccount: false,
   networkStatus: 'idle',
   networkTarget: undefined,
@@ -118,12 +117,6 @@ const vaultGlobalSlice = createSlice({
       action: PayloadAction<'idle' | 'switching' | 'error' | 'connecting'>
     ) {
       state.networkStatus = action.payload;
-    },
-    setIsDappAskingToChangeNetwork(
-      state: IGlobalState,
-      action: PayloadAction<boolean>
-    ) {
-      state.isDappAskingToChangeNetwork = action.payload;
     },
     setIsSwitchingAccount(state: IGlobalState, action: PayloadAction<boolean>) {
       state.isSwitchingAccount = action.payload;
@@ -310,7 +303,6 @@ export const {
   setAdvancedSettings,
   setError,
   setNetworkStatus,
-  setIsDappAskingToChangeNetwork,
   setIsSwitchingAccount,
   setLastLogin,
   setHasEncryptedVault,

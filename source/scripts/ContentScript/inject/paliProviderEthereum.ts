@@ -214,10 +214,19 @@ export class PaliInpageProviderEth extends BaseProvider {
                 'Pali EthereumProvider: Does not yet have subscription to rpc methods',
             };
           default:
-            this._handleDisconnect(
-              false,
-              messages.errors.permanentlyDisconnected()
+            console.warn(
+              '[PaliEthProvider] Unknown notification method:',
+              method,
+              'params:',
+              params
             );
+            console.warn(
+              '[PaliEthProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+            );
+            // Don't disconnect for unknown notifications - just ignore them
+            // This prevents disconnection when switching networks or receiving notifications
+            // intended for other providers (like Syscoin provider)
+            break;
         }
       },
       {

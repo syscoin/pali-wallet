@@ -49,10 +49,6 @@ handleMasterControllerInstance()
     handleObserveStateChanges();
     handleStartPolling();
     handleFiatPrice();
-
-    // Initialize notification manager after controller is ready
-    console.log('[Background] Notification manager initialized');
-    // The notification manager self-initializes and subscribes to state changes
   })
   .catch((error) => {
     console.error('[Background] Failed to initialize controller:', error);

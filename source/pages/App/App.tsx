@@ -111,37 +111,56 @@ const App: FC = () => {
     const checkForExternalTabs = async () => {
       try {
         // First check storage flags for immediate response
-        chrome.storage.local.get(['pali-popup-open'], (result) => {
-          if (result['pali-popup-open']) {
-            setIsExternalActive(true);
-            setIsCheckingExternal(false);
-            return;
-          }
+        chrome.storage.local.get(
+          ['pali-popup-open', 'pali-popup-timestamp'],
+          (result) => {
+            const popupOpen = !!result['pali-popup-open'];
+            const timestamp = result['pali-popup-timestamp'];
+            const now = Date.now();
 
-          // If no storage flag, check contexts as fallback
-          if (
-            'getContexts' in chrome.runtime &&
-            typeof chrome.runtime.getContexts === 'function'
-          ) {
-            (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
-              const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+            if (popupOpen && timestamp) {
+              // Check if timestamp is stale (older than 5 minutes)
+              const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
-              // Check for any TAB context from our extension
-              const hasExternalTab = contexts.some((ctx) => {
-                const isExtensionTab =
-                  ctx.contextType === 'TAB' &&
-                  ctx.documentOrigin === ourExtensionOrigin;
-                return isExtensionTab;
+              if (now - timestamp > STALE_TIMEOUT) {
+                // Stale flag - clear it and fall back to context check
+                chrome.storage.local.remove([
+                  'pali-popup-open',
+                  'pali-popup-timestamp',
+                ]);
+              } else {
+                // Valid recent flag - external popup is active
+                setIsExternalActive(true);
+                setIsCheckingExternal(false);
+                return;
+              }
+            }
+
+            // If no storage flag or stale flag was cleared, check contexts as fallback
+            if (
+              'getContexts' in chrome.runtime &&
+              typeof chrome.runtime.getContexts === 'function'
+            ) {
+              (chrome.runtime as any).getContexts({}, (contexts: any[]) => {
+                const ourExtensionOrigin = `chrome-extension://${chrome.runtime.id}`;
+
+                // Check for any TAB context from our extension
+                const hasExternalTab = contexts.some((ctx) => {
+                  const isExtensionTab =
+                    ctx.contextType === 'TAB' &&
+                    ctx.documentOrigin === ourExtensionOrigin;
+                  return isExtensionTab;
+                });
+
+                setIsExternalActive(hasExternalTab);
+                setIsCheckingExternal(false);
               });
-
-              setIsExternalActive(hasExternalTab);
+            } else {
+              setIsExternalActive(false);
               setIsCheckingExternal(false);
-            });
-          } else {
-            setIsExternalActive(false);
-            setIsCheckingExternal(false);
+            }
           }
-        });
+        );
       } catch (error) {
         console.warn('[App] Could not check for external tabs:', error);
         setIsExternalActive(false);

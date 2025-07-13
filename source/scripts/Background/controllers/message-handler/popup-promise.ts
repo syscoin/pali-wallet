@@ -1,43 +1,42 @@
 import { ethErrors } from 'helpers/errors';
 
-import {
-  ICustomEvent,
-  IDAppController,
-  PaliRoutes,
-} from '../../../../types/index'; // need to use this relative import [avoid terminal error]
+import { ICustomEvent, IDAppController } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
+import { MethodRoute } from './types';
+
 const TX_ROUTES = [
-  PaliRoutes.SendEthTX,
-  PaliRoutes.SendApprove,
-  PaliRoutes.SendNTokenTX,
+  MethodRoute.SendEthTx,
+  MethodRoute.SendApprove,
+  MethodRoute.SendNTokenTx,
 ] as const;
 
 const CHAIN_ROUTES = [
-  PaliRoutes.SwitchEthChain,
-  PaliRoutes.AddEthChain,
-  PaliRoutes.SwitchUtxo,
+  MethodRoute.SwitchEthChain,
+  MethodRoute.AddEthChain,
+  MethodRoute.SwitchUtxo,
 ] as const;
 
 const REJECTION_ROUTES = new Set([
-  PaliRoutes.SendEthTX,
-  PaliRoutes.SendApprove,
-  PaliRoutes.EthSign,
-  PaliRoutes.EncryptKey,
-  PaliRoutes.SwitchEthChain,
-  PaliRoutes.AddEthChain,
-  PaliRoutes.ChangeAccount,
-  PaliRoutes.SwitchUtxo,
-  PaliRoutes.WatchAsset,
-  PaliRoutes.SwitchNetwork,
+  MethodRoute.SendEthTx,
+  MethodRoute.SendApprove,
+  MethodRoute.EthSign,
+  MethodRoute.EncryptKey,
+  MethodRoute.SwitchEthChain,
+  MethodRoute.AddEthChain,
+  MethodRoute.ChangeAccount,
+  MethodRoute.SwitchUtxo,
+  MethodRoute.WatchAsset,
+  MethodRoute.SwitchNetwork,
+  // Note: Login is NOT in rejection routes - closing login window doesn't throw error
 ]);
 
 const handleResponseEvent = async (
   event: ICustomEvent,
   eventName: string,
   host: string,
-  route: PaliRoutes,
+  route: MethodRoute,
   dapp: Readonly<IDAppController>,
   resolve: (value: unknown) => void
 ): Promise<void> => {
@@ -71,27 +70,6 @@ const handleResponseEvent = async (
   }
 };
 
-const handleCloseWindow = (
-  popup: any,
-  route: PaliRoutes,
-  resolve: (value: unknown) => void
-): void => {
-  const handleWindowRemoval = (windowId: number): void => {
-    if (windowId !== popup.id) {
-      return;
-    }
-
-    if (REJECTION_ROUTES.has(route)) {
-      resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
-      return;
-    }
-
-    resolve({ success: false });
-  };
-
-  chrome.windows.onRemoved.addListener(handleWindowRemoval);
-};
-
 // Detection function for popup blocking - includes ALL extension windows that should block new popups
 const checkForAnyOpenPopupOrHardwareWallet = async (): Promise<boolean> => {
   try {
@@ -107,7 +85,7 @@ const checkForAnyOpenPopupOrHardwareWallet = async (): Promise<boolean> => {
           const hasBlockingWindow = contexts.some((ctx) => {
             // Check for ANY tab from our extension (includes hardware wallet and external tabs)
             if (
-              ctx.contextType === 'TAB' &&
+              (ctx.contextType === 'TAB' || ctx.contextType === 'POPUP') &&
               ctx.documentOrigin === ourExtensionOrigin
             ) {
               return true;
@@ -148,85 +126,167 @@ export const popupPromise = async ({
   data?: object;
   eventName: string;
   host: string;
-  route: string;
+  route: MethodRoute;
 }) => {
   const { dapp, createPopup } = getController();
 
-  if (await checkIfPopupIsOpen())
+  // Use atomic check-and-set to prevent race conditions
+  const canCreatePopup = await atomicCheckAndSetPopup();
+  if (!canCreatePopup) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Dapp already has a open window')
     );
+  }
 
-  data = JSON.parse(JSON.stringify(data).replace(/#(?=\S)/g, ''));
+  data = JSON.parse(JSON.stringify(data || {}).replace(/#(?=\S)/g, ''));
 
   let popup = null;
 
   try {
     popup = await createPopup(route, { ...data, host, eventName });
   } catch (error) {
+    // Clear the flag if popup creation failed
+    chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
     throw error;
   }
+
   return new Promise((resolve) => {
-    self.addEventListener('message', (swEvent) => {
+    let messageHandler: any = null;
+    let windowRemovalHandler: any = null;
+
+    // Clean up function to remove listeners
+    const cleanup = () => {
+      if (messageHandler) {
+        self.removeEventListener('message', messageHandler);
+        messageHandler = null;
+      }
+      if (windowRemovalHandler) {
+        chrome.windows.onRemoved.removeListener(windowRemovalHandler);
+        windowRemovalHandler = null;
+      }
+    };
+
+    // Message handler
+    messageHandler = (swEvent: any) => {
       handleResponseEvent(
         swEvent,
         eventName,
         host,
-        route as PaliRoutes,
+        route,
         dapp,
-        resolve
+        (result: any) => {
+          cleanup();
+          resolve(result);
+        }
       );
-      handleCloseWindow(popup, route as PaliRoutes, resolve);
-    });
+    };
+
+    // Window removal handler
+    windowRemovalHandler = (windowId: number) => {
+      if (windowId !== popup.id) {
+        return;
+      }
+
+      cleanup();
+
+      if (REJECTION_ROUTES.has(route)) {
+        resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
+      } else {
+        resolve({ success: false });
+      }
+    };
+
+    // Add listeners
+    self.addEventListener('message', messageHandler);
+    chrome.windows.onRemoved.addListener(windowRemovalHandler);
   });
 };
 
-function checkIfPopupIsOpen(): Promise<boolean> {
-  return new Promise((resolve) => {
-    // Check storage flag with timestamp validation first
-    chrome.storage.local.get(
-      ['pali-popup-open', 'pali-popup-timestamp'],
-      (result) => {
-        if (chrome.runtime.lastError) {
-          console.error(
-            '[checkIfPopupIsOpen] Storage error:',
-            chrome.runtime.lastError
-          );
-          resolve(false);
-          return;
-        }
+// Atomic check-and-set operation to prevent race conditions
+function atomicCheckAndSetPopup(): Promise<boolean> {
+  return new Promise(async (resolve) => {
+    try {
+      // First check if there are any actual popup windows open (hardware wallet, etc.)
+      const hasActualPopup = await checkForAnyOpenPopupOrHardwareWallet();
+      if (hasActualPopup) {
+        resolve(false);
+        return;
+      }
 
-        const popupOpen = !!result['pali-popup-open'];
-        const timestamp = result['pali-popup-timestamp'];
-
-        if (popupOpen && timestamp) {
-          // Check if timestamp is stale (older than 5 minutes)
-          const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-          const now = Date.now();
-
-          if (now - timestamp > STALE_TIMEOUT) {
-            chrome.storage.local.remove([
-              'pali-popup-open',
-              'pali-popup-timestamp',
-            ]);
-
-            // Only use context detection as fallback when cleaning up stale flags
-            checkForAnyOpenPopupOrHardwareWallet()
-              .then(resolve)
-              .catch(() => resolve(false));
+      // Then check storage flag
+      chrome.storage.local.get(
+        ['pali-popup-open', 'pali-popup-timestamp'],
+        (result) => {
+          if (chrome.runtime.lastError) {
+            console.error(
+              '[atomicCheckAndSetPopup] Storage error:',
+              chrome.runtime.lastError
+            );
+            resolve(false);
             return;
           }
 
-          // Storage flag is valid and recent
-          resolve(true);
-          return;
-        }
+          const popupOpen = !!result['pali-popup-open'];
+          const timestamp = result['pali-popup-timestamp'];
+          const now = Date.now();
 
-        // No storage flag means no popup is open
-        checkForAnyOpenPopupOrHardwareWallet()
-          .then(resolve)
-          .catch(() => resolve(false));
-      }
-    );
+          if (popupOpen && timestamp) {
+            // Check if timestamp is stale (older than 5 minutes)
+            const STALE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+            if (now - timestamp > STALE_TIMEOUT) {
+              // Stale flag - clear it and set new one atomically
+              chrome.storage.local.set(
+                {
+                  'pali-popup-open': true,
+                  'pali-popup-timestamp': now,
+                },
+                () => {
+                  if (chrome.runtime.lastError) {
+                    console.error(
+                      '[atomicCheckAndSetPopup] Failed to set flag:',
+                      chrome.runtime.lastError
+                    );
+                    resolve(false);
+                  } else {
+                    resolve(true);
+                  }
+                }
+              );
+              return;
+            }
+
+            // Storage flag is valid and recent - popup already exists
+            resolve(false);
+            return;
+          }
+
+          // No storage flag - set it atomically
+          chrome.storage.local.set(
+            {
+              'pali-popup-open': true,
+              'pali-popup-timestamp': now,
+            },
+            () => {
+              if (chrome.runtime.lastError) {
+                console.error(
+                  '[atomicCheckAndSetPopup] Failed to set flag:',
+                  chrome.runtime.lastError
+                );
+                resolve(false);
+              } else {
+                resolve(true);
+              }
+            }
+          );
+        }
+      );
+    } catch (error) {
+      console.error(
+        '[atomicCheckAndSetPopup] Error checking for actual popups:',
+        error
+      );
+      resolve(false);
+    }
   });
 }

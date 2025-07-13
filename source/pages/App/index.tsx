@@ -16,12 +16,11 @@ import 'assets/styles/custom-import-token-input.css';
 import 'assets/styles/custom-send-utxo-input.css';
 
 // Import React and dependencies statically to enable webpack optimization
-import React, { startTransition } from 'react';
+import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { ToastContainer } from 'react-toastify';
 
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
 
@@ -57,7 +56,7 @@ if (window.__PALI_OFFSCREEN__) {
             // Initialize store and state
             const initializeState = async () => {
               try {
-                // FIRST: Try to load from cached state immediately
+                // Load from cached state immediately for fast UI rendering
                 try {
                   await rehydrateStore(store);
                   setIsReady(true);
@@ -68,113 +67,16 @@ if (window.__PALI_OFFSCREEN__) {
                   setIsReady(true);
                 }
 
-                // THEN: Try to fetch fresh state from background (non-blocking)
-                const fetchFreshState = async () => {
-                  try {
-                    console.log(
-                      '[App] Fetching fresh state from background script...'
-                    );
-
-                    // Use a shorter timeout for background readiness check
-                    let bgReady = false;
-                    for (let i = 0; i < 3; i++) {
-                      try {
-                        const pingResponse = await new Promise(
-                          (resolve, reject) => {
-                            const timeout = setTimeout(
-                              () => reject(new Error('Timeout')),
-                              500
-                            );
-                            chrome.runtime.sendMessage(
-                              { type: 'ping' },
-                              (response) => {
-                                clearTimeout(timeout);
-                                if (chrome.runtime.lastError) {
-                                  reject(chrome.runtime.lastError);
-                                } else {
-                                  resolve(response);
-                                }
-                              }
-                            );
-                          }
-                        );
-
-                        if ((pingResponse as any)?.ready) {
-                          console.log('[App] Background script is ready');
-                          bgReady = true;
-                          break;
-                        }
-                      } catch (error) {
-                        // Silent - we'll try again
-                      }
-                      await new Promise((resolve) => setTimeout(resolve, 200));
-                    }
-
-                    if (!bgReady) {
-                      // Background not ready yet - that's ok, we already have UI loaded
-                      // Schedule a retry in the background
-                      setTimeout(() => fetchFreshState(), 2000);
-                      return;
-                    }
-
-                    // Try to get fresh state
-                    try {
-                      const state = await controllerEmitter([
-                        'wallet',
-                        'getState',
-                      ]);
-                      console.log('[App] Fresh state fetched');
-
-                      if (state && typeof state === 'object') {
-                        // Validate that we have valid state data
-                        const stateObj = state as any;
-                        if (stateObj.vault || stateObj.vaultGlobal) {
-                          // Update store with fresh state using startTransition
-                          // This ensures UI remains responsive during state updates
-                          startTransition(() => {
-                            rehydrateStore(store, state);
-                            console.log('[App] Store updated with fresh state');
-                          });
-                        } else {
-                          console.log(
-                            '[App] Invalid state structure received, skipping update'
-                          );
-                        }
-                      }
-                    } catch (error: any) {
-                      // Retry later if it's a connection error
-                      if (
-                        error?.message?.includes(
-                          'Could not establish connection'
-                        ) ||
-                        error?.message?.includes(
-                          'Receiving end does not exist'
-                        ) ||
-                        error?.message?.includes(
-                          'Failed to connect to service worker'
-                        )
-                      ) {
-                        console.log(
-                          '[App] Service worker connection error, retrying in 5s...'
-                        );
-                        setTimeout(() => fetchFreshState(), 5000);
-                      } else {
-                        console.error(
-                          '[App] Error fetching fresh state:',
-                          error
-                        );
-                      }
-                    }
-                  } catch (error) {
-                    // Silent fail - we already have UI loaded
-                  }
-                };
-
-                // Fetch fresh state in the background (non-blocking)
-                setTimeout(() => fetchFreshState(), 100);
+                // Fresh state updates are handled by useRouterLogic via CONTROLLER_STATE_CHANGE messages
+                console.log(
+                  '[App] Initial state loaded, router will handle updates'
+                );
               } catch (error) {
-                console.error('[App] Failed to initialize state:', error);
-                // Still render the app even if state initialization fails
+                console.error(
+                  '[App] Error during state initialization:',
+                  error
+                );
+                // Still allow the app to render with default state
                 setIsReady(true);
               }
             };

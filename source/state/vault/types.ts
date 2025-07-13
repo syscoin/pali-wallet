@@ -47,7 +47,6 @@ export interface IGlobalState {
   hasEncryptedVault: boolean;
 
   hasEthProperty: boolean;
-  isDappAskingToChangeNetwork: boolean;
   // Track if current updates are from polling (background) vs user action
   isPollingUpdate: boolean;
   isSwitchingAccount: boolean;

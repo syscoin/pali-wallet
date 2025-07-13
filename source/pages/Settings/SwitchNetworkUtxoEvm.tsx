@@ -23,6 +23,27 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const { t } = useTranslation();
   const { navigate } = useUtils();
 
+  // Safety check: if required data is missing, show error or redirect
+  if (!newNetwork || !newChainValue) {
+    console.error('[SwitchNetworkUtxoEvm] Missing required data:', {
+      newNetwork,
+      newChainValue,
+      data,
+    });
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <p className="text-brand-white text-center">
+          {t('settings.networkSwitchError')}
+        </p>
+        <div className="mt-4">
+          <SecondaryButton type="button" onClick={() => navigate('/home')}>
+            {t('buttons.goHome')}
+          </SecondaryButton>
+        </div>
+      </div>
+    );
+  }
+
   const isNewChainBtcBased = newChainValue === 'syscoin';
 
   const previousChain = getNetworkChain(!isNewChainBtcBased); // if the new chain isBtcBased, the previous chain is EVM
@@ -79,14 +100,14 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                   {t('settings.newNetworkUrl')}
                   <span className="text-brand-royalblue text-xs">
-                    {newNetwork.url}
+                    {newNetwork?.url || 'N/A'}
                   </span>
                 </p>
 
                 <p className="flex flex-col pt-2 w-full text-brand-white font-poppins font-thin">
                   {t('settings.newNetworkChainId')}
                   <span className="text-brand-royalblue text-xs">
-                    {newNetwork.chainId}
+                    {newNetwork?.chainId || 'N/A'}
                   </span>
                 </p>
               </div>

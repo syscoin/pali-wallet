@@ -309,12 +309,7 @@ export const SendNTokenTransaction = () => {
         gasLimitResult = BigNumber.from(0);
       } else {
         const currentBlockRequest = (await controllerEmitter(
-          [
-            'wallet',
-            'ethereumTransaction',
-            'contentScriptWeb3Provider',
-            'send',
-          ],
+          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
           ['eth_getBlockByNumber', ['latest', false]]
         )) as any;
 
@@ -335,12 +330,7 @@ export const SendNTokenTransaction = () => {
             delete clonedTx.maxFeePerGas;
             delete clonedTx.gasPrice;
             await controllerEmitter(
-              [
-                'wallet',
-                'ethereumTransaction',
-                'contentScriptWeb3Provider',
-                'send',
-              ],
+              ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
               ['eth_call', [clonedTx, 'latest']]
             );
           }
