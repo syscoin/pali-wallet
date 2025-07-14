@@ -110,13 +110,16 @@ export class WalletMethodHandler implements IMethodHandler {
         });
       }
 
-      return requestCoordinator.coordinatePopupRequest(context, () =>
-        popupPromise({
-          host,
-          route: methodConfig.popupRoute!,
-          eventName: methodConfig.popupEventName!,
-          data: { chainId: targetChainId },
-        })
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: methodConfig.popupRoute!,
+            eventName: methodConfig.popupEventName!,
+            data: { chainId: targetChainId },
+          }),
+        methodConfig.popupRoute! // Explicit route parameter
       );
     }
 
@@ -150,16 +153,19 @@ export class WalletMethodHandler implements IMethodHandler {
         );
       }
 
-      return requestCoordinator.coordinatePopupRequest(context, () =>
-        popupPromise({
-          host,
-          route: methodConfig.popupRoute!,
-          eventName: methodConfig.popupEventName!,
-          data: {
-            newNetwork: targetNetwork,
-            newChainValue: newChainValue,
-          },
-        })
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: methodConfig.popupRoute!,
+            eventName: methodConfig.popupEventName!,
+            data: {
+              newNetwork: targetNetwork,
+              newChainValue: newChainValue,
+            },
+          }),
+        methodConfig.popupRoute! // Explicit route parameter
       );
     }
 
@@ -170,13 +176,16 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupEventName
     ) {
       const popupData = this.getPopupData(methodName, params);
-      return requestCoordinator.coordinatePopupRequest(context, () =>
-        popupPromise({
-          host,
-          route: methodConfig.popupRoute,
-          eventName: methodConfig.popupEventName,
-          data: popupData,
-        })
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: methodConfig.popupRoute,
+            eventName: methodConfig.popupEventName,
+            data: popupData,
+          }),
+        methodConfig.popupRoute! // Explicit route parameter
       );
     }
 
@@ -318,9 +327,13 @@ export class EthMethodHandler implements IMethodHandler {
       });
     }
 
-    // Special handling for requestAccounts (handled by connection middleware)
+    // Handle requestAccounts - connection middleware ensures we're connected
     if (methodName === 'requestAccounts') {
-      return [];
+      const account = dapp.getAccount(host);
+      if (!account) {
+        throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
+      }
+      return [account.address];
     }
 
     // Get the provider
@@ -359,9 +372,16 @@ export class SysMethodHandler implements IMethodHandler {
     const { host, method, params } = originalRequest;
     const methodName = method.split('_')[1] || method;
 
-    // Special handling for requestAccounts (handled by connection middleware)
+    // Handle requestAccounts - connection middleware ensures we're connected
     if (methodName === 'requestAccounts') {
-      return [];
+      const { dapp } = getController();
+      const account = dapp.getAccount(host);
+      if (!account) {
+        throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
+      }
+      // For sys_requestAccounts, return address (consistent with eth_requestAccounts)
+      // Note: Bridge can get full account details via wallet_getAccount if needed
+      return [account.address];
     }
 
     // Get the provider

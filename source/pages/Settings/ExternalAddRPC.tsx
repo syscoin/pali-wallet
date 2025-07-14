@@ -26,7 +26,7 @@ const CustomRPCExternal = () => {
           setConfirmed(true);
           setLoading(false);
           const type = data.eventName;
-          dispatchBackgroundEvent(`${type}.${host}`, null);
+          dispatchBackgroundEvent(`${type}.${host}`, { success: true });
           await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
           navigate('/home');
         }

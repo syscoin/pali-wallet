@@ -80,7 +80,6 @@ export const methodRequest = async (
     // Execute the request through the pipeline
     return await pipeline.execute(context);
   } catch (error) {
-    console.error('[Pipeline] Pipeline error:', error);
     // Ensure errors are properly cleaned
     if (error.code && error.message) {
       throw error; // Already formatted error

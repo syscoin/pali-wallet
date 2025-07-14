@@ -199,8 +199,6 @@ export const onMessage = async (
       return response;
     }
   } catch (error) {
-    console.error('[Background] Error handling message:', error);
-
     // Send error response
     const errorResponse = {
       error: {

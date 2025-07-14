@@ -954,7 +954,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresTabId: true,
     requiresAuth: true,
     requiresConnection: true,
-    allowHardwareWallet: false,
+    allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.UTXO,
     hasPopup: true,
     popupRoute: MethodRoute.Connect,

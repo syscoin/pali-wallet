@@ -19,10 +19,13 @@ import {
 class RequestCoordinator {
   private static instance: RequestCoordinator;
   private activePopupRequest: Promise<any> | null = null;
+  private activePopupRoute: MethodRoute | null = null;
   private requestQueue: Array<{
     context: IEnhancedRequestContext;
+    popupFunction: () => Promise<any>;
     reject: (error: any) => void;
     resolve: (value: any) => void;
+    route: MethodRoute;
   }> = [];
 
   static getInstance(): RequestCoordinator {
@@ -34,12 +37,32 @@ class RequestCoordinator {
 
   async coordinatePopupRequest(
     context: IEnhancedRequestContext,
-    popupFunction: () => Promise<any>
+    popupFunction: () => Promise<any>,
+    explicitRoute?: MethodRoute
   ): Promise<any> {
-    // If there's already an active popup request, queue this one
+    // Use explicit route if provided, otherwise fall back to context route
+    const currentRoute = explicitRoute || context.methodConfig.popupRoute;
+
+    // If there's already an active popup request, check for deduplication
     if (this.activePopupRequest) {
+      // If it's the same route, reject with specific error
+      if (this.activePopupRoute === currentRoute) {
+        throw cleanErrorStack(
+          ethErrors.provider.userRejectedRequest(
+            `Duplicate ${currentRoute} request - another ${currentRoute} popup is already active`
+          )
+        );
+      }
+
+      // Different route, queue this one
       return new Promise((resolve, reject) => {
-        this.requestQueue.push({ context, resolve, reject });
+        this.requestQueue.push({
+          context,
+          popupFunction,
+          route: currentRoute,
+          resolve,
+          reject,
+        });
 
         // Set a timeout to prevent infinite waiting
         setTimeout(() => {
@@ -62,12 +85,16 @@ class RequestCoordinator {
 
     // Execute the popup request
     this.activePopupRequest = this.executePopupRequest(popupFunction);
+    this.activePopupRoute = currentRoute;
 
     try {
       const result = await this.activePopupRequest;
       return result;
+    } catch (error) {
+      throw error;
     } finally {
       this.activePopupRequest = null;
+      this.activePopupRoute = null;
       this.processQueue();
     }
   }
@@ -85,23 +112,39 @@ class RequestCoordinator {
   private processQueue(): void {
     if (this.requestQueue.length === 0) return;
 
+    // Process the next request in the queue
     const nextRequest = this.requestQueue.shift();
     if (nextRequest) {
-      // For now, reject queued requests to prevent complexity
-      // In practice, users should wait for the first popup to complete
-      nextRequest.reject(
-        cleanErrorStack(
-          ethErrors.provider.userRejectedRequest(
-            'Another popup is currently active. Please wait and try again.'
-          )
-        )
-      );
+      // Execute the next request
+      this.coordinatePopupRequest(
+        nextRequest.context,
+        nextRequest.popupFunction,
+        nextRequest.route
+      )
+        .then(nextRequest.resolve)
+        .catch(nextRequest.reject);
     }
   }
 
   // Method to check if coordinator is busy (for debugging)
   isActive(): boolean {
     return this.activePopupRequest !== null;
+  }
+
+  // Method to clear all queued requests (used when network operations are cancelled)
+  clearQueue(): void {
+    while (this.requestQueue.length > 0) {
+      const request = this.requestQueue.shift();
+      if (request) {
+        request.reject(
+          cleanErrorStack(
+            ethErrors.provider.userRejectedRequest(
+              'Request cancelled due to network operation cancellation'
+            )
+          )
+        );
+      }
+    }
   }
 }
 
@@ -210,20 +253,27 @@ export const networkCompatibilityMiddleware: Middleware = async (
       const targetNetworkType = needsEVM ? 'ethereum' : 'syscoin';
       const currentNetworkType = needsEVM ? 'syscoin' : 'ethereum';
 
-      await requestCoordinator.coordinatePopupRequest(context, () =>
-        popupPromise({
-          host: originalRequest.host,
-          route: MethodRoute.SwitchNetwork,
-          eventName: 'switchNetwork',
-          data: {
-            requiredMethod: originalRequest.method,
-            targetNetworkType: requiredNetwork,
-            disabledNetworkType: currentNetworkType, // Disable current type to force switch
-            forceNetworkType: targetNetworkType, // Force selection of target type
-            isTypeSwitch: true, // Indicate this is a network type switch, not just network switch
-          },
-        })
+      const result = await requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host: originalRequest.host,
+            route: MethodRoute.SwitchNetwork,
+            eventName: 'switchNetwork',
+            data: {
+              requiredMethod: originalRequest.method,
+              targetNetworkType: requiredNetwork,
+              disabledNetworkType: currentNetworkType, // Disable current type to force switch
+              forceNetworkType: targetNetworkType, // Force selection of target type
+              isTypeSwitch: true, // Indicate this is a network type switch, not just network switch
+            },
+          }),
+        MethodRoute.SwitchNetwork // Explicit route parameter
       );
+
+      if (!result) {
+        throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+      }
 
       // Network type has been switched, continue with the request
     } catch (error) {
@@ -254,41 +304,30 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   ) {
     // Open connection popup directly - the router will handle auth if needed
     try {
+      const connectionRoute = methodConfig.popupRoute || MethodRoute.Connect;
       const result = await requestCoordinator.coordinatePopupRequest(
         context,
         () =>
           popupPromise({
             host: originalRequest.host,
-            route: methodConfig.popupRoute || MethodRoute.Connect,
+            route: connectionRoute,
             eventName: methodConfig.popupEventName || 'connect',
             data: {
               chain: isBitcoinBased ? 'syscoin' : 'ethereum',
               chainId: activeNetwork.chainId,
               method: originalRequest.method,
             },
-          })
+          }),
+        connectionRoute // Explicit route parameter
       );
 
       if (!result) {
         throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
       }
 
-      // Check if we got a pipeline result (for requestAccounts)
-      if (typeof result === 'object' && (result as any).pipelineResult) {
-        return (result as any).pipelineResult;
-      }
-
-      // For requestAccounts methods, return the connected address
-      if (originalRequest.method.includes('requestAccounts')) {
-        // The connect-wallet popup returns the address directly
-        const address =
-          typeof result === 'string'
-            ? result
-            : (result as any)?.address || result;
-        return methodConfig.returnsArray ? [address] : address;
-      }
+      // Connection successful, continue to method handler
+      // The method handler will return the appropriate result
     } catch (error) {
-      console.error('[Pipeline] Connection error:', error);
       throw cleanErrorStack(
         ethErrors.provider.unauthorized('Connection required')
       );
@@ -343,14 +382,14 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
             connectedAccount: account,
             accountType: dappAccountType,
           },
-        })
+        }),
+      MethodRoute.ChangeActiveConnectedAccount // Explicit route parameter
     );
 
     if (!response) {
-      throw cleanErrorStack(ethErrors.rpc.internal());
+      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
     }
   } catch (error) {
-    console.error('[Pipeline] Account switch error:', error);
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(
         'Must switch to connected account for this operation'
@@ -393,20 +432,17 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
             host: originalRequest.host,
             eventName: 'login',
           },
-        })
+        }),
+      MethodRoute.Login // Explicit route parameter
     );
 
-    if (!result || !(result as any).success) {
-      console.error('[Pipeline] Auth failed - no result or not successful');
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized('Authentication required')
-      );
+    if (!result) {
+      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
     }
 
     // Wallet should now be unlocked, continue with the request
     return next();
   } catch (error) {
-    console.error('[Pipeline] Authentication error:', error);
     throw cleanErrorStack(
       ethErrors.provider.unauthorized('Authentication cancelled')
     );

@@ -6,32 +6,6 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 
 import { MethodRoute } from './types';
 
-const TX_ROUTES = [
-  MethodRoute.SendEthTx,
-  MethodRoute.SendApprove,
-  MethodRoute.SendNTokenTx,
-] as const;
-
-const CHAIN_ROUTES = [
-  MethodRoute.SwitchEthChain,
-  MethodRoute.AddEthChain,
-  MethodRoute.SwitchUtxo,
-] as const;
-
-const REJECTION_ROUTES = new Set([
-  MethodRoute.SendEthTx,
-  MethodRoute.SendApprove,
-  MethodRoute.EthSign,
-  MethodRoute.EncryptKey,
-  MethodRoute.SwitchEthChain,
-  MethodRoute.AddEthChain,
-  MethodRoute.ChangeAccount,
-  MethodRoute.SwitchUtxo,
-  MethodRoute.WatchAsset,
-  MethodRoute.SwitchNetwork,
-  // Note: Login is NOT in rejection routes - closing login window doesn't throw error
-]);
-
 const handleResponseEvent = async (
   event: ICustomEvent,
   eventName: string,
@@ -41,32 +15,22 @@ const handleResponseEvent = async (
   resolve: (value: unknown) => void
 ): Promise<void> => {
   const expectedEventName = `${eventName}.${host}`;
-
   if (event.data.eventName !== expectedEventName) {
     return;
   }
 
-  if (CHAIN_ROUTES.includes(route as (typeof CHAIN_ROUTES)[number])) {
-    resolve(null);
-    return;
-  }
-
-  if (!event.data.detail) {
-    return;
-  }
-
-  try {
-    const parsedDetail = JSON.parse(event.data.detail);
-
-    if (TX_ROUTES.includes(route as (typeof TX_ROUTES)[number])) {
-      resolve(parsedDetail.hash);
-      return;
+  // Always resolve with the actual data sent by the component
+  if (event.data.detail) {
+    try {
+      const parsedDetail = JSON.parse(event.data.detail);
+      resolve(parsedDetail);
+    } catch (error) {
+      console.error('Error parsing event detail:', error);
+      resolve(null); // Fallback to null if parsing fails
     }
-
-    resolve(parsedDetail);
-  } catch (error) {
-    console.error('Error parsing event detail:', error);
-    throw new Error('Failed to parse event detail');
+  } else {
+    // Component sent a message but with no detail - resolve with null
+    resolve(null);
   }
 };
 
@@ -153,6 +117,7 @@ export const popupPromise = async ({
   return new Promise((resolve) => {
     let messageHandler: any = null;
     let windowRemovalHandler: any = null;
+    let resolved = false;
 
     // Clean up function to remove listeners
     const cleanup = () => {
@@ -166,19 +131,19 @@ export const popupPromise = async ({
       }
     };
 
+    // Safe resolve function that prevents double resolution
+    const safeResolve = (result: any) => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      cleanup();
+      resolve(result);
+    };
+
     // Message handler
     messageHandler = (swEvent: any) => {
-      handleResponseEvent(
-        swEvent,
-        eventName,
-        host,
-        route,
-        dapp,
-        (result: any) => {
-          cleanup();
-          resolve(result);
-        }
-      );
+      handleResponseEvent(swEvent, eventName, host, route, dapp, safeResolve);
     };
 
     // Window removal handler
@@ -187,13 +152,8 @@ export const popupPromise = async ({
         return;
       }
 
-      cleanup();
-
-      if (REJECTION_ROUTES.has(route)) {
-        resolve(cleanErrorStack(ethErrors.provider.userRejectedRequest()));
-      } else {
-        resolve({ success: false });
-      }
+      // will pass back a rejection message in pipeline
+      safeResolve(null);
     };
 
     // Add listeners
