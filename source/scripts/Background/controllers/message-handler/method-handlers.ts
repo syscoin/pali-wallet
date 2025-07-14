@@ -272,7 +272,7 @@ export class WalletMethodHandler implements IMethodHandler {
       case 'requestPermissions':
         return { params };
       case 'watchAsset':
-        return { params: params || [] };
+        return { asset: params?.[0] || null };
       case 'addEthereumChain':
         return { chainConfig: params?.[0] };
       default:
