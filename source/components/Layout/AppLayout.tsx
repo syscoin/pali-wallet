@@ -66,6 +66,15 @@ export const AppLayout: FC<IAppLayout> = ({ children }) => {
       '/external/add-EthChain',
       '/external/switch-EthChain',
       '/external/switch-UtxoEvm',
+      // External transaction routes should also be title-only
+      '/external/tx/ethSign',
+      '/external/tx/sign',
+      '/external/tx/sign-psbt',
+      '/external/tx/send/ethTx',
+      '/external/tx/send/nTokenTx',
+      '/external/tx/send/approve',
+      '/external/tx/decrypt',
+      '/external/tx/encryptKey',
     ];
     return titleOnlyRoutes.includes(location.pathname);
   }, [location.pathname]);

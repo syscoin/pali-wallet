@@ -295,7 +295,7 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   const { dapp } = getController();
   const { vault } = store.getState();
   const { isBitcoinBased, activeNetwork } = vault;
-  const { methodConfig, originalRequest } = context;
+  const { originalRequest } = context;
 
   // Use helper method to check if method requires connection
   if (
@@ -304,21 +304,20 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   ) {
     // Open connection popup directly - the router will handle auth if needed
     try {
-      const connectionRoute = methodConfig.popupRoute || MethodRoute.Connect;
       const result = await requestCoordinator.coordinatePopupRequest(
         context,
         () =>
           popupPromise({
             host: originalRequest.host,
-            route: connectionRoute,
-            eventName: methodConfig.popupEventName || 'connect',
+            route: MethodRoute.Connect, // Always use Connect route for connection
+            eventName: 'connect', // Always use connect event for connection
             data: {
               chain: isBitcoinBased ? 'syscoin' : 'ethereum',
               chainId: activeNetwork.chainId,
               method: originalRequest.method,
             },
           }),
-        connectionRoute // Explicit route parameter
+        MethodRoute.Connect // Explicit route parameter
       );
 
       if (!result) {

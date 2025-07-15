@@ -371,7 +371,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkRequirement: NetworkRequirement.EVM,
     hasPopup: true,
     popupRoute: MethodRoute.EthSign,
-    popupEventName: 'eth_sign',
+    popupEventName: 'personal_sign',
     isBlocking: true,
   },
 
@@ -399,7 +399,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkRequirement: NetworkRequirement.EVM,
     hasPopup: true,
     popupRoute: MethodRoute.EthSign,
-    popupEventName: 'eth_signTypedData',
+    popupEventName: 'eth_signTypedData_v3',
     isBlocking: true,
   },
 
@@ -413,7 +413,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     networkRequirement: NetworkRequirement.EVM,
     hasPopup: true,
     popupRoute: MethodRoute.EthSign,
-    popupEventName: 'eth_signTypedData',
+    popupEventName: 'eth_signTypedData_v4',
     isBlocking: true,
   },
 

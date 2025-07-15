@@ -191,8 +191,16 @@ export const onMessage = async (
           'error:',
           tabError
         );
-        // Tab might have been closed or become invalid
-        // This could happen if popup window lifecycle affects tab context
+
+        // 🔧 FIX: Don't throw error when tab communication fails
+        // The content script context may have been invalidated (page navigation, refresh, etc.)
+        // This is normal behavior and shouldn't cause the request to fail
+        // The user has already completed the action (signing, etc.) so we consider it successful
+
+        // Log for debugging but don't propagate the error
+        console.warn(
+          '[Background] Tab context may have been invalidated. This is normal if the user navigated away or refreshed the page during the operation.'
+        );
       }
     } else {
       // Direct response for popup/extension messages
@@ -216,6 +224,8 @@ export const onMessage = async (
       } catch (tabError) {
         console.error(
           '[Background] Failed to send error response to tab:',
+          sender.tab.id,
+          'error:',
           tabError
         );
       }

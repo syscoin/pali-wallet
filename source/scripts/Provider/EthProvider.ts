@@ -89,8 +89,22 @@ export const EthProvider = (host: string) => {
 
   const ethSign = async (params: string[]) => {
     const data = params;
-    if (!data.length || data.length < 2 || !data[0] || !data[1])
-      throw cleanErrorStack(ethErrors.rpc.invalidParams());
+
+    // Check if params is undefined or null first
+    if (
+      !data ||
+      !Array.isArray(data) ||
+      data.length < 2 ||
+      !data[0] ||
+      !data[1]
+    ) {
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams(
+          'eth_sign requires [address, message] parameters'
+        )
+      );
+    }
+
     const resp = await popupPromise({
       host,
       data,
@@ -102,8 +116,18 @@ export const EthProvider = (host: string) => {
 
   const personalSign = async (params: string[]) => {
     const data = params;
-    if (!data.length || data.length < 2 || !data[0] || !data[1])
-      throw cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (
+      !data ||
+      !Array.isArray(data) ||
+      data.length < 2 ||
+      !data[0] ||
+      !data[1]
+    )
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams(
+          'personal_sign requires [message, address] parameters'
+        )
+      );
     const resp = await popupPromise({
       host,
       data,
@@ -113,7 +137,12 @@ export const EthProvider = (host: string) => {
     return resp;
   };
   const signTypedData = (data: TypedData[]) => {
-    if (!data.length) throw cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data || !Array.isArray(data) || data.length === 0)
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams(
+          'eth_signTypedData requires valid data parameter'
+        )
+      );
     return popupPromise({
       host,
       data,
@@ -123,8 +152,12 @@ export const EthProvider = (host: string) => {
   };
 
   const signTypedDataV3 = (data: TypedData[]) => {
-    if (!data.length || data.length < 2)
-      throw cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data || !Array.isArray(data) || data.length < 2)
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams(
+          'eth_signTypedData_v3 requires [address, typedData] parameters'
+        )
+      );
     return popupPromise({
       host,
       data,
@@ -134,8 +167,12 @@ export const EthProvider = (host: string) => {
   };
 
   const signTypedDataV4 = (data: TypedData[]) => {
-    if (!data.length || data.length < 2)
-      throw cleanErrorStack(ethErrors.rpc.invalidParams());
+    if (!data || !Array.isArray(data) || data.length < 2)
+      throw cleanErrorStack(
+        ethErrors.rpc.invalidParams(
+          'eth_signTypedData_v4 requires [address, typedData] parameters'
+        )
+      );
     return popupPromise({
       host,
       data,
@@ -283,7 +320,7 @@ export const EthProvider = (host: string) => {
           );
           return requestResult;
         } catch (error) {
-          console.log({ requestError: error, method, params });
+          console.error({ requestError: error, method, params });
           throw cleanErrorStack(
             ethErrors.rpc.internal(error.error.data || error.error.message)
           );

@@ -78,7 +78,8 @@ export const methodRequest = async (
 
   try {
     // Execute the request through the pipeline
-    return await pipeline.execute(context);
+    const result = await pipeline.execute(context);
+    return result;
   } catch (error) {
     // Ensure errors are properly cleaned
     if (error.code && error.message) {

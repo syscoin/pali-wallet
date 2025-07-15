@@ -1,11 +1,7 @@
 import store from 'state/store';
 
 export const isPollingRunNotValid = () => {
-  const {
-    networkStatus,
-    changingConnectedAccount: { isChangingConnectedAccount },
-    lastLogin,
-  } = store.getState().vaultGlobal;
+  const { networkStatus, lastLogin } = store.getState().vaultGlobal;
 
   const verifyIfUserIsNotRegistered = lastLogin === 0;
 
@@ -13,11 +9,7 @@ export const isPollingRunNotValid = () => {
 
   // Only block polling for critical operations, not loading states
   // We want to show loading indicators during polling now
-  if (
-    isNetworkChanging ||
-    verifyIfUserIsNotRegistered ||
-    isChangingConnectedAccount
-  ) {
+  if (isNetworkChanging || verifyIfUserIsNotRegistered) {
     return true;
   }
 

@@ -24,7 +24,6 @@ export const ConnectionStatusIndicator = memo(
     // Get all network-related loading states from vaultGlobal
     const {
       networkStatus,
-      changingConnectedAccount: { isChangingConnectedAccount },
       loadingStates: {
         isLoadingTxs,
         isLoadingBalances,
@@ -47,8 +46,7 @@ export const ConnectionStatusIndicator = memo(
       isLoadingTxs ||
       isLoadingBalances ||
       isLoadingAssets ||
-      isLoadingNfts ||
-      isChangingConnectedAccount;
+      isLoadingNfts;
 
     // Track successful network operation completion
     useEffect(() => {
@@ -235,8 +233,6 @@ export const ConnectionStatusIndicator = memo(
         tooltipContent = t('networkConnection.loadingTransactions');
       } else if (isLoadingNfts) {
         tooltipContent = t('networkConnection.loadingNfts');
-      } else if (isChangingConnectedAccount) {
-        tooltipContent = t('networkConnection.switchingAccount');
       }
     }
 

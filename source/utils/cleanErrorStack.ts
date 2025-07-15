@@ -20,5 +20,16 @@ export default function cleanErrorStack(err: Error) {
     err.stack = `${err.name}: ${err.message}`;
   }
 
-  return { error: { name, message, stack }, data: { name, message, stack } };
+  // Create a new Error object with preserved properties
+  const cleanedError = new Error(message);
+  cleanedError.name = name;
+  cleanedError.stack = stack;
+
+  // Preserve error code for RPC errors
+  const code = (err as any).code;
+  if (code !== undefined) {
+    (cleanedError as any).code = code;
+  }
+
+  return cleanedError;
 }

@@ -35,10 +35,9 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
   const { t } = useTranslation();
   const { navigate } = useUtils();
   const {} = useSelector((state: RootState) => state.vault);
-  const {
-    changingConnectedAccount: { isChangingConnectedAccount },
-    advancedSettings,
-  } = useSelector((state: RootState) => state.vaultGlobal);
+  const { advancedSettings } = useSelector(
+    (state: RootState) => state.vaultGlobal
+  );
 
   // Get dapps from Redux state
   const dapps = useSelector((state: RootState) => state.dapp.dapps);
@@ -84,13 +83,6 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
 
   // State updates are handled automatically by the background script
   // via CONTROLLER_STATE_CHANGE messages and Redux store updates
-
-  useEffect(() => {
-    if (!isChangingConnectedAccount) {
-      checkTabConnectionStatus();
-    }
-  }, [isChangingConnectedAccount, checkTabConnectionStatus]);
-
   return (
     <Menu
       as="div"

@@ -1,7 +1,6 @@
 import { Menu } from '@headlessui/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
@@ -14,7 +13,6 @@ import {
 } from 'components/Icon/Icon';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
 import {
   createNavigationContext,
   navigateWithContext,
@@ -25,36 +23,9 @@ import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased
 export const AccountMenu: React.FC = () => {
   const { navigate } = useUtils();
   const { controllerEmitter, handleWalletLockedError } = useController();
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const { t } = useTranslation();
   const setActiveAccount = async (id: number, type: KeyringAccountType) => {
     try {
-      if (!isBitcoinBased) {
-        const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-          chrome.tabs.query(
-            {
-              active: true,
-              currentWindow: true,
-            },
-            resolve
-          );
-        });
-        const host = new URL(tabs[0].url!).hostname;
-
-        await controllerEmitter(['dapp', 'getAccount'], [host]).then(
-          async (res) => {
-            await controllerEmitter(
-              ['wallet', 'setAccount'],
-              [Number(id), type, host, res]
-            );
-          }
-        );
-
-        return;
-      }
-
       await controllerEmitter(['wallet', 'setAccount'], [Number(id), type]);
     } catch (error) {
       // Check if this is a wallet locked error and handle redirect

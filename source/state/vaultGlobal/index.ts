@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
-import { IGlobalState, IChangingConnectedAccount } from '../vault/types';
+import { IGlobalState } from '../vault/types';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
 const initialState: IGlobalState = {
@@ -19,12 +19,6 @@ const initialState: IGlobalState = {
   isSwitchingAccount: false,
   networkStatus: 'idle',
   networkTarget: undefined,
-  changingConnectedAccount: {
-    host: undefined,
-    isChangingConnectedAccount: false,
-    newConnectedAccount: undefined,
-    connectedAccountType: undefined,
-  },
   // Transient loading states - always start as false
   loadingStates: {
     isLoadingBalances: false,
@@ -129,12 +123,6 @@ const vaultGlobalSlice = createSlice({
     },
     setHasEthProperty(state: IGlobalState, action: PayloadAction<boolean>) {
       state.hasEthProperty = action.payload;
-    },
-    setChangingConnectedAccount(
-      state: IGlobalState,
-      action: PayloadAction<IChangingConnectedAccount>
-    ) {
-      state.changingConnectedAccount = action.payload;
     },
     startSwitchNetwork(state: IGlobalState, action: PayloadAction<INetwork>) {
       state.networkStatus = 'switching';
@@ -307,7 +295,6 @@ export const {
   setLastLogin,
   setHasEncryptedVault,
   setHasEthProperty,
-  setChangingConnectedAccount,
   startSwitchNetwork,
   startConnecting,
   switchNetworkSuccess,

@@ -40,7 +40,6 @@ export interface IGlobalState {
     [k: string]: boolean | number; // Allow both boolean and number values
   };
 
-  changingConnectedAccount: IChangingConnectedAccount;
   // Global UI states
   error: string | null;
 
@@ -113,14 +112,6 @@ export interface INetworksVault {
     [chainId: number]: INetwork;
   };
 }
-
-export interface IChangingConnectedAccount {
-  connectedAccountType: KeyringAccountType | undefined;
-  host: string | undefined;
-  isChangingConnectedAccount: boolean;
-  newConnectedAccount: IKeyringAccountState | undefined;
-}
-
 // eslint-disable-next-line no-shadow
 export enum TransactionsType {
   Ethereum = 'ethereum',

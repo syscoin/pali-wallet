@@ -42,7 +42,7 @@ import {
   setAccountAssets,
   setAccountTransactions,
 } from 'state/vault';
-import { IOmmitedAccount, TransactionsType } from 'state/vault/types';
+import { TransactionsType } from 'state/vault/types';
 import vaultCache, {
   getSlip44ForNetwork,
   DEFAULT_EVM_SLIP44,
@@ -56,7 +56,6 @@ import {
   setLastLogin,
   resetNetworkStatus,
   setIsSwitchingAccount,
-  setChangingConnectedAccount,
   startSwitchNetwork,
   switchNetworkError,
   switchNetworkSuccess,
@@ -1762,14 +1761,7 @@ class MainController {
     return newAccount;
   }
 
-  public async setAccount(
-    id: number,
-    type: KeyringAccountType,
-    host?: string,
-    connectedAccount?: IOmmitedAccount
-  ): Promise<void> {
-    const { accounts, activeAccount } = store.getState().vault;
-
+  public async setAccount(id: number, type: KeyringAccountType): Promise<void> {
     try {
       // Prevent concurrent account switching
       if (this.isAccountSwitching) {
@@ -1795,23 +1787,6 @@ class MainController {
 
       // Set switching account loading state
       store.dispatch(setIsSwitchingAccount(true));
-
-      if (
-        connectedAccount &&
-        connectedAccount.address ===
-          accounts[activeAccount.type][activeAccount.id].address
-      ) {
-        if (connectedAccount.address !== accounts[type][id].address) {
-          store.dispatch(
-            setChangingConnectedAccount({
-              isChangingConnectedAccount: true,
-              newConnectedAccount: accounts[type][id],
-              connectedAccountType: type,
-              host: host || undefined,
-            })
-          );
-        }
-      }
 
       // Set active account
       store.dispatch(setActiveAccount({ id, type }));
@@ -1968,17 +1943,6 @@ class MainController {
 
   public resolveError() {
     store.dispatch(setStoreError(null));
-  }
-
-  public resolveAccountConflict() {
-    store.dispatch(
-      setChangingConnectedAccount({
-        newConnectedAccount: undefined,
-        host: undefined,
-        isChangingConnectedAccount: false,
-        connectedAccountType: undefined,
-      })
-    );
   }
 
   public async getRpc(
