@@ -263,16 +263,16 @@ export const SendConfirm = () => {
                 signedPsbt, // Pass the signed PSBT
               ]
             )
-              .then((response) => {
+              .then(async (response) => {
                 // Save transaction to local state for immediate visibility
-                controllerEmitter(
+                await controllerEmitter(
                   ['wallet', 'sendAndSaveTransaction'],
                   [response]
                 );
 
                 // Set initial confirmation state for UTXO transactions
                 // (EVM transactions have automatic tracking in EvmList.tsx)
-                controllerEmitter(
+                await controllerEmitter(
                   ['wallet', 'setIsLastTxConfirmed'],
                   [activeNetwork.chainId, false]
                 );
@@ -464,7 +464,7 @@ export const SendConfirm = () => {
 
             if (isEIP1559Compatible === false) {
               try {
-                await controllerEmitter(
+                controllerEmitter(
                   ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
                   [
                     {
@@ -482,9 +482,9 @@ export const SendConfirm = () => {
                     !isEIP1559Compatible,
                   ]
                 )
-                  .then((response) => {
+                  .then(async (response) => {
                     // Save transaction to local state for immediate visibility
-                    controllerEmitter(
+                    await controllerEmitter(
                       ['wallet', 'sendAndSaveTransaction'],
                       [response]
                     );
@@ -541,7 +541,7 @@ export const SendConfirm = () => {
             }
 
             (
-              controllerEmitter(
+              (await controllerEmitter(
                 ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
                 [
                   {
@@ -575,11 +575,11 @@ export const SendConfirm = () => {
                         ),
                   },
                 ]
-              ) as Promise<ISysTransaction | IEvmTransactionResponse>
+              )) as Promise<ISysTransaction | IEvmTransactionResponse>
             )
-              .then((response) => {
+              .then(async (response) => {
                 // Save transaction to local state for immediate visibility
-                controllerEmitter(
+                await controllerEmitter(
                   ['wallet', 'sendAndSaveTransaction'],
                   [response]
                 );
@@ -665,9 +665,9 @@ export const SendConfirm = () => {
                       ],
                       [retryTxObject, !isEIP1559Compatible]
                     )
-                      .then((response) => {
+                      .then(async (response) => {
                         // Save transaction to local state for immediate visibility
-                        controllerEmitter(
+                        await controllerEmitter(
                           ['wallet', 'sendAndSaveTransaction'],
                           [response]
                         );
@@ -749,7 +749,7 @@ export const SendConfirm = () => {
                   )
                     .then(async (response) => {
                       // Save transaction to local state for immediate visibility
-                      controllerEmitter(
+                      await controllerEmitter(
                         ['wallet', 'sendAndSaveTransaction'],
                         [response]
                       );
@@ -859,7 +859,7 @@ export const SendConfirm = () => {
 
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility
-                    controllerEmitter(
+                    await controllerEmitter(
                       ['wallet', 'sendAndSaveTransaction'],
                       [response]
                     );
@@ -952,7 +952,7 @@ export const SendConfirm = () => {
                 )
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility
-                    controllerEmitter(
+                    await controllerEmitter(
                       ['wallet', 'sendAndSaveTransaction'],
                       [response]
                     );
@@ -1067,7 +1067,7 @@ export const SendConfirm = () => {
                 )
                   .then(async (response) => {
                     // Save transaction to local state for immediate visibility
-                    controllerEmitter(
+                    await controllerEmitter(
                       ['wallet', 'sendAndSaveTransaction'],
                       [response]
                     );

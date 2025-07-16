@@ -137,10 +137,10 @@ const EthSign: React.FC<ISign> = () => {
           )) as string;
         }
       }
+      dispatchBackgroundEvent(`${type}.${host}`, response);
       setConfirmed(true);
       setLoading(false);
 
-      dispatchBackgroundEvent(`${type}.${host}`, response);
       window.close();
     } catch (error: any) {
       const isNecessaryReconnect = error.message.includes(

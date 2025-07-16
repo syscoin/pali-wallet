@@ -266,7 +266,7 @@ export const useRouterLogic = () => {
       );
     }
 
-    controllerEmitter(['wallet', 'lock']);
+    await controllerEmitter(['wallet', 'lock']);
     navigate('/');
   };
 

@@ -56,7 +56,7 @@ const EditAccountView = () => {
 
       const accountId = state.id;
 
-      controllerEmitter(
+      await controllerEmitter(
         ['wallet', 'editAccountLabel'],
         [data.label, accountId, accountType]
       );

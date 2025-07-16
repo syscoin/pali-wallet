@@ -28,8 +28,8 @@ const RemoveEthView = () => {
 
     switch (isEnabled) {
       case true:
-        controllerEmitter(['wallet', 'removeWindowEthProperty']);
-        controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
+        await controllerEmitter(['wallet', 'removeWindowEthProperty']);
+        await controllerEmitter(['wallet', 'setHasEthProperty'], [false]);
 
         // Get all dapps and disconnect them efficiently
         try {
@@ -63,8 +63,8 @@ const RemoveEthView = () => {
         setLoading(false);
         break;
       case false:
-        controllerEmitter(['wallet', 'addWindowEthProperty']);
-        controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
+        await controllerEmitter(['wallet', 'addWindowEthProperty']);
+        await controllerEmitter(['wallet', 'setHasEthProperty'], [true]);
 
         setConfirmed(true);
         setLoading(false);

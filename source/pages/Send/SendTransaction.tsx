@@ -183,13 +183,14 @@ export const SendTransaction = () => {
           ]
         )) as any;
 
-        controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
-
-        setConfirmed(true);
-        setLoading(false);
-
+        await controllerEmitter(
+          ['wallet', 'sendAndSaveTransaction'],
+          [response]
+        );
         if (isExternal)
           dispatchBackgroundEvent(`${eventName}.${host}`, response);
+        setConfirmed(true);
+        setLoading(false);
         return response.hash;
       } catch (error: any) {
         const isNecessaryReconnect = error.message.includes(

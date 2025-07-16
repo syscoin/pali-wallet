@@ -201,12 +201,15 @@ export const ApproveTransactionComponent = () => {
           [newTxValue]
         )) as { hash: string };
 
-        controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
-
+        await controllerEmitter(
+          ['wallet', 'sendAndSaveTransaction'],
+          [response]
+        );
+        if (isExternal) {
+          dispatchBackgroundEvent(`${eventName}.${host}`, response);
+        }
         setConfirmedDefaultModal(true);
         setLoading(false);
-        if (isExternal)
-          dispatchBackgroundEvent(`${eventName}.${host}`, response);
         return response.hash;
       } catch (error: any) {
         const isNecessaryReconnect = error.message.includes(

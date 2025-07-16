@@ -61,10 +61,9 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           ]
         );
       }
-
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
       setConfirmed(true);
       setLoading(false);
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
 
       // Show success toast
       alert.success(

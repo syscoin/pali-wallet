@@ -150,16 +150,15 @@ export const SendNTokenTransaction = () => {
               isLegacyTransaction,
             ]
           )
-            .then((response) => {
-              controllerEmitter(
+            .then(async (response) => {
+              await controllerEmitter(
                 ['wallet', 'sendAndSaveTransaction'],
                 [response]
               );
-
-              setConfirmed(true);
-              setLoading(false);
               if (isExternal)
                 dispatchBackgroundEvent(`${eventName}.${host}`, response);
+              setConfirmed(true);
+              setLoading(false);
             })
             .catch((error) => {
               alert.error(t('send.cantCompleteTxs'));
@@ -228,16 +227,15 @@ export const SendNTokenTransaction = () => {
               },
             ]
           )
-            .then((response) => {
-              controllerEmitter(
+            .then(async (response) => {
+              await controllerEmitter(
                 ['wallet', 'sendAndSaveTransaction'],
                 [response]
               );
-
-              setConfirmed(true);
-              setLoading(false);
               if (isExternal)
                 dispatchBackgroundEvent(`${eventName}.${host}`, response);
+              setConfirmed(true);
+              setLoading(false);
             })
             .catch((error) => {
               alert.error(t('send.cantCompleteTxs'));

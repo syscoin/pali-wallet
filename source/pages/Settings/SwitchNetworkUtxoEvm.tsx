@@ -58,11 +58,10 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
-    setConfirmed(true);
-    setLoading(false);
     const type = data.eventName;
     dispatchBackgroundEvent(`${type}.${host}`, { success: true });
-    window.close();
+    setConfirmed(true);
+    setLoading(false);
   };
 
   return (

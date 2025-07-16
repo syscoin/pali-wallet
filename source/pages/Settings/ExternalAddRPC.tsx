@@ -254,13 +254,12 @@ const CustomRPCExternal = () => {
 
       // Add the network
       await controllerEmitter(['wallet', 'addCustomRpc'], [network]);
-
-      setConfirmed(true);
-      setLoading(false);
       const type = data.eventName;
 
       // Signal success to the DApp
       dispatchBackgroundEvent(`${type}.${host}`, { success: true });
+      setConfirmed(true);
+      setLoading(false);
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
       // Show success and close
       alert.success(t('settings.rpcSuccessfullyAdded'));

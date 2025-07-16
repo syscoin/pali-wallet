@@ -6,6 +6,7 @@ import { PrimaryButton, SecondaryButton } from 'components/index';
 import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { getNetworkChain } from 'utils/network';
 
@@ -18,6 +19,7 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null); // Add error message state
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
     (state: RootState) => state.vault
   );
@@ -34,14 +36,13 @@ const EncryptPubKey: React.FC<ISign> = () => {
     const type = data.eventName;
 
     if (data.address !== address) {
-      const response = {
-        code: 4001,
-        message: 'Pali: Asking for key of non connected account',
-      };
-
-      dispatchBackgroundEvent(`${type}.${host}`, response);
-
-      window.close();
+      setErrorMsg('Asking for key of non connected account');
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
+      setLoading(false);
+      return;
     }
 
     const response = await controllerEmitter([
@@ -49,13 +50,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
       'ethereumTransaction',
       'getEncryptedPubKey',
     ]);
-
+    dispatchBackgroundEvent(`${type}.${host}`, response);
     setConfirmed(true);
 
     setLoading(false);
-
-    dispatchBackgroundEvent(`${type}.${host}`, response);
-
     window.close();
   };
   return (
@@ -78,6 +76,10 @@ const EncryptPubKey: React.FC<ISign> = () => {
               </span>
             </div>
           </div>
+
+          {errorMsg && ( // Display error message if it exists
+            <div className="text-red-500 text-sm mt-2">{errorMsg}</div>
+          )}
 
           <div className="w-full px-4 absolute bottom-12 md:static flex items-center justify-between">
             <SecondaryButton type="button" onClick={window.close}>

@@ -59,16 +59,18 @@ const Decrypt: React.FC<ISign> = () => {
         delayInSeconds: 40,
         callback: () => window.close(),
       });
+      setLoading(false);
       return;
     }
 
     if (data[1] !== address) {
-      const response = {
-        code: 4001,
-        message: 'Pali: Asking for key of non connected account',
-      };
-      dispatchBackgroundEvent(`${type}.${host}`, response);
-      window.close();
+      setErrorMsg('Asking for key of non connected account');
+      createTemporaryAlarm({
+        delayInSeconds: 40,
+        callback: () => window.close(),
+      });
+      setLoading(false);
+      return;
     }
     try {
       const response = await controllerEmitter(
@@ -76,11 +78,10 @@ const Decrypt: React.FC<ISign> = () => {
         [data]
       );
 
+      dispatchBackgroundEvent(`${type}.${host}`, response);
       setConfirmed(true);
 
       setLoading(false);
-
-      dispatchBackgroundEvent(`${type}.${host}`, response);
 
       window.close();
     } catch (error) {
@@ -90,6 +91,7 @@ const Decrypt: React.FC<ISign> = () => {
         delayInSeconds: 40,
         callback: () => window.close(),
       });
+      setLoading(false);
     }
   };
 

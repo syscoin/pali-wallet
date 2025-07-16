@@ -276,7 +276,7 @@ const cancelTransaction = async (
 
     switch (isCanceled) {
       case true:
-        controllerEmitter(
+        await controllerEmitter(
           ['wallet', 'setEvmTransactionAsCanceled'],
           [txHash, chainId]
         );
@@ -332,7 +332,7 @@ const speedUpTransaction = async (
 
     switch (isSpeedUp) {
       case true:
-        controllerEmitter(
+        await controllerEmitter(
           ['wallet', 'setEvmTransactionAsAccelerated'],
           [txHash, chainId, transaction]
         );
