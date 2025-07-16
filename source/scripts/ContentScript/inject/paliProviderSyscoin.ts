@@ -238,17 +238,48 @@ export class PaliInpageProviderSys extends BaseProvider {
   }
 
   public isBitcoinBased(): boolean {
-    return this._sysState.isBitcoinBased;
+    // If initialized, return the actual state
+    if (this._sysState.initialized) {
+      return this._sysState.isBitcoinBased;
+    }
+
+    // If not initialized, try to get a quick state check
+    // Start initialization if not already in progress
+    if (!this._initializationPromise) {
+      this._initializeProvider();
+    }
+
+    // For the Syscoin provider, we need to be more careful about the default
+    // Check if we have any reliable indicator of the network type
+
+    // Default to false (EVM) to be safe - this will show the network switch button
+    // which is better UX than blocking calls with wrong network assumptions
+    // The proper state will be updated once initialization completes
+    return false;
   }
 
   // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   public async request<T>(args: RequestArguments): Promise<Maybe<T>> {
     if (args.method !== 'wallet_getSysProviderState') {
+      // Wait for initialization if not already initialized
+      if (!this._sysState.initialized) {
+        // If not initialized and no initialization in progress, start it
+        if (!this._initializationPromise) {
+          this._initializeProvider();
+        }
+        await new Promise<void>((resolve) => {
+          this.on('_sysInitialized', () => resolve());
+        });
+      }
+
       const isBlockbookChain = await this._isBlockbookChain();
-      if (!isBlockbookChain)
+      if (!isBlockbookChain) {
+        // More specific error message based on network state
+        const networkType = this._sysState.isBitcoinBased ? 'UTXO' : 'EVM';
         throw new Error(
-          'UTXO operations require a blockbook-compatible endpoint'
+          `UTXO operations require a blockbook-compatible endpoint. Current network is ${networkType}. Switch to a UTXO network to use Syscoin provider methods.`
         );
+      }
     }
     return super.request(args);
   }
@@ -309,6 +340,14 @@ export class PaliInpageProviderSys extends BaseProvider {
   private async _isBlockbookChain(): Promise<boolean> {
     let checkExplorer = false;
     try {
+      // Check if blockExplorerURL is null or not initialized
+      if (!this._sysState.blockExplorerURL) {
+        console.warn(
+          '[PaliSysProvider] blockExplorerURL is null, cannot validate blockbook endpoint'
+        );
+        return false;
+      }
+
       //Only blockbook endpoints are accepted for UTXO chains
       const response = await retryableFetch(
         this._sysState.blockExplorerURL + '/api/v2'

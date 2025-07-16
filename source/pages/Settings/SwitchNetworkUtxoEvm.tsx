@@ -126,7 +126,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
               loading={loading}
               onClick={onSubmit}
             >
-              {t('buttons.switchNetwork')}
+              {t('buttons.change')}
             </PrimaryButton>
           </div>
         </div>
