@@ -9,7 +9,7 @@ import { SecondButton } from 'components/Button/Button';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { PrimaryButton, LoadingComponent } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { dispatchBackgroundEvent } from 'utils/browser';
@@ -29,12 +29,10 @@ const SwitchChain: React.FC = () => {
   const network = networks.ethereum[chainId];
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
-  const { navigate } = useUtils();
   const onSubmit = async () => {
     setLoading(true);
     try {
-      await controllerEmitter(['wallet', 'setActiveNetwork'], [network]);
-      navigate('/home');
+      await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
     } catch (networkError) {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }

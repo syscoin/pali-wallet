@@ -30,7 +30,6 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
     apiUrl: string
   ): Promise<{ error?: string; success: boolean }> => {
     try {
-      console.error('testExplorerApi', apiUrl);
       const url = new URL(apiUrl);
 
       // Preserve existing API key if present
