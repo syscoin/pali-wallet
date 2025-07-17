@@ -272,10 +272,7 @@ export const networkCompatibilityMiddleware: Middleware = async (
   const requiredNetwork = methodConfig.networkRequirement;
 
   // If method doesn't care about network type, continue
-  if (
-    requiredNetwork === NetworkRequirement.None ||
-    requiredNetwork === NetworkRequirement.Any
-  ) {
+  if (requiredNetwork === NetworkRequirement.Any) {
     return next();
   }
 

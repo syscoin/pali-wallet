@@ -17,7 +17,6 @@ export enum MethodHandlerType {
 export enum NetworkRequirement {
   Any = 'any',
   EVM = 'evm',
-  None = 'none',
   UTXO = 'utxo',
 }
 
