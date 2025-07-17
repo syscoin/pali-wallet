@@ -252,7 +252,6 @@ export const networkCompatibilityMiddleware: Middleware = async (
       // This provides better UX by letting users choose their preferred network
       const targetNetworkType = needsEVM ? 'ethereum' : 'syscoin';
       const currentNetworkType = needsEVM ? 'syscoin' : 'ethereum';
-
       const result = await requestCoordinator.coordinatePopupRequest(
         context,
         () =>
@@ -412,9 +411,14 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
 
   const requiresAuth = methodConfig.requiresAuth;
   const hasPopup = methodConfig.hasPopup;
-  const isUnlocked = getController().wallet.isUnlocked();
+  const controller = getController();
+  const isUnlocked = controller.wallet.isUnlocked();
 
-  if (!requiresAuth || hasPopup || isUnlocked) {
+  // During network switching between different slip44s, the active keyring might be locked
+  // but other keyrings are unlocked. Check if ANY keyring is unlocked to avoid unnecessary auth
+  const isAnyKeyringUnlocked = controller.wallet.isAnyKeyringUnlocked();
+
+  if (!requiresAuth || hasPopup || isUnlocked || isAnyKeyringUnlocked) {
     return next();
   }
 
@@ -452,9 +456,9 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
 export function createDefaultPipeline(): RequestPipeline {
   return new RequestPipeline()
     .use(hardwareWalletMiddleware)
-    .use(authenticationMiddleware)
     .use(networkCompatibilityMiddleware)
     .use(connectionMiddleware)
-    .use(accountSwitchingMiddleware);
+    .use(accountSwitchingMiddleware)
+    .use(authenticationMiddleware); // Auth check last - other middleware handle auth in their popups
   // Method handler middleware is added in requests.ts
 }

@@ -18,7 +18,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'ENABLE',
     handlerType: MethodHandlerType.Internal,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false, // This IS the connection method
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -168,7 +168,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_changeAccount',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -181,7 +181,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_requestPermissions',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -206,7 +206,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_watchAsset',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -219,7 +219,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_addEthereumChain',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -232,7 +232,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_switchEthereumChain',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -245,7 +245,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_changeUTXOEVM',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -323,7 +323,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_requestAccounts',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -337,7 +337,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_sendTransaction',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -351,7 +351,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_sign',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -365,7 +365,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'personal_sign',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -379,7 +379,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_signTypedData',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -393,7 +393,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_signTypedData_v3',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -407,7 +407,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_signTypedData_v4',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -910,7 +910,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_getEncryptionPublicKey',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.EVM,
@@ -924,7 +924,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_decrypt',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.EVM,
@@ -938,7 +938,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_changeUTXOEVM',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.EVM,
@@ -953,12 +953,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
     requiresAuth: true,
-    requiresConnection: true,
+    requiresConnection: false, // Does not require connection - gets UTXO address from vault
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.UTXO,
-    hasPopup: true,
-    popupRoute: MethodRoute.Connect,
-    popupEventName: 'connect',
+    networkRequirement: NetworkRequirement.None, // Can be called from any network type
+    hasPopup: false, // No popup needed - just returns UTXO address
     returnsArray: true,
   },
 
@@ -1021,7 +1019,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_sendTransaction',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.UTXO,
@@ -1035,7 +1033,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_signMessage',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.UTXO,
@@ -1071,7 +1069,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_sign',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.UTXO,
@@ -1085,7 +1083,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_signAndSend',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.UTXO,
@@ -1121,7 +1119,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_changeUTXOEVM',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.UTXO,

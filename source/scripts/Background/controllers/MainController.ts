@@ -695,6 +695,17 @@ class MainController {
     return this.getActiveKeyring().isUnlocked();
   }
 
+  public isAnyKeyringUnlocked(): boolean {
+    // Check if ANY keyring is unlocked - useful during network switching
+    return Array.from(this.keyrings.values()).some((kr) => {
+      try {
+        return kr.isUnlocked();
+      } catch (error) {
+        return false;
+      }
+    });
+  }
+
   public isSeedValid(phrase: string) {
     return this.getActiveKeyring().isSeedValid(phrase);
   }

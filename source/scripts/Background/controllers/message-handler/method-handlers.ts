@@ -4,6 +4,7 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
+import vaultCache from 'state/vaultCache';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
 
@@ -372,16 +373,48 @@ export class SysMethodHandler implements IMethodHandler {
     const { host, method, params } = originalRequest;
     const methodName = method.split('_')[1] || method;
 
-    // Handle requestAccounts - connection middleware ensures we're connected
+    // Handle requestAccounts - get UTXO address from vault state
     if (methodName === 'requestAccounts') {
-      const { dapp } = getController();
-      const account = dapp.getAccount(host);
-      if (!account) {
-        throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
+      const { wallet } = getController();
+
+      // Check if wallet is unlocked
+      if (!wallet.isUnlocked()) {
+        throw cleanErrorStack(
+          ethErrors.provider.unauthorized('Wallet is locked')
+        );
       }
-      // For sys_requestAccounts, return address (consistent with eth_requestAccounts)
-      // Note: Bridge can get full account details via wallet_getAccount if needed
-      return [account.address];
+
+      // Get slip44 from params or default to Syscoin mainnet (57)
+      const slip44 = params?.[0]?.slip44 || 57; // Default to Syscoin mainnet
+
+      // Get the vault state for the requested slip44
+      const slip44Vault = await vaultCache.getSlip44Vault(slip44);
+
+      if (!slip44Vault) {
+        throw cleanErrorStack(
+          ethErrors.provider.custom({
+            code: -32603,
+            message: `No vault found for slip44: ${slip44}. Please configure this network first.`,
+          })
+        );
+      }
+
+      // Get the active account from the slip44 vault
+      const { activeAccount: activeAccountMeta, accounts } = slip44Vault;
+      const activeAccount =
+        accounts[activeAccountMeta.type]?.[activeAccountMeta.id];
+
+      if (!activeAccount || !activeAccount.address) {
+        throw cleanErrorStack(
+          ethErrors.provider.custom({
+            code: -32603,
+            message: `No active account found for slip44: ${slip44}`,
+          })
+        );
+      }
+
+      // Return the UTXO address in array format (consistent with eth_requestAccounts)
+      return [activeAccount.address];
     }
 
     // Get the provider

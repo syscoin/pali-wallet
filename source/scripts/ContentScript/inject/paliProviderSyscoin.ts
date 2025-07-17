@@ -271,15 +271,6 @@ export class PaliInpageProviderSys extends BaseProvider {
           this.on('_sysInitialized', () => resolve());
         });
       }
-
-      const isBlockbookChain = await this._isBlockbookChain();
-      if (!isBlockbookChain) {
-        // More specific error message based on network state
-        const networkType = this._sysState.isBitcoinBased ? 'UTXO' : 'EVM';
-        throw new Error(
-          `UTXO operations require a blockbook-compatible endpoint. Current network is ${networkType}. Switch to a UTXO network to use Syscoin provider methods.`
-        );
-      }
     }
     return super.request(args);
   }
