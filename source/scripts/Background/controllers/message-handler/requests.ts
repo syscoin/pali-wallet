@@ -4,11 +4,16 @@ import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 
 import {
-  createDefaultMethodHandler,
   clearProviderCache as clearMethodHandlerCache,
+  createDefaultMethodHandler,
 } from './method-handlers';
 import { getMethodConfig } from './method-registry';
-import { createDefaultPipeline, Middleware } from './request-pipeline';
+import {
+  createDefaultPipeline,
+  Middleware,
+  requestCoordinator,
+  RequestExecutor,
+} from './request-pipeline';
 import { IEnhancedRequestContext } from './types';
 
 // Export clearProviderCache for backward compatibility
@@ -32,11 +37,10 @@ const finalMethodHandlerMiddleware: Middleware = async (context) => {
 pipeline.use(finalMethodHandlerMiddleware);
 
 /**
- * Handles methods request with a clean pipeline architecture.
- *
- * The pipeline handles:
- * 1. Hardware wallet restrictions
- * 2. Network compatibility (switches networks if needed)
+ * Main method handler that coordinates the entire request pipeline
+ * This includes:
+ * 1. Hardware wallet compatibility check
+ * 2. Authentication (prompts for login if needed)
  * 3. Connection (prompts for connection if needed)
  * 4. Method execution
  *
@@ -88,6 +92,10 @@ export const methodRequest = async (
     throw cleanErrorStack(error);
   }
 };
+
+// Initialize the request coordinator with methodRequest as the executor
+// This avoids circular dependencies while allowing queued requests to be re-executed
+requestCoordinator.setRequestExecutor(methodRequest as RequestExecutor);
 
 /**
  * Enable/connect wallet - for backward compatibility

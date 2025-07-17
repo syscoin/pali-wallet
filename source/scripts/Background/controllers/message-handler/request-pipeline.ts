@@ -15,17 +15,26 @@ import {
   MethodRoute,
 } from './types';
 
+// Type for the request executor function
+export type RequestExecutor = (
+  host: string,
+  data: {
+    method: string;
+    network?: string;
+    params?: any;
+  }
+) => Promise<any>;
+
 // Global request coordination to prevent multiple popups
 class RequestCoordinator {
   private static instance: RequestCoordinator;
   private activePopupRequest: Promise<any> | null = null;
   private activePopupRoute: MethodRoute | null = null;
+  private requestExecutor: RequestExecutor | null = null;
   private requestQueue: Array<{
     context: IEnhancedRequestContext;
-    popupFunction: () => Promise<any>;
     reject: (error: any) => void;
     resolve: (value: any) => void;
-    route: MethodRoute;
   }> = [];
 
   static getInstance(): RequestCoordinator {
@@ -33,6 +42,11 @@ class RequestCoordinator {
       RequestCoordinator.instance = new RequestCoordinator();
     }
     return RequestCoordinator.instance;
+  }
+
+  // Set the request executor function to avoid circular dependencies
+  setRequestExecutor(executor: RequestExecutor): void {
+    this.requestExecutor = executor;
   }
 
   async coordinatePopupRequest(
@@ -53,13 +67,10 @@ class RequestCoordinator {
           )
         );
       }
-
       // Different route, queue this one
       return new Promise((resolve, reject) => {
         this.requestQueue.push({
           context,
-          popupFunction,
-          route: currentRoute,
           resolve,
           reject,
         });
@@ -112,15 +123,34 @@ class RequestCoordinator {
   private processQueue(): void {
     if (this.requestQueue.length === 0) return;
 
+    // Check if network is idle before processing queued requests
+    const { networkStatus } = store.getState().vaultGlobal;
+    if (networkStatus !== 'idle') {
+      // Network is not ready, check again later
+      setTimeout(() => this.processQueue(), 100);
+      return;
+    }
+
     // Process the next request in the queue
     const nextRequest = this.requestQueue.shift();
     if (nextRequest) {
-      // Execute the next request
-      this.coordinatePopupRequest(
-        nextRequest.context,
-        nextRequest.popupFunction,
-        nextRequest.route
-      )
+      if (!this.requestExecutor) {
+        nextRequest.reject(
+          cleanErrorStack(
+            ethErrors.rpc.internal('Request pipeline not properly initialized')
+          )
+        );
+        return;
+      }
+
+      // Re-execute the original request with current state
+      // This ensures all middleware checks run with current auth/network state
+      const { originalRequest } = nextRequest.context;
+      this.requestExecutor(originalRequest.host, {
+        method: originalRequest.method,
+        params: originalRequest.params,
+        network: originalRequest.network,
+      })
         .then(nextRequest.resolve)
         .catch(nextRequest.reject);
     }
@@ -183,6 +213,27 @@ export class RequestPipeline {
   }
 }
 
+// Middleware: Network Status Check
+export const networkStatusMiddleware: Middleware = async (context, next) => {
+  const { networkStatus } = store.getState().vaultGlobal;
+  if (networkStatus !== 'idle') {
+    // Wait for network to be idle - no timeout
+    // User can cancel by closing tab/popup or navigating away
+    await new Promise<void>((resolve) => {
+      const checkInterval = setInterval(() => {
+        const currentStatus = store.getState().vaultGlobal.networkStatus;
+
+        if (currentStatus === 'idle') {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100); // Check every 100ms
+    });
+  }
+
+  return next();
+};
+
 // Middleware: Hardware Wallet Check
 export const hardwareWalletMiddleware: Middleware = async (context, next) => {
   const { vault } = store.getState();
@@ -216,15 +267,6 @@ export const networkCompatibilityMiddleware: Middleware = async (
   const { isBitcoinBased } = vault;
   const { networkStatus } = vaultGlobal;
   const { methodConfig, originalRequest } = context;
-
-  // Skip if already switching
-  if (networkStatus === 'switching') {
-    throw cleanErrorStack(
-      ethErrors.rpc.resourceUnavailable({
-        message: 'Already processing network change. Please wait',
-      })
-    );
-  }
 
   // Check network requirements from method config
   const requiredNetwork = methodConfig.networkRequirement;
@@ -401,7 +443,6 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
 // Middleware: Authentication Check
 export const authenticationMiddleware: Middleware = async (context, next) => {
   const { methodConfig, originalRequest } = context;
-
   // Skip auth check if:
   // 1. Method doesn't require authentication
   // 2. Method has its own popup (router will handle auth within that popup for better UX)
@@ -414,8 +455,7 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
   const controller = getController();
   const isUnlocked = controller.wallet.isUnlocked();
 
-  // During network switching between different slip44s, the active keyring might be locked
-  // but other keyrings are unlocked. Check if ANY keyring is unlocked to avoid unnecessary auth
+  // Check if ANY keyring is unlocked (for network switching scenarios)
   const isAnyKeyringUnlocked = controller.wallet.isAnyKeyringUnlocked();
 
   if (!requiresAuth || hasPopup || isUnlocked || isAnyKeyringUnlocked) {
@@ -455,6 +495,7 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
 // Create the default pipeline
 export function createDefaultPipeline(): RequestPipeline {
   return new RequestPipeline()
+    .use(networkStatusMiddleware) // Check network status first
     .use(hardwareWalletMiddleware)
     .use(networkCompatibilityMiddleware)
     .use(connectionMiddleware)

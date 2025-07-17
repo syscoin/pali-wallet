@@ -259,7 +259,6 @@ class MainController {
   private getActiveKeyring(): KeyringManager {
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
     let keyring = this.keyrings.get(activeSlip44);
-
     if (!keyring) {
       console.log(
         `[MainController] Creating new keyring for slip44: ${activeSlip44} (no existing keyring - likely after wallet forget/restart)`
@@ -514,9 +513,6 @@ class MainController {
     if (deferredSaveData) {
       this.performDeferredVaultSave(deferredSaveData);
     }
-
-    this.saveWalletState('network-switch');
-
     // Lock all other keyrings for security AFTER everything is complete
     // This prevents interfering with the session transfer or state updates
     this.keyrings.forEach((keyring, keyringSlip44) => {
@@ -695,15 +691,15 @@ class MainController {
     return this.getActiveKeyring().isUnlocked();
   }
 
-  public isAnyKeyringUnlocked(): boolean {
-    // Check if ANY keyring is unlocked - useful during network switching
-    return Array.from(this.keyrings.values()).some((kr) => {
-      try {
-        return kr.isUnlocked();
-      } catch (error) {
-        return false;
+  public isAnyKeyringUnlocked() {
+    // Check if ANY keyring is unlocked, not just the active one
+    // This prevents unnecessary login popups during network switching
+    for (const keyring of this.keyrings.values()) {
+      if (keyring.isUnlocked()) {
+        return true;
       }
-    });
+    }
+    return false;
   }
 
   public isSeedValid(phrase: string) {
@@ -895,9 +891,12 @@ class MainController {
     store.dispatch(setHasEthProperty(exist));
   }
 
-  public saveCurrentState(reason = 'manual-save'): void {
+  public async saveCurrentState(
+    reason = 'manual-save',
+    sync = true
+  ): Promise<void> {
     // Public method to trigger a state save - this is considered user activity
-    this.saveWalletState(reason, true);
+    return this.saveWalletState(reason, true, sync);
   }
 
   public async setAdvancedSettings(
@@ -1033,41 +1032,64 @@ class MainController {
     }, 10);
   }
 
-  // Centralized wallet state saving with debouncing - auto-lock timer reset only for user operations
-  private saveWalletState(operation: string, isUserActivity = false): void {
-    try {
-      // Clear any existing save timeout to debounce rapid calls
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-      }
+  // Internal method to perform the actual save
+  private async performSave(operation: string): Promise<void> {
+    const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
+    if (activeSlip44 !== null) {
+      const currentVaultState = store.getState().vault;
+
+      // Save vault state to slip44-specific storage
+      await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
+
+      // Save main state (global settings)
+      await saveMainState();
+
+      console.log(
+        `[MainController] Wallet state saved successfully for operation: ${operation}`
+      );
+    } else {
+      console.warn(
+        `[MainController] No active slip44 to save wallet state for operation: ${operation}`
+      );
+    }
+  }
+
+  // Centralized wallet state saving with debouncing - auto-lock timer reset only for user operations
+  private async saveWalletState(
+    operation: string,
+    isUserActivity = false,
+    sync = false
+  ): Promise<void> {
+    try {
       // Only reset auto-lock timer for explicit user activities, not automatic saves
       if (isUserActivity) {
         this.resetAutoLockTimer();
       }
 
+      // If sync is true, save immediately and return promise
+      if (sync) {
+        try {
+          await this.performSave(operation);
+        } catch (error) {
+          console.error(
+            `[MainController] Failed to save wallet state for operation ${operation}:`,
+            error
+          );
+          throw error; // Re-throw for sync saves so caller knows it failed
+        }
+        return;
+      }
+
+      // Clear any existing save timeout to debounce rapid calls
+      if (this.saveTimeout) {
+        clearTimeout(this.saveTimeout);
+      }
+
       // Debounce the actual save by 100ms to prevent rapid consecutive saves
       this.saveTimeout = setTimeout(async () => {
         try {
-          const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
-
-          if (activeSlip44 !== null) {
-            const currentVaultState = store.getState().vault;
-
-            // Save vault state to slip44-specific storage
-            await vaultCache.setSlip44Vault(activeSlip44, currentVaultState);
-
-            // Save main state (global settings)
-            await saveMainState();
-
-            console.log(
-              `[MainController] Wallet state saved successfully for operation: ${operation}`
-            );
-          } else {
-            console.warn(
-              `[MainController] No active slip44 to save wallet state for operation: ${operation}`
-            );
-          }
+          await this.performSave(operation);
         } catch (error) {
           console.error(
             `[MainController] Failed to save wallet state for operation ${operation}:`,
@@ -1083,7 +1105,10 @@ class MainController {
         `[MainController] Error in saveWalletState for operation ${operation}:`,
         error
       );
-      // Fail silently - the main operation succeeded, saving is just persistence
+      // Fail silently for async saves - the main operation succeeded, saving is just persistence
+      if (sync) {
+        throw error;
+      }
     }
   }
 
@@ -3530,12 +3555,34 @@ class MainController {
     if (syncUpdates) {
       await this.setFiat();
       await this.getLatestUpdateForCurrentAccount(false);
+      // Save state synchronously after updates
+      await this.saveWalletState('network-switch-after-updates', false, true);
       // Don't throw error here - let the UI handle the network status
     } else {
-      setTimeout(() => {
-        this.setFiat();
-        this.getLatestUpdateForCurrentAccount(false);
-      }, 10);
+      // Use Promise to ensure these operations complete even if popup closes
+      Promise.resolve().then(async () => {
+        try {
+          await this.setFiat();
+          await this.getLatestUpdateForCurrentAccount(false);
+        } catch (error) {
+          console.error(
+            '[MainController] Failed to update after network change:',
+            error
+          );
+          // Ensure network status is updated even if updates fail
+          store.dispatch(switchNetworkError());
+        } finally {
+          // Ensure state is saved synchronously even on error
+          try {
+            await this.saveWalletState('network-switch-final', false, true);
+          } catch (saveError) {
+            console.error(
+              '[MainController] Failed to save final state:',
+              saveError
+            );
+          }
+        }
+      });
     }
 
     // Skip dapp notifications during startup

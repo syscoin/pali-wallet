@@ -146,7 +146,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getTokens',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Read-only - just token metadata
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -157,7 +157,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_estimateFee',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Read-only - just fee estimates
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -284,7 +284,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getSysAssetMetadata',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false, // Read-only - just asset metadata
     requiresConnection: false,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,

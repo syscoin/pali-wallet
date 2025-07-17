@@ -48,6 +48,12 @@ const ExternalQueryHandler = () => {
 
         navigate(`/?${newSearchParams.toString()}`, { replace: true });
       } else {
+        // Special handling for login route when already authenticated
+        if (route === 'login') {
+          window.close();
+          return;
+        }
+
         // If authenticated, redirect to the external route
         const routePath = `/external/${route}`;
 
