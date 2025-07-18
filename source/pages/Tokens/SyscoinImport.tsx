@@ -215,7 +215,7 @@ export const SyscoinImport: React.FC = () => {
         id: token.assetGuid || '',
         symbol: token.symbol || '',
         name: token.name || token.symbol || '',
-        balance: token.balance || 0,
+        balance: Number(token.balance) || 0,
         decimals: token.decimals || 8,
         logo: getTokenLogo(token.symbol || ''),
         assetGuid: token.assetGuid || '',

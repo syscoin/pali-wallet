@@ -319,6 +319,7 @@
     "recoveryPhrase": "リカバリーフレーズ"
   },
   "send": {
+    "details": "詳細",
     "approve": "承認",
     "sign": "署名",
     "encryptKey": "キー暗号化",

@@ -295,8 +295,30 @@ export class EthMethodHandler implements IMethodHandler {
       return [account.address];
     }
 
-    // Get the provider
-    const provider = EthProvider(host);
+    // Handle popup-based methods using registry configuration
+    if (
+      methodConfig.hasPopup &&
+      methodConfig.popupRoute &&
+      methodConfig.popupEventName &&
+      methodName !== 'sendTransaction'
+    ) {
+      // For eth methods, params might be objects or arrays
+
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: methodConfig.popupRoute,
+            eventName: methodConfig.popupEventName,
+            data: params,
+          }),
+        methodConfig.popupRoute! // Explicit route parameter
+      );
+    }
+
+    // Get the provider for non-popup methods
+    const provider = EthProvider(host, context);
 
     // Try unrestricted methods first
     const unrestrictedResult = await provider.unrestrictedRPCMethods(
@@ -307,7 +329,7 @@ export class EthMethodHandler implements IMethodHandler {
       return unrestrictedResult;
     }
 
-    // Then try restricted methods
+    // Then try restricted methods (only non-popup ones)
     const restrictedResult = await provider.restrictedRPCMethods(
       method,
       params
@@ -327,7 +349,7 @@ export class SysMethodHandler implements IMethodHandler {
   }
 
   async handle(context: IEnhancedRequestContext): Promise<any> {
-    const { originalRequest } = context;
+    const { originalRequest, methodConfig } = context;
     const { host, method, params } = originalRequest;
     const methodName = method.split('_')[1] || method;
 
@@ -343,7 +365,28 @@ export class SysMethodHandler implements IMethodHandler {
       return [account.address];
     }
 
-    // Get the provider
+    // Handle popup-based methods using registry configuration
+    if (
+      methodConfig.hasPopup &&
+      methodConfig.popupRoute &&
+      methodConfig.popupEventName
+    ) {
+      // For sys methods, params are usually in array form already
+      const popupData = params?.[0] || params;
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            route: methodConfig.popupRoute,
+            eventName: methodConfig.popupEventName,
+            data: popupData,
+          }),
+        methodConfig.popupRoute! // Explicit route parameter
+      );
+    }
+
+    // Get the provider for non-popup methods
     const provider = SysProvider(host);
 
     // Use the provider methods directly

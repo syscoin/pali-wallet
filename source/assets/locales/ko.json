@@ -319,6 +319,7 @@
     "recoveryPhrase": "복구 구문"
   },
   "send": {
+    "details": "세부사항",
     "approve": "승인",
     "sign": "서명",
     "encryptKey": "키 암호화",

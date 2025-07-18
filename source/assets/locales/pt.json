@@ -172,6 +172,7 @@
     "recoveryPhrase": "Frase de Recuperação"
   },
   "send": {
+    "details": "Detalhes",
     "approve": "Aprovar",
     "sign": "Assinar",
     "encryptKey": "Criptografar Chave",

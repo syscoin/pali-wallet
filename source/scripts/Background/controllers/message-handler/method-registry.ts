@@ -427,6 +427,29 @@ export const METHOD_REGISTRY: MethodRegistry = {
     hasPopup: false,
   },
 
+  // Subscription methods (not supported in Pali)
+  eth_subscribe: {
+    name: 'eth_subscribe',
+    handlerType: MethodHandlerType.Eth,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkRequirement: NetworkRequirement.EVM,
+    hasPopup: false,
+  },
+
+  eth_unsubscribe: {
+    name: 'eth_unsubscribe',
+    handlerType: MethodHandlerType.Eth,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    allowHardwareWallet: true,
+    networkRequirement: NetworkRequirement.EVM,
+    hasPopup: false,
+  },
+
   eth_getCode: {
     name: 'eth_getCode',
     handlerType: MethodHandlerType.Eth,
@@ -1011,34 +1034,6 @@ export const METHOD_REGISTRY: MethodRegistry = {
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
-  },
-
-  sys_sendTransaction: {
-    name: 'sys_sendTransaction',
-    handlerType: MethodHandlerType.Sys,
-    requiresTabId: true,
-    requiresAuth: false, // Popup handles auth
-    requiresConnection: true,
-    allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
-    hasPopup: true,
-    popupRoute: MethodRoute.SendNTokenTx,
-    popupEventName: 'sys_sendTransaction',
-    isBlocking: true,
-  },
-
-  sys_signMessage: {
-    name: 'sys_signMessage',
-    handlerType: MethodHandlerType.Sys,
-    requiresTabId: true,
-    requiresAuth: false, // Popup handles auth
-    requiresConnection: true,
-    allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
-    hasPopup: true,
-    popupRoute: MethodRoute.EthSign,
-    popupEventName: 'sys_signMessage',
-    isBlocking: true,
   },
 
   sys_getPublicKey: {

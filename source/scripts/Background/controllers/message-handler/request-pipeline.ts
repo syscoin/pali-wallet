@@ -1,5 +1,7 @@
 import { ethErrors } from 'helpers/errors';
 
+import { PsbtUtils } from '@pollum-io/sysweb3-keyring';
+
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -114,6 +116,8 @@ class RequestCoordinator {
     popupFunction: () => Promise<any>
   ): Promise<any> {
     try {
+      // give it some time to ensure any previous popup is closed
+      await new Promise((resolve) => setTimeout(resolve, 100));
       return await popupFunction();
     } catch (error) {
       throw error;
@@ -146,13 +150,17 @@ class RequestCoordinator {
       // Re-execute the original request with current state
       // This ensures all middleware checks run with current auth/network state
       const { originalRequest } = nextRequest.context;
-      this.requestExecutor(originalRequest.host, {
-        method: originalRequest.method,
-        params: originalRequest.params,
-        network: originalRequest.network,
-      })
-        .then(nextRequest.resolve)
-        .catch(nextRequest.reject);
+
+      // Add delay to ensure previous popup is fully closed
+      setTimeout(() => {
+        this.requestExecutor(originalRequest.host, {
+          method: originalRequest.method,
+          params: originalRequest.params,
+          network: originalRequest.network,
+        })
+          .then(nextRequest.resolve)
+          .catch(nextRequest.reject);
+      }, 100);
     }
   }
 
@@ -499,8 +507,6 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   if (!result) {
     throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
   }
-  // Small delay to ensure network switch completes
-  await new Promise((resolve) => setTimeout(resolve, 100));
   const isConnected = dapp.isConnected(originalRequest.host);
 
   if (isConnected) {
@@ -568,6 +574,152 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   return next();
 };
 
+// Helper functions for account switching middleware
+const extractEvmAddressFromParams = (
+  method: string,
+  params: any[]
+): string | undefined => {
+  // Handle eth_sendTransaction
+  if (method === 'eth_sendTransaction' && params?.[0]?.from) {
+    return params[0].from;
+  }
+
+  // Handle signing methods
+  if (
+    (method === 'eth_sign' ||
+      method === 'personal_sign' ||
+      method.startsWith('eth_signTypedData')) &&
+    params?.length >= 2
+  ) {
+    // Check both parameters for address format
+    const addr1 = params[0];
+    const addr2 = params[1];
+
+    // EVM addresses start with 0x and are 42 chars
+    if (
+      addr1 &&
+      typeof addr1 === 'string' &&
+      addr1.startsWith('0x') &&
+      addr1.length === 42
+    ) {
+      return addr1;
+    } else if (
+      addr2 &&
+      typeof addr2 === 'string' &&
+      addr2.startsWith('0x') &&
+      addr2.length === 42
+    ) {
+      return addr2;
+    }
+  }
+
+  return undefined;
+};
+
+const extractUtxoAddressFromPsbt = async (
+  psbtData: any,
+  accounts: any
+): Promise<string | undefined> => {
+  if (!psbtData || typeof psbtData !== 'object' || !psbtData.psbt) {
+    return undefined;
+  }
+
+  try {
+    const psbtObj = PsbtUtils.fromPali(psbtData);
+
+    // Look through inputs to find the first unsigned input that belongs to our wallet
+    if (psbtObj?.data?.inputs) {
+      for (let i = 0; i < psbtObj.data.inputs.length; i++) {
+        const dataInput = psbtObj.data.inputs[i];
+
+        // Check if this input is already signed (skip if signed)
+        if (dataInput.partialSig && dataInput.partialSig.length > 0) {
+          continue;
+        }
+
+        // Extract address from unknownKeyVals if available
+        if (dataInput.unknownKeyVals && dataInput.unknownKeyVals.length > 0) {
+          // Look for the address in unknownKeyVals
+          for (const kv of dataInput.unknownKeyVals) {
+            if (kv.key?.equals?.(Buffer.from('address'))) {
+              const inputAddress = kv.value.toString();
+
+              // Check if this address belongs to any of our accounts
+              const accountExists = Object.values(accounts).some(
+                (accountsOfType: any) =>
+                  accountsOfType &&
+                  Object.values(accountsOfType).some(
+                    (account: any) => account.address === inputAddress
+                  )
+              );
+
+              if (accountExists) {
+                // Found the first unsigned input that belongs to our wallet
+                return inputAddress;
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Pipeline] Error decoding PSBT:', error);
+  }
+
+  return undefined;
+};
+
+const findAccountByAddress = (
+  address: string,
+  accounts: any
+): { account: any; accountType: string } | null => {
+  const addressLower = address.toLowerCase();
+
+  for (const accountType of Object.keys(accounts)) {
+    const accountsOfType = accounts[accountType];
+    if (accountsOfType) {
+      for (const [accountId, accountData] of Object.entries(accountsOfType)) {
+        const account = accountData as any;
+        if (account.address && account.address.toLowerCase() === addressLower) {
+          return {
+            account: { ...account, id: parseInt(accountId) },
+            accountType,
+          };
+        }
+      }
+    }
+  }
+
+  return null;
+};
+
+const promptAccountSwitch = async (
+  context: IEnhancedRequestContext,
+  targetAccount: any,
+  targetAccountType: string,
+  requiredAddress: string
+): Promise<void> => {
+  const response = await requestCoordinator.coordinatePopupRequest(
+    context,
+    () =>
+      popupPromise({
+        host: context.originalRequest.host,
+        route: MethodRoute.ChangeActiveConnectedAccount,
+        eventName: 'changeActiveConnected',
+        data: {
+          connectedAccount: targetAccount,
+          accountType: targetAccountType,
+          requiredAddress: requiredAddress,
+        },
+      }),
+    MethodRoute.ChangeActiveConnectedAccount
+  );
+
+  if (!response) {
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+  }
+};
+
 // Middleware: Account Switching for Blocking Methods
 export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   const { methodConfig, originalRequest } = context;
@@ -581,6 +733,89 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   const { vault } = store.getState();
   const { activeAccount, accounts } = vault;
 
+  // Safety check: ensure active account exists
+  if (
+    !accounts[activeAccount.type] ||
+    !accounts[activeAccount.type][activeAccount.id]
+  ) {
+    console.error('[Pipeline] Active account not found:', activeAccount);
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'Active account not found. Please select a valid account.'
+      )
+    );
+  }
+
+  // Check if the request has a 'from' address that we need to validate
+  let requiredFromAddress: string | undefined;
+
+  // Extract 'from' address based on method type
+  requiredFromAddress = extractEvmAddressFromParams(
+    originalRequest.method,
+    originalRequest.params
+  );
+
+  // If not EVM, check for UTXO transactions
+  if (
+    !requiredFromAddress &&
+    (originalRequest.method === 'sys_signAndSend' ||
+      originalRequest.method === 'sys_sign')
+  ) {
+    requiredFromAddress = await extractUtxoAddressFromPsbt(
+      originalRequest.params?.[0],
+      accounts
+    );
+  }
+
+  // If we have a required from address, validate it exists and switch to it if needed
+  if (requiredFromAddress) {
+    const accountInfo = findAccountByAddress(requiredFromAddress, accounts);
+
+    // If the required address doesn't exist in the wallet, throw clear error
+    if (!accountInfo) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          `The address ${requiredFromAddress} is not available in this wallet. It may have been removed or the wallet may have been reinstalled. Please reconnect with a valid account.`
+        )
+      );
+    }
+
+    // Check if we're already on the correct account
+    const activeAccountData = accounts[activeAccount.type][activeAccount.id];
+    if (
+      activeAccountData.address.toLowerCase() ===
+      requiredFromAddress.toLowerCase()
+    ) {
+      // Already on the correct account
+      return next();
+    }
+
+    console.log(
+      '[Pipeline] Transaction requires switching to address:',
+      requiredFromAddress
+    );
+
+    // Need to switch to the required account
+    try {
+      await promptAccountSwitch(
+        context,
+        accountInfo.account,
+        accountInfo.accountType,
+        requiredFromAddress
+      );
+
+      // Account switched successfully, continue with the request
+      return next();
+    } catch (error) {
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'Must switch to the required account for this operation'
+        )
+      );
+    }
+  }
+
+  // Original logic for DApp connected account validation
   const account = dapp.getAccount(originalRequest.host);
   if (!account) {
     // Not connected, connection middleware should have handled this
@@ -602,24 +837,12 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   const dappAccountType = account.isImported ? 'Imported' : 'HDAccount';
 
   try {
-    const response = await requestCoordinator.coordinatePopupRequest(
+    await promptAccountSwitch(
       context,
-      () =>
-        popupPromise({
-          host: originalRequest.host,
-          route: MethodRoute.ChangeActiveConnectedAccount,
-          eventName: 'changeActiveConnected',
-          data: {
-            connectedAccount: account,
-            accountType: dappAccountType,
-          },
-        }),
-      MethodRoute.ChangeActiveConnectedAccount // Explicit route parameter
+      account,
+      dappAccountType,
+      account.address
     );
-
-    if (!response) {
-      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-    }
   } catch (error) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(

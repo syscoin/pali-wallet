@@ -177,6 +177,7 @@
     "recoveryPhrase": "Recovery Phrase"
   },
   "send": {
+    "details": "Details",
     "approve": "Approve",
     "sign": "Sign",
     "encryptKey": "Encrypt Key",

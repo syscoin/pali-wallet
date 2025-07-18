@@ -314,6 +314,7 @@
     "recoveryPhrase": "Phrase de récupération"
   },
   "send": {
+    "details": "Détails",
     "approve": "Approuver",
     "sign": "Signer",
     "encryptKey": "Chiffrer Clé",

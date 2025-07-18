@@ -472,6 +472,7 @@
     "recoveryPhrase": "恢复短语"
   },
   "send": {
+    "details": "详情",
     "approve": "批准",
     "sign": "签名",
     "encryptKey": "加密密钥",

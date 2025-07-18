@@ -143,7 +143,7 @@ export const ImportableAssetsList: React.FC<IImportableAssetsListProps> = ({
                     <span className="text-brand-white font-medium">
                       {asset.tokenStandard === 'ERC-1155' && asset.balance === 0
                         ? '—'
-                        : asset.balance.toFixed(4)}
+                        : (Number(asset.balance) || 0).toFixed(4)}
                     </span>
                     <span
                       className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"

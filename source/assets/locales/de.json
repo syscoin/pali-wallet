@@ -319,6 +319,7 @@
     "recoveryPhrase": "Wiederherstellungsphrase"
   },
   "send": {
+    "details": "Details",
     "approve": "Genehmigen",
     "sign": "Signieren",
     "encryptKey": "Schlüssel Verschlüsseln",

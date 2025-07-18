@@ -74,41 +74,6 @@ export const SysProvider = (host: string) => {
     return transactions.find((tx: any) => tx.txid === txId) || null;
   };
 
-  const sendTransaction = (params: any[]) =>
-    // This has a popup defined in the registry
-    popupPromise({
-      host,
-      data: params?.[0],
-      route: MethodRoute.SendNTokenTx,
-      eventName: 'sys_sendTransaction',
-    });
-
-  const signMessage = (params: any[]) =>
-    // This has a popup defined in the registry
-    popupPromise({
-      host,
-      data: params?.[0],
-      route: MethodRoute.EthSign,
-      eventName: 'sys_signMessage',
-    });
-
-  //* ----- Existing Sign Methods -----
-  const sign = (params: any[]) =>
-    popupPromise({
-      host,
-      data: params?.[0],
-      route: MethodRoute.SignPsbt,
-      eventName: 'txSign',
-    });
-
-  const signAndSend = (params: any[]) =>
-    popupPromise({
-      host,
-      data: params?.[0],
-      route: MethodRoute.SignTx,
-      eventName: 'txSignAndSend',
-    });
-
   //* ----- Validation Methods -----
   const isNFT = (params: any[]) => _isNFT(params?.[0] as number);
 
@@ -128,11 +93,6 @@ export const SysProvider = (host: string) => {
     // Transaction methods
     getTransactions,
     transaction,
-    sendTransaction,
-    signMessage,
-    // Sign methods
-    sign,
-    signAndSend,
     // Validation methods
     isNFT,
     isValidSYSAddress,

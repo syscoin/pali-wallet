@@ -1,5 +1,5 @@
 import { BigNumber, ethers } from 'ethers';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -99,10 +99,24 @@ export const SendTransaction = () => {
 
   const omitTransactionObject = omitTransactionObjectData(dataTx, ['type']);
 
-  const validatedDataTxWithoutType = {
-    ...omitTransactionObject,
-    data: validateTransactionDataValue(dataTx.data),
-  };
+  // Memoize the validated transaction to prevent unnecessary re-renders
+  const validatedDataTxWithoutType = useMemo(
+    () => ({
+      ...omitTransactionObject,
+      data: validateTransactionDataValue(dataTx.data),
+    }),
+    // Use stable dependencies
+    [
+      dataTx.from,
+      dataTx.to,
+      dataTx.value,
+      dataTx.data,
+      dataTx.gas,
+      dataTx.gasLimit,
+      dataTx.maxFeePerGas,
+      dataTx.maxPriorityFeePerGas,
+    ]
+  );
 
   const handleConfirm = async () => {
     const {
@@ -232,6 +246,8 @@ export const SendTransaction = () => {
 
   useEffect(() => {
     const abortController = new AbortController();
+    let isMounted = true;
+
     const getGasAndFunction = async () => {
       try {
         const { feeDetails, formTx, nonce, isInvalidTxData, gasLimitError } =
@@ -239,25 +255,37 @@ export const SendTransaction = () => {
             validatedDataTxWithoutType as ITransactionParams,
             activeNetwork
           );
-        setHasGasError(gasLimitError);
-        setHasTxDataError(isInvalidTxData);
-        setFee(feeDetails);
-        setTx(formTx);
-        setCustomNonce(nonce);
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setHasGasError(gasLimitError);
+          setHasTxDataError(isInvalidTxData);
+          setFee(feeDetails);
+          setTx(formTx);
+          setCustomNonce(nonce);
+        }
       } catch (e) {
-        logError('error getting fees', 'Transaction', e);
-        alert.error(t('send.txWillFail'), e);
-        clearNavigationState();
-        setTimeout(window.close, 3000);
+        // Don't handle error if request was aborted
+        if (e.name === 'AbortError') {
+          return;
+        }
+
+        if (isMounted) {
+          logError('error getting fees', 'Transaction', e);
+          alert.error(t('send.txWillFail'), e);
+          clearNavigationState();
+          setTimeout(window.close, 3000);
+        }
       }
     };
 
     getGasAndFunction();
 
     return () => {
+      isMounted = false;
       abortController.abort();
     };
-  }, [validatedDataTxWithoutType, activeNetwork, alert, t]); // TODO: add timeout to abort controller
+  }, [validatedDataTxWithoutType, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
 
   useEffect(() => {
     setValueAndCurrency(formattedValueAndCurrency);

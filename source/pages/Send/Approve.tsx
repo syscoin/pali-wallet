@@ -1,6 +1,6 @@
 import { Form } from 'antd';
 import { BigNumber, ethers } from 'ethers';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
@@ -107,17 +107,21 @@ export const ApproveTransactionComponent = () => {
 
   const isExternal = Boolean(externalTx.external);
 
-  const dataTx: ITransactionParams = isExternal
-    ? externalTx.tx
-    : state.external
-    ? state.tx
-    : state.tx;
+  // Memoize dataTx to prevent unnecessary re-renders
+  const dataTx: ITransactionParams = useMemo(
+    () => (isExternal ? externalTx.tx : state.external ? state.tx : state.tx),
+    [isExternal, externalTx.tx, state?.external, state?.tx]
+  );
 
-  const decodedTx: IDecodedTx = isExternal
-    ? externalTx.decodedTx
-    : state.external
-    ? state.decodedTx
-    : state.decodedTx;
+  const decodedTx: IDecodedTx = useMemo(
+    () =>
+      isExternal
+        ? externalTx.decodedTx
+        : state.external
+        ? state.decodedTx
+        : state.decodedTx,
+    [isExternal, externalTx.decodedTx, state?.external, state?.decodedTx]
+  );
 
   const [formControl] = Form.useForm();
 
@@ -248,24 +252,34 @@ export const ApproveTransactionComponent = () => {
 
   useEffect(() => {
     const abortController = new AbortController();
+    let isMounted = true;
 
     const getGasAndFunction = async () => {
-      const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
-        dataTx,
-        activeNetwork
-      );
+      try {
+        const { feeDetails, formTx, nonce } = await fetchGasAndDecodeFunction(
+          dataTx,
+          activeNetwork
+        );
 
-      setFee(feeDetails);
-      setTx(formTx);
-      setCustomNonce(nonce);
+        if (isMounted) {
+          setFee(feeDetails);
+          setTx(formTx);
+          setCustomNonce(nonce);
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error('Error fetching gas data:', error);
+        }
+      }
     };
 
     getGasAndFunction();
 
     return () => {
+      isMounted = false;
       abortController.abort();
     };
-  }, [dataTx]);
+  }, [dataTx, activeNetwork.chainId]); // Only depend on chainId, not the whole network object
 
   // Clear navigation state when component unmounts or navigates away
   useEffect(

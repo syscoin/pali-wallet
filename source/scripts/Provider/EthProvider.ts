@@ -6,13 +6,20 @@ import { validateEOAAddress } from '@pollum-io/sysweb3-utils';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
-import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
+import { requestCoordinator } from 'scripts/Background/controllers/message-handler/request-pipeline';
+import {
+  IEnhancedRequestContext,
+  MethodRoute,
+} from 'scripts/Background/controllers/message-handler/types';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (host: string) => {
+export const EthProvider = (
+  host: string,
+  context?: IEnhancedRequestContext
+) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const {
       ethereumTransaction: { web3Provider },
@@ -38,167 +45,51 @@ export const EthProvider = (host: string) => {
     )) as IDecodedTx;
     if (!decodedTx) throw cleanErrorStack(ethErrors.rpc.invalidRequest());
 
+    // Determine route based on transaction type
+    let route = MethodRoute.SendEthTx;
+    let eventName = 'txSend';
+
     //Open Contract Interaction component
     if (validateTxToAddress.contract || !isLegacyTx) {
-      const resp = await popupPromise({
-        host,
-        data: { tx, decodedTx, external: true },
-        route: MethodRoute.SendEthTx,
-        eventName: 'txSend',
-      });
-      return resp;
+      route = MethodRoute.SendEthTx;
+      eventName = 'txSend';
     }
-
     //Open Send Component
-    if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
-      const resp = await popupPromise({
-        host,
-        data: { tx, decodedTx, external: true },
-        route: MethodRoute.SendNTokenTx,
-        eventName: 'nTokenTx',
-      });
-
-      return resp;
-    }
-
-    if (
+    else if (validateTxToAddress.wallet || isLegacyTx || !tx.data) {
+      route = MethodRoute.SendNTokenTx;
+      eventName = 'nTokenTx';
+    } else if (
       decodedTx.method === 'Contract Deployment' ||
       decodedTx.method === 'Burn'
     ) {
-      const resp = await popupPromise({
+      route = MethodRoute.SendNTokenTx;
+      eventName = 'nTokenTx';
+    } else if (decodedTx.method === 'approve') {
+      route = MethodRoute.SendApprove;
+      eventName = 'txApprove';
+    }
+
+    // Use coordinator if context is provided, otherwise direct popup
+    if (context) {
+      return requestCoordinator.coordinatePopupRequest(
+        context,
+        () =>
+          popupPromise({
+            host,
+            data: { tx, decodedTx, external: true },
+            route,
+            eventName,
+          }),
+        route
+      );
+    } else {
+      return popupPromise({
         host,
         data: { tx, decodedTx, external: true },
-        route: MethodRoute.SendNTokenTx,
-        eventName: 'nTokenTx',
+        route,
+        eventName,
       });
-
-      return resp;
     }
-
-    if (decodedTx.method === 'approve') {
-      const resp = await popupPromise({
-        host,
-        data: { tx, decodedTx, external: true },
-        route: MethodRoute.SendApprove,
-        eventName: 'txApprove',
-      });
-      return resp;
-    }
-  };
-
-  const ethSign = async (params: string[]) => {
-    const data = params;
-
-    // Check if params is undefined or null first
-    if (
-      !data ||
-      !Array.isArray(data) ||
-      data.length < 2 ||
-      !data[0] ||
-      !data[1]
-    ) {
-      throw cleanErrorStack(
-        ethErrors.rpc.invalidParams(
-          'eth_sign requires [address, message] parameters'
-        )
-      );
-    }
-
-    const resp = await popupPromise({
-      host,
-      data,
-      route: MethodRoute.EthSign,
-      eventName: 'eth_sign',
-    });
-    return resp;
-  };
-
-  const personalSign = async (params: string[]) => {
-    const data = params;
-    if (
-      !data ||
-      !Array.isArray(data) ||
-      data.length < 2 ||
-      !data[0] ||
-      !data[1]
-    )
-      throw cleanErrorStack(
-        ethErrors.rpc.invalidParams(
-          'personal_sign requires [message, address] parameters'
-        )
-      );
-    const resp = await popupPromise({
-      host,
-      data,
-      route: MethodRoute.EthSign,
-      eventName: 'personal_sign',
-    });
-    return resp;
-  };
-  const signTypedData = (data: TypedData[]) => {
-    if (!data || !Array.isArray(data) || data.length === 0)
-      throw cleanErrorStack(
-        ethErrors.rpc.invalidParams(
-          'eth_signTypedData requires valid data parameter'
-        )
-      );
-    return popupPromise({
-      host,
-      data,
-      route: MethodRoute.EthSign,
-      eventName: 'eth_signTypedData',
-    });
-  };
-
-  const signTypedDataV3 = (data: TypedData[]) => {
-    if (!data || !Array.isArray(data) || data.length < 2)
-      throw cleanErrorStack(
-        ethErrors.rpc.invalidParams(
-          'eth_signTypedData_v3 requires [address, typedData] parameters'
-        )
-      );
-    return popupPromise({
-      host,
-      data,
-      route: MethodRoute.EthSign,
-      eventName: 'eth_signTypedData_v3',
-    });
-  };
-
-  const signTypedDataV4 = (data: TypedData[]) => {
-    if (!data || !Array.isArray(data) || data.length < 2)
-      throw cleanErrorStack(
-        ethErrors.rpc.invalidParams(
-          'eth_signTypedData_v4 requires [address, typedData] parameters'
-        )
-      );
-    return popupPromise({
-      host,
-      data,
-      route: MethodRoute.EthSign,
-      eventName: 'eth_signTypedData_v4',
-    });
-  };
-  const getEncryptionPubKey = (address: string) => {
-    if (!address) throw cleanErrorStack(ethErrors.rpc.invalidParams());
-    const data = { address: address };
-    return popupPromise({
-      host,
-      data,
-      route: MethodRoute.EncryptKey,
-      eventName: 'eth_getEncryptionPublicKey',
-    });
-  };
-
-  const decryptMessage = (data: string[]) => {
-    if (!data.length || data.length < 2 || !data[0] || !data[1])
-      throw cleanErrorStack(ethErrors.rpc.invalidParams());
-    return popupPromise({
-      host,
-      data,
-      route: MethodRoute.DecryptKey,
-      eventName: 'eth_decrypt',
-    });
   };
 
   const send = async (args: any[]) => {
@@ -230,12 +121,54 @@ export const EthProvider = (host: string) => {
       );
     }
 
+    // Handle subscription methods (not supported)
+    if (method === 'eth_subscribe' || method === 'eth_unsubscribe') {
+      throw cleanErrorStack(
+        ethErrors.provider.unsupportedMethod(
+          `${method} is not supported. Pali does not support WebSocket subscriptions.`
+        )
+      );
+    }
+
+    // Validate eth_getTransactionReceipt params
+    if (method === 'eth_getTransactionReceipt') {
+      // Handle case where an object with hash property is passed instead of string
+      if (
+        params &&
+        params.length > 0 &&
+        typeof params[0] === 'object' &&
+        params[0].hash
+      ) {
+        params[0] = params[0].hash;
+      }
+
+      // Validate the transaction hash format
+      if (params && params.length > 0) {
+        const hash = params[0];
+        if (
+          typeof hash !== 'string' ||
+          !hash.startsWith('0x') ||
+          hash.length !== 66
+        ) {
+          throw cleanErrorStack(
+            ethErrors.rpc.invalidParams(
+              `Invalid transaction hash format. Expected 0x-prefixed 66-character string, got: ${
+                typeof hash === 'object' ? JSON.stringify(hash) : hash
+              }`
+            )
+          );
+        }
+      }
+    }
+
+    // Defaults
     try {
       const resp = await ethereumTransaction.web3Provider.send(method, params);
 
       return resp;
     } catch (error) {
       console.error({ error });
+      throw error;
     }
   };
 
@@ -246,16 +179,8 @@ export const EthProvider = (host: string) => {
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
-      case 'eth_sign':
-        return await ethSign(params);
-      case 'eth_signTypedData':
-        return await signTypedData(params as any);
-      case 'eth_signTypedData_v3':
-        return await signTypedDataV3(params as any);
-      case 'eth_signTypedData_v4':
-        return await signTypedDataV4(params as any);
-      case 'personal_sign':
-        return await personalSign(params);
+      // Popup-based methods are now handled by the method handler with coordinator
+      // Keeping only non-popup restricted methods here
       case 'personal_ecRecover':
         // Safety check: ensure web3Provider exists for EVM networks
         if (!ethereumTransaction?.web3Provider) {
@@ -268,10 +193,6 @@ export const EthProvider = (host: string) => {
         return await ethereumTransaction.web3Provider.getAddress(
           ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );
-      case 'eth_getEncryptionPublicKey':
-        return await getEncryptionPubKey(params[0]);
-      case 'eth_decrypt':
-        return await decryptMessage(params);
       default:
         try {
           // Safety check: ensure web3Provider exists for EVM networks
@@ -299,9 +220,10 @@ export const EthProvider = (host: string) => {
   return {
     send,
     sendTransaction,
-    signTypedData,
-    signTypedDataV3,
-    signTypedDataV4,
+    // Popup-based methods removed - handled by coordinator in method handler
+    // signTypedData,
+    // signTypedDataV3,
+    // signTypedDataV4,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
   };
