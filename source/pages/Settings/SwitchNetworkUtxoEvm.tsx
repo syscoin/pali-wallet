@@ -6,7 +6,6 @@ import {
   PrimaryButton,
   SecondaryButton,
   LoadingComponent,
-  DefaultModal,
 } from 'components/index';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
@@ -62,17 +61,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     dispatchBackgroundEvent(`${type}.${host}`, { success: true });
     setConfirmed(true);
     setLoading(false);
+    window.close();
   };
 
   return (
     <>
-      <DefaultModal
-        show={confirmed}
-        onClose={window.close}
-        title={t('settings.networkChanged')}
-        buttonText={t('settings.gotIt')}
-      />
-
       {!loading ? (
         <div className="flex flex-col items-center justify-center w-full">
           <div className="relative top-5 flex flex-col pb-4 pt-4 w-full border-b border-t border-dashed border-dashed-dark">

@@ -9,9 +9,8 @@ import { LoadingSvg } from 'components/Icon/Icon';
 import { Modal, PrimaryButton, SecondaryButton } from 'components/index';
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
-import store, { RootState } from 'state/store';
+import { RootState } from 'state/store';
 import { selectActiveAccountRef } from 'state/vault';
-import { setIsSwitchingAccount } from 'state/vaultGlobal';
 
 interface ISetActiveAccountModalProps {
   selectedNetwork: INetwork;

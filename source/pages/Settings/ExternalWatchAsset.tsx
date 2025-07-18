@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
-  DefaultModal,
   LoadingComponent,
   PrimaryButton,
   SecondaryButton,
@@ -110,6 +109,10 @@ const ExternalWatchAsset = () => {
       setConfirmed(true);
 
       setLoading(false);
+      alert.info(t('settings.tokenSuccessfullyAdded'));
+      setTimeout(() => {
+        window.close();
+      }, 4000);
     } catch (error: any) {
       alert.error(error.message);
 
@@ -142,13 +145,6 @@ const ExternalWatchAsset = () => {
 
   return (
     <div className="flex flex-col w-full h-full">
-      <DefaultModal
-        show={confirmed}
-        onClose={window.close}
-        title={t('settings.tokenSuccessfullyAdded')}
-        buttonText={t('settings.gotIt')}
-      />
-
       {/* Main scrollable content area */}
       <div className="flex-1 overflow-y-auto pb-20">
         {formatError ? (

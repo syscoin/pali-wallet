@@ -252,19 +252,6 @@ export const METHOD_REGISTRY: MethodRegistry = {
     popupEventName: 'wallet_switchEthereumChain',
   },
 
-  wallet_changeUTXOEVM: {
-    name: 'wallet_changeUTXOEVM',
-    handlerType: MethodHandlerType.Wallet,
-    requiresTabId: true,
-    requiresAuth: false, // Popup handles auth
-    requiresConnection: false,
-    allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.Any,
-    hasPopup: true,
-    popupRoute: MethodRoute.SwitchUtxoEvm,
-    popupEventName: 'change_UTXOEVM',
-  },
-
   wallet_getProviderState: {
     name: 'wallet_getProviderState',
     handlerType: MethodHandlerType.Wallet,
@@ -950,7 +937,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
     requiresAuth: false, // Popup handles auth
-    requiresConnection: false,
+    requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
@@ -1131,7 +1118,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
     requiresAuth: false, // Popup handles auth
-    requiresConnection: false,
+    requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
     hasPopup: true,

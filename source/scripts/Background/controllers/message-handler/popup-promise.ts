@@ -138,6 +138,8 @@ export const popupPromise = async ({
       }
       resolved = true;
       cleanup();
+      // Clear the storage flag when popup resolves (either success or cancelled)
+      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
       resolve(result);
     };
 
@@ -151,6 +153,9 @@ export const popupPromise = async ({
       if (windowId !== popup.id) {
         return;
       }
+
+      // Clear the storage flag when popup closes
+      chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
 
       // will pass back a rejection message in pipeline
       safeResolve(null);

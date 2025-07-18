@@ -189,8 +189,15 @@ export type Middleware = (
   next: NextFunction
 ) => Promise<any>;
 
+// Request pipeline for processing messages
 export class RequestPipeline {
   private middlewares: Middleware[] = [];
+  private isProcessing = false;
+  private requestQueue: Array<{
+    context: IEnhancedRequestContext;
+    reject: (error: any) => void;
+    resolve: (value: any) => void;
+  }> = [];
 
   use(middleware: Middleware): RequestPipeline {
     this.middlewares.push(middleware);
@@ -198,18 +205,115 @@ export class RequestPipeline {
   }
 
   async execute(context: IEnhancedRequestContext): Promise<any> {
+    const { methodConfig } = context;
+
+    // Check if this is a non-blocking, read-only request that can bypass the queue
+    const canBypassQueue =
+      !methodConfig.hasPopup &&
+      !methodConfig.isBlocking &&
+      !methodConfig.requiresAuth &&
+      !methodConfig.requiresConnection;
+
+    // If it's a read-only request and we're processing something else, let it through
+    if (canBypassQueue && this.isProcessing) {
+      return this.runMiddlewares(context);
+    }
+
+    // If already processing a request, queue this one
+    if (this.isProcessing) {
+      console.log(
+        `[Pipeline] Request ${context.originalRequest.method} queued, another request is in progress`
+      );
+      return new Promise((resolve, reject) => {
+        const queueEntry = { context, resolve, reject };
+        this.requestQueue.push(queueEntry);
+
+        // Determine appropriate timeout based on method type
+        const timeoutMs = 60000; // 60 seconds default
+
+        console.log(
+          `[Pipeline] Queue timeout for ${context.originalRequest.method}: ${
+            timeoutMs / 1000
+          }s`
+        );
+
+        // Set a timeout for QUEUED requests only (not the executing one)
+        setTimeout(() => {
+          const index = this.requestQueue.indexOf(queueEntry);
+          if (index !== -1) {
+            // This request is STILL in the queue after timeout (not being processed)
+            this.requestQueue.splice(index, 1);
+            console.warn(
+              `[Pipeline] Request ${
+                context.originalRequest.method
+              } timed out waiting in queue after ${timeoutMs / 1000}s`
+            );
+            reject(
+              cleanErrorStack(
+                ethErrors.provider.userRejectedRequest(
+                  `Request timed out waiting in queue. Please try again.`
+                )
+              )
+            );
+          }
+          // If index === -1, the request has been dequeued and is being processed, so we do nothing
+        }, timeoutMs);
+      });
+    }
+
+    // Mark as processing
+    this.isProcessing = true;
+
+    try {
+      const result = await this.runMiddlewares(context);
+      return result;
+    } finally {
+      // Mark as not processing and handle next request
+      this.isProcessing = false;
+      this.processNextRequest();
+    }
+  }
+
+  private async runMiddlewares(context: IEnhancedRequestContext): Promise<any> {
     let index = 0;
 
     const next = async (): Promise<any> => {
       if (index >= this.middlewares.length) {
+        // All middleware passed, but no result returned
+        // This should not happen as the final middleware should handle the request
         throw new Error('No handler found for request');
       }
 
       const middleware = this.middlewares[index++];
-      return await middleware(context, next);
+      return middleware(context, next);
     };
 
-    return await next();
+    return next();
+  }
+
+  private processNextRequest(): void {
+    if (this.requestQueue.length === 0) return;
+
+    const nextRequest = this.requestQueue.shift();
+    if (nextRequest) {
+      // Process the next request
+      this.execute(nextRequest.context)
+        .then(nextRequest.resolve)
+        .catch(nextRequest.reject);
+    }
+  }
+
+  // Debug methods
+  getQueueLength(): number {
+    return this.requestQueue.length;
+  }
+
+  isCurrentlyProcessing(): boolean {
+    return this.isProcessing;
+  }
+
+  getQueuedMethods(): string[] {
+    return this.requestQueue.map((item) => item.context.originalRequest.method);
   }
 }
 
@@ -282,7 +386,9 @@ export const networkCompatibilityMiddleware: Middleware = async (
 
   if (needsEVM || needsUTXO) {
     console.log(
-      '[Pipeline] Network type mismatch, using changeUTXOEVM to switch...'
+      '[Pipeline] Network type mismatch for request: ',
+      originalRequest.method,
+      ' using changeUTXOEVM to switch...'
     );
 
     try {
@@ -325,6 +431,95 @@ export const networkCompatibilityMiddleware: Middleware = async (
   }
 
   return next();
+};
+
+// Middleware: Network Type Switch for changeUTXOEVM
+export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
+  const { originalRequest } = context;
+
+  // Only handle changeUTXOEVM methods
+  if (!originalRequest.method.includes('changeUTXOEVM')) {
+    return next();
+  }
+
+  const { vault, vaultGlobal } = store.getState();
+  const { isBitcoinBased } = vault;
+  const { networks } = vaultGlobal;
+  const { dapp } = getController();
+
+  const params = originalRequest.params;
+  const chainId = params?.[0]?.chainId;
+
+  if (!chainId) {
+    throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
+  }
+
+  // Validate prefix matches current network type
+  const validatePrefixAndCurrentChain =
+    (originalRequest.method?.toLowerCase() === 'eth_changeutxoevm' &&
+      isBitcoinBased) ||
+    (originalRequest.method?.toLowerCase() === 'sys_changeutxoevm' &&
+      !isBitcoinBased);
+
+  if (!validatePrefixAndCurrentChain) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized(
+        'changeUTXOEVM requires correct network type and prefix'
+      )
+    );
+  }
+
+  const newChainValue =
+    originalRequest.method?.toLowerCase() === 'sys_changeutxoevm'
+      ? 'syscoin'
+      : 'ethereum';
+  const targetNetwork = networks[newChainValue.toLowerCase()][chainId];
+
+  if (!targetNetwork) {
+    throw cleanErrorStack(
+      ethErrors.provider.unauthorized('Network does not exist')
+    );
+  }
+
+  const result = await requestCoordinator.coordinatePopupRequest(
+    context,
+    () =>
+      popupPromise({
+        host: originalRequest.host,
+        route: MethodRoute.SwitchUtxoEvm,
+        eventName: 'change_UTXOEVM',
+        data: {
+          newNetwork: targetNetwork,
+          newChainValue: newChainValue,
+        },
+      }),
+    MethodRoute.SwitchUtxoEvm
+  );
+
+  if (!result) {
+    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+  }
+  // Small delay to ensure network switch completes
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const isConnected = dapp.isConnected(originalRequest.host);
+
+  if (isConnected) {
+    const result1 = await requestCoordinator.coordinatePopupRequest(
+      context,
+      () =>
+        popupPromise({
+          host: originalRequest.host,
+          route: MethodRoute.ChangeAccount,
+          eventName: 'accountsChanged',
+          data: { network: targetNetwork },
+        }),
+      MethodRoute.ChangeAccount
+    );
+    if (!result1) {
+      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+    }
+  }
+  // Note: We don't call next() here because we've handled the entire request
 };
 
 // Middleware: Connection Check
@@ -494,8 +689,20 @@ export function createDefaultPipeline(): RequestPipeline {
     .use(networkStatusMiddleware) // Check network status first
     .use(hardwareWalletMiddleware)
     .use(networkCompatibilityMiddleware)
+    .use(utxoEvmSwitchMiddleware) // Add the new middleware here
     .use(connectionMiddleware)
     .use(accountSwitchingMiddleware)
     .use(authenticationMiddleware); // Auth check last - other middleware handle auth in their popups
   // Method handler middleware is added in requests.ts
+}
+
+// Export a singleton instance for debugging
+let pipelineInstance: RequestPipeline | null = null;
+
+export function getPipelineInstance(): RequestPipeline | null {
+  return pipelineInstance;
+}
+
+export function setPipelineInstance(pipeline: RequestPipeline): void {
+  pipelineInstance = pipeline;
 }

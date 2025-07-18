@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-import { INetworkType, retryableFetch } from '@pollum-io/sysweb3-network';
+import { INetworkType } from '@pollum-io/sysweb3-network';
 import { isNFT as _isNFT } from '@pollum-io/sysweb3-utils';
 
 import { ISysAssetMetadata } from 'types/tokens';

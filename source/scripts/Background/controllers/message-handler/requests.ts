@@ -13,6 +13,7 @@ import {
   Middleware,
   requestCoordinator,
   RequestExecutor,
+  setPipelineInstance,
 } from './request-pipeline';
 import { IEnhancedRequestContext } from './types';
 
@@ -26,6 +27,9 @@ const defaultMethodHandler = createDefaultMethodHandler();
 
 // Create the pipeline instance
 const pipeline = createDefaultPipeline();
+
+// Store pipeline instance for debugging
+setPipelineInstance(pipeline);
 
 // Add the method handler as the final middleware
 const finalMethodHandlerMiddleware: Middleware = async (context) => {

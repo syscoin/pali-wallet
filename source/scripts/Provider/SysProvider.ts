@@ -74,83 +74,47 @@ export const SysProvider = (host: string) => {
     return transactions.find((tx: any) => tx.txid === txId) || null;
   };
 
-  const sendTransaction = (data: any) =>
+  const sendTransaction = (params: any[]) =>
     // This has a popup defined in the registry
     popupPromise({
       host,
-      data,
+      data: params?.[0],
       route: MethodRoute.SendNTokenTx,
       eventName: 'sys_sendTransaction',
     });
-  const signMessage = (data: any) =>
+
+  const signMessage = (params: any[]) =>
     // This has a popup defined in the registry
     popupPromise({
       host,
-      data,
+      data: params?.[0],
       route: MethodRoute.EthSign,
       eventName: 'sys_signMessage',
     });
-  const changeUTXOEVM = (params: any[]) => {
-    // Handle network type switching for bridges
-    // Extract chainId and network type from params
-    const chainId = params?.[0]?.chainId || params?.[0];
-    const prefix = params?.[0]?.prefix || 'sys';
-
-    if (!chainId) {
-      throw new Error('chainId is required for changeUTXOEVM');
-    }
-
-    // Get the network configuration
-    const { vaultGlobal } = store.getState();
-    const { isBitcoinBased } = store.getState().vault;
-    if (isBitcoinBased) {
-      return null;
-    }
-    const { networks } = vaultGlobal;
-    const newChainValue =
-      prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';
-    const targetNetwork = networks[newChainValue]?.[chainId];
-
-    if (!targetNetwork) {
-      throw new Error(
-        `Network with chainId ${chainId} not found for ${newChainValue}`
-      );
-    }
-
-    return popupPromise({
-      host,
-      route: MethodRoute.SwitchUtxoEvm,
-      eventName: 'change_UTXOEVM',
-      data: {
-        newNetwork: targetNetwork,
-        newChainValue: newChainValue,
-      },
-    });
-  };
 
   //* ----- Existing Sign Methods -----
-  const sign = (data) =>
+  const sign = (params: any[]) =>
     popupPromise({
       host,
-      data,
+      data: params?.[0],
       route: MethodRoute.SignPsbt,
       eventName: 'txSign',
     });
 
-  const signAndSend = (data) =>
+  const signAndSend = (params: any[]) =>
     popupPromise({
       host,
-      data,
+      data: params?.[0],
       route: MethodRoute.SignTx,
       eventName: 'txSignAndSend',
     });
 
   //* ----- Validation Methods -----
-  const isNFT = (data) => _isNFT(data[0] as number);
+  const isNFT = (params: any[]) => _isNFT(params?.[0] as number);
 
-  const isValidSYSAddress = (data) => {
+  const isValidSYSAddress = (params: any[]) => {
     const { activeNetwork } = store.getState().vault;
-    const isValid = _isValidSYSAddress(data, activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
+    const isValid = _isValidSYSAddress(params?.[0], activeNetwork.chainId); //Validate by coinType inside sysweb3 //todo: we should adjust with the new keyring types and funtionalites
     return isValid;
   };
 
@@ -166,7 +130,6 @@ export const SysProvider = (host: string) => {
     transaction,
     sendTransaction,
     signMessage,
-    changeUTXOEVM,
     // Sign methods
     sign,
     signAndSend,

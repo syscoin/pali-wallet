@@ -21,7 +21,7 @@ import Spinner from 'components/Spinner/Spinner';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import store, { RootState } from 'state/store';
-import { startSwitchNetwork, switchNetworkError } from 'state/vaultGlobal';
+import { switchNetworkError } from 'state/vaultGlobal';
 import {
   createNavigationContext,
   navigateWithContext,

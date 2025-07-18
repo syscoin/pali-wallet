@@ -7,7 +7,6 @@ import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
-import store from 'state/store';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -202,47 +201,6 @@ export const EthProvider = (host: string) => {
     });
   };
 
-  const changeUTXOEVM = async (params: any[]) => {
-    // Handle network type switching for bridges
-    // Extract chainId and network type from params
-    const chainId = params?.[0]?.chainId || params?.[0];
-    const prefix = params?.[0]?.prefix || 'eth';
-
-    if (!chainId) {
-      throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
-    }
-
-    // Get the network configuration
-    const { vaultGlobal } = store.getState();
-    const { isBitcoinBased } = store.getState().vault;
-    if (!isBitcoinBased) {
-      return null;
-    }
-    const { networks } = vaultGlobal;
-    const newChainValue =
-      prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';
-    const targetNetwork = networks[newChainValue]?.[chainId];
-
-    if (!targetNetwork) {
-      throw cleanErrorStack(
-        ethErrors.provider.custom({
-          code: 4902,
-          message: `Network with chainId ${chainId} not found for ${newChainValue}`,
-        })
-      );
-    }
-
-    return popupPromise({
-      host,
-      route: MethodRoute.SwitchUtxoEvm,
-      eventName: 'change_UTXOEVM',
-      data: {
-        newNetwork: targetNetwork,
-        newChainValue: newChainValue,
-      },
-    });
-  };
-
   const send = async (args: any[]) => {
     const { ethereumTransaction } = getController().wallet;
 
@@ -282,6 +240,9 @@ export const EthProvider = (host: string) => {
   };
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
+    // Get ethereumTransaction once at the beginning
+    const { ethereumTransaction } = getController().wallet;
+
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
@@ -296,8 +257,6 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
-        const { ethereumTransaction } = getController().wallet;
-
         // Safety check: ensure web3Provider exists for EVM networks
         if (!ethereumTransaction?.web3Provider) {
           throw cleanErrorStack(
@@ -313,12 +272,8 @@ export const EthProvider = (host: string) => {
         return await getEncryptionPubKey(params[0]);
       case 'eth_decrypt':
         return await decryptMessage(params);
-      case 'eth_changeUTXOEVM':
-        return await changeUTXOEVM(params);
       default:
         try {
-          const { ethereumTransaction } = getController().wallet;
-
           // Safety check: ensure web3Provider exists for EVM networks
           if (!ethereumTransaction?.web3Provider) {
             throw cleanErrorStack(
@@ -349,6 +304,5 @@ export const EthProvider = (host: string) => {
     signTypedDataV4,
     unrestrictedRPCMethods,
     restrictedRPCMethods,
-    changeUTXOEVM,
   };
 };

@@ -4,7 +4,6 @@ import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
-import vaultCache from 'state/vaultCache';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { networkChain } from 'utils/network';
 
@@ -123,53 +122,6 @@ export class WalletMethodHandler implements IMethodHandler {
         methodConfig.popupRoute! // Explicit route parameter
       );
     }
-
-    if (methodName === 'changeUTXOEVM') {
-      const prefix = params?.[0]?.prefix;
-
-      const validatePrefixAndCurrentChain =
-        (prefix?.toLowerCase() === 'sys' && !isBitcoinBased) ||
-        (prefix?.toLowerCase() === 'eth' && isBitcoinBased);
-
-      if (!validatePrefixAndCurrentChain) {
-        throw cleanErrorStack(
-          ethErrors.provider.unauthorized(
-            'changeUTXOEVM requires correct network type and prefix'
-          )
-        );
-      }
-
-      if (!params?.[0]?.chainId) {
-        throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId required'));
-      }
-
-      const { chainId } = params[0];
-      const newChainValue =
-        prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';
-      const targetNetwork = networks[newChainValue.toLowerCase()][chainId];
-
-      if (!targetNetwork) {
-        throw cleanErrorStack(
-          ethErrors.provider.unauthorized('Network does not exist')
-        );
-      }
-
-      return requestCoordinator.coordinatePopupRequest(
-        context,
-        () =>
-          popupPromise({
-            host,
-            route: methodConfig.popupRoute!,
-            eventName: methodConfig.popupEventName!,
-            data: {
-              newNetwork: targetNetwork,
-              newChainValue: newChainValue,
-            },
-          }),
-        methodConfig.popupRoute! // Explicit route parameter
-      );
-    }
-
     // Handle popup-based methods using registry configuration
     if (
       methodConfig.hasPopup &&
@@ -400,11 +352,8 @@ export class SysMethodHandler implements IMethodHandler {
       throw cleanErrorStack(ethErrors.rpc.methodNotFound());
     }
 
-    // Execute the method
-    if (params && params.length > 0) {
-      return await providerMethod(...params);
-    }
-    return await providerMethod();
+    // Execute the method - always pass array for consistency
+    return await providerMethod(params || []);
   }
 }
 
