@@ -336,22 +336,6 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
 
   return (
     <div className={`${paddingClass} space-y-4`}>
-      {/* Copy as JSON button */}
-      <div className="flex justify-end">
-        <button
-          onClick={handleCopyAsJson}
-          className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
-        >
-          <Icon
-            wrapperClassname="flex items-center justify-center"
-            name="Copy"
-            isSvg
-            className="w-3 h-3"
-          />
-          <span>Copy as JSON</span>
-        </button>
-      </div>
-
       {/* Transaction Options (for Confirm page) */}
       {showTransactionOptions && transaction && (
         <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
@@ -425,10 +409,26 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
       )}
 
       {/* Main Transaction Details */}
-      <div className="space-y-3">
-        <Typography.Text strong className="text-white text-sm block">
-          Transaction Details
-        </Typography.Text>
+      <div className="bg-brand-blue800 rounded-lg p-4 space-y-3">
+        <div className="flex justify-between items-center mb-3">
+          <Typography.Text strong className="text-white text-sm">
+            Transaction Details
+          </Typography.Text>
+          {/* Copy as JSON button - moved here for better visibility */}
+          <button
+            onClick={handleCopyAsJson}
+            className="text-xs text-brand-gray200 hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-alpha-whiteAlpha100"
+            title="Copy complete transaction details as JSON"
+          >
+            <Icon
+              wrapperClassname="flex items-center justify-center"
+              name="Copy"
+              isSvg
+              className="w-3 h-3"
+            />
+            <span>Copy Details</span>
+          </button>
+        </div>
 
         {/* Transaction Type */}
         {decodedTx.syscoin?.txtype && (
@@ -436,7 +436,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
             <Typography.Text className="text-brand-gray200 text-xs">
               Type:
             </Typography.Text>
-            <Typography.Text className="text-white text-xs">
+            <Typography.Text className="text-white text-xs font-medium">
               {getTransactionTypeText(decodedTx.syscoin.txtype)}
             </Typography.Text>
           </div>
@@ -447,7 +447,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
           <CopyableField
             label="Transaction ID"
             value={decodedTx.txid}
-            displayValue={ellipsis(decodedTx.txid, 10, 10)}
+            displayValue={ellipsis(decodedTx.txid, 8, 8)}
             monospace
             copyMessage={t('home.hashCopied')}
           />
@@ -457,7 +457,7 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
         {decodedTx.fee !== undefined && (
           <div className="flex justify-between items-center">
             <Typography.Text className="text-brand-gray200 text-xs">
-              Fee:
+              Network Fee:
             </Typography.Text>
             <Typography.Text className="text-white text-xs">
               {decodedTx.fee} {activeNetwork.currency.toUpperCase()}
@@ -476,46 +476,58 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
             </Typography.Text>
           </div>
         )}
+      </div>
 
-        {/* Asset Transfers */}
-        {isToken && decodedTx.syscoin?.allocations?.assets && (
-          <div className="mt-4">
-            <Typography.Text className="text-white text-sm mb-2 block">
-              Asset Transfers:
-            </Typography.Text>
-            {decodedTx.syscoin.allocations.assets.map(
-              (asset: any, index: number) => {
-                const assetInfo = assetInfoMap[asset.assetGuid] || {
-                  assetGuid: asset.assetGuid,
-                  symbol: 'Unknown',
-                };
-                const totalAmount =
-                  asset.values?.reduce(
-                    (sum: number, val: any) => sum + val.value / 1e8,
-                    0
-                  ) || 0;
+      {/* Asset Transfers - improved layout */}
+      {isToken && decodedTx.syscoin?.allocations?.assets && (
+        <div className="space-y-3">
+          <Typography.Text className="text-white text-sm font-medium">
+            Asset Transfers
+          </Typography.Text>
+          {decodedTx.syscoin.allocations.assets.map(
+            (asset: any, index: number) => {
+              const assetInfo = assetInfoMap[asset.assetGuid] || {
+                assetGuid: asset.assetGuid,
+                symbol: 'Unknown',
+              };
+              const totalAmount =
+                asset.values?.reduce(
+                  (sum: number, val: any) => sum + val.value / 1e8,
+                  0
+                ) || 0;
 
-                return (
-                  <div
-                    key={index}
-                    className="bg-brand-blue800 p-3 rounded-lg mb-2"
-                  >
+              // Don't ellipsis short asset GUIDs
+              const displayGuid =
+                asset.assetGuid.length <= 10
+                  ? asset.assetGuid
+                  : ellipsis(asset.assetGuid, 12, 12);
+
+              return (
+                <div key={index} className="bg-brand-blue800 p-4 rounded-lg">
+                  <div className="space-y-3">
                     <div className="flex justify-between items-center">
-                      <Typography.Text className="text-white text-xs font-semibold">
-                        {assetInfo.symbol}
-                      </Typography.Text>
-                      <Typography.Text className="text-white text-xs">
-                        {totalAmount.toFixed(assetInfo.decimals || 8)}{' '}
-                        {assetInfo.symbol}
-                      </Typography.Text>
+                      <div>
+                        <Typography.Text className="text-white text-base font-semibold">
+                          {assetInfo.symbol}
+                        </Typography.Text>
+                        <Typography.Text className="text-brand-gray200 text-xs mt-1 block">
+                          Amount: {totalAmount.toFixed(assetInfo.decimals || 8)}{' '}
+                          {assetInfo.symbol}
+                        </Typography.Text>
+                      </div>
                     </div>
-                    <CopyableField
-                      label="Asset GUID"
-                      value={asset.assetGuid}
-                      displayValue={ellipsis(asset.assetGuid, 12, 12)}
-                      monospace
-                      copyMessage={t('home.assetGuidCopied')}
-                    />
+
+                    <div className="pt-2 border-t border-alpha-whiteAlpha100">
+                      <CopyableField
+                        label="Asset GUID"
+                        value={asset.assetGuid}
+                        displayValue={displayGuid}
+                        monospace
+                        copyMessage={t('home.assetGuidCopied')}
+                        className="text-xs"
+                      />
+                    </div>
+
                     {asset.values && asset.values.length > 1 && (
                       <ExpandableSection
                         title={t('send.outputBreakdown')}
@@ -537,67 +549,63 @@ export const SyscoinTransactionDetailsFromPSBT: React.FC<
                       </ExpandableSection>
                     )}
                   </div>
-                );
-              }
-            )}
-          </div>
-        )}
-
-        {/* Outputs Summary */}
-        {decodedTx.vout && decodedTx.vout.length > 0 && !isToken && (
-          <ExpandableSection
-            title={t('send.outputs')}
-            count={decodedTx.vout.length}
-            defaultExpanded={decodedTx.vout.length <= 3}
-          >
-            <div className="space-y-2">
-              {decodedTx.vout.map((output: any, index: number) => (
-                <div key={index} className="bg-brand-blue800 p-3 rounded">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <Typography.Text className="text-brand-gray200 text-xs block mb-1">
-                        Output #{index}:
-                      </Typography.Text>
-                      {output.scriptPubKey?.addresses?.[0] ? (
-                        <div className="flex items-center gap-1">
-                          <Tooltip content={output.scriptPubKey.addresses[0]}>
-                            <Typography.Text className="text-white text-xs font-mono truncate">
-                              {ellipsis(
-                                output.scriptPubKey.addresses[0],
-                                12,
-                                12
-                              )}
-                            </Typography.Text>
-                          </Tooltip>
-                          <IconButton
-                            onClick={() =>
-                              copyAddress(output.scriptPubKey.addresses[0])
-                            }
-                          >
-                            <Icon
-                              wrapperClassname="flex items-center justify-center"
-                              name="Copy"
-                              isSvg
-                              className="w-3 h-3 text-brand-white hover:text-fields-input-borderfocus"
-                            />
-                          </IconButton>
-                        </div>
-                      ) : (
-                        <Typography.Text className="text-white text-xs">
-                          {output.scriptPubKey?.type || 'Unknown'}
-                        </Typography.Text>
-                      )}
-                    </div>
-                    <Typography.Text className="text-white text-xs font-medium whitespace-nowrap mt-5">
-                      {output.value} {activeNetwork.currency.toUpperCase()}
-                    </Typography.Text>
-                  </div>
                 </div>
-              ))}
-            </div>
-          </ExpandableSection>
-        )}
-      </div>
+              );
+            }
+          )}
+        </div>
+      )}
+
+      {/* Outputs Summary */}
+      {decodedTx.vout && decodedTx.vout.length > 0 && !isToken && (
+        <ExpandableSection
+          title={t('send.outputs')}
+          count={decodedTx.vout.length}
+          defaultExpanded={decodedTx.vout.length <= 3}
+        >
+          <div className="space-y-2">
+            {decodedTx.vout.map((output: any, index: number) => (
+              <div key={index} className="bg-brand-blue800 p-3 rounded">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <Typography.Text className="text-brand-gray200 text-xs block mb-1">
+                      Output #{index}:
+                    </Typography.Text>
+                    {output.scriptPubKey?.addresses?.[0] ? (
+                      <div className="flex items-center gap-1">
+                        <Tooltip content={output.scriptPubKey.addresses[0]}>
+                          <Typography.Text className="text-white text-xs font-mono truncate">
+                            {ellipsis(output.scriptPubKey.addresses[0], 12, 12)}
+                          </Typography.Text>
+                        </Tooltip>
+                        <IconButton
+                          onClick={() =>
+                            copyAddress(output.scriptPubKey.addresses[0])
+                          }
+                        >
+                          <Icon
+                            wrapperClassname="flex items-center justify-center"
+                            name="Copy"
+                            isSvg
+                            className="w-3 h-3 text-brand-white hover:text-fields-input-borderfocus"
+                          />
+                        </IconButton>
+                      </div>
+                    ) : (
+                      <Typography.Text className="text-white text-xs">
+                        {output.scriptPubKey?.type || 'Unknown'}
+                      </Typography.Text>
+                    )}
+                  </div>
+                  <Typography.Text className="text-white text-xs font-medium whitespace-nowrap mt-5">
+                    {output.value} {activeNetwork.currency.toUpperCase()}
+                  </Typography.Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ExpandableSection>
+      )}
 
       {/* Syscoin-specific Data (Bridge operations, etc.) */}
       {decodedTx.syscoin && (

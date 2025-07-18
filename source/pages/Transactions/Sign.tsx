@@ -139,43 +139,57 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       />
 
       {!loading && (
-        <div className="flex flex-col items-start">
-          <div className="flex flex-col w-full items-center justify-center mb-8">
-            <div className="w-16 h-16  relative p-4 mb-6 rounded-[100px] bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
-              <img
-                className="absolute"
-                src="/assets/all_assets/signature.svg"
+        <div className="flex flex-col w-full h-screen">
+          {/* Main scrollable content area */}
+          <div className="flex-1 overflow-y-auto pb-20">
+            {/* Header Section */}
+            <div className="flex flex-col w-full items-center justify-center px-6 py-8">
+              <div className="w-16 h-16 relative p-4 mb-6 rounded-full bg-gradient-to-r from-[#284F94] from-[25.72%] to-[#FE0077] to-[141.55%]">
+                <img
+                  className="absolute inset-0 w-full h-full p-4"
+                  src="/assets/all_assets/signature.svg"
+                  alt="Signature"
+                />
+              </div>
+              <h1 className="text-xl font-semibold text-white mb-2">
+                {t('transactions.signatureRequest')}
+              </h1>
+              <p className="text-sm text-gray-300 text-center">
+                {t('transactions.confirmToProceed')}
+              </p>
+              {host && (
+                <p className="text-xs text-gray-400 text-center mt-1">
+                  from <span className="font-medium">{host}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Transaction Details Section */}
+            <div className="w-full max-w-2xl mx-auto px-6">
+              <SyscoinTransactionDetailsFromPSBT
+                psbt={data}
+                showTechnicalDetails={false}
+                showTransactionOptions={false}
               />
             </div>
-            <p className="text-sm text-white">
-              {t('transactions.signatureRequest')}
-            </p>
-            <p className="text-sm text-gray-200">
-              {t('transactions.confirmToProceed')}
-            </p>
           </div>
 
-          <div className="w-full px-6">
-            <SyscoinTransactionDetailsFromPSBT
-              psbt={data}
-              showTechnicalDetails={false}
-              showTransactionOptions={false}
-            />
-          </div>
+          {/* Fixed button container at bottom */}
+          <div className="fixed bottom-0 left-0 right-0 bg-bkg-3 border-t border-brand-gray300 px-4 py-3 shadow-lg z-50">
+            <div className="flex gap-3 justify-center">
+              <SecondaryButton type="button" onClick={window.close}>
+                {t('buttons.cancel')}
+              </SecondaryButton>
 
-          <div className="absolute bottom-[-7.5rem] flex items-center justify-between px-10 w-full gap-6 md:max-w-2xl">
-            <SecondaryButton type="button" onClick={window.close}>
-              {t('buttons.cancel')}
-            </SecondaryButton>
-
-            <PrimaryButton
-              type="submit"
-              disabled={confirmed}
-              loading={loading}
-              onClick={onSubmit}
-            >
-              {t('buttons.confirm')}
-            </PrimaryButton>
+              <PrimaryButton
+                type="submit"
+                disabled={confirmed}
+                loading={loading}
+                onClick={onSubmit}
+              >
+                {signOnly ? t('buttons.sign') : t('buttons.confirm')}
+              </PrimaryButton>
+            </div>
           </div>
         </div>
       )}
