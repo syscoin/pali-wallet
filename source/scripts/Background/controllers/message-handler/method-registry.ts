@@ -324,7 +324,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.Connect,
     popupEventName: 'connect',
@@ -953,7 +953,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false, // Does not require connection - gets UTXO address from vault
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false, // No popup needed - just returns UTXO address
     returnsArray: true,
   },

@@ -58,21 +58,7 @@ export interface EnableLegacyPali {
 export class BaseProvider extends EventEmitter {
   public wallet: string;
   public chainType: INetworkType;
-  private _networkStateCache: {
-    isBitcoinBased?: boolean;
-    timestamp?: number;
-  } = {};
-  private static readonly CACHE_TTL = 5000; // 5 seconds cache
 
-  // Enhanced caching for provider state - separate caches for different methods
-  private _providerStateCache: {
-    [method: string]: {
-      data?: any;
-      isValid?: boolean;
-      timestamp?: number;
-    };
-  } = {};
-  private static readonly PROVIDER_STATE_CACHE_TTL = 10000; // 10 seconds cache for provider state
   private static readonly CONNECTION_ERROR_CACHE_TTL = 2000; // 2 seconds cache for connection errors
 
   // Connection state tracking
@@ -113,20 +99,10 @@ export class BaseProvider extends EventEmitter {
    * Sets up listener for network change events to clear the cache
    */
   private _setupNetworkChangeListener(): void {
-    // Listen for chainChanged events which are emitted when network changes
-    this.on('chainChanged', () => {
-      // Clear both network state cache and provider state cache when network changes
-      this._networkStateCache = {};
-      this._providerStateCache = {};
-      console.log('[BaseProvider] Network changed, caches cleared');
-    });
-
     // Also listen for disconnect events to invalidate caches
     this.on('disconnect', () => {
-      this._providerStateCache = {};
       this._isBackgroundConnected = false;
       this._lastConnectionError = Date.now();
-      console.log('[BaseProvider] Disconnected, caches invalidated');
     });
   }
 
@@ -268,28 +244,7 @@ export class BaseProvider extends EventEmitter {
       const now = Date.now();
 
       // Check cache for provider state requests
-      if (data && typeof data === 'object' && 'method' in data) {
-        const method = data.method;
-
-        // Cache provider state calls
-        if (
-          method === 'wallet_getProviderState' ||
-          method === 'wallet_getSysProviderState'
-        ) {
-          const cache = this._providerStateCache[method];
-          if (
-            cache &&
-            cache.data &&
-            cache.timestamp &&
-            cache.isValid &&
-            now - cache.timestamp < BaseProvider.PROVIDER_STATE_CACHE_TTL
-          ) {
-            console.log(`[BaseProvider] Returning cached ${method} response`);
-            resolve(cache.data);
-            return;
-          }
-        }
-
+      if (data && typeof data === 'object') {
         // Rate limit requests if we recently had connection errors
         if (
           !this._isBackgroundConnected &&
@@ -320,22 +275,6 @@ export class BaseProvider extends EventEmitter {
 
           // Track connection success
           this._isBackgroundConnected = true;
-
-          // Cache successful provider state responses
-          if (data && typeof data === 'object' && 'method' in data) {
-            const method = data.method;
-            if (
-              (method === 'wallet_getProviderState' ||
-                method === 'wallet_getSysProviderState') &&
-              !response.error
-            ) {
-              this._providerStateCache[method] = {
-                data: response,
-                timestamp: now,
-                isValid: true,
-              };
-            }
-          }
 
           if (response.error) {
             // Handle specific error types
