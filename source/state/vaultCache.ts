@@ -69,17 +69,14 @@ class VaultCache {
   async getSlip44Vault(slip44: number): Promise<ISlip44State | null> {
     // Return from cache if already loaded
     if (this.slip44Cache.has(slip44)) {
-      console.log(`[VaultCache] Using cached slip44 vault: ${slip44}`);
       return this.slip44Cache.get(slip44)!;
     }
 
     // Load from storage
-    console.log(`[VaultCache] Loading slip44 vault: ${slip44}`);
     const slip44State = await loadSlip44State(slip44);
 
     if (slip44State) {
       this.slip44Cache.set(slip44, slip44State);
-      console.log(`[VaultCache] Cached slip44 vault: ${slip44}`);
     }
 
     return slip44State;

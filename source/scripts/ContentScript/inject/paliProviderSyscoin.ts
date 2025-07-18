@@ -328,30 +328,6 @@ export class PaliInpageProviderSys extends BaseProvider {
   }) {
     this._sysState.isBitcoinBased = isBitcoinBased;
   }
-  private async _isBlockbookChain(): Promise<boolean> {
-    let checkExplorer = false;
-    try {
-      // Check if blockExplorerURL is null or not initialized
-      if (!this._sysState.blockExplorerURL) {
-        console.warn(
-          '[PaliSysProvider] blockExplorerURL is null, cannot validate blockbook endpoint'
-        );
-        return false;
-      }
-
-      //Only blockbook endpoints are accepted for UTXO chains
-      const response = await retryableFetch(
-        this._sysState.blockExplorerURL + '/api/v2'
-      );
-      const rpcoutput = await response.json();
-      // Check if it's a valid blockbook endpoint (supports any UTXO coin)
-      checkExplorer = Boolean(rpcoutput.blockbook && rpcoutput.blockbook.coin);
-    } catch (e) {
-      //Its not a blockbook, so it might be a ethereum RPC
-      checkExplorer = false;
-    }
-    return checkExplorer;
-  }
 
   /**
    * When the provider becomes disconnected, updates internal state and emits

@@ -173,9 +173,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
           return;
         }
 
-        // Optimistic update: dispatch the network switch action immediately
-        store.dispatch(startSwitchNetwork(network));
-
         // Close menu immediately after starting the switch
         if (closeMenu) {
           closeMenu();
@@ -187,7 +184,6 @@ export const NetworkMenu: React.FC<INetworkComponent> = (
             // Success is already handled by the controller via setNetworkChange
           })
           .catch(() => {
-            // On error, revert the optimistic update
             store.dispatch(switchNetworkError());
           });
       } catch (networkError) {}

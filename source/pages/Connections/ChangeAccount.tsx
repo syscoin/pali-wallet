@@ -234,7 +234,7 @@ export const ChangeAccount = () => {
 
       await controllerEmitter(
         ['wallet', 'setAccount'],
-        [accountId, accountType]
+        [accountId, accountType, true]
       );
 
       const response = { accountId, accountType };

@@ -1797,7 +1797,11 @@ class MainController {
     return newAccount;
   }
 
-  public async setAccount(id: number, type: KeyringAccountType): Promise<void> {
+  public async setAccount(
+    id: number,
+    type: KeyringAccountType,
+    sync = false
+  ): Promise<void> {
     try {
       // Prevent concurrent account switching
       if (this.isAccountSwitching) {
@@ -1828,43 +1832,26 @@ class MainController {
       store.dispatch(setActiveAccount({ id, type }));
 
       // Defer heavy operations to prevent blocking the UI
-      setTimeout(() => {
+      if (sync) {
+        await this.performPostAccountSwitchOperations();
+      } else {
         this.performPostAccountSwitchOperations();
-      }, 0);
+      }
     } catch (error) {
       console.error('Failed to set active account:', error);
       // Re-throw to let the UI handle the error
       throw error;
-    } finally {
-      setTimeout(() => {
-        store.dispatch(setIsSwitchingAccount(false));
-        this.isAccountSwitching = false;
-      }, 50); // Ensure this happens after other operations
     }
   }
 
   private async performPostAccountSwitchOperations() {
     try {
-      setTimeout(() => {
-        this.getLatestUpdateForCurrentAccount(false, true); // Force update after account switch
-      }, 10);
-
-      // Skip dapp notifications and updates during startup
-      if (this.isStartingUp) {
-        console.log(
-          '[MainController] Skipping dapp notifications and updates during startup'
-        );
-        return;
-      }
-
+      await this.getLatestUpdateForCurrentAccount(false, true);
       // IMPORTANT: We do NOT automatically update dapp connections when switching accounts.
       // Each dapp maintains its own connection to a specific account. When a dapp needs
       // to interact with its connected account while a different account is active,
       // it will prompt the user to switch accounts (see message-handler/requests.ts).
       // This matches the behavior of MetaMask and other wallets.
-
-      // Save wallet state after account switching (includes auto-lock timer reset)
-      this.saveWalletState('account-switch', true);
 
       // Note: We do NOT emit global account change events here anymore.
       // Account change events should only be sent to dapps that are actually
@@ -1872,6 +1859,10 @@ class MainController {
       // dapps receive account change events even when they're not affected.
     } catch (error) {
       console.error('Error in post-account-switch operations:', error);
+    } finally {
+      store.dispatch(setIsSwitchingAccount(false));
+      this.isAccountSwitching = false;
+      await this.saveWalletState('account-switch', true, true); // sync=true for immediate save
     }
   }
 

@@ -161,7 +161,7 @@ export const ChangeConnectedAccount = () => {
   const handleAccept = async () => {
     await controllerEmitter(
       ['wallet', 'setAccount'],
-      [connectedAccount.id, accountType]
+      [connectedAccount.id, accountType, true]
     );
     dispatchBackgroundEvent(`${eventName}.${host}`, { success: true });
     window.close();

@@ -233,6 +233,12 @@ export class WalletMethodHandler implements IMethodHandler {
             },
           ];
 
+        case 'revokePermissions':
+          // Disconnect the dapp (removes all permissions)
+          dapp.disconnect(host);
+          // Return null per EIP-2255 spec
+          return null;
+
         case 'getProviderState':
           return {
             accounts: account ? [account.address] : [],
@@ -375,46 +381,14 @@ export class SysMethodHandler implements IMethodHandler {
 
     // Handle requestAccounts - get UTXO address from vault state
     if (methodName === 'requestAccounts') {
-      const { wallet } = getController();
-
-      // Check if wallet is unlocked
-      if (!wallet.isUnlocked()) {
-        throw cleanErrorStack(
-          ethErrors.provider.unauthorized('Wallet is locked')
-        );
+      const { dapp } = getController();
+      const account = dapp.getAccount(host);
+      if (!account) {
+        throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
       }
-
-      // Get slip44 from params or default to Syscoin mainnet (57)
-      const slip44 = params?.[0]?.slip44 || 57; // Default to Syscoin mainnet
-
-      // Get the vault state for the requested slip44
-      const slip44Vault = await vaultCache.getSlip44Vault(slip44);
-
-      if (!slip44Vault) {
-        throw cleanErrorStack(
-          ethErrors.provider.custom({
-            code: -32603,
-            message: `No vault found for slip44: ${slip44}. Please configure this network first.`,
-          })
-        );
-      }
-
-      // Get the active account from the slip44 vault
-      const { activeAccount: activeAccountMeta, accounts } = slip44Vault;
-      const activeAccount =
-        accounts[activeAccountMeta.type]?.[activeAccountMeta.id];
-
-      if (!activeAccount || !activeAccount.address) {
-        throw cleanErrorStack(
-          ethErrors.provider.custom({
-            code: -32603,
-            message: `No active account found for slip44: ${slip44}`,
-          })
-        );
-      }
-
-      // Return the UTXO address in array format (consistent with eth_requestAccounts)
-      return [activeAccount.address];
+      // For sys_requestAccounts, return address (consistent with eth_requestAccounts)
+      // Note: Bridge can get full account details via wallet_getAccount if needed
+      return [account.address];
     }
 
     // Get the provider

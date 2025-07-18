@@ -206,7 +206,7 @@ export const EthProvider = (host: string) => {
     // Handle network type switching for bridges
     // Extract chainId and network type from params
     const chainId = params?.[0]?.chainId || params?.[0];
-    const prefix = params?.[0]?.prefix || 'sys'; // Default to switching to UTXO
+    const prefix = params?.[0]?.prefix || 'eth';
 
     if (!chainId) {
       throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
@@ -214,6 +214,10 @@ export const EthProvider = (host: string) => {
 
     // Get the network configuration
     const { vaultGlobal } = store.getState();
+    const { isBitcoinBased } = store.getState().vault;
+    if (!isBitcoinBased) {
+      return null;
+    }
     const { networks } = vaultGlobal;
     const newChainValue =
       prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';
@@ -278,17 +282,6 @@ export const EthProvider = (host: string) => {
   };
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {
-    const { ethereumTransaction } = getController().wallet;
-
-    // Safety check: ensure web3Provider exists for EVM networks
-    if (!ethereumTransaction?.web3Provider) {
-      throw cleanErrorStack(
-        ethErrors.provider.unauthorized(
-          'EthProvider methods are not available on UTXO networks'
-        )
-      );
-    }
-
     switch (method) {
       case 'eth_sendTransaction':
         return await sendTransaction(params[0]);
@@ -303,6 +296,16 @@ export const EthProvider = (host: string) => {
       case 'personal_sign':
         return await personalSign(params);
       case 'personal_ecRecover':
+        const { ethereumTransaction } = getController().wallet;
+
+        // Safety check: ensure web3Provider exists for EVM networks
+        if (!ethereumTransaction?.web3Provider) {
+          throw cleanErrorStack(
+            ethErrors.provider.unauthorized(
+              'EthProvider methods are not available on UTXO networks'
+            )
+          );
+        }
         return await ethereumTransaction.web3Provider.getAddress(
           ethereumTransaction.verifyPersonalMessage(params[0], params[1])
         );
@@ -314,6 +317,16 @@ export const EthProvider = (host: string) => {
         return await changeUTXOEVM(params);
       default:
         try {
+          const { ethereumTransaction } = getController().wallet;
+
+          // Safety check: ensure web3Provider exists for EVM networks
+          if (!ethereumTransaction?.web3Provider) {
+            throw cleanErrorStack(
+              ethErrors.provider.unauthorized(
+                'EthProvider methods are not available on UTXO networks'
+              )
+            );
+          }
           const requestResult = await ethereumTransaction.web3Provider.send(
             method,
             params

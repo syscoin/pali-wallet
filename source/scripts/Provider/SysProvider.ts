@@ -94,7 +94,7 @@ export const SysProvider = (host: string) => {
     // Handle network type switching for bridges
     // Extract chainId and network type from params
     const chainId = params?.[0]?.chainId || params?.[0];
-    const prefix = params?.[0]?.prefix || 'eth'; // Default to switching to EVM from sys provider
+    const prefix = params?.[0]?.prefix || 'sys';
 
     if (!chainId) {
       throw new Error('chainId is required for changeUTXOEVM');
@@ -102,6 +102,10 @@ export const SysProvider = (host: string) => {
 
     // Get the network configuration
     const { vaultGlobal } = store.getState();
+    const { isBitcoinBased } = store.getState().vault;
+    if (isBitcoinBased) {
+      return null;
+    }
     const { networks } = vaultGlobal;
     const newChainValue =
       prefix?.toLowerCase() === 'sys' ? 'syscoin' : 'ethereum';

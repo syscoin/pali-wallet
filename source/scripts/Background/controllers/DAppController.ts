@@ -117,6 +117,7 @@ const DAppController = (): IDAppController => {
     response[0].parentCapability = 'eth_accounts';
 
     _dapps[host].activeAddress = account.address;
+
     _dispatchEvent(host, 'requestPermissions', response);
     _dispatchPaliEvent(
       host,
@@ -147,6 +148,7 @@ const DAppController = (): IDAppController => {
     _dapps[host].activeAddress = isBitcoinBased
       ? accounts[accountType][accountId].xpub
       : accounts[accountType][accountId].address;
+
     isBitcoinBased
       ? _dispatchPaliEvent(
           host,
@@ -231,10 +233,10 @@ const DAppController = (): IDAppController => {
   const handleStateChange = async (
     id: PaliEvents,
     data: { method: string; params: any }
-  ): Promise<void> => {
+  ): Promise<void> =>
     new Promise<void>((resolve, reject) => {
       try {
-        const hosts = Object.keys(_dapps) as unknown as string;
+        const hosts = Object.keys(_dapps);
 
         // Validate input data - params can be null for some events like pali_accountsChanged on UTXO
         if (!data || !data.method || data.params === undefined) {
@@ -246,40 +248,48 @@ const DAppController = (): IDAppController => {
           return;
         }
 
-        const paliData = data;
         for (const host of hosts) {
           if (id === PaliEvents.lockStateChanged && _dapps[host]) {
-            paliData.method = PaliSyscoinEvents.lockStateChanged;
-            delete paliData.params.accounts;
-            paliData.params.xpub = data.params.isUnlocked
-              ? _dapps[host].activeAddress
-              : null;
-            data.params.accounts = data.params.isUnlocked
-              ? [_dapps[host].activeAddress]
-              : [];
-            _dispatchPaliEvent(host, data, PaliSyscoinEvents.lockStateChanged);
+            // For lock state, we need to customize the event with dapp's connected account
+            const lockStateData = {
+              method: PaliSyscoinEvents.lockStateChanged,
+              params: {
+                ...data.params,
+                accounts: data.params.isUnlocked
+                  ? [_dapps[host].activeAddress]
+                  : [],
+                xpub: data.params.isUnlocked
+                  ? _dapps[host].activeAddress
+                  : null,
+              },
+            };
+            _dispatchPaliEvent(
+              host,
+              lockStateData,
+              PaliSyscoinEvents.lockStateChanged
+            );
+          } else {
+            // For all other events, dispatch as-is (including accountsChanged from wallet)
+            _dispatchPaliEvent(host, data, id);
           }
-          _dispatchPaliEvent(host, data, id);
         }
         resolve();
       } catch (error) {
         reject(`${error}`);
       }
     });
-  };
 
   const handleBlockExplorerChange = async (
     id: PaliSyscoinEvents,
     data: { method: string; params: any }
-  ): Promise<void> => {
+  ): Promise<void> =>
     new Promise<void>((resolve) => {
-      const hosts = Object.keys(_dapps) as unknown as string;
+      const hosts = Object.keys(_dapps);
       for (const host of hosts) {
         _dispatchPaliEvent(host, data, id);
       }
       resolve();
     });
-  };
 
   const _dispatchPaliEvent = async (
     host: string,
@@ -295,26 +305,71 @@ const DAppController = (): IDAppController => {
       return;
     }
 
-    const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-      chrome.tabs.query({ url: `*://${host}/*` }, resolve);
-    });
+    try {
+      // For hosts with ports, we need to query with specific protocols
+      const queryPatterns: string[] = [];
 
-    if (tabs && tabs.length) {
-      tabs.forEach((tab) => {
-        if (tab.id) {
-          chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            world: 'MAIN',
-            func: (eventData) => {
-              const event = new CustomEvent('paliNotification', {
-                detail: JSON.stringify(eventData),
-              });
-              window.dispatchEvent(event);
-            },
-            args: [{ id, data }],
+      if (host.includes(':')) {
+        // Host has a port (e.g., localhost:3000)
+        queryPatterns.push(`http://${host}/*`);
+        queryPatterns.push(`https://${host}/*`);
+      } else {
+        // Host without port - use wildcard
+        queryPatterns.push(`*://${host}/*`);
+      }
+      // Query tabs for each pattern and combine results
+      const allTabs: chrome.tabs.Tab[] = [];
+
+      for (const pattern of queryPatterns) {
+        const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+          chrome.tabs.query({ url: pattern }, (result) => {
+            if (chrome.runtime.lastError) {
+              console.warn(
+                `[DAppController] Warning querying tabs for ${pattern}:`,
+                chrome.runtime.lastError.message
+              );
+              resolve([]);
+              return;
+            }
+            resolve(result || []);
           });
+        });
+        allTabs.push(...tabs);
+      }
+
+      // Remove duplicates (in case a tab matches multiple patterns)
+      const uniqueTabs = allTabs.filter(
+        (tab, index, self) => index === self.findIndex((t) => t.id === tab.id)
+      );
+
+      if (uniqueTabs.length > 0) {
+        for (const tab of uniqueTabs) {
+          if (tab.id) {
+            try {
+              await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                world: 'MAIN',
+                func: (eventData) => {
+                  const event = new CustomEvent('paliNotification', {
+                    detail: JSON.stringify(eventData),
+                  });
+                  window.dispatchEvent(event);
+                },
+                args: [{ id, data }],
+              });
+            } catch (error) {
+              console.error(
+                `[DAppController] Failed to inject event into tab ${tab.id}:`,
+                error
+              );
+            }
+          }
         }
-      });
+      } else {
+        console.warn(`[DAppController] No tabs found for host ${host}`);
+      }
+    } catch (error) {
+      console.error('[DAppController] Error in _dispatchPaliEvent:', error);
     }
   };
 

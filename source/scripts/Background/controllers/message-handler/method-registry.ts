@@ -34,7 +34,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -45,7 +45,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -57,7 +57,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -68,7 +68,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -88,7 +88,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getAccount',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -99,7 +99,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getBalance',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -114,7 +114,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -122,7 +122,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getPublicKey',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -134,7 +134,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'wallet_getAddress',
     handlerType: MethodHandlerType.Wallet,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
@@ -184,7 +184,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.ChangeAccount,
     popupEventName: 'requestPermissions',
@@ -202,6 +202,17 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresActiveAccount: true,
   },
 
+  wallet_revokePermissions: {
+    name: 'wallet_revokePermissions',
+    handlerType: MethodHandlerType.Wallet,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: true,
+    allowHardwareWallet: true,
+    networkRequirement: NetworkRequirement.Any,
+    hasPopup: false,
+  },
+
   wallet_watchAsset: {
     name: 'wallet_watchAsset',
     handlerType: MethodHandlerType.Wallet,
@@ -209,7 +220,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: true,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.WatchAsset,
     popupEventName: 'wallet_watchAsset',
@@ -222,7 +233,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.AddEthChain,
     popupEventName: 'wallet_addEthereumChain',
@@ -235,7 +246,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.SwitchEthChain,
     popupEventName: 'wallet_switchEthereumChain',
@@ -261,7 +272,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
     cacheKey: 'providerState',
     cacheTTL: 10000, // 10 seconds
@@ -274,7 +285,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
     cacheKey: 'sysProviderState',
     cacheTTL: 10000, // 10 seconds
@@ -299,7 +310,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
     cacheKey: 'chainId',
     cacheTTL: 10000, // 10 seconds
@@ -312,7 +323,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
     returnsArray: true,
     cacheKey: 'accounts',
@@ -425,7 +436,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -436,7 +447,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -447,7 +458,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -458,7 +469,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -469,7 +480,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -480,7 +491,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -491,7 +502,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -502,7 +513,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -513,7 +524,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
     cacheKey: 'netVersion',
     cacheTTL: 10000, // 10 seconds
@@ -524,22 +535,22 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_sendRawTransaction',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
-    isBlocking: true,
+    isBlocking: false,
   },
 
   personal_ecRecover: {
     name: 'personal_ecRecover',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -550,7 +561,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -561,7 +572,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -572,7 +583,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -583,7 +594,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -594,7 +605,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -616,7 +627,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -627,7 +638,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -638,7 +649,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -649,7 +660,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -660,7 +671,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -671,7 +682,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -682,7 +693,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -693,7 +704,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -704,7 +715,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -715,7 +726,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -726,7 +737,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -737,7 +748,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -748,7 +759,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -759,7 +770,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -803,7 +814,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -814,7 +825,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -825,7 +836,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -836,7 +847,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -858,7 +869,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -869,7 +880,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -880,7 +891,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -891,7 +902,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -902,7 +913,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -941,7 +952,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.EVM,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.SwitchUtxoEvm,
     popupEventName: 'change_UTXOEVM',
@@ -952,10 +963,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_requestAccounts',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: false, // Does not require connection - gets UTXO address from vault
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.None, // Can be called from any network type
+    networkRequirement: NetworkRequirement.UTXO,
     hasPopup: false, // No popup needed - just returns UTXO address
     returnsArray: true,
   },
@@ -964,10 +975,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_getTransactions',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -975,7 +986,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_transaction',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: false,
     networkRequirement: NetworkRequirement.UTXO,
@@ -986,10 +997,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_getAccount',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1000,7 +1011,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1011,7 +1022,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1047,10 +1058,10 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'sys_getPublicKey',
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
-    requiresAuth: true,
+    requiresAuth: false,
     requiresConnection: true,
     allowHardwareWallet: false,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1100,7 +1111,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1111,7 +1122,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: false,
   },
 
@@ -1122,7 +1133,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresAuth: false, // Popup handles auth
     requiresConnection: false,
     allowHardwareWallet: true,
-    networkRequirement: NetworkRequirement.UTXO,
+    networkRequirement: NetworkRequirement.Any,
     hasPopup: true,
     popupRoute: MethodRoute.SwitchUtxoEvm,
     popupEventName: 'change_UTXOEVM',

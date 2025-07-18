@@ -202,7 +202,10 @@ export const ConnectWallet = () => {
       [{ host, chain, chainId, accountId, accountType, date }]
     );
 
-    await controllerEmitter(['wallet', 'setAccount'], [accountId, accountType]);
+    await controllerEmitter(
+      ['wallet', 'setAccount'],
+      [accountId, accountType, true]
+    );
 
     dispatchBackgroundEvent(`${eventName}.${host}`, selectedAccount.address);
 

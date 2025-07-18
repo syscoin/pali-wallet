@@ -263,9 +263,8 @@ export const networkCompatibilityMiddleware: Middleware = async (
   context,
   next
 ) => {
-  const { vault, vaultGlobal } = store.getState();
+  const { vault } = store.getState();
   const { isBitcoinBased } = vault;
-  const { networkStatus } = vaultGlobal;
   const { methodConfig, originalRequest } = context;
 
   // Check network requirements from method config

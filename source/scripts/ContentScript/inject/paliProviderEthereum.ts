@@ -87,81 +87,20 @@ export class PaliInpageProviderEth extends BaseProvider {
       return this._initializationPromise;
     }
 
-    this._initializationPromise = (async () => {
-      try {
-        // 🔥 FIX: Try getSysProviderState first (works on all networks)
-        const syscoinState = await this.request({
-          method: 'wallet_getSysProviderState',
-        });
-
-        if (syscoinState) {
-          console.log('Syscoin provider state obtained, initializing...');
-
-          // Check if this is a UTXO network
-          const { isBitcoinBased } = syscoinState as any;
-          if (isBitcoinBased) {
-            console.log(
-              'UTXO network detected, not initializing Ethereum provider'
-            );
-            // Don't initialize Ethereum provider for pure UTXO networks
-            return;
-          }
-
-          // If not Bitcoin-based, initialize Ethereum provider
-          return this._initializeEthereumProvider();
-        }
-      } catch (sysError) {
-        console.log(
-          'getSysProviderState failed, trying getProviderState:',
-          sysError.message
-        );
-
-        // 🔥 FIX: Only try getProviderState if getSysProviderState fails
-        // This handles EVM networks properly
-        try {
-          const providerState = await this.request({
-            method: 'wallet_getProviderState',
-          });
-
-          if (providerState) {
-            const { isBitcoinBased } = providerState as any;
-            if (!isBitcoinBased) {
-              console.log('EVM network confirmed via provider state');
-              return this._initializeEthereumProvider();
-            } else {
-              console.log(
-                'Bitcoin network detected, not initializing Ethereum provider'
-              );
-              return;
-            }
-          }
-        } catch (providerError) {
-          console.log(
-            'Both provider state calls failed, network type unclear:',
-            providerError.message
-          );
-          // If both calls fail, we should still attempt to initialize as an EVM provider
-          // This ensures the provider works on EVM networks even if initial state calls fail
-          console.log(
-            'Attempting EVM initialization despite state call failures'
-          );
-          return this._initializeEthereumProvider();
-        }
+    // Create the promise but don't await it here
+    this._initializationPromise = this._initializeEthereumProvider().finally(
+      () => {
+        // Clean up after completion (success or failure)
+        this._initializationPromise = null;
       }
-    })();
+    );
 
-    try {
-      await this._initializationPromise;
-    } finally {
-      // Reset the promise to null to allow re-initialization if needed
-      this._initializationPromise = null;
-    }
+    return this._initializationPromise;
   }
 
   private _initializeEthereumProvider() {
     return this.request({ method: 'wallet_getProviderState' })
       .then((state) => {
-        console.log('state', state);
         const initialState = state as Parameters<
           PaliInpageProviderEth['_initializeState']
         >[0];
@@ -182,51 +121,65 @@ export class PaliInpageProviderEth extends BaseProvider {
     window.addEventListener(
       'paliNotification',
       (event: any) => {
-        const { method, params } = JSON.parse(event.detail);
+        try {
+          const parsed = JSON.parse(event.detail);
 
-        switch (method) {
-          case 'pali_accountsChanged':
-            this._handleAccountsChanged(params);
-            break;
-          case 'pali_unlockStateChanged':
-            this._handleUnlockStateChanged(params);
-            break;
-          case 'pali_chainChanged':
-            this._handleChainChanged(params);
-            break;
-          case 'pali_isBitcoinBased':
-            this._handleIsBitcoinBased(params);
-            break;
-          case 'pali_removeProperty':
-            break;
-          case 'pali_addProperty':
-            break;
-          // UTXO METHODS TO AVOID.
-          case 'pali_xpubChanged':
-            break;
-          case 'pali_blockExplorerChanged':
-            break;
-          case EMITTED_NOTIFICATIONS.includes(method):
-            //TODO: implement subscription messages
-            throw {
-              code: 69,
-              message:
-                'Pali EthereumProvider: Does not yet have subscription to rpc methods',
-            };
-          default:
-            console.warn(
-              '[PaliEthProvider] Unknown notification method:',
-              method,
-              'params:',
-              params
-            );
-            console.warn(
-              '[PaliEthProvider] Ignoring unknown notification - this is likely from a different provider or network type'
-            );
-            // Don't disconnect for unknown notifications - just ignore them
-            // This prevents disconnection when switching networks or receiving notifications
-            // intended for other providers (like Syscoin provider)
-            break;
+          // Handle both event structures for compatibility
+          const data = parsed.data || parsed;
+          const { method, params } = data;
+
+          switch (method) {
+            case 'pali_accountsChanged':
+              // Ensure params is always an array
+              const accountsParams = Array.isArray(params)
+                ? params
+                : params
+                ? [params]
+                : [];
+              this._handleAccountsChanged(accountsParams, false);
+              break;
+            case 'pali_unlockStateChanged':
+              this._handleUnlockStateChanged(params);
+              break;
+            case 'pali_chainChanged':
+              this._handleChainChanged(params);
+              break;
+            case 'pali_isBitcoinBased':
+              this._handleIsBitcoinBased(params);
+              break;
+            case 'pali_removeProperty':
+              break;
+            case 'pali_addProperty':
+              break;
+            // UTXO METHODS TO AVOID.
+            case 'pali_xpubChanged':
+              break;
+            case 'pali_blockExplorerChanged':
+              break;
+            case EMITTED_NOTIFICATIONS.includes(method):
+              //TODO: implement subscription messages
+              throw {
+                code: 69,
+                message:
+                  'Pali EthereumProvider: Does not yet have subscription to rpc methods',
+              };
+            default:
+              console.warn(
+                '[PaliEthProvider] Unknown notification method:',
+                method,
+                'params:',
+                params
+              );
+              console.warn(
+                '[PaliEthProvider] Ignoring unknown notification - this is likely from a different provider or network type'
+              );
+              // Don't disconnect for unknown notifications - just ignore them
+              // This prevents disconnection when switching networks or receiving notifications
+              // intended for other providers (like Syscoin provider)
+              break;
+          }
+        } catch (error) {
+          console.error('[PaliEthProvider] Error processing event:', error);
         }
       },
       {
@@ -368,9 +321,14 @@ export class PaliInpageProviderEth extends BaseProvider {
   }
 
   private _handleAccountsChanged(
-    currentAccounts: unknown[] | null,
+    currentAccounts: unknown[] | null | undefined,
     isEthAccounts = false
   ): void {
+    // Handle edge case of undefined being passed
+    if (currentAccounts === undefined) {
+      currentAccounts = [];
+    }
+
     if (currentAccounts === null) {
       this._state.accounts = currentAccounts as any;
 
@@ -389,7 +347,7 @@ export class PaliInpageProviderEth extends BaseProvider {
       accounts = [];
     }
 
-    for (const account of currentAccounts) {
+    for (const account of accounts) {
       if (typeof account !== 'string' && account !== null) {
         console.error(
           'Pali EthereumProvider: Received non-string account. Please report this bug.',
@@ -403,7 +361,6 @@ export class PaliInpageProviderEth extends BaseProvider {
     // emit accountsChanged if anything about the accounts array has changed
     // we should always have the correct accounts even before eth_accounts
     // returns
-    this._state.accounts = []; // just for testing purposes
     if (
       isEthAccounts &&
       this._state.accounts !== null &&
@@ -415,7 +372,12 @@ export class PaliInpageProviderEth extends BaseProvider {
       );
     }
 
-    if (ethers.utils.isHexString(accounts[0])) {
+    // Check if accounts actually changed before updating state
+    const previousAccounts = this._state.accounts;
+    const accountsChanged =
+      JSON.stringify(previousAccounts) !== JSON.stringify(accounts);
+
+    if (accounts.length > 0 && ethers.utils.isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
     }
 
@@ -429,6 +391,8 @@ export class PaliInpageProviderEth extends BaseProvider {
     // finally, after all state has been updated, emit the event
     if (this._state.initialized) {
       this.emit('accountsChanged', accounts);
+    } else if (this._state.initialized && isEthAccounts && !accountsChanged) {
+      // Skip duplicate emissions from eth_accounts calls
     }
   }
 
