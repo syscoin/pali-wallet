@@ -37,6 +37,19 @@ interface ISyscoinTransactionDetailsProps {
   hash: string;
 }
 
+// Helper function to format token type to human-readable text
+const formatTokenType = (tokenType: string): string => {
+  const typeMap: { [key: string]: string } = {
+    SPTAssetAllocationBurnToNEVM: 'SPT Bridge to NEVM',
+    SPTSyscoinBurnToAssetAllocation: 'SYS → SYSX',
+    SPTAssetAllocationBurnToSyscoin: 'SYSX → SYS',
+    SPTAssetAllocationSend: 'SPT Transfer',
+    SPTAssetAllocationMint: 'SPT Mint from NEVM',
+  };
+
+  return typeMap[tokenType] || tokenType.replace(/^SPT/, 'SPT ');
+};
+
 export const SyscoinTransactionDetails = ({
   hash,
 }: ISyscoinTransactionDetailsProps) => {
@@ -131,64 +144,57 @@ export const SyscoinTransactionDetails = ({
     if (rawTransaction) {
       const { vin, vout } = rawTransaction;
 
-      if (vin && vout) {
-        for (const item of vout) {
-          if (item.addresses) {
-            recipients[item.addresses[0]] = {
-              address: item.addresses[0],
-              value: item.value,
-            };
+      // Process vins and vouts
+      if (vout) {
+        for (const voutItem of vout) {
+          if (!voutItem.addresses) continue;
+          for (const address of voutItem.addresses) {
+            if (!recipients[address]) {
+              recipients[address] = 0;
+            }
+            recipients[address] += voutItem.value;
           }
         }
+      }
 
-        if (vin.length === 1) {
-          for (const item of vin) {
-            if (!item.vout) {
-              if (item.addresses) {
-                senders[item.addresses[0]] = {
-                  address: item.addresses[0],
-                  value: item.value ? item.value : '0',
-                };
-              } else {
-                return;
-              }
-            } else {
-              controllerEmitter(
-                ['wallet', 'getRawTransaction'],
-                [activeNetworkUrl, item.txid]
-              ).then((response: any) => {
-                for (const responseVout of response.vout) {
-                  if (responseVout.n === item.vout) {
-                    senders[item.addresses[0]] = {
-                      address: item.addresses[0],
-                      value: item.value,
-                    };
-                  }
-                }
-              });
+      if (vin) {
+        for (const vinItem of vin) {
+          if (!vinItem.addresses) continue;
+          for (const address of vinItem.addresses) {
+            if (!senders[address]) {
+              senders[address] = 0;
             }
-          }
-        }
-
-        if (vin.length > 1) {
-          for (const item of vin) {
-            if (item.addresses) {
-              senders[item.addresses[0]] = {
-                address: item.addresses[0],
-                value: item.value,
-              };
-            }
+            senders[address] += vinItem.value;
           }
         }
       }
     }
   }, [rawTransaction]);
 
-  const formattedTransaction = [];
+  // Get transaction from state
+  const syscoinTransactions =
+    accountTransactions[TransactionsType.Syscoin]?.[chainId] || [];
 
-  const syscoinTransactions = accountTransactions[TransactionsType.Syscoin][
-    chainId
-  ] as ISysTransaction[];
+  const formattedTransaction: {
+    canCopy: boolean;
+    label: string;
+    value: string;
+  }[] = [];
+
+  // Extract SPT information from raw transaction
+  const tokenTransfers = rawTransaction?.tokenTransfers || [];
+  const tokenType = rawTransaction?.tokenType;
+
+  // Extract asset info from vins and vouts
+  const vinAssetInfo = rawTransaction?.vin?.find(
+    (v: any) => v.assetInfo
+  )?.assetInfo;
+  const voutAssetInfo = rawTransaction?.vout?.find(
+    (v: any) => v.assetInfo
+  )?.assetInfo;
+  const assetInfo = vinAssetInfo || voutAssetInfo;
+
+  const hasTokenInfo = tokenTransfers.length > 0 || tokenType || assetInfo;
 
   syscoinTransactions?.find((tx: any) => {
     if (tx.txid !== hash) return null;
@@ -221,7 +227,7 @@ export const SyscoinTransactionDetails = ({
       const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
 
       const formattedValue = {
-        value: typeof value === 'boolean' ? formattedBoolean : value,
+        value: typeof value === 'boolean' ? formattedBoolean : String(value),
         label: formattedKey,
         canCopy: false,
       };
@@ -251,13 +257,113 @@ export const SyscoinTransactionDetails = ({
     <>
       <div className="flex flex-col justify-center items-center w-full mb-2">
         <p className="text-brand-gray200 text-xs font-light">
-          {getTxType(transactionTx, isTxSent)}
+          {hasTokenInfo && tokenType
+            ? formatTokenType(tokenType)
+            : getTxType(transactionTx, isTxSent)}
         </p>
-        <p className="text-white text-base">
-          {Number(txValue) / 10 ** 8} {currency?.toUpperCase() || 'SYS'}
-        </p>
+
+        {/* Display token transfers if available */}
+        {tokenTransfers.length > 0 ? (
+          <div className="text-center">
+            {tokenTransfers.map((transfer: any, index: number) => (
+              <div key={index} className="mb-1">
+                <p className="text-white text-base">
+                  {transfer.valueOut
+                    ? `${(
+                        Number(transfer.valueOut) /
+                        Math.pow(10, transfer.decimals || 8)
+                      ).toFixed(4)} ${transfer.symbol || 'Unknown'}`
+                    : '0'}
+                </p>
+                {transfer.name && (
+                  <p className="text-brand-gray200 text-xs">{transfer.name}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : assetInfo ? (
+          // Display asset info from vins/vouts if available
+          <div className="text-center">
+            <p className="text-white text-base">
+              {assetInfo.valueStr ||
+                `${(Number(assetInfo.value) / Math.pow(10, 8)).toFixed(
+                  4
+                )} Asset`}
+            </p>
+            <p className="text-brand-gray200 text-xs">
+              Asset GUID: {assetInfo.assetGuid}
+            </p>
+          </div>
+        ) : (
+          <p className="text-white text-base">
+            {Number(txValue) / 10 ** 8} {currency?.toUpperCase() || 'SYS'}
+          </p>
+        )}
+
         <div>{getTxStatus(isTxCanceled, isConfirmed)}</div>
       </div>
+
+      {/* Add token type as a detail if present */}
+      {tokenType && (
+        <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
+          <p className="text-xs font-normal text-white">Transaction Type</p>
+          <p className="text-xs font-normal text-white">
+            {formatTokenType(tokenType)}
+          </p>
+        </div>
+      )}
+
+      {/* Add token info as details if present */}
+      {tokenTransfers.length > 0 &&
+        tokenTransfers.map((transfer: any, index: number) => (
+          <Fragment key={`token-${index}`}>
+            {transfer.token && (
+              <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
+                <p className="text-xs font-normal text-white">Asset GUID</p>
+                <span className="flex items-center">
+                  <Tooltip content={transfer.token} childrenClassName="flex">
+                    <p className="text-xs font-normal text-white">
+                      {transfer.token.length > 12
+                        ? ellipsis(transfer.token, 6, 6)
+                        : transfer.token}
+                    </p>
+                    <IconButton
+                      onClick={() =>
+                        handleCopyWithMessage(transfer.token, 'Asset GUID')
+                      }
+                    >
+                      <CopyIcon />
+                    </IconButton>
+                  </Tooltip>
+                </span>
+              </div>
+            )}
+          </Fragment>
+        ))}
+
+      {/* Add asset info from vins/vouts if present and not already shown */}
+      {assetInfo && tokenTransfers.length === 0 && assetInfo.assetGuid && (
+        <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
+          <p className="text-xs font-normal text-white">Asset GUID</p>
+          <span className="flex items-center">
+            <Tooltip content={assetInfo.assetGuid} childrenClassName="flex">
+              <p className="text-xs font-normal text-white">
+                {assetInfo.assetGuid.length > 12
+                  ? ellipsis(assetInfo.assetGuid, 6, 6)
+                  : assetInfo.assetGuid}
+              </p>
+              <IconButton
+                onClick={() =>
+                  handleCopyWithMessage(assetInfo.assetGuid, 'Asset GUID')
+                }
+              >
+                <CopyIcon />
+              </IconButton>
+            </Tooltip>
+          </span>
+        </div>
+      )}
+
       {formattedTransactionDetails.map(({ label, value, canCopy }: any) => (
         <Fragment key={uniqueId(hash)}>
           {label.length > 0 && value !== undefined && (
