@@ -1,5 +1,6 @@
 import { txUtils } from '@pollum-io/sysweb3-utils';
 
+import { getController, getIsReady } from 'scripts/Background';
 import store from 'state/store';
 import {
   setupNotificationListeners,
@@ -13,7 +14,6 @@ import {
 } from 'utils/notifications';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
-
 interface INotificationState {
   // Last known account
   lastAccount: { address: string; label?: string } | null;
@@ -489,19 +489,32 @@ class NotificationManager {
 
         // Decode the raw hex to get SPT information
         if (rawHex) {
-          const { getController } = await import('./index');
-          const controller = getController();
+          // Check if controller is ready
+          if (!getIsReady()) {
+            console.warn(
+              '[NotificationManager] Controller not ready yet for transaction decoding'
+            );
+          } else {
+            const controller = getController();
 
-          if (controller) {
-            try {
-              // Use the enhanced decodeRawTransaction method with isRawHex=true
-              decodedTx = controller.wallet.decodeRawTransaction(rawHex, true);
-            } catch (err) {
-              console.error(
-                '[NotificationManager] Failed to decode transaction:',
-                err
+            if (controller && controller.wallet) {
+              try {
+                // Use the enhanced decodeRawTransaction method with isRawHex=true
+                decodedTx = controller.wallet.decodeRawTransaction(
+                  rawHex,
+                  true
+                );
+              } catch (err) {
+                console.error(
+                  '[NotificationManager] Failed to decode transaction:',
+                  err
+                );
+                // Continue with regular processing
+              }
+            } else {
+              console.warn(
+                '[NotificationManager] Controller or wallet not available for transaction decoding'
               );
-              // Continue with regular processing
             }
           }
         }
@@ -731,12 +744,19 @@ class NotificationManager {
     networkUrl: string
   ): Promise<any | null> {
     try {
-      const { getController } = await import('./index');
+      // Check if controller is ready
+      if (!getIsReady()) {
+        console.error(
+          '[NotificationManager] Controller not ready yet for asset metadata fetch'
+        );
+        return null;
+      }
+
       const controller = getController();
 
-      if (!controller?.wallet?.getSysAssetMetadata) {
+      if (!controller || !controller.wallet) {
         console.error(
-          '[NotificationManager] Controller or getSysAssetMetadata method not available'
+          '[NotificationManager] Controller or wallet not available'
         );
         return null;
       }
