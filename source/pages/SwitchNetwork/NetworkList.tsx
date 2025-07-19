@@ -98,7 +98,7 @@ export const NetworkList = ({
       if (isTypeSwitch) {
         // Then dispatch the background event
         if (host && eventName) {
-          dispatchBackgroundEvent(`${eventName}.${host}`, { success: true });
+          dispatchBackgroundEvent(`${eventName}.${host}`, null);
         }
         window.close();
         return;

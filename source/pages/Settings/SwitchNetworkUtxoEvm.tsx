@@ -58,7 +58,7 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
       throw cleanErrorStack(ethErrors.rpc.internal());
     }
     const type = data.eventName;
-    dispatchBackgroundEvent(`${type}.${host}`, { success: true });
+    dispatchBackgroundEvent(`${type}.${host}`, null);
     setConfirmed(true);
     setLoading(false);
     window.close();

@@ -55,7 +55,7 @@ const Unlock: React.FC<{
       ) {
         // This is an authentication popup - dispatch success
         // Let the pipeline continue and close when the final response is ready
-        dispatchBackgroundEvent(`${eventName}.${host}`, { success: true });
+        dispatchBackgroundEvent(`${eventName}.${host}`, null);
         clearNavigationState();
         window.close();
         // Note: Window will be closed by popup promise after pipeline completes

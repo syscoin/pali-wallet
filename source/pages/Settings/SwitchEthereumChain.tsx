@@ -39,7 +39,7 @@ const SwitchChain: React.FC = () => {
     setConfirmed(true);
     setLoading(false);
     const type = data.eventName;
-    dispatchBackgroundEvent(`${type}.${host}`, { success: true });
+    dispatchBackgroundEvent(`${type}.${host}`, null);
     window.close();
   };
 

@@ -257,7 +257,7 @@ const CustomRPCExternal = () => {
       const type = data.eventName;
 
       // Signal success to the DApp
-      dispatchBackgroundEvent(`${type}.${host}`, { success: true });
+      dispatchBackgroundEvent(`${type}.${host}`, null);
       setConfirmed(true);
       setLoading(false);
       await controllerEmitter(['wallet', 'setActiveNetwork'], [network, true]);
@@ -269,6 +269,7 @@ const CustomRPCExternal = () => {
       }, 1000);
     } catch (error: any) {
       setLoading(false);
+      setConfirmed(false);
 
       const errorMessage = error.message || 'Failed to add network';
 

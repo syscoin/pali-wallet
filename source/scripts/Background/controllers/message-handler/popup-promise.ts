@@ -10,8 +10,6 @@ const handleResponseEvent = async (
   event: ICustomEvent,
   eventName: string,
   host: string,
-  route: MethodRoute,
-  dapp: Readonly<IDAppController>,
   resolve: (value: unknown) => void
 ): Promise<void> => {
   const expectedEventName = `${eventName}.${host}`;
@@ -79,7 +77,7 @@ const checkForAnyOpenPopupOrHardwareWallet = async (): Promise<boolean> => {
  * The final event name is `eventName.host`
  * @param data information that will be passed to the route. Optional
  *
- * @return either the event data or `{ success: boolean }`
+ * @return either the event data or `null` for success
  */
 export const popupPromise = async ({
   data,
@@ -114,7 +112,7 @@ export const popupPromise = async ({
     throw error;
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let messageHandler: any = null;
     let windowRemovalHandler: any = null;
     let resolved = false;
@@ -145,7 +143,7 @@ export const popupPromise = async ({
 
     // Message handler
     messageHandler = (swEvent: any) => {
-      handleResponseEvent(swEvent, eventName, host, route, dapp, safeResolve);
+      handleResponseEvent(swEvent, eventName, host, safeResolve);
     };
 
     // Window removal handler
@@ -157,8 +155,15 @@ export const popupPromise = async ({
       // Clear the storage flag when popup closes
       chrome.storage.local.remove(['pali-popup-open', 'pali-popup-timestamp']);
 
-      // will pass back a rejection message in pipeline
-      safeResolve(null);
+      // Reject with user rejection error instead of resolving with null
+      // This allows null to be used as a valid success response
+      cleanup();
+      resolved = true; // Mark as resolved to prevent double resolution
+      reject(
+        cleanErrorStack(
+          ethErrors.provider.userRejectedRequest('User closed popup window')
+        )
+      );
     };
 
     // Add listeners

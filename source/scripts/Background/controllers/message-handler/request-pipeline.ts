@@ -404,7 +404,7 @@ export const networkCompatibilityMiddleware: Middleware = async (
       // This provides better UX by letting users choose their preferred network
       const targetNetworkType = needsEVM ? 'ethereum' : 'syscoin';
       const currentNetworkType = needsEVM ? 'syscoin' : 'ethereum';
-      const result = await requestCoordinator.coordinatePopupRequest(
+      await requestCoordinator.coordinatePopupRequest(
         context,
         () =>
           popupPromise({
@@ -422,11 +422,7 @@ export const networkCompatibilityMiddleware: Middleware = async (
         MethodRoute.SwitchNetwork // Explicit route parameter
       );
 
-      if (!result) {
-        throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-      }
-
-      // Network type has been switched, continue with the request
+      // Network has been switched, continue with the request
     } catch (error) {
       throw cleanErrorStack(
         ethErrors.provider.unauthorized(
@@ -469,14 +465,6 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
     (originalRequest.method?.toLowerCase() === 'sys_changeutxoevm' &&
       !isBitcoinBased);
 
-  if (!validatePrefixAndCurrentChain) {
-    throw cleanErrorStack(
-      ethErrors.provider.unauthorized(
-        'changeUTXOEVM requires correct network type and prefix'
-      )
-    );
-  }
-
   const newChainValue =
     originalRequest.method?.toLowerCase() === 'sys_changeutxoevm'
       ? 'syscoin'
@@ -488,29 +476,27 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
       ethErrors.provider.unauthorized('Network does not exist')
     );
   }
-
-  const result = await requestCoordinator.coordinatePopupRequest(
-    context,
-    () =>
-      popupPromise({
-        host: originalRequest.host,
-        route: MethodRoute.SwitchUtxoEvm,
-        eventName: 'change_UTXOEVM',
-        data: {
-          newNetwork: targetNetwork,
-          newChainValue: newChainValue,
-        },
-      }),
-    MethodRoute.SwitchUtxoEvm
-  );
-
-  if (!result) {
-    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
+  if (validatePrefixAndCurrentChain) {
+    await requestCoordinator.coordinatePopupRequest(
+      context,
+      () =>
+        popupPromise({
+          host: originalRequest.host,
+          route: MethodRoute.SwitchUtxoEvm,
+          eventName: 'change_UTXOEVM',
+          data: {
+            newNetwork: targetNetwork,
+            newChainValue: newChainValue,
+          },
+        }),
+      MethodRoute.SwitchUtxoEvm
+    );
   }
+
   const isConnected = dapp.isConnected(originalRequest.host);
 
   if (isConnected) {
-    const result1 = await requestCoordinator.coordinatePopupRequest(
+    await requestCoordinator.coordinatePopupRequest(
       context,
       () =>
         popupPromise({
@@ -521,9 +507,6 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
         }),
       MethodRoute.ChangeAccount
     );
-    if (!result1) {
-      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-    }
   }
   // Note: We don't call next() here because we've handled the entire request
 };
@@ -542,7 +525,7 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   ) {
     // Open connection popup directly - the router will handle auth if needed
     try {
-      const result = await requestCoordinator.coordinatePopupRequest(
+      await requestCoordinator.coordinatePopupRequest(
         context,
         () =>
           popupPromise({
@@ -557,10 +540,6 @@ export const connectionMiddleware: Middleware = async (context, next) => {
           }),
         MethodRoute.Connect // Explicit route parameter
       );
-
-      if (!result) {
-        throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-      }
 
       // Connection successful, continue to method handler
       // The method handler will return the appropriate result
@@ -699,7 +678,7 @@ const promptAccountSwitch = async (
   targetAccountType: string,
   requiredAddress: string
 ): Promise<void> => {
-  const response = await requestCoordinator.coordinatePopupRequest(
+  await requestCoordinator.coordinatePopupRequest(
     context,
     () =>
       popupPromise({
@@ -714,10 +693,6 @@ const promptAccountSwitch = async (
       }),
     MethodRoute.ChangeActiveConnectedAccount
   );
-
-  if (!response) {
-    throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-  }
 };
 
 // Middleware: Account Switching for Blocking Methods
@@ -878,7 +853,7 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
 
   try {
     // Open login popup
-    const result = await requestCoordinator.coordinatePopupRequest(
+    await requestCoordinator.coordinatePopupRequest(
       context,
       () =>
         popupPromise({
@@ -892,10 +867,6 @@ export const authenticationMiddleware: Middleware = async (context, next) => {
         }),
       MethodRoute.Login // Explicit route parameter
     );
-
-    if (!result) {
-      throw cleanErrorStack(ethErrors.provider.userRejectedRequest());
-    }
 
     // Wallet should now be unlocked, continue with the request
     return next();
