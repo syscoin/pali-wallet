@@ -493,22 +493,26 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
     );
   }
 
-  const isConnected = dapp.isConnected(originalRequest.host);
+  // Check if we're switching between UTXO and EVM network types
+  const isTargetNetworkBitcoinBased = newChainValue === 'syscoin';
+  const isNetworkTypeSwitch = isBitcoinBased !== isTargetNetworkBitcoinBased;
 
-  if (isConnected) {
-    await requestCoordinator.coordinatePopupRequest(
-      context,
-      () =>
-        popupPromise({
-          host: originalRequest.host,
-          route: MethodRoute.ChangeAccount,
-          eventName: 'accountsChanged',
-          data: { network: targetNetwork },
-        }),
-      MethodRoute.ChangeAccount
+  if (isNetworkTypeSwitch && dapp.isConnected(originalRequest.host)) {
+    // Network type is changing (UTXO <-> EVM), the dapp's connected account
+    // will be invalid for the new network type, so disconnect it
+    console.log(
+      `[Pipeline] Network type switch detected for ${originalRequest.host}, disconnecting dapp`
     );
+    dapp.disconnect(originalRequest.host);
+
+    // The dapp is now disconnected. Let the pipeline continue so
+    // connectionMiddleware can handle reconnection if needed
   }
-  // Note: We don't call next() here because we've handled the entire request
+
+  // Continue to the next middleware
+  // The connectionMiddleware will check if the method requires connection
+  // and handle reconnection if needed (especially after a network type switch)
+  return next();
 };
 
 // Middleware: Connection Check
@@ -675,8 +679,7 @@ const findAccountByAddress = (
 const promptAccountSwitch = async (
   context: IEnhancedRequestContext,
   targetAccount: any,
-  targetAccountType: string,
-  requiredAddress: string
+  targetAccountType: string
 ): Promise<void> => {
   await requestCoordinator.coordinatePopupRequest(
     context,
@@ -688,7 +691,6 @@ const promptAccountSwitch = async (
         data: {
           connectedAccount: targetAccount,
           accountType: targetAccountType,
-          requiredAddress: requiredAddress,
         },
       }),
     MethodRoute.ChangeActiveConnectedAccount
@@ -775,8 +777,7 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
       await promptAccountSwitch(
         context,
         accountInfo.account,
-        accountInfo.accountType,
-        requiredFromAddress
+        accountInfo.accountType
       );
 
       // Account switched successfully, continue with the request
@@ -812,12 +813,7 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
   const dappAccountType = account.isImported ? 'Imported' : 'HDAccount';
 
   try {
-    await promptAccountSwitch(
-      context,
-      account,
-      dappAccountType,
-      account.address
-    );
+    await promptAccountSwitch(context, account, dappAccountType);
   } catch (error) {
     throw cleanErrorStack(
       ethErrors.provider.unauthorized(

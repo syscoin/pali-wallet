@@ -321,13 +321,11 @@ export const METHOD_REGISTRY: MethodRegistry = {
     name: 'eth_requestAccounts',
     handlerType: MethodHandlerType.Eth,
     requiresTabId: true,
-    requiresAuth: false, // Popup handles auth
+    requiresAuth: false, // Connection middleware handles auth via popup
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
-    hasPopup: true,
-    popupRoute: MethodRoute.Connect,
-    popupEventName: 'connect',
+    hasPopup: false, // Let connectionMiddleware handle the popup
     returnsArray: true,
   },
 
@@ -963,9 +961,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
-    hasPopup: true,
-    popupRoute: MethodRoute.SwitchUtxoEvm,
-    popupEventName: 'change_UTXOEVM',
+    hasPopup: false,
   },
 
   // ===== Syscoin Methods =====
@@ -974,7 +970,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     handlerType: MethodHandlerType.Sys,
     requiresTabId: true,
     requiresAuth: false,
-    requiresConnection: false, // Does not require connection - gets UTXO address from vault
+    requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
     hasPopup: false, // No popup needed - just returns UTXO address
@@ -1116,9 +1112,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
     requiresConnection: true,
     allowHardwareWallet: true,
     networkRequirement: NetworkRequirement.Any,
-    hasPopup: true,
-    popupRoute: MethodRoute.SwitchUtxoEvm,
-    popupEventName: 'change_UTXOEVM',
+    hasPopup: false,
   },
 };
 /* eslint-enable camelcase */

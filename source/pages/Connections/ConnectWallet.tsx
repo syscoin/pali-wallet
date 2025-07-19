@@ -137,7 +137,7 @@ export const ConnectWallet = () => {
   const { host, chain, chainId, eventName } = useQueryData();
   const { t } = useTranslation();
   const accounts = useSelector((state: RootState) => state.vault.accounts);
-  const { activeAccount: activeAccountData, activeNetwork } = useSelector(
+  const { activeAccount: activeAccountData } = useSelector(
     (state: RootState) => state.vault
   );
   const { id, type } = activeAccountData;
@@ -148,12 +148,14 @@ export const ConnectWallet = () => {
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
 
-  const [currentAccountId, setCurrentAccountId] = useState<number>();
+  const [currentAccountId, setCurrentAccountId] = useState<number | null>(null);
   const [currentAccountType, setCurrentAccountType] =
-    useState<KeyringAccountType>();
+    useState<KeyringAccountType | null>(null);
 
-  const [accountId, setAccountId] = useState<number>();
-  const [accountType, setAccountType] = useState<KeyringAccountType>();
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [accountType, setAccountType] = useState<KeyringAccountType | null>(
+    null
+  );
   const [confirmUntrusted, setConfirmUntrusted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const date = Date.now();
@@ -174,6 +176,12 @@ export const ConnectWallet = () => {
   );
 
   const handleConnect = useCallback(async () => {
+    // Safety check - ensure we have valid account selection
+    if (accountId === null || accountType === null) {
+      console.error('[ConnectWallet] No account selected');
+      return;
+    }
+
     // Find the selected account
     const selectedAccount = accounts[accountType]?.[accountId];
     if (!selectedAccount) {
@@ -191,7 +199,9 @@ export const ConnectWallet = () => {
       [accountId, accountType, true]
     );
 
-    dispatchBackgroundEvent(`${eventName}.${host}`, selectedAccount.address);
+    // Return null - the method handler will return the actual address
+    // This popup just establishes the connection
+    dispatchBackgroundEvent(`${eventName}.${host}`, null);
 
     window.close();
   }, [
@@ -478,7 +488,7 @@ export const ConnectWallet = () => {
 
           <PrimaryButton
             type="button"
-            disabled={accountId === undefined || accountType === undefined}
+            disabled={accountId === null || accountType === null}
             onClick={onConfirm}
           >
             {t('buttons.confirm')}

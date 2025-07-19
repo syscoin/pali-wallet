@@ -1,3 +1,4 @@
+import { isHexString } from 'ethers/lib/utils';
 import { ethErrors } from 'helpers/errors';
 
 import { getController } from 'scripts/Background';
@@ -128,7 +129,7 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupRoute &&
       methodConfig.popupEventName
     ) {
-      const popupData = this.getPopupData(methodName, params);
+      const popupData = this.getPopupData(methodName, params, host);
       return requestCoordinator.coordinatePopupRequest(
         context,
         () =>
@@ -224,12 +225,48 @@ export class WalletMethodHandler implements IMethodHandler {
     });
   }
 
-  private getPopupData(methodName: string, params: any[]): any {
+  private getPopupData(methodName: string, params: any[], host: string): any {
+    // Get current context
+    const { dapp } = getController();
+    const { vault } = store.getState();
+    const { activeAccount, accounts, isBitcoinBased } = vault;
+
     switch (methodName) {
       case 'changeAccount':
-        return { network: params?.[0] };
       case 'requestPermissions':
-        return { params };
+        // For these methods, we need to pass the current account info
+        // First try to get the dapp's connected account, fallback to active account
+        const dappInfo = dapp.get(host);
+        let currentAccountId = dappInfo?.accountId;
+        let currentAccountType = dappInfo?.accountType;
+
+        // Validate that the dapp's connected account is valid for current network type
+        if (
+          currentAccountId !== undefined &&
+          currentAccountType !== undefined
+        ) {
+          const connectedAccount =
+            accounts[currentAccountType]?.[currentAccountId];
+          if (connectedAccount) {
+            const isAccountValid = isBitcoinBased
+              ? !isHexString(connectedAccount.address)
+              : isHexString(connectedAccount.address);
+
+            if (!isAccountValid) {
+              // Dapp's account is invalid for current network type
+              // Don't pass it to the popup
+              currentAccountId = undefined;
+              currentAccountType = undefined;
+            }
+          }
+        }
+
+        return {
+          currentAccountId: currentAccountId ?? activeAccount?.id,
+          currentAccountType: currentAccountType ?? activeAccount?.type,
+          network: params?.[0],
+          params,
+        };
       case 'watchAsset':
         return { asset: params?.[0] || null };
       case 'addEthereumChain':
@@ -293,6 +330,13 @@ export class EthMethodHandler implements IMethodHandler {
         throw cleanErrorStack(ethErrors.provider.unauthorized('Not connected'));
       }
       return [account.address];
+    }
+
+    // Handle changeUTXOEVM - already processed by middleware
+    if (methodName === 'changeUTXOEVM') {
+      // The utxoEvmSwitchMiddleware has already handled the network switch
+      // Just return null to indicate success
+      return null;
     }
 
     // Handle popup-based methods using registry configuration
@@ -363,6 +407,13 @@ export class SysMethodHandler implements IMethodHandler {
       // For sys_requestAccounts, return address (consistent with eth_requestAccounts)
       // Note: Bridge can get full account details via wallet_getAccount if needed
       return [account.address];
+    }
+
+    // Handle changeUTXOEVM - already processed by middleware
+    if (methodName === 'changeUTXOEVM') {
+      // The utxoEvmSwitchMiddleware has already handled the network switch
+      // Just return null to indicate success
+      return null;
     }
 
     // Handle popup-based methods using registry configuration

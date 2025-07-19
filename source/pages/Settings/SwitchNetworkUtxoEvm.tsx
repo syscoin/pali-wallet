@@ -7,7 +7,7 @@ import {
   SecondaryButton,
   LoadingComponent,
 } from 'components/index';
-import { useQueryData, useUtils } from 'hooks/index';
+import { useQueryData } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -20,7 +20,6 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const { t } = useTranslation();
-  const { navigate } = useUtils();
 
   // Safety check: if required data is missing, show error or redirect
   if (!newNetwork || !newChainValue) {
@@ -32,11 +31,11 @@ const SwitchNeworkUtxoEvm: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-full">
         <p className="text-brand-white text-center">
-          {t('settings.networkSwitchError')}
+          {t('header.thereWasAnError')}
         </p>
         <div className="mt-4">
-          <SecondaryButton type="button" onClick={() => navigate('/home')}>
-            {t('buttons.goHome')}
+          <SecondaryButton type="button" onClick={() => window.close()}>
+            {t('buttons.close')}
           </SecondaryButton>
         </div>
       </div>

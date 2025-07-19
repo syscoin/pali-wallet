@@ -132,21 +132,53 @@ TokenIconStack.displayName = 'TokenIconStack';
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();
   const dapp = useSelector((state: RootState) => state.dapp.dapps);
-  const { accounts, isBitcoinBased } = useSelector(
+  const { accounts, isBitcoinBased, activeAccount } = useSelector(
     (state: RootState) => state.vault
   );
   const accountAssets = useSelector(selectAccountAssets);
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
-  const { host, eventName } = useQueryData();
+  const queryData = useQueryData();
+  const { host, eventName } = queryData;
   const { t } = useTranslation();
 
-  const currentAccountId = dapp[host]?.accountId;
-  const currentAccountType = dapp[host]?.accountType;
+  // Helper to check if account is valid for current network type
+  const isAccountValidForNetwork = (account: any) => {
+    if (!account) return false;
+    return isBitcoinBased
+      ? !isHexString(account.address)
+      : isHexString(account.address);
+  };
 
-  const [accountId, setAccountId] = useState<number>(currentAccountId);
+  // Get current account from query data (passed from popup), fallback to dapp state, then active account
+  // But validate that the account is appropriate for the current network type
+  let currentAccountId = queryData.currentAccountId;
+  let currentAccountType = queryData.currentAccountType;
+
+  // If not in query data, try dapp state
+  if (currentAccountId === undefined && dapp[host]) {
+    const dappAccount =
+      accounts?.[dapp[host].accountType]?.[dapp[host].accountId];
+    if (dappAccount && isAccountValidForNetwork(dappAccount)) {
+      currentAccountId = dapp[host].accountId;
+      currentAccountType = dapp[host].accountType;
+    }
+  }
+
+  // Final fallback to active account
+  if (currentAccountId === undefined) {
+    currentAccountId = activeAccount?.id;
+    currentAccountType = activeAccount?.type;
+  }
+
+  // Initialize state with null to properly track if user has made a selection
+  const [accountId, setAccountId] = useState<number | null>(
+    currentAccountId !== undefined ? currentAccountId : null
+  );
   const [accountType, setCurrentAccountType] =
-    useState<KeyringAccountType>(currentAccountType);
+    useState<KeyringAccountType | null>(
+      currentAccountType !== undefined ? currentAccountType : null
+    );
   const [isChanging, setIsChanging] = useState<boolean>(false);
 
   // Helper function to get tokens for an account
@@ -193,9 +225,14 @@ export const ChangeAccount = () => {
   };
 
   const handleChangeAccount = async () => {
+    // Safety check - ensure we have valid account selection
+    if (accountId === null || accountType === null) {
+      console.error('[ChangeAccount] No account selected');
+      return;
+    }
+
     if (accountId === currentAccountId && accountType === currentAccountType) {
-      const response = { accountId, accountType };
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+      dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
       return;
     }
@@ -221,10 +258,7 @@ export const ChangeAccount = () => {
         [accountId, accountType, true]
       );
 
-      const response = { accountId, accountType };
-
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
-
+      dispatchBackgroundEvent(`${eventName}.${host}`, null);
       window.close();
     } catch (error) {
       console.error('Failed to change account:', error);
@@ -440,9 +474,7 @@ export const ChangeAccount = () => {
             type="button"
             onClick={handleChangeAccount}
             loading={isChanging}
-            disabled={
-              isChanging || accountId === undefined || accountType === undefined
-            }
+            disabled={isChanging || accountId === null || accountType === null}
           >
             {eventName === 'requestPermissions'
               ? t('buttons.confirm')
