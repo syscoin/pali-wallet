@@ -48,9 +48,13 @@ export interface IGlobalState {
   hasEthProperty: boolean;
   // Track if current updates are from polling (background) vs user action
   isPollingUpdate: boolean;
+  // Track when we're loading initial data after network switch
+  // This prevents UI flashing (faucet modals, skeleton loaders) during initial load
+  isPostNetworkSwitchLoading?: boolean;
   isSwitchingAccount: boolean;
   // Authentication & security
   lastLogin: number;
+
   // Transient loading states - never persisted across app restarts
   loadingStates: ILoadingStates;
 

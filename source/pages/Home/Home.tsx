@@ -130,6 +130,7 @@ export const Home = () => {
     loadingStates: { isLoadingBalances },
     isPollingUpdate,
     isSwitchingAccount,
+    isPostNetworkSwitchLoading,
   } = useSelector((rootState: RootState) => rootState.vaultGlobal);
 
   // ALL useState hooks
@@ -193,17 +194,24 @@ export const Home = () => {
   }, [accounts, activeAccount]);
 
   const rawBalance = useMemo(() => {
+    // Always return -1 during post-network switch to prevent flashing
+    if (isPostNetworkSwitchLoading) return '-1';
+
     if (!currentAccount?.balances) return '-1';
     const balance = isBitcoinBased
       ? currentAccount.balances[INetworkType.Syscoin]
       : currentAccount.balances[INetworkType.Ethereum];
-    return balance === undefined || balance === null ? '-1' : String(balance);
-  }, [currentAccount?.balances, isBitcoinBased]);
+    // During network switches, treat -1 and undefined/null as loading states
+    return balance === undefined || balance === null || balance === -1
+      ? '-1'
+      : String(balance);
+  }, [currentAccount?.balances, isBitcoinBased, isPostNetworkSwitchLoading]);
 
   // Actual balance for display (convert -1 to 0)
   const actualBalance = useMemo(
-    () => (rawBalance === '-1' ? '0' : rawBalance),
-    [rawBalance]
+    () =>
+      rawBalance === '-1' || isPostNetworkSwitchLoading ? '0' : rawBalance,
+    [rawBalance, isPostNetworkSwitchLoading]
   );
 
   const moreThanMillion = useMemo(
@@ -247,13 +255,14 @@ export const Home = () => {
   );
 
   // Show skeleton loader when:
-  // 1. Balance is -1 (no data) AND we're loading
+  // 1. Balance is -1 (no data) or we're in post-network switch loading
   // 2. Network is in error, connecting, or switching state
-  // 3. Balance is 0 AND we're loading (to prevent 0 blip during switches)
+  // 3. Balance is loading (non-polling) and balance is not yet loaded
+  // 4. Always during post-network switch to prevent any flashing
   const isLoadingBalance =
-    (isLoadingBalances &&
-      !isPollingUpdate &&
-      (rawBalance === '-1' || rawBalance === '0')) ||
+    rawBalance === '-1' ||
+    isPostNetworkSwitchLoading ||
+    (isLoadingBalances && !isPollingUpdate) ||
     networkStatus === 'error' ||
     networkStatus === 'connecting' ||
     networkStatus === 'switching';
@@ -265,6 +274,7 @@ export const Home = () => {
       parseFloat(actualBalance) === 0 &&
       !isLoadingBalance &&
       !isSwitchingAccount &&
+      !isPostNetworkSwitchLoading && // Don't show during post-switch loading
       currentAccount;
 
     if (canShowFaucet) {
@@ -278,6 +288,7 @@ export const Home = () => {
     actualBalance,
     isLoadingBalance,
     isSwitchingAccount,
+    isPostNetworkSwitchLoading,
     currentAccount,
   ]);
 

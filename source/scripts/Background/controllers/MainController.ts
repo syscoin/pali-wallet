@@ -69,6 +69,7 @@ import {
   updateNetworkQualityLatency,
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
+  setPostNetworkSwitchLoading,
 } from 'state/vaultGlobal';
 import {
   ITokenEthProps,
@@ -2676,6 +2677,11 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
+    // Set loading state immediately for non-polling updates
+    if (!isPolling) {
+      store.dispatch(setIsLoadingAssets(true));
+    }
+
     // For polling, we don't need keyring access - we're just fetching public asset balances
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
@@ -2684,7 +2690,8 @@ class MainController {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling asset updates'
         );
-        // Return a resolved promise to maintain API consistency
+        // Clear loading state and return
+        store.dispatch(setIsLoadingAssets(false));
         return Promise.resolve();
       }
     }
@@ -2693,11 +2700,6 @@ class MainController {
 
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
     const currentAssets = accountAssets[activeAccount.type][activeAccount.id];
-
-    // Only set loading state for non-polling updates
-    if (!isPolling) {
-      store.dispatch(setIsLoadingAssets(true));
-    }
 
     // Capture isPolling for use in the inner async function
     const isPollingUpdate = isPolling;
@@ -2794,6 +2796,12 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
   }) {
+    // Set loading state immediately for non-polling updates
+    // This prevents skeleton flashing by ensuring loading state is set before any async operations
+    if (!isPolling) {
+      store.dispatch(setIsLoadingBalances(true));
+    }
+
     // For polling, we don't need keyring access - we're just fetching public balance data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
@@ -2802,18 +2810,14 @@ class MainController {
         console.log(
           '[MainController] Wallet is locked, skipping non-polling balance updates'
         );
-        // Return a resolved promise to maintain API consistency
+        // Clear loading state and return
+        store.dispatch(setIsLoadingBalances(false));
         return Promise.resolve();
       }
     }
 
     const { accounts } = store.getState().vault;
     const currentAccount = accounts[activeAccount.type][activeAccount.id];
-
-    // Only set loading state for non-polling updates
-    if (!isPolling) {
-      store.dispatch(setIsLoadingBalances(true));
-    }
 
     // Capture isPolling for use in the inner async function
     const isPollingUpdate = isPolling;
@@ -3116,12 +3120,16 @@ class MainController {
       );
       store.dispatch(switchNetworkError());
     } else {
-      // Only dispatch success if critical operations like balance succeeded
-      store.dispatch(switchNetworkSuccess());
-
-      // Don't clear network quality state here - let it persist to show the actual network quality
-      // It will be cleared when switching to a different network or if it becomes stale
+      // Balance succeeded - check if we need to clear connecting state (from login)
+      const currentNetworkStatus = store.getState().vaultGlobal.networkStatus;
+      if (currentNetworkStatus === 'connecting') {
+        store.dispatch(switchNetworkSuccess()); // This sets networkStatus to 'idle'
+      }
     }
+
+    // Clear the post-network-switch loading flag now that initial load is complete
+    // This allows UI elements (like faucet modals) to appear if needed
+    store.dispatch(setPostNetworkSwitchLoading(false));
 
     // Always clear polling state when done
     store.dispatch(setIsPollingUpdate(false));
@@ -3532,12 +3540,17 @@ class MainController {
     // - isBitcoinBased (derived from activeChain)
     store.dispatch(setNetworkChange({ activeNetwork: network }));
 
+    // Dispatch success immediately to prevent getting stuck in "switching" state
+    store.dispatch(switchNetworkSuccess());
+
     // Execute updates synchronously if requested, otherwise with a small delay
     if (syncUpdates) {
-      await this.setFiat();
-      await this.getLatestUpdateForCurrentAccount(false);
-      // Save state synchronously after updates
-      await this.saveWalletState('network-switch-after-updates', false, true);
+      try {
+        await this.setFiat();
+        await this.getLatestUpdateForCurrentAccount(false);
+      } finally {
+        await this.saveWalletState('network-switch-after-updates', false, true);
+      }
       // Don't throw error here - let the UI handle the network status
     } else {
       // Use Promise to ensure these operations complete even if popup closes
@@ -3550,8 +3563,8 @@ class MainController {
             '[MainController] Failed to update after network change:',
             error
           );
-          // Ensure network status is updated even if updates fail
-          store.dispatch(switchNetworkError());
+          // Don't change network status here - it's already set to success
+          // The error is just for balance updates, not the network switch itself
         } finally {
           // Ensure state is saved synchronously even on error
           try {
@@ -3571,8 +3584,6 @@ class MainController {
       console.log(
         '[MainController] Skipping network change dapp notifications during startup'
       );
-      // Don't dispatch success here - let getLatestUpdateForCurrentAccount handle it
-      // after verifying the network actually works
       return;
     }
     // Get latest updates for the newly active account

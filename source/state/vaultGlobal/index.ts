@@ -127,6 +127,7 @@ const vaultGlobalSlice = createSlice({
     startSwitchNetwork(state: IGlobalState, action: PayloadAction<INetwork>) {
       state.networkStatus = 'switching';
       state.networkTarget = action.payload;
+      state.isPostNetworkSwitchLoading = true;
     },
     startConnecting(state: IGlobalState) {
       state.networkStatus = 'connecting';
@@ -277,6 +278,12 @@ const vaultGlobalSlice = createSlice({
       // This is called when actually changing networks, not just reconnecting
       state.networkQuality = undefined;
     },
+    setPostNetworkSwitchLoading(
+      state: IGlobalState,
+      action: PayloadAction<boolean>
+    ) {
+      state.isPostNetworkSwitchLoading = action.payload;
+    },
   },
 });
 
@@ -307,6 +314,7 @@ export const {
   updateNetworkQualityLatency,
   clearNetworkQualityIfStale,
   resetNetworkQualityForNewNetwork,
+  setPostNetworkSwitchLoading,
 } = vaultGlobalSlice.actions;
 
 export default vaultGlobalSlice.reducer;
