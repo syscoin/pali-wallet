@@ -31,7 +31,17 @@ import { ellipsis } from 'utils/index';
 
 // Component to render account icon matching the app's pattern - moved outside to prevent recreation
 const AccountIcon = React.memo(
-  ({ account, size = 40 }: { account: any; size?: number }) => {
+  ({
+    account,
+    size = 40,
+    isConnected = false,
+    connectedText = '',
+  }: {
+    account: any;
+    connectedText?: string;
+    isConnected?: boolean;
+    size?: number;
+  }) => {
     const iconRef = useRef<HTMLDivElement>(null);
 
     // Extract identifier to avoid object reference issues
@@ -46,13 +56,29 @@ const AccountIcon = React.memo(
       });
     }, [identifier, size]); // Depend on the extracted identifier string
 
-    return (
-      <div
-        ref={iconRef}
-        className="add-identicon rounded-full overflow-hidden cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80"
-        style={{ width: size, height: size }}
-      />
+    const iconElement = (
+      <div className="relative">
+        <div
+          ref={iconRef}
+          className="add-identicon rounded-full overflow-hidden cursor-pointer transition-all duration-200 hover:scale-105 hover:opacity-80"
+          style={{ width: size, height: size }}
+        />
+        {isConnected && (
+          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-bkg-2"></div>
+        )}
+      </div>
     );
+
+    // Only wrap in tooltip if connected
+    if (isConnected && connectedText) {
+      return (
+        <Tooltip content={connectedText} placement="top">
+          {iconElement}
+        </Tooltip>
+      );
+    }
+
+    return iconElement;
   }
 );
 AccountIcon.displayName = 'AccountIcon';
@@ -345,17 +371,19 @@ export const ChangeAccount = () => {
                           >
                             <div className="flex items-center justify-between gap-2 w-full">
                               <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="relative">
-                                  <AccountIcon account={acc} size={40} />
-                                </div>
+                                <AccountIcon
+                                  account={acc}
+                                  size={40}
+                                  isConnected={isCurrent}
+                                  connectedText={
+                                    isCurrent
+                                      ? t('connections.currentlyConnected')
+                                      : ''
+                                  }
+                                />
                                 <div className="flex-1 min-w-0 pr-2">
                                   <p className="font-medium text-sm text-brand-white mb-1 truncate">
                                     {acc.label}
-                                    {isCurrent && (
-                                      <span className="ml-2 text-xs text-brand-royalblue font-normal">
-                                        {t('connections.currentlyConnected')}
-                                      </span>
-                                    )}
                                   </p>
                                   <div className="flex items-center gap-1">
                                     <Tooltip

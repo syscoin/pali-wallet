@@ -1,6 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
-import { ICustomEvent, IDAppController } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
+import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 

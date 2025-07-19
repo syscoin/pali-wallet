@@ -290,7 +290,7 @@
     "changeAccount": "アカウントを変更",
     "requestingPermissions": "このサイトはあなたのアカウントへのアクセス権限をリクエストしています",
     "selectAccountToConnect": "このサイトに接続したいアカウントを選択してください",
-    "currentlyConnected": "（現在接続中）",
+    "currentlyConnected": "現在接続中",
     "noAddress": "アドレスなし",
     "loadingAccounts": "アカウントを読み込み中..."
   },

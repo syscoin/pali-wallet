@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 
 import { IKeyringAccountState } from '@pollum-io/sysweb3-keyring';
-import { INetworkType } from '@pollum-io/sysweb3-network';
 
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useController } from 'hooks/useController';
@@ -11,7 +10,7 @@ import { RootState } from 'state/store';
 import { formatNumber } from 'utils/index';
 
 // Cache for storing fetched balances with timestamps
-interface BalanceCache {
+interface IBalanceCache {
   [key: string]: {
     balance: string;
     timestamp: number;
@@ -26,11 +25,11 @@ const MIN_BATCH_DELAY = 10; // Minimum delay to prevent thundering herd
 const MAX_BATCH_DELAY = 100; // Maximum delay to spread out requests
 
 // Global cache and rate limiter
-const balanceCache: BalanceCache = {};
+const balanceCache: IBalanceCache = {};
 const requestTimestamps: number[] = [];
 const pendingRequests = new Map<string, Promise<string>>();
 
-interface LazyAccountBalanceProps {
+interface ILazyAccountBalanceProps {
   account: IKeyringAccountState;
   className?: string;
   forceRefresh?: boolean;
@@ -40,7 +39,7 @@ interface LazyAccountBalanceProps {
   showSkeleton?: boolean;
 }
 
-export const LazyAccountBalance: React.FC<LazyAccountBalanceProps> = ({
+export const LazyAccountBalance: React.FC<ILazyAccountBalanceProps> = ({
   account,
   showFiat = true,
   showSkeleton = true,

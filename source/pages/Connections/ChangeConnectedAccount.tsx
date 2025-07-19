@@ -120,9 +120,7 @@ export const ChangeConnectedAccount = () => {
   const { t } = useTranslation();
   const activeAccountRef = useSelector(selectActiveAccountRef);
   const activeAccount = useSelector(selectActiveAccount);
-  const { isBitcoinBased, activeNetwork } = useSelector(
-    (state: RootState) => state.vault
-  );
+  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
   const accountAssets = useSelector(selectAccountAssets);
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();

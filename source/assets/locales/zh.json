@@ -290,7 +290,7 @@
     "changeAccount": "更改账户",
     "requestingPermissions": "此网站正在请求访问您账户的权限",
     "selectAccountToConnect": "选择您想要与此网站连接的账户",
-    "currentlyConnected": "（当前已连接）",
+    "currentlyConnected": "当前已连接",
     "noAddress": "无地址",
     "loadingAccounts": "正在加载账户..."
   },

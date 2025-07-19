@@ -127,7 +127,7 @@
     "changeAccount": "Change Account",
     "requestingPermissions": "This site is requesting permissions to access your account",
     "selectAccountToConnect": "Select the account you want to connect with this site",
-    "currentlyConnected": "(Currently connected)",
+    "currentlyConnected": "Currently connected",
     "noAddress": "No address",
     "loadingAccounts": "Loading accounts..."
   },

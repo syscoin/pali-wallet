@@ -291,7 +291,7 @@
     "changeAccount": "Переключить Аккаунт",
     "requestingPermissions": "Этот сайт запрашивает разрешения на доступ к вашему аккаунту",
     "selectAccountToConnect": "Выберите аккаунт, который вы хотите подключить к этому сайту",
-    "currentlyConnected": "(В настоящее время подключен)",
+    "currentlyConnected": "В настоящее время подключен",
     "noAddress": "Нет адреса",
     "loadingAccounts": "Загрузка аккаунтов..."
   },

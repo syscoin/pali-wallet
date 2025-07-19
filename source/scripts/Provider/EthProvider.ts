@@ -1,4 +1,3 @@
-import { TypedData } from 'ethers-eip712';
 import { ethErrors } from 'helpers/errors';
 
 import { validateEOAAddress } from '@pollum-io/sysweb3-utils';

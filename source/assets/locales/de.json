@@ -290,7 +290,7 @@
     "changeAccount": "Konto Wechseln",
     "requestingPermissions": "Diese Seite fordert Berechtigungen für den Zugriff auf Ihr Konto an",
     "selectAccountToConnect": "Wählen Sie das Konto aus, das Sie mit dieser Seite verbinden möchten",
-    "currentlyConnected": "(Aktuell verbunden)",
+    "currentlyConnected": "Aktuell verbunden",
     "noAddress": "Keine Adresse",
     "loadingAccounts": "Konten werden geladen..."
   },

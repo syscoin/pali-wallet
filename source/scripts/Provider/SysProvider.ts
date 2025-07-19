@@ -1,8 +1,6 @@
 import { isValidSYSAddress as _isValidSYSAddress } from '@pollum-io/sysweb3-utils';
 
 import { getController } from 'scripts/Background';
-import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
-import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
 import { isNFT as _isNFT } from 'scripts/Background/controllers/utils';
 import store from 'state/store';
 
