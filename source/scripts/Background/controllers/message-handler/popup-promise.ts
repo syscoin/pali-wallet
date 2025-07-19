@@ -90,7 +90,7 @@ export const popupPromise = async ({
   host: string;
   route: MethodRoute;
 }) => {
-  const { dapp, createPopup } = getController();
+  const { createPopup } = getController();
 
   // Use atomic check-and-set to prevent race conditions
   const canCreatePopup = await atomicCheckAndSetPopup();

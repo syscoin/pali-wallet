@@ -412,8 +412,6 @@ export const networkCompatibilityMiddleware: Middleware = async (
             route: MethodRoute.SwitchNetwork,
             eventName: 'switchNetwork',
             data: {
-              requiredMethod: originalRequest.method,
-              targetNetworkType: requiredNetwork,
               disabledNetworkType: currentNetworkType, // Disable current type to force switch
               forceNetworkType: targetNetworkType, // Force selection of target type
               isTypeSwitch: true, // Indicate this is a network type switch, not just network switch
@@ -539,7 +537,6 @@ export const connectionMiddleware: Middleware = async (context, next) => {
             data: {
               chain: isBitcoinBased ? 'syscoin' : 'ethereum',
               chainId: activeNetwork.chainId,
-              method: originalRequest.method,
             },
           }),
         MethodRoute.Connect // Explicit route parameter
