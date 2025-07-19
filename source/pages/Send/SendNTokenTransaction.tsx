@@ -150,13 +150,13 @@ export const SendNTokenTransaction = () => {
               isLegacyTransaction,
             ]
           )
-            .then(async (response) => {
+            .then(async (response: any) => {
               await controllerEmitter(
                 ['wallet', 'sendAndSaveTransaction'],
                 [response]
               );
               if (isExternal)
-                dispatchBackgroundEvent(`${eventName}.${host}`, response);
+                dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
               setConfirmed(true);
               setLoading(false);
             })
@@ -227,13 +227,13 @@ export const SendNTokenTransaction = () => {
               },
             ]
           )
-            .then(async (response) => {
+            .then(async (response: any) => {
               await controllerEmitter(
                 ['wallet', 'sendAndSaveTransaction'],
                 [response]
               );
               if (isExternal)
-                dispatchBackgroundEvent(`${eventName}.${host}`, response);
+                dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
               setConfirmed(true);
               setLoading(false);
             })

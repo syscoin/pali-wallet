@@ -202,7 +202,7 @@ export const SendTransaction = () => {
           [response]
         );
         if (isExternal)
-          dispatchBackgroundEvent(`${eventName}.${host}`, response);
+          dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
         setConfirmed(true);
         setLoading(false);
         return response.hash;

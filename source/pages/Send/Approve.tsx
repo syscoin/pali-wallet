@@ -210,7 +210,7 @@ export const ApproveTransactionComponent = () => {
           [response]
         );
         if (isExternal) {
-          dispatchBackgroundEvent(`${eventName}.${host}`, response);
+          dispatchBackgroundEvent(`${eventName}.${host}`, response.hash);
         }
         setConfirmedDefaultModal(true);
         setLoading(false);
