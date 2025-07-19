@@ -12,6 +12,7 @@ import { useSelector } from 'react-redux';
 
 import { KeyringAccountType } from '@pollum-io/sysweb3-keyring';
 
+import { LazyAccountBalance } from 'components/AccountBalance';
 import { LoadingSvg } from 'components/Icon/Icon';
 import {
   SecondaryButton,
@@ -23,11 +24,10 @@ import {
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { ellipsis, formatNumber } from 'utils/index';
+import { ellipsis } from 'utils/index';
 
 // Component to render account icon matching the app's pattern - moved outside to prevent recreation
 const AccountIcon = React.memo(
@@ -132,11 +132,10 @@ TokenIconStack.displayName = 'TokenIconStack';
 export const ChangeAccount = () => {
   const { controllerEmitter } = useController();
   const dapp = useSelector((state: RootState) => state.dapp.dapps);
-  const { accounts, isBitcoinBased, activeNetwork } = useSelector(
+  const { accounts, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
   const accountAssets = useSelector(selectAccountAssets);
-  const { getFiatAmount } = usePrice();
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const { host, eventName } = useQueryData();
@@ -150,23 +149,9 @@ export const ChangeAccount = () => {
     useState<KeyringAccountType>(currentAccountType);
   const [isChanging, setIsChanging] = useState<boolean>(false);
 
-  // Get balance for an account - memoized to prevent recreation
-  const getAccountBalance = useCallback(
+  // Helper function to get tokens for an account
+  const getAccountTokens = useCallback(
     (account: any, accType: string) => {
-      // Get native currency balance from account.balances
-      const nativeBalance = isBitcoinBased
-        ? account.balances?.syscoin || 0
-        : account.balances?.ethereum || 0;
-
-      // Format balance with appropriate decimals
-      const formattedBalance =
-        nativeBalance > 0 ? formatNumber(nativeBalance.toString(), 4) : '0';
-
-      // Get fiat value
-      const fiatValue =
-        nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
-
-      // Get tokens from accountAssets (excluding native currency)
       const assets = accountAssets[accType]?.[account.id];
       const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
       const tokens = Array.isArray(allAssets)
@@ -174,10 +159,9 @@ export const ChangeAccount = () => {
             (asset: any) => asset.contractAddress && asset.balance > 0
           )
         : [];
-
-      return { balance: formattedBalance, fiatValue, tokens };
+      return tokens;
     },
-    [accountAssets, isBitcoinBased, getFiatAmount]
+    [accountAssets, isBitcoinBased]
   );
 
   // Memoize filtered accounts to prevent recomputation
@@ -296,8 +280,7 @@ export const ChangeAccount = () => {
                         const isCurrent =
                           acc.id === currentAccountId &&
                           currentAccountType === keyringType;
-                        const { balance, fiatValue, tokens } =
-                          getAccountBalance(acc, keyringType);
+                        const tokens = getAccountTokens(acc, keyringType);
 
                         return (
                           <div
@@ -375,24 +358,12 @@ export const ChangeAccount = () => {
                               </div>
                               <div className="flex items-center gap-3 flex-shrink-0">
                                 <div className="text-right">
-                                  <Tooltip
-                                    content={`${balance} ${
-                                      activeNetwork.currency?.toUpperCase() ||
-                                      'SYS'
-                                    }`}
-                                    placement="top"
-                                  >
-                                    <p className="text-sm font-medium text-brand-white whitespace-nowrap">
-                                      {parseFloat(balance || '0')
-                                        .toFixed(8)
-                                        .replace(/\.?0+$/, '')}{' '}
-                                      {activeNetwork.currency?.toUpperCase() ||
-                                        'SYS'}
-                                    </p>
-                                  </Tooltip>
-                                  <p className="text-xs text-brand-graylight whitespace-nowrap">
-                                    {fiatValue}
-                                  </p>
+                                  <LazyAccountBalance
+                                    account={acc}
+                                    showFiat={true}
+                                    showSkeleton={true}
+                                    precision={8}
+                                  />
                                   {tokens && tokens.length > 0 && (
                                     <div className="mt-0.5 flex justify-end">
                                       <TokenIconStack tokens={tokens} />

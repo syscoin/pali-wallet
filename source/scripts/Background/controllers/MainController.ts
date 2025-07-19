@@ -4300,6 +4300,42 @@ class MainController {
       return false;
     }
   }
+
+  public async getBalanceForAccount(
+    account: IKeyringAccountState,
+    isBitcoinBased: boolean,
+    networkUrl: string
+  ): Promise<string> {
+    try {
+      // For EVM networks, use the existing web3 provider
+      const provider = isBitcoinBased
+        ? null
+        : this.ethereumTransaction.web3Provider;
+
+      if (!isBitcoinBased && !provider) {
+        console.error(
+          '[MainController] No web3 provider available for EVM network'
+        );
+        return '0';
+      }
+      const balance =
+        await this.balancesManager.utils.getBalanceUpdatedForAccount(
+          account,
+          isBitcoinBased,
+          networkUrl,
+          provider
+        );
+
+      return balance;
+    } catch (error) {
+      console.error(
+        '[MainController] Failed to fetch balance for account:',
+        error
+      );
+      // Return 0 on error to allow UI to continue functioning
+      return '0';
+    }
+  }
 }
 
 export default MainController;

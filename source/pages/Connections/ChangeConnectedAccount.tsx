@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { LazyAccountBalance } from 'components/AccountBalance';
 import {
   SecondaryButton,
   PrimaryButton,
@@ -12,7 +13,6 @@ import {
 import { TokenIcon } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { usePrice } from 'hooks/usePrice';
 import { RootState } from 'state/store';
 import {
   selectActiveAccount,
@@ -20,7 +20,7 @@ import {
   selectAccountAssets,
 } from 'state/vault/selectors';
 import { dispatchBackgroundEvent } from 'utils/browser';
-import { ellipsis, formatNumber } from 'utils/index';
+import { ellipsis } from 'utils/index';
 
 // Component to render account icon matching the app's pattern
 const AccountIcon = React.memo(
@@ -124,26 +124,14 @@ export const ChangeConnectedAccount = () => {
     (state: RootState) => state.vault
   );
   const accountAssets = useSelector(selectAccountAssets);
-  const { getFiatAmount } = usePrice();
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const { host, eventName, connectedAccount, accountType } = useQueryData();
 
-  // Get balance for an account
-  const getAccountBalance = useCallback(
+  // Helper function to get tokens for an account
+  const getAccountTokens = useCallback(
     (account: any, accType: string) => {
-      if (!account || !account.balances)
-        return { balance: '0', fiatValue: '$0.00', tokens: [] };
-
-      const nativeBalance = isBitcoinBased
-        ? account.balances?.syscoin || 0
-        : account.balances?.ethereum || 0;
-
-      const formattedBalance =
-        nativeBalance > 0 ? formatNumber(nativeBalance.toString(), 4) : '0';
-
-      const fiatValue =
-        nativeBalance > 0 ? getFiatAmount(nativeBalance, 4) : '$0.00';
+      if (!account) return [];
 
       const assets = accountAssets[accType]?.[account.id];
       const allAssets = isBitcoinBased ? assets?.syscoin : assets?.ethereum;
@@ -152,10 +140,9 @@ export const ChangeConnectedAccount = () => {
             (asset: any) => asset.contractAddress && asset.balance > 0
           )
         : [];
-
-      return { balance: formattedBalance, fiatValue, tokens };
+      return tokens;
     },
-    [accountAssets, isBitcoinBased, getFiatAmount]
+    [accountAssets, isBitcoinBased]
   );
 
   const handleAccept = async () => {
@@ -171,12 +158,12 @@ export const ChangeConnectedAccount = () => {
     window.close();
   };
 
-  // Get balance info for both accounts
-  const connectedAccountBalance = getAccountBalance(
+  // Get tokens for both accounts
+  const connectedAccountTokens = getAccountTokens(
     connectedAccount,
     accountType
   );
-  const activeAccountBalance = getAccountBalance(
+  const activeAccountTokens = getAccountTokens(
     activeAccount,
     activeAccountRef.type
   );
@@ -248,21 +235,16 @@ export const ChangeConnectedAccount = () => {
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
-                    <p className="text-sm font-medium text-brand-white whitespace-nowrap">
-                      {parseFloat(connectedAccountBalance.balance || '0')
-                        .toFixed(8)
-                        .replace(/\.?0+$/, '')}{' '}
-                      {activeNetwork.currency?.toUpperCase() || 'SYS'}
-                    </p>
-                    <p className="text-xs text-brand-graylight whitespace-nowrap">
-                      {connectedAccountBalance.fiatValue}
-                    </p>
-                    {connectedAccountBalance.tokens &&
-                      connectedAccountBalance.tokens.length > 0 && (
+                    <LazyAccountBalance
+                      account={connectedAccount}
+                      showFiat={true}
+                      showSkeleton={true}
+                      precision={8}
+                    />
+                    {connectedAccountTokens &&
+                      connectedAccountTokens.length > 0 && (
                         <div className="mt-0.5 flex justify-end">
-                          <TokenIconStack
-                            tokens={connectedAccountBalance.tokens}
-                          />
+                          <TokenIconStack tokens={connectedAccountTokens} />
                         </div>
                       )}
                   </div>
@@ -313,23 +295,17 @@ export const ChangeConnectedAccount = () => {
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <div className="text-right">
-                    <p className="text-sm font-medium text-brand-white whitespace-nowrap">
-                      {parseFloat(activeAccountBalance.balance || '0')
-                        .toFixed(8)
-                        .replace(/\.?0+$/, '')}{' '}
-                      {activeNetwork.currency?.toUpperCase() || 'SYS'}
-                    </p>
-                    <p className="text-xs text-brand-graylight whitespace-nowrap">
-                      {activeAccountBalance.fiatValue}
-                    </p>
-                    {activeAccountBalance.tokens &&
-                      activeAccountBalance.tokens.length > 0 && (
-                        <div className="mt-0.5 flex justify-end">
-                          <TokenIconStack
-                            tokens={activeAccountBalance.tokens}
-                          />
-                        </div>
-                      )}
+                    <LazyAccountBalance
+                      account={activeAccount}
+                      showFiat={true}
+                      showSkeleton={true}
+                      precision={8}
+                    />
+                    {activeAccountTokens && activeAccountTokens.length > 0 && (
+                      <div className="mt-0.5 flex justify-end">
+                        <TokenIconStack tokens={activeAccountTokens} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
