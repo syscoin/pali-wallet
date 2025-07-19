@@ -374,7 +374,7 @@ export const ApproveTransactionComponent = () => {
       alert.success(t('send.approveSuccessful'));
 
       if (isExternal) {
-        window.close();
+        setTimeout(window.close, 2000);
       } else {
         navigate('/home');
       }

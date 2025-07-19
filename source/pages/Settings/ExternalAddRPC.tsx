@@ -264,9 +264,7 @@ const CustomRPCExternal = () => {
       // Show success and close
       alert.success(t('settings.rpcSuccessfullyAdded'));
 
-      setTimeout(() => {
-        window.close();
-      }, 1000);
+      setTimeout(window.close, 2000);
     } catch (error: any) {
       setLoading(false);
       setConfirmed(false);

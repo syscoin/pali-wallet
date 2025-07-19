@@ -270,13 +270,6 @@ export const SendConfirm = () => {
                   [response]
                 );
 
-                // Set initial confirmation state for UTXO transactions
-                // (EVM transactions have automatic tracking in EvmList.tsx)
-                await controllerEmitter(
-                  ['wallet', 'setIsLastTxConfirmed'],
-                  [activeNetwork.chainId, false]
-                );
-
                 setConfirmed(true);
                 setLoading(false);
 

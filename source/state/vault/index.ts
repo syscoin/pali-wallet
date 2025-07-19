@@ -64,7 +64,6 @@ const initialState: IVaultState = {
     id: 0,
     type: KeyringAccountType.HDAccount,
   },
-  isLastTxConfirmed: {},
   activeChain: INetworkType.Syscoin,
   activeNetwork: SYSCOIN_UTXO_MAINNET_NETWORK,
   isBitcoinBased: true,
@@ -184,27 +183,6 @@ const VaultState = createSlice({
         syscoin: {},
       };
     },
-    setIsLastTxConfirmed(
-      state: IVaultState,
-      action: PayloadAction<{
-        chainId: number;
-        isFirstTime?: boolean;
-        wasConfirmed: boolean;
-      }>
-    ) {
-      const { chainId, wasConfirmed, isFirstTime } = action.payload;
-      if (isFirstTime) {
-        state.isLastTxConfirmed = {};
-        return;
-      }
-
-      // Ensure isLastTxConfirmed is always an object before setting properties
-      if (!state.isLastTxConfirmed) {
-        state.isLastTxConfirmed = {};
-      }
-
-      state.isLastTxConfirmed[chainId] = wasConfirmed;
-    },
     setActiveAccount(
       state: IVaultState,
       action: PayloadAction<{
@@ -318,7 +296,6 @@ const VaultState = createSlice({
           id: 0, // Will be updated when first account is created
           type: KeyringAccountType.HDAccount,
         },
-        isLastTxConfirmed: {},
         activeChain: network.kind,
         activeNetwork: network,
         isBitcoinBased: network.kind === INetworkType.Syscoin,
@@ -700,7 +677,6 @@ export const {
   setActiveNetwork,
   setFaucetModalState,
   setAccountBalances,
-  setIsLastTxConfirmed,
   forgetWallet,
   initializeCleanVaultForSlip44,
   removeAccount,

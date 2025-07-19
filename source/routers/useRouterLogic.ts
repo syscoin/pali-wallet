@@ -136,6 +136,10 @@ export const useRouterLogic = () => {
 
     function handleStateChange(message: any) {
       if (message.type === 'CONTROLLER_STATE_CHANGE' && message.data) {
+        // This handler only processes ongoing state changes from background
+        // Initial state is handled by App.tsx via getCurrentState request
+        // This ensures single source of truth and prevents double rehydration
+
         // Prevent rehydration loops by checking if we're already rehydrating
         if (isRehydrating) {
           console.warn(

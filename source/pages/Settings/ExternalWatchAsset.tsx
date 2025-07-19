@@ -110,9 +110,7 @@ const ExternalWatchAsset = () => {
 
       setLoading(false);
       alert.info(t('settings.tokenSuccessfullyAdded'));
-      setTimeout(() => {
-        window.close();
-      }, 4000);
+      setTimeout(window.close, 2000);
     } catch (error: any) {
       alert.error(error.message);
 

@@ -55,29 +55,56 @@ if (window.__PALI_OFFSCREEN__) {
           React.useEffect(() => {
             // Initialize store and state
             const initializeState = async () => {
-              try {
-                // Load from cached state immediately for fast UI rendering
-                try {
-                  await rehydrateStore(store);
-                  setIsReady(true);
-                  console.log('[App] Rendered with cached state');
-                } catch (cacheError) {
-                  console.log('[App] No cached state available');
-                  // Even without cached state, we can still render with defaults
-                  setIsReady(true);
-                }
+              setIsReady(true);
+              // Architecture: Single source of truth state management
+              //
+              // State Flow:
+              // 1. Initial Load: App.tsx requests state from background via getCurrentState
+              // 2. Ongoing Updates: Background broadcasts CONTROLLER_STATE_CHANGE messages
+              //    which are handled by useRouterLogic for real-time updates
+              // 3. Visibility Changes: App.tsx re-syncs when popup becomes visible
+              //
+              // Benefits:
+              // - No double rehydration on startup
+              // - Background is the authoritative source
+              // - Consistent state across all contexts
+              // - Efficient - no duplicate blockchain calls
 
-                // Fresh state updates are handled by useRouterLogic via CONTROLLER_STATE_CHANGE messages
-                console.log(
-                  '[App] Initial state loaded, router will handle updates'
+              try {
+                // Request state from background (the source of truth)
+                chrome.runtime.sendMessage(
+                  { type: 'getCurrentState' },
+                  (backgroundState) => {
+                    if (chrome.runtime.lastError) {
+                      console.error(
+                        '[App] Error getting state from background:',
+                        chrome.runtime.lastError
+                      );
+                      return;
+                    }
+
+                    if (backgroundState) {
+                      console.log(
+                        '[App] Received state from background, rehydrating'
+                      );
+                      // Rehydrate with background state
+                      rehydrateStore(store, backgroundState);
+
+                      console.log('[App] Rendered with background state');
+                    } else {
+                      console.log(
+                        '[App] No state from background, using defaults'
+                      );
+                    }
+                  }
                 );
+
+                // Also ensure polling is running for future updates
+                // This doesn't trigger immediate blockchain calls, just ensures the schedule is set
+                chrome.runtime.sendMessage({ type: 'startPolling' });
               } catch (error) {
-                console.error(
-                  '[App] Error during state initialization:',
-                  error
-                );
-                // Still allow the app to render with default state
-                setIsReady(true);
+                console.error('[App] Error during initialization:', error);
+                // Fallback: allow render with default state
               }
             };
 

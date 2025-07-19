@@ -7,11 +7,7 @@ import { loadState } from 'state/paliStorage';
 import { IPriceState } from 'state/price/types';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
-import {
-  setAccountTypeInAccountsObject,
-  setActiveNetwork,
-  setIsLastTxConfirmed,
-} from 'state/vault';
+import { setAccountTypeInAccountsObject, setActiveNetwork } from 'state/vault';
 import { selectActiveAccount } from 'state/vault/selectors';
 import { IVaultState, IGlobalState, TransactionsType } from 'state/vault/types';
 import {
@@ -158,15 +154,6 @@ const MasterController = (
       );
     }
 
-    if (!externalStore.getState().vault?.isLastTxConfirmed) {
-      externalStore.dispatch(
-        setIsLastTxConfirmed({
-          chainId: 0,
-          wasConfirmed: false,
-          isFirstTime: true,
-        })
-      );
-    }
     dapp = Object.freeze(DAppController());
     wallet = new MainController();
 

@@ -36,7 +36,6 @@ import {
   setTransactionStatusToAccelerated,
   setTransactionStatusToCanceled,
   setFaucetModalState,
-  setIsLastTxConfirmed,
   setNetworkChange,
   setSingleTransactionToState,
   setAccountAssets,
@@ -2236,16 +2235,6 @@ class MainController {
     return network;
   }
 
-  public setIsLastTxConfirmed(
-    chainId: number,
-    wasConfirmed: boolean,
-    isFirstTime?: boolean
-  ) {
-    store.dispatch(
-      setIsLastTxConfirmed({ chainId, wasConfirmed, isFirstTime })
-    );
-  }
-
   public editAccountLabel(
     label: string,
     accountId: number,
@@ -2659,6 +2648,7 @@ class MainController {
         activeNetwork.chainId,
         isBitcoinBased
       );
+      await this.saveWalletState('send-and-save-transaction', true, true);
     } catch (error) {
       console.error(
         '[MainController] Failed to start rapid transaction polling:',

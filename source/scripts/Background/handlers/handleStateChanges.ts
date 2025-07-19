@@ -3,20 +3,6 @@ import store from 'state/store';
 let currentState = store.getState();
 
 export function handleObserveStateChanges() {
-  // send initial state to popup
-  chrome.runtime.sendMessage(
-    {
-      type: 'CONTROLLER_STATE_CHANGE',
-      data: currentState,
-    },
-    () => {
-      // ignore errors when sending message and the extension is closed
-      if (chrome.runtime.lastError) {
-        // no-op
-      }
-    }
-  );
-
   store.subscribe(() => {
     const nextState = store.getState();
     // Use simple reference equality - Redux creates new state objects on changes

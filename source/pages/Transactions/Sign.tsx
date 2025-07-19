@@ -61,23 +61,19 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
           ]
         );
       }
-      dispatchBackgroundEvent(`${eventName}.${host}`, response);
-      setConfirmed(true);
-      setLoading(false);
-
+      // Save transaction to local state for immediate visibility
+      await controllerEmitter(['wallet', 'sendAndSaveTransaction'], [response]);
       // Show success toast
       alert.success(
         signOnly
           ? t('transactions.theDappHas')
           : t('transactions.youCanCheckYour')
       );
-
-      // Close window after a short delay
-      setTimeout(() => {
-        // Clear navigation state when actually closing
-        clearNavigationState();
-        window.close();
-      }, 2000);
+      dispatchBackgroundEvent(`${eventName}.${host}`, response);
+      setConfirmed(true);
+      setLoading(false);
+      clearNavigationState();
+      setTimeout(window.close, 2000);
     } catch (error: any) {
       const isNecessaryReconnect = error.message?.includes(
         'read properties of undefined'

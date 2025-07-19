@@ -173,6 +173,11 @@ export const handleListeners = (masterController: IMasterController) => {
           console.error('Error in startPolling:', pollError)
         );
         return false; // Synchronous, no response needed
+      case 'getCurrentState':
+        // Send current state from background store
+        const currentState = store.getState();
+        sendResponse(currentState);
+        return true; // Indicate async response
       // getCurrentState removed - background script automatically broadcasts state changes
       default:
         // Silently drop unknown message types to prevent spam

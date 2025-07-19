@@ -95,8 +95,6 @@ export interface ISlip44State {
   // Network-specific states
   isBitcoinBased: boolean;
 
-  isLastTxConfirmed: null | { [k: number]: boolean };
-
   shouldShowFaucetModal: { [k: number]: boolean };
 }
 

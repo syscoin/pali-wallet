@@ -298,7 +298,9 @@ export const SendTransaction = () => {
       clearNavigationState();
 
       if (isExternal) {
-        window.close();
+        // Show success toast
+        alert.success(t('transactions.youCanCheckYour'));
+        setTimeout(window.close, 2000);
       } else {
         navigate('/home');
       }
