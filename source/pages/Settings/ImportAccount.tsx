@@ -4,13 +4,13 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { extractErrorMessage } from 'utils';
 
 import { NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
+import { extractErrorMessage } from 'utils/index';
 import { navigateBack } from 'utils/navigationState';
 import { validatePrivateKeyValue } from 'utils/validatePrivateKey';
 

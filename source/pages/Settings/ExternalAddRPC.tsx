@@ -2,7 +2,6 @@ import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { extractErrorMessage } from 'utils';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
@@ -11,6 +10,7 @@ import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { ICustomRpcParams } from 'types/transactions';
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { extractErrorMessage } from 'utils/index';
 
 const CustomRPCExternal = () => {
   const { host, ...data } = useQueryData();

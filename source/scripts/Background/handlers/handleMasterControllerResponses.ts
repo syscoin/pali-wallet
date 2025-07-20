@@ -1,6 +1,5 @@
-import { extractErrorMessage } from 'utils';
-
 import { IMasterController } from 'scripts/Background/controllers';
+import { extractErrorMessage } from 'utils/index';
 
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
