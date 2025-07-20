@@ -49,17 +49,21 @@ const SysAccountController = (
       const { activeAccount, activeNetwork, accountAssets } =
         store.getState().vault;
 
-      // Add null checks for nested property access
+      // Validate account type exists
       if (!accountAssets[activeAccount.type]) {
-        throw new Error('Account type assets not initialized');
+        throw new Error(
+          `Account type '${activeAccount.type}' not found in accountAssets`
+        );
       }
 
-      if (!accountAssets[activeAccount.type]?.[activeAccount.id]) {
-        throw new Error('Account assets not initialized');
-      }
-
+      // Validate account ID exists
       const activeAccountAssets =
-        accountAssets[activeAccount.type]?.[activeAccount.id];
+        accountAssets[activeAccount.type][activeAccount.id];
+      if (!activeAccountAssets) {
+        throw new Error(
+          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
+        );
+      }
 
       if (!activeAccountAssets.syscoin) {
         throw new Error('Syscoin assets array not initialized');
@@ -107,17 +111,21 @@ const SysAccountController = (
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
 
-      // Add null checks for nested property access
+      // Validate account type exists
       if (!accountAssets[activeAccount.type]) {
-        throw new Error('Account type assets not initialized');
+        throw new Error(
+          `Account type '${activeAccount.type}' not found in accountAssets`
+        );
       }
 
-      if (!accountAssets[activeAccount.type]?.[activeAccount.id]) {
-        throw new Error('Account assets not initialized');
-      }
-
+      // Validate account ID exists
       const activeAccountAssets =
-        accountAssets[activeAccount.type]?.[activeAccount.id];
+        accountAssets[activeAccount.type][activeAccount.id];
+      if (!activeAccountAssets) {
+        throw new Error(
+          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
+        );
+      }
 
       if (!activeAccountAssets.syscoin) {
         throw new Error('Syscoin assets array not initialized');

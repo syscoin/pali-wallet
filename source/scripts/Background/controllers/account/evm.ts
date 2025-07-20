@@ -19,11 +19,21 @@ const EthAccountController = (): IEthAccountController | any => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
     const { chainId } = activeNetwork;
-    const activeAccountAssets =
-      accountAssets[activeAccount.type]?.[activeAccount.id];
 
+    // Validate account type exists
+    if (!accountAssets[activeAccount.type]) {
+      throw new Error(
+        `Account type '${activeAccount.type}' not found in accountAssets`
+      );
+    }
+
+    // Validate account ID exists
+    const activeAccountAssets =
+      accountAssets[activeAccount.type][activeAccount.id];
     if (!activeAccountAssets) {
-      throw new Error('Account assets not initialized');
+      throw new Error(
+        `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
+      );
     }
 
     if (!activeAccountAssets.ethereum) {
@@ -69,11 +79,21 @@ const EthAccountController = (): IEthAccountController | any => {
   const deleteTokenInfo = (tokenAddress: string, chainId: number) => {
     try {
       const { activeAccount, accountAssets } = store.getState().vault;
-      const activeAccountAssets =
-        accountAssets[activeAccount.type]?.[activeAccount.id];
 
+      // Validate account type exists
+      if (!accountAssets[activeAccount.type]) {
+        throw new Error(
+          `Account type '${activeAccount.type}' not found in accountAssets`
+        );
+      }
+
+      // Validate account ID exists
+      const activeAccountAssets =
+        accountAssets[activeAccount.type][activeAccount.id];
       if (!activeAccountAssets) {
-        throw new Error('Account assets not initialized');
+        throw new Error(
+          `Account ID '${activeAccount.id}' not found for account type '${activeAccount.type}'`
+        );
       }
 
       if (!activeAccountAssets.ethereum) {
