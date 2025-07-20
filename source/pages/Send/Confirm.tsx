@@ -300,9 +300,25 @@ export const SendConfirm = () => {
 
                   switch (sysError.code) {
                     case 'TRANSACTION_SEND_FAILED':
+                      // Parse error message to extract meaningful part
+                      let errorMessage = sysError.message;
+                      try {
+                        // Check if the message contains JSON error details
+                        const detailsMatch =
+                          errorMessage.match(/Details:\s*({.*})/);
+                        if (detailsMatch) {
+                          const errorDetails = JSON.parse(detailsMatch[1]);
+                          if (errorDetails.error) {
+                            errorMessage = `Transaction failed: ${errorDetails.error}`;
+                          }
+                        }
+                      } catch (e) {
+                        // If parsing fails, use the original message
+                      }
+
                       alert.error(
                         t('send.transactionSendFailed', {
-                          message: sysError.message,
+                          message: errorMessage,
                         })
                       );
                       break;
@@ -360,9 +376,24 @@ export const SendConfirm = () => {
                   break;
 
                 case 'TRANSACTION_SEND_FAILED':
+                  // Parse error message to extract meaningful part
+                  let errorMsg = sysError.message;
+                  try {
+                    // Check if the message contains JSON error details
+                    const detailsMatch = errorMsg.match(/Details:\s*({.*})/);
+                    if (detailsMatch) {
+                      const errorDetails = JSON.parse(detailsMatch[1]);
+                      if (errorDetails.error) {
+                        errorMsg = `Transaction failed: ${errorDetails.error}`;
+                      }
+                    }
+                  } catch (e) {
+                    // If parsing fails, use the original message
+                  }
+
                   alert.error(
                     t('send.transactionSendFailed', {
-                      message: sysError.message,
+                      message: errorMsg,
                     })
                   );
                   break;

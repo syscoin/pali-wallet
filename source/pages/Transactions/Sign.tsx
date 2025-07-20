@@ -89,7 +89,21 @@ const Sign: React.FC<ISign> = ({ signOnly = false }) => {
       if (error.error && error.code) {
         switch (error.code) {
           case 'TRANSACTION_SEND_FAILED':
-            setErrorMsg(`Transaction failed to send: ${error.message}`);
+            // Parse error message to extract meaningful part
+            let cleanErrorMsg = error.message;
+            try {
+              // Check if the message contains JSON error details
+              const detailsMatch = cleanErrorMsg.match(/Details:\s*({.*})/);
+              if (detailsMatch) {
+                const errorDetails = JSON.parse(detailsMatch[1]);
+                if (errorDetails.error) {
+                  cleanErrorMsg = errorDetails.error;
+                }
+              }
+            } catch (e) {
+              // If parsing fails, use the original message
+            }
+            setErrorMsg(`Transaction failed to send: ${cleanErrorMsg}`);
             break;
           default:
             setErrorMsg(`Transaction error (${error.code}): ${error.message}`);
