@@ -2565,7 +2565,7 @@ class MainController {
             }
 
             // Safe access to transaction objects with error handling
-            const web3Provider = this.ethereumTransaction.web3Provider;
+            const web3Provider = this.ethereumTransaction?.web3Provider;
             const txs =
               await this.transactionsManager.utils.updateTransactionsFromCurrentAccount(
                 currentAccount,
@@ -2709,7 +2709,8 @@ class MainController {
         async (resolve, reject) => {
           try {
             // Safe access to transaction objects with error handling
-            const web3Provider = this.ethereumTransaction.web3Provider;
+            const web3Provider = this.ethereumTransaction?.web3Provider;
+
             const updatedAssets =
               await this.assetsManager.utils.updateAssetsFromCurrentAccount(
                 currentAccount,
@@ -2833,7 +2834,8 @@ class MainController {
 
           try {
             // Safe access to transaction objects with error handling
-            const web3Provider = this.ethereumTransaction.web3Provider;
+            const web3Provider = this.ethereumTransaction?.web3Provider;
+
             const updatedBalance =
               await this.balancesManager.utils.getBalanceUpdatedForAccount(
                 currentAccount,
