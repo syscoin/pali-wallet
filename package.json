@@ -9,8 +9,8 @@
   },
   "license": "MIT",
   "engines": {
-    "node": ">=20.18.0",
-    "yarn": ">=1.22.19"
+    "node": ">=20.19.0",
+    "yarn": ">=1.22.22"
   },
   "scripts": {
     "generate-manifest": "node ./source/config/generateManifest.js",
@@ -95,7 +95,7 @@
     "redux-logger": "^3.0.6",
     "redux-thunk": "^3.1.0",
     "sass": "^1.80.7",
-    "syscoinjs-lib": "1.0.240",
+    "syscoinjs-lib": "1.0.241",
     "tailwindcss": "^3.4.15",
     "tippy.js": "^6.3.7",
     "uuid": "^9.0.1",
