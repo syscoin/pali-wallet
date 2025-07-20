@@ -359,23 +359,19 @@ export class PaliInpageProviderEth extends BaseProvider {
     }
 
     // emit accountsChanged if anything about the accounts array has changed
-    // we should always have the correct accounts even before eth_accounts
-    // returns
-    if (
-      isEthAccounts &&
-      this._state.accounts !== null &&
-      this._state.accounts.length !== 0
-    ) {
-      console.error(
-        `Pali EthereumProvider: 'eth_accounts' unexpectedly updated accounts. Please report this bug.`,
-        accounts
-      );
-    }
+    // Note: It's normal for eth_accounts to return different accounts than what's in state,
+    // especially when dapps are disconnected, during network switches, or permission changes.
+    // The provider should handle these changes gracefully.
 
     // Check if accounts actually changed before updating state
     const previousAccounts = this._state.accounts;
     const accountsChanged =
       JSON.stringify(previousAccounts) !== JSON.stringify(accounts);
+
+    // Check if we're transitioning from no accounts to having accounts (new connection)
+    const wasDisconnected = !previousAccounts || previousAccounts.length === 0;
+    const isNowConnected = accounts && accounts.length > 0;
+    const isNewConnection = wasDisconnected && isNowConnected;
 
     if (accounts.length > 0 && ethers.utils.isHexString(accounts[0])) {
       this._state.accounts = accounts as string[];
@@ -386,6 +382,13 @@ export class PaliInpageProviderEth extends BaseProvider {
       if (ethers.utils.isHexString(accounts[0])) {
         this.selectedAddress = (accounts[0] as string) || null;
       }
+    }
+
+    // If this is a new connection (accounts went from empty to having accounts),
+    // emit connect event first, then accountsChanged
+    if (this._state.initialized && isNewConnection && this.chainId) {
+      // Emit connect event for new connections
+      this._handleConnect(this.chainId);
     }
 
     // finally, after all state has been updated, emit the event
