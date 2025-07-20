@@ -64,6 +64,16 @@ export const methodRequest = async (
     throw cleanErrorStack(ethErrors.rpc.methodNotFound());
   }
 
+  // Generic params normalization: if params exists but is not an array, wrap it in an array
+  // This handles cases where dApps send params as objects directly instead of [object]
+  if (
+    data.params !== undefined &&
+    data.params !== null &&
+    !Array.isArray(data.params)
+  ) {
+    data.params = [data.params];
+  }
+
   // Parse the method prefix and name
   const [prefix, methodName] = data.method.includes('_')
     ? data.method.split('_')
