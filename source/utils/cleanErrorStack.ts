@@ -5,25 +5,25 @@
  * @returns {Error} Error with clean stack trace.
  */
 export default function cleanErrorStack(err: Error) {
-  // eslint-disable-next-line
-  let { name, message, stack } = err;
+  // Extract and validate error properties
+  let { name, message } = err;
   name = name === undefined ? 'Error' : String(name);
+  message = message === undefined ? '' : String(message);
 
-  let msg = err.message;
-  msg = msg === undefined ? '' : String(msg);
-
+  // Compute a clean stack trace for UI display
+  let cleanStack: string;
   if (name === '') {
-    err.stack = err.message;
-  } else if (msg === '') {
-    err.stack = err.name;
-  } else if (!err.stack) {
-    err.stack = `${err.name}: ${err.message}`;
+    cleanStack = message;
+  } else if (message === '') {
+    cleanStack = name;
+  } else {
+    cleanStack = `${name}: ${message}`;
   }
 
-  // Create a new Error object with preserved properties
+  // Create a new Error object with clean properties
   const cleanedError = new Error(message);
   cleanedError.name = name;
-  cleanedError.stack = stack;
+  cleanedError.stack = cleanStack;
 
   // Preserve error code for RPC errors
   const code = (err as any).code;
