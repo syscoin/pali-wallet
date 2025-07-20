@@ -72,7 +72,7 @@ const EthAccountController = (): IEthAccountController | any => {
         })
       );
     } catch (error) {
-      throw new Error(`Could not save token info. Error: ${error}`);
+      throw new Error(`Could not save token info. ${error}`);
     }
   };
 
@@ -123,7 +123,7 @@ const EthAccountController = (): IEthAccountController | any => {
         })
       );
     } catch (error) {
-      throw new Error(`Could not delete token. Error: ${error}`);
+      throw new Error(`Could not delete token. ${error}`);
     }
   };
 

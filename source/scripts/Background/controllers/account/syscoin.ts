@@ -103,7 +103,7 @@ const SysAccountController = (
         })
       );
     } catch (error) {
-      throw new Error(`Could not save token info. Error: ${error}`);
+      throw new Error(`Could not save token info. ${error}`);
     }
   };
 
@@ -149,7 +149,7 @@ const SysAccountController = (
         })
       );
     } catch (error) {
-      throw new Error(`Could not delete SPT token. Error: ${error}`);
+      throw new Error(`Could not delete SPT token. ${error}`);
     }
   };
 
