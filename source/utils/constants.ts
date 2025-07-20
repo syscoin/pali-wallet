@@ -1,6 +1,7 @@
 import {
   getDefaultUTXONetworks,
   getSyscoinUTXOMainnetNetwork,
+  getBitcoinMainnetNetwork,
 } from '@pollum-io/sysweb3-keyring';
 import { INetwork, INetworkType } from '@pollum-io/sysweb3-network';
 
@@ -103,6 +104,7 @@ export const SYSCOIN_MAINNET_NETWORK = {
 } as INetwork;
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = getSyscoinUTXOMainnetNetwork();
+export const BITCOIN_MAINNET_NETWORK = getBitcoinMainnetNetwork();
 
 interface IFaucetNetworkData {
   [key: string]: {
