@@ -77,10 +77,7 @@ const SysAccountController = (
         chainId: activeNetwork.chainId,
         description,
         image: '',
-        balance:
-          token.balance !== undefined && token.decimals !== undefined
-            ? Number(token.balance) / Math.pow(10, Number(token.decimals))
-            : 0,
+        balance: token.balance || 0, // Balance is already in correct format, don't convert
       };
       if (!isEmpty(ipfsUrl)) {
         const { data } = await axios.get(ipfsUrl, config);

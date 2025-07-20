@@ -129,7 +129,7 @@ export const SyscoinAssetsList = () => {
                     <span className="text-brand-white font-semibold">
                       {truncate(
                         formatCurrency(
-                          String(asset.balance / 10 ** asset.decimals),
+                          String(asset.balance),
                           Math.min(asset.decimals, 4) // Limit displayed decimals for UI
                         ),
                         8,

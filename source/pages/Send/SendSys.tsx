@@ -216,10 +216,7 @@ export const SendSys = () => {
     () =>
       selectedAsset &&
       truncate(
-        formatCurrency(
-          String(+selectedAsset.balance / 10 ** assetDecimals),
-          selectedAsset.decimals
-        ),
+        formatCurrency(String(+selectedAsset.balance), selectedAsset.decimals),
         14
       ),
     [selectedAsset, assetDecimals]

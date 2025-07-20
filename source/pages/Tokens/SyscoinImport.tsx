@@ -211,16 +211,23 @@ export const SyscoinImport: React.FC = () => {
   // Convert token data to ImportableAsset format
   const convertToImportableAssets = useCallback(
     (tokens: (ISysTokensAssetReponse | ITokenSysProps)[]) =>
-      tokens.map((token) => ({
-        id: token.assetGuid || '',
-        symbol: token.symbol || '',
-        name: token.name || token.symbol || '',
-        balance: Number(token.balance) || 0,
-        decimals: token.decimals || 8,
-        logo: getTokenLogo(token.symbol || ''),
-        assetGuid: token.assetGuid || '',
-        type: token.type || 'SPTAllocated',
-      })),
+      tokens.map((token) => {
+        // Convert balance from satoshis for display (EVM already provides display values)
+        const decimals = token.decimals || 8;
+        const balanceInSatoshis = Number(token.balance) || 0;
+        const displayBalance = balanceInSatoshis / Math.pow(10, decimals);
+
+        return {
+          id: token.assetGuid || '',
+          symbol: token.symbol || '',
+          name: token.name || token.symbol || '',
+          balance: displayBalance,
+          decimals: decimals,
+          logo: getTokenLogo(token.symbol || ''),
+          assetGuid: token.assetGuid || '',
+          type: token.type || 'SPTAllocated',
+        };
+      }),
     []
   );
 

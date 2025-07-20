@@ -11,6 +11,7 @@ import { retryableFetch } from '@pollum-io/sysweb3-network';
 import { NeutralButton } from 'components/index';
 import { TokenIcon } from 'components/TokenIcon';
 import { useUtils } from 'hooks/index';
+import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import { RootState } from 'state/store';
 import {
   formatCurrency,
@@ -104,6 +105,52 @@ export const SyscoinAssetDetails = ({
       fetchingRef.current = false;
     }
   }, [asset?.assetGuid, id]);
+
+  // Trigger fresh data fetch for newly imported assets
+  useEffect(() => {
+    const fetchCompleteAssetData = async () => {
+      // Check if we have a real asset (not preview) that might be missing complete data
+      if (
+        asset &&
+        !navigationState?.isImportPreview &&
+        asset.assetGuid &&
+        // Check if totalSent/totalReceived are missing (indicating incomplete data)
+        (asset.totalSent === undefined || asset.totalReceived === undefined)
+      ) {
+        console.log(
+          '[SyscoinDetails] Triggering fresh fetch for newly imported asset',
+          asset.assetGuid
+        );
+
+        // Trigger a background update to fetch complete asset data
+        try {
+          await controllerEmitter(
+            ['wallet', 'updateAssetsFromCurrentAccount'],
+            [
+              {
+                isBitcoinBased: true,
+                activeNetwork,
+                activeAccount,
+                isPolling: false,
+              },
+            ]
+          );
+        } catch (error) {
+          console.error(
+            '[SyscoinDetails] Error fetching complete asset data:',
+            error
+          );
+        }
+      }
+    };
+
+    fetchCompleteAssetData();
+  }, [
+    asset?.assetGuid,
+    navigationState?.isImportPreview,
+    activeNetwork.chainId,
+    activeAccount.id,
+  ]);
 
   // Try to fetch CoinGecko data for known Syscoin assets
   useEffect(() => {
@@ -521,7 +568,7 @@ export const SyscoinAssetDetails = ({
                       <span className="text-brand-white">
                         {truncate(
                           formatCurrency(
-                            String(item.value / 10 ** assetDecimals.value),
+                            String(item.value),
                             assetDecimals.value
                           ),
                           5,

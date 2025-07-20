@@ -7,6 +7,11 @@ import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
 
+import {
+  ASSET_CACHE_DURATION,
+  USER_TOKENS_CACHE_DURATION,
+  MAX_TOKENS_DISPLAY,
+} from './constants';
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
 import { validateAndManageUserAssets, ensureTrailingSlash } from './utils';
 
@@ -20,8 +25,6 @@ const SysAssetsControler = (): ISysAssetsController => {
     }
   >();
 
-  const ASSET_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours cache for asset metadata
-
   // Cache for user's owned SPT tokens
   const userTokensCache = new Map<
     string,
@@ -30,8 +33,6 @@ const SysAssetsControler = (): ISysAssetsController => {
       tokens: ISysTokensAssetReponse[];
     }
   >();
-
-  const USER_TOKENS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache for user tokens
 
   /**
    * Get cached asset data or fetch if not cached/expired
@@ -97,52 +98,47 @@ const SysAssetsControler = (): ISysAssetsController => {
     }
 
     try {
-      console.log('[SysAssetsController] Fetching user owned SPT tokens');
-
-      // Get all SPT tokens from xpub with details
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
-      const { tokens, tokensAsset } = await fetchBackendAccountCached(
+
+      const { tokensAsset } = await fetchBackendAccountCached(
         ensureTrailingSlash(networkUrl),
         xpub,
         requestOptions,
         true
       );
 
-      const isTokensAssetValid = tokensAsset && tokensAsset.length > 0;
-      const validTokens = isTokensAssetValid ? tokensAsset : tokens;
+      // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
+      // tokens array contains regular UTXO addresses without assetGuid
+      // tokensAsset array contains actual SPT tokens with assetGuid
+      const validTokens = tokensAsset || [];
 
       const preventUndefined =
         typeof validTokens === 'undefined' || validTokens === undefined
           ? []
           : validTokens;
 
-      // Filter to only SPT tokens with assetGuid
-      const sptTokens: ISysTokensAssetReponse[] = preventUndefined.filter(
-        (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
+      const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] =
+        preventUndefined
+          .filter((token: any) => token.assetGuid)
+          .map((tokenAsset: any) => ({
+            ...tokenAsset,
+            chainId: networkChainId,
+          }))
+          .slice(0, MAX_TOKENS_DISPLAY);
+
+      console.log(
+        `[SysAssetsController] Found ${getOnlyTokensWithAssetGuid.length} SPT tokens for user (from ${preventUndefined.length} total entries)`
       );
 
-      // Add chainId to each token
-      const tokensWithChain = sptTokens.map((asset) => ({
-        ...asset,
-        chainId: networkChainId,
-        type: 'SPTAllocated',
-      }));
-
-      // Cache the unfiltered results
+      // Cache the result
       userTokensCache.set(cacheKey, {
-        tokens: tokensWithChain,
+        tokens: getOnlyTokensWithAssetGuid,
         timestamp: now,
       });
 
-      console.log(
-        `[SysAssetsController] Found ${tokensWithChain.length} SPT tokens for user`
-      );
-      return tokensWithChain;
-    } catch (error) {
-      console.error(
-        '[SysAssetsController] Error fetching user owned tokens:',
-        error
-      );
+      return getOnlyTokensWithAssetGuid;
+    } catch (err) {
+      console.error('[SysAssetsController] getUserOwnedTokens error:', err);
       return [];
     }
   };
@@ -188,11 +184,9 @@ const SysAssetsControler = (): ISysAssetsController => {
           true
         );
 
-        // Use tokensAsset if available, otherwise fall back to tokens
-        const tokens =
-          accountData.tokensAsset && accountData.tokensAsset.length > 0
-            ? accountData.tokensAsset
-            : accountData.tokens || [];
+        // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
+        // tokens array contains regular UTXO addresses without assetGuid
+        const tokens = accountData.tokensAsset || [];
 
         // Find the specific token by assetGuid
         const tokenData = tokens.find(
@@ -200,9 +194,8 @@ const SysAssetsControler = (): ISysAssetsController => {
         );
 
         if (tokenData && tokenData.balance !== undefined) {
-          // Balance is already in the smallest unit, divide by decimals
-          balance =
-            Number(tokenData.balance) / Math.pow(10, assetData.decimals);
+          // Keep balance in satoshis - it will be converted for display in UI
+          balance = Number(tokenData.balance);
         }
       } catch (balanceError) {
         console.warn(
@@ -252,7 +245,7 @@ const SysAssetsControler = (): ISysAssetsController => {
       const sysAssetToAdd = {
         ...metadata,
         symbol: metadata.symbol, // Syscoin 5 uses plain text symbols
-        balance: 0, // Initialize with 0, will be updated by asset refresh
+        balance: 0, // Initialize with 0 in display format, will be updated by asset refresh
       } as ITokenSysProps;
 
       return sysAssetToAdd;
@@ -270,18 +263,17 @@ const SysAssetsControler = (): ISysAssetsController => {
     try {
       const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
-      const { tokens, tokensAsset } = await fetchBackendAccountCached(
+      const { tokensAsset } = await fetchBackendAccountCached(
         ensureTrailingSlash(networkUrl),
         xpub,
         requestOptions,
         true
       );
 
-      //Validate to know which tokens use, for some cases the request only return tokens without tokensAsset
-      //and for some other cases return both
-      const isTokensAssetValid = tokensAsset && tokensAsset.length > 0;
-
-      const validTokens = isTokensAssetValid ? tokensAsset : tokens;
+      // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
+      // tokens array contains regular UTXO addresses without assetGuid
+      // tokensAsset array contains actual SPT tokens with assetGuid
+      const validTokens = tokensAsset || [];
 
       const preventUndefined =
         typeof validTokens === 'undefined' || validTokens === undefined
@@ -293,29 +285,61 @@ const SysAssetsControler = (): ISysAssetsController => {
           (token: ISysTokensAssetReponse) => !isNil(token.assetGuid)
         );
 
-      const filteredAssetsLength = getOnlyTokensWithAssetGuid.slice(0, 30);
+      // Get existing manually imported tokens from state
+      const { activeAccount, accountAssets } = store.getState().vault;
+      const existingAssets =
+        accountAssets[activeAccount.type]?.[activeAccount.id]?.syscoin || [];
 
-      if (filteredAssetsLength && filteredAssetsLength.length > 0) {
-        //Need to add chainId inside the asset object to we can validate it based on network connect
-        //To show it on list and maintain correctly inside state
-        const assetsWithChain = filteredAssetsLength.map((asset) => {
-          if (asset.chainId && asset.chainId === networkChainId) {
+      // Create a map of blockchain tokens for easy lookup
+      const blockchainTokensMap = new Map(
+        getOnlyTokensWithAssetGuid.map((token) => [token.assetGuid, token])
+      );
+
+      // Update all manually imported tokens
+      const updatedTokens: ISysTokensAssetReponse[] = existingAssets
+        .filter((asset: ITokenSysProps) => asset.assetGuid !== undefined)
+        .map((asset: ITokenSysProps) => {
+          const blockchainToken = blockchainTokensMap.get(asset.assetGuid!);
+
+          if (blockchainToken) {
+            // Token found in blockchain response - use updated data
+            // Convert all satoshi values to display format
+            const decimals = blockchainToken.decimals || 8;
+            const divisor = Math.pow(10, decimals);
             return {
-              ...asset,
+              ...blockchainToken,
+              balance: blockchainToken.balance / divisor,
+              totalSent: String(Number(blockchainToken.totalSent) / divisor),
+              totalReceived: String(
+                Number(blockchainToken.totalReceived) / divisor
+              ),
+              chainId: networkChainId,
               type: 'SPTAllocated',
             };
+          } else {
+            // Token not in blockchain response - set balance to 0
+            return {
+              assetGuid: asset.assetGuid!,
+              balance: 0,
+              decimals: asset.decimals,
+              name: asset.name || asset.symbol,
+              path: '',
+              symbol: asset.symbol,
+              totalReceived: '0',
+              totalSent: '0',
+              transfers: 0,
+              type: 'SPTAllocated',
+              chainId: networkChainId,
+            } as ISysTokensAssetReponse;
           }
-
-          return {
-            ...asset,
-            chainId: networkChainId,
-            type: 'SPTAllocated',
-          };
         });
 
+      const filteredAssetsLength = updatedTokens.slice(0, MAX_TOKENS_DISPLAY);
+
+      if (filteredAssetsLength && filteredAssetsLength.length > 0) {
         const treatedAssets = validateAndManageUserAssets(
           false,
-          assetsWithChain
+          filteredAssetsLength
         ) as ISysTokensAssetReponse[];
         // Syscoin 5 uses plain text symbols, no decoding needed
         return treatedAssets;

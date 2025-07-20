@@ -218,10 +218,7 @@ export const getAssetBalance = (
   }
 
   const formattedBalance = truncate(
-    formatCurrency(
-      String(+asset.balance / 10 ** asset.decimals),
-      asset.decimals
-    ),
+    formatCurrency(String(+asset.balance), asset.decimals),
     14
   );
 
