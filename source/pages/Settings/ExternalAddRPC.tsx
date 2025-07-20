@@ -2,6 +2,7 @@ import { Form, Input } from 'antd';
 import { useForm } from 'antd/lib/form/Form';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { extractErrorMessage } from 'utils';
 
 import { INetwork } from '@pollum-io/sysweb3-network';
 
@@ -138,12 +139,10 @@ const CustomRPCExternal = () => {
       return network;
     } catch (error) {
       // Extract the actual error message from the thrown error
-      let errorMessage = t('settings.failedValidateRpc');
-      if (error && typeof error === 'object' && 'message' in error) {
-        errorMessage = (error as Error).message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
+      const errorMessage = extractErrorMessage(
+        error,
+        t('settings.failedValidateRpc')
+      );
 
       // Set error state
       form.setFields([
@@ -214,7 +213,10 @@ const CustomRPCExternal = () => {
 
       return true;
     } catch (error) {
-      const errorMessage = error?.message || 'Failed to validate API URL';
+      const errorMessage = extractErrorMessage(
+        error,
+        'Failed to validate API URL'
+      );
 
       // Set error state
       form.setFields([
@@ -269,7 +271,7 @@ const CustomRPCExternal = () => {
       setLoading(false);
       setConfirmed(false);
 
-      const errorMessage = error.message || 'Failed to add network';
+      const errorMessage = extractErrorMessage(error, 'Failed to add network');
 
       // Show error alert prominently
       alert.error(errorMessage, {

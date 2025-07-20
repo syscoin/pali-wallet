@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
+import { extractErrorMessage } from 'utils';
 
 import { NeutralButton } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
@@ -55,8 +56,7 @@ const ImportAccountView = () => {
         const wasHandled = handleWalletLockedError(error);
         if (!wasHandled) {
           // If not a wallet locked error, show the original error message
-
-          alert.error(String(error.message));
+          alert.error(extractErrorMessage(error, 'Import failed'));
         }
       }
     }

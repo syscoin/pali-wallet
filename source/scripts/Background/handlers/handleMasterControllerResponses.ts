@@ -1,3 +1,5 @@
+import { extractErrorMessage } from 'utils';
+
 import { IMasterController } from 'scripts/Background/controllers';
 
 export const handleMasterControllerResponses = (
@@ -51,7 +53,7 @@ export const handleMasterControllerResponses = (
             } else {
               // For regular errors, wrap in error object
               sendResponse({
-                error: error.message || 'Unknown error',
+                error: extractErrorMessage(error, 'Unknown error'),
                 success: false,
               });
             }
@@ -76,7 +78,7 @@ export const handleMasterControllerResponses = (
       } else {
         // For regular errors, wrap in error object
         sendResponse({
-          error: error.message || 'Unknown error',
+          error: extractErrorMessage(error, 'Unknown error'),
           success: false,
         });
       }
